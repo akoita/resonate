@@ -7,8 +7,10 @@ related:
   - ../architecture/listener_community_network.md
   - listener-community-network.md
   - public-supporter-collector-credential-rules.md
+  - show-attendance-credential-boundaries.md
   - https://github.com/akoita/resonate/issues/1084
   - https://github.com/akoita/resonate/issues/1097
+  - https://github.com/akoita/resonate/issues/1098
 ---
 
 # Blockchain-Native Community Membership Boundaries
@@ -25,6 +27,10 @@ credentials are documented in
 [Public Supporter And Collector Credential Rules](public-supporter-collector-credential-rules.md).
 That follow-up recommends off-chain public badges and existing ownership/support
 proofs before minting any new NFT-backed community credential.
+Show attendance credential rules are documented in
+[Show Attendance Credential Boundaries](show-attendance-credential-boundaries.md).
+That follow-up recommends off-chain opt-in attendance badges and event-scoped
+proofs before minting any NFT-backed attendance credential.
 
 The default rule is:
 
@@ -222,7 +228,10 @@ support:
 - local ambassador recognition.
 
 Coarse location and city-scene membership still stay off-chain because they
-can reveal sensitive movement or home-scene information.
+can reveal sensitive movement or home-scene information. The current product
+recommendation is not to mint a new attendance NFT yet; use off-chain opt-in
+attendance badges backed by event-scoped proof first, as defined in
+[Show Attendance Credential Boundaries](show-attendance-credential-boundaries.md).
 
 ### Remix And Contributor Credentials
 

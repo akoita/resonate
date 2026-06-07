@@ -15,6 +15,11 @@ The goal is to turn a pledge into a living supporter space: backers can gather,
 artists and operators can post campaign updates, fans can signal city demand,
 and analytics can connect community participation to campaign conversion.
 
+Show attendance credentials are intentionally tracked separately in
+[Show Attendance Credential Boundaries](../rfc/show-attendance-credential-boundaries.md).
+That RFC recommends off-chain opt-in, event-scoped attendance badges before any
+NFT-backed attendance credential and keeps city-scene membership off-chain.
+
 This plan intentionally splits #1000 into small, reviewable slices. Each slice
 must be marked `implemented`, `partial`, `deferred`, or `planned` before #1000
 is closed.
