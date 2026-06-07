@@ -127,6 +127,12 @@ export function discordBridgeActionLabel(bridge: CommunityDiscordBridge | null) 
     : "Connect Discord";
 }
 
+export function discordBridgeStatusLabel(bridge: CommunityDiscordBridge | null) {
+  if (bridge?.status === "connected") return "Connected";
+  if (bridge?.status === "failed") return "Action needed";
+  return "Not connected";
+}
+
 export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps) {
   const { token, status, userId, role } = useAuth();
   const authenticated = status === "authenticated" && Boolean(token);
@@ -163,6 +169,9 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   const canReadActiveRoom = Boolean(activeRoom && (canManage || isJoinedRoom(activeRoom)));
   const publicDiscord = roomsState?.discord ?? null;
   const canSaveDiscordBridge = Boolean(discordWebhookUrl.trim() || discordBridge?.webhookUrlMasked);
+  const failedDiscordAttempts = (discordBridge?.recentAttempts ?? [])
+    .filter((attempt) => attempt.status === "failed")
+    .slice(0, 3);
 
   const loadRooms = useCallback(async () => {
     setLoadingRooms(true);
@@ -442,86 +451,120 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
       ) : null}
 
       {canManage ? (
-        <div className="artist-community__empty">
-          <strong>Discord bridge</strong>
-          <p>
-            {discordBridgeSummary(discordBridge)}
-          </p>
-          <div className="artist-community-composer">
-            <label htmlFor="artist-discord-webhook">Webhook URL</label>
-            <input
-              id="artist-discord-webhook"
-              value={discordWebhookUrl}
-              onChange={(event) => setDiscordWebhookUrl(event.target.value)}
-              placeholder={discordBridge?.webhookUrlMasked ?? "https://discord.com/api/webhooks/..."}
-            />
-            <label htmlFor="artist-discord-invite">Public invite URL</label>
-            <input
-              id="artist-discord-invite"
-              value={discordInviteUrl}
-              onChange={(event) => setDiscordInviteUrl(event.target.value)}
-              placeholder="https://discord.gg/..."
-            />
-            <label htmlFor="artist-discord-server">Server name</label>
-            <input
-              id="artist-discord-server"
-              value={discordServerName}
-              onChange={(event) => setDiscordServerName(event.target.value)}
-              placeholder="Official server"
-            />
-            <label htmlFor="artist-discord-channel">Announcement channel</label>
-            <input
-              id="artist-discord-channel"
-              value={discordChannelName}
-              onChange={(event) => setDiscordChannelName(event.target.value)}
-              placeholder="#announcements"
-            />
-            <label>
+        <div className="artist-community-discord">
+          <div className="artist-community-discord__head">
+            <div>
+              <span className="artist-community-discord__eyebrow">Integration</span>
+              <strong>Discord bridge</strong>
+            </div>
+            <span
+              className={`artist-community-discord__badge artist-community-discord__badge--${discordBridge?.status ?? "disconnected"}`}
+            >
+              {discordBridgeStatusLabel(discordBridge)}
+            </span>
+          </div>
+          <p className="artist-community-discord__summary">{discordBridgeSummary(discordBridge)}</p>
+
+          <div className="artist-community-discord__fields">
+            <div className="artist-community-discord__field artist-community-discord__field--wide">
+              <label htmlFor="artist-discord-webhook">Webhook URL</label>
+              <input
+                id="artist-discord-webhook"
+                value={discordWebhookUrl}
+                onChange={(event) => setDiscordWebhookUrl(event.target.value)}
+                placeholder={discordBridge?.webhookUrlMasked ?? "https://discord.com/api/webhooks/..."}
+              />
+              <small className="artist-community-discord__hint">
+                {discordBridge?.webhookUrlMasked
+                  ? "Stored securely. Leave blank to keep the current webhook."
+                  : "Write-only — Resonate never displays the saved webhook again."}
+              </small>
+            </div>
+            <div className="artist-community-discord__field artist-community-discord__field--wide">
+              <label htmlFor="artist-discord-invite">Public invite URL</label>
+              <input
+                id="artist-discord-invite"
+                value={discordInviteUrl}
+                onChange={(event) => setDiscordInviteUrl(event.target.value)}
+                placeholder="https://discord.gg/..."
+              />
+            </div>
+            <div className="artist-community-discord__field">
+              <label htmlFor="artist-discord-server">Server name</label>
+              <input
+                id="artist-discord-server"
+                value={discordServerName}
+                onChange={(event) => setDiscordServerName(event.target.value)}
+                placeholder="Official server"
+              />
+            </div>
+            <div className="artist-community-discord__field">
+              <label htmlFor="artist-discord-channel">Announcement channel</label>
+              <input
+                id="artist-discord-channel"
+                value={discordChannelName}
+                onChange={(event) => setDiscordChannelName(event.target.value)}
+                placeholder="#announcements"
+              />
+            </div>
+          </div>
+
+          <div className="artist-community-discord__toggles">
+            <label className="artist-community-discord__toggle">
               <input
                 type="checkbox"
                 checked={discordPublicLinkEnabled}
                 onChange={(event) => setDiscordPublicLinkEnabled(event.target.checked)}
               />
-              Show official Discord link publicly
+              <span>
+                <strong>Show official Discord link publicly</strong>
+                <small>Displays the invite on this artist&apos;s public community tab.</small>
+              </span>
             </label>
-            <label>
+            <label className="artist-community-discord__toggle">
               <input
                 type="checkbox"
                 checked={discordMirrorEnabled}
                 onChange={(event) => setDiscordMirrorEnabled(event.target.checked)}
               />
-              Mirror artist announcements
+              <span>
+                <strong>Mirror artist announcements</strong>
+                <small>Posts new announcements to the connected Discord channel.</small>
+              </span>
             </label>
-            <div className="artist-community__header-actions">
-              <Button onClick={handleConnectDiscord} disabled={!canSaveDiscordBridge || busyKey === "discord-connect"}>
-                {discordBridgeActionLabel(discordBridge)}
-              </Button>
-              <Button variant="ghost" onClick={handleTestDiscord} disabled={!discordBridge || busyKey === "discord-test"}>
-                Test
-              </Button>
-              <Button variant="ghost" onClick={handleDisconnectDiscord} disabled={!discordBridge || busyKey === "discord-disconnect"}>
-                Disconnect
-              </Button>
-            </div>
-            {discordBridge?.recentAttempts.some((attempt) => attempt.status === "failed") ? (
-              <div className="artist-community__rooms" aria-label="Discord retry queue">
-                {discordBridge.recentAttempts
-                  .filter((attempt) => attempt.status === "failed")
-                  .slice(0, 3)
-                  .map((attempt) => (
-                    <button
-                      key={attempt.id}
-                      type="button"
-                      className="artist-community__notice artist-community__notice--error"
-                      onClick={() => handleRetryDiscord(attempt.id)}
-                      disabled={busyKey === `discord-retry-${attempt.id}`}
-                    >
-                      Retry {attempt.action}: {attempt.errorReason ?? "failed"}
-                    </button>
-                  ))}
-              </div>
-            ) : null}
           </div>
+
+          <div className="artist-community-discord__actions">
+            <Button onClick={handleConnectDiscord} disabled={!canSaveDiscordBridge || busyKey === "discord-connect"}>
+              {discordBridgeActionLabel(discordBridge)}
+            </Button>
+            <Button variant="ghost" onClick={handleTestDiscord} disabled={!discordBridge || busyKey === "discord-test"}>
+              Test
+            </Button>
+            <Button variant="ghost" onClick={handleDisconnectDiscord} disabled={!discordBridge || busyKey === "discord-disconnect"}>
+              Disconnect
+            </Button>
+          </div>
+
+          {failedDiscordAttempts.length ? (
+            <div className="artist-community-discord__retries" aria-label="Discord retry queue">
+              <span className="artist-community-discord__eyebrow">Failed syncs</span>
+              {failedDiscordAttempts.map((attempt) => (
+                <div key={attempt.id} className="artist-community-discord__retry">
+                  <span>
+                    {attempt.action}: {attempt.errorReason ?? "failed"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    onClick={() => handleRetryDiscord(attempt.id)}
+                    disabled={busyKey === `discord-retry-${attempt.id}`}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
