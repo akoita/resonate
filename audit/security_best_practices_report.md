@@ -9,7 +9,9 @@ Changed files:
 - `backend/src/modules/contracts/contracts.service.ts`
 - `backend/src/modules/contracts/metadata.controller.ts`
 - `backend/src/tests/metadata.controller.integration.spec.ts`
+- `web/src/app/marketplace/page.tsx`
 - `web/src/components/marketplace/BatchMintListModal.tsx`
+- `web/src/components/marketplace/BuyModal.tsx`
 - `web/src/components/marketplace/MintStemButton.tsx`
 - `web/src/hooks/useContracts.ts`
 - `web/src/lib/api.ts`
@@ -25,7 +27,10 @@ are downgraded to pending/indexing state until backend confirmation, and no
 new secrets, cookie handling, or HTML injection surfaces were introduced. The
 listing notification path now carries the wallet transaction's explicit chain
 ID and triggers the existing transaction indexer for that chain, avoiding
-cross-chain env fallback mistakes.
+cross-chain env fallback mistakes. Marketplace listing list responses also
+expose the indexed listing `chainId`, and the buy modal uses the indexed
+listing snapshot for display while blocking direct wallet checkout when the
+connected wallet chain does not match the listing chain.
 
 ### Critical Findings
 
@@ -46,6 +51,10 @@ None.
   stores the listing intent on that chain, and runs the existing receipt
   indexer for that exact transaction. If reindexing fails, it logs a warning and
   leaves the background indexer path intact.
+- `BuyModal` no longer treats an empty direct contract read on the connected
+  wallet chain as authoritative display data for an indexed listing from a
+  different chain; it shows the indexed listing snapshot and requires the
+  correct chain for direct wallet checkout.
 - The existing Prisma tagged `$queryRaw` in `contracts.service.ts` is
   parameterized, outside this patch's marketplace listing path, and was not a
   finding.

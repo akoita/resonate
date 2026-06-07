@@ -34,6 +34,7 @@ function resolveUrl(path?: string | null): string | undefined {
 interface ListingData {
     listingId: string;
     tokenId: string;
+    chainId: number;
     seller: string;
     price: string;
     paymentToken?: string;
@@ -145,7 +146,13 @@ export default function MarketplacePage() {
     const [offset, setOffset] = useState(0);
     const [pricingMap, setPricingMap] = useState<Record<string, StemPricing>>({});
     const [hideOwnListings, setHideOwnListings] = useState(true);
-    const [buyModalListing, setBuyModalListing] = useState<{ listingId: string; stemId: string; licenseType: LicenseType } | null>(null);
+    const [buyModalListing, setBuyModalListing] = useState<{
+        listingId: string;
+        stemId: string;
+        chainId: number;
+        licenseType: LicenseType;
+        listing: ListingData;
+    } | null>(null);
     const [hasStaleData, setHasStaleData] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const lastSearchAnalyticsKeyRef = useRef<string | null>(null);
@@ -484,7 +491,9 @@ export default function MarketplacePage() {
         setBuyModalListing({
             listingId: listing.listingId,
             stemId: listing.stem?.id || "",
+            chainId: listing.chainId,
             licenseType: listing.licenseType ?? "personal",
+            listing,
         });
     };
 
@@ -809,7 +818,9 @@ export default function MarketplacePage() {
                 <BuyModal
                     listingId={BigInt(buyModalListing.listingId)}
                     stemId={buyModalListing.stemId}
+                    listingChainId={buyModalListing.chainId}
                     licenseType={buyModalListing.licenseType}
+                    initialListing={buyModalListing.listing}
                     tierListings={buyModalListing.stemId ? tierListingsByStem[buyModalListing.stemId] : undefined}
                     tierPricesUsd={buyModalListing.stemId && pricingMap[buyModalListing.stemId] ? {
                         personal: pricingMap[buyModalListing.stemId].basePlayPriceUsd,
