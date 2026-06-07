@@ -1798,6 +1798,7 @@ export function useBatchMintAndList() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               tokenId: tokenId.toString(),
+              chainId,
               seller: callerAddress,
               price: pricePerUnit.toString(),
               amount: "1",
