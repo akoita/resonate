@@ -1,5 +1,59 @@
 # Security Best Practices Report
 
+## Marketplace Lifecycle Cross-Surface Audit - 2026-06-07
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/agents/tools/tool_registry.ts`
+- `backend/src/modules/contracts/metadata.controller.ts`
+- `backend/src/tests/agent_catalog_search.integration.spec.ts`
+- `backend/src/tests/metadata.controller.integration.spec.ts`
+- `docs/features/README.md`
+- `docs/features/marketplace_listing_lifecycle.md`
+
+### Executive Summary
+
+Issue #1118 tightens marketplace listing availability across public detail and
+agent recommendation surfaces. The scoped review found no Critical or High
+findings: the new checks reuse Prisma structured filters and the shared
+`isPubliclyPurchasableListing` predicate, fail closed for expired/sold-out
+public listing detail reads, and do not introduce new secrets, raw SQL,
+deserialization, environment configuration, or client-rendered HTML.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /api/metadata/listings/:chainId/:listingId` remains a public marketplace
+  detail read, but now returns `404` unless the listing is active, has
+  remaining amount, and has a future `expiresAt`.
+- Owner inventory remains available through authenticated
+  `GET /api/metadata/listings/owner/:seller`, so expired listing history and
+  relist affordances stay seller-visible without becoming public buyable
+  inventory.
+- AI DJ `catalog.search` now sets `hasListing` only from active, remaining,
+  unexpired listings, preventing expired or sold-out rows from boosting tracks
+  as purchasable.
+- The changed code does not add raw SQL, new model calls, user-provided JSON
+  parsing, secrets, production URLs, or new environment variables.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch|UseGuards' backend/src/modules/contracts/metadata.controller.ts`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/contracts/metadata.controller.ts`
+- `rg 'password|secret|api_key|private_key|rawQuery|executeRaw|\$queryRaw|JSON\.parse|eval\(' backend/src/modules/agents/tools/tool_registry.ts backend/src/modules/contracts/metadata.controller.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+
 ## Marketplace Listing Indexing State - 2026-06-07
 
 ### Scope Reviewed

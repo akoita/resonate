@@ -59,7 +59,11 @@ export class ToolRegistry {
             stems: {
               select: {
                 listings: {
-                  where: { status: "active" },
+                  where: {
+                    status: "active",
+                    amount: { gt: 0n },
+                    expiresAt: { gt: new Date() },
+                  },
                   select: { id: true },
                   take: 1,
                 },

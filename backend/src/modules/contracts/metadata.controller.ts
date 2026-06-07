@@ -26,6 +26,7 @@ import { createPublicClient, http, keccak256, toHex, type Address, type Chain } 
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { CuratorReputationService } from "./curator-reputation.service";
 import { HumanVerificationService } from "./human-verification.service";
+import { isPubliclyPurchasableListing } from "./listing-lifecycle";
 import type {
   RightsEvidenceBundleInput,
   RightsEvidenceDraftInput,
@@ -761,7 +762,7 @@ export class MetadataController {
 
     const listing = await this.contractsService.getListingById(listingId, chainId);
 
-    if (!listing) {
+    if (!listing || !isPubliclyPurchasableListing(listing)) {
       throw new NotFoundException(`Listing ${listingId} not found on chain ${chainId}`);
     }
 
