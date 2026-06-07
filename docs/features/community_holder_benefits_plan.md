@@ -14,6 +14,11 @@ eligibility and holder utility. It builds on the profile visibility foundation
 without making wallet address, ownership, pledge, or attendance proofs public by
 default.
 
+Public supporter and collector credential rules are defined separately in
+[Public Supporter And Collector Credential Rules](../rfc/public-supporter-collector-credential-rules.md).
+That RFC recommends off-chain opt-in public badges backed by existing
+ownership/support proofs before any new NFT-backed community credential.
+
 ## Slice 1: Backend Eligibility Foundation
 
 Status: `in-progress`
@@ -75,4 +80,3 @@ Slice 1 should use focused backend integration coverage:
 - client-provided ownership facts are ignored;
 - redemption is idempotent for single-use policy;
 - campaign support and badge/role grants can unlock benefits.
-

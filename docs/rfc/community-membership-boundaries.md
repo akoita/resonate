@@ -6,7 +6,9 @@ related:
   - ../features/listener_community_network.md
   - ../architecture/listener_community_network.md
   - listener-community-network.md
+  - public-supporter-collector-credential-rules.md
   - https://github.com/akoita/resonate/issues/1084
+  - https://github.com/akoita/resonate/issues/1097
 ---
 
 # Blockchain-Native Community Membership Boundaries
@@ -17,6 +19,12 @@ This RFC defines where NFT-backed or on-chain-verifiable community membership
 can add product value, and where Resonate community state must remain off-chain.
 It is an architecture and product-boundary document only. It does not propose a
 contract implementation for the current slice.
+
+The detailed product rules for public artist supporter and collector
+credentials are documented in
+[Public Supporter And Collector Credential Rules](public-supporter-collector-credential-rules.md).
+That follow-up recommends off-chain public badges and existing ownership/support
+proofs before minting any new NFT-backed community credential.
 
 The default rule is:
 
@@ -174,7 +182,10 @@ An artist could optionally issue public supporter credentials that unlock:
 - public profile display.
 
 Resonate should still store local room membership, visibility, bans, and
-messages off-chain.
+messages off-chain. The current product recommendation is not to mint a new
+supporter NFT yet; use off-chain opt-in public badges backed by existing
+ownership/support proof first, as defined in
+[Public Supporter And Collector Credential Rules](public-supporter-collector-credential-rules.md).
 
 ### Collector And Stem-Holder Credentials
 
@@ -182,11 +193,13 @@ Existing stem NFTs already provide ownership proof. A future public collector
 credential can package a listener's opt-in relationship to an artist or
 collection without exposing all holdings or wallet details.
 
-The safer first product path is NFT-verifiable access:
+The safer first product path is NFT-verifiable access and off-chain display:
 
 1. verify stem or collection ownership;
 2. grant a private `holder` role off-chain;
-3. let the listener choose whether to display a public collector badge.
+3. let the listener choose whether to display a public collector badge;
+4. defer a new collector NFT until external portability is the proven product
+   value.
 
 ### Campaign Supporter Badges
 
