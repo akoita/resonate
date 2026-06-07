@@ -466,6 +466,68 @@ describe('MetadataController (integration)', () => {
     it('throws NotFoundException when listing not found', async () => {
       await expect(controller.getListingById('31337', '999')).rejects.toThrow(NotFoundException);
     });
+
+    it('returns active public listing details', async () => {
+      const transactionHash = '0x' + 'b'.repeat(64);
+
+      await prisma.stemListing.create({
+        data: {
+          listingId: 861n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xStemNFT',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '50000',
+          amount: 1n,
+          paymentToken: ('0x' + '3'.repeat(40)).toLowerCase(),
+          expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          transactionHash,
+          blockNumber: 106n,
+          status: 'active',
+          listedAt: new Date(),
+        },
+      });
+
+      try {
+        const result = await controller.getListingById('31337', '861');
+
+        expect(result.listingId).toBe('861');
+        expect(result.amount).toBe('1');
+        expect(result.status).toBe('active');
+      } finally {
+        await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
+    });
+
+    it('hides expired listing details from the public listing endpoint', async () => {
+      const transactionHash = '0x' + 'c'.repeat(64);
+
+      await prisma.stemListing.create({
+        data: {
+          listingId: 862n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xStemNFT',
+          sellerAddress: creatorWalletAddress,
+          pricePerUnit: '50000',
+          amount: 1n,
+          paymentToken: ('0x' + '3'.repeat(40)).toLowerCase(),
+          expiresAt: new Date(Date.now() - 60 * 60 * 1000),
+          transactionHash,
+          blockNumber: 107n,
+          status: 'active',
+          listedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+        },
+      });
+
+      try {
+        await expect(controller.getListingById('31337', '862')).rejects.toThrow(NotFoundException);
+      } finally {
+        await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
+    });
   });
 
   // ===== getEarnings =====

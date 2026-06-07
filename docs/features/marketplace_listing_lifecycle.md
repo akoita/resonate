@@ -19,8 +19,11 @@ buyer and machine-commerce surfaces strict about availability.
 
 ## Current Capability
 
-- Public marketplace reads only return listings that are active, have remaining
-  amount, and have `expiresAt` in the future.
+- Public marketplace list and detail reads only return listings that are
+  active, have remaining amount, and have `expiresAt` in the future.
+- Agent catalog search uses the same public-purchasable rule before setting
+  `hasListing`, so AI DJ and model tool calls do not boost expired or sold-out
+  inventory as buyable.
 - Owner listing management is available at `/marketplace/manage`, from the
   marketplace hero, from the connected-wallet marketplace filter bar, and from
   lifecycle notification deep links.
@@ -75,7 +78,7 @@ buyer and machine-commerce surfaces strict about availability.
 | Surface | Current behavior |
 | --- | --- |
 | Public marketplace | Excludes expired and sold-out listings and links sellers to the listing manager. |
-| Storefront/x402/MCP/agent commerce | Continue to treat expired listings as unavailable. |
+| Storefront/x402/MCP/agent commerce | Storefront, x402 settlement lookup, MCP catalog search, player actions, and AI DJ catalog search treat expired and sold-out listings as unavailable. |
 | Owner listing manager | Shows artwork, seller inventory summaries, searchable lifecycle rows, selectable expired/cancelled inventory, single-row relist controls, and batch relist progress. |
 | Notification bell | Routes listing lifecycle notifications to `/marketplace/manage`. |
 
@@ -83,6 +86,8 @@ buyer and machine-commerce surfaces strict about availability.
 
 ```bash
 cd backend && npm run test -- listing_lifecycle.spec.ts notification.service.spec.ts
+cd backend && npm run test:integration -- --runInBand --testPathPattern=metadata.controller.integration.spec.ts
+cd backend && npm run test:integration -- --runInBand --testPathPattern=agent_catalog_search.integration.spec.ts
 ```
 
 Frontend validation is currently covered by TypeScript/lint and manual UI review
@@ -93,9 +98,11 @@ listing manager stabilizes.
 
 - Roadmap: [#1004](https://github.com/akoita/resonate/issues/1004)
 - Implementation issue: [#1015](https://github.com/akoita/resonate/issues/1015)
+- Cross-surface lifecycle audit: [#1118](https://github.com/akoita/resonate/issues/1118)
 - Smart contract integration: [Marketplace Integration](../smart-contracts/marketplace_integration.md)
 - Code:
   - `backend/src/modules/contracts/listing-lifecycle.ts`
   - `backend/src/modules/contracts/contracts.service.ts`
   - `backend/src/modules/contracts/metadata.controller.ts`
+  - `backend/src/modules/agents/tools/tool_registry.ts`
   - `web/src/app/marketplace/manage/page.tsx`
