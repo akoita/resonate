@@ -22,6 +22,12 @@ This RFC provides the foundational design that enables:
 - **#309** — Recursive Remix Royalties
 - **#285** — Edition Strategy Configuration
 
+Remix/contributor public credential rules are defined separately in
+[Remix And Contributor Credential Boundaries](remix-contributor-credential-boundaries.md).
+That boundary keeps attribution credentials tied to Remix Studio publication,
+catalog rights, License NFT metadata, and ancestry/royalty surfaces instead of
+creating a standalone community-only contributor token.
+
 ---
 
 ## 1. Rights Matrix
@@ -262,6 +268,9 @@ The License NFT serves as verifiable proof of rights in any dispute.
 - The account that triggers the AI generation holds the license
 - Ancestry tracking records the AI remix as a child of the source stems
 - Same royalty obligations apply (no AI discount)
+- Public remixer/contributor credentials are created only after publication and
+  rights-safe attribution, following
+  [Remix And Contributor Credential Boundaries](remix-contributor-credential-boundaries.md).
 
 ### 5.7 Collaborative Stems
 

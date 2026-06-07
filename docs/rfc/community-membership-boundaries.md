@@ -8,9 +8,11 @@ related:
   - listener-community-network.md
   - public-supporter-collector-credential-rules.md
   - show-attendance-credential-boundaries.md
+  - remix-contributor-credential-boundaries.md
   - https://github.com/akoita/resonate/issues/1084
   - https://github.com/akoita/resonate/issues/1097
   - https://github.com/akoita/resonate/issues/1098
+  - https://github.com/akoita/resonate/issues/1099
 ---
 
 # Blockchain-Native Community Membership Boundaries
@@ -27,10 +29,17 @@ credentials are documented in
 [Public Supporter And Collector Credential Rules](public-supporter-collector-credential-rules.md).
 That follow-up recommends off-chain public badges and existing ownership/support
 proofs before minting any new NFT-backed community credential.
+
 Show attendance credential rules are documented in
 [Show Attendance Credential Boundaries](show-attendance-credential-boundaries.md).
 That follow-up recommends off-chain opt-in attendance badges and event-scoped
 proofs before minting any NFT-backed attendance credential.
+
+Remix and contributor credential rules are documented in
+[Remix And Contributor Credential Boundaries](remix-contributor-credential-boundaries.md).
+That follow-up recommends publication-scoped attribution proofs tied to Remix
+Studio, catalog, licensing, and lineage state rather than a standalone
+community-only contributor token.
 
 The default rule is:
 
@@ -238,7 +247,11 @@ attendance badges backed by event-scoped proof first, as defined in
 Public contribution and remix participation can benefit from durable
 attribution, especially when linked to licensing or provenance. This should
 align with the Remix Studio and license NFT roadmap rather than create a
-separate community-only token.
+separate community-only token. The current product recommendation is to start
+with off-chain, publication-scoped attribution proofs backed by Remix Studio,
+catalog publication, rights/license state, and artist/rightsholder approval, as
+defined in
+[Remix And Contributor Credential Boundaries](remix-contributor-credential-boundaries.md).
 
 ## Implementation Prerequisites For A Future Build
 

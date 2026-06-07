@@ -14,6 +14,13 @@ Remix Studio is designed but not yet implemented. The current backend has a
 small in-memory remix module for early event flow experiments; it is not a
 durable product surface.
 
+Remix and contributor credential boundaries are documented in
+[Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md).
+Contributor recognition should start as off-chain, publication-scoped
+attribution proof tied to Remix Studio, catalog publication, license state, and
+artist/rightsholder approval. A standalone community-only contributor token is
+not part of the plan.
+
 ## Audience
 
 - Listeners and fans who want to create remixes from eligible tracks.
@@ -70,6 +77,8 @@ consent and legal review.
 - AI-generated derivatives follow the same royalty obligations as human remixes.
 - Draft, publish, export, and monetize are separate rights.
 - Artist voice/likeness is disabled until explicit consent exists.
+- Public remixer/contributor credentials require publication, rights-safe
+  attribution, and explicit profile/verifier display consent.
 
 ## Verification
 
@@ -87,6 +96,7 @@ When implemented, verification should include:
 
 - RFC: [Remix Studio](../rfc/remix-studio.md)
 - RFC: [AI Derivative Rights Policy](../rfc/ai-derivative-rights-policy.md)
+- RFC: [Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md)
 - Backlog: [Remix Studio Backlog](remix_studio_backlog.md)
 - Licensing: [Licensing Architecture](../rfc/licensing-architecture.md)
 - Rights: [Rights Verification Strategy](../rfc/rights-verification-strategy.md)

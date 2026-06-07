@@ -8,6 +8,7 @@ related:
   - "./licensing-roadmap.md"
   - "./rights-verification-strategy.md"
   - "./ai-derivative-rights-policy.md"
+  - "./remix-contributor-credential-boundaries.md"
   - "../features/remix_studio.md"
   - "../features/remix_studio_backlog.md"
   - "../features/ai_music_generation.md"
@@ -26,6 +27,12 @@ stems, remix licenses, x402 checkout, generation provenance, rights routing,
 and future License NFTs - into a coherent creative workflow:
 
 > listen -> acquire rights -> remix -> publish -> prove lineage.
+
+Remix and contributor credential boundaries are defined in
+[Remix And Contributor Credential Boundaries](remix-contributor-credential-boundaries.md).
+That RFC recommends off-chain, publication-scoped attribution proofs first and
+ties future protocol credentials to License NFT / ancestry surfaces rather than
+creating a standalone community-only contributor token.
 
 This is not a general-purpose "clone any song" feature. Remix Studio is a
 rights-aware creation environment. It only exposes remix actions when the source
@@ -367,6 +374,8 @@ MVP publishing should be conservative:
 - Attach attribution and source lineage.
 - Surface remix lineage on release pages.
 - Add analytics for artist dashboard.
+- Create public contributor/remixer attribution proof only after publication,
+  rights state, and display consent allow it.
 
 ### Phase 4: License NFTs And Recursive Royalties
 
