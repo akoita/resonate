@@ -7,6 +7,7 @@ import {
   ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
   CommunityEligibilityService,
 } from "./community_eligibility.service";
+import { CommunityModerationAssistService } from "./community_moderation_assist.service";
 
 const ROOM_STATUSES = ["active", "paused", "archived"] as const;
 const MESSAGE_TYPES = ["message", "announcement", "campaign_update"] as const;
@@ -27,12 +28,6 @@ const SHOW_CITY_DEMAND_CAMPAIGN_STATUSES = ["active", "funded", "booking_confirm
 const VISIBLE_COHORT_STATUSES = ["suggested", "active"] as const;
 const COHORT_ROOM_MEMBERSHIP_STATUS = "joined";
 const SOCIAL_TASTE_COHORT_TYPES = ["taste", "artist_affinity", "collector", "campaign"] as const;
-const MODERATION_ASSIST_SAFETY_PATTERN =
-  /\b(threat(?:en(?:ed|ing|s)?)?|harm(?:ed|ful|ing|s)?|abus(?:e|ed|ive|ing)|harass(?:ed|es|ing|ment)?|hat(?:e|eful)|violence|violent|unsafe|safety)\b/;
-const MODERATION_ASSIST_PRIVACY_PATTERN =
-  /\b(private|privacy|doxx?(?:ed|es|ing)?|emails?|wallets?|addresses?|personal)\b/;
-const MODERATION_ASSIST_SPAM_PATTERN =
-  /\b(spam(?:med|ming|my)?|scam(?:med|mer|ming|s)?|phish(?:ed|ing)?|fraud|bots?)\b/;
 
 type RoomStatus = (typeof ROOM_STATUSES)[number];
 type MessageType = (typeof MESSAGE_TYPES)[number];
@@ -46,6 +41,7 @@ export class CommunityRoomsService {
   constructor(
     private readonly eligibility: CommunityEligibilityService,
     private readonly eventBus: EventBus,
+    private readonly moderationAssist: CommunityModerationAssistService,
   ) {}
 
   async enableArtistCommunity(userId: string, artistId: string) {
@@ -505,7 +501,12 @@ export class CommunityRoomsService {
       prisma.communityRoom.count({ where: { status: "paused" } }),
       prisma.communityRoom.count({ where: { status: "archived" } }),
     ]);
-    const hydratedReports = await Promise.all(reports.map((report) => this.moderationReportDto(report)));
+    const maxModelAssists = this.moderationAssist.maxModelAssistsPerQueue();
+    const hydratedReports = await Promise.all(
+      reports.map((report, index) => this.moderationReportDto(report, {
+        allowModelAssist: index < maxModelAssists,
+      })),
+    );
 
     return {
       schemaVersion: "community-moderation-queue/v1",
@@ -623,7 +624,10 @@ export class CommunityRoomsService {
     });
   }
 
-  private async moderationReportDto(report: ModerationReportWithContext) {
+  private async moderationReportDto(
+    report: ModerationReportWithContext,
+    options: { allowModelAssist?: boolean } = {},
+  ) {
     const [roomOpenReports, messageReportCount, roomMembershipCounts] = await Promise.all([
       prisma.communityModerationReport.count({ where: { roomId: report.roomId, status: "open" } }),
       report.messageId
@@ -655,12 +659,15 @@ export class CommunityRoomsService {
       room,
       message,
       context,
-      assist: moderationAssistDto({
-        reason: previewText(report.reason, 200),
-        room,
-        message,
-        context,
-      }),
+      assist: await this.moderationAssist.buildAssist(
+        {
+          reason: previewText(report.reason, 200),
+          room,
+          message,
+          context,
+        },
+        { allowModel: options.allowModelAssist },
+      ),
     };
   }
 
@@ -1341,162 +1348,6 @@ function moderationMessageDto(message: {
     updatedAt: message.updatedAt.toISOString(),
     deletedAt: message.deletedAt?.toISOString() ?? null,
   };
-}
-
-function moderationAssistDto(input: {
-  reason: string;
-  room: ReturnType<typeof moderationRoomDto>;
-  message: ReturnType<typeof moderationMessageDto> | null;
-  context: {
-    roomOpenReports: number;
-    messageReportCount: number;
-    roomMembershipsByStatus: Record<string, number>;
-  };
-}) {
-  const signals = collectModerationAssistSignals(input);
-  const severity = moderationAssistSeverity(signals);
-  const likelihood = moderationAssistLikelihood(signals);
-  return {
-    summary: moderationAssistSummary(input, signals),
-    severity,
-    likelihood,
-    reasonCodes: signals.reasonCodes,
-    reviewFocus: moderationAssistReviewFocus(input, signals),
-    source: "bounded_moderation_context",
-    advisory: {
-      noAutoEnforcement: true,
-      copy: "Advisory only. A human admin must choose and confirm any moderation action.",
-    },
-  };
-}
-
-function collectModerationAssistSignals(input: {
-  reason: string;
-  room: ReturnType<typeof moderationRoomDto>;
-  message: ReturnType<typeof moderationMessageDto> | null;
-  context: {
-    roomOpenReports: number;
-    messageReportCount: number;
-    roomMembershipsByStatus: Record<string, number>;
-  };
-}) {
-  const reasonCodes = new Set<string>();
-  const text = `${input.reason} ${input.message?.bodyPreview ?? ""}`.toLowerCase();
-  const messageReportCount = input.context.messageReportCount;
-  const roomOpenReports = input.context.roomOpenReports;
-
-  if (!input.message) reasonCodes.add("message_unavailable");
-  if (input.message?.status && input.message.status !== "visible") reasonCodes.add("message_not_visible");
-  if (messageReportCount >= 2) reasonCodes.add("repeated_message_reports");
-  if (roomOpenReports >= 3) reasonCodes.add("room_report_cluster");
-  if (input.room.status !== "active") reasonCodes.add("room_status_review");
-  if (MODERATION_ASSIST_SAFETY_PATTERN.test(text)) reasonCodes.add("safety_language_signal");
-  if (MODERATION_ASSIST_PRIVACY_PATTERN.test(text)) reasonCodes.add("privacy_language_signal");
-  if (MODERATION_ASSIST_SPAM_PATTERN.test(text)) reasonCodes.add("spam_language_signal");
-  if (reasonCodes.size === 0) reasonCodes.add("single_report_review");
-
-  return {
-    reasonCodes: [...reasonCodes],
-    messageReportCount,
-    roomOpenReports,
-  };
-}
-
-function moderationAssistSeverity(signals: {
-  reasonCodes: string[];
-  messageReportCount: number;
-  roomOpenReports: number;
-}) {
-  if (
-    signals.reasonCodes.includes("privacy_language_signal") ||
-    signals.reasonCodes.includes("safety_language_signal") ||
-    signals.messageReportCount >= 3 ||
-    signals.roomOpenReports >= 5
-  ) {
-    return "high";
-  }
-  if (
-    signals.reasonCodes.includes("spam_language_signal") ||
-    signals.reasonCodes.includes("room_status_review") ||
-    signals.messageReportCount >= 2 ||
-    signals.roomOpenReports >= 3
-  ) {
-    return "medium";
-  }
-  return "low";
-}
-
-function moderationAssistLikelihood(signals: {
-  reasonCodes: string[];
-  messageReportCount: number;
-  roomOpenReports: number;
-}) {
-  if (signals.messageReportCount >= 3 || signals.roomOpenReports >= 5) return "high";
-  if (
-    signals.messageReportCount >= 2 ||
-    signals.roomOpenReports >= 3 ||
-    signals.reasonCodes.some((code) => code.endsWith("_language_signal"))
-  ) {
-    return "medium";
-  }
-  return "low";
-}
-
-function moderationAssistSummary(
-  input: {
-    reason: string;
-    room: ReturnType<typeof moderationRoomDto>;
-    message: ReturnType<typeof moderationMessageDto> | null;
-    context: {
-      roomOpenReports: number;
-      messageReportCount: number;
-      roomMembershipsByStatus: Record<string, number>;
-    };
-  },
-  signals: { reasonCodes: string[]; messageReportCount: number; roomOpenReports: number },
-) {
-  if (!input.message) {
-    return "Report needs human review because the original message is unavailable in the moderation preview.";
-  }
-  if (signals.reasonCodes.includes("privacy_language_signal")) {
-    return "Report mentions possible privacy exposure. Review the preview before choosing any action.";
-  }
-  if (signals.reasonCodes.includes("safety_language_signal")) {
-    return "Report mentions possible safety or harassment concerns. Review message context before acting.";
-  }
-  if (signals.reasonCodes.includes("spam_language_signal")) {
-    return "Report may involve spam or scam-like behavior. Check whether the message should be removed.";
-  }
-  if (signals.messageReportCount > 1) {
-    return `${signals.messageReportCount} reports reference this message. Compare the preview with the report reason.`;
-  }
-  return "Single reported community message. Review the preview and room context before deciding.";
-}
-
-function moderationAssistReviewFocus(
-  input: {
-    reason: string;
-    room: ReturnType<typeof moderationRoomDto>;
-    message: ReturnType<typeof moderationMessageDto> | null;
-    context: {
-      roomOpenReports: number;
-      messageReportCount: number;
-      roomMembershipsByStatus: Record<string, number>;
-    };
-  },
-  signals: { reasonCodes: string[]; messageReportCount: number; roomOpenReports: number },
-) {
-  const focus = new Set<string>();
-  if (!input.message || input.message.status !== "visible") focus.add("Confirm whether a message action is still applicable.");
-  if (signals.reasonCodes.includes("privacy_language_signal")) focus.add("Check for personal data exposure in the preview.");
-  if (signals.reasonCodes.includes("safety_language_signal")) focus.add("Assess harassment, threat, or safety policy concerns.");
-  if (signals.reasonCodes.includes("spam_language_signal")) focus.add("Check for spam, scam, or phishing patterns.");
-  if (signals.messageReportCount > 1) focus.add("Weigh repeated reports against the visible message preview.");
-  if (signals.roomOpenReports > 1) focus.add("Review whether this is part of a broader room-level issue.");
-  if (input.room.status !== "active") focus.add("Confirm room status before applying a room action.");
-  if (focus.size === 0) focus.add("Compare the report reason with the message preview.");
-  focus.add("Apply no action unless the human review confirms it.");
-  return [...focus].slice(0, 4);
 }
 
 function communityModerationPrivacyDto() {

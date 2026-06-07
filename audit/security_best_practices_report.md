@@ -1567,3 +1567,63 @@ rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community ba
 rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/catalog
 rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community backend/src/modules/catalog
 ```
+
+## Model-Backed Community Moderation Assist - 2026-06-07
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/community/community_moderation_assist.service.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/tests/community_moderation_assist.spec.ts`
+- `backend/src/tests/community_rooms.integration.spec.ts`
+- `backend/src/tests/community_cohort.integration.spec.ts`
+- `web/src/lib/api.ts`
+- `docs/deployment/environment.md`
+- `docs/features/README.md`
+- `docs/features/listener_community_network.md`
+
+### Findings
+
+- Critical: none.
+- High: none.
+- Medium: none introduced.
+- Low: none introduced.
+
+### Notes
+
+- Community moderation assist now has an explicit backend service boundary.
+  Deterministic assist remains the default deployed mode; model-backed summaries
+  require `COMMUNITY_MODERATION_ASSIST_STRATEGY=model-assisted` plus existing
+  `GOOGLE_AI_API_KEY` credentials.
+- Model prompts use only bounded report reason, room title/type/status, message
+  preview/status/type, aggregate report counts, and membership status counts.
+  Reporter ids, message author ids, emails, wallet-like strings, raw access
+  policy payloads, and full unbounded message bodies are excluded or redacted
+  before the model call.
+- Model output is post-validated against safe severity/likelihood enums and
+  known reason codes. Missing credentials, timeout, malformed JSON, invalid
+  shape, or rejected output falls back to deterministic assist.
+- Model-backed queue hydration is capped per response and guarded by a
+  per-process concurrency limiter so an admin queue read cannot fan out across
+  the full report limit.
+- The human-confirmation boundary is unchanged: assist remains advisory and
+  cannot delete messages, ban members, pause/archive rooms, or resolve reports.
+- The only new environment variables are documented in
+  `docs/deployment/environment.md`; no secrets or environment-specific URLs were
+  hardcoded.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|BEGIN (RSA|OPENSSH|EC|DSA|PRIVATE) KEY' backend/src/modules/community/community_moderation_assist.service.ts backend/src/modules/community/community_rooms.service.ts backend/src/tests/community_moderation_assist.spec.ts docs/deployment/environment.md docs/features/listener_community_network.md --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -n 'rawQuery|executeRaw|\$queryRaw|\$executeRaw|eval\(' backend/src/modules/community/community_moderation_assist.service.ts backend/src/modules/community/community_rooms.service.ts backend/src/tests/community_moderation_assist.spec.ts
+rg -n 'JSON\.parse' backend/src/modules/community/community_moderation_assist.service.ts backend/src/modules/community/community_rooms.service.ts backend/src/tests/community_moderation_assist.spec.ts
+git diff --check
+cd backend && npx jest --runInBand src/tests/community_moderation_assist.spec.ts
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='community_rooms.integration'
+cd backend && npm run lint
+cd web && npm run lint
+```

@@ -2429,6 +2429,9 @@ export type CommunityModerationReport = {
     reasonCodes: string[];
     reviewFocus: string[];
     source: "bounded_moderation_context" | string;
+    strategy?: "deterministic" | "model-assisted" | string;
+    model?: string;
+    fallbackReason?: string;
     advisory: {
       noAutoEnforcement: boolean;
       copy: string;

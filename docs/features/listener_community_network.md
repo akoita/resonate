@@ -242,7 +242,7 @@ recognized without turning community into a leaderboard.
 | Holder benefit engine | in-progress | Backend foundation for private badge, role, ownership, campaign-support, and redemption eligibility is being built in [#998](https://github.com/akoita/resonate/issues/998). |
 | Discord bridge | planned | Artist-controlled connection for announcements, role mirroring, community links, or migration paths. |
 | Blockchain-native membership boundary | documented | [#1084](https://github.com/akoita/resonate/issues/1084) defines when NFT-backed or NFT-verifiable community credentials make sense and why private taste cohorts, city cohorts, cohort rooms, messages, reports, moderation state, and profile visibility preferences stay off-chain. See [Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md). |
-| Moderation console | implemented | `/admin/community/moderation` exposes open community reports, bounded room/message context, membership status counts, advisory AI assist summaries/risk hints from privacy-bounded moderation DTOs, and admin actions for dismiss, delete message, remove/ban member, pause room, and archive room. The assist is read-only and never auto-deletes, bans, pauses, archives, or resolves reports; a human admin must choose and confirm any action. |
+| Moderation console | implemented | `/admin/community/moderation` exposes open community reports, bounded room/message context, membership status counts, advisory AI assist summaries/risk hints from privacy-bounded moderation DTOs, and admin actions for dismiss, delete message, remove/ban member, pause room, and archive room. The assist defaults to deterministic mode and can be switched to model-backed summaries with `COMMUNITY_MODERATION_ASSIST_STRATEGY=model-assisted`; model prompts use only bounded report reason, room title/type/status, message preview/status/type, aggregate report counts, and membership status counts, with email and wallet-like strings redacted. Missing credentials, timeouts, malformed model output, invalid enums, or queue-cap exclusions fall back to deterministic assist. Queue hydration caps model-backed reports and per-process model concurrency so one admin load cannot fan out across the full report limit. The assist is read-only and never auto-deletes, bans, pauses, archives, or resolves reports; a human admin must choose and confirm any action. See [#1083](https://github.com/akoita/resonate/issues/1083) and [#1094](https://github.com/akoita/resonate/issues/1094). |
 
 ## Data And Privacy
 
@@ -316,8 +316,14 @@ retention/consent notes are now implemented for the first governance slice in
 [#1037](https://github.com/akoita/resonate/issues/1037): admins can triage
 open reports at `/admin/community/moderation`, inspect bounded room/message
 context, and resolve reports without exposing wallet addresses, user emails,
-or raw access-policy JSON. Operator notes are accepted for workflow context but
-not persisted in this first slice; durable note/audit storage remains a
+or raw access-policy JSON. The moderation assist now has an explicit backend
+service boundary: deterministic assist remains the default deployed mode, while
+`COMMUNITY_MODERATION_ASSIST_STRATEGY=model-assisted` can opt into model-backed
+summaries with strict prompt bounds, redaction, timeout, malformed-output, and
+post-validation fallback guards. Model-backed queue hydration is capped per
+response and per-process concurrency is bounded, while uncapped reports still
+receive deterministic assist. Operator notes are accepted for workflow context
+but not persisted in this first slice; durable note/audit storage remains a
 follow-up if moderation policy requires it.
 
 ## Blockchain-Native Boundary
