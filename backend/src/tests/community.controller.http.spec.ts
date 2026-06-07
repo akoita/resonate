@@ -2,6 +2,7 @@ import request from "supertest";
 import { INestApplication } from "@nestjs/common";
 import { CommunityController } from "../modules/community/community.controller";
 import { CommunityCohortService } from "../modules/community/community_cohort.service";
+import { CommunityDiscordBridgeService } from "../modules/community/community_discord_bridge.service";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { CommunityService } from "../modules/community/community.service";
@@ -62,6 +63,21 @@ const mockCommunityCohortService = {
   hideCohort: jest.fn().mockResolvedValue({ schemaVersion: "community-cohort-membership/v1" }),
 };
 
+const mockCommunityDiscordBridgeService = {
+  getPublicArtistBridge: jest.fn().mockResolvedValue({
+    schemaVersion: "community-discord-public/v1",
+    artistId: "artist-1",
+    discord: null,
+  }),
+  getArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1", bridge: null }),
+  connectArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1", bridge: null }),
+  disconnectArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge/v1", bridge: null }),
+  testArtistBridge: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-bridge-test/v1", ok: true }),
+  upsertRoleMapping: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-role-mapping/v1" }),
+  syncRoles: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-role-sync/v1" }),
+  retryAttempt: jest.fn().mockResolvedValue({ schemaVersion: "community-discord-retry/v1", ok: true }),
+};
+
 describe("CommunityController (http)", () => {
   let app: INestApplication;
   const token = authToken("user-1");
@@ -72,6 +88,7 @@ describe("CommunityController (http)", () => {
       { provide: CommunityEligibilityService, useValue: mockCommunityEligibilityService },
       { provide: CommunityRoomsService, useValue: mockCommunityRoomsService },
       { provide: CommunityCohortService, useValue: mockCommunityCohortService },
+      { provide: CommunityDiscordBridgeService, useValue: mockCommunityDiscordBridgeService },
     ]);
   });
 

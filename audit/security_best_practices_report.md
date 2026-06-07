@@ -1,5 +1,79 @@
 # Security Best Practices Report
 
+## Discord Bridge - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/prisma/schema.prisma`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community.module.ts`
+- `backend/src/modules/community/community_rooms.service.ts`
+- `backend/src/modules/community/community_discord_bridge.service.ts`
+- `backend/src/tests/analytics_domain_event_bridge.spec.ts`
+- `backend/src/tests/community.controller.spec.ts`
+- `backend/src/tests/community_discord_bridge.integration.spec.ts`
+- `web/src/components/community/ArtistCommunityTab.tsx`
+- `web/src/components/community/ArtistCommunityTab.test.tsx`
+- `web/src/lib/api.ts`
+- `docs/architecture/listener_community_network.md`
+- `docs/features/README.md`
+- `docs/features/listener_community_network.md`
+- `docs/issue-1002-implementation-plan.md`
+
+### Executive Summary
+
+Issue #1002 adds artist-controlled Discord bridge settings, public invite
+display, announcement webhook mirroring, retry state, and aggregate role-sync
+status. The scoped review found no Critical or High findings: webhook URLs are
+validated and kept write-only, public DTOs expose only opt-in invite metadata,
+analytics payloads exclude webhook secrets and member identifiers, and role sync
+uses server-side `CommunityRole` aggregate counts rather than client-submitted
+claims.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Low Findings
+
+#### SBPR-001: Discord webhook URLs are intentionally stored server-side
+
+**File:** `backend/src/modules/community/community_discord_bridge.service.ts`
+**Impact:** Discord webhook URLs are sensitive integration secrets and would
+allow posting to an artist's Discord channel if exposed.
+**Recommendation:** Current implementation keeps webhook URLs write-only in API
+DTOs, stores only a masked value for UI display, clears the webhook on
+disconnect, excludes webhook fields from analytics payloads, and validates
+Discord webhook host/path before storage. Keep this boundary when adding future
+operator dashboards, exports, logs, or support tooling.
+
+### Notes
+
+- Public Discord reads return only invite metadata when the artist enables
+  `publicLinkEnabled`.
+- Announcement mirror failures are retryable state and do not block native
+  Resonate message creation.
+- Role sync currently uses aggregate server-side `CommunityRole` counts only;
+  no member identities or Discord user IDs are exposed.
+- The changed code does not add raw SQL, unsafe DOM HTML usage, new public
+  environment variables, or hardcoded production URLs.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/analytics backend/src/events`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/community web/src/lib/api.ts`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/community web/src/lib/api.ts`
+
 ## Marketplace Lifecycle Cross-Surface Audit - 2026-06-07
 
 ### Scope Reviewed

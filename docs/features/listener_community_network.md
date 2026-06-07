@@ -246,7 +246,7 @@ recognized without turning community into a leaderboard.
 | City scene pages | planned | Local scene surfaces tied to declared coarse location and privacy-safe aggregate demand. |
 | Campaign rooms | implemented | Shows detail pages expose campaign community rooms: any authenticated fan can join an open `show_city_demand` group for coarse city interest, confirmed backers can unlock a private `show_campaign_supporter` room, artists/operators can post campaign updates, and compact campaign/community analytics now cover joins, city demand, campaign update creation/views, badge grants, and role grants. Confirmed or released pledge support derives private supporter badges/roles for eligibility and can appear as campaign-support cards on public profiles only by listener opt-in. Refund-only, refunded, failed, and cancelled lifecycle states revoke private supporter proofs, remove stale private room access on read, and stop public support cards from displaying. See [#1048](https://github.com/akoita/resonate/issues/1048) and the [Shows Campaign Rooms Plan](shows_campaign_rooms_plan.md). |
 | Holder benefit engine | in-progress | Backend foundation for private badge, role, ownership, campaign-support, and redemption eligibility is being built in [#998](https://github.com/akoita/resonate/issues/998). |
-| Discord bridge | planned | Artist-controlled connection for announcements, role mirroring, community links, or migration paths. |
+| Discord bridge | in-progress | [#1002](https://github.com/akoita/resonate/issues/1002) adds artist-controlled Discord bridge settings on the artist Community tab. Artists/operators can connect, test, update, and disconnect a Discord webhook, publish an official invite link, mirror artist announcements to Discord, inspect failed mirror attempts, and retry failed announcement mirrors. Webhook URLs are stored server-side and never returned to the browser; public reads only expose the invite link when `publicLinkEnabled` is true. Role mappings can be configured and synced as aggregate dry-run status from server-side private community roles; per-member Discord role assignment remains deferred until listener Discord account linking and explicit consent are defined. |
 | Blockchain-native membership boundary | documented | [#1084](https://github.com/akoita/resonate/issues/1084) defines when NFT-backed or NFT-verifiable community credentials make sense and why private taste cohorts, city cohorts, cohort rooms, messages, reports, moderation state, and profile visibility preferences stay off-chain. [#1097](https://github.com/akoita/resonate/issues/1097) adds public supporter and collector credential product rules: do not mint a new NFT-backed credential yet; use off-chain opt-in public badges and existing ownership/support proofs first, with explicit transferability, revocation, expiry, opt-in, metadata, privacy, moderation, and recovery rules. [#1098](https://github.com/akoita/resonate/issues/1098) adds show attendance credential boundaries: do not mint a new attendance NFT yet; use off-chain opt-in attendance badges and event-scoped proofs first, keep city-scene membership off-chain, and handle cancellation, refund, no-show, delayed check-in, guest-list, revocation, expiry, and privacy rules before implementation. [#1099](https://github.com/akoita/resonate/issues/1099) adds remix and contributor credential boundaries: do not create a standalone community-only contributor token; use off-chain publication-scoped attribution proofs tied to Remix Studio, catalog publication, rights/license state, and artist/rightsholder approval first, with License NFT / lineage integration deferred until Remix Studio publication and verifier surfaces exist. See [Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md), [Public Supporter And Collector Credential Rules](../rfc/public-supporter-collector-credential-rules.md), [Show Attendance Credential Boundaries](../rfc/show-attendance-credential-boundaries.md), and [Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md). |
 | Moderation console | implemented | `/admin/community/moderation` exposes open community reports, bounded room/message context, membership status counts, advisory AI assist summaries/risk hints from privacy-bounded moderation DTOs, and admin actions for dismiss, delete message, remove/ban member, pause room, and archive room. The assist defaults to deterministic mode and can be switched to model-backed summaries with `COMMUNITY_MODERATION_ASSIST_STRATEGY=model-assisted`; model prompts use only bounded report reason, room title/type/status, message preview/status/type, aggregate report counts, and membership status counts, with email and wallet-like strings redacted. Missing credentials, timeouts, malformed model output, invalid enums, or queue-cap exclusions fall back to deterministic assist. Queue hydration caps model-backed reports and per-process model concurrency so one admin load cannot fan out across the full report limit. The assist is read-only and never auto-deletes, bans, pauses, archives, or resolves reports; a human admin must choose and confirm any action. See [#1083](https://github.com/akoita/resonate/issues/1083) and [#1094](https://github.com/akoita/resonate/issues/1094). |
 
@@ -332,6 +332,28 @@ receive deterministic assist. Operator notes are accepted for workflow context
 but not persisted in this first slice; durable note/audit storage remains a
 follow-up if moderation policy requires it.
 
+The Discord bridge slice is tracked in
+[#1002](https://github.com/akoita/resonate/issues/1002). It adds:
+
+- authenticated artist/team Discord bridge management:
+  - `GET /community/artists/:artistId/discord/manage`
+  - `POST /community/artists/:artistId/discord/connect`
+  - `POST /community/artists/:artistId/discord/disconnect`
+  - `POST /community/artists/:artistId/discord/test`
+  - `POST /community/artists/:artistId/discord/retry/:attemptId`
+- authenticated role mapping and aggregate sync status:
+  - `POST /community/artists/:artistId/discord/role-mappings`
+  - `POST /community/artists/:artistId/discord/sync-roles`
+- public official Discord link read:
+  - `GET /community/artists/:artistId/discord`
+
+Announcement mirroring is non-blocking: a Resonate announcement is still
+created if Discord delivery fails, and the failure becomes artist-visible retry
+state. Webhook secrets are never returned by API DTOs. Role sync currently
+uses server-side `CommunityRole` rows for aggregate candidate counts only; it
+does not expose member identities or assign Discord roles without explicit
+Discord account-linking consent.
+
 ## Blockchain-Native Boundary
 
 The community layer should be blockchain-native where blockchain primitives
@@ -413,6 +435,9 @@ Candidate event families:
 - `community.campaign_referral_created`
 - `community.show_city_interest_joined`
 - `community.discord_bridge_connected`
+- `community.discord_announcement_mirrored`
+- `community.discord_role_sync_completed`
+- `community.discord_role_sync_failed`
 
 Primary product metrics:
 
@@ -462,12 +487,16 @@ When implemented, verification should include:
   eligibility, campaign room membership, and privacy enforcement;
 - contract or indexer tests where marketplace ownership controls access;
 - frontend tests for profile showcase, artist community tab helpers, campaign
-  room, and holder-only states;
+  room, holder-only states, and Discord bridge connected/failed/disconnected
+  states;
 - analytics tests for community event emission and consent boundaries;
 - abuse tests for blocked users, reported messages, moderation actions, and
   hidden ownership;
 - Playwright tests for listener opt-in, holder room access, and Shows campaign
   conversion paths.
+- Discord bridge integration tests for webhook validation, announcement
+  mirroring, retry state, public-link redaction, and aggregate role-sync
+  privacy.
 
 ## References
 

@@ -289,6 +289,79 @@ model CommunityModerationReport {
   @@index([reporterUserId, createdAt])
 }
 
+model CommunityDiscordBridge {
+  id                         String                         @id @default(uuid())
+  artistId                   String                         @unique
+  provider                   String                         @default("discord")
+  serverId                   String?
+  serverName                 String?
+  channelId                  String?
+  channelName                String?
+  webhookUrl                 String?                        @db.Text
+  webhookUrlMasked           String
+  inviteUrl                  String?
+  publicLinkEnabled          Boolean                        @default(false)
+  announcementMirrorEnabled  Boolean                        @default(false)
+  roleSyncEnabled            Boolean                        @default(false)
+  status                     String                         @default("connected")
+  lastTestedAt               DateTime?
+  lastMirroredAt             DateTime?
+  lastRoleSyncAt             DateTime?
+  lastFailureAt              DateTime?
+  lastFailureReason          String?                        @db.Text
+  createdAt                  DateTime                       @default(now())
+  updatedAt                  DateTime                       @updatedAt
+  artist                     Artist                         @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  roleMappings               CommunityDiscordRoleMapping[]
+  syncAttempts               CommunityDiscordSyncAttempt[]
+
+  @@index([artistId, status])
+  @@index([publicLinkEnabled, status])
+}
+
+model CommunityDiscordRoleMapping {
+  id            String                 @id @default(uuid())
+  bridgeId      String
+  resonateRole  String
+  scopeType     String                 @default("artist")
+  scopeId       String
+  discordRoleId String
+  label         String?
+  enabled       Boolean                @default(true)
+  lastSyncedAt  DateTime?
+  lastStatus    String                 @default("pending")
+  lastReason    String?                @db.Text
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  bridge        CommunityDiscordBridge @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+
+  @@unique([bridgeId, resonateRole, scopeType, scopeId, discordRoleId], name: "CommunityDiscordRoleMapping_identity")
+  @@index([bridgeId, enabled])
+  @@index([resonateRole, scopeType, scopeId])
+}
+
+model CommunityDiscordSyncAttempt {
+  id             String                  @id @default(uuid())
+  bridgeId       String
+  action         String
+  status         String                  @default("pending")
+  messageId      String?
+  roleMappingId  String?
+  retryOfId      String?
+  attemptCount   Int                     @default(1)
+  requestSummary Json?
+  responseStatus Int?
+  errorReason    String?                 @db.Text
+  createdAt      DateTime                @default(now())
+  completedAt    DateTime?
+  bridge         CommunityDiscordBridge  @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+
+  @@index([bridgeId, action, status, createdAt])
+  @@index([messageId])
+  @@index([roleMappingId])
+  @@index([retryOfId])
+}
+
 model SignupFaucetAttempt {
   id            String   @id @default(uuid())
   userId        String
@@ -340,6 +413,7 @@ model Artist {
   showCampaigns             ShowCampaign[]
   communityBenefitRules     CommunityBenefitRule[]
   communityRooms            CommunityRoom[]
+  discordBridge             CommunityDiscordBridge?
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
 

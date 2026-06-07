@@ -2539,7 +2539,78 @@ export type CommunityArtistRoomsResponse = {
     displayName: string;
     imageUrl: string | null;
   };
+  discord?: CommunityDiscordPublicLink | null;
   rooms: CommunityArtistRoom[];
+};
+
+export type CommunityDiscordPublicLink = {
+  serverName: string | null;
+  inviteUrl: string | null;
+};
+
+export type CommunityDiscordRoleMapping = {
+  id: string;
+  resonateRole: string;
+  scopeType: string;
+  scopeId: string;
+  discordRoleId: string;
+  label: string | null;
+  enabled: boolean;
+  lastSyncedAt: string | null;
+  lastStatus: string;
+  lastReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityDiscordAttempt = {
+  id: string;
+  action: string;
+  status: string;
+  messageId: string | null;
+  roleMappingId: string | null;
+  retryOfId: string | null;
+  attemptCount: number;
+  requestSummary: unknown;
+  responseStatus: number | null;
+  errorReason: string | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export type CommunityDiscordBridge = {
+  id: string;
+  artistId: string;
+  provider: "discord" | string;
+  serverId?: string | null;
+  serverName: string | null;
+  channelId?: string | null;
+  channelName: string | null;
+  webhookUrlMasked?: string;
+  inviteUrl: string | null;
+  publicLinkEnabled: boolean;
+  announcementMirrorEnabled?: boolean;
+  roleSyncEnabled?: boolean;
+  status: string;
+  lastTestedAt: string | null;
+  lastMirroredAt: string | null;
+  lastRoleSyncAt: string | null;
+  lastFailureAt: string | null;
+  lastFailureReason: string | null;
+  roleMappings: CommunityDiscordRoleMapping[];
+  recentAttempts: CommunityDiscordAttempt[];
+  createdAt: string;
+  updatedAt: string;
+  privacy: {
+    webhookUrlReturned: false;
+    memberDetailsReturned: false;
+  };
+};
+
+export type CommunityDiscordBridgeResponse = {
+  schemaVersion: "community-discord-bridge/v1";
+  artistId: string;
+  bridge: CommunityDiscordBridge | null;
 };
 
 export type CommunityMessage = {
@@ -2579,6 +2650,58 @@ export async function listArtistCommunityRooms(
 export async function enableArtistCommunity(token: string, artistId: string): Promise<CommunityArtistRoomsResponse> {
   return apiRequest<CommunityArtistRoomsResponse>(
     `/community/artists/${encodeURIComponent(artistId)}/rooms/enable`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function getArtistDiscordBridge(token: string, artistId: string): Promise<CommunityDiscordBridgeResponse> {
+  return apiRequest<CommunityDiscordBridgeResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/discord/manage`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function connectArtistDiscordBridge(
+  token: string,
+  artistId: string,
+  input: {
+    webhookUrl: string;
+    inviteUrl?: string;
+    serverName?: string;
+    channelName?: string;
+    publicLinkEnabled?: boolean;
+    announcementMirrorEnabled?: boolean;
+    roleSyncEnabled?: boolean;
+  },
+): Promise<CommunityDiscordBridgeResponse> {
+  return apiRequest<CommunityDiscordBridgeResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/discord/connect`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function disconnectArtistDiscordBridge(token: string, artistId: string): Promise<CommunityDiscordBridgeResponse> {
+  return apiRequest<CommunityDiscordBridgeResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/discord/disconnect`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function testArtistDiscordBridge(token: string, artistId: string) {
+  return apiRequest<{ schemaVersion: "community-discord-bridge-test/v1"; ok: boolean; attempt: CommunityDiscordAttempt; bridge: CommunityDiscordBridge | null }>(
+    `/community/artists/${encodeURIComponent(artistId)}/discord/test`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function retryArtistDiscordAttempt(token: string, artistId: string, attemptId: string) {
+  return apiRequest<{ schemaVersion: "community-discord-retry/v1"; ok: boolean; attempt: CommunityDiscordAttempt }>(
+    `/community/artists/${encodeURIComponent(artistId)}/discord/retry/${encodeURIComponent(attemptId)}`,
     { method: "POST" },
     token,
   );

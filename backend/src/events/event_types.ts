@@ -325,6 +325,43 @@ export interface CommunityRoomStatusUpdatedEvent extends BaseEvent {
   status: string;
 }
 
+export interface CommunityDiscordBridgeConnectedEvent extends BaseEvent {
+  eventName: "community.discord_bridge_connected";
+  actorId: string;
+  artistId: string;
+  publicLinkEnabled: boolean;
+  announcementMirrorEnabled: boolean;
+  roleSyncEnabled: boolean;
+}
+
+export interface CommunityDiscordAnnouncementMirroredEvent extends BaseEvent {
+  eventName: "community.discord_announcement_mirrored";
+  actorId: string;
+  artistId: string;
+  roomId: string;
+  messageId: string;
+  attemptId: string;
+  status: string;
+}
+
+export interface CommunityDiscordRoleSyncCompletedEvent extends BaseEvent {
+  eventName: "community.discord_role_sync_completed";
+  actorId: string;
+  artistId: string;
+  mappingCount: number;
+  status: string;
+  reason: string;
+}
+
+export interface CommunityDiscordRoleSyncFailedEvent extends BaseEvent {
+  eventName: "community.discord_role_sync_failed";
+  actorId: string;
+  artistId: string;
+  mappingCount: number;
+  status: string;
+  reason: string;
+}
+
 export interface CommunityCohortSuggestedEvent extends BaseEvent {
   eventName: "community.cohort_suggested";
   userId: string;
@@ -1062,6 +1099,10 @@ export type ResonateEvent =
   | CommunityMemberModeratedEvent
   | CommunityModerationActionTakenEvent
   | CommunityRoomStatusUpdatedEvent
+  | CommunityDiscordBridgeConnectedEvent
+  | CommunityDiscordAnnouncementMirroredEvent
+  | CommunityDiscordRoleSyncCompletedEvent
+  | CommunityDiscordRoleSyncFailedEvent
   | CommunityCohortSuggestedEvent
   | CommunityCohortJoinedEvent
   | CommunityCohortLeftEvent
