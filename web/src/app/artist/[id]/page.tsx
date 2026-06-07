@@ -23,6 +23,13 @@ export default function ArtistPage() {
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
 
     useEffect(() => {
+        const tab = new URLSearchParams(window.location.search).get("tab");
+        if (tab === "community" || tab === "discography") {
+            setActiveTab(tab);
+        }
+    }, []);
+
+    useEffect(() => {
         if (!artistId) return;
 
         setLoading(true);

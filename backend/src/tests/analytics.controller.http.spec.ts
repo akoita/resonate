@@ -396,6 +396,44 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts artist action cockpit product analytics events", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("artist-1", "artist")}`)
+      .send({
+        eventName: "artist.action_card_clicked",
+        sessionId: "product-session-actions",
+        subjectType: "artist",
+        subjectId: "artist-1",
+        clientEventId: "client-event-action-1",
+        payload: {
+          cardId: "promote_top_track:track-1",
+          cardType: "promote_top_track",
+          priority: "medium",
+          sourceCategory: "playback",
+          disabled: false,
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "artist.action_card_clicked",
+        sessionId: "product-session-actions",
+        subjectType: "artist",
+        subjectId: "artist-1",
+        payload: expect.objectContaining({
+          cardId: "promote_top_track:track-1",
+          cardType: "promote_top_track",
+          priority: "medium",
+          sourceCategory: "playback",
+          disabled: false,
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
+  });
+
   it("rejects unsupported product analytics event names", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

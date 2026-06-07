@@ -94,6 +94,9 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Content protection");
     expect(html).toContain("Marketplace Ready");
     expect(html).toContain("Standard Escrow");
+    expect(html).toContain("Recommended next actions");
+    expect(html).toContain("Promote the track listeners already choose");
+    expect(html).toContain("Open community");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -158,6 +161,54 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
     ],
   },
+  actions: [
+    {
+      id: "promote_top_track:track-1",
+      type: "promote_top_track",
+      title: "Promote the track listeners already choose",
+      description: "Glass City is your strongest recent playback signal.",
+      reason: "9,000 aggregate plays in the last 30 days.",
+      priority: "high",
+      confidence: 0.82,
+      sourceSignal: {
+        category: "playback",
+        summary: "Top track by aggregate plays",
+        count: 9000,
+      },
+      cta: {
+        label: "Open in player",
+        href: "/player?trackId=track-1",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "start_listener_community",
+      type: "start_listener_community",
+      title: "Gather listeners in your community room",
+      description: "Recent listener activity is high enough to make a public artist room useful.",
+      reason: "12,345 aggregate plays in the last 30 days.",
+      priority: "high",
+      confidence: 0.8,
+      sourceSignal: {
+        category: "community",
+        summary: "Aggregate playback demand",
+        count: 12345,
+      },
+      cta: {
+        label: "Open community",
+        href: "/artist/artist-1?tab=community",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+  ],
   playsOverTime: [
     { date: "2026-05-20", plays: 4000, payoutUsd: 20 },
     { date: "2026-05-21", plays: 8345, payoutUsd: 67.65 },
