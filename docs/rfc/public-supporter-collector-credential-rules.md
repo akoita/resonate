@@ -4,6 +4,7 @@ status: draft
 owner: "@akoita"
 related:
   - community-membership-boundaries.md
+  - show-attendance-credential-boundaries.md
   - ../features/listener_community_network.md
   - ../features/community_holder_benefits_plan.md
   - https://github.com/akoita/resonate/issues/1097
@@ -145,6 +146,9 @@ Acceptable future candidates:
 - public artist supporter season pass;
 - artist-recognized contributor credential;
 - partner perk credential that needs open verification outside Resonate.
+
+Show attendance has its own location-sensitive rules in
+[Show Attendance Credential Boundaries](show-attendance-credential-boundaries.md).
 
 Do not mint a new NFT-backed credential for:
 

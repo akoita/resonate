@@ -183,7 +183,9 @@ fields for badges that might later become portable NFT credentials. The default
 badge model remains off-chain and private. For public supporter and collector
 credentials, the current product rule is to use off-chain opt-in public badges
 backed by existing ownership/support proof before minting any new NFT-backed
-community credential.
+community credential. For show attendance credentials, the current product rule
+is to use off-chain opt-in attendance badges backed by event-scoped proof before
+minting any NFT-backed attendance credential.
 
 NFT-backed badges should be treated as public or selectively revealable
 ownership credentials, not as a replacement for Resonate's privacy controls.
@@ -200,20 +202,26 @@ This makes badges a ladder:
    chooses to show it.
 2. existing NFT ownership proof: verifier input for holder access, public badge
    eligibility, Discord roles, artist sites, or partner perks.
-3. `nft_proposed` credential: deferred portable proof for open ecosystems,
+3. event-scoped attendance proof: verifier input for opted-in post-show
+   rewards, artist recognition, or partner perks without exposing city-scene
+   cohort membership.
+4. `nft_proposed` credential: deferred portable proof for open ecosystems,
    partner integrations, and owner-controlled interoperability once the use case
    is proven.
-4. Benefit rules can accept either private Resonate eligibility or verified NFT
+5. Benefit rules can accept either private Resonate eligibility or verified NFT
    ownership, depending on the artist/operator policy.
 
 See
 [Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md)
 and
-[Public Supporter And Collector Credential Rules](../rfc/public-supporter-collector-credential-rules.md)
+[Public Supporter And Collector Credential Rules](../rfc/public-supporter-collector-credential-rules.md),
+and
+[Show Attendance Credential Boundaries](../rfc/show-attendance-credential-boundaries.md)
 for the current on-chain/off-chain decision framework. The key architecture rule
-is that NFT ownership can unlock or attest to eligibility, but community
-membership, room state, moderation, profile visibility, private cohorts, cohort
-rooms, and messages remain backend-owned product state.
+is that NFT ownership or event-scoped attendance can unlock or attest to
+eligibility, but community membership, room state, moderation, profile
+visibility, private cohorts, city-scene membership, cohort rooms, and messages
+remain backend-owned product state.
 
 ### `CommunityRoom`
 
