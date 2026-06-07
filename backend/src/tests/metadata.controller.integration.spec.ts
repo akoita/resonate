@@ -229,6 +229,7 @@ describe('MetadataController (integration)', () => {
         const listing = result.listings.find((item) => item.listingId === '841');
 
         expect(listing).toBeDefined();
+        expect(listing!.chainId).toBe(31337);
         expect(listing!.paymentToken).toBe(paymentToken);
         expect(listing!.price).toBe('50000');
       } finally {

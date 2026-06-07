@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import type { Address } from "viem";
 import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
@@ -29,6 +30,7 @@ import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
+import type { Listing } from "../../lib/contracts";
 import "../../styles/buy-modal.css";
 import "../../styles/license-terms.css";
 
@@ -56,9 +58,22 @@ type X402QuoteInfo = {
 
 type TierListings = Partial<Record<LicenseType, string>>;
 
+type IndexedListingSnapshot = {
+  listingId: string;
+  tokenId: string;
+  chainId: number;
+  seller: string;
+  price: string;
+  amount: string;
+  paymentToken?: string;
+  expiresAt: string;
+};
+
 interface BuyModalProps {
   listingId: bigint;
   stemId?: string;
+  listingChainId?: number;
+  initialListing?: IndexedListingSnapshot;
   licenseType?: LicenseType;
   tierListings?: TierListings;
   tierPricesUsd?: Partial<Record<LicenseType, number>>;
@@ -72,6 +87,8 @@ const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
 export function BuyModal({
   listingId,
   stemId,
+  listingChainId,
+  initialListing,
   licenseType = "personal",
   tierListings,
   tierPricesUsd,
@@ -91,13 +108,33 @@ export function BuyModal({
   const { status: authStatus, webAuthnKey, login, token } = useAuth();
   const { chainId } = useZeroDev();
   const { assets: paymentAssets } = usePaymentAssets(chainId);
+  const listingChainMismatch = listingChainId != null && chainId !== listingChainId;
   const selectedListingId = useMemo(() => {
     const tierListingId = tierListings?.[selectedLicense];
     if (tierListingId) return BigInt(tierListingId);
     return selectedLicense === licenseType ? listingId : undefined;
   }, [licenseType, listingId, selectedLicense, tierListings]);
-  const { listing, loading: listingLoading } = useListing(selectedListingId);
-  const { quote, loading: quoteLoading } = useBuyQuote(selectedListingId, amount);
+  const initialListingForSelection = useMemo<Listing | null>(() => {
+    if (!initialListing || selectedListingId == null) return null;
+    if (BigInt(initialListing.listingId) !== selectedListingId) return null;
+
+    return {
+      seller: initialListing.seller as Address,
+      tokenId: BigInt(initialListing.tokenId),
+      amount: BigInt(initialListing.amount),
+      pricePerUnit: BigInt(initialListing.price),
+      paymentToken: (initialListing.paymentToken || "0x0000000000000000000000000000000000000000") as Address,
+      expiry: Math.floor(new Date(initialListing.expiresAt).getTime() / 1000),
+    };
+  }, [initialListing, selectedListingId]);
+  const shouldReadOnchainListing = selectedListingId !== undefined && !initialListingForSelection && !listingChainMismatch;
+  const { listing: onchainListing, loading: onchainListingLoading } = useListing(
+    shouldReadOnchainListing ? selectedListingId : undefined,
+  );
+  const listing = initialListingForSelection ?? onchainListing;
+  const listingLoading = !initialListingForSelection && onchainListingLoading;
+  const canQuoteOnchain = !listingChainMismatch && selectedListingId !== undefined;
+  const { quote, loading: quoteLoading } = useBuyQuote(canQuoteOnchain ? selectedListingId : undefined, amount);
   const { buy, pending, error, txHash } = useBuyStem();
   const { config: x402Config } = useX402PublicConfig();
   const x402Asset = x402Config?.enabled ? x402Config.asset : null;
@@ -242,11 +279,12 @@ export function BuyModal({
         licenseType: selectedLicense,
         amount: amount.toString(),
         paymentMethod: "onchain",
-        chainId,
+        chainId: listingChainId ?? chainId,
         paymentToken: listing?.paymentToken,
       },
     });
     try {
+      if (listingChainMismatch) return;
       const hash = await buy(selectedListingId, amount);
       onSuccess?.(hash);
     } catch {
@@ -362,13 +400,21 @@ export function BuyModal({
                   aria-selected={activePaymentMethod === "onchain"}
                   className={`buy-modal__pay-method${activePaymentMethod === "onchain" ? " buy-modal__pay-method--active" : ""}`}
                   onClick={() => setPaymentMethod("onchain")}
-                  disabled={pending || x402Status !== null || isLegacyNativeListing}
-                  title={isLegacyNativeListing ? "This listing was created with native ETH and must be relisted in stablecoin for wallet checkout." : undefined}
+                  disabled={pending || x402Status !== null || isLegacyNativeListing || listingChainMismatch}
+                  title={
+                    listingChainMismatch
+                      ? `Switch your wallet to chain ${listingChainId} for direct wallet checkout.`
+                      : isLegacyNativeListing
+                        ? "This listing was created with native ETH and must be relisted in stablecoin for wallet checkout."
+                        : undefined
+                  }
                 >
                   <span>{getCheckoutRailLabel("onchain")}</span>
                   <span className="buy-modal__pay-method-sub">
                     {isLegacyNativeListing
                       ? `Legacy listing · ${onchainSymbol}`
+                      : listingChainMismatch
+                        ? `Wrong chain · ${listingChainId}`
                       : getCheckoutRailSubLabel({
                           method: "onchain",
                           symbol: onchainSymbol,
@@ -556,6 +602,11 @@ export function BuyModal({
                 This listing is denominated in native {onchainSymbol}. Current on-chain marketplace checkout is stablecoin-native, so this item must be re-listed in the configured stablecoin before wallet purchase.
               </div>
             )}
+            {activePaymentMethod === "onchain" && listingChainMismatch && (
+              <div className="buy-modal__alert buy-modal__alert--error">
+                This listing is indexed on chain {listingChainId}. Switch your wallet to that chain before using direct wallet checkout.
+              </div>
+            )}
             {activePaymentMethod === "x402" && x402Error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {x402Error}
@@ -625,7 +676,7 @@ export function BuyModal({
                 <button
                   className="buy-modal__btn buy-modal__btn--confirm"
                   onClick={handleBuy}
-                  disabled={pending || !quote || !selectedListingId || isLegacyNativeListing}
+                  disabled={pending || !quote || !selectedListingId || isLegacyNativeListing || listingChainMismatch}
                 >
                   {pending && <span className="buy-modal__spinner" />}
                   {pending ? "Confirming…" : "Confirm wallet purchase"}

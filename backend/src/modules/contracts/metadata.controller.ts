@@ -645,6 +645,7 @@ export class MetadataController {
         return {
           listingId: l.listingId.toString(),
           tokenId: l.tokenId.toString(),
+          chainId: l.chainId,
           seller: l.sellerAddress,
           price: l.pricePerUnit,
           paymentToken: l.paymentToken,
