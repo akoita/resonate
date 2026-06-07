@@ -12,6 +12,13 @@ Deliver a rights-aware, AI-assisted remix workflow that demonstrates Resonate's
 core differentiation: licensed creation, attribution, payment, and provenance in
 one product surface.
 
+Remix and contributor credentials are scoped in
+[Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md).
+The first credential path is off-chain, publication-scoped attribution proof
+after Remix Studio/catalog publication and rights approval; License NFT /
+lineage integration comes later, and a standalone community-only contributor
+token is explicitly out of scope.
+
 ## Workstream A: Product And Policy Foundation
 
 ### A1. Define artist opt-in settings
@@ -180,17 +187,23 @@ Acceptance:
 - Create a catalog derivative or remix release when allowed.
 - Attach source track/stem IDs.
 - Surface attribution on release detail.
+- Create publication-scoped attribution proof for opted-in public
+  remixer/contributor recognition.
 
 Acceptance:
 
 - Published remix appears in catalog with source attribution.
 - Publication is blocked when license terms do not allow it.
+- Public credential proof is not created for private drafts, unpublished
+  projects, disputed works, or rights-blocked sources.
 
 ### E3. Prepare License NFT and ancestry integration
 
 - Map remix project fields to future License NFT metadata.
 - Map published remix source stems to `AncestryTracker`.
 - Prepare recursive royalty split inputs.
+- Keep contributor credential protocol work tied to License NFT / lineage
+  surfaces rather than a standalone community token.
 
 Acceptance:
 

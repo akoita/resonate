@@ -185,7 +185,10 @@ credentials, the current product rule is to use off-chain opt-in public badges
 backed by existing ownership/support proof before minting any new NFT-backed
 community credential. For show attendance credentials, the current product rule
 is to use off-chain opt-in attendance badges backed by event-scoped proof before
-minting any NFT-backed attendance credential.
+minting any NFT-backed attendance credential. For remix and contributor
+credentials, the current product rule is to use publication-scoped attribution
+proofs tied to Remix Studio, catalog, licensing, and lineage state instead of a
+standalone community-only token.
 
 NFT-backed badges should be treated as public or selectively revealable
 ownership credentials, not as a replacement for Resonate's privacy controls.
@@ -205,23 +208,25 @@ This makes badges a ladder:
 3. event-scoped attendance proof: verifier input for opted-in post-show
    rewards, artist recognition, or partner perks without exposing city-scene
    cohort membership.
-4. `nft_proposed` credential: deferred portable proof for open ecosystems,
+4. publication-scoped attribution proof: verifier input for opted-in remixer
+   and contributor recognition after publication and rights approval.
+5. `nft_proposed` credential: deferred portable proof for open ecosystems,
    partner integrations, and owner-controlled interoperability once the use case
    is proven.
-5. Benefit rules can accept either private Resonate eligibility or verified NFT
+6. Benefit rules can accept either private Resonate eligibility or verified NFT
    ownership, depending on the artist/operator policy.
 
 See
-[Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md)
-and
+[Blockchain-Native Community Membership Boundaries](../rfc/community-membership-boundaries.md),
 [Public Supporter And Collector Credential Rules](../rfc/public-supporter-collector-credential-rules.md),
-and
-[Show Attendance Credential Boundaries](../rfc/show-attendance-credential-boundaries.md)
+[Show Attendance Credential Boundaries](../rfc/show-attendance-credential-boundaries.md), and
+[Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md)
 for the current on-chain/off-chain decision framework. The key architecture rule
-is that NFT ownership or event-scoped attendance can unlock or attest to
-eligibility, but community membership, room state, moderation, profile
-visibility, private cohorts, city-scene membership, cohort rooms, and messages
-remain backend-owned product state.
+is that NFT ownership, event-scoped attendance, or publication-scoped
+attribution can unlock or attest to eligibility, but community membership, room
+state, moderation, profile visibility, private cohorts, city-scene membership,
+private collaboration state, cohort rooms, and messages remain backend-owned
+product state.
 
 ### `CommunityRoom`
 
