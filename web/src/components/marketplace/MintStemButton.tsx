@@ -135,6 +135,7 @@ export function MintStemButton({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 tokenId: input.tokenId.toString(),
+                chainId,
                 seller: smartAccountAddress || address,
                 price: listingPriceUnits.toString(),
                 amount: "1",
@@ -145,7 +146,7 @@ export function MintStemButton({
                 stemId,
             }),
         });
-    }, [address, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
+    }, [address, chainId, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
     const applyStatusDetail = useCallback((detail: StemMarketplaceStatusEventDetail) => {
         if (detail.stemId !== stemId) return;
 

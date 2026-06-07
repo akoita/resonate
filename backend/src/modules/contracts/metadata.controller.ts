@@ -2059,6 +2059,7 @@ export class MetadataController {
   @Post("notify-listing")
   async notifyListingCreated(@Body() body: {
     tokenId?: string;
+    chainId?: number | string;
     seller?: string;
     price?: string;
     amount?: string;
@@ -2071,7 +2072,16 @@ export class MetadataController {
     this.logger.log(`Notify listing: tokenId=${body.tokenId}, stemId=${body.stemId}`);
 
     try {
-      const chainId = parseInt(process.env.AA_CHAIN_ID || process.env.CHAIN_ID || "11155111");
+      const notifiedChainId =
+        typeof body.chainId === "number"
+          ? body.chainId
+          : body.chainId
+            ? parseInt(body.chainId, 10)
+            : NaN;
+      const chainId = Number.isFinite(notifiedChainId)
+        ? notifiedChainId
+        : parseInt(process.env.AA_CHAIN_ID || process.env.CHAIN_ID || "11155111", 10);
+      let reindexResult: { processed: number } | null = null;
 
       // Link stem to its NFT tokenId so the indexer can correlate
       // StemListed events (which carry tokenId) back to our stem record.
@@ -2125,6 +2135,12 @@ export class MetadataController {
             licenseType: body.licenseType ?? "personal",
           },
         }).catch((e) => this.logger.warn(`Failed to reconcile listing intent: ${e}`));
+
+        try {
+          reindexResult = await this.indexerService.indexTransaction(body.transactionHash, chainId);
+        } catch (e) {
+          this.logger.warn(`Failed to reindex listing transaction ${body.transactionHash} on chain ${chainId}: ${e}`);
+        }
       }
 
       // Broadcast WebSocket notification for instant UI feedback.
@@ -2138,6 +2154,7 @@ export class MetadataController {
         occurredAt: new Date().toISOString(),
         listingId: "pending",
         tokenId: body.tokenId || "0",
+        chainId,
         sellerAddress: (body.seller || "").toLowerCase(),
         amount: body.amount || "1",
         pricePerUnit: body.price || "10000000000000000",
@@ -2147,8 +2164,14 @@ export class MetadataController {
         transactionHash: body.transactionHash,
       } as any);
 
-      this.logger.log(`Listing notification sent for stemId=${body.stemId}, tokenId=${body.tokenId}. Indexer will create DB record.`);
-      return { success: true, message: "Notification sent, indexer will create listing" };
+      this.logger.log(`Listing notification sent for stemId=${body.stemId}, tokenId=${body.tokenId}.`);
+      return {
+        success: true,
+        message: reindexResult
+          ? "Notification sent and listing transaction reindexed"
+          : "Notification sent, indexer will create listing",
+        reindex: reindexResult,
+      };
     } catch (error) {
       this.logger.error(`Failed to notify listing: ${error}`);
       return { success: false, error: String(error) };

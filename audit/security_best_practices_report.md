@@ -22,7 +22,10 @@ listings and removes localStorage as an authoritative source for public listing
 state. The scoped review found no Critical or High findings: the new `stemId`
 filter is handled through Prisma structured filters, client-side local hints
 are downgraded to pending/indexing state until backend confirmation, and no
-new secrets, cookie handling, or HTML injection surfaces were introduced.
+new secrets, cookie handling, or HTML injection surfaces were introduced. The
+listing notification path now carries the wallet transaction's explicit chain
+ID and triggers the existing transaction indexer for that chain, avoiding
+cross-chain env fallback mistakes.
 
 ### Critical Findings
 
@@ -39,6 +42,10 @@ None.
   not expose private owner data.
 - The frontend now treats wallet transaction success as `listing_pending` until
   `/metadata/listings?status=active&stemId=...` returns a confirmed listing.
+- `POST /metadata/notify-listing` uses the notified `chainId` when present,
+  stores the listing intent on that chain, and runs the existing receipt
+  indexer for that exact transaction. If reindexing fails, it logs a warning and
+  leaves the background indexer path intact.
 - The existing Prisma tagged `$queryRaw` in `contracts.service.ts` is
   parameterized, outside this patch's marketplace listing path, and was not a
   finding.

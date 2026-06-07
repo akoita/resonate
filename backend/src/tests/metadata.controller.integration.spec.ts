@@ -22,6 +22,7 @@ const TEST_PREFIX = `meta_${Date.now()}_`;
 describe('MetadataController (integration)', () => {
   let controller: MetadataController;
   let contractsService: ContractsService;
+  let indexerService: { indexTransaction: jest.Mock };
   let stemId: string;
   let typedDisputeId: string | null = null;
   const creatorWalletAddress = ("0x" + "1".repeat(40)).toLowerCase();
@@ -79,9 +80,12 @@ describe('MetadataController (integration)', () => {
     const eventBus = new EventBus();
     const trustService = new TrustService(new ConfigService());
     contractsService = new ContractsService(eventBus as any, trustService);
+    indexerService = {
+      indexTransaction: jest.fn().mockResolvedValue({ processed: 0 }),
+    };
     controller = new MetadataController(
       contractsService,
-      undefined as any,
+      indexerService as any,
       undefined as any,
       eventBus,
     );
@@ -330,8 +334,10 @@ describe('MetadataController (integration)', () => {
       });
 
       try {
+        indexerService.indexTransaction.mockClear();
         await controller.notifyListingCreated({
           tokenId: '42',
+          chainId: 31337,
           seller: creatorWalletAddress,
           price: '50000',
           amount: '1',
@@ -349,6 +355,7 @@ describe('MetadataController (integration)', () => {
         expect(listing!.paymentToken).toBe(stablecoinToken);
         expect(listing!.pricePerUnit).toBe('50000');
         expect(listing!.sellerAddress).toBe(creatorWalletAddress);
+        expect(indexerService.indexTransaction).toHaveBeenCalledWith(transactionHash, 31337);
       } finally {
         if (previousChainId === undefined) {
           delete process.env.AA_CHAIN_ID;
@@ -357,6 +364,43 @@ describe('MetadataController (integration)', () => {
         }
         await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
         await prisma.stemListing.deleteMany({ where: { transactionHash } });
+      }
+    });
+
+    it('uses the notified chain id when storing listing intent and reindexing', async () => {
+      const previousChainId = process.env.AA_CHAIN_ID;
+      process.env.AA_CHAIN_ID = '31337';
+      const transactionHash = '0x' + '8'.repeat(64);
+      const notifiedChainId = 84532;
+
+      try {
+        indexerService.indexTransaction.mockClear();
+        await controller.notifyListingCreated({
+          tokenId: '99',
+          chainId: notifiedChainId,
+          seller: creatorWalletAddress,
+          price: '50000',
+          amount: '1',
+          paymentToken: ('0x' + '9'.repeat(40)).toLowerCase(),
+          durationSeconds: '86400',
+          transactionHash,
+          stemId,
+          licenseType: 'personal',
+        });
+
+        const intent = await prisma.stemListingIntent.findFirst({
+          where: { transactionHash, tokenId: 99n },
+        });
+        expect(intent).not.toBeNull();
+        expect(intent!.chainId).toBe(notifiedChainId);
+        expect(indexerService.indexTransaction).toHaveBeenCalledWith(transactionHash, notifiedChainId);
+      } finally {
+        if (previousChainId === undefined) {
+          delete process.env.AA_CHAIN_ID;
+        } else {
+          process.env.AA_CHAIN_ID = previousChainId;
+        }
+        await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
       }
     });
 
