@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { CommunityCohortService } from "../modules/community/community_cohort.service";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
+import { CommunityModerationAssistService } from "../modules/community/community_moderation_assist.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 
 const TEST_PREFIX = `community_cohort_${Date.now()}_`;
@@ -23,6 +24,7 @@ const service = new CommunityCohortService(eventBus as any);
 const roomsService = new CommunityRoomsService(
   new CommunityEligibilityService(eventBus as any),
   eventBus as any,
+  new CommunityModerationAssistService(),
 );
 
 describe("CommunityCohortService integration", () => {

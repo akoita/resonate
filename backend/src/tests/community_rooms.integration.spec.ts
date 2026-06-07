@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { CommunityEligibilityService } from "../modules/community/community_eligibility.service";
+import { CommunityModerationAssistService } from "../modules/community/community_moderation_assist.service";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 
 const TEST_PREFIX = `community_rooms_${Date.now()}_`;
@@ -33,7 +34,7 @@ const resaleBuyerWallet = "0x" + "a".repeat(40);
 
 const eventBus = { publish: jest.fn() };
 const eligibility = new CommunityEligibilityService(eventBus as any);
-const service = new CommunityRoomsService(eligibility, eventBus as any);
+const service = new CommunityRoomsService(eligibility, eventBus as any, new CommunityModerationAssistService());
 
 describe("CommunityRoomsService integration", () => {
   beforeAll(async () => {
@@ -594,6 +595,7 @@ describe("CommunityRoomsService integration", () => {
         likelihood: "medium",
         reasonCodes: expect.arrayContaining(["privacy_language_signal", "safety_language_signal"]),
         source: "bounded_moderation_context",
+        strategy: "deterministic",
         advisory: {
           noAutoEnforcement: true,
         },

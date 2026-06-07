@@ -5,6 +5,7 @@ import { CommunityCohortGenerationService } from "./community_cohort_generation.
 import { CommunityCohortQualityService } from "./community_cohort_quality.service";
 import { CommunityCohortService } from "./community_cohort.service";
 import { CommunityEligibilityService } from "./community_eligibility.service";
+import { CommunityModerationAssistService } from "./community_moderation_assist.service";
 import { CommunityRoomsService } from "./community_rooms.service";
 import { CommunityService } from "./community.service";
 
@@ -15,6 +16,7 @@ import { CommunityService } from "./community.service";
     CommunityService,
     CommunityEligibilityService,
     CommunityRoomsService,
+    CommunityModerationAssistService,
     CommunityCohortService,
     CommunityCohortGenerationService,
     CommunityCohortQualityService,
@@ -23,6 +25,7 @@ import { CommunityService } from "./community.service";
     CommunityService,
     CommunityEligibilityService,
     CommunityRoomsService,
+    CommunityModerationAssistService,
     CommunityCohortService,
     CommunityCohortGenerationService,
     CommunityCohortQualityService,
