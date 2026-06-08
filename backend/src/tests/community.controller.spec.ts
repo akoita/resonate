@@ -11,6 +11,10 @@ const mockCommunityEligibilityService = {
   listMyBadges: jest.fn().mockResolvedValue({ schemaVersion: "community-badges/v1" }),
   listMyBenefits: jest.fn().mockResolvedValue({ schemaVersion: "community-benefits/v1" }),
   redeemBenefit: jest.fn().mockResolvedValue({ schemaVersion: "community-benefit-redemption/v1" }),
+  listArtistBenefitRules: jest.fn().mockResolvedValue({ schemaVersion: "community-benefit-rules/v1" }),
+  createArtistBenefitRule: jest.fn().mockResolvedValue({ schemaVersion: "community-benefit-rule/v1" }),
+  pauseArtistBenefitRule: jest.fn().mockResolvedValue({ schemaVersion: "community-benefit-rule/v1" }),
+  expireArtistBenefitRule: jest.fn().mockResolvedValue({ schemaVersion: "community-benefit-rule/v1" }),
 };
 
 const mockCommunityRoomsService = {
@@ -96,6 +100,39 @@ describe("CommunityController", () => {
     const ctrl = makeController();
     ctrl.redeemBenefit(req, "benefit-1");
     expect(mockCommunityEligibilityService.redeemBenefit).toHaveBeenCalledWith("user-42", "benefit-1");
+  });
+
+  it("routes artist benefit rule management", () => {
+    const ctrl = makeController();
+    const input = {
+      title: "Holder room access",
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", artistId: "artist-1" },
+    };
+    ctrl.listArtistBenefitRules(req, "artist-1");
+    ctrl.createArtistBenefitRule(req, "artist-1", input);
+    ctrl.pauseArtistBenefitRule(req, "artist-1", "rule-1");
+    ctrl.expireArtistBenefitRule(req, "artist-1", "rule-1");
+
+    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+    );
+    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      input,
+    );
+    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      "rule-1",
+    );
+    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      "rule-1",
+    );
   });
 
   it("enables artist community rooms for the authenticated artist", () => {

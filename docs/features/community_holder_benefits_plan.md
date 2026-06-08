@@ -3,6 +3,7 @@ title: "Community Badges, Roles, And Holder Benefits Plan"
 status: in-progress
 owner: "@akoita"
 issue: "https://github.com/akoita/resonate/issues/998"
+follow_up_issue: "https://github.com/akoita/resonate/issues/1126"
 ---
 
 # Community Badges, Roles, And Holder Benefits Plan
@@ -21,7 +22,7 @@ ownership/support proofs before any new NFT-backed community credential.
 
 ## Slice 1: Backend Eligibility Foundation
 
-Status: `in-progress`
+Status: `implemented`
 
 Deliverables:
 
@@ -49,7 +50,7 @@ Deliverables:
 
 ## Slice 2: Artist And Operator Rule Management
 
-Status: `planned`
+Status: `implemented`
 
 Deliverables:
 
@@ -57,6 +58,20 @@ Deliverables:
 - Validation for eligibility and redemption policy JSON.
 - Governance events for benefit rule lifecycle changes.
 - Frontend management surface under artist/community or campaign settings.
+
+Implemented in [#1126](https://github.com/akoita/resonate/issues/1126):
+
+- `GET /community/artists/:artistId/benefit-rules`
+- `POST /community/artists/:artistId/benefit-rules`
+- `POST /community/artists/:artistId/benefit-rules/:ruleId/pause`
+- `POST /community/artists/:artistId/benefit-rules/:ruleId/expire`
+
+Artists/operators can manage rules from the artist Community tab. The first
+supported management templates are artist stem holders, Shows campaign
+supporters, artist-scoped collector badges, and artist-scoped holder roles.
+Responses expose rule status, benefit type, dates, redemption settlement mode,
+and a safe eligibility summary; raw proof details, wallet addresses, and
+listener eligibility internals remain server-side.
 
 ## Slice 3: Listener Benefit Surface
 
@@ -80,3 +95,11 @@ Slice 1 should use focused backend integration coverage:
 - client-provided ownership facts are ignored;
 - redemption is idempotent for single-use policy;
 - campaign support and badge/role grants can unlock benefits.
+
+Slice 2 adds focused coverage for:
+
+- artist-owner authorization for rule list/create/pause/expire;
+- rule validation for ownership, badge, role, and campaign-support policies;
+- campaign-support rules scoped to the managed artist;
+- lifecycle events bridged into analytics with compact payloads only;
+- management DTOs that omit wallet addresses and raw proof data.

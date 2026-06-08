@@ -9619,8 +9619,9 @@ tr[draggable="true"]:hover {
   padding: 0 var(--space-3);
 }
 
-/* Discord bridge management panel */
-.artist-community-discord {
+/* Community management panels */
+.artist-community-discord,
+.artist-community-benefits {
   display: grid;
   gap: var(--space-4);
   padding: var(--space-5);
@@ -9629,14 +9630,16 @@ tr[draggable="true"]:hover {
   background: rgba(124, 92, 255, 0.05);
 }
 
-.artist-community-discord__head {
+.artist-community-discord__head,
+.artist-community-benefits__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.artist-community-discord__head strong {
+.artist-community-discord__head strong,
+.artist-community-benefits__head strong {
   display: block;
   margin-top: 4px;
   font-size: 18px;
@@ -9705,7 +9708,8 @@ tr[draggable="true"]:hover {
   color: var(--color-accent);
 }
 
-.artist-community-discord__field input {
+.artist-community-discord__field input,
+.artist-community-discord__field select {
   width: 100%;
   min-height: 40px;
   padding: 0 var(--space-3);
@@ -9716,7 +9720,8 @@ tr[draggable="true"]:hover {
   font-size: 14px;
 }
 
-.artist-community-discord__field input:focus-visible {
+.artist-community-discord__field input:focus-visible,
+.artist-community-discord__field select:focus-visible {
   outline: none;
   border-color: rgba(124, 92, 255, 0.6);
   box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
@@ -9805,6 +9810,94 @@ tr[draggable="true"]:hover {
   overflow-wrap: anywhere;
 }
 
+.artist-community-benefits__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.artist-community-benefits__form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.artist-community-benefits__actions {
+  display: flex;
+  align-items: end;
+}
+
+.artist-community-benefits__list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.artist-community-benefit-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.artist-community-benefit-rule__status {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 5px;
+  padding: 4px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.16);
+  color: #cabdff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.artist-community-benefit-rule__status--active {
+  border-color: rgba(46, 213, 115, 0.32);
+  background: rgba(46, 213, 115, 0.12);
+  color: #7ce0a2;
+}
+
+.artist-community-benefit-rule__status--paused {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+}
+
+.artist-community-benefit-rule__status--expired {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.artist-community-benefit-rule__status--draft {
+  border-color: rgba(124, 92, 255, 0.3);
+  background: rgba(124, 92, 255, 0.14);
+  color: #cabdff;
+}
+
+.artist-community-benefit-rule strong,
+.artist-community-benefit-rule small {
+  display: block;
+}
+
+.artist-community-benefit-rule small {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.artist-community-benefit-rule__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
 /*
  * Responsive overrides for the artist community tab. These must live AFTER the
  * base rules above: media queries do not add specificity, so an earlier-placed
@@ -9846,6 +9939,16 @@ tr[draggable="true"]:hover {
 
   .artist-community-discord__fields {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artist-community-benefits__grid,
+  .artist-community-benefits__form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .artist-community-benefit-rule {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

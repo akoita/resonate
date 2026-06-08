@@ -1,5 +1,72 @@
 # Security Best Practices Report
 
+## Holder Benefit Rule Management - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/src/modules/community/community.controller.ts`
+- `backend/src/modules/community/community_eligibility.service.ts`
+- `backend/src/tests/analytics_domain_event_bridge.spec.ts`
+- `backend/src/tests/community.controller.http.spec.ts`
+- `backend/src/tests/community.controller.spec.ts`
+- `backend/src/tests/community_eligibility.integration.spec.ts`
+- `web/src/components/community/ArtistCommunityTab.tsx`
+- `web/src/lib/api.ts`
+- `web/src/app/globals.css`
+- related feature catalog and issue-plan docs
+
+### Executive Summary
+
+Issue #1126 adds artist/operator management for community holder benefit rules.
+The scoped review found no Critical or High findings: all new management
+endpoints require JWT authentication and server-side artist/operator
+authorization, rule policy JSON is normalized and scoped server-side, Prisma
+queries remain structured, analytics lifecycle events are compact and
+allowlisted, and management DTOs do not return wallet addresses, raw listener
+proofs, raw policy internals, secrets, or production configuration.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET/POST /community/artists/:artistId/benefit-rules` and pause/expire routes
+  are protected with `AuthGuard("jwt")`, then re-check artist owner/operator
+  authority in `CommunityEligibilityService` using authenticated role context,
+  not privileged-looking user IDs.
+- Managed eligibility policies are limited to ownership, campaign support,
+  badge, role, and bounded compound policies. Artist-scoped badge/role and
+  ownership policies are normalized to the managed artist; track, stem, token,
+  and campaign-support scopes are verified against the managed artist before a
+  rule is stored.
+- New lifecycle analytics only retain `artistId`, `benefitRuleId`,
+  `benefitType`, and `status`; raw eligibility policy JSON is not bridged.
+- Frontend additions use typed API helpers and controlled form inputs. No raw
+  HTML rendering, browser cookie handling, or client-exposed secret variables
+  were introduced.
+- Broad scanner output still includes pre-existing repository patterns such as
+  community moderation model-fallback key naming and analytics JSON parsing in
+  existing warehouse/model paths. None are introduced or expanded by this
+  branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/community backend/src/modules/analytics backend/src/events --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/community backend/src/modules/analytics backend/src/events`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/community backend/src/modules/analytics backend/src/events`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/modules/community/community.controller.ts -n -C 1`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/community/community.controller.ts -n -C 1`
+- `rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/community web/src/lib/api.ts`
+
 ## Artist Action Marketplace Lifecycle Cards - 2026-06-08
 
 ### Scope Reviewed

@@ -2650,6 +2650,66 @@ export type CommunityDiscordBridgeResponse = {
   bridge: CommunityDiscordBridge | null;
 };
 
+export type CommunityBenefitRuleStatus = "draft" | "active" | "paused" | "expired";
+export type CommunityBenefitType =
+  | "room_access"
+  | "discount"
+  | "early_access"
+  | "fee_discount"
+  | "drop_priority"
+  | "ticket_priority"
+  | "remix_eligibility";
+
+export type CommunityBenefitRule = {
+  id: string;
+  artistId: string | null;
+  title: string;
+  description: string | null;
+  benefitType: CommunityBenefitType | string;
+  status: CommunityBenefitRuleStatus | string;
+  eligibility: {
+    type: string;
+    label: string;
+    scope?: string;
+    campaignId?: string | null;
+    minStatus?: string;
+    sourceType?: string | null;
+    scopeType?: string | null;
+    policyCount?: number;
+  };
+  redemption: {
+    singleUse: boolean;
+    settlementType: string;
+  };
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CommunityBenefitRuleInput = {
+  title: string;
+  description?: string;
+  benefitType: CommunityBenefitType;
+  status?: "draft" | "active";
+  eligibilityPolicy: Record<string, unknown>;
+  redemptionPolicy?: Record<string, unknown>;
+  startsAt?: string | null;
+  endsAt?: string | null;
+};
+
+export type CommunityBenefitRulesResponse = {
+  schemaVersion: "community-benefit-rules/v1";
+  artistId: string;
+  rules: CommunityBenefitRule[];
+};
+
+export type CommunityBenefitRuleResponse = {
+  schemaVersion: "community-benefit-rule/v1";
+  artistId: string;
+  rule: CommunityBenefitRule;
+};
+
 export type CommunityMessage = {
   id: string;
   roomId: string;
@@ -2696,6 +2756,53 @@ export async function getArtistDiscordBridge(token: string, artistId: string): P
   return apiRequest<CommunityDiscordBridgeResponse>(
     `/community/artists/${encodeURIComponent(artistId)}/discord/manage`,
     { cache: "no-store" },
+    token,
+  );
+}
+
+export async function listArtistBenefitRules(
+  token: string,
+  artistId: string,
+): Promise<CommunityBenefitRulesResponse> {
+  return apiRequest<CommunityBenefitRulesResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/benefit-rules`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function createArtistBenefitRule(
+  token: string,
+  artistId: string,
+  input: CommunityBenefitRuleInput,
+): Promise<CommunityBenefitRuleResponse> {
+  return apiRequest<CommunityBenefitRuleResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/benefit-rules`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+export async function pauseArtistBenefitRule(
+  token: string,
+  artistId: string,
+  ruleId: string,
+): Promise<CommunityBenefitRuleResponse> {
+  return apiRequest<CommunityBenefitRuleResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/benefit-rules/${encodeURIComponent(ruleId)}/pause`,
+    { method: "POST" },
+    token,
+  );
+}
+
+export async function expireArtistBenefitRule(
+  token: string,
+  artistId: string,
+  ruleId: string,
+): Promise<CommunityBenefitRuleResponse> {
+  return apiRequest<CommunityBenefitRuleResponse>(
+    `/community/artists/${encodeURIComponent(artistId)}/benefit-rules/${encodeURIComponent(ruleId)}/expire`,
+    { method: "POST" },
     token,
   );
 }

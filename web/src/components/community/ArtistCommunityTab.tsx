@@ -3,20 +3,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   connectArtistDiscordBridge,
+  createArtistBenefitRule,
   createCommunityRoomMessage,
   deleteCommunityMessage,
   disconnectArtistDiscordBridge,
   enableArtistCommunity,
+  expireArtistBenefitRule,
   getArtistDiscordBridge,
   joinCommunityRoom,
   leaveCommunityRoom,
   listArtistCommunityRooms,
+  listArtistBenefitRules,
   listCommunityRoomMessages,
   moderateCommunityRoomMember,
+  pauseArtistBenefitRule,
   reportCommunityMessage,
   retryArtistDiscordAttempt,
   testArtistDiscordBridge,
   type ArtistProfile,
+  type CommunityBenefitRule,
+  type CommunityBenefitType,
   type CommunityArtistRoom,
   type CommunityArtistRoomsResponse,
   type CommunityDiscordBridge,
@@ -39,6 +45,25 @@ type RoomActionState = {
   disabled: boolean;
   reason: string;
 };
+
+type BenefitTemplate = "artist_holders" | "campaign_supporters" | "collector_badge" | "holder_role";
+
+const BENEFIT_TYPE_OPTIONS: Array<{ value: CommunityBenefitType; label: string }> = [
+  { value: "room_access", label: "Room access" },
+  { value: "discount", label: "Discount" },
+  { value: "early_access", label: "Early access" },
+  { value: "fee_discount", label: "Fee discount" },
+  { value: "drop_priority", label: "Drop priority" },
+  { value: "ticket_priority", label: "Ticket priority" },
+  { value: "remix_eligibility", label: "Remix eligibility" },
+];
+
+const BENEFIT_TEMPLATE_OPTIONS: Array<{ value: BenefitTemplate; label: string }> = [
+  { value: "artist_holders", label: "Artist holders" },
+  { value: "campaign_supporters", label: "Campaign supporters" },
+  { value: "collector_badge", label: "Collector badge" },
+  { value: "holder_role", label: "Holder role" },
+];
 
 export function sortArtistCommunityRooms(rooms: CommunityArtistRoom[]) {
   const order: Record<string, number> = {
@@ -111,6 +136,14 @@ function roomKindLabel(room: CommunityArtistRoom) {
   return "Community room";
 }
 
+function benefitTypeLabel(type: string) {
+  return BENEFIT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type.replace(/_/g, " ");
+}
+
+function benefitStatusLabel(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
 export function discordBridgeSummary(bridge: CommunityDiscordBridge | null) {
   if (bridge?.status === "connected") {
     return `Connected to ${bridge.serverName ?? "Discord"}${bridge.channelName ? ` / ${bridge.channelName}` : ""}.`;
@@ -158,7 +191,15 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   const [discordChannelName, setDiscordChannelName] = useState("");
   const [discordPublicLinkEnabled, setDiscordPublicLinkEnabled] = useState(false);
   const [discordMirrorEnabled, setDiscordMirrorEnabled] = useState(true);
+  const [benefitRules, setBenefitRules] = useState<CommunityBenefitRule[]>([]);
+  const [benefitTitle, setBenefitTitle] = useState("");
+  const [benefitDescription, setBenefitDescription] = useState("");
+  const [benefitType, setBenefitType] = useState<CommunityBenefitType>("room_access");
+  const [benefitTemplate, setBenefitTemplate] = useState<BenefitTemplate>("artist_holders");
+  const [benefitStatus, setBenefitStatus] = useState<"draft" | "active">("draft");
+  const [benefitCampaignId, setBenefitCampaignId] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [loadingBenefitRules, setLoadingBenefitRules] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
@@ -172,6 +213,10 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   const failedDiscordAttempts = (discordBridge?.recentAttempts ?? [])
     .filter((attempt) => attempt.status === "failed")
     .slice(0, 3);
+  const canCreateBenefitRule = Boolean(
+    benefitTitle.trim() &&
+    (benefitTemplate !== "campaign_supporters" || benefitCampaignId.trim()),
+  );
 
   const loadRooms = useCallback(async () => {
     setLoadingRooms(true);
@@ -217,6 +262,25 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
     }
   }, [artistId, canManage, token]);
 
+  const loadBenefitRules = useCallback(async () => {
+    if (!token || !canManage) {
+      setBenefitRules([]);
+      return;
+    }
+    setLoadingBenefitRules(true);
+    try {
+      const response = await listArtistBenefitRules(token, artistId);
+      setBenefitRules(response.rules);
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not load holder benefit rules.",
+      });
+    } finally {
+      setLoadingBenefitRules(false);
+    }
+  }, [artistId, canManage, token]);
+
   const loadMessages = useCallback(async (roomId: string) => {
     if (!token) return;
     setLoadingMessages(true);
@@ -241,6 +305,10 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
   useEffect(() => {
     void loadDiscordBridge();
   }, [loadDiscordBridge]);
+
+  useEffect(() => {
+    void loadBenefitRules();
+  }, [loadBenefitRules]);
 
   useEffect(() => {
     void recordProductAnalytics(token, "community.artist_tab_viewed", {
@@ -384,6 +452,50 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
         message: response.ok ? "Discord retry completed." : response.attempt.errorReason ?? "Discord retry failed.",
       });
       await loadDiscordBridge();
+    });
+  };
+
+  const handleCreateBenefitRule = () => {
+    if (!token || !canManage) return;
+    void runAction("benefit-create", async () => {
+      const eligibilityPolicy = benefitTemplate === "campaign_supporters"
+        ? { type: "campaign_support", campaignId: benefitCampaignId.trim(), minStatus: "confirmed" }
+        : benefitTemplate === "collector_badge"
+          ? { type: "badge", badgeType: "collector", sourceType: "artist", sourceId: artistId }
+          : benefitTemplate === "holder_role"
+            ? { type: "role", roleType: "holder", scopeType: "artist", scopeId: artistId }
+            : { type: "ownership", assetType: "stem_nft", artistId };
+      const response = await createArtistBenefitRule(token, artistId, {
+        title: benefitTitle.trim(),
+        description: benefitDescription.trim() || undefined,
+        benefitType,
+        status: benefitStatus,
+        eligibilityPolicy,
+        redemptionPolicy: { singleUse: true, settlementType: "none" },
+      });
+      setBenefitRules((current) => [response.rule, ...current]);
+      setBenefitTitle("");
+      setBenefitDescription("");
+      setBenefitCampaignId("");
+      setNotice({ type: "success", message: "Holder benefit rule created." });
+    });
+  };
+
+  const handlePauseBenefitRule = (rule: CommunityBenefitRule) => {
+    if (!token || !canManage) return;
+    void runAction(`benefit-pause-${rule.id}`, async () => {
+      const response = await pauseArtistBenefitRule(token, artistId, rule.id);
+      setBenefitRules((current) => current.map((item) => item.id === rule.id ? response.rule : item));
+      setNotice({ type: "success", message: "Holder benefit rule paused." });
+    });
+  };
+
+  const handleExpireBenefitRule = (rule: CommunityBenefitRule) => {
+    if (!token || !canManage) return;
+    void runAction(`benefit-expire-${rule.id}`, async () => {
+      const response = await expireArtistBenefitRule(token, artistId, rule.id);
+      setBenefitRules((current) => current.map((item) => item.id === rule.id ? response.rule : item));
+      setNotice({ type: "success", message: "Holder benefit rule expired." });
     });
   };
 
@@ -565,6 +677,130 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
               ))}
             </div>
           ) : null}
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <div className="artist-community-benefits">
+          <div className="artist-community-benefits__head">
+            <div>
+              <span className="artist-community-discord__eyebrow">Benefits</span>
+              <strong>Holder benefit rules</strong>
+            </div>
+            <Button variant="ghost" onClick={loadBenefitRules} disabled={loadingBenefitRules}>
+              Refresh
+            </Button>
+          </div>
+
+          <div className="artist-community-benefits__grid">
+            <div className="artist-community-benefits__form">
+              <div className="artist-community-discord__field artist-community-discord__field--wide">
+                <label htmlFor="artist-benefit-title">Title</label>
+                <input
+                  id="artist-benefit-title"
+                  value={benefitTitle}
+                  onChange={(event) => setBenefitTitle(event.target.value)}
+                  placeholder="Holder room access"
+                />
+              </div>
+              <div className="artist-community-discord__field artist-community-discord__field--wide">
+                <label htmlFor="artist-benefit-description">Description</label>
+                <input
+                  id="artist-benefit-description"
+                  value={benefitDescription}
+                  onChange={(event) => setBenefitDescription(event.target.value)}
+                  placeholder="Private perk copy"
+                />
+              </div>
+              <div className="artist-community-discord__field">
+                <label htmlFor="artist-benefit-type">Benefit</label>
+                <select
+                  id="artist-benefit-type"
+                  value={benefitType}
+                  onChange={(event) => setBenefitType(event.target.value as CommunityBenefitType)}
+                >
+                  {BENEFIT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="artist-community-discord__field">
+                <label htmlFor="artist-benefit-template">Audience</label>
+                <select
+                  id="artist-benefit-template"
+                  value={benefitTemplate}
+                  onChange={(event) => setBenefitTemplate(event.target.value as BenefitTemplate)}
+                >
+                  {BENEFIT_TEMPLATE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              {benefitTemplate === "campaign_supporters" ? (
+                <div className="artist-community-discord__field artist-community-discord__field--wide">
+                  <label htmlFor="artist-benefit-campaign">Campaign ID</label>
+                  <input
+                    id="artist-benefit-campaign"
+                    value={benefitCampaignId}
+                    onChange={(event) => setBenefitCampaignId(event.target.value)}
+                    placeholder="show_campaign_id"
+                  />
+                </div>
+              ) : null}
+              <div className="artist-community-discord__field">
+                <label htmlFor="artist-benefit-status">Status</label>
+                <select
+                  id="artist-benefit-status"
+                  value={benefitStatus}
+                  onChange={(event) => setBenefitStatus(event.target.value as "draft" | "active")}
+                >
+                  <option value="draft">Draft</option>
+                  <option value="active">Active</option>
+                </select>
+              </div>
+              <div className="artist-community-benefits__actions">
+                <Button onClick={handleCreateBenefitRule} disabled={!canCreateBenefitRule || busyKey === "benefit-create"}>
+                  Create rule
+                </Button>
+              </div>
+            </div>
+
+            <div className="artist-community-benefits__list" aria-label="Holder benefit rules">
+              {loadingBenefitRules ? (
+                <div className="artist-community__empty">Loading holder benefit rules...</div>
+              ) : benefitRules.length === 0 ? (
+                <div className="artist-community__empty">No holder benefit rules yet</div>
+              ) : (
+                benefitRules.map((rule) => (
+                  <article key={rule.id} className="artist-community-benefit-rule">
+                    <div>
+                      <span className={`artist-community-benefit-rule__status artist-community-benefit-rule__status--${rule.status}`}>
+                        {benefitStatusLabel(rule.status)}
+                      </span>
+                      <strong>{rule.title}</strong>
+                      <small>{benefitTypeLabel(rule.benefitType)} · {rule.eligibility.label}</small>
+                    </div>
+                    <div className="artist-community-benefit-rule__actions">
+                      <Button
+                        variant="ghost"
+                        onClick={() => handlePauseBenefitRule(rule)}
+                        disabled={rule.status === "paused" || rule.status === "expired" || busyKey === `benefit-pause-${rule.id}`}
+                      >
+                        Pause
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => handleExpireBenefitRule(rule)}
+                        disabled={rule.status === "expired" || busyKey === `benefit-expire-${rule.id}`}
+                      >
+                        Expire
+                      </Button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
 

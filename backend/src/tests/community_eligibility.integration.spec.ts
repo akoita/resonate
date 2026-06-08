@@ -117,7 +117,7 @@ describe("CommunityEligibilityService integration", () => {
     await prisma.stem.deleteMany({ where: { id: stemId } });
     await prisma.track.deleteMany({ where: { id: trackId } });
     await prisma.release.deleteMany({ where: { id: releaseId } });
-    await prisma.artist.deleteMany({ where: { id: artistId } });
+    await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.communityVisibilitySettings.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.communityProfile.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.wallet.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
@@ -181,6 +181,155 @@ describe("CommunityEligibilityService integration", () => {
     expect(second.idempotent).toBe(true);
     expect(count).toBe(1);
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets artist owners manage holder benefit rule lifecycle without exposing proof data", async () => {
+    const created = await service.createArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, {
+      title: `${TEST_PREFIX}managed holder room`,
+      description: "Private holder room access",
+      benefitType: "room_access",
+      status: "active",
+      eligibilityPolicy: { type: "ownership", assetType: "stem_nft" },
+      redemptionPolicy: { settlementType: "none", singleUse: true },
+    });
+
+    expect(created).toMatchObject({
+      schemaVersion: "community-benefit-rule/v1",
+      artistId,
+      rule: {
+        title: `${TEST_PREFIX}managed holder room`,
+        benefitType: "room_access",
+        status: "active",
+        eligibility: { type: "ownership", label: "Stem NFT holders", scope: "artist" },
+      },
+      privacy: {
+        listenerEligibility: "server_side_private",
+        rawProofsReturned: false,
+        walletAddressesReturned: false,
+        publicCredentialCreated: false,
+      },
+    });
+    expect(JSON.stringify(created)).not.toContain(walletAddress);
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_created",
+      actorId: artistUserId,
+      artistId,
+      benefitRuleId: created.rule.id,
+      benefitType: "room_access",
+      status: "active",
+    }));
+
+    const listed = await service.listArtistBenefitRules({ userId: artistUserId, role: "artist" }, artistId);
+    expect(listed.rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: created.rule.id, status: "active" }),
+    ]));
+
+    const paused = await service.pauseArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, created.rule.id);
+    expect(paused.rule.status).toBe("paused");
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_paused",
+      benefitRuleId: created.rule.id,
+      status: "paused",
+    }));
+
+    const expired = await service.expireArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, created.rule.id);
+    expect(expired.rule.status).toBe("expired");
+    expect(expired.rule.endsAt).toEqual(expect.any(String));
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_expired",
+      benefitRuleId: created.rule.id,
+      status: "expired",
+    }));
+  });
+
+  it("validates managed campaign support rules against the managed artist", async () => {
+    const campaign = await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}managed_campaign`,
+        slug: `${TEST_PREFIX}managed-campaign`,
+        artistId,
+        artistDisplayName: "Community Artist",
+        title: "Managed Community Show",
+        city: "Lisbon",
+        country: "PT",
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        status: "active",
+      },
+    });
+
+    const created = await service.createArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, {
+      title: `${TEST_PREFIX}managed campaign benefit`,
+      benefitType: "ticket_priority",
+      status: "draft",
+      eligibilityPolicy: { type: "campaign_support", campaignId: campaign.id, minStatus: "confirmed" },
+    });
+
+    expect(created.rule).toMatchObject({
+      title: `${TEST_PREFIX}managed campaign benefit`,
+      status: "draft",
+      eligibility: {
+        type: "campaign_support",
+        campaignId: campaign.id,
+        minStatus: "confirmed",
+      },
+    });
+    await expect(service.createArtistBenefitRule({ userId, role: "listener" }, artistId, {
+      title: `${TEST_PREFIX}unauthorized benefit`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", artistId },
+    })).rejects.toThrow("Community benefit rule management is restricted");
+  });
+
+  it("lets privileged role actors manage artist benefit rules", async () => {
+    const created = await service.createArtistBenefitRule({ userId: `${TEST_PREFIX}operator`, role: "operator" }, artistId, {
+      title: `${TEST_PREFIX}operator holder rule`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", artistId },
+    });
+
+    expect(created.rule).toMatchObject({
+      title: `${TEST_PREFIX}operator holder rule`,
+      status: "draft",
+    });
+  });
+
+  it("rejects unscoped or cross-artist managed benefit policies", async () => {
+    const otherArtistId = `${TEST_PREFIX}other_artist`;
+    await prisma.artist.create({
+      data: {
+        id: otherArtistId,
+        displayName: "Other Community Artist",
+      },
+    });
+    const operator = { userId: `${TEST_PREFIX}operator`, role: "operator" };
+
+    await expect(service.createArtistBenefitRule(operator, otherArtistId, {
+      title: `${TEST_PREFIX}cross stem`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", stemId },
+    })).rejects.toThrow("ownership stemId must belong to the managed artist");
+    await expect(service.createArtistBenefitRule(operator, otherArtistId, {
+      title: `${TEST_PREFIX}cross track`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", trackId },
+    })).rejects.toThrow("ownership trackId must belong to the managed artist");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}bad token`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", tokenId: "not-a-token" },
+    })).rejects.toThrow("ownership tokenId must be a non-negative integer string");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}wild badge`,
+      benefitType: "drop_priority",
+      eligibilityPolicy: { type: "badge", badgeType: "collector", sourceType: "show_campaign" },
+    })).rejects.toThrow("badge sourceType must be artist");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}wild role`,
+      benefitType: "early_access",
+      eligibilityPolicy: { type: "role", roleType: "holder", scopeType: "show_campaign" },
+    })).rejects.toThrow("role scopeType must be artist");
   });
 
   it("derives private supporter badges and roles from confirmed campaign pledges", async () => {

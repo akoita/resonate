@@ -16,6 +16,8 @@ export const COMMUNITY_BENEFIT_TYPES = [
 export type CommunityBenefitType = (typeof COMMUNITY_BENEFIT_TYPES)[number];
 
 const ACTIVE_RULE_STATUSES = ["active"] as const;
+const COMMUNITY_BENEFIT_RULE_STATUSES = ["draft", "active", "paused", "expired"] as const;
+const COMMUNITY_BENEFIT_RULE_CREATE_STATUSES = ["draft", "active"] as const;
 export const ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES: ShowPledgeStatus[] = ["confirmed", "released"];
 export const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES: ShowCampaignStatus[] = [
   "active",
@@ -27,8 +29,26 @@ export const ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES: ShowCampaignStatus[] = [
 ];
 const OWNERSHIP_POLICY_ASSET_TYPES = ["stem_nft"] as const;
 const OWNERSHIP_ARTIST_CREDIT_ROLES = ["main", "primary"] as const;
+const REDEMPTION_SETTLEMENT_TYPES = ["none", "manual", "external"] as const;
+const MAX_COMPOUND_POLICY_DEPTH = 3;
+const MAX_COMPOUND_POLICY_CLAUSES = 5;
 
 type PolicyObject = Record<string, unknown>;
+type CommunityBenefitRuleStatus = (typeof COMMUNITY_BENEFIT_RULE_STATUSES)[number];
+type CommunityManagementActor = {
+  userId: string;
+  role?: string | null;
+};
+type ManagedRuleInput = {
+  title?: unknown;
+  description?: unknown;
+  benefitType?: unknown;
+  eligibilityPolicy?: unknown;
+  redemptionPolicy?: unknown;
+  status?: unknown;
+  startsAt?: unknown;
+  endsAt?: unknown;
+};
 
 type EvaluationResult = {
   eligible: boolean;
@@ -144,6 +164,90 @@ export class CommunityEligibilityService {
     } as never);
 
     return redemptionResponseDto(rule, evaluation, redemption, false);
+  }
+
+  async listArtistBenefitRules(actor: CommunityManagementActor, artistId: string) {
+    await this.requireArtistOperator(actor, artistId);
+    const rules = await prisma.communityBenefitRule.findMany({
+      where: { artistId },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    });
+
+    return {
+      schemaVersion: "community-benefit-rules/v1",
+      artistId,
+      rules: rules.map(managedBenefitRuleDto),
+      privacy: managedRulePrivacyDto(),
+    };
+  }
+
+  async createArtistBenefitRule(actor: CommunityManagementActor, artistId: string, input: ManagedRuleInput) {
+    await this.requireArtistOperator(actor, artistId);
+    const normalized = await normalizeManagedRuleInput(artistId, input);
+
+    const rule = await prisma.communityBenefitRule.create({
+      data: {
+        artistId,
+        title: normalized.title,
+        description: normalized.description,
+        benefitType: normalized.benefitType,
+        eligibilityPolicy: normalized.eligibilityPolicy,
+        redemptionPolicy: normalized.redemptionPolicy,
+        status: normalized.status,
+        startsAt: normalized.startsAt,
+        endsAt: normalized.endsAt,
+      },
+    });
+
+    this.publishBenefitRuleLifecycle("community.benefit_rule_created", actor.userId, rule);
+
+    return {
+      schemaVersion: "community-benefit-rule/v1",
+      artistId,
+      rule: managedBenefitRuleDto(rule),
+      privacy: managedRulePrivacyDto(),
+    };
+  }
+
+  async pauseArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
+    await this.requireArtistOperator(actor, artistId);
+    const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
+    if (!existing) throw new NotFoundException("Community benefit rule not found");
+    if (existing.status === "expired") {
+      throw new BadRequestException("Expired community benefit rules cannot be paused");
+    }
+
+    const rule = await prisma.communityBenefitRule.update({
+      where: { id: ruleId },
+      data: { status: "paused" },
+    });
+    this.publishBenefitRuleLifecycle("community.benefit_rule_paused", actor.userId, rule);
+
+    return {
+      schemaVersion: "community-benefit-rule/v1",
+      artistId,
+      rule: managedBenefitRuleDto(rule),
+      privacy: managedRulePrivacyDto(),
+    };
+  }
+
+  async expireArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
+    await this.requireArtistOperator(actor, artistId);
+    const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
+    if (!existing) throw new NotFoundException("Community benefit rule not found");
+
+    const rule = await prisma.communityBenefitRule.update({
+      where: { id: ruleId },
+      data: { status: "expired", endsAt: existing.endsAt ?? new Date() },
+    });
+    this.publishBenefitRuleLifecycle("community.benefit_rule_expired", actor.userId, rule);
+
+    return {
+      schemaVersion: "community-benefit-rule/v1",
+      artistId,
+      rule: managedBenefitRuleDto(rule),
+      privacy: managedRulePrivacyDto(),
+    };
   }
 
   async syncCampaignSupporterBadges(userId: string, campaignId?: string) {
@@ -491,6 +595,32 @@ export class CommunityEligibilityService {
     });
   }
 
+  private async requireArtistOperator(actor: CommunityManagementActor, artistId: string) {
+    const artist = await prisma.artist.findUnique({ where: { id: artistId } });
+    if (!artist) throw new NotFoundException("Artist not found");
+    if (!(artist.userId === actor.userId || actor.role === "operator" || actor.role === "admin")) {
+      throw new ForbiddenException("Community benefit rule management is restricted to the artist owner or operators");
+    }
+    return artist;
+  }
+
+  private publishBenefitRuleLifecycle(
+    eventName: "community.benefit_rule_created" | "community.benefit_rule_paused" | "community.benefit_rule_expired",
+    actorId: string,
+    rule: { id: string; artistId: string | null; benefitType: string; status: string },
+  ) {
+    this.eventBus.publish({
+      eventName,
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      actorId,
+      artistId: rule.artistId,
+      benefitRuleId: rule.id,
+      benefitType: rule.benefitType,
+      status: rule.status,
+    } as never);
+  }
+
   private async upsertSupporterBadge(
     userId: string,
     pledge: { campaignId: string },
@@ -638,6 +768,45 @@ function benefitDto(
   };
 }
 
+function managedBenefitRuleDto(rule: {
+  id: string;
+  title: string;
+  description: string | null;
+  benefitType: string;
+  artistId: string | null;
+  eligibilityPolicy: Prisma.JsonValue;
+  redemptionPolicy: Prisma.JsonValue | null;
+  status: string;
+  startsAt: Date | null;
+  endsAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: rule.id,
+    artistId: rule.artistId,
+    title: rule.title,
+    description: rule.description,
+    benefitType: rule.benefitType,
+    status: rule.status,
+    eligibility: summarizeEligibilityPolicy(rule.eligibilityPolicy),
+    redemption: summarizeRedemptionPolicy(rule.redemptionPolicy),
+    startsAt: rule.startsAt?.toISOString() ?? null,
+    endsAt: rule.endsAt?.toISOString() ?? null,
+    createdAt: rule.createdAt.toISOString(),
+    updatedAt: rule.updatedAt.toISOString(),
+  };
+}
+
+function managedRulePrivacyDto() {
+  return {
+    listenerEligibility: "server_side_private",
+    rawProofsReturned: false,
+    walletAddressesReturned: false,
+    publicCredentialCreated: false,
+  };
+}
+
 function redemptionResponseDto(
   rule: {
     id: string;
@@ -663,6 +832,351 @@ function redemptionResponseDto(
       redeemedAt: redemption.redeemedAt?.toISOString() ?? null,
     },
   };
+}
+
+async function normalizeManagedRuleInput(artistId: string, input: ManagedRuleInput) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new BadRequestException("Community benefit rule input must be an object");
+  }
+
+  const title = stringInput(input.title, "title", 3, 120);
+  const description = optionalStringInput(input.description, "description", 500) ?? null;
+  const benefitType = communityBenefitTypeInput(input.benefitType);
+  const eligibilityPolicy = await normalizeEligibilityPolicy(input.eligibilityPolicy, artistId);
+  const redemptionPolicy = normalizeRedemptionPolicy(input.redemptionPolicy);
+  const status = createStatusInput(input.status);
+  const startsAt = optionalDateInput(input.startsAt, "startsAt");
+  const endsAt = optionalDateInput(input.endsAt, "endsAt");
+  if (startsAt && endsAt && endsAt <= startsAt) {
+    throw new BadRequestException("endsAt must be after startsAt");
+  }
+
+  return {
+    title,
+    description,
+    benefitType,
+    eligibilityPolicy,
+    redemptionPolicy,
+    status,
+    startsAt,
+    endsAt,
+  };
+}
+
+async function normalizeEligibilityPolicy(
+  rawPolicy: unknown,
+  artistId: string,
+  depth = 0,
+): Promise<Prisma.InputJsonObject> {
+  if (depth > MAX_COMPOUND_POLICY_DEPTH) {
+    throw new BadRequestException("Eligibility policy is too deeply nested");
+  }
+  const policy = inputObject(rawPolicy, "eligibilityPolicy");
+  const type = stringField(policy, "type");
+
+  if (type === "ownership") {
+    const assetType = optionalStringField(policy, "assetType") ?? "stem_nft";
+    if (!OWNERSHIP_POLICY_ASSET_TYPES.includes(assetType as (typeof OWNERSHIP_POLICY_ASSET_TYPES)[number])) {
+      throw new BadRequestException("ownership assetType must be stem_nft");
+    }
+    const policyArtistId = optionalStringField(policy, "artistId");
+    if (policyArtistId && policyArtistId !== artistId) {
+      throw new BadRequestException("ownership artistId must match the managed artist");
+    }
+    const tokenId = optionalStringField(policy, "tokenId");
+    const tokenIdBigInt = tokenId ? bigIntStringInput(tokenId, "ownership tokenId") : undefined;
+    const stemId = optionalStringField(policy, "stemId");
+    const trackId = optionalStringField(policy, "trackId");
+    const chainId = optionalNumberField(policy, "chainId");
+    if (chainId !== undefined && chainId <= 0) {
+      throw new BadRequestException("ownership chainId must be a positive integer");
+    }
+    const scopedArtistId = policyArtistId ?? (!tokenId && !stemId && !trackId ? artistId : undefined);
+    if (!scopedArtistId && !tokenId && !stemId && !trackId) {
+      throw new BadRequestException("ownership policy requires an artist, track, stem, or token scope");
+    }
+    await assertOwnershipPolicyScopedToArtist(artistId, { stemId, trackId, tokenId: tokenIdBigInt, chainId });
+    return jsonObject({
+      type,
+      assetType,
+      artistId: scopedArtistId,
+      trackId,
+      stemId,
+      tokenId,
+      chainId,
+    });
+  }
+
+  if (type === "campaign_support") {
+    const campaignId = stringField(policy, "campaignId");
+    const minStatus = optionalStringField(policy, "minStatus") ?? "confirmed";
+    campaignStatusesAtLeast(minStatus);
+    const campaign = await prisma.showCampaign.findUnique({
+      where: { id: campaignId },
+      select: { artistId: true },
+    });
+    if (!campaign) throw new BadRequestException("campaign_support campaignId was not found");
+    if (campaign.artistId !== artistId) {
+      throw new BadRequestException("campaign_support campaignId must belong to the managed artist");
+    }
+    return jsonObject({ type, campaignId, minStatus });
+  }
+
+  if (type === "badge") {
+    const sourceType = optionalStringField(policy, "sourceType") ?? "artist";
+    const sourceId = optionalStringField(policy, "sourceId") ?? (sourceType === "artist" ? artistId : undefined);
+    if (sourceType !== "artist") {
+      throw new BadRequestException("badge sourceType must be artist for managed benefit rules");
+    }
+    if (sourceId !== artistId) {
+      throw new BadRequestException("badge sourceId must match the managed artist");
+    }
+    return jsonObject({
+      type,
+      badgeType: stringField(policy, "badgeType"),
+      sourceType,
+      sourceId,
+    });
+  }
+
+  if (type === "role") {
+    const scopeType = optionalStringField(policy, "scopeType") ?? "artist";
+    const scopeId = optionalStringField(policy, "scopeId") ?? (scopeType === "artist" ? artistId : undefined);
+    if (scopeType !== "artist") {
+      throw new BadRequestException("role scopeType must be artist for managed benefit rules");
+    }
+    if (scopeId !== artistId) {
+      throw new BadRequestException("role scopeId must match the managed artist");
+    }
+    return jsonObject({
+      type,
+      roleType: stringField(policy, "roleType"),
+      scopeType,
+      scopeId,
+    });
+  }
+
+  if (type === "any_of" || type === "all_of") {
+    const clauses = Array.isArray(policy.policies) ? policy.policies : [];
+    if (clauses.length === 0 || clauses.length > MAX_COMPOUND_POLICY_CLAUSES) {
+      throw new BadRequestException(`Compound eligibility policies require 1-${MAX_COMPOUND_POLICY_CLAUSES} policies`);
+    }
+    const policies = await Promise.all(
+      clauses.map((clause) => normalizeEligibilityPolicy(clause, artistId, depth + 1)),
+    );
+    return jsonObject({ type, policies });
+  }
+
+  throw new BadRequestException("Unsupported managed community benefit eligibility policy type");
+}
+
+async function assertOwnershipPolicyScopedToArtist(
+  artistId: string,
+  scope: { stemId?: string; trackId?: string; tokenId?: bigint; chainId?: number },
+) {
+  const releaseWhere = managedArtistReleaseWhere(artistId);
+  if (scope.stemId) {
+    const stem = await prisma.stem.findFirst({
+      where: {
+        id: scope.stemId,
+        track: { release: releaseWhere },
+      },
+      select: { id: true },
+    });
+    if (!stem) {
+      throw new BadRequestException("ownership stemId must belong to the managed artist");
+    }
+  }
+
+  if (scope.trackId) {
+    const track = await prisma.track.findFirst({
+      where: {
+        id: scope.trackId,
+        release: releaseWhere,
+      },
+      select: { id: true },
+    });
+    if (!track) {
+      throw new BadRequestException("ownership trackId must belong to the managed artist");
+    }
+  }
+
+  if (scope.tokenId !== undefined) {
+    const listing = await prisma.stemListing.findFirst({
+      where: {
+        tokenId: scope.tokenId,
+        ...(scope.chainId !== undefined ? { chainId: scope.chainId } : {}),
+        stem: { track: { release: releaseWhere } },
+      },
+      select: { id: true },
+    });
+    if (!listing) {
+      throw new BadRequestException("ownership tokenId must belong to a listed stem for the managed artist");
+    }
+  }
+}
+
+function managedArtistReleaseWhere(artistId: string): Prisma.ReleaseWhereInput {
+  return {
+    OR: [
+      { artistId },
+      {
+        artistCredits: {
+          some: {
+            artistId,
+            role: { in: [...OWNERSHIP_ARTIST_CREDIT_ROLES] },
+          },
+        },
+      },
+    ],
+  };
+}
+
+function normalizeRedemptionPolicy(rawPolicy: unknown): Prisma.InputJsonObject {
+  if (rawPolicy === undefined || rawPolicy === null || rawPolicy === "") {
+    return jsonObject({ singleUse: true, settlementType: "none" });
+  }
+  const policy = inputObject(rawPolicy, "redemptionPolicy");
+  const settlementType = optionalStringField(policy, "settlementType") ?? "none";
+  if (!REDEMPTION_SETTLEMENT_TYPES.includes(settlementType as (typeof REDEMPTION_SETTLEMENT_TYPES)[number])) {
+    throw new BadRequestException("redemptionPolicy settlementType is unsupported");
+  }
+  const singleUse = typeof policy.singleUse === "boolean" ? policy.singleUse : true;
+  return jsonObject({ singleUse, settlementType });
+}
+
+function summarizeEligibilityPolicy(rawPolicy: Prisma.JsonValue) {
+  try {
+    const policy = asPolicyObject(rawPolicy);
+    const type = stringField(policy, "type");
+    if (type === "ownership") {
+      return {
+        type,
+        label: "Stem NFT holders",
+        scope: optionalStringField(policy, "artistId") ? "artist" : optionalStringField(policy, "trackId") ? "track" : optionalStringField(policy, "stemId") ? "stem" : "token",
+      };
+    }
+    if (type === "campaign_support") {
+      return {
+        type,
+        label: "Campaign supporters",
+        campaignId: optionalStringField(policy, "campaignId") ?? null,
+        minStatus: optionalStringField(policy, "minStatus") ?? "confirmed",
+      };
+    }
+    if (type === "badge") {
+      return {
+        type,
+        label: `${optionalStringField(policy, "badgeType") ?? "Community"} badge`,
+        sourceType: optionalStringField(policy, "sourceType") ?? null,
+      };
+    }
+    if (type === "role") {
+      return {
+        type,
+        label: `${optionalStringField(policy, "roleType") ?? "Community"} role`,
+        scopeType: optionalStringField(policy, "scopeType") ?? null,
+      };
+    }
+    if (type === "any_of" || type === "all_of") {
+      return {
+        type,
+        label: type === "any_of" ? "Any eligible signal" : "All eligible signals",
+        policyCount: Array.isArray(policy.policies) ? policy.policies.length : 0,
+      };
+    }
+    return { type, label: "Custom eligibility" };
+  } catch {
+    return { type: "unknown", label: "Custom eligibility" };
+  }
+}
+
+function summarizeRedemptionPolicy(rawPolicy: Prisma.JsonValue | null) {
+  if (!rawPolicy || typeof rawPolicy !== "object" || Array.isArray(rawPolicy)) {
+    return { singleUse: true, settlementType: "none" };
+  }
+  const policy = rawPolicy as PolicyObject;
+  return {
+    singleUse: typeof policy.singleUse === "boolean" ? policy.singleUse : true,
+    settlementType: typeof policy.settlementType === "string" ? policy.settlementType : "none",
+  };
+}
+
+function stringInput(value: unknown, field: string, minLength: number, maxLength: number) {
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length < minLength || trimmed.length > maxLength) {
+    throw new BadRequestException(`${field} must be ${minLength}-${maxLength} characters`);
+  }
+  return trimmed;
+}
+
+function optionalStringInput(value: unknown, field: string, maxLength: number) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${field} must be a string`);
+  }
+  const trimmed = value.trim();
+  if (trimmed.length > maxLength) {
+    throw new BadRequestException(`${field} must be ${maxLength} characters or fewer`);
+  }
+  return trimmed || undefined;
+}
+
+function communityBenefitTypeInput(value: unknown): CommunityBenefitType {
+  if (typeof value !== "string" || !COMMUNITY_BENEFIT_TYPES.includes(value as CommunityBenefitType)) {
+    throw new BadRequestException("benefitType is unsupported");
+  }
+  return value as CommunityBenefitType;
+}
+
+function createStatusInput(value: unknown): CommunityBenefitRuleStatus {
+  if (value === undefined || value === null || value === "") return "draft";
+  if (
+    typeof value !== "string" ||
+    !COMMUNITY_BENEFIT_RULE_CREATE_STATUSES.includes(value as (typeof COMMUNITY_BENEFIT_RULE_CREATE_STATUSES)[number])
+  ) {
+    throw new BadRequestException("status must be draft or active");
+  }
+  return value as CommunityBenefitRuleStatus;
+}
+
+function optionalDateInput(value: unknown, field: string) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException(`${field} must be an ISO date string`);
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException(`${field} must be an ISO date string`);
+  }
+  return date;
+}
+
+function bigIntStringInput(value: string, field: string) {
+  if (!/^[0-9]+$/.test(value)) {
+    throw new BadRequestException(`${field} must be a non-negative integer string`);
+  }
+  return BigInt(value);
+}
+
+function inputObject(value: unknown, field: string): PolicyObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException(`${field} must be an object`);
+  }
+  return value as PolicyObject;
+}
+
+function jsonObject(fields: Record<string, Prisma.InputJsonValue | undefined>): Prisma.InputJsonObject {
+  const result: Record<string, Prisma.InputJsonValue> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return result as Prisma.InputJsonObject;
 }
 
 function asPolicyObject(policy: Prisma.JsonValue): PolicyObject {
