@@ -70,6 +70,7 @@ type ArtistActionCardType =
   | "reward_early_supporters"
   | "prepare_remix_challenge"
   | "relist_expired_inventory"
+  | "improve_marketplace_conversion"
   | "review_marketplace_pricing";
 type ArtistActionPriority = "high" | "medium" | "low";
 type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
@@ -209,6 +210,7 @@ interface ArtistWorkflowSignals {
   earlySupporterReward?: ArtistSupporterRewardSignal;
   remixCreations: number;
   marketplacePurchaseIntents: number;
+  marketplaceSettledPurchases: number;
   marketplaceInventory: {
     relistableCount: number;
     expiredCount: number;
@@ -1148,7 +1150,34 @@ export class AnalyticsService {
       });
     }
 
-    if (input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount) {
+    if (
+      input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount &&
+      input.workflowSignals.marketplaceSettledPurchases === 0
+    ) {
+      cards.push({
+        id: "improve_marketplace_conversion",
+        type: "improve_marketplace_conversion",
+        title: "Improve marketplace checkout conversion",
+        description: "Buyers are starting checkout, but no settled commerce is visible in this analytics window.",
+        reason: `${input.workflowSignals.marketplacePurchaseIntents} aggregate purchase intents and no settled commerce in the last ${input.days} days.`,
+        priority: input.workflowSignals.marketplacePurchaseIntents >= 25 ? "high" : "medium",
+        confidence: input.workflowSignals.marketplacePurchaseIntents >= 25 ? 0.8 : 0.68,
+        sourceSignal: {
+          category: "marketplace",
+          summary: "Purchase intent without settled commerce",
+          count: input.workflowSignals.marketplacePurchaseIntents,
+        },
+        cta: {
+          label: "Review active listings",
+          href: "/marketplace/manage?status=active",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    } else if (input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount) {
       cards.push({
         id: "review_marketplace_pricing",
         type: "review_marketplace_pricing",
@@ -1186,6 +1215,7 @@ export class AnalyticsService {
     let benefitRuleCreations = 0;
     let remixCreations = 0;
     let marketplacePurchaseIntents = 0;
+    let marketplaceSettledPurchases = 0;
     const marketplaceInventory = {
       relistableCount: 0,
       expiredCount: 0,
@@ -1284,6 +1314,10 @@ export class AnalyticsService {
         marketplacePurchaseIntents += fact.count;
       }
 
+      if (eventName === "commerce.settled") {
+        marketplaceSettledPurchases += fact.count;
+      }
+
       if (eventName === "marketplace.owner_inventory_viewed") {
         marketplaceInventory.relistableCount = Math.max(
           marketplaceInventory.relistableCount,
@@ -1316,6 +1350,7 @@ export class AnalyticsService {
       earlySupporterReward: topSignal(supporterRolesByCampaign) ?? topSignal(supporterRoomJoinsByCampaign),
       remixCreations,
       marketplacePurchaseIntents,
+      marketplaceSettledPurchases,
       marketplaceInventory,
     };
   }

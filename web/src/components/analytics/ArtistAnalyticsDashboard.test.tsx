@@ -105,6 +105,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Workflow planned");
     expect(html).toContain("Relist expired marketplace inventory");
     expect(html).toContain("Open expired listings");
+    expect(html).toContain("Improve marketplace checkout conversion");
+    expect(html).toContain("Review active listings");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -329,6 +331,29 @@ const dashboard: ArtistAnalyticsDashboardData = {
       privacy: {
         aggregateOnly: true,
         thresholdApplied: false,
+      },
+    },
+    {
+      id: "improve_marketplace_conversion",
+      type: "improve_marketplace_conversion",
+      title: "Improve marketplace checkout conversion",
+      description: "Buyers are starting checkout, but no settled commerce is visible in this analytics window.",
+      reason: "5 aggregate purchase intents and no settled commerce in the last 30 days.",
+      priority: "medium",
+      confidence: 0.68,
+      sourceSignal: {
+        category: "marketplace",
+        summary: "Purchase intent without settled commerce",
+        count: 5,
+      },
+      cta: {
+        label: "Review active listings",
+        href: "/marketplace/manage?status=active",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
       },
     },
   ],

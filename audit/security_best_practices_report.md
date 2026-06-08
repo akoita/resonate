@@ -1,5 +1,60 @@
 # Security Best Practices Report
 
+## Marketplace Pricing Optimization Action Cards - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `web/src/lib/api.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard.md`
+- `docs/issue-1134-marketplace-pricing-optimization-action-cards-plan.md`
+
+### Executive Summary
+
+Issue #1134 adds a deterministic `improve_marketplace_conversion` artist
+action card from thresholded aggregate marketplace purchase intent and
+artist-attributed settled-commerce facts. The scoped review found no Critical
+or High findings: the card is server-derived, applies the existing five-signal
+privacy floor to purchase-intent counts, links only to the existing marketplace
+management surface, and does not expose buyer identities, wallet addresses,
+raw checkout attempts, secrets, production URLs, or arbitrary redirect targets.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The card appears only when aggregate `marketplace.purchase_intent` reaches
+  the artist action threshold and no `commerce.settled` facts are visible in
+  the selected analytics window.
+- The existing `review_marketplace_pricing` card remains the fallback when
+  thresholded purchase intent and settled commerce are both visible.
+- The recommendation is advisory; it does not auto-reprice listings, change
+  license tiers, send messages, or mutate marketplace inventory.
+- The action link is a fixed application route,
+  `/marketplace/manage?status=active`.
+- Targeted scanner output found no hardcoded secret, raw SQL, frontend XSS,
+  client-exposed secret, or browser-cookie handling patterns in the touched
+  slice. Existing analytics `JSON.parse` uses in warehouse/report code were not
+  introduced or expanded by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/tests/analytics.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+
 ## Reward Early Supporters Action Card - 2026-06-08
 
 ### Scope Reviewed
