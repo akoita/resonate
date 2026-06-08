@@ -492,6 +492,7 @@ export type ArtistActionCard = {
     | "prepare_marketplace_catalog"
     | "review_show_city_demand"
     | "post_campaign_update"
+    | "create_holder_benefit"
     | "invite_holder_collectors"
     | "prepare_remix_challenge"
     | "relist_expired_inventory"

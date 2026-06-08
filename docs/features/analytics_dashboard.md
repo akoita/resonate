@@ -69,6 +69,9 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   city-demand joins for a Shows campaign meet the five-signal floor.
 - `post_campaign_update` opens `/shows/:campaignIdOrSlug` when aggregate
   supporter update views meet the five-signal floor.
+- `create_holder_benefit` opens `/artist/:id?tab=community` when aggregate
+  holder-room joins meet the five-signal floor and the selected analytics
+  window has no holder-benefit rule creation signal.
 - `invite_holder_collectors` opens `/artist/:id?tab=community` when aggregate
   holder-room joins meet the five-signal floor.
 - `prepare_remix_challenge` appears disabled when aggregate remix creation
@@ -148,9 +151,11 @@ actor ids, wallet addresses, and per-user drilldowns.
 ## Remaining P7 Work
 
 Issue [#1121](https://github.com/akoita/resonate/issues/1121) remains the
-tracking source for broader artist action recommendations. Deferred slices now
-focus on true holder benefit creation, full Remix Studio challenge/contributor
-workflows, deeper pricing optimization beyond checkout-intent review,
-fan-question triage, reward suggestions, and reviewed agent draft actions.
-Those should keep the same privacy boundary: artist-owned data or
+tracking source for broader artist action recommendations. The deterministic
+holder-benefit creation card is implemented as a deep link into the existing
+artist community benefit-rule manager; it does not auto-create benefits or
+inspect private holder proofs. Deferred slices now focus on full Remix Studio
+challenge/contributor workflows, deeper pricing optimization beyond
+checkout-intent review, fan-question triage, reward suggestions, and reviewed
+agent draft actions. Those should keep the same privacy boundary: artist-owned data or
 aggregate-only listener/community signals with explicit thresholds.

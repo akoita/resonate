@@ -65,6 +65,7 @@ type ArtistActionCardType =
   | "prepare_marketplace_catalog"
   | "review_show_city_demand"
   | "post_campaign_update"
+  | "create_holder_benefit"
   | "invite_holder_collectors"
   | "prepare_remix_challenge"
   | "relist_expired_inventory"
@@ -196,6 +197,7 @@ interface ArtistWorkflowSignals {
   topCityDemand?: ArtistCityDemandSignal;
   topCampaignUpdate?: ArtistCampaignUpdateSignal;
   holderRoomJoins: number;
+  benefitRuleCreations: number;
   remixCreations: number;
   marketplacePurchaseIntents: number;
   marketplaceInventory: {
@@ -1001,6 +1003,32 @@ export class AnalyticsService {
     }
 
     if (input.workflowSignals.holderRoomJoins >= this.artistActionMinimumSignalCount) {
+      if (input.workflowSignals.benefitRuleCreations === 0) {
+        cards.push({
+          id: "create_holder_benefit",
+          type: "create_holder_benefit",
+          title: "Create a holder benefit",
+          description: "Turn holder-room momentum into a claimable perk for eligible supporters.",
+          reason: `${input.workflowSignals.holderRoomJoins} aggregate holder-room joins in the last ${input.days} days and no holder-benefit creation signal in this window.`,
+          priority: input.workflowSignals.holderRoomJoins >= 25 ? "high" : "medium",
+          confidence: input.workflowSignals.holderRoomJoins >= 25 ? 0.78 : 0.66,
+          sourceSignal: {
+            category: "community",
+            summary: "Holder-room joins without recent benefit creation",
+            count: input.workflowSignals.holderRoomJoins,
+          },
+          cta: {
+            label: "Create benefit",
+            href: `/artist/${encodeURIComponent(input.artistId)}?tab=community`,
+          },
+          privacy: {
+            aggregateOnly: true,
+            thresholdApplied: true,
+            minimumThreshold: this.artistActionMinimumSignalCount,
+          },
+        });
+      }
+
       cards.push({
         id: "invite_holder_collectors",
         type: "invite_holder_collectors",
@@ -1112,6 +1140,7 @@ export class AnalyticsService {
     const cityDemandByCampaign = new Map<string, ArtistCityDemandSignal>();
     const updateViewsByCampaign = new Map<string, ArtistCampaignUpdateSignal>();
     let holderRoomJoins = 0;
+    let benefitRuleCreations = 0;
     let remixCreations = 0;
     let marketplacePurchaseIntents = 0;
     const marketplaceInventory = {
@@ -1163,6 +1192,10 @@ export class AnalyticsService {
         holderRoomJoins += fact.count;
       }
 
+      if (eventName === "community.benefit_rule_created") {
+        benefitRuleCreations += fact.count;
+      }
+
       if (eventName === "remix.created") {
         remixCreations += fact.count;
       }
@@ -1199,6 +1232,7 @@ export class AnalyticsService {
       topCityDemand: topSignal(cityDemandByCampaign),
       topCampaignUpdate: topSignal(updateViewsByCampaign),
       holderRoomJoins,
+      benefitRuleCreations,
       remixCreations,
       marketplacePurchaseIntents,
       marketplaceInventory,
