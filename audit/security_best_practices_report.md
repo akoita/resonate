@@ -1,5 +1,64 @@
 # Security Best Practices Report
 
+## Artist Action Workflow Cards - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `web/src/lib/api.ts`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard.md`
+- `docs/issue-1121-implementation-plan.md`
+
+### Executive Summary
+
+This #1121 follow-up extends deterministic artist action cards to existing
+Shows, holder-room, and remix analytics signals. The scoped review found no
+Critical or High findings: cards remain server-derived from artist-scoped
+analytics facts, community/listener-derived counts use the existing five-signal
+floor, unavailable Remix Studio challenge creation is represented as a disabled
+card with a reason, and no raw listener identity, wallet addresses, private room
+membership, secrets, production URLs, or arbitrary redirects were introduced.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Newly preserved warehouse dimensions are compact event fields already present
+  in existing Shows/community/remix analytics events: campaign IDs/slugs, city
+  labels, room type, benefit/remix IDs, and source track IDs.
+- Action-card links are fixed application routes (`/shows/:idOrSlug` and
+  `/artist/:id?tab=community`) derived from backend facts, not client-submitted
+  action payloads.
+- `prepare_remix_challenge` is intentionally disabled because Remix Studio
+  challenge creation remains planned; the card avoids implying a live workflow.
+- Broad scanner output still includes pre-existing repository patterns such as
+  local-dev JWT fallbacks, parameterized Prisma raw SQL elsewhere, and
+  controller methods without DTO class pipes. None are introduced or expanded
+  by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`
+
 ## Artist Action Cockpit - 2026-06-08
 
 ### Scope Reviewed

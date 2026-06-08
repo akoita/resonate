@@ -26,12 +26,25 @@ work includes recommended actions, not only metric display.
 - `prepare_marketplace_catalog`: disabled guidance for artists with catalog
   activity but no marketplace-ready releases yet.
 
+## Second Slice Card Types
+
+- `review_show_city_demand`: deep link to the relevant Shows campaign when
+  aggregate city-demand joins meet the five-signal floor.
+- `post_campaign_update`: deep link to the relevant Shows campaign/community
+  update surface when aggregate campaign-update views meet the five-signal
+  floor.
+- `invite_holder_collectors`: deep link to the artist community tab when
+  aggregate holder-room joins meet the five-signal floor.
+- `prepare_remix_challenge`: disabled card when aggregate remix creation exists
+  but the Remix Studio challenge workflow is still planned rather than live.
+
 ## Privacy Boundary
 
 Cards use artist-owned catalog metadata and aggregate counts only. No listener
-identity, wallet address, raw playback history, cohort membership, or
-per-listener action appears in the DTO. Listener-derived cards require at least
-five aggregate events before counts are shown.
+identity, wallet address, raw playback history, cohort membership, private
+community membership, or per-listener action appears in the DTO.
+Listener/community-derived cards require at least five aggregate events before
+counts are shown.
 
 ## Validation
 
