@@ -197,7 +197,9 @@ function ArtistActionCockpit({ artistId, actions }: { artistId: string; actions:
           <article key={action.id} className={`artist-action-card artist-action-card--${action.priority}`}>
             <div className="artist-action-card__topline">
               <span>{action.sourceSignal.category}</span>
-              <strong>{action.priority}</strong>
+              <span className={`artist-action-card__priority artist-action-card__priority--${action.priority}`}>
+                {action.priority} priority
+              </span>
             </div>
             <h3>{action.title}</h3>
             <p>{action.description}</p>
@@ -210,25 +212,32 @@ function ArtistActionCockpit({ artistId, actions }: { artistId: string; actions:
                 <span>artist-owned signal</span>
               )}
             </div>
-            {action.cta.disabled || !action.cta.href ? (
-              <button type="button" className="artist-action-card__cta" disabled title={action.cta.disabledReason}>
-                {action.cta.label}
-              </button>
-            ) : (
-              <Link
-                className="artist-action-card__cta"
-                href={action.cta.href}
-                onClick={() => {
-                  recordProductAnalyticsFromBrowser("artist.action_card_clicked", {
-                    subjectType: "artist",
-                    subjectId: artistId,
-                    payload: actionAnalyticsPayload(action),
-                  });
-                }}
-              >
-                {action.cta.label}
-              </Link>
-            )}
+            <div className="artist-action-card__footer">
+              {action.cta.disabled || !action.cta.href ? (
+                <>
+                  <button type="button" className="artist-action-card__cta" disabled>
+                    {action.cta.label}
+                  </button>
+                  {action.cta.disabledReason ? (
+                    <small className="artist-action-card__cta-note">{action.cta.disabledReason}</small>
+                  ) : null}
+                </>
+              ) : (
+                <Link
+                  className="artist-action-card__cta"
+                  href={action.cta.href}
+                  onClick={() => {
+                    recordProductAnalyticsFromBrowser("artist.action_card_clicked", {
+                      subjectType: "artist",
+                      subjectId: artistId,
+                      payload: actionAnalyticsPayload(action),
+                    });
+                  }}
+                >
+                  {action.cta.label}
+                </Link>
+              )}
+            </div>
           </article>
         ))}
       </div>

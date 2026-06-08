@@ -13884,6 +13884,45 @@ tr[draggable="true"]:hover {
   opacity: 0.55;
 }
 
+.artist-action-card__priority {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-radius-xs);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.artist-action-card__priority--high {
+  border-color: rgba(124, 92, 255, 0.5);
+  background: rgba(124, 92, 255, 0.24);
+  color: var(--r-secondary-soft);
+}
+
+.artist-action-card__priority--medium {
+  border-color: rgba(196, 181, 253, 0.28);
+  background: rgba(196, 181, 253, 0.10);
+  color: var(--r-secondary-soft);
+}
+
+.artist-action-card__priority--low {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--r-on-surface-muted);
+}
+
+.artist-action-card__footer {
+  display: grid;
+  gap: 6px;
+}
+
+.artist-action-card__cta-note {
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 @keyframes pulse-dot-green {
   0%, 100% {
     transform: scale(1);
