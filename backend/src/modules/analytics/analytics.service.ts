@@ -1314,7 +1314,11 @@ export class AnalyticsService {
         marketplacePurchaseIntents += fact.count;
       }
 
-      if (eventName === "commerce.settled") {
+      // Count both settlement event names. Production settlements are emitted as
+      // `payment.settled` (payments-service -> domain event bridge); `commerce.settled`
+      // is the alternate name handled across analytics. Gating on only one would let the
+      // conversion card fire for artists who are actually settling sales.
+      if (this.isPayoutEvent(eventName)) {
         marketplaceSettledPurchases += fact.count;
       }
 
