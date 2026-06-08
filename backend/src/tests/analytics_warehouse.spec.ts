@@ -59,11 +59,24 @@ describe("analytics warehouse export", () => {
             source: "shows-api",
           },
         }),
+        event({
+          eventId: "evt_marketplace_owner_inventory",
+          eventName: "marketplace.owner_inventory_viewed",
+          payload: {
+            artistId: "artist-1",
+            lifecycleStatus: "expired",
+            relistableCount: 3,
+            expiredCount: 3,
+            expiringSoonCount: 1,
+            activeCount: 2,
+            totalListings: 6,
+          },
+        }),
       ],
       { generatedAt },
     );
 
-    expect(result.eventsRaw).toHaveLength(4);
+    expect(result.eventsRaw).toHaveLength(5);
     expect(result.eventsClean).toEqual([
       expect.objectContaining({
         eventId: "evt_play",
@@ -92,7 +105,25 @@ describe("analytics warehouse export", () => {
         geoSource: "campaign_target",
         geoPrecision: "city",
       }),
+      expect.objectContaining({
+        eventId: "evt_marketplace_owner_inventory",
+        eventFamily: "marketplace",
+        artistId: "artist-1",
+      }),
     ]);
+    expect(result.analyticsFacts).toContainEqual(
+      expect.objectContaining({
+        eventId: "evt_marketplace_owner_inventory",
+        dimensions: expect.objectContaining({
+          eventName: "marketplace.owner_inventory_viewed",
+          relistableCount: 3,
+          expiredCount: 3,
+          expiringSoonCount: 1,
+          activeCount: 2,
+          totalListings: 6,
+        }),
+      }),
+    );
     expect(result.analyticsFacts).toEqual([
       expect.objectContaining({ factId: "fact_evt_play", factType: "license_event" }),
       expect.objectContaining({ factId: "fact_evt_payment", factType: "payment_event", canonicalAmountUsd: 2.5 }),
@@ -114,6 +145,18 @@ describe("analytics warehouse export", () => {
           geoCitySlug: "paris",
           geoSource: "campaign_target",
           geoPrecision: "city",
+        }),
+      }),
+      expect.objectContaining({
+        factId: "fact_evt_marketplace_owner_inventory",
+        factType: "marketplace_event",
+        dimensions: expect.objectContaining({
+          eventName: "marketplace.owner_inventory_viewed",
+          relistableCount: 3,
+          expiredCount: 3,
+          expiringSoonCount: 1,
+          activeCount: 2,
+          totalListings: 6,
         }),
       }),
     ]);
@@ -149,6 +192,15 @@ describe("analytics warehouse export", () => {
         artistId: "unknown",
         trackId: "unknown",
         eventCount: 1,
+      }),
+      expect.objectContaining({
+        date: "2026-05-20",
+        eventName: "marketplace.owner_inventory_viewed",
+        artistId: "artist-1",
+        trackId: "unknown",
+        eventCount: 1,
+        playCount: 0,
+        payoutUsd: 0,
       }),
     ]);
     expect(result.analyticsQuarantine).toHaveLength(0);

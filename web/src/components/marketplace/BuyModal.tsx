@@ -72,6 +72,7 @@ type IndexedListingSnapshot = {
 interface BuyModalProps {
   listingId: bigint;
   stemId?: string;
+  artistId?: string;
   listingChainId?: number;
   initialListing?: IndexedListingSnapshot;
   licenseType?: LicenseType;
@@ -87,6 +88,7 @@ const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
 export function BuyModal({
   listingId,
   stemId,
+  artistId,
   listingChainId,
   initialListing,
   licenseType = "personal",
@@ -276,6 +278,7 @@ export function BuyModal({
       payload: {
         listingId: selectedListingId.toString(),
         stemId,
+        artistId,
         licenseType: selectedLicense,
         amount: amount.toString(),
         paymentMethod: "onchain",
@@ -302,6 +305,7 @@ export function BuyModal({
       payload: {
         listingId: selectedListingId?.toString(),
         stemId,
+        artistId,
         licenseType: selectedLicense,
         amount: amount.toString(),
         paymentMethod: "x402",

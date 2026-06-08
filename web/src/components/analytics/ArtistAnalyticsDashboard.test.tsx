@@ -99,6 +99,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Open community");
     expect(html).toContain("Review city demand for a show campaign");
     expect(html).toContain("Workflow planned");
+    expect(html).toContain("Relist expired marketplace inventory");
+    expect(html).toContain("Open expired listings");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -255,6 +257,28 @@ const dashboard: ArtistAnalyticsDashboardData = {
         aggregateOnly: true,
         thresholdApplied: true,
         minimumThreshold: 5,
+      },
+    },
+    {
+      id: "relist_expired_inventory",
+      type: "relist_expired_inventory",
+      title: "Relist expired marketplace inventory",
+      description: "Expired or cancelled listings are ready for the existing relist workflow.",
+      reason: "3 listings can be relisted from your seller workspace.",
+      priority: "medium",
+      confidence: 0.7,
+      sourceSignal: {
+        category: "marketplace",
+        summary: "Relistable owner inventory",
+        count: 3,
+      },
+      cta: {
+        label: "Open expired listings",
+        href: "/marketplace/manage?status=expired",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: false,
       },
     },
   ],

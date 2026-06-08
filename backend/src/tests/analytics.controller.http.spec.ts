@@ -434,6 +434,44 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts marketplace owner inventory product analytics events", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("artist-1", "artist")}`)
+      .send({
+        eventName: "marketplace.owner_inventory_viewed",
+        sessionId: "product-session-marketplace-owner",
+        subjectType: "artist",
+        subjectId: "artist-1",
+        clientEventId: "client-event-marketplace-owner-1",
+        payload: {
+          artistId: "artist-1",
+          statusFilter: "all",
+          activeCount: 2,
+          expiredCount: 3,
+          expiringSoonCount: 1,
+          relistableCount: 3,
+          totalListings: 6,
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "marketplace.owner_inventory_viewed",
+        sessionId: "product-session-marketplace-owner",
+        subjectType: "artist",
+        subjectId: "artist-1",
+        payload: expect.objectContaining({
+          artistId: "artist-1",
+          relistableCount: 3,
+          totalListings: 6,
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
+  });
+
   it("rejects unsupported product analytics event names", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

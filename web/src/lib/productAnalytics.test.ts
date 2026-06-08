@@ -122,6 +122,7 @@ describe("product analytics helpers", () => {
         "community.artist_tab_viewed",
         "community.room_selected",
         "community.room_join_clicked",
+        "marketplace.owner_inventory_viewed",
       ]),
     );
   });

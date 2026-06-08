@@ -1,5 +1,74 @@
 # Security Best Practices Report
 
+## Artist Action Marketplace Lifecycle Cards - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/modules/analytics/analytics_warehouse.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `backend/src/tests/analytics_warehouse.spec.ts`
+- `web/src/app/marketplace/page.tsx`
+- `web/src/app/marketplace/manage/page.tsx`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `web/src/components/marketplace/BuyModal.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/productAnalytics.ts`
+- `web/src/lib/productAnalytics.test.ts`
+- feature catalog, analytics feature page, and #1121 implementation plan docs
+
+### Executive Summary
+
+This #1121 follow-up adds marketplace lifecycle action cards for relisting
+expired inventory and reviewing pricing after aggregate checkout intent. The
+scoped review found no Critical or High findings: buyer marketplace events now
+carry artist attribution from listing metadata, owner inventory analytics emit
+only compact per-artist counts from the protected seller workspace, relist
+cards point to the existing marketplace manager route, purchase-intent cards
+still require the five-signal floor, and no raw buyer identity, seller wallet
+address, private listing payload, secrets, production URLs, or arbitrary
+redirect targets were introduced.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `marketplace.owner_inventory_viewed` is allowlisted as a first-party product
+  analytics event and emits counts such as active, expired, expiring-soon,
+  relistable, and total listings. It does not emit listing IDs or seller
+  wallet addresses.
+- Marketplace purchase-intent cards are derived only from events that include
+  `artistId`; unattributed buyer-side events are not inferred into artist
+  dashboards.
+- Action-card links are fixed application routes:
+  `/marketplace/manage?status=expired` and
+  `/marketplace/manage?status=active`.
+- Broad scanner output still includes pre-existing repository patterns such as
+  local-dev JWT fallbacks, parameterized Prisma raw SQL elsewhere, and
+  controller methods without DTO class pipes. None are introduced or expanded
+  by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`
+
 ## Artist Action Workflow Cards - 2026-06-08
 
 ### Scope Reviewed
