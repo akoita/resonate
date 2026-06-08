@@ -100,6 +100,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Review city demand for a show campaign");
     expect(html).toContain("Create a holder benefit");
     expect(html).toContain("Create benefit");
+    expect(html).toContain("Reward early supporters");
+    expect(html).toContain("Open benefits");
     expect(html).toContain("Workflow planned");
     expect(html).toContain("Relist expired marketplace inventory");
     expect(html).toContain("Open expired listings");
@@ -252,6 +254,29 @@ const dashboard: ArtistAnalyticsDashboardData = {
       },
       cta: {
         label: "Create benefit",
+        href: "/artist/artist-1?tab=community",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "reward_early_supporters:campaign-city",
+      type: "reward_early_supporters",
+      title: "Reward early supporters",
+      description: "Supporter momentum is high enough to create or refresh a thank-you benefit.",
+      reason: "5 aggregate supporter role grants in the last 30 days.",
+      priority: "medium",
+      confidence: 0.64,
+      sourceSignal: {
+        category: "community",
+        summary: "Campaign supporter role grants",
+        count: 5,
+      },
+      cta: {
+        label: "Open benefits",
         href: "/artist/artist-1?tab=community",
       },
       privacy: {

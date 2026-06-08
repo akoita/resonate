@@ -1,5 +1,63 @@
 # Security Best Practices Report
 
+## Reward Early Supporters Action Card - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `web/src/lib/api.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard.md`
+- `docs/issue-1132-reward-early-supporters-action-card-plan.md`
+
+### Executive Summary
+
+Issue #1132 adds a deterministic `reward_early_supporters` artist action card
+from artist-attributed aggregate supporter role grants, with supporter-room
+joins as a fallback signal. The scoped review found no Critical or High
+findings: the card is server-derived, applies the existing five-signal privacy
+floor, deep-links to the existing manual community benefit surface, and does
+not expose supporter identities, wallet addresses, raw support proofs, private
+room membership, secrets, production URLs, or arbitrary redirect targets.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The primary signal is `community.role_granted` where `roleType` is
+  `supporter`; `community.campaign_room_joined` for
+  `show_campaign_supporter` rooms is used only as fallback when role grants are
+  absent.
+- `community.badge_granted` is intentionally not counted to avoid double
+  counting supporter badge and role grants emitted for the same campaign
+  support proof.
+- The action link is a fixed application route,
+  `/artist/:artistId?tab=community`, encoded from the server-side artist
+  dashboard request.
+- The recommendation is advisory; it does not auto-send rewards, messages,
+  payouts, benefits, or campaign updates.
+- Targeted scanner output found no hardcoded secret, raw SQL, frontend XSS,
+  client-exposed secret, or browser-cookie handling patterns in the touched
+  slice. Existing analytics `JSON.parse` uses in warehouse/report code were not
+  introduced or expanded by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/tests/analytics.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+
 ## Holder Benefit Action Card - 2026-06-08
 
 ### Scope Reviewed
