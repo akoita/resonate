@@ -6607,9 +6607,9 @@ a.listener-cohort-detail__action:focus-visible {
 }
 
 .community-benefit-card {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-3);
-  align-content: start;
   min-height: 238px;
   padding: var(--space-4);
   border: 1px solid rgba(255, 255, 255, 0.10);
@@ -6676,6 +6676,7 @@ a.listener-cohort-detail__action:focus-visible {
 .community-benefit-card__actions {
   display: flex;
   align-items: end;
+  margin-top: auto;
 }
 
 .community-benefit-card__actions:empty {
