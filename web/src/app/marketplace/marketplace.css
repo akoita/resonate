@@ -647,7 +647,12 @@
   color: #fcd34d;
 }
 
-.listing-status-pill--expired,
+.listing-status-pill--expired {
+  background: rgba(251, 146, 60, 0.10);
+  border-color: rgba(251, 146, 60, 0.26);
+  color: #fdba74;
+}
+
 .listing-status-pill--cancelled,
 .listing-status-pill--sold,
 .listing-status-pill--stale {
@@ -1586,7 +1591,10 @@
   background: linear-gradient(180deg, #fcd34d, #f59e0b);
   box-shadow: 0 0 14px rgba(245, 158, 11, 0.45);
 }
-.marketplace-manager-row--status-expired::after,
+.marketplace-manager-row--status-expired::after {
+  background: linear-gradient(180deg, #fdba74, #fb923c);
+  box-shadow: 0 0 14px rgba(251, 146, 60, 0.4);
+}
 .marketplace-manager-row--status-cancelled::after,
 .marketplace-manager-row--status-sold::after,
 .marketplace-manager-row--status-stale::after {
