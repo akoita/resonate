@@ -259,7 +259,10 @@ function BenefitGroup({
 }) {
   return (
     <section className="community-benefits__group" aria-label={title}>
-      <h3>{title}</h3>
+      <h3>
+        {title}
+        <span className="community-benefits__group-count">{benefits.length}</span>
+      </h3>
       <div className="community-benefits__grid">
         {benefits.map((benefit) => (
           <BenefitCard

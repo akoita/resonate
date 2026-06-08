@@ -6579,8 +6579,25 @@ a.listener-cohort-detail__action:focus-visible {
 }
 
 .community-benefits__group h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
   font-size: 15px;
+}
+
+.community-benefits__group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .community-benefits__grid {
@@ -6611,7 +6628,8 @@ a.listener-cohort-detail__action:focus-visible {
   border-color: rgba(124, 92, 255, 0.30);
 }
 
-.community-benefit-card--locked {
+.community-benefit-card--locked,
+.community-benefit-card--unavailable {
   border-color: rgba(245, 158, 11, 0.18);
 }
 
