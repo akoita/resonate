@@ -229,6 +229,20 @@ describe("analytics", () => {
         },
       });
       await ingest.ingest({
+        eventName: "community.role_granted",
+        occurredAt: recentAnalyticsIso(35 + index),
+        payload: {
+          artistId: "artist-workflows",
+          campaignId: "campaign-update",
+          roleType: "supporter",
+          scopeType: "show_campaign",
+          scopeId: "campaign-update",
+          sourceType: "campaign_pledge",
+          sourceId: `pledge-${index}`,
+          visibility: "private",
+        },
+      });
+      await ingest.ingest({
         eventName: "remix.created",
         occurredAt: recentAnalyticsIso(40 + index),
         payload: {
@@ -290,6 +304,21 @@ describe("analytics", () => {
       sourceSignal: expect.objectContaining({ category: "community", count: 5 }),
       cta: expect.objectContaining({ href: "/artist/artist-workflows?tab=community" }),
     }));
+    expect(cardsByType.get("reward_early_supporters")).toEqual(expect.objectContaining({
+      id: "reward_early_supporters:campaign-update",
+      reason: expect.stringContaining("5 aggregate supporter role grants"),
+      sourceSignal: expect.objectContaining({
+        category: "community",
+        summary: "Campaign supporter role grants",
+        count: 5,
+      }),
+      cta: expect.objectContaining({ href: "/artist/artist-workflows?tab=community" }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      }),
+    }));
     expect(cardsByType.get("prepare_remix_challenge")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "remix", count: 5 }),
       cta: expect.objectContaining({
@@ -332,6 +361,57 @@ describe("analytics", () => {
 
     expect(cardTypes).not.toContain("create_holder_benefit");
     expect(cardTypes).toContain("invite_holder_collectors");
+  });
+
+  it("derives early-supporter reward cards from supporter room joins without small-group leakage", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "community.campaign_room_joined",
+        occurredAt: recentAnalyticsIso(10 + index),
+        payload: {
+          artistId: "artist-supporter-rewards",
+          campaignId: "campaign-supporter-room",
+          campaignSlug: "supporter-room-signal",
+          roomId: "room-supporter-rewards",
+          roomType: "show_campaign_supporter",
+        },
+      });
+    }
+    for (let index = 0; index < 4; index += 1) {
+      await ingest.ingest({
+        eventName: "community.campaign_room_joined",
+        occurredAt: recentAnalyticsIso(20 + index),
+        payload: {
+          artistId: "artist-supporter-small",
+          campaignId: "campaign-supporter-small",
+          roomId: "room-supporter-small",
+          roomType: "show_campaign_supporter",
+        },
+      });
+    }
+
+    const result = await analytics.getArtistDashboard("artist-supporter-rewards", 30);
+    expect(result.actions).toContainEqual(expect.objectContaining({
+      id: "reward_early_supporters:campaign-supporter-room",
+      reason: expect.stringContaining("5 aggregate supporter-room joins"),
+      sourceSignal: expect.objectContaining({
+        category: "community",
+        summary: "Campaign supporter room joins",
+        count: 5,
+      }),
+      cta: expect.objectContaining({ href: "/artist/artist-supporter-rewards?tab=community" }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      }),
+    }));
+
+    const smallResult = await analytics.getArtistDashboard("artist-supporter-small", 30);
+    expect(smallResult.actions.map((action) => action.type)).not.toContain("reward_early_supporters");
   });
 
   it("derives marketplace lifecycle and pricing action cards from attributed marketplace signals", async () => {

@@ -67,6 +67,7 @@ type ArtistActionCardType =
   | "post_campaign_update"
   | "create_holder_benefit"
   | "invite_holder_collectors"
+  | "reward_early_supporters"
   | "prepare_remix_challenge"
   | "relist_expired_inventory"
   | "review_marketplace_pricing";
@@ -193,11 +194,19 @@ interface ArtistCampaignUpdateSignal {
   count: number;
 }
 
+interface ArtistSupporterRewardSignal {
+  campaignId?: string;
+  campaignSlug?: string;
+  source: "supporter_roles" | "supporter_room_joins";
+  count: number;
+}
+
 interface ArtistWorkflowSignals {
   topCityDemand?: ArtistCityDemandSignal;
   topCampaignUpdate?: ArtistCampaignUpdateSignal;
   holderRoomJoins: number;
   benefitRuleCreations: number;
+  earlySupporterReward?: ArtistSupporterRewardSignal;
   remixCreations: number;
   marketplacePurchaseIntents: number;
   marketplaceInventory: {
@@ -1054,6 +1063,38 @@ export class AnalyticsService {
       });
     }
 
+    const earlySupporters = input.workflowSignals.earlySupporterReward;
+    if (earlySupporters && earlySupporters.count >= this.artistActionMinimumSignalCount) {
+      const signalLabel =
+        earlySupporters.source === "supporter_roles" ? "supporter role grants" : "supporter-room joins";
+      cards.push({
+        id: `reward_early_supporters:${earlySupporters.campaignId ?? earlySupporters.source}`,
+        type: "reward_early_supporters",
+        title: "Reward early supporters",
+        description: "Supporter momentum is high enough to create or refresh a thank-you benefit.",
+        reason: `${earlySupporters.count} aggregate ${signalLabel} in the last ${input.days} days.`,
+        priority: earlySupporters.count >= 25 ? "high" : "medium",
+        confidence: earlySupporters.count >= 25 ? 0.78 : 0.64,
+        sourceSignal: {
+          category: "community",
+          summary:
+            earlySupporters.source === "supporter_roles"
+              ? "Campaign supporter role grants"
+              : "Campaign supporter room joins",
+          count: earlySupporters.count,
+        },
+        cta: {
+          label: "Open benefits",
+          href: `/artist/${encodeURIComponent(input.artistId)}?tab=community`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
     if (input.workflowSignals.remixCreations >= this.artistActionMinimumSignalCount) {
       cards.push({
         id: "prepare_remix_challenge",
@@ -1139,6 +1180,8 @@ export class AnalyticsService {
   private artistWorkflowSignals(facts: AnalyticsFactRow[]): ArtistWorkflowSignals {
     const cityDemandByCampaign = new Map<string, ArtistCityDemandSignal>();
     const updateViewsByCampaign = new Map<string, ArtistCampaignUpdateSignal>();
+    const supporterRolesByCampaign = new Map<string, ArtistSupporterRewardSignal>();
+    const supporterRoomJoinsByCampaign = new Map<string, ArtistSupporterRewardSignal>();
     let holderRoomJoins = 0;
     let benefitRuleCreations = 0;
     let remixCreations = 0;
@@ -1196,6 +1239,43 @@ export class AnalyticsService {
         benefitRuleCreations += fact.count;
       }
 
+      if (
+        eventName === "community.role_granted" &&
+        this.stringDimension(fact.dimensions, "roleType") === "supporter"
+      ) {
+        const campaignId =
+          this.stringDimension(fact.dimensions, "campaignId") ??
+          (this.stringDimension(fact.dimensions, "scopeType") === "show_campaign"
+            ? this.stringDimension(fact.dimensions, "scopeId")
+            : undefined);
+        const key = campaignId ?? "unknown";
+        const existing = supporterRolesByCampaign.get(key) ?? {
+          campaignId,
+          source: "supporter_roles" as const,
+          count: 0,
+        };
+        existing.count += fact.count;
+        supporterRolesByCampaign.set(key, existing);
+      }
+
+      if (
+        eventName === "community.campaign_room_joined" &&
+        this.stringDimension(fact.dimensions, "roomType") === "show_campaign_supporter"
+      ) {
+        const campaignId =
+          this.stringDimension(fact.dimensions, "campaignId") ??
+          (fact.subjectType === "show_campaign" ? fact.subjectId : undefined);
+        const key = campaignId ?? "unknown";
+        const existing = supporterRoomJoinsByCampaign.get(key) ?? {
+          campaignId,
+          campaignSlug: this.stringDimension(fact.dimensions, "campaignSlug"),
+          source: "supporter_room_joins" as const,
+          count: 0,
+        };
+        existing.count += fact.count;
+        supporterRoomJoinsByCampaign.set(key, existing);
+      }
+
       if (eventName === "remix.created") {
         remixCreations += fact.count;
       }
@@ -1233,6 +1313,7 @@ export class AnalyticsService {
       topCampaignUpdate: topSignal(updateViewsByCampaign),
       holderRoomJoins,
       benefitRuleCreations,
+      earlySupporterReward: topSignal(supporterRolesByCampaign) ?? topSignal(supporterRoomJoinsByCampaign),
       remixCreations,
       marketplacePurchaseIntents,
       marketplaceInventory,

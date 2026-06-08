@@ -74,6 +74,9 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   window has no holder-benefit rule creation signal.
 - `invite_holder_collectors` opens `/artist/:id?tab=community` when aggregate
   holder-room joins meet the five-signal floor.
+- `reward_early_supporters` opens `/artist/:id?tab=community` when aggregate
+  supporter role grants, or fallback supporter-room joins, meet the five-signal
+  floor.
 - `prepare_remix_challenge` appears disabled when aggregate remix creation
   activity exists but Remix Studio challenge creation is still planned.
 - `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
@@ -154,8 +157,10 @@ Issue [#1121](https://github.com/akoita/resonate/issues/1121) remains the
 tracking source for broader artist action recommendations. The deterministic
 holder-benefit creation card is implemented as a deep link into the existing
 artist community benefit-rule manager; it does not auto-create benefits or
-inspect private holder proofs. Deferred slices now focus on full Remix Studio
-challenge/contributor workflows, deeper pricing optimization beyond
-checkout-intent review, fan-question triage, reward suggestions, and reviewed
+inspect private holder proofs. The deterministic early-supporter reward card is
+implemented as a deep link into the same manual benefit-rule/community surface;
+it does not auto-send rewards, messages, payouts, or benefits. Deferred slices
+now focus on full Remix Studio challenge/contributor workflows, deeper pricing
+optimization beyond checkout-intent review, fan-question triage, and reviewed
 agent draft actions. Those should keep the same privacy boundary: artist-owned data or
 aggregate-only listener/community signals with explicit thresholds.
