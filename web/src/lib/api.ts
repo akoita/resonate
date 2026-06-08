@@ -489,14 +489,18 @@ export type ArtistActionCard = {
     | "promote_top_track"
     | "review_marketplace_readiness"
     | "start_listener_community"
-    | "prepare_marketplace_catalog";
+    | "prepare_marketplace_catalog"
+    | "review_show_city_demand"
+    | "post_campaign_update"
+    | "invite_holder_collectors"
+    | "prepare_remix_challenge";
   title: string;
   description: string;
   reason: string;
   priority: "high" | "medium" | "low";
   confidence: number;
   sourceSignal: {
-    category: "playback" | "marketplace" | "community" | "catalog";
+    category: "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
     summary: string;
     count?: number;
   };

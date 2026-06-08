@@ -97,6 +97,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Recommended next actions");
     expect(html).toContain("Promote the track listeners already choose");
     expect(html).toContain("Open community");
+    expect(html).toContain("Review city demand for a show campaign");
+    expect(html).toContain("Workflow planned");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -201,6 +203,53 @@ const dashboard: ArtistAnalyticsDashboardData = {
       cta: {
         label: "Open community",
         href: "/artist/artist-1?tab=community",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "review_show_city_demand:campaign-city",
+      type: "review_show_city_demand",
+      title: "Review city demand for a show campaign",
+      description: "Paris, FR has enough aggregate supporter interest to revisit the campaign plan.",
+      reason: "5 aggregate city-interest joins in the last 30 days.",
+      priority: "medium",
+      confidence: 0.66,
+      sourceSignal: {
+        category: "shows",
+        summary: "Show city-demand joins",
+        count: 5,
+      },
+      cta: {
+        label: "Open campaign",
+        href: "/shows/signal-bloom-paris",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "prepare_remix_challenge",
+      type: "prepare_remix_challenge",
+      title: "Prepare a remix challenge brief",
+      description: "Remix activity exists, but the full Remix Studio challenge workflow is still planned.",
+      reason: "5 aggregate remix creations in the last 30 days.",
+      priority: "low",
+      confidence: 0.54,
+      sourceSignal: {
+        category: "remix",
+        summary: "Remix creation events",
+        count: 5,
+      },
+      cta: {
+        label: "Workflow planned",
+        disabled: true,
+        disabledReason: "Remix Studio challenge creation is documented but not implemented yet.",
       },
       privacy: {
         aggregateOnly: true,

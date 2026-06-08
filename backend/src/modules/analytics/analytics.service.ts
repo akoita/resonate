@@ -62,9 +62,13 @@ type ArtistActionCardType =
   | "promote_top_track"
   | "review_marketplace_readiness"
   | "start_listener_community"
-  | "prepare_marketplace_catalog";
+  | "prepare_marketplace_catalog"
+  | "review_show_city_demand"
+  | "post_campaign_update"
+  | "invite_holder_collectors"
+  | "prepare_remix_challenge";
 type ArtistActionPriority = "high" | "medium" | "low";
-type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog";
+type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
 
 interface ArtistActionCard {
   id: string;
@@ -170,6 +174,27 @@ interface AgentQualityAccumulator {
   playlistAdds: number;
   purchases: number;
   sessionDurationsMs: number[];
+}
+
+interface ArtistCityDemandSignal {
+  campaignId: string;
+  campaignSlug?: string;
+  city?: string;
+  country?: string;
+  count: number;
+}
+
+interface ArtistCampaignUpdateSignal {
+  campaignId: string;
+  campaignSlug?: string;
+  count: number;
+}
+
+interface ArtistWorkflowSignals {
+  topCityDemand?: ArtistCityDemandSignal;
+  topCampaignUpdate?: ArtistCampaignUpdateSignal;
+  holderRoomJoins: number;
+  remixCreations: number;
 }
 
 @Injectable()
@@ -316,6 +341,7 @@ export class AnalyticsService {
         totalPlays: summary.totalPlays,
         topTracks,
         protection,
+        workflowSignals: this.artistWorkflowSignals(facts),
         days: data.metadata.timeWindow.days,
       }),
       listenerGrowth: {
@@ -803,6 +829,7 @@ export class AnalyticsService {
     totalPlays: number;
     topTracks: TrackStats[];
     protection: ProtectionMetrics;
+    workflowSignals: ArtistWorkflowSignals;
     days: number;
   }): ArtistActionCard[] {
     const cards: ArtistActionCard[] = [];
@@ -908,7 +935,175 @@ export class AnalyticsService {
       });
     }
 
-    return cards.sort((left, right) => priorityRank(right.priority) - priorityRank(left.priority)).slice(0, 4);
+    const cityDemand = input.workflowSignals.topCityDemand;
+    if (cityDemand && cityDemand.count >= this.artistActionMinimumSignalCount) {
+      const cityLabel = [cityDemand.city, cityDemand.country].filter(Boolean).join(", ") || "a campaign city";
+      cards.push({
+        id: `review_show_city_demand:${cityDemand.campaignId}`,
+        type: "review_show_city_demand",
+        title: "Review city demand for a show campaign",
+        description: `${cityLabel} has enough aggregate supporter interest to revisit the campaign plan.`,
+        reason: `${cityDemand.count} aggregate city-interest joins in the last ${input.days} days.`,
+        priority: cityDemand.count >= 25 ? "high" : "medium",
+        confidence: cityDemand.count >= 25 ? 0.8 : 0.66,
+        sourceSignal: {
+          category: "shows",
+          summary: "Show city-demand joins",
+          count: cityDemand.count,
+        },
+        cta: {
+          label: "Open campaign",
+          href: `/shows/${encodeURIComponent(cityDemand.campaignSlug ?? cityDemand.campaignId)}`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    const campaignUpdate = input.workflowSignals.topCampaignUpdate;
+    if (campaignUpdate && campaignUpdate.count >= this.artistActionMinimumSignalCount) {
+      cards.push({
+        id: `post_campaign_update:${campaignUpdate.campaignId}`,
+        type: "post_campaign_update",
+        title: "Post a campaign update",
+        description: "Supporters are reading campaign updates; keep the room warm with a new note.",
+        reason: `${campaignUpdate.count} aggregate campaign-update views in the last ${input.days} days.`,
+        priority: campaignUpdate.count >= 25 ? "high" : "medium",
+        confidence: campaignUpdate.count >= 25 ? 0.78 : 0.63,
+        sourceSignal: {
+          category: "shows",
+          summary: "Campaign update views",
+          count: campaignUpdate.count,
+        },
+        cta: {
+          label: "Open updates",
+          href: `/shows/${encodeURIComponent(campaignUpdate.campaignSlug ?? campaignUpdate.campaignId)}`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    if (input.workflowSignals.holderRoomJoins >= this.artistActionMinimumSignalCount) {
+      cards.push({
+        id: "invite_holder_collectors",
+        type: "invite_holder_collectors",
+        title: "Invite holders into the collector room",
+        description: "Holder-room activity is high enough to make direct collector engagement worthwhile.",
+        reason: `${input.workflowSignals.holderRoomJoins} aggregate holder-room joins in the last ${input.days} days.`,
+        priority: input.workflowSignals.holderRoomJoins >= 25 ? "high" : "medium",
+        confidence: input.workflowSignals.holderRoomJoins >= 25 ? 0.76 : 0.62,
+        sourceSignal: {
+          category: "community",
+          summary: "Holder-room joins",
+          count: input.workflowSignals.holderRoomJoins,
+        },
+        cta: {
+          label: "Open holder room",
+          href: `/artist/${encodeURIComponent(input.artistId)}?tab=community`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    if (input.workflowSignals.remixCreations >= this.artistActionMinimumSignalCount) {
+      cards.push({
+        id: "prepare_remix_challenge",
+        type: "prepare_remix_challenge",
+        title: "Prepare a remix challenge brief",
+        description: "Remix activity exists, but the full Remix Studio challenge workflow is still planned.",
+        reason: `${input.workflowSignals.remixCreations} aggregate remix creations in the last ${input.days} days.`,
+        priority: "low",
+        confidence: 0.54,
+        sourceSignal: {
+          category: "remix",
+          summary: "Remix creation events",
+          count: input.workflowSignals.remixCreations,
+        },
+        cta: {
+          label: "Workflow planned",
+          disabled: true,
+          disabledReason: "Remix Studio challenge creation is documented but not implemented yet.",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    return cards.sort((left, right) => priorityRank(right.priority) - priorityRank(left.priority)).slice(0, 6);
+  }
+
+  private artistWorkflowSignals(facts: AnalyticsFactRow[]): ArtistWorkflowSignals {
+    const cityDemandByCampaign = new Map<string, ArtistCityDemandSignal>();
+    const updateViewsByCampaign = new Map<string, ArtistCampaignUpdateSignal>();
+    let holderRoomJoins = 0;
+    let remixCreations = 0;
+
+    for (const fact of facts) {
+      const eventName = this.stringDimension(fact.dimensions, "eventName");
+      if (eventName === "community.show_city_interest_joined") {
+        const campaignId =
+          this.stringDimension(fact.dimensions, "campaignId") ??
+          (fact.subjectType === "show_campaign" ? fact.subjectId : undefined);
+        if (campaignId) {
+          const existing = cityDemandByCampaign.get(campaignId) ?? {
+            campaignId,
+            campaignSlug: this.stringDimension(fact.dimensions, "campaignSlug"),
+            city: this.stringDimension(fact.dimensions, "city"),
+            country: this.stringDimension(fact.dimensions, "country"),
+            count: 0,
+          };
+          existing.count += fact.count;
+          cityDemandByCampaign.set(campaignId, existing);
+        }
+      }
+
+      if (eventName === "community.campaign_update_viewed") {
+        const campaignId =
+          this.stringDimension(fact.dimensions, "campaignId") ??
+          (fact.subjectType === "show_campaign" ? fact.subjectId : undefined);
+        if (campaignId) {
+          const existing = updateViewsByCampaign.get(campaignId) ?? {
+            campaignId,
+            campaignSlug: this.stringDimension(fact.dimensions, "campaignSlug"),
+            count: 0,
+          };
+          existing.count += fact.count;
+          updateViewsByCampaign.set(campaignId, existing);
+        }
+      }
+
+      if (
+        eventName === "community.room_joined" &&
+        this.stringDimension(fact.dimensions, "roomType") === "artist_holder"
+      ) {
+        holderRoomJoins += fact.count;
+      }
+
+      if (eventName === "remix.created") {
+        remixCreations += fact.count;
+      }
+    }
+
+    return {
+      topCityDemand: topSignal(cityDemandByCampaign),
+      topCampaignUpdate: topSignal(updateViewsByCampaign),
+      holderRoomJoins,
+      remixCreations,
+    };
   }
 
   private trackTitle(fact: EnrichedAnalyticsFactRow) {
@@ -1107,6 +1302,12 @@ function priorityRank(priority: ArtistActionPriority) {
   if (priority === "high") return 3;
   if (priority === "medium") return 2;
   return 1;
+}
+
+function topSignal<T extends { count: number; campaignId?: string }>(signals: Map<string, T>) {
+  return [...signals.values()].sort(
+    (left, right) => right.count - left.count || (left.campaignId ?? "").localeCompare(right.campaignId ?? ""),
+  )[0];
 }
 
 function titleLabel(value: string) {

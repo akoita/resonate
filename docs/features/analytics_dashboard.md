@@ -65,12 +65,22 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   playback demand reaches the five-signal floor.
 - `prepare_marketplace_catalog` points artists to `/artist/catalog` when no
   marketplace-ready release is visible in the current analytics slice.
+- `review_show_city_demand` opens `/shows/:campaignIdOrSlug` when aggregate
+  city-demand joins for a Shows campaign meet the five-signal floor.
+- `post_campaign_update` opens `/shows/:campaignIdOrSlug` when aggregate
+  supporter update views meet the five-signal floor.
+- `invite_holder_collectors` opens `/artist/:id?tab=community` when aggregate
+  holder-room joins meet the five-signal floor.
+- `prepare_remix_challenge` appears disabled when aggregate remix creation
+  activity exists but Remix Studio challenge creation is still planned.
 
 Each card includes `id`, `type`, `title`, `description`, `reason`, `priority`,
 `confidence`, `sourceSignal`, `cta`, and `privacy`. Listener-derived cards use
 aggregate counts only and apply a minimum signal threshold before surfacing
-counts. The DTO does not include listener identities, wallet addresses, raw play
-history, cohort membership, or per-listener drilldowns.
+counts. Shows, holder-room, and remix-derived cards follow the same aggregate
+floor before counts are surfaced. The DTO does not include listener identities,
+wallet addresses, raw play history, cohort membership, private room membership,
+or per-listener drilldowns.
 
 Action cockpit product analytics are emitted through `POST /analytics/product/event`:
 
@@ -127,9 +137,9 @@ actor ids, wallet addresses, and per-user drilldowns.
 ## Remaining P7 Work
 
 Issue [#1121](https://github.com/akoita/resonate/issues/1121) remains the
-tracking source for broader artist action recommendations. Deferred slices
-include Shows city-demand campaign suggestions, holder benefit prompts, remix
-challenge and contributor workflows, campaign update prompts, pricing
-optimization, fan-question triage, reward suggestions, and reviewed agent draft
-actions. Those should keep the same privacy boundary: artist-owned data or
-aggregate-only listener/community signals with explicit thresholds.
+tracking source for broader artist action recommendations. Deferred slices now
+focus on true holder benefit creation, full Remix Studio challenge/contributor
+workflows, pricing optimization, fan-question triage, reward suggestions, and
+reviewed agent draft actions. Those should keep the same privacy boundary:
+artist-owned data or aggregate-only listener/community signals with explicit
+thresholds.
