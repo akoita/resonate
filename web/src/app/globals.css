@@ -290,6 +290,11 @@ select:focus-visible {
     box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
+.ui-btn:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 2px;
+}
+
 .ui-btn:disabled,
 .ui-btn[aria-disabled="true"] {
   opacity: 0.55;
@@ -14151,11 +14156,17 @@ tr[draggable="true"]:hover {
   font-size: 13px;
   font-weight: 700;
   text-decoration: none;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .artist-action-card__cta:not(:disabled):hover {
   background: rgba(124, 92, 255, 0.26);
   border-color: rgba(124, 92, 255, 0.65);
+}
+
+.artist-action-card__cta:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.6);
+  outline-offset: 2px;
 }
 
 .artist-action-card__cta:disabled {
