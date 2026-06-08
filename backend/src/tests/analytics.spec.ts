@@ -271,6 +271,21 @@ describe("analytics", () => {
       sourceSignal: expect.objectContaining({ category: "shows", count: 5 }),
       cta: expect.objectContaining({ href: "/shows/signal-bloom-lyon" }),
     }));
+    expect(cardsByType.get("create_holder_benefit")).toEqual(expect.objectContaining({
+      title: "Create a holder benefit",
+      reason: expect.stringContaining("no holder-benefit creation signal"),
+      sourceSignal: expect.objectContaining({
+        category: "community",
+        summary: "Holder-room joins without recent benefit creation",
+        count: 5,
+      }),
+      cta: expect.objectContaining({ href: "/artist/artist-workflows?tab=community" }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      }),
+    }));
     expect(cardsByType.get("invite_holder_collectors")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "community", count: 5 }),
       cta: expect.objectContaining({ href: "/artist/artist-workflows?tab=community" }),
@@ -283,6 +298,40 @@ describe("analytics", () => {
       }),
     }));
     expect(JSON.stringify(result.actions)).not.toContain("campaign-small");
+  });
+
+  it("does not repeat holder-benefit creation cards when benefit creation is already visible", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "community.room_joined",
+        occurredAt: recentAnalyticsIso(10 + index),
+        payload: {
+          artistId: "artist-holder-benefit-active",
+          roomId: "room-holder-active",
+          roomType: "artist_holder",
+        },
+      });
+    }
+
+    await ingest.ingest({
+      eventName: "community.benefit_rule_created",
+      occurredAt: recentAnalyticsIso(20),
+      payload: {
+        artistId: "artist-holder-benefit-active",
+        benefitRuleId: "benefit-rule-active",
+        benefitType: "room_access",
+        status: "active",
+      },
+    });
+
+    const result = await analytics.getArtistDashboard("artist-holder-benefit-active", 30);
+    const cardTypes = result.actions.map((action) => action.type);
+
+    expect(cardTypes).not.toContain("create_holder_benefit");
+    expect(cardTypes).toContain("invite_holder_collectors");
   });
 
   it("derives marketplace lifecycle and pricing action cards from attributed marketplace signals", async () => {

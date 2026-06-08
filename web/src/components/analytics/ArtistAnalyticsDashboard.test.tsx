@@ -98,6 +98,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Promote the track listeners already choose");
     expect(html).toContain("Open community");
     expect(html).toContain("Review city demand for a show campaign");
+    expect(html).toContain("Create a holder benefit");
+    expect(html).toContain("Create benefit");
     expect(html).toContain("Workflow planned");
     expect(html).toContain("Relist expired marketplace inventory");
     expect(html).toContain("Open expired listings");
@@ -228,6 +230,29 @@ const dashboard: ArtistAnalyticsDashboardData = {
       cta: {
         label: "Open campaign",
         href: "/shows/signal-bloom-paris",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "create_holder_benefit",
+      type: "create_holder_benefit",
+      title: "Create a holder benefit",
+      description: "Turn holder-room momentum into a claimable perk for eligible supporters.",
+      reason: "5 aggregate holder-room joins in the last 30 days and no holder-benefit creation signal in this window.",
+      priority: "medium",
+      confidence: 0.66,
+      sourceSignal: {
+        category: "community",
+        summary: "Holder-room joins without recent benefit creation",
+        count: 5,
+      },
+      cta: {
+        label: "Create benefit",
+        href: "/artist/artist-1?tab=community",
       },
       privacy: {
         aggregateOnly: true,

@@ -1,5 +1,58 @@
 # Security Best Practices Report
 
+## Holder Benefit Action Card - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `web/src/lib/api.ts`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `docs/features/README.md`
+- `docs/features/analytics_dashboard.md`
+- `docs/issue-1121-holder-benefit-action-card-plan.md`
+
+### Executive Summary
+
+This #1121 follow-up adds a deterministic `create_holder_benefit` artist
+action card from aggregate holder-room joins. The scoped review found no
+Critical or High findings: the card is server-derived, applies the existing
+five-signal privacy floor, suppresses repeated benefit-creation nudges when a
+benefit-rule creation event is visible in the analytics window, and does not
+expose holder identities, wallet addresses, private proof details, secrets,
+production URLs, or arbitrary redirect targets.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The card uses aggregate `community.room_joined` facts for `artist_holder`
+  rooms and compact `community.benefit_rule_created` lifecycle facts only.
+- The action link is a fixed application route,
+  `/artist/:artistId?tab=community`, encoded from the server-side artist
+  dashboard request.
+- The recommendation is advisory; it does not auto-create benefits or bypass
+  the existing artist/operator benefit-rule authorization path.
+- Targeted scanner output found no hardcoded secret, raw SQL, frontend XSS,
+  client-exposed secret, or browser-cookie handling patterns in the touched
+  slice. Existing analytics `JSON.parse` uses in warehouse/report code were not
+  introduced or expanded by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/tests/analytics.spec.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/tests/analytics.spec.ts`
+- `rg 'dangerouslySetInnerHTML|innerHTML|NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/lib/api.ts web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+
 ## Holder Benefit Rule Management - 2026-06-08
 
 ### Scope Reviewed
