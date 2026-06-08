@@ -774,7 +774,9 @@ export function ArtistCommunityTab({ artistId, artist }: ArtistCommunityTabProps
                 benefitRules.map((rule) => (
                   <article key={rule.id} className="artist-community-benefit-rule">
                     <div>
-                      <span>{benefitStatusLabel(rule.status)}</span>
+                      <span className={`artist-community-benefit-rule__status artist-community-benefit-rule__status--${rule.status}`}>
+                        {benefitStatusLabel(rule.status)}
+                      </span>
                       <strong>{rule.title}</strong>
                       <small>{benefitTypeLabel(rule.benefitType)} · {rule.eligibility.label}</small>
                     </div>

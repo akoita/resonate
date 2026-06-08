@@ -9844,16 +9844,41 @@ tr[draggable="true"]:hover {
   background: rgba(0, 0, 0, 0.16);
 }
 
-.artist-community-benefit-rule span {
+.artist-community-benefit-rule__status {
   display: inline-flex;
   width: fit-content;
   margin-bottom: 5px;
   padding: 4px 9px;
+  border: 1px solid transparent;
   border-radius: 999px;
   background: rgba(124, 92, 255, 0.16);
   color: #cabdff;
   font-size: 12px;
   font-weight: 800;
+}
+
+.artist-community-benefit-rule__status--active {
+  border-color: rgba(46, 213, 115, 0.32);
+  background: rgba(46, 213, 115, 0.12);
+  color: #7ce0a2;
+}
+
+.artist-community-benefit-rule__status--paused {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
+}
+
+.artist-community-benefit-rule__status--expired {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.artist-community-benefit-rule__status--draft {
+  border-color: rgba(124, 92, 255, 0.3);
+  background: rgba(124, 92, 255, 0.14);
+  color: #cabdff;
 }
 
 .artist-community-benefit-rule strong,
