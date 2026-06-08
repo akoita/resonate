@@ -2,6 +2,7 @@
 
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
+import CommunityBenefitsPanel from "../../components/community/CommunityBenefitsPanel";
 import ListenerCohortsPanel from "../../components/settings/ListenerCohortsPanel";
 import { useToast } from "../../components/ui/Toast";
 
@@ -27,6 +28,10 @@ export default function CommunityPage() {
             Privacy-safe groups shaped by shared music signals. Join a cohort and pick up the conversation.
           </p>
         </header>
+
+        <section className="community-panel" aria-live="polite">
+          <CommunityBenefitsPanel token={token} addToast={addToast} />
+        </section>
 
         <section className="community-panel" aria-live="polite">
           <ListenerCohortsPanel token={token} addToast={addToast} />

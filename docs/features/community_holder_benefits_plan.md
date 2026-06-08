@@ -75,7 +75,7 @@ listener eligibility internals remain server-side.
 
 ## Slice 3: Listener Benefit Surface
 
-Status: `planned`
+Status: `partial`
 
 Deliverables:
 
@@ -83,6 +83,23 @@ Deliverables:
 - Profile showcase badges that respect `showTasteBadges` and `showOwnedItems`.
 - Public profile redaction for private badges and private ownership proofs.
 - Empty and locked states that explain value without exposing sensitive facts.
+
+Implemented in [#1128](https://github.com/akoita/resonate/issues/1128):
+
+- `/community` now includes a listener "Unlocked benefits" panel backed by
+  `GET /community/benefits/me`.
+- Claimable, claimed, locked, unavailable, loading, empty, and error states are
+  represented with privacy-safe copy.
+- Eligible listeners can redeem claimable benefits through
+  `POST /community/benefits/:benefitRuleId/redeem`.
+- The UI shows profile-level wallet/ownership display settings, but does not
+  expose raw proof reasons, wallet addresses, or ownership details.
+
+Remaining:
+
+- Public profile benefit showcase badges remain deferred until the publication
+  rules for public badges and ownership display are implemented.
+- New NFT-backed credentials and on-chain settlement remain out of scope for M2.
 
 ## Verification
 
@@ -103,3 +120,10 @@ Slice 2 adds focused coverage for:
 - campaign-support rules scoped to the managed artist;
 - lifecycle events bridged into analytics with compact payloads only;
 - management DTOs that omit wallet addresses and raw proof data.
+
+Slice 3 adds focused frontend coverage for:
+
+- listener benefit grouping and status copy;
+- no raw proof reason leakage in rendered cards;
+- empty, claimable, redeemed, locked, and unavailable states;
+- redemption UI state updates through the typed API wrapper.
