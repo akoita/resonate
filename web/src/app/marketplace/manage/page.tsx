@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatUnits, type Address } from "viem";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -23,6 +23,7 @@ import {
   type MarketplaceListingAsset,
 } from "../../../lib/listingPricing";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
+import { recordProductAnalytics } from "../../../lib/productAnalytics";
 import "../marketplace.css";
 
 type ListingLifecycleStatus =
@@ -56,6 +57,7 @@ type OwnerListing = {
     type: string;
     track?: string;
     artist?: string;
+    artistId?: string;
     artworkUrl?: string;
     releaseId?: string;
   } | null;
@@ -159,6 +161,7 @@ export default function MarketplaceListingManagerPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [batchProgress, setBatchProgress] = useState<{ current: number; total: number; title: string } | null>(null);
+  const lastInventoryAnalyticsKeyRef = useRef<string | null>(null);
 
   const marketplaceAssets = useMemo(
     () => paymentAssets.filter((asset) => {
@@ -248,6 +251,61 @@ export default function MarketplaceListingManagerPage() {
   useEffect(() => {
     void fetchListings();
   }, [fetchListings]);
+
+  useEffect(() => {
+    if (loading || !token || listings.length === 0) return;
+
+    const byArtist = new Map<string, {
+      activeCount: number;
+      expiredCount: number;
+      expiringSoonCount: number;
+      relistableCount: number;
+      totalListings: number;
+    }>();
+
+    for (const listing of listings) {
+      const artistId = listing.stem?.artistId;
+      if (!artistId) continue;
+      const summary = byArtist.get(artistId) ?? {
+        activeCount: 0,
+        expiredCount: 0,
+        expiringSoonCount: 0,
+        relistableCount: 0,
+        totalListings: 0,
+      };
+      summary.totalListings += 1;
+      if (listing.lifecycleStatus === "active") summary.activeCount += 1;
+      if (listing.lifecycleStatus === "expired") summary.expiredCount += 1;
+      if (listing.lifecycleStatus === "expiring_soon") summary.expiringSoonCount += 1;
+      if (listing.relistable) summary.relistableCount += 1;
+      byArtist.set(artistId, summary);
+    }
+
+    const analyticsKey = JSON.stringify({
+      status,
+      sellerAddress,
+      artists: [...byArtist.entries()].sort(([left], [right]) => left.localeCompare(right)),
+    });
+    if (lastInventoryAnalyticsKeyRef.current === analyticsKey) return;
+    lastInventoryAnalyticsKeyRef.current = analyticsKey;
+
+    for (const [artistId, summary] of byArtist) {
+      void recordProductAnalytics(token, "marketplace.owner_inventory_viewed", {
+        source: "marketplace_manager",
+        subjectType: "artist",
+        subjectId: artistId,
+        payload: {
+          artistId,
+          statusFilter: status,
+          activeCount: summary.activeCount,
+          expiredCount: summary.expiredCount,
+          expiringSoonCount: summary.expiringSoonCount,
+          relistableCount: summary.relistableCount,
+          totalListings: summary.totalListings,
+        },
+      });
+    }
+  }, [listings, loading, sellerAddress, status, token]);
 
   const openRelist = (nextListings: OwnerListing[]) => {
     const [firstListing] = nextListings;

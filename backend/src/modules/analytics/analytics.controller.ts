@@ -42,6 +42,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "marketplace.listing_viewed",
   "marketplace.checkout_started",
   "marketplace.purchase_intent",
+  "marketplace.owner_inventory_viewed",
   "artist.upload_started",
   "artist.upload_step_completed",
   "artist.catalog_viewed",

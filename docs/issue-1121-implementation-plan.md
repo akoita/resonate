@@ -38,13 +38,24 @@ work includes recommended actions, not only metric display.
 - `prepare_remix_challenge`: disabled card when aggregate remix creation exists
   but the Remix Studio challenge workflow is still planned rather than live.
 
+## Third Slice Card Types
+
+- `relist_expired_inventory`: deep link to
+  `/marketplace/manage?status=expired` when owner-visible marketplace inventory
+  reports expired or cancelled listings that can use the existing relist flow.
+- `review_marketplace_pricing`: deep link to
+  `/marketplace/manage?status=active` when artist-attributed marketplace
+  purchase intent reaches the five-signal floor.
+
 ## Privacy Boundary
 
 Cards use artist-owned catalog metadata and aggregate counts only. No listener
 identity, wallet address, raw playback history, cohort membership, private
 community membership, or per-listener action appears in the DTO.
-Listener/community-derived cards require at least five aggregate events before
-counts are shown.
+Listener/community/purchase-intent cards require at least five aggregate events
+before counts are shown. Owner-inventory cards use counts from the protected
+seller workspace and do not expose seller wallet addresses in the artist
+analytics DTO.
 
 ## Validation
 

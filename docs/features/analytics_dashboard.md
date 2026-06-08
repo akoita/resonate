@@ -73,22 +73,33 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   holder-room joins meet the five-signal floor.
 - `prepare_remix_challenge` appears disabled when aggregate remix creation
   activity exists but Remix Studio challenge creation is still planned.
+- `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
+  owner-visible marketplace inventory reports expired or cancelled listings
+  that can use the existing relist workflow.
+- `review_marketplace_pricing` opens `/marketplace/manage?status=active` when
+  attributed aggregate marketplace purchase intent reaches the five-signal
+  floor.
 
 Each card includes `id`, `type`, `title`, `description`, `reason`, `priority`,
 `confidence`, `sourceSignal`, `cta`, and `privacy`. Listener-derived cards use
 aggregate counts only and apply a minimum signal threshold before surfacing
-counts. Shows, holder-room, and remix-derived cards follow the same aggregate
-floor before counts are surfaced. The DTO does not include listener identities,
-wallet addresses, raw play history, cohort membership, private room membership,
-or per-listener drilldowns.
+counts. Shows, holder-room, remix, and purchase-intent cards follow the same
+aggregate floor before counts are surfaced. Marketplace owner-inventory cards
+use artist-owned seller workspace summaries and do not expose seller wallet
+addresses in the artist analytics DTO. The DTO does not include listener
+identities, wallet addresses, raw play history, cohort membership, private room
+membership, or per-listener drilldowns.
 
 Action cockpit product analytics are emitted through `POST /analytics/product/event`:
 
 - `artist.action_card_impression`
 - `artist.action_card_clicked`
+- `marketplace.owner_inventory_viewed`
 
 The payload is intentionally compact: `cardId`, `cardType`, `priority`,
-`sourceCategory`, and `disabled`.
+`sourceCategory`, and `disabled` for action-card events; artist-scoped listing
+inventory events contain counts such as `activeCount`, `expiredCount`,
+`expiringSoonCount`, `relistableCount`, and `totalListings`.
 
 Artist dashboard authorization and default rollups remain manager/owner scoped
 through the compatibility `artistId` dimension. Catalog metadata enrichment now
@@ -139,7 +150,7 @@ actor ids, wallet addresses, and per-user drilldowns.
 Issue [#1121](https://github.com/akoita/resonate/issues/1121) remains the
 tracking source for broader artist action recommendations. Deferred slices now
 focus on true holder benefit creation, full Remix Studio challenge/contributor
-workflows, pricing optimization, fan-question triage, reward suggestions, and
-reviewed agent draft actions. Those should keep the same privacy boundary:
-artist-owned data or aggregate-only listener/community signals with explicit
-thresholds.
+workflows, deeper pricing optimization beyond checkout-intent review,
+fan-question triage, reward suggestions, and reviewed agent draft actions.
+Those should keep the same privacy boundary: artist-owned data or
+aggregate-only listener/community signals with explicit thresholds.

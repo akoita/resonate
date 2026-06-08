@@ -493,7 +493,9 @@ export type ArtistActionCard = {
     | "review_show_city_demand"
     | "post_campaign_update"
     | "invite_holder_collectors"
-    | "prepare_remix_challenge";
+    | "prepare_remix_challenge"
+    | "relist_expired_inventory"
+    | "review_marketplace_pricing";
   title: string;
   description: string;
   reason: string;

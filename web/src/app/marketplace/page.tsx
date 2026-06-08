@@ -149,6 +149,7 @@ export default function MarketplacePage() {
     const [buyModalListing, setBuyModalListing] = useState<{
         listingId: string;
         stemId: string;
+        artistId?: string;
         chainId: number;
         licenseType: LicenseType;
         listing: ListingData;
@@ -457,6 +458,7 @@ export default function MarketplacePage() {
             payload: {
                 listingId: listing.listingId,
                 stemId: listing.stem?.id,
+                artistId: listing.stem?.artistId,
                 releaseId: listing.stem?.releaseId,
                 licenseType: listing.licenseType ?? "personal",
                 surface: "marketplace",
@@ -470,6 +472,7 @@ export default function MarketplacePage() {
             payload: {
                 listingId: listing.listingId,
                 stemId: listing.stem?.id,
+                artistId: listing.stem?.artistId,
                 licenseType: listing.licenseType ?? "personal",
                 surface: "marketplace",
             },
@@ -484,6 +487,7 @@ export default function MarketplacePage() {
                     resultType: "marketplace_listing",
                     listingId: listing.listingId,
                     stemId: listing.stem?.id,
+                    artistId: listing.stem?.artistId,
                     resultRank: filteredListings.findIndex((item) => item.listingId === listing.listingId) + 1,
                 },
             });
@@ -491,6 +495,7 @@ export default function MarketplacePage() {
         setBuyModalListing({
             listingId: listing.listingId,
             stemId: listing.stem?.id || "",
+            artistId: listing.stem?.artistId,
             chainId: listing.chainId,
             licenseType: listing.licenseType ?? "personal",
             listing,
@@ -818,6 +823,7 @@ export default function MarketplacePage() {
                 <BuyModal
                     listingId={BigInt(buyModalListing.listingId)}
                     stemId={buyModalListing.stemId}
+                    artistId={buyModalListing.artistId}
                     listingChainId={buyModalListing.chainId}
                     licenseType={buyModalListing.licenseType}
                     initialListing={buyModalListing.listing}

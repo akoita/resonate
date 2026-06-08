@@ -66,7 +66,9 @@ type ArtistActionCardType =
   | "review_show_city_demand"
   | "post_campaign_update"
   | "invite_holder_collectors"
-  | "prepare_remix_challenge";
+  | "prepare_remix_challenge"
+  | "relist_expired_inventory"
+  | "review_marketplace_pricing";
 type ArtistActionPriority = "high" | "medium" | "low";
 type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
 
@@ -195,6 +197,14 @@ interface ArtistWorkflowSignals {
   topCampaignUpdate?: ArtistCampaignUpdateSignal;
   holderRoomJoins: number;
   remixCreations: number;
+  marketplacePurchaseIntents: number;
+  marketplaceInventory: {
+    relistableCount: number;
+    expiredCount: number;
+    expiringSoonCount: number;
+    activeCount: number;
+    totalListings: number;
+  };
 }
 
 @Injectable()
@@ -1043,7 +1053,59 @@ export class AnalyticsService {
       });
     }
 
-    return cards.sort((left, right) => priorityRank(right.priority) - priorityRank(left.priority)).slice(0, 6);
+    if (input.workflowSignals.marketplaceInventory.relistableCount > 0) {
+      const relistableCount = input.workflowSignals.marketplaceInventory.relistableCount;
+      cards.push({
+        id: "relist_expired_inventory",
+        type: "relist_expired_inventory",
+        title: "Relist expired marketplace inventory",
+        description: "Expired or cancelled listings are ready for the existing relist workflow.",
+        reason: `${relistableCount} listing${relistableCount === 1 ? "" : "s"} can be relisted from your seller workspace.`,
+        priority: relistableCount >= 5 ? "high" : "medium",
+        confidence: relistableCount >= 5 ? 0.82 : 0.7,
+        sourceSignal: {
+          category: "marketplace",
+          summary: "Relistable owner inventory",
+          count: relistableCount,
+        },
+        cta: {
+          label: "Open expired listings",
+          href: "/marketplace/manage?status=expired",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: false,
+        },
+      });
+    }
+
+    if (input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount) {
+      cards.push({
+        id: "review_marketplace_pricing",
+        type: "review_marketplace_pricing",
+        title: "Review marketplace pricing",
+        description: "Checkout intent is high enough to revisit price, license tier coverage, or promotion timing.",
+        reason: `${input.workflowSignals.marketplacePurchaseIntents} aggregate purchase intents in the last ${input.days} days.`,
+        priority: input.workflowSignals.marketplacePurchaseIntents >= 25 ? "high" : "medium",
+        confidence: input.workflowSignals.marketplacePurchaseIntents >= 25 ? 0.78 : 0.64,
+        sourceSignal: {
+          category: "marketplace",
+          summary: "Marketplace purchase intent",
+          count: input.workflowSignals.marketplacePurchaseIntents,
+        },
+        cta: {
+          label: "Manage active listings",
+          href: "/marketplace/manage?status=active",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    return cards.sort((left, right) => priorityRank(right.priority) - priorityRank(left.priority)).slice(0, 8);
   }
 
   private artistWorkflowSignals(facts: AnalyticsFactRow[]): ArtistWorkflowSignals {
@@ -1051,6 +1113,14 @@ export class AnalyticsService {
     const updateViewsByCampaign = new Map<string, ArtistCampaignUpdateSignal>();
     let holderRoomJoins = 0;
     let remixCreations = 0;
+    let marketplacePurchaseIntents = 0;
+    const marketplaceInventory = {
+      relistableCount: 0,
+      expiredCount: 0,
+      expiringSoonCount: 0,
+      activeCount: 0,
+      totalListings: 0,
+    };
 
     for (const fact of facts) {
       const eventName = this.stringDimension(fact.dimensions, "eventName");
@@ -1096,6 +1166,33 @@ export class AnalyticsService {
       if (eventName === "remix.created") {
         remixCreations += fact.count;
       }
+
+      if (eventName === "marketplace.purchase_intent") {
+        marketplacePurchaseIntents += fact.count;
+      }
+
+      if (eventName === "marketplace.owner_inventory_viewed") {
+        marketplaceInventory.relistableCount = Math.max(
+          marketplaceInventory.relistableCount,
+          this.numberDimension(fact.dimensions, "relistableCount") ?? 0,
+        );
+        marketplaceInventory.expiredCount = Math.max(
+          marketplaceInventory.expiredCount,
+          this.numberDimension(fact.dimensions, "expiredCount") ?? 0,
+        );
+        marketplaceInventory.expiringSoonCount = Math.max(
+          marketplaceInventory.expiringSoonCount,
+          this.numberDimension(fact.dimensions, "expiringSoonCount") ?? 0,
+        );
+        marketplaceInventory.activeCount = Math.max(
+          marketplaceInventory.activeCount,
+          this.numberDimension(fact.dimensions, "activeCount") ?? 0,
+        );
+        marketplaceInventory.totalListings = Math.max(
+          marketplaceInventory.totalListings,
+          this.numberDimension(fact.dimensions, "totalListings") ?? 0,
+        );
+      }
     }
 
     return {
@@ -1103,6 +1200,8 @@ export class AnalyticsService {
       topCampaignUpdate: topSignal(updateViewsByCampaign),
       holderRoomJoins,
       remixCreations,
+      marketplacePurchaseIntents,
+      marketplaceInventory,
     };
   }
 
