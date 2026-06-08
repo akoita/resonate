@@ -173,6 +173,15 @@ export interface CommunityBenefitRedeemedEvent extends BaseEvent {
   benefitType: string;
 }
 
+export interface CommunityBenefitRuleLifecycleEvent extends BaseEvent {
+  eventName: "community.benefit_rule_created" | "community.benefit_rule_paused" | "community.benefit_rule_expired";
+  actorId: string;
+  artistId: string | null;
+  benefitRuleId: string;
+  benefitType: string;
+  status: string;
+}
+
 export interface CommunityBadgeGrantedEvent extends BaseEvent {
   eventName: "community.badge_granted";
   userId: string;
@@ -1084,6 +1093,7 @@ export type ResonateEvent =
   | CommunityProfileShowcaseUpdatedEvent
   | CommunityOwnershipDisplayUpdatedEvent
   | CommunityBenefitRedeemedEvent
+  | CommunityBenefitRuleLifecycleEvent
   | CommunityBadgeGrantedEvent
   | CommunityRoleGrantedEvent
   | CommunityArtistTabEnabledEvent

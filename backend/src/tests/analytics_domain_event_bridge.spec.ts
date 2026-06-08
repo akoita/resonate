@@ -312,6 +312,17 @@ describe("AnalyticsDomainEventBridgeService", () => {
         internalNote: "do not persist benefit note",
       },
       {
+        eventName: "community.benefit_rule_created",
+        eventVersion: 1,
+        occurredAt,
+        actorId: "artist_user_919",
+        artistId: "artist_919",
+        benefitRuleId: "benefit_rule_919",
+        benefitType: "room_access",
+        status: "active",
+        rawEligibilityPolicy: { walletAddress: "do not persist wallet" },
+      },
+      {
         eventName: "community.badge_granted",
         eventVersion: 1,
         occurredAt,
@@ -996,6 +1007,21 @@ describe("AnalyticsDomainEventBridgeService", () => {
         payload: expect.objectContaining({
           benefitRuleId: "benefit_919",
           benefitType: "discount",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "community.benefit_rule_created",
+        subjectType: "community_benefit_rule",
+        subjectId: "benefit_rule_919",
+        actorId: "artist_user_919",
+        consentBasis: "community_benefit_rule_management:v1",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          benefitRuleId: "benefit_rule_919",
+          benefitType: "room_access",
+          status: "active",
         }),
       }),
     );

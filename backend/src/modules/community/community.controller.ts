@@ -52,6 +52,42 @@ export class CommunityController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("artists/:artistId/benefit-rules")
+  listArtistBenefitRules(@Req() req: any, @Param("artistId") artistId: string) {
+    return this.communityEligibilityService.listArtistBenefitRules(req.user.userId, artistId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/benefit-rules")
+  createArtistBenefitRule(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Body() body: Parameters<CommunityEligibilityService["createArtistBenefitRule"]>[2],
+  ) {
+    return this.communityEligibilityService.createArtistBenefitRule(req.user.userId, artistId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/benefit-rules/:ruleId/pause")
+  pauseArtistBenefitRule(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Param("ruleId") ruleId: string,
+  ) {
+    return this.communityEligibilityService.pauseArtistBenefitRule(req.user.userId, artistId, ruleId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("artists/:artistId/benefit-rules/:ruleId/expire")
+  expireArtistBenefitRule(
+    @Req() req: any,
+    @Param("artistId") artistId: string,
+    @Param("ruleId") ruleId: string,
+  ) {
+    return this.communityEligibilityService.expireArtistBenefitRule(req.user.userId, artistId, ruleId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post("artists/:artistId/rooms/enable")
   enableArtistCommunity(@Req() req: any, @Param("artistId") artistId: string) {
     return this.communityRoomsService.enableArtistCommunity(req.user.userId, artistId);

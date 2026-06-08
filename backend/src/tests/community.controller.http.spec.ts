@@ -35,6 +35,22 @@ const mockCommunityEligibilityService = {
   redeemBenefit: jest.fn().mockResolvedValue({
     schemaVersion: "community-benefit-redemption/v1",
   }),
+  listArtistBenefitRules: jest.fn().mockResolvedValue({
+    schemaVersion: "community-benefit-rules/v1",
+    rules: [],
+  }),
+  createArtistBenefitRule: jest.fn().mockResolvedValue({
+    schemaVersion: "community-benefit-rule/v1",
+    rule: { id: "benefit-rule-1" },
+  }),
+  pauseArtistBenefitRule: jest.fn().mockResolvedValue({
+    schemaVersion: "community-benefit-rule/v1",
+    rule: { id: "benefit-rule-1", status: "paused" },
+  }),
+  expireArtistBenefitRule: jest.fn().mockResolvedValue({
+    schemaVersion: "community-benefit-rule/v1",
+    rule: { id: "benefit-rule-1", status: "expired" },
+  }),
 };
 
 const mockCommunityRoomsService = {
@@ -169,6 +185,41 @@ describe("CommunityController (http)", () => {
       .expect(201);
 
     expect(mockCommunityEligibilityService.redeemBenefit).toHaveBeenCalledWith("user-1", "benefit-1");
+  });
+
+  it("manages artist benefit rules with JWT", async () => {
+    const input = {
+      title: "Holder room access",
+      benefitType: "room_access",
+      status: "active",
+      eligibilityPolicy: { type: "ownership", artistId: "artist-1" },
+    };
+
+    await request(app.getHttpServer())
+      .get("/community/artists/artist-1/benefit-rules")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body.schemaVersion).toBe("community-benefit-rules/v1");
+      });
+    await request(app.getHttpServer())
+      .post("/community/artists/artist-1/benefit-rules")
+      .set("Authorization", `Bearer ${token}`)
+      .send(input)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post("/community/artists/artist-1/benefit-rules/benefit-rule-1/pause")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .post("/community/artists/artist-1/benefit-rules/benefit-rule-1/expire")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(201);
+
+    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith("user-1", "artist-1");
+    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", input);
+    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", "benefit-rule-1");
+    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", "benefit-rule-1");
   });
 
   it("allows public artist room reads without JWT", async () => {

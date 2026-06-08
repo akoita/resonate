@@ -183,6 +183,105 @@ describe("CommunityEligibilityService integration", () => {
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
   });
 
+  it("lets artist owners manage holder benefit rule lifecycle without exposing proof data", async () => {
+    const created = await service.createArtistBenefitRule(artistUserId, artistId, {
+      title: `${TEST_PREFIX}managed holder room`,
+      description: "Private holder room access",
+      benefitType: "room_access",
+      status: "active",
+      eligibilityPolicy: { type: "ownership", assetType: "stem_nft" },
+      redemptionPolicy: { settlementType: "none", singleUse: true },
+    });
+
+    expect(created).toMatchObject({
+      schemaVersion: "community-benefit-rule/v1",
+      artistId,
+      rule: {
+        title: `${TEST_PREFIX}managed holder room`,
+        benefitType: "room_access",
+        status: "active",
+        eligibility: { type: "ownership", label: "Stem NFT holders", scope: "artist" },
+      },
+      privacy: {
+        listenerEligibility: "server_side_private",
+        rawProofsReturned: false,
+        walletAddressesReturned: false,
+        publicCredentialCreated: false,
+      },
+    });
+    expect(JSON.stringify(created)).not.toContain(walletAddress);
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_created",
+      actorId: artistUserId,
+      artistId,
+      benefitRuleId: created.rule.id,
+      benefitType: "room_access",
+      status: "active",
+    }));
+
+    const listed = await service.listArtistBenefitRules(artistUserId, artistId);
+    expect(listed.rules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: created.rule.id, status: "active" }),
+    ]));
+
+    const paused = await service.pauseArtistBenefitRule(artistUserId, artistId, created.rule.id);
+    expect(paused.rule.status).toBe("paused");
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_paused",
+      benefitRuleId: created.rule.id,
+      status: "paused",
+    }));
+
+    const expired = await service.expireArtistBenefitRule(artistUserId, artistId, created.rule.id);
+    expect(expired.rule.status).toBe("expired");
+    expect(expired.rule.endsAt).toEqual(expect.any(String));
+    expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: "community.benefit_rule_expired",
+      benefitRuleId: created.rule.id,
+      status: "expired",
+    }));
+  });
+
+  it("validates managed campaign support rules against the managed artist", async () => {
+    const campaign = await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}managed_campaign`,
+        slug: `${TEST_PREFIX}managed-campaign`,
+        artistId,
+        artistDisplayName: "Community Artist",
+        title: "Managed Community Show",
+        city: "Lisbon",
+        country: "PT",
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: "1000000",
+        chainId: 84532,
+        status: "active",
+      },
+    });
+
+    const created = await service.createArtistBenefitRule(artistUserId, artistId, {
+      title: `${TEST_PREFIX}managed campaign benefit`,
+      benefitType: "ticket_priority",
+      status: "draft",
+      eligibilityPolicy: { type: "campaign_support", campaignId: campaign.id, minStatus: "confirmed" },
+    });
+
+    expect(created.rule).toMatchObject({
+      title: `${TEST_PREFIX}managed campaign benefit`,
+      status: "draft",
+      eligibility: {
+        type: "campaign_support",
+        campaignId: campaign.id,
+        minStatus: "confirmed",
+      },
+    });
+    await expect(service.createArtistBenefitRule(userId, artistId, {
+      title: `${TEST_PREFIX}unauthorized benefit`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", artistId },
+    })).rejects.toThrow("Community benefit rule management is restricted");
+  });
+
   it("derives private supporter badges and roles from confirmed campaign pledges", async () => {
     const campaign = await prisma.showCampaign.create({
       data: {
