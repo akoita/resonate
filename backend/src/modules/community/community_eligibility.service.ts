@@ -35,6 +35,10 @@ const MAX_COMPOUND_POLICY_CLAUSES = 5;
 
 type PolicyObject = Record<string, unknown>;
 type CommunityBenefitRuleStatus = (typeof COMMUNITY_BENEFIT_RULE_STATUSES)[number];
+type CommunityManagementActor = {
+  userId: string;
+  role?: string | null;
+};
 type ManagedRuleInput = {
   title?: unknown;
   description?: unknown;
@@ -162,8 +166,8 @@ export class CommunityEligibilityService {
     return redemptionResponseDto(rule, evaluation, redemption, false);
   }
 
-  async listArtistBenefitRules(actorUserId: string, artistId: string) {
-    await this.requireArtistOperator(actorUserId, artistId);
+  async listArtistBenefitRules(actor: CommunityManagementActor, artistId: string) {
+    await this.requireArtistOperator(actor, artistId);
     const rules = await prisma.communityBenefitRule.findMany({
       where: { artistId },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
@@ -177,8 +181,8 @@ export class CommunityEligibilityService {
     };
   }
 
-  async createArtistBenefitRule(actorUserId: string, artistId: string, input: ManagedRuleInput) {
-    await this.requireArtistOperator(actorUserId, artistId);
+  async createArtistBenefitRule(actor: CommunityManagementActor, artistId: string, input: ManagedRuleInput) {
+    await this.requireArtistOperator(actor, artistId);
     const normalized = await normalizeManagedRuleInput(artistId, input);
 
     const rule = await prisma.communityBenefitRule.create({
@@ -195,7 +199,7 @@ export class CommunityEligibilityService {
       },
     });
 
-    this.publishBenefitRuleLifecycle("community.benefit_rule_created", actorUserId, rule);
+    this.publishBenefitRuleLifecycle("community.benefit_rule_created", actor.userId, rule);
 
     return {
       schemaVersion: "community-benefit-rule/v1",
@@ -205,8 +209,8 @@ export class CommunityEligibilityService {
     };
   }
 
-  async pauseArtistBenefitRule(actorUserId: string, artistId: string, ruleId: string) {
-    await this.requireArtistOperator(actorUserId, artistId);
+  async pauseArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
+    await this.requireArtistOperator(actor, artistId);
     const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
     if (!existing) throw new NotFoundException("Community benefit rule not found");
     if (existing.status === "expired") {
@@ -217,7 +221,7 @@ export class CommunityEligibilityService {
       where: { id: ruleId },
       data: { status: "paused" },
     });
-    this.publishBenefitRuleLifecycle("community.benefit_rule_paused", actorUserId, rule);
+    this.publishBenefitRuleLifecycle("community.benefit_rule_paused", actor.userId, rule);
 
     return {
       schemaVersion: "community-benefit-rule/v1",
@@ -227,8 +231,8 @@ export class CommunityEligibilityService {
     };
   }
 
-  async expireArtistBenefitRule(actorUserId: string, artistId: string, ruleId: string) {
-    await this.requireArtistOperator(actorUserId, artistId);
+  async expireArtistBenefitRule(actor: CommunityManagementActor, artistId: string, ruleId: string) {
+    await this.requireArtistOperator(actor, artistId);
     const existing = await prisma.communityBenefitRule.findFirst({ where: { id: ruleId, artistId } });
     if (!existing) throw new NotFoundException("Community benefit rule not found");
 
@@ -236,7 +240,7 @@ export class CommunityEligibilityService {
       where: { id: ruleId },
       data: { status: "expired", endsAt: existing.endsAt ?? new Date() },
     });
-    this.publishBenefitRuleLifecycle("community.benefit_rule_expired", actorUserId, rule);
+    this.publishBenefitRuleLifecycle("community.benefit_rule_expired", actor.userId, rule);
 
     return {
       schemaVersion: "community-benefit-rule/v1",
@@ -591,10 +595,10 @@ export class CommunityEligibilityService {
     });
   }
 
-  private async requireArtistOperator(userId: string, artistId: string) {
+  private async requireArtistOperator(actor: CommunityManagementActor, artistId: string) {
     const artist = await prisma.artist.findUnique({ where: { id: artistId } });
     if (!artist) throw new NotFoundException("Artist not found");
-    if (!(artist.userId === userId || userId === "operator" || userId === "admin")) {
+    if (!(artist.userId === actor.userId || actor.role === "operator" || actor.role === "admin")) {
       throw new ForbiddenException("Community benefit rule management is restricted to the artist owner or operators");
     }
     return artist;
@@ -880,12 +884,18 @@ async function normalizeEligibilityPolicy(
       throw new BadRequestException("ownership artistId must match the managed artist");
     }
     const tokenId = optionalStringField(policy, "tokenId");
+    const tokenIdBigInt = tokenId ? bigIntStringInput(tokenId, "ownership tokenId") : undefined;
     const stemId = optionalStringField(policy, "stemId");
     const trackId = optionalStringField(policy, "trackId");
+    const chainId = optionalNumberField(policy, "chainId");
+    if (chainId !== undefined && chainId <= 0) {
+      throw new BadRequestException("ownership chainId must be a positive integer");
+    }
     const scopedArtistId = policyArtistId ?? (!tokenId && !stemId && !trackId ? artistId : undefined);
     if (!scopedArtistId && !tokenId && !stemId && !trackId) {
       throw new BadRequestException("ownership policy requires an artist, track, stem, or token scope");
     }
+    await assertOwnershipPolicyScopedToArtist(artistId, { stemId, trackId, tokenId: tokenIdBigInt, chainId });
     return jsonObject({
       type,
       assetType,
@@ -893,7 +903,7 @@ async function normalizeEligibilityPolicy(
       trackId,
       stemId,
       tokenId,
-      chainId: optionalNumberField(policy, "chainId"),
+      chainId,
     });
   }
 
@@ -915,7 +925,10 @@ async function normalizeEligibilityPolicy(
   if (type === "badge") {
     const sourceType = optionalStringField(policy, "sourceType") ?? "artist";
     const sourceId = optionalStringField(policy, "sourceId") ?? (sourceType === "artist" ? artistId : undefined);
-    if (sourceType === "artist" && sourceId !== artistId) {
+    if (sourceType !== "artist") {
+      throw new BadRequestException("badge sourceType must be artist for managed benefit rules");
+    }
+    if (sourceId !== artistId) {
       throw new BadRequestException("badge sourceId must match the managed artist");
     }
     return jsonObject({
@@ -929,7 +942,10 @@ async function normalizeEligibilityPolicy(
   if (type === "role") {
     const scopeType = optionalStringField(policy, "scopeType") ?? "artist";
     const scopeId = optionalStringField(policy, "scopeId") ?? (scopeType === "artist" ? artistId : undefined);
-    if (scopeType === "artist" && scopeId !== artistId) {
+    if (scopeType !== "artist") {
+      throw new BadRequestException("role scopeType must be artist for managed benefit rules");
+    }
+    if (scopeId !== artistId) {
       throw new BadRequestException("role scopeId must match the managed artist");
     }
     return jsonObject({
@@ -952,6 +968,68 @@ async function normalizeEligibilityPolicy(
   }
 
   throw new BadRequestException("Unsupported managed community benefit eligibility policy type");
+}
+
+async function assertOwnershipPolicyScopedToArtist(
+  artistId: string,
+  scope: { stemId?: string; trackId?: string; tokenId?: bigint; chainId?: number },
+) {
+  const releaseWhere = managedArtistReleaseWhere(artistId);
+  if (scope.stemId) {
+    const stem = await prisma.stem.findFirst({
+      where: {
+        id: scope.stemId,
+        track: { release: releaseWhere },
+      },
+      select: { id: true },
+    });
+    if (!stem) {
+      throw new BadRequestException("ownership stemId must belong to the managed artist");
+    }
+  }
+
+  if (scope.trackId) {
+    const track = await prisma.track.findFirst({
+      where: {
+        id: scope.trackId,
+        release: releaseWhere,
+      },
+      select: { id: true },
+    });
+    if (!track) {
+      throw new BadRequestException("ownership trackId must belong to the managed artist");
+    }
+  }
+
+  if (scope.tokenId !== undefined) {
+    const listing = await prisma.stemListing.findFirst({
+      where: {
+        tokenId: scope.tokenId,
+        ...(scope.chainId !== undefined ? { chainId: scope.chainId } : {}),
+        stem: { track: { release: releaseWhere } },
+      },
+      select: { id: true },
+    });
+    if (!listing) {
+      throw new BadRequestException("ownership tokenId must belong to a listed stem for the managed artist");
+    }
+  }
+}
+
+function managedArtistReleaseWhere(artistId: string): Prisma.ReleaseWhereInput {
+  return {
+    OR: [
+      { artistId },
+      {
+        artistCredits: {
+          some: {
+            artistId,
+            role: { in: [...OWNERSHIP_ARTIST_CREDIT_ROLES] },
+          },
+        },
+      },
+    ],
+  };
 }
 
 function normalizeRedemptionPolicy(rawPolicy: unknown): Prisma.InputJsonObject {
@@ -1075,6 +1153,13 @@ function optionalDateInput(value: unknown, field: string) {
     throw new BadRequestException(`${field} must be an ISO date string`);
   }
   return date;
+}
+
+function bigIntStringInput(value: string, field: string) {
+  if (!/^[0-9]+$/.test(value)) {
+    throw new BadRequestException(`${field} must be a non-negative integer string`);
+  }
+  return BigInt(value);
 }
 
 function inputObject(value: unknown, field: string): PolicyObject {

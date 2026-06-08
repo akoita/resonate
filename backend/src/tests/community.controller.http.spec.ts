@@ -216,10 +216,25 @@ describe("CommunityController (http)", () => {
       .set("Authorization", `Bearer ${token}`)
       .expect(201);
 
-    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith("user-1", "artist-1");
-    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", input);
-    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", "benefit-rule-1");
-    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith("user-1", "artist-1", "benefit-rule-1");
+    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith(
+      { userId: "user-1", role: "listener" },
+      "artist-1",
+    );
+    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-1", role: "listener" },
+      "artist-1",
+      input,
+    );
+    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-1", role: "listener" },
+      "artist-1",
+      "benefit-rule-1",
+    );
+    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-1", role: "listener" },
+      "artist-1",
+      "benefit-rule-1",
+    );
   });
 
   it("allows public artist room reads without JWT", async () => {

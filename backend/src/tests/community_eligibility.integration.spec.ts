@@ -117,7 +117,7 @@ describe("CommunityEligibilityService integration", () => {
     await prisma.stem.deleteMany({ where: { id: stemId } });
     await prisma.track.deleteMany({ where: { id: trackId } });
     await prisma.release.deleteMany({ where: { id: releaseId } });
-    await prisma.artist.deleteMany({ where: { id: artistId } });
+    await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.communityVisibilitySettings.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.communityProfile.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
     await prisma.wallet.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
@@ -184,7 +184,7 @@ describe("CommunityEligibilityService integration", () => {
   });
 
   it("lets artist owners manage holder benefit rule lifecycle without exposing proof data", async () => {
-    const created = await service.createArtistBenefitRule(artistUserId, artistId, {
+    const created = await service.createArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, {
       title: `${TEST_PREFIX}managed holder room`,
       description: "Private holder room access",
       benefitType: "room_access",
@@ -219,12 +219,12 @@ describe("CommunityEligibilityService integration", () => {
       status: "active",
     }));
 
-    const listed = await service.listArtistBenefitRules(artistUserId, artistId);
+    const listed = await service.listArtistBenefitRules({ userId: artistUserId, role: "artist" }, artistId);
     expect(listed.rules).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: created.rule.id, status: "active" }),
     ]));
 
-    const paused = await service.pauseArtistBenefitRule(artistUserId, artistId, created.rule.id);
+    const paused = await service.pauseArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, created.rule.id);
     expect(paused.rule.status).toBe("paused");
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
       eventName: "community.benefit_rule_paused",
@@ -232,7 +232,7 @@ describe("CommunityEligibilityService integration", () => {
       status: "paused",
     }));
 
-    const expired = await service.expireArtistBenefitRule(artistUserId, artistId, created.rule.id);
+    const expired = await service.expireArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, created.rule.id);
     expect(expired.rule.status).toBe("expired");
     expect(expired.rule.endsAt).toEqual(expect.any(String));
     expect(eventBus.publish).toHaveBeenCalledWith(expect.objectContaining({
@@ -259,7 +259,7 @@ describe("CommunityEligibilityService integration", () => {
       },
     });
 
-    const created = await service.createArtistBenefitRule(artistUserId, artistId, {
+    const created = await service.createArtistBenefitRule({ userId: artistUserId, role: "artist" }, artistId, {
       title: `${TEST_PREFIX}managed campaign benefit`,
       benefitType: "ticket_priority",
       status: "draft",
@@ -275,11 +275,61 @@ describe("CommunityEligibilityService integration", () => {
         minStatus: "confirmed",
       },
     });
-    await expect(service.createArtistBenefitRule(userId, artistId, {
+    await expect(service.createArtistBenefitRule({ userId, role: "listener" }, artistId, {
       title: `${TEST_PREFIX}unauthorized benefit`,
       benefitType: "room_access",
       eligibilityPolicy: { type: "ownership", artistId },
     })).rejects.toThrow("Community benefit rule management is restricted");
+  });
+
+  it("lets privileged role actors manage artist benefit rules", async () => {
+    const created = await service.createArtistBenefitRule({ userId: `${TEST_PREFIX}operator`, role: "operator" }, artistId, {
+      title: `${TEST_PREFIX}operator holder rule`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", artistId },
+    });
+
+    expect(created.rule).toMatchObject({
+      title: `${TEST_PREFIX}operator holder rule`,
+      status: "draft",
+    });
+  });
+
+  it("rejects unscoped or cross-artist managed benefit policies", async () => {
+    const otherArtistId = `${TEST_PREFIX}other_artist`;
+    await prisma.artist.create({
+      data: {
+        id: otherArtistId,
+        displayName: "Other Community Artist",
+      },
+    });
+    const operator = { userId: `${TEST_PREFIX}operator`, role: "operator" };
+
+    await expect(service.createArtistBenefitRule(operator, otherArtistId, {
+      title: `${TEST_PREFIX}cross stem`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", stemId },
+    })).rejects.toThrow("ownership stemId must belong to the managed artist");
+    await expect(service.createArtistBenefitRule(operator, otherArtistId, {
+      title: `${TEST_PREFIX}cross track`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", trackId },
+    })).rejects.toThrow("ownership trackId must belong to the managed artist");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}bad token`,
+      benefitType: "room_access",
+      eligibilityPolicy: { type: "ownership", tokenId: "not-a-token" },
+    })).rejects.toThrow("ownership tokenId must be a non-negative integer string");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}wild badge`,
+      benefitType: "drop_priority",
+      eligibilityPolicy: { type: "badge", badgeType: "collector", sourceType: "show_campaign" },
+    })).rejects.toThrow("badge sourceType must be artist");
+    await expect(service.createArtistBenefitRule(operator, artistId, {
+      title: `${TEST_PREFIX}wild role`,
+      benefitType: "early_access",
+      eligibilityPolicy: { type: "role", roleType: "holder", scopeType: "show_campaign" },
+    })).rejects.toThrow("role scopeType must be artist");
   });
 
   it("derives private supporter badges and roles from confirmed campaign pledges", async () => {

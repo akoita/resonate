@@ -114,10 +114,25 @@ describe("CommunityController", () => {
     ctrl.pauseArtistBenefitRule(req, "artist-1", "rule-1");
     ctrl.expireArtistBenefitRule(req, "artist-1", "rule-1");
 
-    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith("user-42", "artist-1");
-    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith("user-42", "artist-1", input);
-    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith("user-42", "artist-1", "rule-1");
-    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith("user-42", "artist-1", "rule-1");
+    expect(mockCommunityEligibilityService.listArtistBenefitRules).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+    );
+    expect(mockCommunityEligibilityService.createArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      input,
+    );
+    expect(mockCommunityEligibilityService.pauseArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      "rule-1",
+    );
+    expect(mockCommunityEligibilityService.expireArtistBenefitRule).toHaveBeenCalledWith(
+      { userId: "user-42", role: undefined },
+      "artist-1",
+      "rule-1",
+    );
   });
 
   it("enables artist community rooms for the authenticated artist", () => {

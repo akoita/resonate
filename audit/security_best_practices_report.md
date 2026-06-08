@@ -41,11 +41,13 @@ None.
 
 - `GET/POST /community/artists/:artistId/benefit-rules` and pause/expire routes
   are protected with `AuthGuard("jwt")`, then re-check artist owner/operator
-  authority in `CommunityEligibilityService`.
+  authority in `CommunityEligibilityService` using authenticated role context,
+  not privileged-looking user IDs.
 - Managed eligibility policies are limited to ownership, campaign support,
   badge, role, and bounded compound policies. Artist-scoped badge/role and
-  ownership policies are normalized to the managed artist; campaign-support
-  policies verify the campaign belongs to that artist.
+  ownership policies are normalized to the managed artist; track, stem, token,
+  and campaign-support scopes are verified against the managed artist before a
+  rule is stored.
 - New lifecycle analytics only retain `artistId`, `benefitRuleId`,
   `benefitType`, and `status`; raw eligibility policy JSON is not bridged.
 - Frontend additions use typed API helpers and controlled form inputs. No raw
