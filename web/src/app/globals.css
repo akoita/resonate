@@ -13741,6 +13741,188 @@ tr[draggable="true"]:hover {
   animation: pulse-dot-green 2s infinite;
 }
 
+/* Artist action cockpit */
+.artist-action-cockpit {
+  display: grid;
+  gap: var(--space-4);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0%, rgba(255, 255, 255, 0.006) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--r-radius-md);
+  padding: 18px;
+}
+
+.artist-action-cockpit__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.artist-action-cockpit__eyebrow {
+  margin: 0 0 4px;
+  color: var(--r-secondary-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.artist-action-cockpit__header h2 {
+  margin: 0;
+  color: var(--r-on-surface);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.artist-action-cockpit__privacy {
+  flex: 0 0 auto;
+  border: 1px solid rgba(87, 242, 135, 0.22);
+  border-radius: var(--r-radius-xs);
+  background: rgba(87, 242, 135, 0.08);
+  color: var(--r-success);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 8px;
+}
+
+.artist-action-cockpit__empty {
+  margin: 0;
+  color: var(--r-on-surface-muted);
+  font-size: 13px;
+}
+
+.artist-action-cockpit__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--space-3);
+}
+
+.artist-action-card {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto auto;
+  gap: 10px;
+  min-height: 226px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--r-radius-md);
+  background: rgba(10, 9, 18, 0.58);
+  padding: 14px;
+}
+
+.artist-action-card--high {
+  border-color: rgba(124, 92, 255, 0.28);
+}
+
+.artist-action-card--medium {
+  border-color: rgba(196, 181, 253, 0.18);
+}
+
+.artist-action-card__topline,
+.artist-action-card__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.artist-action-card__topline span,
+.artist-action-card__topline strong,
+.artist-action-card__meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-action-card h3 {
+  margin: 0;
+  color: var(--r-on-surface);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.artist-action-card p {
+  margin: 0;
+  color: var(--r-on-surface-variant);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.artist-action-card__reason {
+  border-left: 2px solid rgba(124, 92, 255, 0.55);
+  padding-left: 10px;
+  color: var(--r-on-surface);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.artist-action-card__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border: 1px solid rgba(124, 92, 255, 0.42);
+  border-radius: var(--r-radius-xs);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--r-on-surface);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.artist-action-card__cta:not(:disabled):hover {
+  background: rgba(124, 92, 255, 0.26);
+  border-color: rgba(124, 92, 255, 0.65);
+}
+
+.artist-action-card__cta:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.artist-action-card__priority {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-radius-xs);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.artist-action-card__priority--high {
+  border-color: rgba(124, 92, 255, 0.5);
+  background: rgba(124, 92, 255, 0.24);
+  color: var(--r-secondary-soft);
+}
+
+.artist-action-card__priority--medium {
+  border-color: rgba(196, 181, 253, 0.28);
+  background: rgba(196, 181, 253, 0.10);
+  color: var(--r-secondary-soft);
+}
+
+.artist-action-card__priority--low {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--r-on-surface-muted);
+}
+
+.artist-action-card__footer {
+  display: grid;
+  gap: 6px;
+}
+
+.artist-action-card__cta-note {
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 @keyframes pulse-dot-green {
   0%, 100% {
     transform: scale(1);

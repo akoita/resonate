@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import type { ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
+import type { ArtistActionCard, ArtistAnalyticsDashboard as ArtistAnalyticsDashboardData } from "../../lib/api";
+import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 type DashboardState =
   | { status: "loading"; days: number }
@@ -58,6 +59,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
   const sourceLabel = data.meta.source === "bigquery" ? "BigQueryFactTable" : "LocalEventLedger";
   const freshnessLabel = formatFreshness(data.meta.freshness.asOf, data.meta.freshness.lagSeconds);
   const payoutLabel = formatUsd(data.summary.totalPayoutUsd);
+  const actions = data.actions ?? [];
 
   if (data.meta.isEmpty) {
     return (
@@ -68,6 +70,7 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
           windowLabel={formatWindow(data.meta.timeWindow.from, data.meta.timeWindow.to)}
           cacheLabel={cacheLabel(data.meta.cache.hit)}
         />
+        <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
         <EmptyDashboard days={data.meta.timeWindow.days} />
         <SeparatedContentProtection />
       </>
@@ -82,6 +85,8 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
         windowLabel={formatWindow(data.meta.timeWindow.from, data.meta.timeWindow.to)}
         cacheLabel={cacheLabel(data.meta.cache.hit)}
       />
+
+      <ArtistActionCockpit artistId={data.summary.artistId} actions={actions} />
 
       <section className="kpi-row" aria-label="Artist analytics summary">
         <Kpi label="Total plays" value={formatNumber(data.summary.totalPlays)} detail={`${data.meta.timeWindow.days} day window`} />
@@ -146,6 +151,108 @@ function ReadyDashboard({ data }: { data: ArtistAnalyticsDashboardData }) {
       <ContentProtectionMetrics protection={data.protection} />
     </>
   );
+}
+
+function ArtistActionCockpit({ artistId, actions }: { artistId: string; actions: ArtistActionCard[] }) {
+  const actionSignature = useMemo(() => actions.map((action) => action.id).join("|"), [actions]);
+
+  useEffect(() => {
+    for (const action of actions) {
+      recordProductAnalyticsFromBrowser("artist.action_card_impression", {
+        subjectType: "artist",
+        subjectId: artistId,
+        payload: actionAnalyticsPayload(action),
+      });
+    }
+  }, [actionSignature, actions, artistId]);
+
+  if (actions.length === 0) {
+    return (
+      <section className="artist-action-cockpit" aria-label="Recommended artist actions">
+        <div className="artist-action-cockpit__header">
+          <div>
+            <p className="artist-action-cockpit__eyebrow">Action Cockpit</p>
+            <h2>Recommended next actions</h2>
+          </div>
+          <span className="artist-action-cockpit__privacy">Aggregate signals only</span>
+        </div>
+        <p className="artist-action-cockpit__empty">
+          Action recommendations appear once aggregate catalog, playback, marketplace, or community signals are available.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="artist-action-cockpit" aria-label="Recommended artist actions">
+      <div className="artist-action-cockpit__header">
+        <div>
+          <p className="artist-action-cockpit__eyebrow">Action Cockpit</p>
+          <h2>Recommended next actions</h2>
+        </div>
+        <span className="artist-action-cockpit__privacy">Aggregate signals only</span>
+      </div>
+      <div className="artist-action-cockpit__grid">
+        {actions.map((action) => (
+          <article key={action.id} className={`artist-action-card artist-action-card--${action.priority}`}>
+            <div className="artist-action-card__topline">
+              <span>{action.sourceSignal.category}</span>
+              <span className={`artist-action-card__priority artist-action-card__priority--${action.priority}`}>
+                {action.priority} priority
+              </span>
+            </div>
+            <h3>{action.title}</h3>
+            <p>{action.description}</p>
+            <div className="artist-action-card__reason">{action.reason}</div>
+            <div className="artist-action-card__meta">
+              <span>{Math.round(action.confidence * 100)}% confidence</span>
+              {action.privacy.thresholdApplied && action.privacy.minimumThreshold ? (
+                <span>{action.privacy.minimumThreshold}+ signal floor</span>
+              ) : (
+                <span>artist-owned signal</span>
+              )}
+            </div>
+            <div className="artist-action-card__footer">
+              {action.cta.disabled || !action.cta.href ? (
+                <>
+                  <button type="button" className="artist-action-card__cta" disabled>
+                    {action.cta.label}
+                  </button>
+                  {action.cta.disabledReason ? (
+                    <small className="artist-action-card__cta-note">{action.cta.disabledReason}</small>
+                  ) : null}
+                </>
+              ) : (
+                <Link
+                  className="artist-action-card__cta"
+                  href={action.cta.href}
+                  onClick={() => {
+                    recordProductAnalyticsFromBrowser("artist.action_card_clicked", {
+                      subjectType: "artist",
+                      subjectId: artistId,
+                      payload: actionAnalyticsPayload(action),
+                    });
+                  }}
+                >
+                  {action.cta.label}
+                </Link>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function actionAnalyticsPayload(action: ArtistActionCard) {
+  return {
+    cardId: action.id,
+    cardType: action.type,
+    priority: action.priority,
+    sourceCategory: action.sourceSignal.category,
+    disabled: Boolean(action.cta.disabled || !action.cta.href),
+  };
 }
 
 function LoadingDashboard() {

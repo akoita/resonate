@@ -1,5 +1,68 @@
 # Security Best Practices Report
 
+## Artist Action Cockpit - 2026-06-08
+
+### Scope Reviewed
+
+Changed files:
+
+- `backend/src/modules/analytics/analytics.controller.ts`
+- `backend/src/modules/analytics/analytics.service.ts`
+- `backend/src/tests/analytics.controller.http.spec.ts`
+- `backend/src/tests/analytics.spec.ts`
+- `web/src/app/artist/[id]/page.tsx`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.tsx`
+- `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/productAnalytics.ts`
+- related feature, taxonomy, and issue-plan docs
+
+### Executive Summary
+
+Issue #1121 adds a first deterministic artist action cockpit to the protected
+artist analytics dashboard. The scoped review found no Critical or High
+findings: action cards are derived server-side from artist-owned or aggregate
+analytics signals, listener-derived cards apply a minimum signal threshold,
+deep links are fixed application routes, and product analytics payloads are
+compact allowlisted fields without raw listener identity, wallet addresses,
+cohort membership, free text, secrets, or production configuration.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- `GET /analytics/artist/:id/v1` remains protected by the existing artist/admin
+  authorization check before the action cards are returned.
+- The new action-card DTO does not trust client-submitted claims; frontend
+  product analytics only records card impressions/clicks and cannot influence
+  recommendations.
+- The new community CTA uses the existing `/artist/:id?tab=community` route,
+  and the artist page now reads the tab query string rather than accepting an
+  arbitrary redirect.
+- No new environment variables, hardcoded URLs, secrets, raw SQL, unsafe DOM
+  HTML, cookie handling, or user-provided JSON parsing were introduced.
+- Broad scanner output still includes pre-existing repository patterns such as
+  local-dev JWT fallbacks, parameterized Prisma raw SQL elsewhere, and
+  controller methods without DTO class pipes. None are introduced or expanded
+  by this branch.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/ | grep -v 'Guard\|Auth'`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`
+
 ## Discord Bridge - 2026-06-08
 
 ### Scope Reviewed

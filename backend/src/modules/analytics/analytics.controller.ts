@@ -45,6 +45,8 @@ const PRODUCT_EVENT_NAMES = new Set([
   "artist.upload_started",
   "artist.upload_step_completed",
   "artist.catalog_viewed",
+  "artist.action_card_impression",
+  "artist.action_card_clicked",
   "wallet.connected",
   "wallet.faucet_requested",
   "wallet.budget_set",

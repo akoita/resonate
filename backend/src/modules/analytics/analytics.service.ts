@@ -58,6 +58,40 @@ interface ProtectionMetrics {
   routes: ProtectionRouteStats[];
 }
 
+type ArtistActionCardType =
+  | "promote_top_track"
+  | "review_marketplace_readiness"
+  | "start_listener_community"
+  | "prepare_marketplace_catalog";
+type ArtistActionPriority = "high" | "medium" | "low";
+type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog";
+
+interface ArtistActionCard {
+  id: string;
+  type: ArtistActionCardType;
+  title: string;
+  description: string;
+  reason: string;
+  priority: ArtistActionPriority;
+  confidence: number;
+  sourceSignal: {
+    category: ArtistActionSourceCategory;
+    summary: string;
+    count?: number;
+  };
+  cta: {
+    label: string;
+    href?: string;
+    disabled?: boolean;
+    disabledReason?: string;
+  };
+  privacy: {
+    aggregateOnly: true;
+    thresholdApplied: boolean;
+    minimumThreshold?: number;
+  };
+}
+
 interface AssetPayoutStats {
   paymentToken: string;
   assetId: string | null;
@@ -140,6 +174,8 @@ interface AgentQualityAccumulator {
 
 @Injectable()
 export class AnalyticsService {
+  private readonly artistActionMinimumSignalCount = 5;
+
   constructor(
     private readonly ingestService: AnalyticsIngestService,
     @Optional() private readonly warehouseExportService?: AnalyticsWarehouseExportService,
@@ -260,6 +296,8 @@ export class AnalyticsService {
       freshness: data.metadata.freshness,
     };
     const tracks = [...trackMap.values()];
+    const topTracks = this.topTracks(tracks);
+    const protection = this.protectionMetrics(facts);
 
     return {
       summary: {
@@ -267,12 +305,19 @@ export class AnalyticsService {
         payoutsByAsset: exportPayload.payoutsByAsset,
       },
       tracks,
-      topTracks: this.topTracks(tracks),
+      topTracks,
       sessions: [...sessionMap.values()],
       sources: [...sourceMap.values()],
       playsOverTime: this.playsOverTime(facts),
       trackPerformance: tracks,
-      protection: this.protectionMetrics(facts),
+      protection,
+      actions: this.artistActionCards({
+        artistId,
+        totalPlays: summary.totalPlays,
+        topTracks,
+        protection,
+        days: data.metadata.timeWindow.days,
+      }),
       listenerGrowth: {
         status: "unavailable",
         reason: "listener and follower growth events are not available in the current analytics event model",
@@ -753,6 +798,119 @@ export class AnalyticsService {
     return [...tracks].sort((left, right) => right.plays - left.plays || right.payoutUsd - left.payoutUsd).slice(0, 10);
   }
 
+  private artistActionCards(input: {
+    artistId: string;
+    totalPlays: number;
+    topTracks: TrackStats[];
+    protection: ProtectionMetrics;
+    days: number;
+  }): ArtistActionCard[] {
+    const cards: ArtistActionCard[] = [];
+    const topTrack = input.topTracks[0];
+    const hasListenerSignal = input.totalPlays >= this.artistActionMinimumSignalCount;
+
+    if (topTrack && topTrack.plays >= this.artistActionMinimumSignalCount) {
+      cards.push({
+        id: `promote_top_track:${topTrack.trackId}`,
+        type: "promote_top_track",
+        title: "Promote the track listeners already choose",
+        description: `${topTrack.title} is your strongest recent playback signal.`,
+        reason: `${topTrack.plays} aggregate plays in the last ${input.days} days.`,
+        priority: topTrack.plays >= 25 ? "high" : "medium",
+        confidence: topTrack.plays >= 25 ? 0.82 : 0.68,
+        sourceSignal: {
+          category: "playback",
+          summary: "Top track by aggregate plays",
+          count: topTrack.plays,
+        },
+        cta: {
+          label: "Open in player",
+          href: `/player?trackId=${encodeURIComponent(topTrack.trackId)}`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    if (input.protection.marketplaceReadyReleases > 0) {
+      cards.push({
+        id: "review_marketplace_readiness",
+        type: "review_marketplace_readiness",
+        title: "Review marketplace-ready catalog",
+        description: "Protected releases are cleared for marketplace listing workflows.",
+        reason: `${input.protection.marketplaceReadyReleases} release${input.protection.marketplaceReadyReleases === 1 ? "" : "s"} are marketplace-ready.`,
+        priority: "medium",
+        confidence: 0.74,
+        sourceSignal: {
+          category: "marketplace",
+          summary: "Marketplace-ready protection route",
+          count: input.protection.marketplaceReadyReleases,
+        },
+        cta: {
+          label: "Manage listings",
+          href: "/marketplace/manage",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: false,
+        },
+      });
+    } else {
+      cards.push({
+        id: "prepare_marketplace_catalog",
+        type: "prepare_marketplace_catalog",
+        title: "Prepare catalog for marketplace listings",
+        description: "No releases are marketplace-ready in the current analytics window.",
+        reason: "Rights routing must approve releases before listing recommendations can point to the marketplace.",
+        priority: "low",
+        confidence: 0.52,
+        sourceSignal: {
+          category: "catalog",
+          summary: "No marketplace-ready releases detected",
+        },
+        cta: {
+          label: "Review catalog",
+          href: "/artist/catalog",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: false,
+        },
+      });
+    }
+
+    if (hasListenerSignal) {
+      cards.push({
+        id: "start_listener_community",
+        type: "start_listener_community",
+        title: "Gather listeners in your community room",
+        description: "Recent listener activity is high enough to make a public artist room useful.",
+        reason: `${input.totalPlays} aggregate plays in the last ${input.days} days.`,
+        priority: input.totalPlays >= 25 ? "high" : "medium",
+        confidence: input.totalPlays >= 25 ? 0.8 : 0.64,
+        sourceSignal: {
+          category: "community",
+          summary: "Aggregate playback demand",
+          count: input.totalPlays,
+        },
+        cta: {
+          label: "Open community",
+          href: `/artist/${encodeURIComponent(input.artistId)}?tab=community`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    return cards.sort((left, right) => priorityRank(right.priority) - priorityRank(left.priority)).slice(0, 4);
+  }
+
   private trackTitle(fact: EnrichedAnalyticsFactRow) {
     return this.stringDimension(fact.dimensions, "title") ?? fact.catalogTrack?.title ?? "Unknown Track";
   }
@@ -943,6 +1101,12 @@ function averageOrNull(values: number[]) {
     return null;
   }
   return Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+}
+
+function priorityRank(priority: ArtistActionPriority) {
+  if (priority === "high") return 3;
+  if (priority === "medium") return 2;
+  return 1;
 }
 
 function titleLabel(value: string) {

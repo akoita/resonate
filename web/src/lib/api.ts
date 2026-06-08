@@ -483,6 +483,36 @@ export type ArtistAnalyticsProtection = {
   routes: ArtistAnalyticsProtectionRoute[];
 };
 
+export type ArtistActionCard = {
+  id: string;
+  type:
+    | "promote_top_track"
+    | "review_marketplace_readiness"
+    | "start_listener_community"
+    | "prepare_marketplace_catalog";
+  title: string;
+  description: string;
+  reason: string;
+  priority: "high" | "medium" | "low";
+  confidence: number;
+  sourceSignal: {
+    category: "playback" | "marketplace" | "community" | "catalog";
+    summary: string;
+    count?: number;
+  };
+  cta: {
+    label: string;
+    href?: string;
+    disabled?: boolean;
+    disabledReason?: string;
+  };
+  privacy: {
+    aggregateOnly: true;
+    thresholdApplied: boolean;
+    minimumThreshold?: number;
+  };
+};
+
 export type ArtistAnalyticsMeta = {
   source: "warehouse_export" | "bigquery";
   generatedAt: string;
@@ -532,6 +562,7 @@ export type ArtistAnalyticsDashboard = {
     plays: number;
   }>;
   protection: ArtistAnalyticsProtection;
+  actions?: ArtistActionCard[];
   playsOverTime: ArtistAnalyticsTimePoint[];
   trackPerformance: ArtistAnalyticsTrack[];
   listenerGrowth?: {

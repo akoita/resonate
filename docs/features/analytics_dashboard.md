@@ -1,8 +1,8 @@
 ---
 title: "Analytics Dashboards"
-status: implemented
+status: partial
 owner: "@akoita"
-issues: [25, 982]
+issues: [25, 982, 1121]
 ---
 
 # Analytics Dashboards
@@ -19,7 +19,7 @@ The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, 
 
 ## Audience & Value
 
-- **For Artists**: Provides clear visual tracking of plays over time, real-time USDC payout rollups, content protection route decision counts (Marketplace Ready vs Restricted/Blocked), and detailed EVM staking escrow histories (Coup De Goule, Ah W Nass, etc.).
+- **For Artists**: Provides clear visual tracking of plays over time, real-time USDC payout rollups, content protection route decision counts (Marketplace Ready vs Restricted/Blocked), first-slice recommended action cards, and detailed EVM staking escrow histories (Coup De Goule, Ah W Nass, etc.).
 - **For Operators/Product Owners**: Provides aggregate AI DJ recommendation quality metrics so analytics-powered taste changes can be monitored before model promotion.
 - **For Developers**: Demonstrates how to map versioned analytics facts from the BigQuery/Postgres ledger directly to standard React UI layers using performant, responsive SVG charting without heavy external chart libraries.
 
@@ -33,8 +33,11 @@ The dashboard follows the **Obsidian Frequency (v2)** design system guidelines, 
 3. Toggle date ranges between **7d**, **30d**, and **90d** using the pill controls at the top right.
 4. Hover over the **Plays over time** spline chart to reveal active tooltips showing daily metrics.
 5. Review the **Sources breakdown progress bars** and the **Track Performance table**.
-6. Monitor active escrow allocations under the **Content Protection Staking & escrow overview**.
-7. Operators can open `/analytics/agent-quality` to review aggregate AI DJ
+6. Use the **Action Cockpit** cards to open the player, marketplace management,
+   artist community tab, or catalog review flow when aggregate signals support
+   an action.
+7. Monitor active escrow allocations under the **Content Protection Staking & escrow overview**.
+8. Operators can open `/analytics/agent-quality` to review aggregate AI DJ
    acceptance, first-pick skip, session duration, save, playlist-add, purchase,
    strategy, taste-source, and model/materialization-version metrics.
 
@@ -50,6 +53,32 @@ and plays-over-time chart from the same bounded `analytics_facts` slice. Daily
 `analytics_views` remain available for warehouse consumers, but the artist
 dashboard does not prefer them over facts so partial current-day windows cannot
 drift from the rest of the report.
+
+The same `GET /analytics/artist/:id/v1?days=N` response now includes an
+`actions` array with stable artist action cards:
+
+- `promote_top_track` opens `/player?trackId=<track-id>` when a top track has at
+  least five aggregate plays in the selected window.
+- `review_marketplace_readiness` opens `/marketplace/manage` when content
+  protection data shows marketplace-ready releases.
+- `start_listener_community` opens `/artist/:id?tab=community` when aggregate
+  playback demand reaches the five-signal floor.
+- `prepare_marketplace_catalog` points artists to `/artist/catalog` when no
+  marketplace-ready release is visible in the current analytics slice.
+
+Each card includes `id`, `type`, `title`, `description`, `reason`, `priority`,
+`confidence`, `sourceSignal`, `cta`, and `privacy`. Listener-derived cards use
+aggregate counts only and apply a minimum signal threshold before surfacing
+counts. The DTO does not include listener identities, wallet addresses, raw play
+history, cohort membership, or per-listener drilldowns.
+
+Action cockpit product analytics are emitted through `POST /analytics/product/event`:
+
+- `artist.action_card_impression`
+- `artist.action_card_clicked`
+
+The payload is intentionally compact: `cardId`, `cardType`, `priority`,
+`sourceCategory`, and `disabled`.
 
 Artist dashboard authorization and default rollups remain manager/owner scoped
 through the compatibility `artistId` dimension. Catalog metadata enrichment now
@@ -69,6 +98,8 @@ actor ids, wallet addresses, and per-user drilldowns.
 
 ### UI Routes & Entry Points
 - Page Component: `/artist/analytics` -> `web/src/app/artist/analytics/page.tsx`
+- Artist Action Cockpit:
+  `web/src/components/analytics/ArtistAnalyticsDashboard.tsx`
 - AI DJ Quality Page: `/analytics/agent-quality` ->
   `web/src/app/analytics/agent-quality/page.tsx`
 - Layout Wrapper: `web/src/app/artist/analytics/layout.tsx`
@@ -86,7 +117,19 @@ actor ids, wallet addresses, and per-user drilldowns.
 ### Unit Tests
 - Verification Suite: `web/tests/` (Vitest)
 - Command: `npm --prefix web run test:unit`
+- Artist action cockpit frontend check:
+  `cd web && npx vitest run src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
 - Focused frontend check:
   `cd web && npx vitest run src/components/analytics/AgentQualityDashboard.test.tsx`
 - Focused backend check:
   `cd backend && npx jest --runInBand src/tests/analytics.spec.ts src/tests/analytics.controller.http.spec.ts`
+
+## Remaining P7 Work
+
+Issue [#1121](https://github.com/akoita/resonate/issues/1121) remains the
+tracking source for broader artist action recommendations. Deferred slices
+include Shows city-demand campaign suggestions, holder benefit prompts, remix
+challenge and contributor workflows, campaign update prompts, pricing
+optimization, fan-question triage, reward suggestions, and reviewed agent draft
+actions. Those should keep the same privacy boundary: artist-owned data or
+aggregate-only listener/community signals with explicit thresholds.

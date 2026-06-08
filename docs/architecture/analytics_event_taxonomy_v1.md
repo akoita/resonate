@@ -180,6 +180,8 @@ when they follow the privacy and versioning rules above.
 | `artist.upload_started` | `web-app` | `release` when known | auth user | `source` | `releaseId`, `entryPoint`, `clientEventId` |
 | `artist.upload_step_completed` | `web-app` | `release` when known | auth user | `step`, `source` | `releaseId`, `fileCount`, `trackCount`, `stemCount`, `clientEventId` |
 | `artist.catalog_viewed` | `web-app` | `artist` | auth user | `source` | `releaseCount`, `filter`, `clientEventId` |
+| `artist.action_card_impression` | `web-app` | `artist` | auth user | `cardId`, `cardType`, `priority`, `sourceCategory`, `source` | `disabled`, `clientEventId` |
+| `artist.action_card_clicked` | `web-app` | `artist` | auth user | `cardId`, `cardType`, `priority`, `sourceCategory`, `source` | `disabled`, `clientEventId` |
 | `stems.uploaded` | `ingestion-service` | `release` | `artistId` | `releaseId`, `artistId`, `sourceType`, `trackIds` | `trackCount`, `stemCount`, `retry` |
 | `stems.processed` | `ingestion-service` | `release` | `artistId` | `releaseId`, `artistId`, `modelVersion`, `trackIds`, `stemIds` | `trackCount`, `stemCount` |
 | `stems.failed` | `ingestion-service` | `release` | `artistId` | `releaseId`, `artistId`, `status`, `error` | none |
