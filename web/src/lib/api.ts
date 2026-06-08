@@ -2687,6 +2687,46 @@ export type CommunityBenefitRule = {
   updatedAt: string;
 };
 
+export type CommunityBenefit = {
+  id: string;
+  title: string;
+  description: string | null;
+  benefitType: CommunityBenefitType | string;
+  artistId: string | null;
+  eligible: boolean;
+  redeemable: boolean;
+  redeemed: boolean;
+  redemptionStatus: string | null;
+  redeemedAt: string | null;
+  reasons: string[];
+  privacy: {
+    proofDetails: "private" | string;
+  };
+};
+
+export type CommunityBenefitsResponse = {
+  schemaVersion: "community-benefits/v1";
+  benefits: CommunityBenefit[];
+  privacy: {
+    proofDetails: "private" | string;
+    walletAddressVisible: boolean;
+    ownershipDisplayVisible: boolean;
+  };
+};
+
+export type CommunityBenefitRedemptionResponse = {
+  schemaVersion: "community-benefit-redemption/v1";
+  idempotent: boolean;
+  benefit: CommunityBenefit;
+  redemption: {
+    id: string;
+    status: string;
+    settlementType: string;
+    settlementReference: string | null;
+    redeemedAt: string | null;
+  };
+};
+
 export type CommunityBenefitRuleInput = {
   title: string;
   description?: string;
@@ -2756,6 +2796,25 @@ export async function getArtistDiscordBridge(token: string, artistId: string): P
   return apiRequest<CommunityDiscordBridgeResponse>(
     `/community/artists/${encodeURIComponent(artistId)}/discord/manage`,
     { cache: "no-store" },
+    token,
+  );
+}
+
+export async function getMyCommunityBenefits(token: string): Promise<CommunityBenefitsResponse> {
+  return apiRequest<CommunityBenefitsResponse>(
+    "/community/benefits/me",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export async function redeemCommunityBenefit(
+  token: string,
+  benefitRuleId: string,
+): Promise<CommunityBenefitRedemptionResponse> {
+  return apiRequest<CommunityBenefitRedemptionResponse>(
+    `/community/benefits/${encodeURIComponent(benefitRuleId)}/redeem`,
+    { method: "POST" },
     token,
   );
 }
