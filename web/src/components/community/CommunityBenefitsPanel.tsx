@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getMyCommunityBenefits,
   redeemCommunityBenefit,
@@ -21,6 +21,7 @@ type CommunityBenefitsContentProps = {
   loading: boolean;
   error: string | null;
   redeemingId: string | null;
+  actionsDisabled?: boolean;
   onRefresh: () => void;
   onRedeem: (benefit: CommunityBenefit) => void;
 };
@@ -90,8 +91,17 @@ function formatBenefitDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(date);
 }
 
-function replaceBenefit(benefits: CommunityBenefit[], next: CommunityBenefit) {
+export function applyCommunityBenefitRedemption(benefits: CommunityBenefit[], next: CommunityBenefit) {
   return benefits.map((benefit) => (benefit.id === next.id ? next : benefit));
+}
+
+export function shouldApplyCommunityBenefitList(
+  requestId: number,
+  latestRequestId: number,
+  requestMutationVersion: number,
+  latestMutationVersion: number,
+) {
+  return requestId === latestRequestId && requestMutationVersion === latestMutationVersion;
 }
 
 export default function CommunityBenefitsPanel({ token, addToast }: Props) {
@@ -99,26 +109,57 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [redeemingId, setRedeemingId] = useState<string | null>(null);
+  const listRequestIdRef = useRef(0);
+  const mutationVersionRef = useRef(0);
 
   const load = async () => {
     if (!token) return;
+    const requestId = listRequestIdRef.current + 1;
+    const requestMutationVersion = mutationVersionRef.current;
+    listRequestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
-      setResponse(await getMyCommunityBenefits(token));
+      const nextResponse = await getMyCommunityBenefits(token);
+      if (shouldApplyCommunityBenefitList(
+        requestId,
+        listRequestIdRef.current,
+        requestMutationVersion,
+        mutationVersionRef.current,
+      )) {
+        setResponse(nextResponse);
+      }
     } catch {
-      setError("Could not load your unlocked benefits.");
-      addToast({
-        type: "error",
-        title: "Benefits unavailable",
-        message: "Please refresh and try again.",
-      });
+      if (requestId === listRequestIdRef.current) {
+        setError("Could not load your unlocked benefits.");
+        addToast({
+          type: "error",
+          title: "Benefits unavailable",
+          message: "Please refresh and try again.",
+        });
+      }
     } finally {
-      setLoading(false);
+      if (requestId === listRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
+    if (!token) {
+      listRequestIdRef.current += 1;
+      mutationVersionRef.current += 1;
+      setResponse(null);
+      setLoading(false);
+      setError(null);
+      setRedeemingId(null);
+      return;
+    }
+    listRequestIdRef.current += 1;
+    mutationVersionRef.current += 1;
+    setResponse(null);
+    setError(null);
+    setRedeemingId(null);
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- token changes are the reload boundary.
   }, [token]);
@@ -128,8 +169,9 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
     setRedeemingId(benefit.id);
     try {
       const redemption = await redeemCommunityBenefit(token, benefit.id);
+      mutationVersionRef.current += 1;
       setResponse((current) => current
-        ? { ...current, benefits: replaceBenefit(current.benefits, redemption.benefit) }
+        ? { ...current, benefits: applyCommunityBenefitRedemption(current.benefits, redemption.benefit) }
         : current);
       addToast({
         type: "success",
@@ -155,6 +197,7 @@ export default function CommunityBenefitsPanel({ token, addToast }: Props) {
       loading={loading}
       error={error}
       redeemingId={redeemingId}
+      actionsDisabled={loading}
       onRefresh={load}
       onRedeem={handleRedeem}
     />
@@ -166,6 +209,7 @@ export function CommunityBenefitsContent({
   loading,
   error,
   redeemingId,
+  actionsDisabled = false,
   onRefresh,
   onRedeem,
 }: CommunityBenefitsContentProps) {
@@ -221,6 +265,7 @@ export function CommunityBenefitsContent({
           title="Ready to claim"
           benefits={grouped.redeemable}
           redeemingId={redeemingId}
+          actionsDisabled={actionsDisabled}
           onRedeem={onRedeem}
         />
       ) : null}
@@ -230,6 +275,7 @@ export function CommunityBenefitsContent({
           title="Claimed"
           benefits={grouped.redeemed}
           redeemingId={redeemingId}
+          actionsDisabled={actionsDisabled}
           onRedeem={onRedeem}
         />
       ) : null}
@@ -239,6 +285,7 @@ export function CommunityBenefitsContent({
           title="Not currently claimable"
           benefits={[...grouped.unavailable, ...grouped.locked]}
           redeemingId={redeemingId}
+          actionsDisabled={actionsDisabled}
           onRedeem={onRedeem}
         />
       ) : null}
@@ -250,11 +297,13 @@ function BenefitGroup({
   title,
   benefits,
   redeemingId,
+  actionsDisabled,
   onRedeem,
 }: {
   title: string;
   benefits: CommunityBenefit[];
   redeemingId: string | null;
+  actionsDisabled: boolean;
   onRedeem: (benefit: CommunityBenefit) => void;
 }) {
   return (
@@ -269,6 +318,7 @@ function BenefitGroup({
             key={benefit.id}
             benefit={benefit}
             busy={redeemingId === benefit.id}
+            actionsDisabled={actionsDisabled}
             onRedeem={onRedeem}
           />
         ))}
@@ -280,10 +330,12 @@ function BenefitGroup({
 function BenefitCard({
   benefit,
   busy,
+  actionsDisabled,
   onRedeem,
 }: {
   benefit: CommunityBenefit;
   busy: boolean;
+  actionsDisabled: boolean;
   onRedeem: (benefit: CommunityBenefit) => void;
 }) {
   const state = communityBenefitState(benefit);
@@ -309,7 +361,7 @@ function BenefitCard({
       )}
       <div className="community-benefit-card__actions">
         {state === "redeemable" ? (
-          <Button onClick={() => onRedeem(benefit)} disabled={busy}>
+          <Button onClick={() => onRedeem(benefit)} disabled={busy || actionsDisabled}>
             {busy ? "Claiming..." : "Claim benefit"}
           </Button>
         ) : null}

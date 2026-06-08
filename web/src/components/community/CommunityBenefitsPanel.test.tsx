@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { CommunityBenefit, CommunityBenefitsResponse } from "../../lib/api";
 import {
   CommunityBenefitsContent,
+  applyCommunityBenefitRedemption,
   communityBenefitState,
   communityBenefitStatusCopy,
   communityBenefitTypeLabel,
   partitionCommunityBenefits,
+  shouldApplyCommunityBenefitList,
 } from "./CommunityBenefitsPanel";
 
 function benefit(overrides: Partial<CommunityBenefit> = {}): CommunityBenefit {
@@ -89,6 +91,37 @@ describe("CommunityBenefitsPanel", () => {
     expect(html).toContain("Artist benefit");
     expect(html).not.toContain("stem_nft_holder");
     expect(html).not.toContain("artist-1");
+  });
+
+  it("replaces a claimable card with the redeemed benefit returned by the API", () => {
+    const claimable = benefit({ id: "benefit-1", title: "Claimable perk" });
+    const redeemed = benefit({
+      id: "benefit-1",
+      title: "Claimed perk",
+      redeemable: false,
+      redeemed: true,
+      redemptionStatus: "redeemed",
+      redeemedAt: "2026-06-08T00:00:00.000Z",
+    });
+
+    expect(applyCommunityBenefitRedemption([claimable], redeemed)).toEqual([redeemed]);
+  });
+
+  it("does not let stale list reads overwrite newer redemption state", () => {
+    expect(shouldApplyCommunityBenefitList(2, 2, 1, 1)).toBe(true);
+    expect(shouldApplyCommunityBenefitList(2, 3, 1, 1)).toBe(false);
+    expect(shouldApplyCommunityBenefitList(2, 2, 1, 2)).toBe(false);
+  });
+
+  it("disables claim actions while a benefits refresh is in flight", () => {
+    const html = renderToStaticMarkup(content({
+      response: response([benefit()]),
+      loading: true,
+      actionsDisabled: true,
+    }));
+
+    expect(html).toContain("Refreshing...");
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Claim benefit<\/button>/);
   });
 
   it("renders redeemed and locked benefits separately from claimable benefits", () => {
