@@ -3823,3 +3823,105 @@ export async function generateComplementaryStem(
     token
   );
 }
+
+// ---------------------------------------------------------------------------
+// Remix Studio (#891): eligibility + remix projects
+// ---------------------------------------------------------------------------
+
+export type RemixDenialReason = {
+  code: string;
+  message: string;
+};
+
+export type RemixEligibilityResponse = {
+  allowed: boolean;
+  requiredLicense: "remix" | null;
+  allowedActions: Array<"private_draft" | "publish_resonate" | "export">;
+  reasons: RemixDenialReason[];
+  policyVersion: string;
+  source: {
+    trackId: string;
+    rightsRoute: string | null;
+    contentStatus: string;
+  };
+  stems: Array<{
+    stemId: string;
+    remixable: boolean | null;
+    licensed: boolean;
+  }>;
+};
+
+export type RemixProjectStem = {
+  stemId: string;
+  role: string | null;
+  gainDb: number | null;
+  muted: boolean;
+  arrangement: unknown;
+};
+
+export type RemixProject = {
+  id: string;
+  creatorUserId: string;
+  sourceTrackId: string;
+  title: string;
+  status: string;
+  mode: string;
+  licenseType: string;
+  licenseId: string | null;
+  prompt: string | null;
+  generationProvider: string | null;
+  generationJobId: string | null;
+  generationMetadata: unknown;
+  attribution: string | null;
+  exportPolicy: unknown;
+  policyVersion: string;
+  createdAt: string;
+  updatedAt: string;
+  stems: RemixProjectStem[];
+  eligibility?: RemixEligibilityResponse;
+};
+
+export async function getRemixEligibility(
+  token: string,
+  trackId: string,
+  stemIds?: string[]
+) {
+  const params = new URLSearchParams({ trackId });
+  if (stemIds?.length) {
+    params.set("stemIds", stemIds.join(","));
+  }
+  return apiRequest<RemixEligibilityResponse>(
+    `/remix/eligibility?${params.toString()}`,
+    {},
+    token
+  );
+}
+
+export async function createRemixProject(
+  token: string,
+  input: {
+    sourceTrackId: string;
+    stemIds: string[];
+    title: string;
+    mode?: string;
+    prompt?: string | null;
+  }
+) {
+  return apiRequest<RemixProject>(
+    "/remix/projects",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function getRemixProject(token: string, projectId: string) {
+  return apiRequest<RemixProject>(
+    `/remix/projects/${projectId}`,
+    {},
+    token
+  );
+}
+
+export async function listRemixProjects(token: string) {
+  return apiRequest<RemixProject[]>("/remix/projects", {}, token);
+}
