@@ -29,10 +29,38 @@ type RemixProjectWithStems = NonNullable<
   Awaited<ReturnType<typeof loadProject>>
 >;
 
+/**
+ * Shared read shape: stem catalog labels and the public source-track summary
+ * (titles, artist credit, rights route, content status) that studio surfaces
+ * render without extra round-trips.
+ */
+const PROJECT_INCLUDE = {
+  stems: {
+    orderBy: { stemId: "asc" },
+    include: { stem: { select: { type: true, title: true } } },
+  },
+  sourceTrack: {
+    select: {
+      title: true,
+      artist: true,
+      rightsRoute: true,
+      contentStatus: true,
+      release: {
+        select: {
+          id: true,
+          title: true,
+          primaryArtist: true,
+          rightsRoute: true,
+        },
+      },
+    },
+  },
+} as const;
+
 function loadProject(projectId: string) {
   return prisma.remixProject.findUnique({
     where: { id: projectId },
-    include: { stems: { orderBy: { stemId: "asc" } } },
+    include: PROJECT_INCLUDE,
   });
 }
 
@@ -95,7 +123,7 @@ export class RemixProjectService {
         policyVersion: eligibility.policyVersion,
         stems: { create: stemIds.map((stemId) => ({ stemId })) },
       },
-      include: { stems: { orderBy: { stemId: "asc" } } },
+      include: PROJECT_INCLUDE,
     });
 
     this.eventBus.publish({
@@ -121,7 +149,7 @@ export class RemixProjectService {
   async listProjects(userId: string) {
     const projects = await prisma.remixProject.findMany({
       where: { creatorUserId: userId },
-      include: { stems: { orderBy: { stemId: "asc" } } },
+      include: PROJECT_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
     return projects.map((project) => this.toResponse(project));
@@ -134,6 +162,7 @@ export class RemixProjectService {
       title?: string;
       prompt?: string | null;
       status?: string;
+      mode?: string;
       stems?: RemixProjectStemUpdate[];
     },
   ) {
@@ -143,6 +172,13 @@ export class RemixProjectService {
       if (!REMIX_PROJECT_STATUSES.includes(patch.status as RemixProjectStatus)) {
         throw new BadRequestException(
           `status must be one of: ${REMIX_PROJECT_STATUSES.join(", ")}`,
+        );
+      }
+    }
+    if (patch.mode !== undefined) {
+      if (!REMIX_PROJECT_MODES.includes(patch.mode as RemixProjectMode)) {
+        throw new BadRequestException(
+          `mode must be one of: ${REMIX_PROJECT_MODES.join(", ")}`,
         );
       }
     }
@@ -181,8 +217,9 @@ export class RemixProjectService {
           ...(patch.title !== undefined ? { title: patch.title.trim() } : {}),
           ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
           ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.mode !== undefined ? { mode: patch.mode } : {}),
         },
-        include: { stems: { orderBy: { stemId: "asc" } } },
+        include: PROJECT_INCLUDE,
       });
     });
 
@@ -254,8 +291,25 @@ export class RemixProjectService {
       policyVersion: project.policyVersion,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
+      source: {
+        trackId: project.sourceTrackId,
+        trackTitle: project.sourceTrack.title,
+        releaseId: project.sourceTrack.release.id,
+        releaseTitle: project.sourceTrack.release.title,
+        artistName:
+          project.sourceTrack.artist ??
+          project.sourceTrack.release.primaryArtist ??
+          null,
+        rightsRoute:
+          project.sourceTrack.rightsRoute ??
+          project.sourceTrack.release.rightsRoute ??
+          null,
+        contentStatus: project.sourceTrack.contentStatus,
+      },
       stems: project.stems.map((stem) => ({
         stemId: stem.stemId,
+        type: stem.stem.type,
+        title: stem.stem.title,
         role: stem.role,
         gainDb: stem.gainDb,
         muted: stem.muted,

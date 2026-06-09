@@ -94,6 +94,7 @@ export class RemixController {
       title?: string;
       prompt?: string | null;
       status?: string;
+      mode?: string;
       stems?: RemixProjectStemUpdate[];
     },
   ) {

@@ -430,6 +430,20 @@ describe("Remix eligibility and projects (integration)", () => {
         }),
       );
 
+      // Studio surfaces consume the public source summary and stem labels.
+      expect(created.source).toEqual({
+        trackId: TRACK_ID,
+        trackTitle: "Remixable Track",
+        releaseId: `${TEST_PREFIX}release`,
+        releaseTitle: "Remixable Release",
+        artistName: null,
+        rightsRoute: "STANDARD_ESCROW",
+        contentStatus: "clean",
+      });
+      expect(created.stems[0]).toEqual(
+        expect.objectContaining({ type: "vocals" }),
+      );
+
       // Durability: a brand-new service instance reads the same record.
       const freshService = new RemixProjectService(
         new EventBus(),
@@ -463,6 +477,24 @@ describe("Remix eligibility and projects (integration)", () => {
       );
       const untouched = updated.stems.find((s) => s.stemId === X402_STEM_ID);
       expect(untouched).toEqual(expect.objectContaining({ muted: false }));
+    });
+
+    it("updates the remix mode and rejects unknown modes", async () => {
+      const created = await projectService.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Mode Switcher",
+      });
+      const updated = await projectService.updateProject(CREATOR_ID, created.id, {
+        mode: "variation",
+      });
+      expect(updated.mode).toBe("variation");
+      await expect(
+        projectService.updateProject(CREATOR_ID, created.id, {
+          mode: "voice_clone",
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it("rejects updates touching stems outside the project", async () => {
