@@ -17,7 +17,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { ContractsService } from "./contracts.service";
-import { IndexerService } from "./indexer.service";
+import { IndexerService, resolveIndexerChainId } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
 import { EventBus } from "../shared/event_bus";
 import { LicenseType, type Prisma } from "@prisma/client";
@@ -1717,6 +1717,46 @@ export class MetadataController {
     return this.contractsService.getCuratorReputation(address.toLowerCase());
   }
 
+  // ============ INDEXER MANAGEMENT ============
+  // NOTE: declared BEFORE the parameterized routes below — NestJS registers
+  // routes in declaration order, so "indexer/status" would otherwise be
+  // shadowed by ":chainId/:tokenId" (chainId="indexer" → 500).
+
+  /**
+   * GET /metadata/indexer/status
+   * Returns indexer state (enabled, last indexed block per chain)
+   */
+  @Get("indexer/status")
+  async getIndexerStatus() {
+    return this.indexerService.getStatus();
+  }
+
+  /**
+   * POST /metadata/indexer/reset
+   * Reset indexer to reprocess from a specific block
+   * Body: { chainId: number, fromBlock: number }
+   */
+  @Post("indexer/reset")
+  async resetIndexer(@Body() body: { chainId: number; fromBlock: number }) {
+    const { chainId, fromBlock } = body;
+    this.logger.log(`Resetting indexer for chain ${chainId} to block ${fromBlock}`);
+    await this.indexerService.resetIndexer(chainId, BigInt(fromBlock));
+    return { success: true, chainId, fromBlock };
+  }
+
+  /**
+   * POST /metadata/indexer/reindex-tx
+   * Manually index a specific transaction
+   * Body: { txHash: string, chainId: number, force?: boolean }
+   */
+  @Post("indexer/reindex-tx")
+  async reindexTransaction(@Body() body: { txHash: string; chainId: number; force?: boolean }) {
+    const { txHash, chainId, force } = body;
+    this.logger.log(`Manually reindexing tx ${txHash} on chain ${chainId}${force ? " (force)" : ""}`);
+    const result = await this.indexerService.indexTransaction(txHash, chainId, { force });
+    return { success: true, ...result };
+  }
+
   // ============ PARAMETERIZED ROUTES (must come after static routes) ============
 
   /**
@@ -2015,43 +2055,6 @@ export class MetadataController {
     return attributes;
   }
 
-  // ============ INDEXER MANAGEMENT ============
-
-  /**
-   * GET /metadata/indexer/status
-   * Returns indexer state (enabled, last indexed block per chain)
-   */
-  @Get("indexer/status")
-  async getIndexerStatus() {
-    return this.indexerService.getStatus();
-  }
-
-  /**
-   * POST /metadata/indexer/reset
-   * Reset indexer to reprocess from a specific block
-   * Body: { chainId: number, fromBlock: number }
-   */
-  @Post("indexer/reset")
-  async resetIndexer(@Body() body: { chainId: number; fromBlock: number }) {
-    const { chainId, fromBlock } = body;
-    this.logger.log(`Resetting indexer for chain ${chainId} to block ${fromBlock}`);
-    await this.indexerService.resetIndexer(chainId, BigInt(fromBlock));
-    return { success: true, chainId, fromBlock };
-  }
-
-  /**
-   * POST /metadata/indexer/reindex-tx
-   * Manually index a specific transaction
-   * Body: { txHash: string, chainId: number }
-   */
-  @Post("indexer/reindex-tx")
-  async reindexTransaction(@Body() body: { txHash: string; chainId: number }) {
-    const { txHash, chainId } = body;
-    this.logger.log(`Manually reindexing tx ${txHash} on chain ${chainId}`);
-    const result = await this.indexerService.indexTransaction(txHash, chainId);
-    return { success: true, ...result };
-  }
-
   /**
    * POST /metadata/notify-listing
    * Frontend calls this after a successful on-chain mintAndList to
@@ -2074,15 +2077,24 @@ export class MetadataController {
     this.logger.log(`Notify listing: tokenId=${body.tokenId}, stemId=${body.stemId}`);
 
     try {
+      // Listing rows MUST be stamped with the same chainId the polling
+      // indexer uses — Sold/Cancelled processing looks listings up by
+      // (listingId, chainId), so a row written under any other chainId is
+      // never marked sold and its purchases are never recorded. The
+      // client-supplied chainId is only used as a sanity check.
       const notifiedChainId =
         typeof body.chainId === "number"
           ? body.chainId
           : body.chainId
             ? parseInt(body.chainId, 10)
             : NaN;
-      const chainId = Number.isFinite(notifiedChainId)
-        ? notifiedChainId
-        : parseInt(process.env.AA_CHAIN_ID || process.env.CHAIN_ID || "11155111", 10);
+      const chainId = resolveIndexerChainId();
+      if (Number.isFinite(notifiedChainId) && notifiedChainId !== chainId) {
+        this.logger.warn(
+          `notify-listing received chainId=${notifiedChainId} but the indexer watches chain ${chainId}; ` +
+          `using ${chainId} for listing records (tx=${body.transactionHash})`,
+        );
+      }
       let reindexResult: { processed: number } | null = null;
 
       // Link stem to its NFT tokenId so the indexer can correlate
