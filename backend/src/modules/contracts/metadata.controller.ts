@@ -1810,6 +1810,12 @@ export class MetadataController {
       remixable: nftData.remixable,
       chain_id: chainId,
       contract_address: nftData.contractAddress,
+      // Catalog identifiers so app surfaces can resolve eligibility/licensing
+      // for this token. Same public IDs the :chainId/stem/:stemId route and
+      // the public listings payload already expose.
+      stem_id: stem?.id,
+      track_id: track?.id,
+      release_id: release?.id,
     };
 
     // Add generation provenance for AI-created stems
