@@ -14,6 +14,7 @@ import {
 import { formatRoyaltyBps, isZeroAddress } from "../../../lib/contracts";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ListStemModal } from "../../../components/marketplace/ListStemModal";
+import { RemixCta } from "../../../components/remix/RemixCta";
 import { StemNftBadge } from "../../../components/marketplace/StemNftBadge";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
 import { type Address } from "viem";
@@ -50,20 +51,33 @@ export default function StemDetailPage() {
     const [showListModal, setShowListModal] = useState(false);
     const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
     const [parentTrackId, setParentTrackId] = useState<bigint | undefined>(undefined);
+    const [catalogStemId, setCatalogStemId] = useState<string | null>(null);
+    const [catalogTrackId, setCatalogTrackId] = useState<string | null>(null);
+    const [stemDisplayName, setStemDisplayName] = useState<string | null>(null);
 
     // Fetch artwork from metadata service
     useEffect(() => {
         if (!tokenId || !chainId) return;
         setArtworkUrl(null);
         setParentTrackId(undefined);
+        setCatalogStemId(null);
+        setCatalogTrackId(null);
+        setStemDisplayName(null);
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
         fetch(`${backendUrl}/api/metadata/${chainId}/${tokenId.toString()}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
                 if (data?.image) setArtworkUrl(data.image);
+                if (data?.name) setStemDisplayName(data.name);
                 const rawTrackId = data?.properties?.trackId;
                 if (rawTrackId !== undefined && rawTrackId !== null) {
                     setParentTrackId(BigInt(rawTrackId));
+                }
+                if (typeof data?.properties?.stem_id === "string") {
+                    setCatalogStemId(data.properties.stem_id);
+                }
+                if (typeof data?.properties?.track_id === "string") {
+                    setCatalogTrackId(data.properties.track_id);
                 }
             })
             .catch(() => { /* ignore — will show fallback */ });
@@ -303,6 +317,26 @@ export default function StemDetailPage() {
                             >
                                 List for Sale
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Remix entry point — state comes from the eligibility API */}
+                {catalogTrackId && catalogStemId && (
+                    <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div>
+                                <h3 className="text-lg font-semibold text-white">Remix Studio</h3>
+                                <p className="text-zinc-400 text-sm">
+                                    Create a private remix draft from this stem when your license allows it.
+                                </p>
+                            </div>
+                            <RemixCta
+                                variant="button"
+                                trackId={catalogTrackId}
+                                stemIds={[catalogStemId]}
+                                trackTitle={stemDisplayName ?? undefined}
+                            />
                         </div>
                     </div>
                 )}

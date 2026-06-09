@@ -21,6 +21,7 @@ import {
 } from "../../../lib/api";
 import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
+import { RemixCta } from "../../../components/remix/RemixCta";
 import { useBreakpoint } from "../../../hooks/useBreakpoint";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
@@ -1962,17 +1963,25 @@ export default function ReleaseDetails() {
                     <td className="track-genre">{release.genre || "---"}</td>
                     <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>
                     <td className="track-actions-cell">
-                      <TrackActionMenu
-                        actions={[
-                          {
-                            label: "Add to Playlist",
-                            icon: "🎵",
-                            onClick: async () => {
-                              setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
+                      <div
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {track.stems && track.stems.length > 0 && (
+                          <RemixCta trackId={track.id} trackTitle={track.title} />
+                        )}
+                        <TrackActionMenu
+                          actions={[
+                            {
+                              label: "Add to Playlist",
+                              icon: "🎵",
+                              onClick: async () => {
+                                setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
+                              },
                             },
-                          },
-                        ]}
-                      />
+                          ]}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );

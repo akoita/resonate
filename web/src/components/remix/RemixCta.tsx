@@ -1,0 +1,242 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "../auth/AuthProvider";
+import { useToast } from "../ui/Toast";
+import {
+  createRemixProject,
+  getRemixEligibility,
+  type RemixEligibilityResponse,
+} from "../../lib/api";
+
+export type RemixCtaVariant = "button" | "chip";
+
+export type RemixCtaState =
+  | { kind: "hidden" }
+  | { kind: "signed_out"; label: string; reason: string }
+  | { kind: "remix"; label: string }
+  | { kind: "license_required"; label: string; reason: string }
+  | { kind: "blocked"; label: string; reason: string };
+
+/**
+ * Pure CTA state resolution so tests can cover every eligibility shape
+ * without rendering. The CTA never infers rights client-side; it only
+ * translates the eligibility API response into one of the product states.
+ */
+export function resolveRemixCtaState(input: {
+  signedIn: boolean;
+  loading: boolean;
+  eligibility: RemixEligibilityResponse | null;
+}): RemixCtaState {
+  if (!input.signedIn) {
+    return {
+      kind: "signed_out",
+      label: "Remix",
+      reason: "Sign in to check remix availability for this track.",
+    };
+  }
+  if (input.loading || !input.eligibility) {
+    // Fail closed: no CTA while loading or when eligibility is unknown.
+    return { kind: "hidden" };
+  }
+  if (input.eligibility.allowed) {
+    return { kind: "remix", label: "Remix" };
+  }
+  if (input.eligibility.requiredLicense === "remix") {
+    return {
+      kind: "license_required",
+      label: "Get remix license",
+      reason:
+        "A remix license unlocks Remix Studio for this track's stems.",
+    };
+  }
+  const reason =
+    input.eligibility.reasons[0]?.message ||
+    "Remixing is not available for this source.";
+  return { kind: "blocked", label: "Remix unavailable", reason };
+}
+
+const CHIP_BASE_STYLE: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "2px 10px",
+  borderRadius: 12,
+  fontSize: 11,
+  fontWeight: 500,
+  whiteSpace: "nowrap",
+  fontFamily: "inherit",
+};
+
+export function RemixCta({
+  trackId,
+  stemIds,
+  trackTitle,
+  variant = "chip",
+  initialEligibility,
+}: {
+  trackId: string;
+  stemIds?: string[];
+  trackTitle?: string;
+  variant?: RemixCtaVariant;
+  /** Skips the eligibility fetch when the caller already holds the response. */
+  initialEligibility?: RemixEligibilityResponse | null;
+}) {
+  const { token, login } = useAuth();
+  const router = useRouter();
+  const { addToast } = useToast();
+  const stemIdsKey = useMemo(() => (stemIds ?? []).join(","), [stemIds]);
+  const requestKey = `${trackId}|${stemIdsKey}`;
+
+  // Loading is derived from whether the last resolved request matches the
+  // current inputs, so the effect never has to set state synchronously.
+  const [resolved, setResolved] = useState<{
+    key: string;
+    eligibility: RemixEligibilityResponse | null;
+  } | null>(
+    initialEligibility !== undefined
+      ? { key: requestKey, eligibility: initialEligibility }
+      : null,
+  );
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (initialEligibility !== undefined) {
+      // Nothing to fetch; the caller already resolved eligibility.
+      return;
+    }
+    if (!token || !trackId) {
+      // Nothing to fetch; the signed-out state is derived at render time.
+      return;
+    }
+    let cancelled = false;
+    const key = `${trackId}|${stemIdsKey}`;
+    const requestedStemIds = stemIdsKey ? stemIdsKey.split(",") : undefined;
+    getRemixEligibility(token, trackId, requestedStemIds)
+      .then((data) => {
+        if (!cancelled) setResolved({ key, eligibility: data });
+      })
+      .catch(() => {
+        // Fail closed: an unresolved eligibility hides the CTA.
+        if (!cancelled) setResolved({ key, eligibility: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, trackId, stemIdsKey, initialEligibility]);
+
+  const eligibility =
+    resolved?.key === requestKey ? resolved.eligibility : null;
+  const loading = !!token && resolved?.key !== requestKey;
+
+  const state = resolveRemixCtaState({
+    signedIn: !!token,
+    loading,
+    eligibility,
+  });
+
+  if (state.kind === "hidden") {
+    return null;
+  }
+
+  const handleRemix = async () => {
+    if (!token || !eligibility?.allowed || creating) return;
+    setCreating(true);
+    try {
+      const projectStemIds = stemIdsKey
+        ? stemIdsKey.split(",")
+        : eligibility.stems
+            .filter((stem) => stem.licensed)
+            .map((stem) => stem.stemId);
+      const project = await createRemixProject(token, {
+        sourceTrackId: trackId,
+        stemIds: projectStemIds,
+        title: trackTitle ? `${trackTitle} (Remix)` : "Untitled Remix",
+      });
+      router.push(`/remix/studio/${project.id}`);
+    } catch {
+      addToast({
+        type: "error",
+        title: "Could not open Remix Studio",
+        message: "Creating the remix project failed. Please try again.",
+      });
+      setCreating(false);
+    }
+  };
+
+  const handleClick = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (state.kind === "remix") {
+      void handleRemix();
+      return;
+    }
+    if (state.kind === "license_required") {
+      router.push("/marketplace");
+      return;
+    }
+    if (state.kind === "signed_out") {
+      void login?.();
+    }
+  };
+
+  const interactive = state.kind === "remix" || state.kind === "license_required" || state.kind === "signed_out";
+  const title =
+    state.kind === "remix"
+      ? "Create a private remix draft from this track's licensed stems."
+      : state.reason;
+
+  if (variant === "button") {
+    const buttonClass =
+      state.kind === "remix" ? "ui-btn ui-btn-primary" : "ui-btn ui-btn-ghost";
+    return (
+      <button
+        type="button"
+        className={`${buttonClass} remix-cta remix-cta--${state.kind}`}
+        onClick={handleClick}
+        disabled={!interactive || creating}
+        title={title}
+      >
+        {creating ? "Opening Remix Studio..." : state.label}
+      </button>
+    );
+  }
+
+  const chipStyle: React.CSSProperties =
+    state.kind === "remix"
+      ? {
+          ...CHIP_BASE_STYLE,
+          background: "#a855f720",
+          color: "#c084fc",
+          border: "1px solid rgba(168, 85, 247, 0.35)",
+          cursor: "pointer",
+        }
+      : state.kind === "license_required"
+        ? {
+            ...CHIP_BASE_STYLE,
+            background: "#eab30820",
+            color: "#fbbf24",
+            border: "1px solid rgba(234, 179, 8, 0.35)",
+            cursor: "pointer",
+          }
+        : {
+            ...CHIP_BASE_STYLE,
+            background: "rgba(161, 161, 170, 0.12)",
+            color: "#a1a1aa",
+            border: "1px solid rgba(161, 161, 170, 0.25)",
+            cursor: state.kind === "signed_out" ? "pointer" : "default",
+          };
+
+  return (
+    <button
+      type="button"
+      className={`remix-cta remix-cta--${state.kind}`}
+      style={chipStyle}
+      onClick={handleClick}
+      disabled={!interactive || creating}
+      title={title}
+    >
+      {creating ? "Opening..." : state.label}
+    </button>
+  );
+}
