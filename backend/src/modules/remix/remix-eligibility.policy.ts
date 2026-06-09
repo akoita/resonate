@@ -57,7 +57,7 @@ export type RemixEligibilityDecision = {
   policyVersion: string;
 };
 
-const REMIX_ELIGIBLE_ROUTES: UploadRightsRoute[] = [
+export const REMIX_ELIGIBLE_ROUTES: readonly UploadRightsRoute[] = [
   "STANDARD_ESCROW",
   "TRUSTED_FAST_PATH",
 ];

@@ -34,7 +34,13 @@ None.
 
 ### High Findings
 
-None.
+- SBPR-1137-01 (fixed in-branch): the x402 remix-license lookup initially
+  matched any `X402Settlement` row with a remix-licensed listing and matching
+  payer, including rows persisted with `status = contract_settlement_failed`
+  for failed on-chain listing settlements. A failed purchase could therefore
+  satisfy the remix license requirement. Fixed by filtering on
+  `status = "download_granted"` and covered by an integration regression test
+  seeding a failed settlement.
 
 ### Notes
 

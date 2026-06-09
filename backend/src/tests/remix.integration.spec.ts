@@ -31,6 +31,7 @@ const LICENSED_STEM_ID = `${TEST_PREFIX}stem_licensed`;
 const UNLICENSED_STEM_ID = `${TEST_PREFIX}stem_unlicensed`;
 const NON_REMIXABLE_STEM_ID = `${TEST_PREFIX}stem_locked`;
 const X402_STEM_ID = `${TEST_PREFIX}stem_x402`;
+const FAILED_X402_STEM_ID = `${TEST_PREFIX}stem_x402_failed`;
 const BLOCKED_STEM_ID = `${TEST_PREFIX}stem_blocked`;
 const QUARANTINED_STEM_ID = `${TEST_PREFIX}stem_quarantined`;
 
@@ -104,6 +105,7 @@ describe("Remix eligibility and projects (integration)", () => {
         { id: UNLICENSED_STEM_ID, trackId: TRACK_ID, type: "drums", uri: "local://unlicensed" },
         { id: NON_REMIXABLE_STEM_ID, trackId: TRACK_ID, type: "bass", uri: "local://locked" },
         { id: X402_STEM_ID, trackId: TRACK_ID, type: "other", uri: "local://x402" },
+        { id: FAILED_X402_STEM_ID, trackId: TRACK_ID, type: "fx", uri: "local://x402-failed" },
         { id: BLOCKED_STEM_ID, trackId: BLOCKED_TRACK_ID, type: "vocals", uri: "local://blocked" },
         { id: QUARANTINED_STEM_ID, trackId: QUARANTINED_TRACK_ID, type: "vocals", uri: "local://quarantined" },
       ],
@@ -213,6 +215,45 @@ describe("Remix eligibility and projects (integration)", () => {
         purchasedAt: new Date(),
       },
     });
+
+    // A failed listing settlement must NOT count as a remix license, even
+    // though the listing carries licenseType=remix and the payer matches.
+    const failedX402Listing = await prisma.stemListing.create({
+      data: {
+        listingId: BigInt(7003),
+        stemId: FAILED_X402_STEM_ID,
+        tokenId: BigInt(9004),
+        chainId: 31337,
+        contractAddress: `0x${"c3".repeat(20)}`,
+        sellerAddress: `0x${"b2".repeat(20)}`,
+        pricePerUnit: "2000000",
+        amount: BigInt(5),
+        paymentToken: `0x${"0".repeat(40)}`,
+        expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000),
+        transactionHash: `${TEST_PREFIX}list_x402_failed`,
+        blockNumber: BigInt(105),
+        licenseType: "remix",
+        status: "active",
+        listedAt: new Date(),
+      },
+    });
+    await prisma.x402Settlement.create({
+      data: {
+        stemId: FAILED_X402_STEM_ID,
+        listingId: failedX402Listing.id,
+        payerAddress: CREATOR_WALLET,
+        receiptId: `${TEST_PREFIX}receipt_failed`,
+        receipt: { kind: "test" },
+        status: "contract_settlement_failed",
+        contractSettlementStatus: "contract_failed",
+        paymentToken: `0x${"0".repeat(40)}`,
+        paymentAssetSymbol: "USDC",
+        paymentAssetDecimals: 6,
+        settlementAmount: "2.00",
+        settlementAmountUnits: "2000000",
+        purchasedAt: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
@@ -281,6 +322,17 @@ describe("Remix eligibility and projects (integration)", () => {
       });
       expect(result.allowed).toBe(true);
       expect(result.stems[0].licensed).toBe(true);
+    });
+
+    it("rejects failed x402 listing settlements as remix licenses", async () => {
+      const result = await eligibilityService.checkEligibility({
+        userId: CREATOR_ID,
+        trackId: TRACK_ID,
+        stemIds: [FAILED_X402_STEM_ID],
+      });
+      expect(result.allowed).toBe(false);
+      expect(result.requiredLicense).toBe("remix");
+      expect(result.stems[0].licensed).toBe(false);
     });
 
     it("requires a remix license for unlicensed stems", async () => {

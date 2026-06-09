@@ -68,6 +68,9 @@ export class RemixProjectService {
       );
     }
 
+    // Eligibility is evaluated at creation time only; private drafts stay
+    // editable if the source state later changes. Any future publish/export
+    // endpoint must re-run checkEligibility before releasing work.
     const eligibility = await this.eligibilityService.checkEligibility({
       userId: input.userId,
       trackId: input.sourceTrackId,

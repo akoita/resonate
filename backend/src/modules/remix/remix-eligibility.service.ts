@@ -6,6 +6,7 @@ import {
 import { prisma } from "../../db/prisma";
 import {
   evaluateRemixEligibility,
+  REMIX_ELIGIBLE_ROUTES,
   type RemixEligibilityDecision,
   type RemixStemPolicyInput,
 } from "./remix-eligibility.policy";
@@ -22,8 +23,6 @@ export type RemixEligibilityResult = RemixEligibilityDecision & {
     licensed: boolean;
   }>;
 };
-
-const REMIX_ELIGIBLE_ROUTES = ["STANDARD_ESCROW", "TRUSTED_FAST_PATH"];
 
 @Injectable()
 export class RemixEligibilityService {
@@ -105,7 +104,10 @@ export class RemixEligibilityService {
    * eligibility API shape.
    */
   private isSourceOptedIn(rightsRoute: string | null): boolean {
-    return !!rightsRoute && REMIX_ELIGIBLE_ROUTES.includes(rightsRoute);
+    return (
+      !!rightsRoute &&
+      (REMIX_ELIGIBLE_ROUTES as readonly string[]).includes(rightsRoute)
+    );
   }
 
   /**
@@ -143,6 +145,10 @@ export class RemixEligibilityService {
           stemId: { in: stemIds },
           payerAddress: { equals: wallet.address, mode: "insensitive" },
           listing: { licenseType: "remix" },
+          // Rows persist for failed listing settlements too
+          // (status = contract_settlement_failed); only a granted settlement
+          // proves the listing-backed remix license.
+          status: "download_granted",
         },
         select: { stemId: true },
       }),
