@@ -127,6 +127,18 @@ export function stemDisplayName(stem: {
   return stem.type.charAt(0).toUpperCase() + stem.type.slice(1);
 }
 
+/** Footer save-state copy; pure so the title/dirty interplay is testable. */
+export function saveStatusLabel(input: {
+  saving: boolean;
+  dirty: boolean;
+  titleBlank: boolean;
+}): string {
+  if (input.saving) return "Saving...";
+  if (input.titleBlank) return "Title is required";
+  if (input.dirty) return "Unsaved changes";
+  return "All changes saved";
+}
+
 const UNAVAILABLE_ACTIONS = [
   {
     key: "publish",
@@ -159,7 +171,10 @@ export function RemixStudioEditor({
   const patch = buildProjectPatch(project, edits);
   const dirty = Object.keys(patch).length > 0;
   const rights = describeSourceRights(project.source);
+  // Switching back to stem_mix keeps any stored prompt; generation (#896)
+  // must ignore prompts when mode is stem_mix.
   const promptEnabled = edits.mode !== "stem_mix";
+  const titleBlank = edits.title.trim() === "";
 
   const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
     setEdits((prev) => ({
@@ -197,8 +212,14 @@ export function RemixStudioEditor({
           <div className="flex items-center gap-3 flex-wrap">
             <input
               aria-label="Remix title"
-              className="bg-transparent text-3xl font-bold text-white border-b border-transparent focus:border-zinc-600 focus:outline-none min-w-0 flex-1"
+              aria-invalid={titleBlank || undefined}
+              className={`bg-transparent text-3xl font-bold text-white border-b focus:outline-none min-w-0 flex-1 ${
+                titleBlank
+                  ? "border-red-500/60"
+                  : "border-transparent focus:border-zinc-600"
+              }`}
               value={edits.title}
+              disabled={saving}
               onChange={(e) =>
                 setEdits((prev) => ({ ...prev, title: e.target.value }))
               }
@@ -283,6 +304,7 @@ export function RemixStudioEditor({
                   <button
                     type="button"
                     aria-pressed={edit.muted}
+                    disabled={saving}
                     className={`px-2 py-1 rounded text-xs font-medium border ${
                       edit.muted
                         ? "bg-red-500/20 text-red-300 border-red-500/40"
@@ -318,6 +340,7 @@ export function RemixStudioEditor({
                       max={GAIN_DB_MAX}
                       step={0.5}
                       value={edit.gainDb ?? 0}
+                      disabled={saving}
                       aria-label={`${stemDisplayName(stem)} gain in decibels`}
                       onChange={(e) =>
                         updateStemEdit(stem.stemId, {
@@ -344,6 +367,7 @@ export function RemixStudioEditor({
                 key={mode.value}
                 type="button"
                 aria-pressed={edits.mode === mode.value}
+                disabled={saving}
                 className={`px-4 py-2 text-sm ${
                   edits.mode === mode.value
                     ? "bg-purple-500/25 text-purple-200"
@@ -367,7 +391,7 @@ export function RemixStudioEditor({
               rows={3}
               placeholder="Describe the variation or extension you want..."
               value={edits.prompt}
-              disabled={!promptEnabled}
+              disabled={!promptEnabled || saving}
               onChange={(e) =>
                 setEdits((prev) => ({ ...prev, prompt: e.target.value }))
               }
@@ -416,17 +440,15 @@ export function RemixStudioEditor({
             ))}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500">
-              {saving
-                ? "Saving..."
-                : dirty
-                  ? "Unsaved changes"
-                  : "All changes saved"}
+            <span
+              className={`text-xs ${titleBlank && !saving ? "text-red-400" : "text-zinc-500"}`}
+            >
+              {saveStatusLabel({ saving, dirty, titleBlank })}
             </span>
             <button
               type="button"
               className="ui-btn ui-btn-primary"
-              disabled={!dirty || saving}
+              disabled={!dirty || saving || titleBlank}
               onClick={() => void handleSave()}
             >
               {saving ? "Saving..." : "Save changes"}

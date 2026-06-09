@@ -8,6 +8,7 @@ import {
   describeSourceRights,
   initialEdits,
   RemixStudioEditor,
+  saveStatusLabel,
   stemDisplayName,
 } from "./RemixStudioEditor";
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
@@ -164,6 +165,23 @@ describe("buildProjectPatch", () => {
     const p = project();
     const edits = { ...initialEdits(p), title: "   " };
     expect(buildProjectPatch(p, edits)).toEqual({});
+  });
+});
+
+describe("saveStatusLabel", () => {
+  it("prioritizes saving, then blank title, then dirty state", () => {
+    expect(
+      saveStatusLabel({ saving: true, dirty: true, titleBlank: true }),
+    ).toBe("Saving...");
+    expect(
+      saveStatusLabel({ saving: false, dirty: true, titleBlank: true }),
+    ).toBe("Title is required");
+    expect(
+      saveStatusLabel({ saving: false, dirty: true, titleBlank: false }),
+    ).toBe("Unsaved changes");
+    expect(
+      saveStatusLabel({ saving: false, dirty: false, titleBlank: false }),
+    ).toBe("All changes saved");
   });
 });
 
