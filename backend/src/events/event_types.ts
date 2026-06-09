@@ -97,6 +97,34 @@ export interface RemixCreatedEvent extends BaseEvent {
   txHash?: string;
 }
 
+export interface RemixProjectCreatedEvent extends BaseEvent {
+  eventName: "remix.project_created";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  stemIds: string[];
+  mode: string;
+  policyVersion: string;
+}
+
+export interface RemixPolicyRejectedEvent extends BaseEvent {
+  eventName: "remix.policy_rejected";
+  creatorId: string;
+  sourceTrackId: string;
+  stemIds: string[];
+  reasonCodes: string[];
+  policyVersion: string;
+}
+
+export interface RemixLicenseRequiredEvent extends BaseEvent {
+  eventName: "remix.license_required";
+  creatorId: string;
+  sourceTrackId: string;
+  stemIds: string[];
+  requiredLicense: string;
+  policyVersion: string;
+}
+
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
   eventName: "recommendation.preferences_updated";
   userId: string;
@@ -1082,6 +1110,9 @@ export type ResonateEvent =
   | StemsProcessedEvent
   | IpNftMintedEvent
   | RemixCreatedEvent
+  | RemixProjectCreatedEvent
+  | RemixPolicyRejectedEvent
+  | RemixLicenseRequiredEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent
