@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { RemixEligibilityResponse } from "../../lib/api";
-import { RemixCta, resolveRemixCtaState } from "./RemixCta";
+import type { RemixEligibilityResponse, RemixProject } from "../../lib/api";
+import { findReusableDraft, RemixCta, resolveRemixCtaState } from "./RemixCta";
 
 const mockUseAuth = vi.fn(() => ({ token: "jwt-token", login: vi.fn() }));
 
@@ -166,7 +166,9 @@ describe("RemixCta rendering", () => {
     expect(html).toContain("remix-cta--blocked");
     expect(html).toContain("Remix unavailable");
     expect(html).toContain("This source is quarantined pending rights review.");
-    expect(html).toContain("disabled");
+    // aria-disabled (not disabled) keeps the reason keyboard-reachable.
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).not.toMatch(/<button[^>]* disabled[ >=""]*>/);
   });
 
   it("renders nothing while eligibility is unknown", () => {
@@ -193,5 +195,91 @@ describe("RemixCta rendering", () => {
     );
     expect(html).toContain("ui-btn-primary");
     expect(html).toContain("remix-cta--remix");
+  });
+});
+
+function draft(overrides: Partial<RemixProject> = {}): RemixProject {
+  return {
+    id: "proj-1",
+    creatorUserId: "user-1",
+    sourceTrackId: "track-1",
+    title: "Draft",
+    status: "draft",
+    mode: "stem_mix",
+    licenseType: "remix",
+    licenseId: null,
+    prompt: null,
+    generationProvider: null,
+    generationJobId: null,
+    generationMetadata: null,
+    attribution: null,
+    exportPolicy: null,
+    policyVersion: "test.v1",
+    createdAt: "2026-06-10T00:00:00.000Z",
+    updatedAt: "2026-06-10T00:00:00.000Z",
+    source: {
+      trackId: "track-1",
+      trackTitle: "Track",
+      releaseId: "rel-1",
+      releaseTitle: "Release",
+      artistName: null,
+      rightsRoute: "STANDARD_ESCROW",
+      contentStatus: "clean",
+    },
+    stems: [
+      {
+        stemId: "stem-1",
+        type: "vocals",
+        title: null,
+        role: null,
+        gainDb: null,
+        muted: false,
+        arrangement: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+describe("findReusableDraft", () => {
+  it("opens the most recent draft for the same track", () => {
+    const older = draft({ id: "old", createdAt: "2026-06-01T00:00:00.000Z" });
+    const newer = draft({ id: "new", createdAt: "2026-06-09T00:00:00.000Z" });
+    expect(findReusableDraft([older, newer], "track-1")?.id).toBe("new");
+  });
+
+  it("ignores archived projects and other tracks", () => {
+    const archived = draft({ id: "archived", status: "archived" });
+    const otherTrack = draft({ id: "other", sourceTrackId: "track-2" });
+    expect(findReusableDraft([archived, otherTrack], "track-1")).toBeNull();
+  });
+
+  it("requires an exact stem set when the CTA is stem-scoped", () => {
+    const single = draft({ id: "single" });
+    const double = draft({
+      id: "double",
+      stems: [
+        ...draft().stems,
+        {
+          stemId: "stem-2",
+          type: "drums",
+          title: null,
+          role: null,
+          gainDb: null,
+          muted: false,
+          arrangement: null,
+        },
+      ],
+    });
+    expect(findReusableDraft([single, double], "track-1", ["stem-1"])?.id).toBe(
+      "single",
+    );
+    expect(
+      findReusableDraft([single], "track-1", ["stem-1", "stem-2"]),
+    ).toBeNull();
+  });
+
+  it("returns null when nothing matches", () => {
+    expect(findReusableDraft([], "track-1")).toBeNull();
   });
 });

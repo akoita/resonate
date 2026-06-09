@@ -1,5 +1,53 @@
 # Security Best Practices Report
 
+## Remix Studio Editor And Draft Reuse - 2026-06-10
+
+### Scope Reviewed
+
+Changed files (#895):
+
+- `backend/src/modules/remix/remix-project.service.ts` (source summary in
+  reads, validated mode updates)
+- `backend/src/modules/remix/remix.controller.ts` (PATCH body type)
+- `web/src/components/remix/RemixStudioEditor.tsx` (+ test)
+- `web/src/components/remix/RemixCta.tsx` (draft reuse, aria-disabled)
+- `web/src/app/remix/studio/[projectId]/page.tsx` (editor wiring)
+- `web/src/lib/api.ts` (types + PATCH helper)
+
+### Executive Summary
+
+The studio editor slice adds no Critical or High findings. The enriched
+project reads expose only public catalog fields (track/release titles, artist
+credit, rights route, content status, stem type/title) on an owner-gated
+endpoint; mode updates are validated against the fixed mode list server-side;
+saves go through the existing owner-checked PATCH; draft reuse reads only the
+caller's own project list; publish/export remain non-functional unavailable
+states with honest copy and no hidden enablement path.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- All user-visible denial/limitation copy is fixed product copy or backend
+  policy strings — no user-generated content is rendered as HTML.
+- The editor patches only changed fields (minimal PATCH payloads) and never
+  sends identity claims; ownership stays server-enforced.
+- No XSS/cookie patterns, secrets, raw SQL, or hardcoded non-localhost URLs
+  in the changed slice (scan output below).
+
+### Scans Run
+
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie' web/src/components/remix/ web/src/app/remix/`
+- `rg -i 'password|secret|api_key|private_key' backend/src/modules/remix/ web/src/components/remix/`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/remix/`
+- `git diff --check`
+
 ## Remix CTAs And Studio Stub - 2026-06-10
 
 ### Scope Reviewed

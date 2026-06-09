@@ -6,8 +6,8 @@ import Link from "next/link";
 import { useAuth } from "../../../../components/auth/AuthProvider";
 import {
   classifyProjectLoadError,
-  RemixStudioProjectView,
-} from "../../../../components/remix/RemixStudioProject";
+  RemixStudioEditor,
+} from "../../../../components/remix/RemixStudioEditor";
 import { getRemixProject, type RemixProject } from "../../../../lib/api";
 
 type LoadState =
@@ -18,11 +18,10 @@ type LoadState =
   | { kind: "loaded"; project: RemixProject };
 
 /**
- * Minimal Remix Studio destination (#894). Read-only by design: it proves the
- * CTA → project flow end to end. The full studio (stem controls, prompts,
- * generation) ships with #895 and replaces this page body.
+ * Remix Studio page shell (#894/#895): auth gate, project loading, and
+ * friendly 403/404 states around the RemixStudioEditor.
  */
-export default function RemixStudioStubPage() {
+export default function RemixStudioPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { token, login } = useAuth();
@@ -108,5 +107,5 @@ export default function RemixStudioStubPage() {
     );
   }
 
-  return <RemixStudioProjectView project={state.project} />;
+  return <RemixStudioEditor project={state.project} />;
 }

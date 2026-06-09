@@ -7,7 +7,9 @@ import { useToast } from "../ui/Toast";
 import {
   createRemixProject,
   getRemixEligibility,
+  listRemixProjects,
   type RemixEligibilityResponse,
+  type RemixProject,
 } from "../../lib/api";
 
 export type RemixCtaVariant = "button" | "chip";
@@ -55,6 +57,38 @@ export function resolveRemixCtaState(input: {
     input.eligibility.reasons[0]?.message ||
     "Remixing is not available for this source.";
   return { kind: "blocked", label: "Remix unavailable", reason };
+}
+
+/**
+ * Picks the most recent existing draft for the same source instead of
+ * creating a duplicate. When the CTA is stem-scoped, the draft must cover
+ * exactly the same stem set.
+ */
+export function findReusableDraft(
+  projects: RemixProject[],
+  trackId: string,
+  stemIds?: string[],
+): RemixProject | null {
+  const requestedSet = stemIds?.length
+    ? new Set(stemIds)
+    : null;
+  const candidates = projects
+    .filter((project) => {
+      if (project.status !== "draft") return false;
+      if (project.sourceTrackId !== trackId) return false;
+      if (!requestedSet) return true;
+      const projectSet = new Set(project.stems.map((stem) => stem.stemId));
+      if (projectSet.size !== requestedSet.size) return false;
+      for (const stemId of requestedSet) {
+        if (!projectSet.has(stemId)) return false;
+      }
+      return true;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  return candidates[0] ?? null;
 }
 
 const CHIP_BASE_STYLE: React.CSSProperties = {
@@ -144,11 +178,24 @@ export function RemixCta({
     if (!token || !eligibility?.allowed || creating) return;
     setCreating(true);
     try {
-      const projectStemIds = stemIdsKey
-        ? stemIdsKey.split(",")
-        : eligibility.stems
-            .filter((stem) => stem.licensed)
-            .map((stem) => stem.stemId);
+      const requestedStemIds = stemIdsKey ? stemIdsKey.split(",") : undefined;
+
+      // Reuse the most recent matching draft instead of stacking duplicates.
+      const existing = findReusableDraft(
+        await listRemixProjects(token).catch(() => []),
+        trackId,
+        requestedStemIds,
+      );
+      if (existing) {
+        router.push(`/remix/studio/${existing.id}`);
+        return;
+      }
+
+      const projectStemIds =
+        requestedStemIds ??
+        eligibility.stems
+          .filter((stem) => stem.licensed)
+          .map((stem) => stem.stemId);
       const project = await createRemixProject(token, {
         sourceTrackId: trackId,
         stemIds: projectStemIds,
@@ -181,10 +228,21 @@ export function RemixCta({
   };
 
   const interactive = state.kind === "remix" || state.kind === "license_required" || state.kind === "signed_out";
+  // aria-disabled instead of disabled keeps blocked chips focusable so the
+  // denial reason is reachable by keyboard and screen readers.
+  const inert = !interactive || creating;
   const title =
     state.kind === "remix"
       ? "Create a private remix draft from this track's licensed stems."
       : state.reason;
+  const handleGuardedClick = (event: React.MouseEvent) => {
+    if (inert) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    handleClick(event);
+  };
 
   if (variant === "button") {
     const buttonClass =
@@ -193,11 +251,12 @@ export function RemixCta({
       <button
         type="button"
         className={`${buttonClass} remix-cta remix-cta--${state.kind}`}
-        onClick={handleClick}
-        disabled={!interactive || creating}
+        onClick={handleGuardedClick}
+        aria-disabled={inert || undefined}
         title={title}
       >
         {creating ? "Opening Remix Studio..." : state.label}
+        {!interactive && <span className="sr-only"> — {title}</span>}
       </button>
     );
   }
@@ -232,11 +291,14 @@ export function RemixCta({
       type="button"
       className={`remix-cta remix-cta--${state.kind}`}
       style={chipStyle}
-      onClick={handleClick}
-      disabled={!interactive || creating}
+      onClick={handleGuardedClick}
+      aria-disabled={inert || undefined}
       title={title}
     >
       {creating ? "Opening..." : state.label}
+      {!interactive && (
+        <span className="sr-only"> — {title}</span>
+      )}
     </button>
   );
 }

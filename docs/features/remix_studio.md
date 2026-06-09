@@ -15,12 +15,14 @@ The backend P0 slices are implemented
 [#893](https://github.com/akoita/resonate/issues/893)): an explainable remix
 eligibility policy surface and durable, owner-scoped remix project records with
 authenticated APIs. Remix CTAs are live on release tracks and stem detail
-pages, backed by a minimal read-only studio destination
-([#894](https://github.com/akoita/resonate/issues/894)). The full studio
-editing surface and AI draft generation remain planned
-([#895](https://github.com/akoita/resonate/issues/895),
-[#896](https://github.com/akoita/resonate/issues/896)); the MVP epic is
-[#891](https://github.com/akoita/resonate/issues/891).
+pages ([#894](https://github.com/akoita/resonate/issues/894)), and
+`/remix/studio/[projectId]` is now an editable studio
+([#895](https://github.com/akoita/resonate/issues/895)): source attribution
+and rights badge, stem mute/solo/gain controls, remix mode selector, prompt
+box, draft status panel, persisted saves, and honest unavailable
+publish/export states. Audio preview (backlog C3) and AI draft generation
+([#896](https://github.com/akoita/resonate/issues/896)) remain planned; the
+MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
 `POST /remix/create` compatibility shim and is slated for removal with the
@@ -98,13 +100,22 @@ from the JWT, never the request body.
 - UI (#894): per-track Remix CTA on the release detail page
   (`web/src/components/remix/RemixCta.tsx`) and a Remix Studio card on
   `/stem/[tokenId]`. CTA states come exclusively from the eligibility API:
-  enabled (creates a project and opens the studio), license required (routes
-  to the marketplace remix tier), disabled with the policy reason, or a
-  sign-in prompt for signed-out users.
-- UI (#894, stub): `/remix/studio/[projectId]` — read-only destination
-  showing title, draft status, stems, license, and policy version; #895
-  replaces it with the editing studio. Copy explicitly states drafts are
-  private and publishing/export are unavailable.
+  enabled (opens the most recent matching draft or creates one), license
+  required (routes to the marketplace remix tier), disabled with the policy
+  reason rendered keyboard-accessible via `aria-disabled`, or a sign-in
+  prompt for signed-out users.
+- UI (#895): `/remix/studio/[projectId]` — editable studio
+  (`web/src/components/remix/RemixStudioEditor.tsx`): inline title editing,
+  source attribution linking to the release, rights badge derived from the
+  source rights route/content status, stem rows with persisted mute/gain and
+  preview-only solo, remix mode selector (stem mix / variation / extension),
+  prompt box for the prompted modes, draft status panel with an explicit
+  no-generation-yet note, explicit Save with dirty tracking, and
+  `aria-disabled` publish/export actions with honest license explanations.
+- API (#895): project reads include a public `source` summary (track/release
+  titles, artist credit, rights route, content status) and per-stem catalog
+  `type`/`title`; `PATCH /remix/projects/:id` accepts validated `mode`
+  updates.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
@@ -114,7 +125,7 @@ from the JWT, never the request body.
 - UI: marketplace listing card remix affordances beyond the existing
   `Remixable` badge (deliberately excluded from #894 to avoid per-card
   eligibility fan-out).
-- UI: full studio editing controls (#895).
+- UI: Web Audio stem preview in the studio (backlog C3).
 - API: `POST /remix/projects/:id/generate`.
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
@@ -147,13 +158,20 @@ Implemented today:
   enforcement, and policy denial events (`npm run test:integration`).
 - `backend/src/tests/remix.controller.http.spec.ts` — HTTP contract: guards,
   routing, status codes, and JWT-not-body identity.
-- `web/src/components/remix/RemixCta.test.tsx` — CTA state resolution and
-  rendering for enabled, license-required, blocked, hidden, and signed-out
-  states (`cd web && npx vitest run src/components/remix`).
+- `web/src/components/remix/RemixCta.test.tsx` — CTA state resolution,
+  rendering for enabled, license-required, blocked (aria-disabled), hidden,
+  and signed-out states, plus draft-reuse selection
+  (`cd web && npx vitest run src/components/remix`).
+- `web/src/components/remix/RemixStudioEditor.test.tsx` — minimal-patch
+  building, gain clamping, rights badge derivation, editor rendering
+  (attribution, stem controls, prompt gating by mode, unavailable
+  publish/export with reasons), and the page shell's signed-out/loading
+  states.
 
 Remaining for later slices:
 
-- Playwright test for the studio happy path (#895);
+- Playwright test for the studio happy path (once audio preview/C3 gives it
+  observable behavior worth driving end to end);
 - provider-failure tests for normalized generation errors (#896).
 
 ## References

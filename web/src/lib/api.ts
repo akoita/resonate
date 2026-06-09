@@ -3853,11 +3853,25 @@ export type RemixEligibilityResponse = {
 
 export type RemixProjectStem = {
   stemId: string;
+  type: string;
+  title: string | null;
   role: string | null;
   gainDb: number | null;
   muted: boolean;
   arrangement: unknown;
 };
+
+export type RemixProjectSource = {
+  trackId: string;
+  trackTitle: string;
+  releaseId: string;
+  releaseTitle: string;
+  artistName: string | null;
+  rightsRoute: string | null;
+  contentStatus: string;
+};
+
+export type RemixProjectMode = "stem_mix" | "variation" | "extension";
 
 export type RemixProject = {
   id: string;
@@ -3877,9 +3891,36 @@ export type RemixProject = {
   policyVersion: string;
   createdAt: string;
   updatedAt: string;
+  source: RemixProjectSource;
   stems: RemixProjectStem[];
   eligibility?: RemixEligibilityResponse;
 };
+
+export type RemixProjectPatch = {
+  title?: string;
+  prompt?: string | null;
+  status?: string;
+  mode?: string;
+  stems?: Array<{
+    stemId: string;
+    role?: string | null;
+    gainDb?: number | null;
+    muted?: boolean;
+    arrangement?: unknown;
+  }>;
+};
+
+export async function updateRemixProject(
+  token: string,
+  projectId: string,
+  patch: RemixProjectPatch
+) {
+  return apiRequest<RemixProject>(
+    `/remix/projects/${projectId}`,
+    { method: "PATCH", body: JSON.stringify(patch) },
+    token
+  );
+}
 
 export async function getRemixEligibility(
   token: string,
