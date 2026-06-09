@@ -14,9 +14,11 @@ The backend P0 slices are implemented
 ([#892](https://github.com/akoita/resonate/issues/892),
 [#893](https://github.com/akoita/resonate/issues/893)): an explainable remix
 eligibility policy surface and durable, owner-scoped remix project records with
-authenticated APIs. The studio UI, remix CTAs, and AI draft generation remain
-planned ([#894](https://github.com/akoita/resonate/issues/894),
-[#895](https://github.com/akoita/resonate/issues/895),
+authenticated APIs. Remix CTAs are live on release tracks and stem detail
+pages, backed by a minimal read-only studio destination
+([#894](https://github.com/akoita/resonate/issues/894)). The full studio
+editing surface and AI draft generation remain planned
+([#895](https://github.com/akoita/resonate/issues/895),
 [#896](https://github.com/akoita/resonate/issues/896)); the MVP epic is
 [#891](https://github.com/akoita/resonate/issues/891).
 
@@ -93,11 +95,26 @@ from the JWT, never the request body.
   proof from `StemPurchase` (`licenseType = remix`) or listing-backed
   `X402Settlement` rows matched to the caller's wallet.
 
+- UI (#894): per-track Remix CTA on the release detail page
+  (`web/src/components/remix/RemixCta.tsx`) and a Remix Studio card on
+  `/stem/[tokenId]`. CTA states come exclusively from the eligibility API:
+  enabled (creates a project and opens the studio), license required (routes
+  to the marketplace remix tier), disabled with the policy reason, or a
+  sign-in prompt for signed-out users.
+- UI (#894, stub): `/remix/studio/[projectId]` — read-only destination
+  showing title, draft status, stems, license, and policy version; #895
+  replaces it with the editing studio. Copy explicitly states drafts are
+  private and publishing/export are unavailable.
+- API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
+  catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
+  can resolve eligibility.
+
 ## Planned Surfaces
 
-- UI: release detail remix CTA.
-- UI: stem card or marketplace listing remix CTA.
-- UI: `/remix/studio/:projectId`.
+- UI: marketplace listing card remix affordances beyond the existing
+  `Remixable` badge (deliberately excluded from #894 to avoid per-card
+  eligibility fan-out).
+- UI: full studio editing controls (#895).
 - API: `POST /remix/projects/:id/generate`.
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
@@ -130,12 +147,14 @@ Implemented today:
   enforcement, and policy denial events (`npm run test:integration`).
 - `backend/src/tests/remix.controller.http.spec.ts` — HTTP contract: guards,
   routing, status codes, and JWT-not-body identity.
+- `web/src/components/remix/RemixCta.test.tsx` — CTA state resolution and
+  rendering for enabled, license-required, blocked, hidden, and signed-out
+  states (`cd web && npx vitest run src/components/remix`).
 
 Remaining for later slices:
 
-- frontend tests for disabled/enabled remix CTAs;
-- Playwright test for the studio happy path;
-- provider-failure tests for normalized generation errors.
+- Playwright test for the studio happy path (#895);
+- provider-failure tests for normalized generation errors (#896).
 
 ## References
 

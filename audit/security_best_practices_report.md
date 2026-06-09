@@ -1,5 +1,55 @@
 # Security Best Practices Report
 
+## Remix CTAs And Studio Stub - 2026-06-10
+
+### Scope Reviewed
+
+Changed files (#894):
+
+- `web/src/components/remix/RemixCta.tsx` (+ test)
+- `web/src/app/remix/studio/[projectId]/page.tsx`
+- `web/src/app/release/[id]/page.tsx` (CTA wiring)
+- `web/src/app/stem/[tokenId]/page.tsx` (CTA wiring + catalog id capture)
+- `web/src/lib/api.ts` (remix helpers)
+- `backend/src/modules/contracts/metadata.controller.ts` (token metadata
+  catalog ids)
+
+### Executive Summary
+
+The remix CTA slice adds no Critical or High findings. CTA states derive
+exclusively from the authenticated eligibility API (fail-closed: the CTA
+hides when eligibility is unknown or the request fails); the studio stub is
+auth-gated and relies on the backend's owner-only project reads (403/404
+render friendly states, no data leak); project creation sends no client
+identity claims. The backend token-metadata addition exposes only catalog
+UUIDs (`stem_id`, `track_id`, `release_id`) that the sibling
+`:chainId/stem/:stemId` route and public listings payload already expose.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- No `dangerouslySetInnerHTML`/`innerHTML`, exposed `NEXT_PUBLIC_*` secrets,
+  cookie handling, or hardcoded non-localhost URLs in the changed slice.
+- All remix API calls go through the shared `apiRequest` wrapper (Bearer
+  token, central error handling, 401 session invalidation).
+- Denial reasons rendered in tooltips come from the backend policy's fixed
+  message strings, not user-generated content.
+
+### Scans Run
+
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/remix/ web/src/app/remix/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/components/remix/ web/src/app/remix/ web/src/lib/api.ts`
+- `rg 'document\.cookie|setCookie' web/src/components/remix/ web/src/app/remix/`
+- Hardcoded non-localhost URL grep on new files
+- `git diff --check`
+
 ## Remix Eligibility Service And Durable Remix Projects - 2026-06-09
 
 ### Scope Reviewed

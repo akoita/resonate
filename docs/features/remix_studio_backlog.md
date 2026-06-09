@@ -102,7 +102,7 @@ Acceptance:
 
 ## Workstream C: Remix Studio Frontend
 
-### C1. Add release and stem Remix CTAs
+### C1. Add release and stem Remix CTAs — shipped (#894)
 
 - Show CTA only when eligibility endpoint returns a supported path.
 - If license is missing, route to remix license purchase.
@@ -113,7 +113,7 @@ Acceptance:
 - Release page and stem/listing surfaces show correct CTA states.
 - Frontend tests cover allowed, license-required, and blocked states.
 
-### C2. Build `/remix/studio/:projectId`
+### C2. Build `/remix/studio/:projectId` — read-only stub shipped (#894), editing studio open (#895)
 
 - Source track header.
 - Rights and attribution badge.
