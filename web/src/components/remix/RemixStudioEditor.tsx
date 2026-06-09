@@ -1,0 +1,439 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useAuth } from "../auth/AuthProvider";
+import { useToast } from "../ui/Toast";
+import {
+  updateRemixProject,
+  type RemixProject,
+  type RemixProjectPatch,
+  type RemixProjectSource,
+} from "../../lib/api";
+
+export const GAIN_DB_MIN = -24;
+export const GAIN_DB_MAX = 6;
+
+export const REMIX_MODES = [
+  { value: "stem_mix", label: "Stem mix" },
+  { value: "variation", label: "Variation" },
+  { value: "extension", label: "Extension" },
+] as const;
+
+/** Maps apiRequest error messages ("API <status>: ...") to a load state. */
+export function classifyProjectLoadError(
+  message: string,
+): "forbidden" | "missing" | "error" {
+  if (message.startsWith("API 403:")) return "forbidden";
+  if (message.startsWith("API 404:")) return "missing";
+  return "error";
+}
+
+export function clampGainDb(value: number): number {
+  if (Number.isNaN(value)) return 0;
+  return Math.min(GAIN_DB_MAX, Math.max(GAIN_DB_MIN, value));
+}
+
+export type StemEdit = {
+  gainDb: number | null;
+  muted: boolean;
+};
+
+export type ProjectEdits = {
+  title: string;
+  prompt: string;
+  mode: string;
+  stems: Record<string, StemEdit>;
+};
+
+export function initialEdits(project: RemixProject): ProjectEdits {
+  const stems: Record<string, StemEdit> = {};
+  for (const stem of project.stems) {
+    stems[stem.stemId] = { gainDb: stem.gainDb, muted: stem.muted };
+  }
+  return {
+    title: project.title,
+    prompt: project.prompt ?? "",
+    mode: project.mode,
+    stems,
+  };
+}
+
+/**
+ * Computes the minimal PATCH payload between the persisted project and the
+ * local edits. Returns an empty object when nothing changed, which doubles
+ * as the dirty-state check.
+ */
+export function buildProjectPatch(
+  project: RemixProject,
+  edits: ProjectEdits,
+): RemixProjectPatch {
+  const patch: RemixProjectPatch = {};
+  const title = edits.title.trim();
+  if (title && title !== project.title) {
+    patch.title = title;
+  }
+  const prompt = edits.prompt.trim() === "" ? null : edits.prompt;
+  if (prompt !== (project.prompt ?? null)) {
+    patch.prompt = prompt;
+  }
+  if (edits.mode !== project.mode) {
+    patch.mode = edits.mode;
+  }
+  const stemPatches: NonNullable<RemixProjectPatch["stems"]> = [];
+  for (const stem of project.stems) {
+    const edit = edits.stems[stem.stemId];
+    if (!edit) continue;
+    const stemPatch: { stemId: string; gainDb?: number | null; muted?: boolean } = {
+      stemId: stem.stemId,
+    };
+    if (edit.gainDb !== stem.gainDb) {
+      stemPatch.gainDb = edit.gainDb;
+    }
+    if (edit.muted !== stem.muted) {
+      stemPatch.muted = edit.muted;
+    }
+    if (stemPatch.gainDb !== undefined || stemPatch.muted !== undefined) {
+      stemPatches.push(stemPatch);
+    }
+  }
+  if (stemPatches.length > 0) {
+    patch.stems = stemPatches;
+  }
+  return patch;
+}
+
+export function describeSourceRights(source: RemixProjectSource): {
+  label: string;
+  tone: "ok" | "warning";
+} {
+  if (source.contentStatus !== "clean") {
+    return { label: "Source under review", tone: "warning" };
+  }
+  if (source.rightsRoute === "TRUSTED_FAST_PATH") {
+    return { label: "Rights verified · trusted source", tone: "ok" };
+  }
+  if (source.rightsRoute === "STANDARD_ESCROW") {
+    return { label: "Rights verified · standard", tone: "ok" };
+  }
+  return { label: "Rights state restricted", tone: "warning" };
+}
+
+export function stemDisplayName(stem: {
+  type: string;
+  title: string | null;
+}): string {
+  if (stem.title) return stem.title;
+  return stem.type.charAt(0).toUpperCase() + stem.type.slice(1);
+}
+
+const UNAVAILABLE_ACTIONS = [
+  {
+    key: "publish",
+    label: "Publish on Resonate",
+    reason:
+      "Publishing remixes inside Resonate is not available yet. Drafts stay private to you.",
+  },
+  {
+    key: "export",
+    label: "Export audio",
+    reason:
+      "Export requires a license that explicitly grants export rights. Your remix license covers private drafts only.",
+  },
+] as const;
+
+export function RemixStudioEditor({
+  project: persistedProject,
+}: {
+  project: RemixProject;
+}) {
+  const { token } = useAuth();
+  const { addToast } = useToast();
+  const [project, setProject] = useState(persistedProject);
+  const [edits, setEdits] = useState<ProjectEdits>(() =>
+    initialEdits(persistedProject),
+  );
+  const [soloStemId, setSoloStemId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const patch = buildProjectPatch(project, edits);
+  const dirty = Object.keys(patch).length > 0;
+  const rights = describeSourceRights(project.source);
+  const promptEnabled = edits.mode !== "stem_mix";
+
+  const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
+    setEdits((prev) => ({
+      ...prev,
+      stems: {
+        ...prev.stems,
+        [stemId]: { ...prev.stems[stemId], ...update },
+      },
+    }));
+  };
+
+  const handleSave = async () => {
+    if (!token || !dirty || saving) return;
+    setSaving(true);
+    try {
+      const updated = await updateRemixProject(token, project.id, patch);
+      setProject(updated);
+      setEdits(initialEdits(updated));
+    } catch {
+      addToast({
+        type: "error",
+        title: "Save failed",
+        message: "Your remix edits could not be saved. Please try again.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-black">
+      <div className="bg-gradient-to-b from-purple-900/20 to-transparent">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <div className="text-sm text-zinc-400 mb-2">Remix Studio</div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <input
+              aria-label="Remix title"
+              className="bg-transparent text-3xl font-bold text-white border-b border-transparent focus:border-zinc-600 focus:outline-none min-w-0 flex-1"
+              value={edits.title}
+              onChange={(e) =>
+                setEdits((prev) => ({ ...prev, title: e.target.value }))
+              }
+            />
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              {project.status}
+            </span>
+          </div>
+          <p className="text-zinc-400 mt-2 text-sm remix-studio-attribution">
+            Remix of{" "}
+            <span className="text-zinc-200">{project.source.trackTitle}</span>
+            {project.source.artistName ? (
+              <>
+                {" "}by <span className="text-zinc-200">{project.source.artistName}</span>
+              </>
+            ) : null}
+            {" "}from{" "}
+            <Link
+              href={`/release/${project.source.releaseId}`}
+              className="text-purple-300 hover:text-purple-200 underline-offset-2 hover:underline"
+            >
+              {project.source.releaseTitle}
+            </Link>
+          </p>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium border remix-rights-badge remix-rights-badge--${rights.tone} ${
+                rights.tone === "ok"
+                  ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-300 border-amber-500/30"
+              }`}
+            >
+              {rights.label}
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-800 text-zinc-400 border border-zinc-700">
+              {project.licenseType} license · private drafts
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {/* Stem controls */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-lg font-semibold text-white">Stems</h2>
+            {soloStemId && (
+              <button
+                type="button"
+                className="text-xs text-purple-300 hover:text-purple-200"
+                onClick={() => setSoloStemId(null)}
+              >
+                Clear solo
+              </button>
+            )}
+          </div>
+          <p className="text-zinc-500 text-xs mb-4">
+            Mute and gain are saved with your draft. Solo is a preview-only
+            control and is not saved.
+          </p>
+          <ul className="space-y-3">
+            {project.stems.map((stem) => {
+              const edit = edits.stems[stem.stemId];
+              const soloedOut = soloStemId !== null && soloStemId !== stem.stemId;
+              const effectivelyMuted = edit.muted || soloedOut;
+              return (
+                <li
+                  key={stem.stemId}
+                  className={`border border-zinc-800 rounded-md px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 ${
+                    effectivelyMuted ? "opacity-50" : ""
+                  }`}
+                >
+                  <div className="min-w-[8rem] flex-1">
+                    <div className="text-sm text-zinc-200">
+                      {stemDisplayName(stem)}
+                    </div>
+                    <div className="text-xs text-zinc-500">
+                      {stem.type}
+                      {soloedOut ? " · muted by solo (preview)" : ""}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={edit.muted}
+                    className={`px-2 py-1 rounded text-xs font-medium border ${
+                      edit.muted
+                        ? "bg-red-500/20 text-red-300 border-red-500/40"
+                        : "bg-zinc-800 text-zinc-300 border-zinc-700"
+                    }`}
+                    onClick={() =>
+                      updateStemEdit(stem.stemId, { muted: !edit.muted })
+                    }
+                  >
+                    {edit.muted ? "Muted" : "Mute"}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={soloStemId === stem.stemId}
+                    className={`px-2 py-1 rounded text-xs font-medium border ${
+                      soloStemId === stem.stemId
+                        ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                        : "bg-zinc-800 text-zinc-300 border-zinc-700"
+                    }`}
+                    onClick={() =>
+                      setSoloStemId((prev) =>
+                        prev === stem.stemId ? null : stem.stemId,
+                      )
+                    }
+                  >
+                    Solo
+                  </button>
+                  <label className="flex items-center gap-2 text-xs text-zinc-400">
+                    Gain
+                    <input
+                      type="range"
+                      min={GAIN_DB_MIN}
+                      max={GAIN_DB_MAX}
+                      step={0.5}
+                      value={edit.gainDb ?? 0}
+                      aria-label={`${stemDisplayName(stem)} gain in decibels`}
+                      onChange={(e) =>
+                        updateStemEdit(stem.stemId, {
+                          gainDb: clampGainDb(parseFloat(e.target.value)),
+                        })
+                      }
+                    />
+                    <span className="w-14 text-right text-zinc-300">
+                      {(edit.gainDb ?? 0).toFixed(1)} dB
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        {/* Mode + prompt */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-white mb-4">Remix mode</h2>
+          <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
+            {REMIX_MODES.map((mode) => (
+              <button
+                key={mode.value}
+                type="button"
+                aria-pressed={edits.mode === mode.value}
+                className={`px-4 py-2 text-sm ${
+                  edits.mode === mode.value
+                    ? "bg-purple-500/25 text-purple-200"
+                    : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
+                }`}
+                onClick={() =>
+                  setEdits((prev) => ({ ...prev, mode: mode.value }))
+                }
+              >
+                {mode.label}
+              </button>
+            ))}
+          </div>
+          <div className="mt-4">
+            <label className="block text-sm text-zinc-400 mb-1" htmlFor="remix-prompt">
+              Prompt
+            </label>
+            <textarea
+              id="remix-prompt"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"
+              rows={3}
+              placeholder="Describe the variation or extension you want..."
+              value={edits.prompt}
+              disabled={!promptEnabled}
+              onChange={(e) =>
+                setEdits((prev) => ({ ...prev, prompt: e.target.value }))
+              }
+            />
+            {!promptEnabled && (
+              <p className="text-xs text-zinc-500 mt-1">
+                Prompts apply to variation and extension modes. Stem mix uses
+                only your stem settings.
+              </p>
+            )}
+          </div>
+        </section>
+
+        {/* Draft status */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+          <h2 className="text-lg font-semibold text-white mb-3">Draft status</h2>
+          <div className="text-sm text-zinc-400 space-y-1">
+            <p>
+              Status: <span className="text-zinc-200">{project.status}</span>
+              {" · "}Policy:{" "}
+              <span className="text-zinc-200">{project.policyVersion}</span>
+            </p>
+            <p className="remix-generation-placeholder">
+              {project.generationJobId
+                ? `Generation job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"})`
+                : "No AI draft yet — AI remix generation arrives with the generation provider (#896)."}
+            </p>
+          </div>
+        </section>
+
+        {/* Save + unavailable actions */}
+        <section className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            {UNAVAILABLE_ACTIONS.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                aria-disabled="true"
+                title={action.reason}
+                className={`ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--${action.key}`}
+                onClick={(e) => e.preventDefault()}
+              >
+                {action.label}
+                <span className="sr-only"> — {action.reason}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-zinc-500">
+              {saving
+                ? "Saving..."
+                : dirty
+                  ? "Unsaved changes"
+                  : "All changes saved"}
+            </span>
+            <button
+              type="button"
+              className="ui-btn ui-btn-primary"
+              disabled={!dirty || saving}
+              onClick={() => void handleSave()}
+            >
+              {saving ? "Saving..." : "Save changes"}
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
