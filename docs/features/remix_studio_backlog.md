@@ -113,7 +113,10 @@ Acceptance:
 - Release page and stem/listing surfaces show correct CTA states.
 - Frontend tests cover allowed, license-required, and blocked states.
 
-### C2. Build `/remix/studio/:projectId` — read-only stub shipped (#894), editing studio open (#895)
+### C2. Build `/remix/studio/:projectId` — shipped (#895)
+
+Solo is preview-only local state until the audio preview foundation (C3)
+exists; mute and gain persist through the project API.
 
 - Source track header.
 - Rights and attribution badge.
