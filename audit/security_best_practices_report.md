@@ -1,5 +1,72 @@
 # Security Best Practices Report
 
+## Remix Eligibility Service And Durable Remix Projects - 2026-06-09
+
+### Scope Reviewed
+
+Changed files (#892/#893, PR #1137):
+
+- `backend/src/modules/remix/remix-eligibility.policy.ts`
+- `backend/src/modules/remix/remix-eligibility.service.ts`
+- `backend/src/modules/remix/remix-project.service.ts`
+- `backend/src/modules/remix/remix.controller.ts`
+- `backend/src/modules/remix/remix.module.ts`
+- `backend/src/modules/remix/remix.service.ts`
+- `backend/src/events/event_types.ts`
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `backend/prisma/schema.prisma` + migration `20260609120000_add_remix_project_models`
+- remix test files under `backend/src/tests/`
+
+### Executive Summary
+
+The remix P0 slices add an explainable eligibility policy and durable,
+owner-scoped remix project APIs. The scoped review found no Critical or High
+findings: all routes are JWT-guarded, creator identity comes from the JWT
+(this branch removes the legacy endpoint's trust of a body-supplied
+`creatorId`), license proof is derived only from server-side purchase and
+settlement records matched to the caller's own wallet, project reads/edits
+enforce creator ownership, and analytics event payloads exclude user-supplied
+titles and prompts.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+- SBPR-1137-01 (fixed in-branch): the x402 remix-license lookup initially
+  matched any `X402Settlement` row with a remix-licensed listing and matching
+  payer, including rows persisted with `status = contract_settlement_failed`
+  for failed on-chain listing settlements. A failed purchase could therefore
+  satisfy the remix license requirement. Fixed by filtering on
+  `status = "download_granted"` and covered by an integration regression test
+  seeding a failed settlement.
+
+### Notes
+
+- All seven `/remix` routes use `AuthGuard("jwt")`; the only `UseGuards`-free
+  match in the controller is the import statement.
+- Eligibility denial responses describe the source's rights state, which is
+  already surfaced by public catalog behavior; they reveal nothing about other
+  users' purchases or wallets.
+- Wallet matching uses Prisma `mode: "insensitive"` equality on the caller's
+  own wallet address — no client-supplied address is accepted.
+- All database access goes through the Prisma client; no raw SQL, `eval`, or
+  `JSON.parse` in the touched slice.
+- Policy denials and license requirements emit compact governed events
+  (`remix.policy_rejected`, `remix.license_required`) whose bridge mappings
+  exclude titles/prompts.
+- The deprecated in-memory `POST /remix/create` shim remains JWT-guarded and
+  is tracked for removal with #894+.
+
+### Scans Run
+
+- `rg -i 'password|secret|api_key|private_key' backend/src/modules/remix/`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/remix/`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/remix/`
+- Route/guard audit of `backend/src/modules/remix/remix.controller.ts`
+- `git diff --check origin/main..HEAD`
+
 ## Marketplace Pricing Optimization Action Cards - 2026-06-08
 
 ### Scope Reviewed

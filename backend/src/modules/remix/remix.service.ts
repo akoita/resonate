@@ -11,6 +11,12 @@ interface RemixRecord {
   txHash?: string;
 }
 
+/**
+ * @deprecated Legacy in-memory remix experiment kept only for the
+ * POST /remix/create compatibility shim and event-flow tests. Durable remix
+ * work lives in RemixProjectService (#893); this service is slated for removal
+ * with the Remix Studio frontend slices (#894+).
+ */
 @Injectable()
 export class RemixService {
   private remixes = new Map<string, RemixRecord>();

@@ -1,6 +1,6 @@
 ---
 title: "Remix Studio Backlog"
-status: planned
+status: in-progress
 owner: "@akoita"
 ---
 
@@ -33,7 +33,7 @@ Acceptance:
 - Default policy is conservative and does not silently enable remixing for all
   uploads.
 
-### A2. Implement remix eligibility service
+### A2. Implement remix eligibility service — shipped (#892)
 
 - Check source rights route.
 - Check source content status.
@@ -48,7 +48,11 @@ Acceptance:
   and user-facing denial reasons.
 - Unit tests cover blocked, quarantined, limited, standard, and trusted routes.
 
-### A3. Define AI derivative policy versioning
+### A3. Define AI derivative policy versioning — partially shipped (#892/#893)
+
+`REMIX_POLICY_VERSION` exists; eligibility responses, remix policy events, and
+`RemixProject.policyVersion` record it. Generation metadata recording remains
+for workstream D.
 
 - Add policy version constant.
 - Include policy version in generation metadata and remix events.
@@ -61,7 +65,7 @@ Acceptance:
 
 ## Workstream B: Durable Remix Projects
 
-### B1. Replace in-memory remix records with Prisma models
+### B1. Replace in-memory remix records with Prisma models — shipped (#893)
 
 - Add `RemixProject`.
 - Add `RemixProjectStem`.
@@ -73,7 +77,7 @@ Acceptance:
 - Remix projects survive backend restarts.
 - Tests prove project creation, retrieval, and edit persistence.
 
-### B2. Add remix project API
+### B2. Add remix project API — shipped (#893)
 
 - `POST /remix/projects`.
 - `GET /remix/projects/:id`.
@@ -85,7 +89,7 @@ Acceptance:
 - A user can create and edit a private remix project for an eligible source.
 - Users cannot read or edit another user's private project.
 
-### B3. Add remix lifecycle events
+### B3. Add remix lifecycle events — partially shipped (#892/#893)
 
 - Emit `remix.project_created`.
 - Emit `remix.policy_rejected` for blocked attempts.

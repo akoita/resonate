@@ -37,6 +37,7 @@ model User {
   showCampaignEvents          ShowCampaignEvent[]          @relation("ShowCampaignEventActor")
   showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
+  remixProjects               RemixProject[]
   reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
 }
 
@@ -496,6 +497,7 @@ model Track {
   fingerprint         AudioFingerprint?
   dmcaReports         DmcaReport[]
   release             Release           @relation(fields: [releaseId], references: [id])
+  remixProjects       RemixProject[]
   rightsRoute         String?
   rightsFlags         Json?
   rightsReason        String?           @db.Text
@@ -536,6 +538,7 @@ model Stem {
   nftMint            StemNftMint?
   pricing            StemPricing?
   qualityRatings     StemQualityRating[]
+  remixProjectStems  RemixProjectStem[]
   x402Settlements    X402Settlement[]
 }
 
@@ -779,6 +782,47 @@ model X402Settlement {
   @@index([stemId])
   @@index([status])
   @@index([contractSettlementStatus])
+}
+
+model RemixProject {
+  id                 String             @id @default(uuid())
+  creatorUserId      String
+  sourceTrackId      String
+  title              String
+  status             String             @default("draft") // draft, archived
+  mode               String             @default("stem_mix") // stem_mix, variation, extension
+  licenseType        LicenseType        @default(remix)
+  licenseId          String?
+  prompt             String?            @db.Text
+  generationProvider String?
+  generationJobId    String?
+  generationMetadata Json?
+  attribution        String?            @db.Text
+  exportPolicy       Json?
+  policyVersion      String
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  creator            User               @relation(fields: [creatorUserId], references: [id])
+  sourceTrack        Track              @relation(fields: [sourceTrackId], references: [id])
+  stems              RemixProjectStem[]
+
+  @@index([creatorUserId, createdAt])
+  @@index([sourceTrackId])
+}
+
+model RemixProjectStem {
+  id             String       @id @default(uuid())
+  remixProjectId String
+  stemId         String
+  role           String?
+  gainDb         Float?
+  muted          Boolean      @default(false)
+  arrangement    Json?
+  project        RemixProject @relation(fields: [remixProjectId], references: [id], onDelete: Cascade)
+  stem           Stem         @relation(fields: [stemId], references: [id])
+
+  @@unique([remixProjectId, stemId])
+  @@index([stemId])
 }
 
 model IndexerState {

@@ -1,6 +1,6 @@
 ---
 title: "Remix Studio"
-status: planned
+status: partial
 owner: "@akoita"
 ---
 
@@ -8,11 +8,21 @@ owner: "@akoita"
 
 ## Status
 
-`planned`
+`partial`
 
-Remix Studio is designed but not yet implemented. The current backend has a
-small in-memory remix module for early event flow experiments; it is not a
-durable product surface.
+The backend P0 slices are implemented
+([#892](https://github.com/akoita/resonate/issues/892),
+[#893](https://github.com/akoita/resonate/issues/893)): an explainable remix
+eligibility policy surface and durable, owner-scoped remix project records with
+authenticated APIs. The studio UI, remix CTAs, and AI draft generation remain
+planned ([#894](https://github.com/akoita/resonate/issues/894),
+[#895](https://github.com/akoita/resonate/issues/895),
+[#896](https://github.com/akoita/resonate/issues/896)); the MVP epic is
+[#891](https://github.com/akoita/resonate/issues/891).
+
+The legacy in-memory remix module remains only as the deprecated
+`POST /remix/create` compatibility shim and is slated for removal with the
+frontend slices.
 
 Remix and contributor credential boundaries are documented in
 [Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md).
@@ -53,20 +63,46 @@ consent and legal review.
 8. Publish inside Resonate only if the license terms allow it.
 9. Export only if the license explicitly grants export rights.
 
+## Implemented Surfaces
+
+All implemented routes are JWT-authenticated; creator identity always comes
+from the JWT, never the request body.
+
+- API: `GET /remix/eligibility?trackId=...&stemIds=a,b` — explainable
+  allow/deny response with `allowed`, `requiredLicense`, `allowedActions`,
+  structured `reasons` (`source_blocked`, `source_quarantined`,
+  `source_removed`, `source_under_monitoring`, `source_rights_unknown`,
+  `source_not_opted_in`, `stem_not_remixable`, `license_required`),
+  `policyVersion`, per-stem remixability/license state. Designed for the three
+  CTA states: enabled, license required, disabled with reason.
+- API: `POST /remix/projects` — eligibility-gated durable project creation;
+  policy denials return 403 with the full eligibility payload.
+- API: `GET /remix/projects` — owner-scoped project list.
+- API: `GET /remix/projects/:id` — owner-only read (403 non-owner, 404 missing).
+- API: `PATCH /remix/projects/:id` — owner-only edits for title, prompt,
+  `draft`/`archived` status, and per-stem role/gain/mute/arrangement controls.
+- API (deprecated): `POST /remix/create` and `GET /remix/:remixId` — legacy
+  in-memory experiment kept for compatibility until #894+.
+- Data: `RemixProject` and `RemixProjectStem` Prisma models with creator,
+  source track, stems, license context, prompt, mode, generation metadata,
+  attribution, and export-policy placeholders.
+- Events: `remix.project_created`, `remix.policy_rejected`,
+  `remix.license_required` (governed analytics bridge mappings included).
+- Policy inputs: track/release rights route, track content status,
+  `StemNftMint.remixable`, conservative source opt-in hook, and remix license
+  proof from `StemPurchase` (`licenseType = remix`) or listing-backed
+  `X402Settlement` rows matched to the caller's wallet.
+
 ## Planned Surfaces
 
 - UI: release detail remix CTA.
 - UI: stem card or marketplace listing remix CTA.
 - UI: `/remix/studio/:projectId`.
-- API: `GET /remix/eligibility`.
-- API: `POST /remix/projects`.
-- API: `GET /remix/projects/:id`.
-- API: `PATCH /remix/projects/:id`.
 - API: `POST /remix/projects/:id/generate`.
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
-- Events: `remix.project_created`, `remix.generation_started`,
-  `remix.generation_completed`, `remix.published`, `remix.policy_rejected`.
+- Events: `remix.generation_started`, `remix.generation_completed`,
+  `remix.published`.
 
 ## Product Rules
 
@@ -82,14 +118,23 @@ consent and legal review.
 
 ## Verification
 
-When implemented, verification should include:
+Implemented today:
 
-- backend unit tests for eligibility policy;
-- integration tests for project creation and generation state;
-- rights-route tests for blocked/quarantined/limited sources;
+- `backend/src/tests/remix-eligibility.policy.spec.ts` — pure policy unit
+  tests for blocked, quarantined, dmca-removed, limited-monitoring, unknown,
+  standard, trusted, opt-out, non-remixable-mint, missing-license, and
+  already-licensed cases (`npm run test`).
+- `backend/src/tests/remix.integration.spec.ts` — Testcontainers Postgres
+  coverage for eligibility against real rights/mint/purchase/x402 rows,
+  durable project create/read/update, restart durability, ownership
+  enforcement, and policy denial events (`npm run test:integration`).
+- `backend/src/tests/remix.controller.http.spec.ts` — HTTP contract: guards,
+  routing, status codes, and JWT-not-body identity.
+
+Remaining for later slices:
+
 - frontend tests for disabled/enabled remix CTAs;
 - Playwright test for the studio happy path;
-- event-ledger tests for remix lifecycle events;
 - provider-failure tests for normalized generation errors.
 
 ## References
