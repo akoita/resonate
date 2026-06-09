@@ -82,9 +82,13 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 - `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
   owner-visible marketplace inventory reports expired or cancelled listings
   that can use the existing relist workflow.
+- `improve_marketplace_conversion` opens
+  `/marketplace/manage?status=active` when aggregate marketplace purchase
+  intent meets the five-signal floor but no settled commerce is visible in the
+  selected window.
 - `review_marketplace_pricing` opens `/marketplace/manage?status=active` when
   attributed aggregate marketplace purchase intent reaches the five-signal
-  floor.
+  floor and settled commerce is visible in the selected window.
 
 Each card includes `id`, `type`, `title`, `description`, `reason`, `priority`,
 `confidence`, `sourceSignal`, `cta`, and `privacy`. Listener-derived cards use
@@ -161,6 +165,7 @@ inspect private holder proofs. The deterministic early-supporter reward card is
 implemented as a deep link into the same manual benefit-rule/community surface;
 it does not auto-send rewards, messages, payouts, or benefits. Deferred slices
 now focus on full Remix Studio challenge/contributor workflows, deeper pricing
-optimization beyond checkout-intent review, fan-question triage, and reviewed
-agent draft actions. Those should keep the same privacy boundary: artist-owned data or
-aggregate-only listener/community signals with explicit thresholds.
+optimization beyond intent-without-settlement and checkout-intent review,
+fan-question triage, and reviewed agent draft actions. Those should keep the
+same privacy boundary: artist-owned data or aggregate-only listener/community
+signals with explicit thresholds.

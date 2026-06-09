@@ -70,6 +70,7 @@ type ArtistActionCardType =
   | "reward_early_supporters"
   | "prepare_remix_challenge"
   | "relist_expired_inventory"
+  | "improve_marketplace_conversion"
   | "review_marketplace_pricing";
 type ArtistActionPriority = "high" | "medium" | "low";
 type ArtistActionSourceCategory = "playback" | "marketplace" | "community" | "catalog" | "shows" | "remix";
@@ -209,6 +210,7 @@ interface ArtistWorkflowSignals {
   earlySupporterReward?: ArtistSupporterRewardSignal;
   remixCreations: number;
   marketplacePurchaseIntents: number;
+  artistSettledCommerceCount: number;
   marketplaceInventory: {
     relistableCount: number;
     expiredCount: number;
@@ -221,6 +223,9 @@ interface ArtistWorkflowSignals {
 @Injectable()
 export class AnalyticsService {
   private readonly artistActionMinimumSignalCount = 5;
+  // Aggregate-signal floor above which a marketplace action card is treated as
+  // high priority/confidence rather than the default medium.
+  private readonly artistActionHighIntentSignalCount = 25;
 
   constructor(
     private readonly ingestService: AnalyticsIngestService,
@@ -1148,15 +1153,46 @@ export class AnalyticsService {
       });
     }
 
-    if (input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount) {
+    if (
+      input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount &&
+      input.workflowSignals.artistSettledCommerceCount === 0
+    ) {
+      cards.push({
+        id: "improve_marketplace_conversion",
+        type: "improve_marketplace_conversion",
+        title: "Improve marketplace checkout conversion",
+        description: "Buyers are starting checkout, but no settled commerce is visible in this analytics window.",
+        reason: `${input.workflowSignals.marketplacePurchaseIntents} aggregate purchase intents and no settled commerce in the last ${input.days} days.`,
+        priority:
+          input.workflowSignals.marketplacePurchaseIntents >= this.artistActionHighIntentSignalCount ? "high" : "medium",
+        confidence:
+          input.workflowSignals.marketplacePurchaseIntents >= this.artistActionHighIntentSignalCount ? 0.8 : 0.68,
+        sourceSignal: {
+          category: "marketplace",
+          summary: "Purchase intent without settled commerce",
+          count: input.workflowSignals.marketplacePurchaseIntents,
+        },
+        cta: {
+          label: "Review active listings",
+          href: "/marketplace/manage?status=active",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    } else if (input.workflowSignals.marketplacePurchaseIntents >= this.artistActionMinimumSignalCount) {
       cards.push({
         id: "review_marketplace_pricing",
         type: "review_marketplace_pricing",
         title: "Review marketplace pricing",
         description: "Checkout intent is high enough to revisit price, license tier coverage, or promotion timing.",
         reason: `${input.workflowSignals.marketplacePurchaseIntents} aggregate purchase intents in the last ${input.days} days.`,
-        priority: input.workflowSignals.marketplacePurchaseIntents >= 25 ? "high" : "medium",
-        confidence: input.workflowSignals.marketplacePurchaseIntents >= 25 ? 0.78 : 0.64,
+        priority:
+          input.workflowSignals.marketplacePurchaseIntents >= this.artistActionHighIntentSignalCount ? "high" : "medium",
+        confidence:
+          input.workflowSignals.marketplacePurchaseIntents >= this.artistActionHighIntentSignalCount ? 0.78 : 0.64,
         sourceSignal: {
           category: "marketplace",
           summary: "Marketplace purchase intent",
@@ -1186,6 +1222,7 @@ export class AnalyticsService {
     let benefitRuleCreations = 0;
     let remixCreations = 0;
     let marketplacePurchaseIntents = 0;
+    let artistSettledCommerceCount = 0;
     const marketplaceInventory = {
       relistableCount: 0,
       expiredCount: 0,
@@ -1284,6 +1321,16 @@ export class AnalyticsService {
         marketplacePurchaseIntents += fact.count;
       }
 
+      // Count any artist-attributed settlement, not just marketplace stem sales:
+      // if the artist is settling commerce at all, the "improve conversion" card
+      // should not claim a total checkout-conversion gap. Production settlements are
+      // emitted as `payment.settled` (payments-service -> domain event bridge);
+      // `commerce.settled` is the alternate name handled across analytics. Gating on
+      // only one name would let the conversion card fire for artists who are settling.
+      if (this.isPayoutEvent(eventName)) {
+        artistSettledCommerceCount += fact.count;
+      }
+
       if (eventName === "marketplace.owner_inventory_viewed") {
         marketplaceInventory.relistableCount = Math.max(
           marketplaceInventory.relistableCount,
@@ -1316,6 +1363,7 @@ export class AnalyticsService {
       earlySupporterReward: topSignal(supporterRolesByCampaign) ?? topSignal(supporterRoomJoinsByCampaign),
       remixCreations,
       marketplacePurchaseIntents,
+      artistSettledCommerceCount,
       marketplaceInventory,
     };
   }

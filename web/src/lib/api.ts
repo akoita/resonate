@@ -497,6 +497,7 @@ export type ArtistActionCard = {
     | "reward_early_supporters"
     | "prepare_remix_challenge"
     | "relist_expired_inventory"
+    | "improve_marketplace_conversion"
     | "review_marketplace_pricing";
   title: string;
   description: string;
