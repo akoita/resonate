@@ -167,6 +167,19 @@ function isEphemeralLocalRpc(rpcUrl: string): boolean {
   return /localhost|127\.0\.0\.1|host\.docker\.internal/i.test(rpcUrl);
 }
 
+/**
+ * Single source of truth for the chain the indexer watches.
+ *
+ * Every path that stamps a chainId onto listing/purchase rows MUST use this
+ * resolver — the polling indexer correlates Sold/Cancelled events back to
+ * StemListing rows by (listingId, chainId), so a row written under any other
+ * chainId becomes invisible to event processing (listings never marked sold,
+ * purchases never recorded).
+ */
+export function resolveIndexerChainId(): number {
+  return parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337", 10);
+}
+
 type IndexerProgressLogLevel = "silent" | "debug" | "log";
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
@@ -303,7 +316,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     this.isIndexing = true;
 
     try {
-      const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337");
+      const chainId = resolveIndexerChainId();
       const config = CHAIN_CONFIGS[chainId];
       const addresses = CONTRACT_ADDRESSES[chainId];
 
@@ -363,8 +376,15 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
             where: { chainId },
             data: { lastBlockNumber: safeBlock },
           });
+        } else {
+          // Caught up, just waiting for new blocks. Heartbeat (@updatedAt bumps
+          // on any update) so /metadata/indexer/status can distinguish
+          // "caught up and idle" from "poller dead".
+          await prisma.indexerState.update({
+            where: { chainId },
+            data: { lastBlockNumber: indexerState.lastBlockNumber },
+          });
         }
-        // Otherwise: we're caught up, just wait for new blocks
         return;
       }
 
@@ -451,7 +471,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async processLog(log: Log, chainId: number) {
+  private async processLog(log: Log, chainId: number, options?: { force?: boolean }) {
     const { transactionHash, logIndex, blockNumber, blockHash, address, topics, data } = log;
 
     // Check if already processed
@@ -464,7 +484,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    if (existing) {
+    if (existing && !options?.force) {
       return; // Already processed
     }
 
@@ -492,18 +512,20 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
         data: data,
       });
 
-      await prisma.contractEvent.create({
-        data: {
-          eventName: eventName || "Unknown",
-          chainId,
-          contractAddress: address,
-          transactionHash: transactionHash!,
-          logIndex: logIndex!,
-          blockNumber: blockNumber!,
-          blockHash: blockHash!,
-          args: safeArgs,
-        },
-      });
+      if (!existing) {
+        await prisma.contractEvent.create({
+          data: {
+            eventName: eventName || "Unknown",
+            chainId,
+            contractAddress: address,
+            transactionHash: transactionHash!,
+            logIndex: logIndex!,
+            blockNumber: blockNumber!,
+            blockHash: blockHash!,
+            args: safeArgs,
+          },
+        });
+      }
 
       // Publish typed event
       if (eventName && decodedArgs) {
@@ -964,9 +986,13 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   // ============ Manual Indexing Methods ============
 
   /**
-   * Manually index a specific transaction (for testing/debugging)
+   * Manually index a specific transaction (for testing/debugging).
+   *
+   * `force` republishes typed events even when the raw ContractEvent row was
+   * already recorded — used to replay events whose downstream handlers were
+   * skipped (e.g. a Sold event indexed under a mismatched chainId).
    */
-  async indexTransaction(txHash: string, chainId: number) {
+  async indexTransaction(txHash: string, chainId: number, options?: { force?: boolean }) {
     const config = CHAIN_CONFIGS[chainId];
     if (!config) {
       throw new Error(`No configuration for chain ${chainId}`);
@@ -980,7 +1006,7 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
     const receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
 
     for (const log of receipt.logs) {
-      await this.processLog(log, chainId);
+      await this.processLog(log, chainId, options);
     }
 
     return { processed: receipt.logs.length };
@@ -999,17 +1025,38 @@ export class IndexerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Get indexer status
+   * Get indexer status.
+   *
+   * `staleSeconds` is time since the chain's cursor heartbeat; `healthy`
+   * reflects the watched chain only (enabled + cursor row exists + not
+   * stale), so a monitor can alert on it directly. Threshold is tunable via
+   * INDEXER_STALE_THRESHOLD_SECONDS (default 300).
    */
   async getStatus() {
+    const enabled = process.env.ENABLE_CONTRACT_INDEXER === "true";
+    const watchedChainId = resolveIndexerChainId();
+    const staleThresholdSeconds = parsePositiveIntegerEnv("INDEXER_STALE_THRESHOLD_SECONDS", 300);
+    const now = Date.now();
+
     const states = await prisma.indexerState.findMany();
-    return {
-      enabled: process.env.ENABLE_CONTRACT_INDEXER === "true",
-      chains: states.map((s) => ({
+    const chains = states.map((s) => {
+      const staleSeconds = Math.max(0, Math.floor((now - s.updatedAt.getTime()) / 1000));
+      return {
         chainId: s.chainId,
         lastBlockNumber: s.lastBlockNumber.toString(),
         updatedAt: s.updatedAt,
-      })),
+        staleSeconds,
+        stale: staleSeconds > staleThresholdSeconds,
+      };
+    });
+
+    const watched = chains.find((c) => c.chainId === watchedChainId) ?? null;
+    return {
+      enabled,
+      watchedChainId,
+      staleThresholdSeconds,
+      healthy: enabled && watched !== null && !watched.stale,
+      chains,
     };
   }
 }

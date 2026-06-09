@@ -23,6 +23,7 @@ import type {
   ContractStakeSlashedEvent,
 } from "../../events/event_types";
 import { CuratorReputationService } from "./curator-reputation.service";
+import { resolveIndexerChainId } from "./indexer.service";
 import {
   deriveCreatorVerificationStates,
   deriveReleaseVerificationStates,
@@ -417,7 +418,7 @@ export class ContractsService implements OnModuleInit {
    * or amount=0 is marked as "sold" in the DB.
    */
   private async reconcileListings() {
-    const chainId = parseInt(process.env.INDEXER_CHAIN_ID || process.env.CHAIN_ID || process.env.AA_CHAIN_ID || "31337");
+    const chainId = resolveIndexerChainId();
     const config = CHAIN_CONFIGS[chainId];
     const marketplaceAddr = MARKETPLACE_ADDRESSES[chainId];
 
@@ -716,8 +717,11 @@ export class ContractsService implements OnModuleInit {
       this.logger.log(`Processing StemSold: listingId=${event.listingId}, tx=${event.transactionHash}`);
 
       try {
-        // Find the listing
-        const listing = await prisma.stemListing.findFirst({
+        // Find the listing. Fall back to the marketplace contract address so
+        // a chainId label mismatch (e.g. a listing row created by the
+        // notify-listing path under a different chainId than the polling
+        // indexer uses) cannot orphan the sale.
+        let listing = await prisma.stemListing.findFirst({
           where: {
             listingId: BigInt(event.listingId),
             chainId: event.chainId,
@@ -725,13 +729,42 @@ export class ContractsService implements OnModuleInit {
         });
 
         if (!listing) {
+          listing = await prisma.stemListing.findFirst({
+            where: {
+              listingId: BigInt(event.listingId),
+              contractAddress: { equals: event.contractAddress, mode: "insensitive" },
+            },
+          });
+          if (listing) {
+            this.logger.warn(
+              `StemSold listing ${event.listingId} matched by contract address but stored under ` +
+              `chainId=${listing.chainId} (event chainId=${event.chainId})`,
+            );
+          }
+        }
+
+        if (!listing) {
           this.logger.warn(`Listing not found for StemSold: ${event.listingId}`);
           return;
         }
 
-        // Create purchase record
+        // Idempotency: if this sale was already recorded (reindex/replay),
+        // skip — re-running the listing update below would double-decrement.
+        const existingPurchase = await prisma.stemPurchase.findUnique({
+          where: { transactionHash: event.transactionHash },
+          select: { id: true },
+        });
+        if (existingPurchase) {
+          this.logger.log(`StemPurchase already recorded for tx ${event.transactionHash}, skipping`);
+          return;
+        }
+
+        // Create purchase record. Decorate with the listing's chainId — the
+        // payment token address comes from the listing row, so asset metadata
+        // must be resolved against the same chain even when the event arrived
+        // under a mismatched chainId label.
         const purchasePayment = decoratePaymentAmount({
-          chainId: event.chainId,
+          chainId: listing.chainId,
           paymentToken: listing.paymentToken,
           amountUnits: event.totalPaid,
         });

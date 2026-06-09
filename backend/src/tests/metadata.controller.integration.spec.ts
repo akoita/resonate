@@ -311,7 +311,9 @@ describe('MetadataController (integration)', () => {
 
     it('hydrates an indexed listing when the frontend listing intent arrives after the indexer', async () => {
       const previousChainId = process.env.AA_CHAIN_ID;
+      const previousIndexerChainId = process.env.INDEXER_CHAIN_ID;
       process.env.AA_CHAIN_ID = '31337';
+      process.env.INDEXER_CHAIN_ID = '31337';
       const transactionHash = '0x' + 'f'.repeat(64);
       const stablecoinToken = ('0x' + '4'.repeat(40)).toLowerCase();
 
@@ -363,14 +365,25 @@ describe('MetadataController (integration)', () => {
         } else {
           process.env.AA_CHAIN_ID = previousChainId;
         }
+        if (previousIndexerChainId === undefined) {
+          delete process.env.INDEXER_CHAIN_ID;
+        } else {
+          process.env.INDEXER_CHAIN_ID = previousIndexerChainId;
+        }
         await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
         await prisma.stemListing.deleteMany({ where: { transactionHash } });
       }
     });
 
-    it('uses the notified chain id when storing listing intent and reindexing', async () => {
+    it('ignores a mismatched notified chain id and stamps records with the indexer chain', async () => {
+      // The Sold/Cancelled handlers correlate events to listings by
+      // (listingId, chainId) using the polling indexer's chain — listing
+      // records written under a client-supplied chainId would never be
+      // marked sold and their purchases never recorded.
       const previousChainId = process.env.AA_CHAIN_ID;
+      const previousIndexerChainId = process.env.INDEXER_CHAIN_ID;
       process.env.AA_CHAIN_ID = '31337';
+      process.env.INDEXER_CHAIN_ID = '31337';
       const transactionHash = '0x' + '8'.repeat(64);
       const notifiedChainId = 84532;
 
@@ -393,13 +406,18 @@ describe('MetadataController (integration)', () => {
           where: { transactionHash, tokenId: 99n },
         });
         expect(intent).not.toBeNull();
-        expect(intent!.chainId).toBe(notifiedChainId);
-        expect(indexerService.indexTransaction).toHaveBeenCalledWith(transactionHash, notifiedChainId);
+        expect(intent!.chainId).toBe(31337);
+        expect(indexerService.indexTransaction).toHaveBeenCalledWith(transactionHash, 31337);
       } finally {
         if (previousChainId === undefined) {
           delete process.env.AA_CHAIN_ID;
         } else {
           process.env.AA_CHAIN_ID = previousChainId;
+        }
+        if (previousIndexerChainId === undefined) {
+          delete process.env.INDEXER_CHAIN_ID;
+        } else {
+          process.env.INDEXER_CHAIN_ID = previousIndexerChainId;
         }
         await prisma.stemListingIntent.deleteMany({ where: { transactionHash } });
       }
