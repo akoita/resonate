@@ -119,7 +119,10 @@ export default function StemDetailPage() {
     useEffect(() => {
         if (!tokenId || !chainId) return;
         let cancelled = false;
-        fetch(`${API_BASE}/api/metadata/${chainId}/${tokenId.toString()}`)
+        // Relative path: the Next rewrite maps /api/metadata/* to the
+        // backend's prefix-free /metadata/* in every environment. Calling
+        // `${API_BASE}/api/metadata/...` 404s against the real backend.
+        fetch(`/api/metadata/${chainId}/${tokenId.toString()}`)
             .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
             .then((data) => {
                 if (cancelled) return;
@@ -144,7 +147,7 @@ export default function StemDetailPage() {
         if (!catalogStemId) return;
         void refreshNonce;
         let cancelled = false;
-        fetch(`${API_BASE}/api/metadata/listings?stemId=${encodeURIComponent(catalogStemId)}&limit=20`)
+        fetch(`/api/metadata/listings?stemId=${encodeURIComponent(catalogStemId)}&limit=20`)
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
                 if (cancelled || !data?.listings) return;
