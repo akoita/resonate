@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -10,6 +11,13 @@ import {
   RemixEligibilityService,
   type RemixEligibilityResult,
 } from "./remix-eligibility.service";
+import {
+  buildRemixGenerationInput,
+  REMIX_GENERATION_PROVIDER,
+  RemixGenerationProviderError,
+  type RemixGenerationConstraints,
+  type RemixGenerationProvider,
+} from "./remix-generation.provider";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -69,6 +77,8 @@ export class RemixProjectService {
   constructor(
     private readonly eventBus: EventBus,
     private readonly eligibilityService: RemixEligibilityService,
+    @Inject(REMIX_GENERATION_PROVIDER)
+    private readonly generationProvider: RemixGenerationProvider,
   ) {}
 
   async createProject(input: {
@@ -221,6 +231,129 @@ export class RemixProjectService {
         },
         include: PROJECT_INCLUDE,
       });
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * Starts an AI remix draft through the provider boundary. Eligibility is
+   * re-checked here: generation is a rights-relevant action, so the
+   * creation-time decision is not trusted (source state may have changed).
+   */
+  async generateDraft(
+    userId: string,
+    projectId: string,
+    options: { constraints?: RemixGenerationConstraints; force?: boolean } = {},
+  ) {
+    const project = await this.loadOwnedProject(userId, projectId);
+    const stemIds = project.stems.map((stem) => stem.stemId);
+
+    if (project.status !== "draft") {
+      throw new BadRequestException(
+        "Only draft projects can generate remix drafts",
+      );
+    }
+    if (project.generationJobId && !options.force) {
+      throw new BadRequestException(
+        `A generation job (${project.generationJobId}) is already recorded for this project. Retry semantics arrive with queued generation; pass force=true to overwrite.`,
+      );
+    }
+    if (
+      (project.mode === "variation" || project.mode === "extension") &&
+      !project.prompt?.trim()
+    ) {
+      throw new BadRequestException(
+        `A prompt is required for ${project.mode} mode`,
+      );
+    }
+
+    const eligibility = await this.eligibilityService.checkEligibility({
+      userId,
+      trackId: project.sourceTrackId,
+      stemIds,
+    });
+    if (!eligibility.allowed) {
+      this.publishDenialEvents(
+        { userId, sourceTrackId: project.sourceTrackId, stemIds },
+        eligibility,
+      );
+      throw new ForbiddenException({
+        message: "Remix generation is not allowed for this source",
+        eligibility,
+      });
+    }
+
+    const input = buildRemixGenerationInput(
+      {
+        id: project.id,
+        creatorUserId: project.creatorUserId,
+        sourceTrackId: project.sourceTrackId,
+        mode: project.mode,
+        prompt: project.prompt,
+        licenseType: project.licenseType,
+        licenseId: project.licenseId,
+        policyVersion: project.policyVersion,
+        source: {
+          rightsRoute:
+            project.sourceTrack.rightsRoute ??
+            project.sourceTrack.release.rightsRoute ??
+            null,
+          contentStatus: project.sourceTrack.contentStatus,
+        },
+        stems: project.stems,
+      },
+      options.constraints,
+    );
+    let job;
+    try {
+      job = await this.generationProvider.createRemixDraft(input);
+    } catch (error) {
+      if (error instanceof RemixGenerationProviderError) {
+        this.eventBus.publish({
+          eventName: "remix.generation_failed",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          remixProjectId: project.id,
+          creatorId: userId,
+          sourceTrackId: project.sourceTrackId,
+          errorCode: error.code,
+          policyVersion: eligibility.policyVersion,
+        });
+      }
+      throw error;
+    }
+
+    const updated = await prisma.remixProject.update({
+      where: { id: project.id },
+      data: {
+        generationProvider: job.provider,
+        generationJobId: job.jobId,
+        generationMetadata: {
+          mode: input.mode,
+          stemIds: input.stemIds,
+          constraints: input.constraints as object,
+          estimatedCostUsd: job.estimatedCostUsd ?? null,
+          policyVersion: eligibility.policyVersion,
+          voiceLikenessAllowed: false,
+          output: job.outputMetadata,
+          requestedAt: new Date().toISOString(),
+        },
+      },
+      include: PROJECT_INCLUDE,
+    });
+
+    this.eventBus.publish({
+      eventName: "remix.generation_started",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      remixProjectId: project.id,
+      creatorId: userId,
+      sourceTrackId: project.sourceTrackId,
+      provider: job.provider,
+      generationJobId: job.jobId,
+      mode: input.mode,
+      policyVersion: eligibility.policyVersion,
     });
 
     return this.toResponse(updated);
