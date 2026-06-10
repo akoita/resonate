@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   formatListingCountdown,
+  orderArtworkSources,
   shortAddress,
   stemTypeTheme,
 } from "../../lib/stemPageTheme";
@@ -50,13 +51,15 @@ export function StemHero({
       ? `${identity.stemType.charAt(0).toUpperCase()}${identity.stemType.slice(1)} Stem`
       : `Stem #${identity.tokenId}`);
 
-  // Artwork source chain: token image → fallback (release artwork) → themed
-  // placeholder. A broken image must never render as alt text in the hero.
+  // Artwork source chain: real art first (the generic default cover is
+  // demoted behind the release artwork), then the themed placeholder. A
+  // broken image must never render as alt text in the hero.
   const artworkSources = useMemo(
     () =>
-      [identity.artworkUrl, fallbackArtworkUrl].filter(
-        (src): src is string => !!src,
-      ),
+      orderArtworkSources({
+        tokenImageUrl: identity.artworkUrl,
+        releaseArtworkUrl: fallbackArtworkUrl,
+      }),
     [identity.artworkUrl, fallbackArtworkUrl],
   );
   const [failedCount, setFailedCount] = useState(0);

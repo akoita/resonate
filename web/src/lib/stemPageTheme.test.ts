@@ -1,9 +1,62 @@
 import { describe, expect, it } from "vitest";
 import {
   formatListingCountdown,
+  isDefaultStemCover,
+  orderArtworkSources,
   shortAddress,
   stemTypeTheme,
 } from "./stemPageTheme";
+
+describe("orderArtworkSources", () => {
+  it("prefers the token image when it is real art", () => {
+    expect(
+      orderArtworkSources({
+        tokenImageUrl: "https://cdn.example/stem-81.png",
+        releaseArtworkUrl: "https://cdn.example/release.png",
+      }),
+    ).toEqual([
+      "https://cdn.example/stem-81.png",
+      "https://cdn.example/release.png",
+    ]);
+  });
+
+  it("demotes the generic default cover behind the release artwork", () => {
+    expect(
+      orderArtworkSources({
+        tokenImageUrl: "https://app.example/default-stem-cover.png",
+        releaseArtworkUrl: "https://cdn.example/release.png",
+      }),
+    ).toEqual([
+      "https://cdn.example/release.png",
+      "https://app.example/default-stem-cover.png",
+    ]);
+  });
+
+  it("keeps the default cover as a last resort without release art", () => {
+    expect(
+      orderArtworkSources({
+        tokenImageUrl: "/default-stem-cover.png",
+        releaseArtworkUrl: null,
+      }),
+    ).toEqual(["/default-stem-cover.png"]);
+  });
+
+  it("drops missing sources entirely", () => {
+    expect(orderArtworkSources({})).toEqual([]);
+    expect(
+      orderArtworkSources({ releaseArtworkUrl: "https://cdn.example/r.png" }),
+    ).toEqual(["https://cdn.example/r.png"]);
+  });
+});
+
+describe("isDefaultStemCover", () => {
+  it("detects the platform placeholder by path", () => {
+    expect(isDefaultStemCover("/default-stem-cover.png")).toBe(true);
+    expect(isDefaultStemCover("https://x.example/default-stem-cover.png")).toBe(true);
+    expect(isDefaultStemCover("https://x.example/art.png")).toBe(false);
+    expect(isDefaultStemCover(null)).toBe(false);
+  });
+});
 
 describe("stemTypeTheme", () => {
   it("maps known types to their marketplace badge identities", () => {
