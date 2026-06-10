@@ -149,6 +149,47 @@ describe("RemixCta rendering", () => {
     expect(html).toContain("A remix license unlocks Remix Studio");
   });
 
+  it("renders the license CTA inert with the reason when no remix listing exists", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility({
+          allowed: false,
+          requiredLicense: "remix",
+          allowedActions: [],
+          reasons: [
+            { code: "license_required", message: "A remix license is required." },
+          ],
+        })}
+        licenseUnavailableReason="The seller hasn't listed a remix license for this stem yet."
+      />,
+    );
+    expect(html).toContain("Get remix license");
+    expect(html).toContain("aria-disabled");
+    expect(html).toContain("listed a remix license");
+  });
+
+  it("stays interactive when the caller provides a license purchase path", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility({
+          allowed: false,
+          requiredLicense: "remix",
+          allowedActions: [],
+          reasons: [
+            { code: "license_required", message: "A remix license is required." },
+          ],
+        })}
+        onGetLicense={() => {}}
+        licenseUnavailableReason="ignored when a purchase path exists"
+      />,
+    );
+    expect(html).toContain("Get remix license");
+    expect(html).not.toContain("aria-disabled");
+    expect(html).not.toContain("ignored when a purchase path exists");
+  });
+
   it("renders a disabled chip with the policy reason for blocked sources", () => {
     const html = renderToStaticMarkup(
       <RemixCta

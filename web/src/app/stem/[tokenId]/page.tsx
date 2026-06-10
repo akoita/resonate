@@ -251,6 +251,19 @@ export default function StemDetailPage() {
         return labels;
     }, [listingPriceLabel, listings]);
 
+    // Remix-license path for the CTA: open the buy modal in place when a
+    // remix-tier listing exists; otherwise the CTA explains instead of
+    // dead-ending into the marketplace.
+    const remixListingRow = useMemo(
+        () => listings.find((l) => (l.licenseType ?? "personal") === "remix") ?? null,
+        [listings],
+    );
+    const remixTierBuyable = !!remixListingRow || !!tierListingIds.remix;
+    const openRemixLicensePurchase = useCallback(() => {
+        const target = remixListingRow ?? primaryListing;
+        if (target) setBuyListing(target);
+    }, [primaryListing, remixListingRow]);
+
     const stemType = attr("Type") ?? primaryListing?.stem?.type ?? null;
     const theme = stemTypeTheme(stemType);
     const displayTitle = meta?.name ?? primaryListing?.stem?.title ?? null;
@@ -382,6 +395,12 @@ export default function StemDetailPage() {
                                 trackId={catalogTrackId}
                                 stemIds={[catalogStemId]}
                                 trackTitle={displayTitle ?? undefined}
+                                onGetLicense={remixTierBuyable ? openRemixLicensePurchase : undefined}
+                                licenseUnavailableReason={
+                                    remixTierBuyable
+                                        ? undefined
+                                        : "The seller hasn't listed a remix license for this stem yet."
+                                }
                             />
                         )}
                         {canList && (

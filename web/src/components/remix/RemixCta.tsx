@@ -109,6 +109,8 @@ export function RemixCta({
   trackTitle,
   variant = "chip",
   initialEligibility,
+  onGetLicense,
+  licenseUnavailableReason,
 }: {
   trackId: string;
   stemIds?: string[];
@@ -116,6 +118,18 @@ export function RemixCta({
   variant?: RemixCtaVariant;
   /** Skips the eligibility fetch when the caller already holds the response. */
   initialEligibility?: RemixEligibilityResponse | null;
+  /**
+   * Where "Get remix license" should lead. Stem pages pass their buy-modal
+   * opener when a remix-tier listing is purchasable in place; without a
+   * handler the CTA falls back to browsing the marketplace.
+   */
+  onGetLicense?: () => void;
+  /**
+   * When a license is required but cannot be bought anywhere (e.g. the
+   * seller lists no remix tier), the CTA stays visible but inert with this
+   * reason instead of dead-ending into the marketplace.
+   */
+  licenseUnavailableReason?: string | null;
 }) {
   const { token, login } = useAuth();
   const router = useRouter();
@@ -221,6 +235,10 @@ export function RemixCta({
       return;
     }
     if (state.kind === "license_required") {
+      if (onGetLicense) {
+        onGetLicense();
+        return;
+      }
       router.push("/marketplace");
       return;
     }
@@ -229,14 +247,23 @@ export function RemixCta({
     }
   };
 
-  const interactive = state.kind === "remix" || state.kind === "license_required" || state.kind === "signed_out";
+  // A required license that cannot be bought anywhere makes the CTA inert:
+  // explaining beats navigating to a marketplace with nothing to offer.
+  const licenseBlocked =
+    state.kind === "license_required" && !onGetLicense && !!licenseUnavailableReason;
+  const interactive =
+    state.kind === "remix" ||
+    state.kind === "signed_out" ||
+    (state.kind === "license_required" && !licenseBlocked);
   // aria-disabled instead of disabled keeps blocked chips focusable so the
   // denial reason is reachable by keyboard and screen readers.
   const inert = !interactive || creating;
   const title =
     state.kind === "remix"
       ? "Create a private remix draft from this track's licensed stems."
-      : state.reason;
+      : licenseBlocked
+        ? licenseUnavailableReason!
+        : state.reason;
   const handleGuardedClick = (event: React.MouseEvent) => {
     if (inert) {
       event.preventDefault();
