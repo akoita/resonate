@@ -242,17 +242,35 @@ describe("analytics", () => {
           visibility: "private",
         },
       });
-      await ingest.ingest({
-        eventName: "remix.created",
-        occurredAt: recentAnalyticsIso(40 + index),
-        payload: {
-          artistId: "artist-workflows",
-          remixId: `remix-${index}`,
-          creatorId: `creator-${index}`,
-          sourceTrackId: "track-remix-source",
-          stemIds: ["stem-1", "stem-2"],
-        },
-      });
+      // Mixed remix signals (#1121): legacy minted remixes and Remix Studio
+      // drafts both count toward the prepare_remix_challenge threshold.
+      await ingest.ingest(
+        index < 3
+          ? {
+              eventName: "remix.created",
+              occurredAt: recentAnalyticsIso(40 + index),
+              payload: {
+                artistId: "artist-workflows",
+                remixId: `remix-${index}`,
+                creatorId: `creator-${index}`,
+                sourceTrackId: "track-remix-source",
+                stemIds: ["stem-1", "stem-2"],
+              },
+            }
+          : {
+              eventName: "remix.project_created",
+              occurredAt: recentAnalyticsIso(40 + index),
+              payload: {
+                artistId: "artist-workflows",
+                remixProjectId: `remix-project-${index}`,
+                creatorId: `creator-${index}`,
+                sourceTrackId: "track-remix-source",
+                stemIds: ["stem-1", "stem-2"],
+                mode: "stem_mix",
+                policyVersion: "2026-06-10.v2",
+              },
+            },
+      );
     }
     for (let index = 0; index < 4; index += 1) {
       await ingest.ingest({
@@ -321,11 +339,15 @@ describe("analytics", () => {
     }));
     expect(cardsByType.get("prepare_remix_challenge")).toEqual(expect.objectContaining({
       sourceSignal: expect.objectContaining({ category: "remix", count: 5 }),
-      cta: expect.objectContaining({
-        disabled: true,
-        disabledReason: "Remix Studio challenge creation is documented but not implemented yet.",
+      priority: "medium",
+      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
       }),
     }));
+    expect(cardsByType.get("prepare_remix_challenge")?.cta.disabled).toBeUndefined();
     expect(JSON.stringify(result.actions)).not.toContain("campaign-small");
   });
 
