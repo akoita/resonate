@@ -1,27 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useListStem, useStemBalance } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
+import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { getExplorerTxUrl } from "../../lib/explorer";
+import { API_BASE } from "../../lib/api";
 import {
   formatListingPrice,
   listingPaymentToken,
   parseListingPriceUnits,
   selectDefaultMarketplaceListingAsset,
 } from "../../lib/listingPricing";
+import {
+  buildNotifyListingPayload,
+  multiTierEditionHint,
+  tierDefaultPriceUsd,
+  type StemTierPricing,
+} from "../../lib/listingTiers";
+import {
+  LicenseTypeSelector,
+  type LicenseType,
+} from "./LicenseTypeSelector";
 
 interface ListStemModalProps {
   tokenId: bigint;
+  /** Catalog stem id; enables per-tier price prefill and intent linking. */
+  stemId?: string | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: (txHash: string) => void;
 }
 
-export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemModalProps) {
+export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: ListStemModalProps) {
   const { balance } = useStemBalance(tokenId);
   const { list, pending, error, txHash } = useListStem();
+  const { address } = useAuth();
   const { chainId } = useZeroDev();
   const {
     assets: paymentAssets,
@@ -32,6 +47,8 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
   const [price, setPrice] = useState("0.01");
   const [amount, setAmount] = useState("1");
   const [duration, setDuration] = useState("7"); // Days
+  const [licenseType, setLicenseType] = useState<LicenseType>("personal");
+  const [tierPricing, setTierPricing] = useState<StemTierPricing | null>(null);
   const listingAsset = selectDefaultMarketplaceListingAsset({
     assets: paymentAssets,
     chainId,
@@ -40,6 +57,7 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
   const listingToken = listingPaymentToken(listingAsset);
   const listingSymbol = listingAsset?.symbol ?? "ETH";
   const listingStep = listingAsset?.decimals === 6 ? "0.000001" : "0.000000000000000001";
+  const usdDenominated = listingSymbol.toUpperCase().includes("USD");
   let priceUnits = 0n;
   try {
     priceUnits = parseListingPriceUnits({ price: price || "0", asset: listingAsset });
@@ -47,17 +65,79 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
     priceUnits = 0n;
   }
 
+  // Per-tier price defaults from the stem's catalog pricing.
+  useEffect(() => {
+    if (!stemId) {
+      setTierPricing(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`${API_BASE}/api/stem-pricing/${stemId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setTierPricing({
+            remixLicenseUsd: data.remixLicenseUsd ?? null,
+            commercialLicenseUsd: data.commercialLicenseUsd ?? null,
+          });
+        }
+      })
+      .catch(() => {
+        /* no prefill — manual pricing still works */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stemId]);
+
   if (!isOpen) return null;
+
+  const handleSelectTier = (tier: LicenseType) => {
+    setLicenseType(tier);
+    // Prefill only for USD-denominated listing assets, where catalog USD
+    // pricing maps 1:1; the seller can always overwrite the price.
+    const defaultUsd = tierDefaultPriceUsd(tierPricing, tier);
+    if (usdDenominated && defaultUsd != null) {
+      setPrice(String(defaultUsd));
+    }
+  };
 
   const handleList = async () => {
     try {
+      const durationSeconds = BigInt(parseInt(duration) * 24 * 60 * 60);
+      const listAmount = BigInt(amount);
       const hash = await list({
         tokenId,
-        amount: BigInt(amount),
+        amount: listAmount,
         pricePerUnit: priceUnits,
         paymentToken: listingToken,
-        durationSeconds: BigInt(parseInt(duration) * 24 * 60 * 60),
+        durationSeconds,
       });
+      // Record the listing intent so the indexer stamps the chosen license
+      // tier (the on-chain listing carries no license type). Best-effort:
+      // the listing itself already succeeded.
+      if (address) {
+        fetch("/api/contracts/notify-listing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            buildNotifyListingPayload({
+              tokenId,
+              chainId,
+              seller: address,
+              priceUnits,
+              amount: listAmount,
+              paymentToken: listingToken,
+              durationSeconds,
+              transactionHash: hash,
+              licenseType,
+              stemId,
+            }),
+          ),
+        }).catch(() => {
+          /* indexer falls back to personal; listing still exists */
+        });
+      }
       onSuccess?.(hash);
     } catch {
       // Error handled by hook
@@ -66,6 +146,8 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
 
   const maxAmount = balance;
   const txExplorerUrl = getExplorerTxUrl(txHash);
+  const editionHint = multiTierEditionHint({ balance, tier: licenseType });
+  const manualPriceUsd = usdDenominated ? parseFloat(price) || 0 : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -76,7 +158,7 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
       />
 
       {/* Modal */}
-      <div className="relative bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-md mx-4 p-6">
+      <div className="relative bg-zinc-900 rounded-lg border border-zinc-800 w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         {/* Close Button */}
         <button
           onClick={onClose}
@@ -96,6 +178,26 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
             <p className="text-white font-mono">{tokenId.toString()}</p>
             <p className="text-sm text-zinc-400 mt-2">Your Balance</p>
             <p className="text-white">{balance.toString()} editions</p>
+          </div>
+
+          {/* License Tier */}
+          <div>
+            <LicenseTypeSelector
+              selected={licenseType}
+              onSelect={handleSelectTier}
+              personalPriceUsd={licenseType === "personal" ? manualPriceUsd : 0}
+              remixPriceUsd={tierDefaultPriceUsd(tierPricing, "remix") ?? 5}
+              commercialPriceUsd={tierDefaultPriceUsd(tierPricing, "commercial") ?? 25}
+            />
+            <p className="text-xs text-zinc-500 mt-1">
+              Buyers receive the rights of the license tier you list. A remix
+              license is what unlocks Remix Studio for this stem.
+            </p>
+            {editionHint && (
+              <p className="text-xs text-amber-400/90 mt-1 listing-edition-hint">
+                {editionHint}
+              </p>
+            )}
           </div>
 
           {/* Price Input */}
@@ -153,6 +255,10 @@ export function ListStemModal({ tokenId, isOpen, onClose, onSuccess }: ListStemM
 
           {/* Summary */}
           <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-zinc-400">License</span>
+              <span className="text-white capitalize">{licenseType}</span>
+            </div>
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Total Value</span>
               <span className="text-white">

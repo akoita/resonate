@@ -355,6 +355,7 @@ export default function StemDetailPage() {
             {showListModal && tokenId && (
                 <ListStemModal
                     tokenId={tokenId}
+                    stemId={catalogStemId}
                     isOpen={showListModal}
                     onClose={() => setShowListModal(false)}
                     onSuccess={() => setShowListModal(false)}
