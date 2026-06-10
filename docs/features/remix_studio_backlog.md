@@ -143,7 +143,10 @@ Acceptance:
 
 ## Workstream D: AI Remix Generation
 
-### D1. Add `RemixGenerationProvider` interface
+### D1. Add `RemixGenerationProvider` interface — shipped (#896)
+
+Stub provider bound by default, gated by `REMIX_GENERATION_ENABLED`; D2/D3
+add the first real provider and queue-backed jobs.
 
 - Abstract provider calls behind a backend service.
 - Include source IDs, policy context, license info, prompt, and constraints.
