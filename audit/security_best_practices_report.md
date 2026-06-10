@@ -1,5 +1,54 @@
 # Security Best Practices Report
 
+## Seller License-Tier Listings - 2026-06-10
+
+### Scope Reviewed
+
+Changed files (#1141, frontend-only):
+
+- `web/src/lib/listingTiers.ts` (+ test)
+- `web/src/components/marketplace/ListStemModal.tsx` (+ test)
+- `web/src/components/marketplace/BatchMintListModal.tsx`
+- `web/src/components/marketplace/MintStemButton.tsx`
+- `web/src/hooks/useContracts.ts` (batch licenseType option)
+- `web/src/app/stem/[tokenId]/page.tsx` (stemId prop)
+
+### Executive Summary
+
+No Critical or High findings. The slice threads a seller-chosen license tier
+through the existing notify-listing/listing-intent path. The tier is
+listing metadata, not a rights grant: buyer-side rights still derive from
+indexed `StemPurchase.licenseType` server-side, the backend already
+normalizes unknown tier values to `personal`
+(`normalizeListingLicenseType`), and the notify-listing intent only stamps
+listings whose on-chain transaction hash matches. Price prefill reads the
+stem's public catalog pricing endpoint; no secrets, XSS vectors, cookie
+handling, or hardcoded non-localhost URLs in the changed slice.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- notify-listing remains best-effort after the on-chain transaction; on
+  failure the listing indexes with the conservative `personal` default.
+- The edition hint is fixed product copy; no user-generated content rendered.
+- `licenseType` values are constrained by TS unions client-side and
+  normalized server-side; clients cannot mint rights by sending arbitrary
+  tier strings for transactions they did not submit (intent rows key on
+  transactionHash + tokenId of the seller's own listing).
+
+### Scans Run
+
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie' <changed files>`
+- `rg -i 'password|secret|api_key|private_key|https?://(?!localhost)' -P <changed files>`
+- `git diff --check`
+
 ## Remix Generation Provider Boundary - 2026-06-10
 
 ### Scope Reviewed

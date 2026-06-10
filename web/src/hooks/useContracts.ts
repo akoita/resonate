@@ -1639,6 +1639,7 @@ export function useBatchMintAndList() {
         paymentToken?: Address;
         durationSeconds?: bigint;
         releaseProtectionId?: bigint;
+        licenseType?: "personal" | "remix" | "commercial";
         onProgress?: (results: BatchStemResult[]) => void;
       }
     ) => {
@@ -1803,7 +1804,7 @@ export function useBatchMintAndList() {
               price: pricePerUnit.toString(),
               amount: "1",
               paymentToken,
-              licenseType: "personal",
+              licenseType: options?.licenseType ?? "personal",
               durationSeconds: durationSeconds.toString(),
               transactionHash: hash,
               stemId: stems[i].stemId,

@@ -72,6 +72,8 @@ interface MintStemButtonProps {
     stemId: string;
     stemType: string;
     listingPricePerUnit: bigint;
+    /** License tier recorded on the listing intent; defaults to personal. */
+    licenseType?: "personal" | "remix" | "commercial";
     releaseProtection?: Pick<ReleaseContentProtectionData, "active" | "stakeAmount" | "staked"> | null;
     trustTier?: Pick<TrustTier, "maxListingPriceWei" | "maxListingPriceUncapped" | "maxPriceMultiplier"> | null;
     onBeforeMint?: () => Promise<boolean | { ready: boolean; protectionId?: bigint }>;
@@ -89,6 +91,7 @@ export function MintStemButton({
     stemId,
     stemType,
     listingPricePerUnit,
+    licenseType = "personal",
     releaseProtection,
     trustTier,
     onBeforeMint,
@@ -140,13 +143,13 @@ export function MintStemButton({
                 price: listingPriceUnits.toString(),
                 amount: "1",
                 paymentToken: listingToken,
-                licenseType: "personal",
+                licenseType,
                 durationSeconds: String(7 * 24 * 60 * 60),
                 transactionHash: input.transactionHash,
                 stemId,
             }),
         });
-    }, [address, chainId, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
+    }, [address, chainId, licenseType, listingPriceUnits, listingToken, smartAccountAddress, stemId]);
     const applyStatusDetail = useCallback((detail: StemMarketplaceStatusEventDetail) => {
         if (detail.stemId !== stemId) return;
 
