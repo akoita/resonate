@@ -94,8 +94,27 @@ from the JWT, never the request body.
 - Data: `RemixProject` and `RemixProjectStem` Prisma models with creator,
   source track, stems, license context, prompt, mode, generation metadata,
   attribution, and export-policy placeholders.
-- Events: `remix.project_created`, `remix.policy_rejected`,
+- Events: `remix.project_created` (carries the source release's `artistId`
+  for artist-cockpit attribution, #1121), `remix.policy_rejected`,
   `remix.license_required` (governed analytics bridge mappings included).
+- Product analytics (#1143), allow-listed in `POST /analytics/product/event`
+  and emitted from the web client with compact id/state payloads only (no
+  titles, prompts, or free-text reasons):
+  - `remix.cta_impression` — RemixCta resolves a visible state; payload
+    `trackId`, `stemIds`, `state` (`remix` | `license_required` | `blocked` |
+    `signed_out`), `variant`, and `licensePathAvailable` for
+    license-required states. Deduplicated per source + state per mount.
+  - `remix.cta_clicked` — same payload plus `outcome`
+    (`studio_opened` | `license_purchase` | `marketplace` | `login`).
+  - `remix.studio_opened` — studio editor mount; `projectId`,
+    `sourceTrackId`, `stemCount`, `mode`.
+  - `remix.studio_saved` — successful project PATCH; `projectId`, `mode`.
+  - `remix.studio_action_unavailable` — click on a locked publish/export
+    control; `projectId`, `action`, stable `reasonCode`
+    (`publish_not_available` | `export_rights_required`).
+  - Limitation: the product-analytics endpoint is authenticated, so
+    `signed_out` CTA states are only recorded once the user has a session
+    elsewhere in the app; fully anonymous impressions are not captured.
 - Policy inputs: track/release rights route, track content status,
   `StemNftMint.remixable`, conservative source opt-in hook, and remix license
   proof from `StemPurchase` (`licenseType = remix`) or listing-backed
