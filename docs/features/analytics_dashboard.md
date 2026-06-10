@@ -77,8 +77,14 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 - `reward_early_supporters` opens `/artist/:id?tab=community` when aggregate
   supporter role grants, or fallback supporter-room joins, meet the five-signal
   floor.
-- `prepare_remix_challenge` appears disabled when aggregate remix creation
-  activity exists but Remix Studio challenge creation is still planned.
+- `prepare_remix_challenge` opens `/marketplace/manage?status=active` when
+  aggregate Remix Studio drafts (`remix.project_created`, attributed to the
+  source artist) plus legacy remix creations (`remix.created`) meet the
+  five-signal floor. The card is prepare-scoped guidance: the artist reviews
+  remix supply (remixable mints, listed remix-tier licenses) before drafting
+  a challenge. A true "launch remix challenge" action stays deferred until
+  artist remix opt-in settings and a challenge surface exist (remix backlog
+  A1, issue #1121).
 - `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
   owner-visible marketplace inventory reports expired or cancelled listings
   that can use the existing relist workflow.
