@@ -749,10 +749,12 @@ export default function MarketplacePage() {
                                 {/* Body */}
                                 <div className="stem-card__body">
                                     <div className="stem-card__title">
+                                        {/* Stretched link (.stem-card__title-link::after
+                                            covers the card): clicking anywhere outside the
+                                            play / buy / inner links opens the stem page. */}
                                         <Link
                                             href={`/stem/${listing.tokenId}`}
                                             title="View stem details, license tiers, and remix access"
-                                            style={{ color: "inherit", textDecoration: "none" }}
                                             className="stem-card__title-link"
                                         >
                                             {listing.stem?.title}

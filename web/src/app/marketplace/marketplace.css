@@ -1847,3 +1847,37 @@
   color: #e9d5ff;
   box-shadow: inset 0 0 0 1px rgba(var(--color-accent-rgb), 0.35);
 }
+
+/* ---- Stem page discoverability (#1150) ------------------------------- */
+
+/* Whole-card click → stem page. The title link "stretches" over the card;
+   interactive children (preview, buy, release/artist links) layer above it
+   so their own clicks still win. */
+.stem-card {
+  /* Anchor for the stretched title link below. */
+  position: relative;
+}
+
+.stem-card__title-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.stem-card__title-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.stem-card:has(.stem-card__title-link:hover) {
+  border-color: rgba(var(--color-accent-rgb), 0.45);
+}
+
+.stem-card__play-overlay,
+.stem-card__sub a,
+.stem-card__footer .stem-card__buy,
+.stem-card__footer .stem-card__own-label {
+  position: relative;
+  z-index: 2;
+}

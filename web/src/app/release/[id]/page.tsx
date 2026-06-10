@@ -1979,6 +1979,22 @@ export default function ReleaseDetails() {
                                 setTracksToAddToPlaylist([await mapToPlayableLocalTrack(track)]);
                               },
                             },
+                            // Listener path to the stem token pages: every
+                            // minted stem of this track gets a menu entry.
+                            ...(track.stems ?? [])
+                              .filter((stem) => stem.ipnftId)
+                              .map((stem) => ({
+                                label: `View ${stem.type} stem`,
+                                icon:
+                                  stem.type === "vocals" ? "🎤" :
+                                    stem.type === "drums" ? "🥁" :
+                                      stem.type === "bass" ? "🎸" :
+                                        stem.type === "piano" ? "🎹" :
+                                          stem.type === "guitar" ? "🎸" : "🎵",
+                                onClick: () => {
+                                  router.push(`/stem/${stem.ipnftId}`);
+                                },
+                              })),
                           ]}
                         />
                       </div>
