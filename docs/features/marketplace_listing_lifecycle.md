@@ -38,6 +38,9 @@ buyer and machine-commerce surfaces strict about availability.
 - The owner view supports selecting relistable stems and applying shared relist
   terms across the selection. Each selected stem still submits through the
   existing listing transaction path.
+- Marketplace card stem titles and release-page minted-stem chips link to the
+  stem detail page (`/stem/:tokenId`), the asset page showing identity,
+  active license tiers, preview, and Buy/Remix/List actions (#1145).
 - Sellers choose the listing's license tier (personal / remix / commercial)
   when listing (#1141): the stem page "List for Sale" modal has a tier picker
   with per-tier price prefill from the stem's catalog pricing
