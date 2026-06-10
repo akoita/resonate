@@ -59,3 +59,26 @@ export function shortAddress(address?: string | null): string {
   if (!address || address.length < 12) return address ?? "";
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
 }
+
+/** The platform-generic placeholder cover served when a stem has no art. */
+export function isDefaultStemCover(url?: string | null): boolean {
+  return !!url && url.includes("default-stem-cover");
+}
+
+/**
+ * Hero artwork preference (#1150). The token metadata image can itself be the
+ * generic default cover; loading it "successfully" used to stop the fallback
+ * chain before the release artwork was ever tried, leaving a vinyl placeholder
+ * on stems whose release has real art. Real art always outranks the generic
+ * cover: token art → release art, with the default cover demoted to last.
+ */
+export function orderArtworkSources(input: {
+  tokenImageUrl?: string | null;
+  releaseArtworkUrl?: string | null;
+}): string[] {
+  const token = input.tokenImageUrl ?? null;
+  const release = input.releaseArtworkUrl ?? null;
+  const ordered =
+    token && isDefaultStemCover(token) ? [release, token] : [token, release];
+  return ordered.filter((src): src is string => !!src);
+}
