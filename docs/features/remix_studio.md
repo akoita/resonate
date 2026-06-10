@@ -107,7 +107,10 @@ from the JWT, never the request body.
   enabled (opens the most recent matching draft or creates one), license
   required (routes to the marketplace remix tier), disabled with the policy
   reason rendered keyboard-accessible via `aria-disabled`, or a sign-in
-  prompt for signed-out users.
+  prompt for signed-out users. The license-required path is satisfiable
+  in-app since #1141: sellers can list remix-tier licenses from the stem
+  page and batch mint-and-list flows, and buying one flips the CTA to
+  enabled.
 - UI (#895): `/remix/studio/[projectId]` — editable studio
   (`web/src/components/remix/RemixStudioEditor.tsx`): inline title editing,
   source attribution linking to the release, rights badge derived from the

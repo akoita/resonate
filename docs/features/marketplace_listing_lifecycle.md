@@ -38,6 +38,16 @@ buyer and machine-commerce surfaces strict about availability.
 - The owner view supports selecting relistable stems and applying shared relist
   terms across the selection. Each selected stem still submits through the
   existing listing transaction path.
+- Sellers choose the listing's license tier (personal / remix / commercial)
+  when listing (#1141): the stem page "List for Sale" modal has a tier picker
+  with per-tier price prefill from the stem's catalog pricing
+  (`GET /api/stem-pricing/:stemId`), and the batch mint-and-list modal has a
+  tier select. License tier is an off-chain listing attribute recorded via
+  `POST /metadata/notify-listing` → `StemListingIntent`; the on-chain listing
+  carries no license type. Remix-tier purchases are what satisfy Remix Studio
+  eligibility. Relist keeps the original listing's tier (tier change on relist
+  is a deferred follow-up). Offering several tiers at once requires several
+  editions, since one active listing consumes the listed units.
 
 ## How To Use
 
