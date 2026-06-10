@@ -96,7 +96,10 @@ export default function StemDetailPage() {
     const { data: stemData, loading: stemLoading, error: stemError } = useStemData(tokenId);
     const { uri, loading: uriLoading } = useTokenURI(tokenId);
     const { parentIds, isRemix, loading: lineageLoading } = useParentStems(tokenId);
-    const { balance } = useStemBalance(tokenId, address as Address | undefined);
+    // Balance follows the same identity as the own-listing check: the smart
+    // account is the on-chain holder for passkey wallets.
+    const holderAddress = (smartAccountAddress || address) as Address | undefined;
+    const { balance } = useStemBalance(tokenId, holderAddress);
     const { total: totalStems } = useTotalStems();
 
     const [showListModal, setShowListModal] = useState(false);
@@ -106,6 +109,10 @@ export default function StemDetailPage() {
     const [pricing, setPricing] = useState<TierPricing | null>(null);
     const [buyListing, setBuyListing] = useState<StemListingRow | null>(null);
     const [previewPlaying, setPreviewPlaying] = useState(false);
+    // Bumped after a purchase: refetches listings and remounts the Remix CTA
+    // so the page reflects the new license without a reload.
+    const [refreshNonce, setRefreshNonce] = useState(0);
+    const [linkCopied, setLinkCopied] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     // Catalog metadata: identity (name, artwork, attributes) + catalog ids.
@@ -131,9 +138,11 @@ export default function StemDetailPage() {
     const catalogTrackId = meta?.properties?.track_id ?? null;
     const releaseIdFromMeta = meta?.properties?.release_id ?? null;
 
-    // Active listings + tier pricing for the commerce rail.
+    // Active listings + tier pricing for the commerce rail. refreshNonce
+    // re-runs this after a purchase on this page.
     useEffect(() => {
         if (!catalogStemId) return;
+        void refreshNonce;
         let cancelled = false;
         fetch(`${API_BASE}/api/metadata/listings?stemId=${encodeURIComponent(catalogStemId)}&limit=20`)
             .then((r) => (r.ok ? r.json() : null))
@@ -161,7 +170,7 @@ export default function StemDetailPage() {
         return () => {
             cancelled = true;
         };
-    }, [catalogStemId, tokenId]);
+    }, [catalogStemId, tokenId, refreshNonce]);
 
     const attr = useCallback(
         (name: string): string | null => {
@@ -220,7 +229,13 @@ export default function StemDetailPage() {
 
     const copyLink = useCallback(() => {
         if (typeof navigator !== "undefined" && navigator.clipboard) {
-            void navigator.clipboard.writeText(window.location.href);
+            navigator.clipboard
+                .writeText(window.location.href)
+                .then(() => {
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                })
+                .catch(() => { /* clipboard unavailable */ });
         }
     }, []);
 
@@ -310,6 +325,7 @@ export default function StemDetailPage() {
                     )}
                     {catalogTrackId && catalogStemId && (
                         <RemixCta
+                            key={`remix-${refreshNonce}`}
                             variant="button"
                             trackId={catalogTrackId}
                             stemIds={[catalogStemId]}
@@ -331,7 +347,7 @@ export default function StemDetailPage() {
                         title="Copy link to this stem"
                         className="px-4 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
                     >
-                        ⧉ Copy link
+                        {linkCopied ? "✓ Copied" : "⧉ Copy link"}
                     </button>
                 </div>
 
@@ -495,7 +511,12 @@ export default function StemDetailPage() {
                     } : undefined}
                     isOpen={true}
                     onClose={() => setBuyListing(null)}
-                    onSuccess={() => setBuyListing(null)}
+                    onSuccess={() => {
+                        setBuyListing(null);
+                        // Refresh listings and re-evaluate remix eligibility so
+                        // a remix-tier purchase flips the CTA without a reload.
+                        setRefreshNonce((n) => n + 1);
+                    }}
                 />
             )}
 
