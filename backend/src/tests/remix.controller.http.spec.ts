@@ -14,6 +14,7 @@ import { RemixController } from '../modules/remix/remix.controller';
 import { RemixService } from '../modules/remix/remix.service';
 import { RemixEligibilityService } from '../modules/remix/remix-eligibility.service';
 import { RemixProjectService } from '../modules/remix/remix-project.service';
+import { RemixGenerationProviderError } from '../modules/remix/remix-generation.provider';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockRemixService = {
@@ -38,6 +39,9 @@ const mockProjectService = {
   getProject: jest.fn().mockResolvedValue({ id: 'proj-1' }),
   listProjects: jest.fn().mockResolvedValue([]),
   updateProject: jest.fn().mockResolvedValue({ id: 'proj-1', title: 'Renamed' }),
+  generateDraft: jest
+    .fn()
+    .mockResolvedValue({ id: 'proj-1', generationJobId: 'rmxgen_proj-1' }),
 };
 
 describe('RemixController (e2e)', () => {
@@ -176,6 +180,58 @@ describe('RemixController (e2e)', () => {
     expect(mockProjectService.updateProject).toHaveBeenCalledWith('user-1', 'proj-1', {
       title: 'Renamed',
     });
+  });
+
+  // ----- Generation -----
+
+  it('POST /remix/projects/:id/generate → 401 without JWT', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .send({})
+      .expect(401);
+  });
+
+  it('POST /remix/projects/:id/generate → 201 and routes options to the service', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ constraints: { durationSeconds: 60 }, force: true })
+      .expect(201);
+    expect(mockProjectService.generateDraft).toHaveBeenCalledWith('user-1', 'proj-1', {
+      constraints: { durationSeconds: 60 },
+      force: true,
+    });
+  });
+
+  it('POST /remix/projects/:id/generate → 503 with the normalized error contract when disabled', async () => {
+    mockProjectService.generateDraft.mockRejectedValueOnce(
+      new RemixGenerationProviderError(
+        'provider_disabled',
+        'AI remix generation is not enabled on this environment yet.',
+        false,
+      ),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(503);
+    expect(res.body).toEqual({
+      code: 'provider_disabled',
+      message: 'AI remix generation is not enabled on this environment yet.',
+      retryable: false,
+    });
+  });
+
+  it('POST /remix/projects/:id/generate → 422 for provider rejections', async () => {
+    mockProjectService.generateDraft.mockRejectedValueOnce(
+      new RemixGenerationProviderError('provider_rejected', 'Prompt rejected.', false),
+    );
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(422);
   });
 
   // ----- Legacy compatibility -----

@@ -20,9 +20,13 @@ pages ([#894](https://github.com/akoita/resonate/issues/894)), and
 ([#895](https://github.com/akoita/resonate/issues/895)): source attribution
 and rights badge, stem mute/solo/gain controls, remix mode selector, prompt
 box, draft status panel, persisted saves, and honest unavailable
-publish/export states. Audio preview (backlog C3) and AI draft generation
-([#896](https://github.com/akoita/resonate/issues/896)) remain planned; the
-MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
+publish/export states. The `RemixGenerationProvider` boundary and
+`POST /remix/projects/:id/generate` are wired
+([#896](https://github.com/akoita/resonate/issues/896)) with a config-gated
+stub provider (`REMIX_GENERATION_ENABLED`, default off) — generation is not
+user-visible yet. The first real provider with a studio Generate button
+(backlog D2), queue-backed jobs (D3), and audio preview (C3) remain planned;
+the MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
 `POST /remix/create` compatibility shim and is slated for removal with the
@@ -120,16 +124,29 @@ from the JWT, never the request body.
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
 
+- API (#896, shipped behind config): `POST /remix/projects/:id/generate` —
+  owner-only, re-runs eligibility before generating, requires a prompt for
+  prompted modes (and strips prompts for stem mix), rejects duplicate jobs
+  without `force=true`, persists provider/job/cost/policy provenance on the
+  project, and emits `remix.generation_started` / `remix.generation_failed`.
+  Provider failures return the normalized `{ code, message, retryable }`
+  contract (`provider_disabled`/`provider_unavailable` → 503,
+  `invalid_input` → 400, `provider_rejected` → 422). The default binding is a
+  stub provider gated by `REMIX_GENERATION_ENABLED` (see
+  `docs/deployment/environment.md`); the input's policy context types
+  `voiceLikenessAllowed` as literal `false`.
+
 ## Planned Surfaces
 
 - UI: marketplace listing card remix affordances beyond the existing
   `Remixable` badge (deliberately excluded from #894 to avoid per-card
   eligibility fan-out).
 - UI: Web Audio stem preview in the studio (backlog C3).
-- API: `POST /remix/projects/:id/generate`.
+- UI: studio Generate button — ships with the first real provider (backlog
+  D2) so the action never appears before it can work.
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
-- Events: `remix.generation_started`, `remix.generation_completed`,
+- Events: `remix.generation_completed` (with queued jobs, backlog D3),
   `remix.published`.
 
 ## Product Rules

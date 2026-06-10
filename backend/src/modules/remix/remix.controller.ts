@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   Param,
   Patch,
   Post,
@@ -17,6 +18,18 @@ import {
   RemixProjectService,
   type RemixProjectStemUpdate,
 } from "./remix-project.service";
+import {
+  RemixGenerationProviderError,
+  type RemixGenerationConstraints,
+  type RemixGenerationErrorCode,
+} from "./remix-generation.provider";
+
+const GENERATION_ERROR_STATUS: Record<RemixGenerationErrorCode, number> = {
+  provider_disabled: 503,
+  provider_unavailable: 503,
+  invalid_input: 400,
+  provider_rejected: 422,
+};
 
 @Controller("remix")
 export class RemixController {
@@ -99,6 +112,38 @@ export class RemixController {
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Post("projects/:id/generate")
+  async generateDraft(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Body()
+    body: {
+      constraints?: RemixGenerationConstraints;
+      force?: boolean;
+    } = {},
+  ) {
+    try {
+      return await this.projectService.generateDraft(req.user.userId, id, {
+        constraints: body?.constraints,
+        force: body?.force,
+      });
+    } catch (error) {
+      if (error instanceof RemixGenerationProviderError) {
+        // Normalized provider error contract consumed by the studio panel.
+        throw new HttpException(
+          {
+            code: error.code,
+            message: error.message,
+            retryable: error.retryable,
+          },
+          GENERATION_ERROR_STATUS[error.code],
+        );
+      }
+      throw error;
+    }
   }
 
   /**

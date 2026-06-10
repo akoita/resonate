@@ -18,6 +18,7 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { RemixProjectService } from "../modules/remix/remix-project.service";
+import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 
 const TEST_PREFIX = `remix_${Date.now()}_`;
 
@@ -296,7 +297,11 @@ describe("Remix eligibility and projects (integration)", () => {
     eligibilityService = new RemixEligibilityService();
     eventBus = new EventBus();
     publishSpy = jest.spyOn(eventBus, "publish");
-    projectService = new RemixProjectService(eventBus, eligibilityService);
+    projectService = new RemixProjectService(
+      eventBus,
+      eligibilityService,
+      new StubRemixGenerationProvider(),
+    );
   });
 
   describe("eligibility", () => {
@@ -448,6 +453,7 @@ describe("Remix eligibility and projects (integration)", () => {
       const freshService = new RemixProjectService(
         new EventBus(),
         new RemixEligibilityService(),
+        new StubRemixGenerationProvider(),
       );
       const read = await freshService.getProject(CREATOR_ID, created.id);
       expect(read.title).toBe("Neon Drift (Flip)");
@@ -584,6 +590,177 @@ describe("Remix eligibility and projects (integration)", () => {
           reasonCodes: expect.arrayContaining(["source_blocked"]),
         }),
       );
+    });
+
+    describe("generateDraft", () => {
+      const originalEnv = process.env.REMIX_GENERATION_ENABLED;
+
+      afterEach(() => {
+        if (originalEnv === undefined) {
+          delete process.env.REMIX_GENERATION_ENABLED;
+        } else {
+          process.env.REMIX_GENERATION_ENABLED = originalEnv;
+        }
+      });
+
+      it("persists provider provenance and emits remix.generation_started", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Generate Me",
+          mode: "variation",
+          prompt: "darker, halftime",
+        });
+        const generated = await projectService.generateDraft(
+          CREATOR_ID,
+          created.id,
+          { constraints: { durationSeconds: 60 } },
+        );
+        expect(generated.generationProvider).toBe("remix-stub");
+        expect(generated.generationJobId).toBe(`rmxgen_${created.id}`);
+        expect(generated.generationMetadata).toEqual(
+          expect.objectContaining({
+            mode: "variation",
+            estimatedCostUsd: 0.12,
+            voiceLikenessAllowed: false,
+            policyVersion: expect.any(String),
+          }),
+        );
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_started",
+            remixProjectId: created.id,
+            provider: "remix-stub",
+            mode: "variation",
+          }),
+        );
+      });
+
+      it("returns the normalized provider_disabled error when generation is off", async () => {
+        delete process.env.REMIX_GENERATION_ENABLED;
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Disabled Env",
+        });
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id),
+        ).rejects.toMatchObject({ code: "provider_disabled", retryable: false });
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_failed",
+            remixProjectId: created.id,
+            errorCode: "provider_disabled",
+          }),
+        );
+        // No provenance is persisted on failure.
+        const read = await projectService.getProject(CREATOR_ID, created.id);
+        expect(read.generationJobId).toBeNull();
+      });
+
+      it("requires a prompt for prompted modes", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "No Prompt",
+          mode: "extension",
+        });
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it("rejects duplicate generation jobs unless forced", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Double Generate",
+        });
+        await projectService.generateDraft(CREATOR_ID, created.id);
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        const forced = await projectService.generateDraft(CREATOR_ID, created.id, {
+          force: true,
+        });
+        expect(forced.generationJobId).toBe(`rmxgen_${created.id}`);
+      });
+
+      it("normalizes unexpected provider failures to provider_unavailable", async () => {
+        const explodingProvider = {
+          createRemixDraft: jest
+            .fn()
+            .mockRejectedValue(new Error("vendor boom")),
+        };
+        const svc = new RemixProjectService(
+          eventBus,
+          eligibilityService,
+          explodingProvider,
+        );
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Exploding Provider",
+        });
+        await expect(svc.generateDraft(CREATOR_ID, created.id)).rejects.toMatchObject({
+          code: "provider_unavailable",
+          retryable: true,
+        });
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_failed",
+            remixProjectId: created.id,
+            errorCode: "provider_unavailable",
+          }),
+        );
+      });
+
+      it("re-checks eligibility and enforces ownership", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Rights Change",
+        });
+        await expect(
+          projectService.generateDraft(OTHER_USER_ID, created.id),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+
+        // Source becomes quarantined after creation: generation must re-deny.
+        await prisma.track.update({
+          where: { id: TRACK_ID },
+          data: { contentStatus: "quarantined" },
+        });
+        try {
+          await expect(
+            projectService.generateDraft(CREATOR_ID, created.id),
+          ).rejects.toMatchObject({
+            response: expect.objectContaining({
+              eligibility: expect.objectContaining({ allowed: false }),
+            }),
+          });
+          expect(publishSpy).toHaveBeenCalledWith(
+            expect.objectContaining({
+              eventName: "remix.policy_rejected",
+              sourceTrackId: TRACK_ID,
+            }),
+          );
+        } finally {
+          await prisma.track.update({
+            where: { id: TRACK_ID },
+            data: { contentStatus: "clean" },
+          });
+        }
+      });
     });
 
     it("validates mode and required fields", async () => {

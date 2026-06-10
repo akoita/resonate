@@ -1,5 +1,51 @@
 # Security Best Practices Report
 
+## Remix Generation Provider Boundary - 2026-06-10
+
+### Scope Reviewed
+
+Changed files (#896):
+
+- `backend/src/modules/remix/remix-generation.provider.ts` (new boundary)
+- `backend/src/modules/remix/remix-project.service.ts` (generateDraft)
+- `backend/src/modules/remix/remix.controller.ts` (generate route + error map)
+- `backend/src/modules/remix/remix.module.ts` (provider binding)
+- `backend/src/events/event_types.ts` + analytics bridge (generation events)
+- remix test files; `docs/deployment/environment.md`
+
+### Executive Summary
+
+No Critical or High findings. The generate endpoint is owner-gated and
+re-runs the eligibility policy server-side before any provider call, so
+creation-time rights state is never trusted for generation; the provider is
+disabled by default (`REMIX_GENERATION_ENABLED` opt-in) and failures return a
+fixed normalized error contract; voice/likeness is hard-disabled at the type
+level (`voiceLikenessAllowed: false` literal) in the provider input; analytics
+event payloads exclude prompt text; persisted generation metadata echoes only
+ids, mode, constraints, cost, and policy version.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Provider errors map to fixed HTTP statuses (503/400/422) with no
+  vendor-internal detail leakage; messages are product copy.
+- The stub provider produces no audio and performs no external calls.
+- Duplicate-job rejection prevents accidental provenance overwrite; `force`
+  remains owner-scoped.
+
+### Scans Run
+
+- `rg -i 'password|secret|api_key|private_key' backend/src/modules/remix/`
+- `rg 'rawQuery|executeRaw|\$queryRaw|eval\(' backend/src/modules/remix/`
+- `git diff --check`
+
 ## Remix Studio Editor And Draft Reuse - 2026-06-10
 
 ### Scope Reviewed
