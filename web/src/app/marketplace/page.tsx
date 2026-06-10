@@ -545,12 +545,14 @@ export default function MarketplacePage() {
 
                 {/* Filter Toolbar */}
                 <div className="marketplace-toolbar" data-testid="filter">
-                    {/* Stem Type Pills */}
-                    <div className="marketplace-toolbar__group">
+                    {/* Stem Type segmented control */}
+                    <div className="marketplace-segment" role="tablist" aria-label="Stem type">
                         {STEM_TYPES.map(type => (
                             <button
                                 key={type}
-                                className={`stem-pill ${stemType === type ? "stem-pill--active" : ""}`}
+                                role="tab"
+                                aria-selected={stemType === type}
+                                className={`marketplace-segment__btn ${stemType === type ? "marketplace-segment__btn--active" : ""}`}
                                 onClick={() => setStemType(type)}
                             >
                                 {type === "all" ? "All" : type}
