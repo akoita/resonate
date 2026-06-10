@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useListStem, useStemBalance } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useAuth } from "../auth/AuthProvider";
+import { useToast } from "../ui/Toast";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { getExplorerTxUrl } from "../../lib/explorer";
 import { API_BASE } from "../../lib/api";
@@ -36,7 +37,8 @@ interface ListStemModalProps {
 export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: ListStemModalProps) {
   const { balance } = useStemBalance(tokenId);
   const { list, pending, error, txHash } = useListStem();
-  const { address } = useAuth();
+  const { address, smartAccountAddress } = useAuth();
+  const { addToast } = useToast();
   const { chainId } = useZeroDev();
   const {
     assets: paymentAssets,
@@ -115,8 +117,20 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
       });
       // Record the listing intent so the indexer stamps the chosen license
       // tier (the on-chain listing carries no license type). Best-effort:
-      // the listing itself already succeeded.
-      if (address) {
+      // the listing itself already succeeded — but for non-personal tiers,
+      // a failed intent means the listing will index as Personal, so the
+      // seller must be told.
+      const seller = smartAccountAddress || address;
+      const warnTierMayBeLost = () => {
+        if (licenseType === "personal") return;
+        addToast({
+          type: "warning",
+          title: "License tier may not have been recorded",
+          message:
+            "Your listing was created, but it may appear as a Personal license. If it does, cancel and relist it.",
+        });
+      };
+      if (seller) {
         fetch("/api/contracts/notify-listing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -124,7 +138,7 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
             buildNotifyListingPayload({
               tokenId,
               chainId,
-              seller: address,
+              seller,
               priceUnits,
               amount: listAmount,
               paymentToken: listingToken,
@@ -134,9 +148,15 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
               stemId,
             }),
           ),
-        }).catch(() => {
-          /* indexer falls back to personal; listing still exists */
-        });
+        })
+          .then((res) => {
+            if (!res.ok) warnTierMayBeLost();
+          })
+          .catch(() => {
+            warnTierMayBeLost();
+          });
+      } else {
+        warnTierMayBeLost();
       }
       onSuccess?.(hash);
     } catch {

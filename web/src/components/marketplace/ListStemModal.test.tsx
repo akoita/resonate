@@ -27,7 +27,14 @@ vi.mock("../../hooks/usePaymentAssets", () => ({
   }),
 }));
 vi.mock("../auth/AuthProvider", () => ({
-  useAuth: () => ({ token: "jwt", address: "0x" + "a".repeat(40) }),
+  useAuth: () => ({
+    token: "jwt",
+    address: "0x" + "a".repeat(40),
+    smartAccountAddress: "0x" + "b".repeat(40),
+  }),
+}));
+vi.mock("../ui/Toast", () => ({
+  useToast: () => ({ addToast: vi.fn() }),
 }));
 vi.mock("../auth/ZeroDevProviderClient", () => ({
   useZeroDev: () => ({ chainId: 31337 }),
