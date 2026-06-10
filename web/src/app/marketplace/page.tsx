@@ -16,7 +16,6 @@ import {
     paymentAssetSymbol,
 } from "../../lib/payments";
 import { ExpiryBadge } from "../../components/marketplace/ExpiryBadge";
-import { LicenseBadges } from "../../components/marketplace/LicenseBadges";
 import { BuyModal } from "../../components/marketplace/BuyModal";
 import type { LicenseType } from "../../components/marketplace/LicenseTypeSelector";
 import { artistProfileHref } from "../../lib/artistRoutes";
@@ -504,17 +503,18 @@ export default function MarketplacePage() {
 
     // ---- Render ----
     return (
-        <div>
+        <div className="marketplace-page">
             {/* Hero Header */}
             <div className="marketplace-hero">
                 <div className="marketplace-hero__main">
                     <div>
+                        <div className="marketplace-kicker">Marketplace</div>
                         <h1 className="marketplace-title" data-testid="marketplace-title">
-                            Stem Marketplace
-                            <span className="marketplace-count">{filteredListings.length}</span>
+                            Own the stems.
                         </h1>
                         <p className="marketplace-subtitle">
-                            Browse, preview, and collect unique audio stem NFTs from artists worldwide.
+                            Preview and collect licensed audio stems from artists worldwide —{" "}
+                            <span className="marketplace-subtitle__stat">{filteredListings.length} live listing{filteredListings.length === 1 ? "" : "s"}</span>.
                         </p>
                     </div>
                     <div className="marketplace-hero__actions">
@@ -545,12 +545,15 @@ export default function MarketplacePage() {
 
                 {/* Filter Toolbar */}
                 <div className="marketplace-toolbar" data-testid="filter">
-                    {/* Stem Type Pills */}
-                    <div className="marketplace-toolbar__group">
+                    {/* Stem Type segmented control (toggle buttons, not tabs:
+                        they filter the grid rather than switching panels) */}
+                    <div className="marketplace-segment" role="group" aria-label="Stem type">
                         {STEM_TYPES.map(type => (
                             <button
                                 key={type}
-                                className={`stem-pill ${stemType === type ? "stem-pill--active" : ""}`}
+                                type="button"
+                                aria-pressed={stemType === type}
+                                className={`marketplace-segment__btn ${stemType === type ? "marketplace-segment__btn--active" : ""}`}
                                 onClick={() => setStemType(type)}
                             >
                                 {type === "all" ? "All" : type}
@@ -755,7 +758,7 @@ export default function MarketplacePage() {
                                             {listing.stem?.title}
                                         </Link>
                                     </div>
-                                    <div className="stem-card__meta">
+                                    <div className="stem-card__sub">
                                         {listing.stem?.releaseId ? (
                                             <Link href={`/release/${listing.stem.releaseId}`} style={{ color: "inherit", textDecoration: "none" }}>
                                                 {listing.stem?.track}
@@ -772,34 +775,35 @@ export default function MarketplacePage() {
                                             </>
                                         )}
                                     </div>
-                                    <div className="stem-card__seller">
-                                        {listing.seller.slice(0, 6)}…{listing.seller.slice(-4)}
-                                    </div>
-                                    {/* License price badges */}
-                                    {listing.stem?.id && tierListingsByStem[listing.stem.id] && (
-                                        <LicenseBadges
-                                            remixLicenseUsd={tierListingsByStem[listing.stem.id].remix ? pricingMap[listing.stem.id]?.remixLicenseUsd : undefined}
-                                            commercialLicenseUsd={tierListingsByStem[listing.stem.id].commercial ? pricingMap[listing.stem.id]?.commercialLicenseUsd : undefined}
-                                        />
-                                    )}
-                                    <div className="license-badges">
-                                        <span className={`license-badge license-badge--${listing.licenseType ?? "personal"}`}>
-                                            <span className="license-badge__price">{LICENSE_LABELS[listing.licenseType ?? "personal"]} listing</span>
+
+                                    {/* One quiet meta row: listed tier, extra tiers, editions */}
+                                    <div className="stem-card__metarow">
+                                        <span className={`stem-card__tier stem-card__tier--${listing.licenseType ?? "personal"}`}>
+                                            {LICENSE_LABELS[listing.licenseType ?? "personal"]}
+                                        </span>
+                                        {listing.stem?.id && tierListingsByStem[listing.stem.id]?.remix && (listing.licenseType ?? "personal") !== "remix" && (
+                                            <span className="stem-card__tier stem-card__tier--remix">
+                                                Remix{pricingMap[listing.stem.id]?.remixLicenseUsd != null ? ` $${pricingMap[listing.stem.id].remixLicenseUsd}` : ""}
+                                            </span>
+                                        )}
+                                        {listing.stem?.id && tierListingsByStem[listing.stem.id]?.commercial && (listing.licenseType ?? "personal") !== "commercial" && (
+                                            <span className="stem-card__tier stem-card__tier--commercial">
+                                                Commercial{pricingMap[listing.stem.id]?.commercialLicenseUsd != null ? ` $${pricingMap[listing.stem.id].commercialLicenseUsd}` : ""}
+                                            </span>
+                                        )}
+                                        <span className="stem-card__editions">
+                                            {listing.amount} left
                                         </span>
                                     </div>
-                                    <div className="stem-card__amount">{listing.amount} edition{listing.amount !== "1" ? "s" : ""} left</div>
 
-                                    {/* Footer */}
+                                    {/* Footer: price + action as one decisive row */}
                                     <div className="stem-card__footer">
-                                        <div className="stem-card__price">
-                                            <span className="stem-card__price-label">Price</span>
-                                            <span className="stem-card__price-value">
-                                                {(() => {
-                                                    const price = formatListingPayment(listing);
-                                                    return <>{price.amount}<small>{price.symbol}</small></>;
-                                                })()}
-                                            </span>
-                                        </div>
+                                        <span className="stem-card__price-value">
+                                            {(() => {
+                                                const price = formatListingPayment(listing);
+                                                return <>{price.amount}<small>{price.symbol}</small></>;
+                                            })()}
+                                        </span>
                                         {signerAddress && listing.seller.toLowerCase() === signerAddress ? (
                                             <span className="stem-card__own-label">Your Listing</span>
                                         ) : (
@@ -808,13 +812,17 @@ export default function MarketplacePage() {
                                                 onClick={() => openBuyModal(listing)}
                                                 disabled={buyPending}
                                             >
-                                                Buy
+                                                Buy now
                                             </button>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         ))}
+                        <Link href="/upload" className="stem-card--ghost" title="Upload tracks and mint stems to list them here">
+                            <span className="stem-card--ghost__plus" aria-hidden>+</span>
+                            <span>Mint your own stems</span>
+                        </Link>
                     </div>
 
                     {/* Load More */}

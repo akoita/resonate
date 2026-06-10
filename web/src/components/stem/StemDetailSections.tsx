@@ -138,6 +138,9 @@ export function StemHero({
 
           {/* Identity */}
           <div className="flex-1 min-w-[16rem]">
+            <div className="rs-kicker mb-3">
+              Stem · Token #{identity.tokenId}
+            </div>
             <div className="flex items-center gap-2 flex-wrap mb-3">
               {identity.isAiGenerated && (
                 <span className="stem-type-badge stem-type-badge--ai">🤖 AI</span>
@@ -160,9 +163,7 @@ export function StemHero({
               </span>
             </div>
 
-            <h1 className="text-5xl font-bold text-white leading-tight tracking-tight stem-hero__title">
-              {displayName}
-            </h1>
+            <h1 className="rs-display stem-hero__title">{displayName}</h1>
 
             {(identity.trackTitle || identity.artistName) && (
               <p className="text-zinc-300 mt-3 text-lg stem-hero__attribution">
@@ -189,9 +190,6 @@ export function StemHero({
             )}
 
             <div className="flex items-center gap-3 mt-5 flex-wrap text-sm">
-              <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-zinc-300 font-mono">
-                Token #{identity.tokenId}
-              </span>
               <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-zinc-400">
                 by <span className="font-mono text-zinc-300">{shortAddress(identity.creatorAddress)}</span>
               </span>
