@@ -220,8 +220,11 @@ export type TierAvailability = {
   tier: "personal" | "remix" | "commercial";
   label: string;
   description: string;
+  /** Catalog seller-default price (shown only while a tier is unlisted). */
   priceUsd: number | null;
   listed: boolean;
+  /** Live listing price, e.g. "0.01 USDC" — what a buyer actually pays. */
+  listedPriceLabel: string | null;
 };
 
 export function buildTierRows(input: {
@@ -231,6 +234,8 @@ export function buildTierRows(input: {
     remixLicenseUsd?: number | null;
     commercialLicenseUsd?: number | null;
   } | null;
+  /** Formatted active-listing prices per tier, when known. */
+  listedPriceLabels?: Partial<Record<"personal" | "remix" | "commercial", string>>;
 }): TierAvailability[] {
   return [
     {
@@ -251,7 +256,11 @@ export function buildTierRows(input: {
       description: "Ads, films, products, monetized content",
       priceUsd: input.pricing?.commercialLicenseUsd ?? null,
     },
-  ].map((row) => ({ ...row, listed: !!input.listedTiers[row.tier] }));
+  ].map((row) => ({
+    ...row,
+    listed: !!input.listedTiers[row.tier],
+    listedPriceLabel: input.listedPriceLabels?.[row.tier] ?? null,
+  }));
 }
 
 export function LicenseTiersPanel({
@@ -288,9 +297,19 @@ export function LicenseTiersPanel({
               <div className="text-xs text-zinc-500">{row.description}</div>
             </div>
             <div className="text-right shrink-0">
-              {row.priceUsd != null && (
-                <div className="text-sm text-zinc-200">${row.priceUsd.toFixed(2)}</div>
-              )}
+              {/* A listed tier shows what a buyer actually pays (the live
+                  listing price); the catalog default is only meaningful
+                  while the tier is unlisted. */}
+              {row.listed && row.listedPriceLabel ? (
+                <div className="text-sm text-white font-medium">{row.listedPriceLabel}</div>
+              ) : row.priceUsd != null ? (
+                <div className="text-sm text-zinc-200">
+                  ${row.priceUsd.toFixed(2)}
+                  {!row.listed && (
+                    <span className="text-zinc-500"> default</span>
+                  )}
+                </div>
+              ) : null}
               <div className={`text-xs ${row.listed ? "text-emerald-400" : "text-zinc-500"}`}>
                 {row.listed ? "Listed" : "Not listed"}
               </div>

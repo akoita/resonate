@@ -223,18 +223,33 @@ export default function StemDetailPage() {
     const isOwnListing = !!primaryListing && !!signer && primaryListing.seller.toLowerCase() === signer;
 
     const { assets: paymentAssets } = usePaymentAssets(chainId);
-    const primaryListingPriceLabel = useMemo(() => {
-        if (!primaryListing) return null;
-        const token = primaryListing.paymentToken?.toLowerCase();
+    const listingPriceLabel = useCallback((listing: StemListingRow): string | null => {
+        const token = listing.paymentToken?.toLowerCase();
         const asset = !token || token === ZERO_PAYMENT_TOKEN
             ? null
-            : findPaymentAssetForToken(paymentAssets, primaryListing.chainId, primaryListing.paymentToken);
+            : findPaymentAssetForToken(paymentAssets, listing.chainId, listing.paymentToken);
         try {
-            return formatListingPrice({ priceUnits: BigInt(primaryListing.price), asset });
+            return formatListingPrice({ priceUnits: BigInt(listing.price), asset });
         } catch {
-            return null; // malformed indexer price: CTA still works without it
+            return null; // malformed indexer price: callers degrade to no label
         }
-    }, [paymentAssets, primaryListing]);
+    }, [paymentAssets]);
+    const primaryListingPriceLabel = useMemo(
+        () => (primaryListing ? listingPriceLabel(primaryListing) : null),
+        [listingPriceLabel, primaryListing],
+    );
+    // Live per-tier prices for the tiers panel: a listed tier must show what
+    // a buyer actually pays, not the catalog's seller-default USD price.
+    const tierPriceLabels = useMemo(() => {
+        const labels: Partial<Record<LicenseType, string>> = {};
+        for (const listing of listings) {
+            const tier = listing.licenseType ?? "personal";
+            if (labels[tier]) continue;
+            const label = listingPriceLabel(listing);
+            if (label) labels[tier] = label;
+        }
+        return labels;
+    }, [listingPriceLabel, listings]);
 
     const stemType = attr("Type") ?? primaryListing?.stem?.type ?? null;
     const theme = stemTypeTheme(stemType);
@@ -409,7 +424,7 @@ export default function StemDetailPage() {
                     <div className="lg:col-span-2 space-y-6">
                         {/* License tiers */}
                         <LicenseTiersPanel
-                            rows={buildTierRows({ listedTiers, pricing })}
+                            rows={buildTierRows({ listedTiers, pricing, listedPriceLabels: tierPriceLabels })}
                             stemType={stemType}
                         />
 

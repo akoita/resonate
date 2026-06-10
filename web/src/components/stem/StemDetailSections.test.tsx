@@ -112,4 +112,32 @@ describe("buildTierRows + LicenseTiersPanel", () => {
     expect(html).toContain("Not listed");
     expect(html).not.toContain("$");
   });
+
+  it("shows the live listing price on listed tiers, not the catalog default", () => {
+    const rows = buildTierRows({
+      listedTiers: { personal: true },
+      pricing: { basePlayPriceUsd: 0.05, remixLicenseUsd: 5 },
+      listedPriceLabels: { personal: "0.01 USDC" },
+    });
+    expect(rows[0].listedPriceLabel).toBe("0.01 USDC");
+    expect(rows[1].listedPriceLabel).toBeNull();
+
+    const html = renderToStaticMarkup(<LicenseTiersPanel rows={rows} />);
+    // Listed personal tier: live price replaces the $0.05 default.
+    expect(html).toContain("0.01 USDC");
+    expect(html).not.toContain("$0.05");
+    // Unlisted remix tier keeps the default, marked as such.
+    expect(html).toContain("$5.00");
+    expect(html).toContain("default");
+  });
+
+  it("keeps the catalog price on a listed tier when no live label is known", () => {
+    const rows = buildTierRows({
+      listedTiers: { remix: true },
+      pricing: { remixLicenseUsd: 5 },
+    });
+    const html = renderToStaticMarkup(<LicenseTiersPanel rows={rows} />);
+    expect(html).toContain("$5.00");
+    expect((html.match(/>Listed</g) ?? []).length).toBe(1);
+  });
 });
