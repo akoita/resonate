@@ -68,6 +68,7 @@ export function BatchMintListModal({
   const [phase, setPhase] = useState<"confirm" | "progress">("confirm");
   const [results, setResults] = useState<BatchStemResult[]>([]);
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [licenseType, setLicenseType] = useState<"personal" | "remix" | "commercial">("personal");
   const listingAsset = selectDefaultMarketplaceListingAsset({
     assets: paymentAssets,
     chainId,
@@ -109,6 +110,7 @@ export function BatchMintListModal({
         pricePerUnit: listingPriceUnits,
         paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
+        licenseType,
         onProgress: (r) => setResults([...r]),
       });
       onComplete?.();
@@ -118,7 +120,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Batch transaction failed"
       );
     }
-  }, [stems, executeBatch, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, executeBatch, licenseType, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const handleRetryFailed = useCallback(async () => {
     const failedStems = stems.filter(s =>
@@ -138,6 +140,7 @@ export function BatchMintListModal({
         pricePerUnit: listingPriceUnits,
         paymentToken: listingToken,
         releaseProtectionId: resolvedProtectionId,
+        licenseType,
         onProgress: (newResults) => {
           setResults(prev => {
             const updated = [...prev];
@@ -156,7 +159,7 @@ export function BatchMintListModal({
         err instanceof Error ? err.message : "Retry failed"
       );
     }
-  }, [stems, results, executeBatch, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
+  }, [stems, results, executeBatch, licenseType, listingPriceUnits, listingToken, releaseProtectionId, resolveReleaseProtectionId, onClose, onComplete]);
 
   const doneCount = results.filter(r => r.status === "done").length;
   const failedCount = results.filter(r => r.status === "failed").length;
@@ -194,6 +197,27 @@ export function BatchMintListModal({
                 Marketplace listing price must be greater than zero.
               </div>
             )}
+
+            <div style={{ margin: "12px 0" }}>
+              <label
+                htmlFor="batch-license-type"
+                style={{ display: "block", fontSize: 13, marginBottom: 4, opacity: 0.8 }}
+              >
+                License tier for these listings
+              </label>
+              <select
+                id="batch-license-type"
+                value={licenseType}
+                onChange={(e) =>
+                  setLicenseType(e.target.value as "personal" | "remix" | "commercial")
+                }
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 6 }}
+              >
+                <option value="personal">Personal — stream &amp; collect</option>
+                <option value="remix">Remix — derivative works, unlocks Remix Studio</option>
+                <option value="commercial">Commercial — ads, films, monetized content</option>
+              </select>
+            </div>
 
             <div className="batch-stems-list">
               {stems.map(stem => (
