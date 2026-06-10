@@ -11,6 +11,7 @@ function input(
     rightsRoute: "STANDARD_ESCROW",
     contentStatus: "clean",
     sourceOptedIn: true,
+    explicitStemSelection: true,
     stems: [{ stemId: "stem-1", mintRemixable: null, licensed: true }],
     ...overrides,
   };
@@ -141,6 +142,76 @@ describe("remix eligibility policy", () => {
     const decision = evaluateRemixEligibility(input());
     expect(decision.allowedActions).not.toContain("publish_resonate");
     expect(decision.allowedActions).not.toContain("export");
+  });
+
+  describe("track-default requests (partial allowance, v2)", () => {
+    it("allows the track when at least one stem is licensed", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          explicitStemSelection: false,
+          stems: [
+            { stemId: "stem-1", mintRemixable: true, licensed: true },
+            { stemId: "stem-2", mintRemixable: null, licensed: false },
+            { stemId: "stem-3", mintRemixable: null, licensed: false },
+          ],
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+      expect(decision.allowedActions).toEqual(["private_draft"]);
+    });
+
+    it("still requires a license when no stem is licensed", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          explicitStemSelection: false,
+          stems: [
+            { stemId: "stem-1", mintRemixable: true, licensed: false },
+            { stemId: "stem-2", mintRemixable: null, licensed: false },
+          ],
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.requiredLicense).toBe("remix");
+    });
+
+    it("excludes non-remixable mints instead of blocking the track", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          explicitStemSelection: false,
+          stems: [
+            { stemId: "stem-locked", mintRemixable: false, licensed: true },
+            { stemId: "stem-open", mintRemixable: true, licensed: true },
+          ],
+        }),
+      );
+      expect(decision.allowed).toBe(true);
+      expect(decision.reasons).toEqual([]);
+    });
+
+    it("does not count licensed but non-remixable stems toward the allowance", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          explicitStemSelection: false,
+          stems: [
+            { stemId: "stem-locked", mintRemixable: false, licensed: true },
+            { stemId: "stem-open", mintRemixable: null, licensed: false },
+          ],
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.requiredLicense).toBe("remix");
+    });
+
+    it("source-level denials still block everything", () => {
+      const decision = evaluateRemixEligibility(
+        input({
+          explicitStemSelection: false,
+          rightsRoute: "BLOCKED",
+        }),
+      );
+      expect(decision.allowed).toBe(false);
+      expect(decision.reasons.map((r) => r.code)).toContain("source_blocked");
+    });
   });
 
   it("collects multiple denial reasons for compound failures", () => {

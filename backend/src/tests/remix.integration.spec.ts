@@ -340,6 +340,25 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(result.stems[0].licensed).toBe(false);
     });
 
+    it("allows track-default requests when at least one stem is licensed", async () => {
+      // The release-page CTA path: no stem filter. The track has licensed,
+      // unlicensed, and non-remixable stems — one licensed stem is enough.
+      const result = await eligibilityService.checkEligibility({
+        userId: CREATOR_ID,
+        trackId: TRACK_ID,
+      });
+      expect(result.allowed).toBe(true);
+      const licensedIds = result.stems
+        .filter((stem) => stem.licensed)
+        .map((stem) => stem.stemId);
+      expect(licensedIds).toEqual(
+        expect.arrayContaining([LICENSED_STEM_ID, X402_STEM_ID]),
+      );
+      expect(
+        result.stems.find((stem) => stem.stemId === UNLICENSED_STEM_ID)?.licensed,
+      ).toBe(false);
+    });
+
     it("requires a remix license for unlicensed stems", async () => {
       const result = await eligibilityService.checkEligibility({
         userId: CREATOR_ID,
