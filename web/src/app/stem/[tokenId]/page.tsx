@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -12,12 +12,19 @@ import {
     useContractAddresses,
 } from "../../../hooks/useContracts";
 import { formatRoyaltyBps, isZeroAddress } from "../../../lib/contracts";
-import { API_BASE } from "../../../lib/api";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ListStemModal } from "../../../components/marketplace/ListStemModal";
+import { BuyModal } from "../../../components/marketplace/BuyModal";
+import type { LicenseType } from "../../../components/marketplace/LicenseTypeSelector";
 import { RemixCta } from "../../../components/remix/RemixCta";
-import { StemNftBadge } from "../../../components/marketplace/StemNftBadge";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
+import { API_BASE } from "../../../lib/api";
+import { shortAddress, stemTypeTheme } from "../../../lib/stemPageTheme";
+import {
+    buildTierRows,
+    LicenseTiersPanel,
+    StemHero,
+} from "../../../components/stem/StemDetailSections";
 import { type Address } from "viem";
 
 // Chain-aware block explorer URLs
@@ -36,12 +43,55 @@ function getExplorerUrl(chainId: number, address: string): string | null {
     }
 }
 
+type CatalogMeta = {
+    name?: string;
+    image?: string;
+    attributes?: Array<{ trait_type: string; value: unknown }>;
+    properties?: {
+        stem_id?: string;
+        track_id?: string;
+        release_id?: string;
+        remixable?: boolean;
+        generation?: unknown;
+    };
+};
+
+type StemListingRow = {
+    listingId: string;
+    tokenId: string;
+    chainId: number;
+    seller: string;
+    price: string;
+    paymentToken: string;
+    licenseType?: LicenseType;
+    amount: string;
+    expiresAt: string;
+    tierListings?: Partial<Record<LicenseType, string>> | null;
+    stem?: {
+        id: string;
+        title?: string;
+        type?: string;
+        track?: string;
+        artist?: string;
+        trackId?: string;
+        releaseId?: string;
+        artistId?: string;
+        isAiGenerated?: boolean;
+    } | null;
+};
+
+type TierPricing = {
+    basePlayPriceUsd?: number | null;
+    remixLicenseUsd?: number | null;
+    commercialLicenseUsd?: number | null;
+};
+
 export default function StemDetailPage() {
     const params = useParams();
     const tokenIdStr = params.tokenId as string;
     const tokenId = tokenIdStr ? BigInt(tokenIdStr) : undefined;
 
-    const { address } = useAuth();
+    const { address, smartAccountAddress } = useAuth();
     const { chainId } = useContractAddresses();
     const { data: stemData, loading: stemLoading, error: stemError } = useStemData(tokenId);
     const { uri, loading: uriLoading } = useTokenURI(tokenId);
@@ -50,44 +100,135 @@ export default function StemDetailPage() {
     const { total: totalStems } = useTotalStems();
 
     const [showListModal, setShowListModal] = useState(false);
-    const [artworkUrl, setArtworkUrl] = useState<string | null>(null);
-    const [parentTrackId, setParentTrackId] = useState<bigint | undefined>(undefined);
-    const [catalogStemId, setCatalogStemId] = useState<string | null>(null);
-    const [catalogTrackId, setCatalogTrackId] = useState<string | null>(null);
-    const [stemDisplayName, setStemDisplayName] = useState<string | null>(null);
+    const [meta, setMeta] = useState<CatalogMeta | null>(null);
+    const [metaState, setMetaState] = useState<"loading" | "ok" | "failed">("loading");
+    const [listings, setListings] = useState<StemListingRow[]>([]);
+    const [pricing, setPricing] = useState<TierPricing | null>(null);
+    const [buyListing, setBuyListing] = useState<StemListingRow | null>(null);
+    const [previewPlaying, setPreviewPlaying] = useState(false);
+    const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    // Fetch artwork from metadata service
+    // Catalog metadata: identity (name, artwork, attributes) + catalog ids.
     useEffect(() => {
         if (!tokenId || !chainId) return;
-        setArtworkUrl(null);
-        setParentTrackId(undefined);
-        setCatalogStemId(null);
-        setCatalogTrackId(null);
-        setStemDisplayName(null);
+        let cancelled = false;
         fetch(`${API_BASE}/api/metadata/${chainId}/${tokenId.toString()}`)
-            .then(r => r.ok ? r.json() : null)
-            .then(data => {
-                if (data?.image) setArtworkUrl(data.image);
-                if (data?.name) setStemDisplayName(data.name);
-                const rawTrackId = data?.properties?.trackId;
-                if (rawTrackId !== undefined && rawTrackId !== null) {
-                    setParentTrackId(BigInt(rawTrackId));
-                }
-                if (typeof data?.properties?.stem_id === "string") {
-                    setCatalogStemId(data.properties.stem_id);
-                }
-                if (typeof data?.properties?.track_id === "string") {
-                    setCatalogTrackId(data.properties.track_id);
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+            .then((data) => {
+                if (cancelled) return;
+                setMeta(data);
+                setMetaState("ok");
+            })
+            .catch(() => {
+                if (!cancelled) setMetaState("failed");
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [tokenId, chainId]);
+
+    const catalogStemId = meta?.properties?.stem_id ?? null;
+    const catalogTrackId = meta?.properties?.track_id ?? null;
+    const releaseIdFromMeta = meta?.properties?.release_id ?? null;
+
+    // Active listings + tier pricing for the commerce rail.
+    useEffect(() => {
+        if (!catalogStemId) return;
+        let cancelled = false;
+        fetch(`${API_BASE}/api/metadata/listings?stemId=${encodeURIComponent(catalogStemId)}&limit=20`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (cancelled || !data?.listings) return;
+                setListings(
+                    (data.listings as StemListingRow[]).filter(
+                        (l) => l.tokenId === tokenId?.toString(),
+                    ),
+                );
+            })
+            .catch(() => { /* commerce rail degrades to no listings */ });
+        fetch(`${API_BASE}/api/stem-pricing/${encodeURIComponent(catalogStemId)}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (!cancelled && data) {
+                    setPricing({
+                        basePlayPriceUsd: data.basePlayPriceUsd ?? null,
+                        remixLicenseUsd: data.remixLicenseUsd ?? null,
+                        commercialLicenseUsd: data.commercialLicenseUsd ?? null,
+                    });
                 }
             })
-            .catch(() => { /* ignore — will show fallback */ });
-    }, [tokenId, chainId]);
+            .catch(() => { /* tier prices stay unknown */ });
+        return () => {
+            cancelled = true;
+        };
+    }, [catalogStemId, tokenId]);
+
+    const attr = useCallback(
+        (name: string): string | null => {
+            const found = meta?.attributes?.find((a) => a.trait_type === name);
+            return found != null ? String(found.value) : null;
+        },
+        [meta],
+    );
+
+    const primaryListing = listings[0] ?? null;
+    const listedTiers = useMemo(() => {
+        const tiers: Partial<Record<LicenseType, boolean>> = {};
+        for (const listing of listings) {
+            if (listing.licenseType) tiers[listing.licenseType] = true;
+            for (const tier of Object.keys(listing.tierListings ?? {}) as LicenseType[]) {
+                if (listing.tierListings?.[tier]) tiers[tier] = true;
+            }
+        }
+        return tiers;
+    }, [listings]);
+    const tierListingIds = useMemo(() => {
+        const ids: Partial<Record<LicenseType, string>> = {};
+        for (const listing of listings) {
+            if (listing.licenseType && !ids[listing.licenseType]) {
+                ids[listing.licenseType] = listing.listingId;
+            }
+            for (const [tier, id] of Object.entries(listing.tierListings ?? {})) {
+                if (id && !ids[tier as LicenseType]) ids[tier as LicenseType] = id;
+            }
+        }
+        return ids;
+    }, [listings]);
+
+    const signer = (smartAccountAddress || address)?.toLowerCase();
+    const isOwnListing = !!primaryListing && !!signer && primaryListing.seller.toLowerCase() === signer;
+
+    const stemType = attr("Type") ?? primaryListing?.stem?.type ?? null;
+    const theme = stemTypeTheme(stemType);
+    const displayTitle = meta?.name ?? primaryListing?.stem?.title ?? null;
+
+    const togglePreview = useCallback(() => {
+        if (!catalogStemId) return;
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (previewPlaying) {
+            audio.pause();
+            setPreviewPlaying(false);
+            return;
+        }
+        audio.src = `${API_BASE}/catalog/stems/${catalogStemId}/preview`;
+        audio
+            .play()
+            .then(() => setPreviewPlaying(true))
+            .catch(() => setPreviewPlaying(false));
+    }, [catalogStemId, previewPlaying]);
+
+    const copyLink = useCallback(() => {
+        if (typeof navigator !== "undefined" && navigator.clipboard) {
+            void navigator.clipboard.writeText(window.location.href);
+        }
+    }, []);
 
     // Loading state
     if (!tokenId || stemLoading || uriLoading || lineageLoading) {
         return (
             <div className="min-h-screen bg-black flex items-center justify-center">
-                <div className="animate-pulse space-y-4 text-center">
+                <div className="animate-pulse space-y-4 text-center" aria-busy="true">
                     <div className="w-16 h-16 rounded-full bg-zinc-800 mx-auto" />
                     <div className="h-4 bg-zinc-800 rounded w-32 mx-auto" />
                 </div>
@@ -116,129 +257,136 @@ export default function StemDetailPage() {
     }
 
     const canList = balance > 0n;
+    const creatorExplorerUrl = getExplorerUrl(chainId, stemData.creator);
 
     return (
         <div className="min-h-screen bg-black">
-            {/* Header */}
-            <div className="bg-gradient-to-b from-emerald-900/20 to-transparent">
-                <div className="max-w-4xl mx-auto px-4 py-8">
-                    <Link
-                        href="/marketplace"
-                        className="text-sm text-zinc-400 hover:text-white mb-4 inline-flex items-center gap-1"
-                    >
-                        ← Back to Marketplace
-                    </Link>
+            <StemHero
+                identity={{
+                    tokenId: tokenId.toString(),
+                    name: displayTitle,
+                    stemType,
+                    artworkUrl: meta?.image ?? null,
+                    trackTitle: attr("Track") ?? primaryListing?.stem?.track ?? null,
+                    artistName: attr("Artist") ?? primaryListing?.stem?.artist ?? null,
+                    releaseId: releaseIdFromMeta ?? primaryListing?.stem?.releaseId ?? null,
+                    creatorAddress: stemData.creator,
+                    isAiGenerated:
+                        !!meta?.properties?.generation || !!primaryListing?.stem?.isAiGenerated,
+                    remixable: stemData.remixable ?? null,
+                    listingExpiresAt: primaryListing?.expiresAt ?? null,
+                }}
+                isPlaying={previewPlaying}
+                onTogglePreview={catalogStemId ? togglePreview : undefined}
+            />
 
-                    <div className="flex items-start gap-6 mt-4">
-                        {/* Token Image */}
-                        <div className="w-32 h-32 bg-zinc-800 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                            {artworkUrl ? (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                    src={artworkUrl}
-                                    alt={`Stem #${tokenId.toString()}`}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                />
-                            ) : (
-                                <svg
-                                    className="w-12 h-12 text-zinc-600"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                >
-                                    <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        strokeWidth={1}
-                                        d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-                                    />
-                                </svg>
-                            )}
-                        </div>
-
-                        <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                                <h1 className="text-3xl font-bold text-white">
-                                    Stem #{tokenId.toString()}
-                                </h1>
-                                <StemNftBadge tokenId={tokenId} />
-                            </div>
-                            <p className="text-zinc-400">
-                                Created by{" "}
-                                <span className="font-mono text-zinc-300">
-                                    {stemData.creator.slice(0, 10)}...{stemData.creator.slice(-8)}
-                                </span>
-                            </p>
-                        </div>
+            <div className="max-w-5xl mx-auto px-4 pb-12">
+                {metaState === "failed" && (
+                    <div className="mb-6 px-4 py-3 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm stem-meta-fallback">
+                        Catalog details are unavailable right now — showing on-chain data only.
+                        Purchasing and remixing need the catalog connection; try reloading.
                     </div>
+                )}
+
+                {/* Action rail */}
+                <div className="flex items-center gap-3 flex-wrap -mt-2 mb-8 stem-action-rail">
+                    {primaryListing && !isOwnListing && (
+                        <button
+                            type="button"
+                            onClick={() => setBuyListing(primaryListing)}
+                            className="px-6 py-2.5 rounded-md font-semibold text-white transition-transform hover:scale-[1.02]"
+                            style={{ background: `rgb(${theme.accentRgb})` }}
+                        >
+                            Buy · {primaryListing.licenseType ?? "personal"} license
+                        </button>
+                    )}
+                    {primaryListing && isOwnListing && (
+                        <Link
+                            href="/marketplace/manage"
+                            className="px-6 py-2.5 rounded-md font-semibold bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                        >
+                            Your Listing · Manage
+                        </Link>
+                    )}
+                    {catalogTrackId && catalogStemId && (
+                        <RemixCta
+                            variant="button"
+                            trackId={catalogTrackId}
+                            stemIds={[catalogStemId]}
+                            trackTitle={displayTitle ?? undefined}
+                        />
+                    )}
+                    {canList && (
+                        <button
+                            type="button"
+                            onClick={() => setShowListModal(true)}
+                            className="px-6 py-2.5 rounded-md font-medium bg-emerald-600/90 hover:bg-emerald-600 text-white transition-colors"
+                        >
+                            List for Sale
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={copyLink}
+                        title="Copy link to this stem"
+                        className="px-4 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
+                    >
+                        ⧉ Copy link
+                    </button>
                 </div>
-            </div>
 
-            {/* Content */}
-            <div className="max-w-4xl mx-auto px-4 py-8">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Info grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* On-Chain Metadata */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+                    <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
                         <h2 className="text-lg font-semibold text-white mb-4">On-Chain Metadata</h2>
-
                         <div className="space-y-4">
                             <div className="flex justify-between">
                                 <span className="text-zinc-400">Token ID</span>
                                 <span className="text-white font-mono">{tokenId.toString()}</span>
                             </div>
-
                             <div className="flex justify-between">
                                 <span className="text-zinc-400">Creator</span>
-                                {(() => {
-                                    const explorerUrl = getExplorerUrl(chainId, stemData.creator);
-                                    return explorerUrl ? (
-                                        <a
-                                            href={explorerUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-emerald-500 hover:text-emerald-400 font-mono text-sm"
-                                        >
-                                            {stemData.creator.slice(0, 8)}...
-                                        </a>
-                                    ) : (
-                                        <span className="text-zinc-300 font-mono text-sm">
-                                            {stemData.creator.slice(0, 8)}...
-                                        </span>
-                                    );
-                                })()}
+                                {creatorExplorerUrl ? (
+                                    <a
+                                        href={creatorExplorerUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-emerald-500 hover:text-emerald-400 font-mono text-sm"
+                                    >
+                                        {shortAddress(stemData.creator)}
+                                    </a>
+                                ) : (
+                                    <span className="text-zinc-300 font-mono text-sm">
+                                        {shortAddress(stemData.creator)}
+                                    </span>
+                                )}
                             </div>
-
                             <div className="flex justify-between">
                                 <span className="text-zinc-400">Royalty</span>
                                 <span className="text-white">{formatRoyaltyBps(stemData.royaltyBps)}</span>
                             </div>
-
                             <div className="flex justify-between">
                                 <span className="text-zinc-400">Royalty Receiver</span>
                                 <span className="text-white font-mono text-sm">
                                     {isZeroAddress(stemData.royaltyReceiver)
                                         ? "Creator"
-                                        : `${stemData.royaltyReceiver.slice(0, 6)}...`
-                                    }
+                                        : shortAddress(stemData.royaltyReceiver)}
                                 </span>
                             </div>
-
                             <div className="flex justify-between">
                                 <span className="text-zinc-400">Remixable</span>
                                 <span className={stemData.remixable ? "text-emerald-400" : "text-zinc-500"}>
                                     {stemData.remixable ? "Yes" : "No"}
                                 </span>
                             </div>
-
                             {uri && (
                                 <div className="flex justify-between">
                                     <span className="text-zinc-400">Metadata URI</span>
                                     <a
                                         href={uri.startsWith("ipfs://")
                                             ? `https://ipfs.io/ipfs/${uri.replace("ipfs://", "")}`
-                                            : uri
-                                        }
+                                            : uri}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-emerald-500 hover:text-emerald-400 text-sm truncate max-w-[150px]"
@@ -248,18 +396,22 @@ export default function StemDetailPage() {
                                 </div>
                             )}
                         </div>
-                    </div>
+                    </section>
+
+                    {/* License tiers */}
+                    <LicenseTiersPanel
+                        rows={buildTierRows({ listedTiers, pricing })}
+                        stemType={stemType}
+                    />
 
                     {/* Remix Lineage */}
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+                    <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
                         <h2 className="text-lg font-semibold text-white mb-4">Remix Lineage</h2>
-
                         {isRemix && parentIds.length > 0 ? (
                             <div className="space-y-3">
                                 <p className="text-sm text-zinc-400 mb-4">
                                     This stem is a remix of {parentIds.length} parent stem{parentIds.length > 1 ? "s" : ""}:
                                 </p>
-
                                 {parentIds.map((parentId, idx) => (
                                     <Link
                                         key={idx}
@@ -280,64 +432,30 @@ export default function StemDetailPage() {
                             </div>
                         ) : (
                             <div className="text-center py-6">
-                                <div className="w-12 h-12 bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-3">
-                                    <svg className="w-6 h-6 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                                    </svg>
+                                <div
+                                    className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
+                                    style={{ background: `rgba(${theme.accentRgb}, 0.12)` }}
+                                >
+                                    <span aria-hidden>✦</span>
                                 </div>
                                 <p className="text-zinc-400">Original stem</p>
                                 <p className="text-sm text-zinc-500">This is not a remix</p>
                             </div>
                         )}
-                    </div>
+                    </section>
 
                     {/* Content Protection */}
-                    {tokenId && (
-                      <ContentProtectionBadge
-                          tokenId={tokenId}
-                          parentTrackId={parentTrackId}
-                          expanded
-                      />
-                    )}
+                    <section>
+                        {tokenId && (
+                            <ContentProtectionBadge tokenId={tokenId} expanded />
+                        )}
+                    </section>
                 </div>
 
-                {/* Owner Actions */}
+                {/* Owner balance note */}
                 {canList && (
-                    <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h3 className="text-lg font-semibold text-white">Your Balance</h3>
-                                <p className="text-zinc-400">
-                                    You own {balance.toString()} edition{balance > 1n ? "s" : ""} of this stem
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => setShowListModal(true)}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-6 py-2 rounded-md transition-colors"
-                            >
-                                List for Sale
-                            </button>
-                        </div>
-                    </div>
-                )}
-
-                {/* Remix entry point — state comes from the eligibility API */}
-                {catalogTrackId && catalogStemId && (
-                    <div className="mt-8 bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-                        <div className="flex items-center justify-between gap-4 flex-wrap">
-                            <div>
-                                <h3 className="text-lg font-semibold text-white">Remix Studio</h3>
-                                <p className="text-zinc-400 text-sm">
-                                    Create a private remix draft from this stem when your license allows it.
-                                </p>
-                            </div>
-                            <RemixCta
-                                variant="button"
-                                trackId={catalogTrackId}
-                                stemIds={[catalogStemId]}
-                                trackTitle={stemDisplayName ?? undefined}
-                            />
-                        </div>
+                    <div className="mt-6 text-sm text-zinc-500">
+                        You own {balance.toString()} edition{balance > 1n ? "s" : ""} of this stem.
                     </div>
                 )}
 
@@ -361,6 +479,31 @@ export default function StemDetailPage() {
                     onSuccess={() => setShowListModal(false)}
                 />
             )}
+
+            {/* Buy Modal */}
+            {buyListing && (
+                <BuyModal
+                    listingId={BigInt(buyListing.listingId)}
+                    stemId={catalogStemId ?? undefined}
+                    listingChainId={buyListing.chainId}
+                    licenseType={buyListing.licenseType}
+                    tierListings={tierListingIds}
+                    tierPricesUsd={pricing ? {
+                        personal: pricing.basePlayPriceUsd ?? undefined,
+                        remix: pricing.remixLicenseUsd ?? undefined,
+                        commercial: pricing.commercialLicenseUsd ?? undefined,
+                    } : undefined}
+                    isOpen={true}
+                    onClose={() => setBuyListing(null)}
+                    onSuccess={() => setBuyListing(null)}
+                />
+            )}
+
+            <audio
+                ref={audioRef}
+                onEnded={() => setPreviewPlaying(false)}
+                onError={() => setPreviewPlaying(false)}
+            />
         </div>
     );
 }
