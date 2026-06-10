@@ -58,6 +58,24 @@ describe("StemHero", () => {
     expect(html).not.toContain("left");
   });
 
+  it("uses the fallback artwork source when the primary is missing", () => {
+    const html = renderToStaticMarkup(
+      <StemHero
+        identity={identity({ artworkUrl: null })}
+        fallbackArtworkUrl="https://example.test/release-art.png"
+      />,
+    );
+    expect(html).toContain("https://example.test/release-art.png");
+  });
+
+  it("renders the themed placeholder when no artwork source exists", () => {
+    const html = renderToStaticMarkup(
+      <StemHero identity={identity({ artworkUrl: null })} />,
+    );
+    expect(html).not.toContain("<img");
+    expect(html).toContain("\u{1F3B9}"); // guitar routes to the melody theme emoji
+  });
+
   it("never renders the bare token fallback when a type exists", () => {
     const html = renderToStaticMarkup(
       <StemHero identity={identity({ name: null })} />,

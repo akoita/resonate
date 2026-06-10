@@ -18,7 +18,7 @@ import { BuyModal } from "../../../components/marketplace/BuyModal";
 import type { LicenseType } from "../../../components/marketplace/LicenseTypeSelector";
 import { RemixCta } from "../../../components/remix/RemixCta";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
-import { API_BASE } from "../../../lib/api";
+import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
 import { shortAddress, stemTypeTheme } from "../../../lib/stemPageTheme";
 import {
     buildTierRows,
@@ -96,10 +96,19 @@ export default function StemDetailPage() {
     const { data: stemData, loading: stemLoading, error: stemError } = useStemData(tokenId);
     const { uri, loading: uriLoading } = useTokenURI(tokenId);
     const { parentIds, isRemix, loading: lineageLoading } = useParentStems(tokenId);
-    // Balance follows the same identity as the own-listing check: the smart
-    // account is the on-chain holder for passkey wallets.
-    const holderAddress = (smartAccountAddress || address) as Address | undefined;
-    const { balance } = useStemBalance(tokenId, holderAddress);
+    // Editions can be held by either identity depending on the wallet path
+    // (EOA-style kernel vs separate smart account); owner actions consider
+    // both so neither setup loses "List for Sale".
+    const { balance: addressBalance } = useStemBalance(
+        tokenId,
+        address as Address | undefined,
+    );
+    const { balance: smartAccountBalance } = useStemBalance(
+        tokenId,
+        smartAccountAddress as Address | undefined,
+    );
+    const balance =
+        addressBalance > smartAccountBalance ? addressBalance : smartAccountBalance;
     const { total: totalStems } = useTotalStems();
 
     const [showListModal, setShowListModal] = useState(false);
@@ -294,11 +303,14 @@ export default function StemDetailPage() {
                     remixable: stemData.remixable ?? null,
                     listingExpiresAt: primaryListing?.expiresAt ?? null,
                 }}
+                fallbackArtworkUrl={
+                    releaseIdFromMeta ? getReleaseArtworkUrl(releaseIdFromMeta) : null
+                }
                 isPlaying={previewPlaying}
                 onTogglePreview={catalogStemId ? togglePreview : undefined}
             />
 
-            <div className="max-w-5xl mx-auto px-4 pb-12">
+            <div className="max-w-6xl mx-auto px-4 pb-16">
                 {metaState === "failed" && (
                     <div className="mb-6 px-4 py-3 rounded-md border border-amber-500/30 bg-amber-500/10 text-amber-300 text-sm stem-meta-fallback">
                         Catalog details are unavailable right now — showing on-chain data only.
@@ -306,52 +318,64 @@ export default function StemDetailPage() {
                     </div>
                 )}
 
-                {/* Action rail */}
-                <div className="flex items-center gap-3 flex-wrap -mt-2 mb-8 stem-action-rail">
-                    {primaryListing && !isOwnListing && (
+                {/* Action rail: the page's purpose, lifted onto the hero edge. */}
+                <div className="relative z-10 -mt-7 mb-10 rounded-xl border border-zinc-800 bg-zinc-900/80 backdrop-blur px-4 py-3 flex items-center gap-3 flex-wrap justify-between stem-action-rail">
+                    <div className="flex items-center gap-3 flex-wrap">
+                        {primaryListing && !isOwnListing && (
+                            <button
+                                type="button"
+                                onClick={() => setBuyListing(primaryListing)}
+                                className="px-7 py-3 rounded-lg font-semibold text-white text-base transition-transform hover:scale-[1.02] shadow-lg"
+                                style={{
+                                    background: `rgb(${theme.accentRgb})`,
+                                    boxShadow: `0 8px 28px rgba(${theme.accentRgb}, 0.35)`,
+                                }}
+                            >
+                                Buy · {primaryListing.licenseType ?? "personal"} license
+                            </button>
+                        )}
+                        {primaryListing && isOwnListing && (
+                            <Link
+                                href="/marketplace/manage"
+                                className="px-7 py-3 rounded-lg font-semibold bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 transition-colors"
+                            >
+                                Your Listing · Manage
+                            </Link>
+                        )}
+                        {catalogTrackId && catalogStemId && (
+                            <RemixCta
+                                key={`remix-${refreshNonce}`}
+                                variant="button"
+                                trackId={catalogTrackId}
+                                stemIds={[catalogStemId]}
+                                trackTitle={displayTitle ?? undefined}
+                            />
+                        )}
+                        {canList && (
+                            <button
+                                type="button"
+                                onClick={() => setShowListModal(true)}
+                                className="px-7 py-3 rounded-lg font-medium bg-emerald-600/90 hover:bg-emerald-600 text-white transition-colors"
+                            >
+                                List for Sale
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {canList && (
+                            <span className="text-xs text-zinc-500">
+                                You own {balance.toString()} edition{balance > 1n ? "s" : ""}
+                            </span>
+                        )}
                         <button
                             type="button"
-                            onClick={() => setBuyListing(primaryListing)}
-                            className="px-6 py-2.5 rounded-md font-semibold text-white transition-transform hover:scale-[1.02]"
-                            style={{ background: `rgb(${theme.accentRgb})` }}
+                            onClick={copyLink}
+                            title="Copy link to this stem"
+                            className="px-4 py-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-white transition-colors text-sm"
                         >
-                            Buy · {primaryListing.licenseType ?? "personal"} license
+                            {linkCopied ? "✓ Copied" : "⧉ Copy link"}
                         </button>
-                    )}
-                    {primaryListing && isOwnListing && (
-                        <Link
-                            href="/marketplace/manage"
-                            className="px-6 py-2.5 rounded-md font-semibold bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700 transition-colors"
-                        >
-                            Your Listing · Manage
-                        </Link>
-                    )}
-                    {catalogTrackId && catalogStemId && (
-                        <RemixCta
-                            key={`remix-${refreshNonce}`}
-                            variant="button"
-                            trackId={catalogTrackId}
-                            stemIds={[catalogStemId]}
-                            trackTitle={displayTitle ?? undefined}
-                        />
-                    )}
-                    {canList && (
-                        <button
-                            type="button"
-                            onClick={() => setShowListModal(true)}
-                            className="px-6 py-2.5 rounded-md font-medium bg-emerald-600/90 hover:bg-emerald-600 text-white transition-colors"
-                        >
-                            List for Sale
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={copyLink}
-                        title="Copy link to this stem"
-                        className="px-4 py-2.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
-                    >
-                        {linkCopied ? "✓ Copied" : "⧉ Copy link"}
-                    </button>
+                    </div>
                 </div>
 
                 {/* Info grid */}
@@ -471,20 +495,9 @@ export default function StemDetailPage() {
                     </section>
                 </div>
 
-                {/* Owner balance note */}
-                {canList && (
-                    <div className="mt-6 text-sm text-zinc-500">
-                        You own {balance.toString()} edition{balance > 1n ? "s" : ""} of this stem.
-                    </div>
-                )}
-
-                {/* Stats Banner */}
-                <div className="mt-8 bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
-                    <div className="flex items-center justify-center gap-8 text-sm text-zinc-400">
-                        <div>
-                            <span className="text-white font-semibold">{totalStems.toString()}</span> total stems minted
-                        </div>
-                    </div>
+                <div className="mt-8 text-center text-xs text-zinc-600">
+                    <span className="text-zinc-400 font-medium">{totalStems.toString()}</span>{" "}
+                    stems minted on Resonate
                 </div>
             </div>
 
