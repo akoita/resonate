@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   formatListingCountdown,
@@ -29,11 +30,14 @@ export type StemIdentity = {
 
 export function StemHero({
   identity,
+  fallbackArtworkUrl,
   isPlaying,
   onTogglePreview,
   now,
 }: {
   identity: StemIdentity;
+  /** Tried when the primary artwork fails (e.g. the release artwork). */
+  fallbackArtworkUrl?: string | null;
   /** Preview wiring; omit when no catalog stem id is available. */
   isPlaying?: boolean;
   onTogglePreview?: () => void;
@@ -46,14 +50,27 @@ export function StemHero({
       ? `${identity.stemType.charAt(0).toUpperCase()}${identity.stemType.slice(1)} Stem`
       : `Stem #${identity.tokenId}`);
 
+  // Artwork source chain: token image → fallback (release artwork) → themed
+  // placeholder. A broken image must never render as alt text in the hero.
+  const artworkSources = useMemo(
+    () =>
+      [identity.artworkUrl, fallbackArtworkUrl].filter(
+        (src): src is string => !!src,
+      ),
+    [identity.artworkUrl, fallbackArtworkUrl],
+  );
+  const [failedCount, setFailedCount] = useState(0);
+  const artworkSrc = artworkSources[failedCount] ?? null;
+
   return (
     <div className="relative overflow-hidden stem-hero">
-      {/* Ambient backdrop: the artwork's own colors, blurred behind a fade. */}
+      {/* Ambient backdrop: the artwork's own colors, blurred behind a fade;
+          degrades to the type accent when no artwork resolves. */}
       <div className="absolute inset-0" aria-hidden>
-        {identity.artworkUrl && (
+        {artworkSrc && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
-            src={identity.artworkUrl}
+            src={artworkSrc}
             alt=""
             className="w-full h-full object-cover blur-3xl scale-110 opacity-25"
           />
@@ -61,12 +78,12 @@ export function StemHero({
         <div
           className="absolute inset-0"
           style={{
-            background: `linear-gradient(180deg, rgba(${theme.accentRgb}, 0.12) 0%, rgba(0,0,0,0.82) 55%, #000 100%)`,
+            background: `radial-gradient(ellipse 70% 90% at 28% 0%, rgba(${theme.accentRgb}, 0.22) 0%, transparent 55%), linear-gradient(180deg, rgba(${theme.accentRgb}, 0.10) 0%, rgba(0,0,0,0.85) 60%, #000 100%)`,
           }}
         />
       </div>
 
-      <div className="relative max-w-5xl mx-auto px-4 pt-8 pb-10">
+      <div className="relative max-w-6xl mx-auto px-4 pt-8 pb-14">
         <Link
           href="/marketplace"
           className="text-sm text-zinc-400 hover:text-white inline-flex items-center gap-1"
@@ -74,23 +91,29 @@ export function StemHero({
           ← Back to Marketplace
         </Link>
 
-        <div className="flex items-start gap-8 mt-6 flex-wrap">
+        <div className="flex items-center gap-10 mt-8 flex-wrap">
           {/* Artwork with type-colored ring + preview overlay */}
           <div
-            className="relative w-52 h-52 rounded-2xl overflow-hidden shrink-0 bg-zinc-900 group"
+            className="relative w-60 h-60 rounded-2xl overflow-hidden shrink-0 bg-zinc-900 group"
             style={{
-              boxShadow: `0 0 0 2px rgba(${theme.accentRgb}, 0.55), 0 0 64px rgba(${theme.accentRgb}, 0.25)`,
+              boxShadow: `0 0 0 2px rgba(${theme.accentRgb}, 0.55), 0 18px 80px rgba(${theme.accentRgb}, 0.28)`,
             }}
           >
-            {identity.artworkUrl ? (
+            {artworkSrc ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
-                src={identity.artworkUrl}
+                src={artworkSrc}
                 alt={displayName}
                 className="w-full h-full object-cover"
+                onError={() => setFailedCount((n) => n + 1)}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-6xl">
+              <div
+                className="w-full h-full flex items-center justify-center text-7xl"
+                style={{
+                  background: `radial-gradient(circle at 50% 42%, rgba(${theme.accentRgb}, 0.28) 0%, rgba(24,24,27,1) 72%)`,
+                }}
+              >
                 {theme.emoji}
               </div>
             )}
@@ -137,12 +160,12 @@ export function StemHero({
               </span>
             </div>
 
-            <h1 className="text-4xl font-bold text-white leading-tight stem-hero__title">
+            <h1 className="text-5xl font-bold text-white leading-tight tracking-tight stem-hero__title">
               {displayName}
             </h1>
 
             {(identity.trackTitle || identity.artistName) && (
-              <p className="text-zinc-300 mt-2 stem-hero__attribution">
+              <p className="text-zinc-300 mt-3 text-lg stem-hero__attribution">
                 {identity.trackTitle && (
                   <>
                     from{" "}
@@ -165,7 +188,7 @@ export function StemHero({
               </p>
             )}
 
-            <div className="flex items-center gap-3 mt-4 flex-wrap text-sm">
+            <div className="flex items-center gap-3 mt-5 flex-wrap text-sm">
               <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-zinc-300 font-mono">
                 Token #{identity.tokenId}
               </span>
