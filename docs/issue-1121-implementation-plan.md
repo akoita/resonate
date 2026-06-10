@@ -35,7 +35,7 @@ work includes recommended actions, not only metric display.
   floor.
 - `invite_holder_collectors`: deep link to the artist community tab when
   aggregate holder-room joins meet the five-signal floor.
-- `prepare_remix_challenge`: disabled card when aggregate remix creation exists
+- `prepare_remix_challenge`: enabled prepare-scoped card (remix-supply review) fed by `remix.project_created` + legacy `remix.created` aggregates
   but the Remix Studio challenge workflow is still planned rather than live.
 
 ## Third Slice Card Types

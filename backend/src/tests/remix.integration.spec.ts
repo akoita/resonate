@@ -451,6 +451,9 @@ describe("Remix eligibility and projects (integration)", () => {
           remixProjectId: created.id,
           creatorId: CREATOR_ID,
           sourceTrackId: TRACK_ID,
+          // Source-artist attribution (#1121): the warehouse aggregates this
+          // fact under the artist whose track is being remixed.
+          artistId: `${TEST_PREFIX}artist`,
         }),
       );
 

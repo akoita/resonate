@@ -102,11 +102,37 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Create benefit");
     expect(html).toContain("Reward early supporters");
     expect(html).toContain("Open benefits");
-    expect(html).toContain("Workflow planned");
+    expect(html).toContain("Review remix supply");
     expect(html).toContain("Relist expired marketplace inventory");
     expect(html).toContain("Open expired listings");
     expect(html).toContain("Improve marketplace checkout conversion");
     expect(html).toContain("Review active listings");
+  });
+
+  it("renders a disabled CTA with its reason when the backend marks a card unavailable", () => {
+    // No current card type ships disabled (prepare_remix_challenge was the
+    // last, enabled by #1121), but the card schema and renderer still
+    // support it for future gated actions.
+    const disabledAction = {
+      ...dashboard.actions[0],
+      id: "synthetic_disabled",
+      cta: {
+        label: "Workflow planned",
+        disabled: true,
+        disabledReason: "This workflow is documented but not implemented yet.",
+      },
+    };
+    const html = renderToStaticMarkup(
+      <ArtistAnalyticsDashboard
+        status="ready"
+        days={30}
+        onDaysChange={() => {}}
+        data={{ ...dashboard, actions: [disabledAction] }}
+      />,
+    );
+    expect(html).toContain("Workflow planned");
+    expect(html).toContain("documented but not implemented yet");
+    expect(html).toContain("disabled");
   });
 
   it("renders the no-artist onboarding state", () => {
@@ -291,19 +317,19 @@ const dashboard: ArtistAnalyticsDashboardData = {
       id: "prepare_remix_challenge",
       type: "prepare_remix_challenge",
       title: "Prepare a remix challenge brief",
-      description: "Remix activity exists, but the full Remix Studio challenge workflow is still planned.",
-      reason: "5 aggregate remix creations in the last 30 days.",
-      priority: "low",
-      confidence: 0.54,
+      description:
+        "Remixers are creating Remix Studio drafts from your stems. Verify remix supply — remixable mints and listed remix-tier licenses — before drafting a challenge.",
+      reason: "5 aggregate remix drafts and creations in the last 30 days.",
+      priority: "medium",
+      confidence: 0.6,
       sourceSignal: {
         category: "remix",
-        summary: "Remix creation events",
+        summary: "Remix Studio drafts and remix creations",
         count: 5,
       },
       cta: {
-        label: "Workflow planned",
-        disabled: true,
-        disabledReason: "Remix Studio challenge creation is documented but not implemented yet.",
+        label: "Review remix supply",
+        href: "/marketplace/manage?status=active",
       },
       privacy: {
         aggregateOnly: true,

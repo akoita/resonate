@@ -1001,6 +1001,9 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "remixProjectId",
       "creatorId",
       "sourceTrackId",
+      // Source-artist attribution (#1121): the warehouse keys facts on
+      // payload artistId; without it the cockpit card never sees these.
+      "artistId",
       "stemIds",
       "mode",
       "policyVersion",

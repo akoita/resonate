@@ -208,6 +208,11 @@ interface ArtistWorkflowSignals {
   holderRoomJoins: number;
   benefitRuleCreations: number;
   earlySupporterReward?: ArtistSupporterRewardSignal;
+  /**
+   * Remix Studio drafts created from this artist's tracks
+   * (remix.project_created) plus legacy minted-remix events (remix.created),
+   * so pre-studio aggregates keep counting (#1121).
+   */
   remixCreations: number;
   marketplacePurchaseIntents: number;
   artistSettledCommerceCount: number;
@@ -1101,23 +1106,28 @@ export class AnalyticsService {
     }
 
     if (input.workflowSignals.remixCreations >= this.artistActionMinimumSignalCount) {
+      // Prepare-scoped guidance (#1121): remixers are drafting from this
+      // artist's stems, so route the artist to verify remix supply — stems
+      // minted remixable and remix-tier licenses listed. A true
+      // "launch remix challenge" action stays deferred until artist opt-in
+      // settings (remix backlog A1) and a challenge surface exist.
       cards.push({
         id: "prepare_remix_challenge",
         type: "prepare_remix_challenge",
         title: "Prepare a remix challenge brief",
-        description: "Remix activity exists, but the full Remix Studio challenge workflow is still planned.",
-        reason: `${input.workflowSignals.remixCreations} aggregate remix creations in the last ${input.days} days.`,
-        priority: "low",
-        confidence: 0.54,
+        description:
+          "Remixers are creating Remix Studio drafts from your stems. Verify remix supply — remixable mints and listed remix-tier licenses — before drafting a challenge.",
+        reason: `${input.workflowSignals.remixCreations} aggregate remix drafts and creations in the last ${input.days} days.`,
+        priority: input.workflowSignals.remixCreations >= 25 ? "high" : "medium",
+        confidence: input.workflowSignals.remixCreations >= 25 ? 0.74 : 0.6,
         sourceSignal: {
           category: "remix",
-          summary: "Remix creation events",
+          summary: "Remix Studio drafts and remix creations",
           count: input.workflowSignals.remixCreations,
         },
         cta: {
-          label: "Workflow planned",
-          disabled: true,
-          disabledReason: "Remix Studio challenge creation is documented but not implemented yet.",
+          label: "Review remix supply",
+          href: "/marketplace/manage?status=active",
         },
         privacy: {
           aggregateOnly: true,
@@ -1313,7 +1323,7 @@ export class AnalyticsService {
         supporterRoomJoinsByCampaign.set(key, existing);
       }
 
-      if (eventName === "remix.created") {
+      if (eventName === "remix.created" || eventName === "remix.project_created") {
         remixCreations += fact.count;
       }
 

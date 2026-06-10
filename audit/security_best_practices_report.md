@@ -2493,3 +2493,49 @@ cd backend && npx jest --runInBand --config jest.integration.config.js --testPat
 cd backend && npm run lint
 cd web && npm run lint
 ```
+
+## Scan: feat/1121-remix-challenge-card (2026-06-11)
+
+**Scope:** `backend/src/modules/remix/remix-project.service.ts`,
+`backend/src/modules/analytics/analytics.service.ts`,
+`backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
+plus test and docs changes for issue #1121 (enable the
+`prepare_remix_challenge` artist action card on Remix Studio signals).
+
+**Findings:** none (no Critical/High/Medium/Low).
+
+### Review Notes
+
+- No new endpoints, guards, or authorization paths. The card is derived
+  server-side inside the existing authorized artist dashboard flow; clients
+  cannot submit ownership, demand, or signal claims (unchanged trust model).
+- New data flow is limited to the source release's `artistId` — a public
+  catalog identifier — added to the internal `remix.project_created` event
+  payload and forwarded by the analytics bridge's `compactPayload` whitelist.
+  No listener identity, wallet, or cohort data is added; the remixer's
+  `creatorId` exposure is unchanged from the pre-existing event.
+- Privacy posture preserved: the card keeps the ≥5 aggregate-signal floor,
+  and a new regression test proves unattributed `remix.project_created`
+  events (missing `artistId`) aggregate under `unknown` and never surface in
+  any artist's cockpit.
+- The enabled card's deep link is a constant relative path
+  (`/marketplace/manage?status=active`) — no interpolation of
+  signal-derived values into hrefs for this card; sibling cards that do
+  interpolate already wrap values in `encodeURIComponent`.
+- No secrets, raw SQL, `eval`, or unsafe deserialization introduced; no
+  environment variables added.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|\$queryRaw|executeRaw|JSON\.parse|eval\(' \
+  backend/src/modules/analytics/analytics.service.ts \
+  backend/src/modules/analytics/analytics_domain_event_bridge.service.ts \
+  backend/src/modules/remix/remix-project.service.ts
+rg -n 'href: `' backend/src/modules/analytics/analytics.service.ts
+git diff --check
+cd backend && npm run test           # 765 passed
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 26 passed
+cd backend && npm run lint           # tsc clean
+cd web && npx vitest run             # 438 passed
+```
