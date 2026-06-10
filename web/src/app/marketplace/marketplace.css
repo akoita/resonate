@@ -1612,3 +1612,174 @@
   font-weight: 800;
   color: #fff;
 }
+
+/* ============================================================
+   Card body v2 (#1150): title / context / one meta row / footer
+   ============================================================ */
+
+.stem-card__title {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.stem-card__sub {
+  font-size: 12.5px;
+  color: var(--color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: -3px;
+}
+
+.stem-card__sub a:hover {
+  color: #fff;
+}
+
+.stem-card__metarow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.stem-card__tier {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.03);
+  text-transform: capitalize;
+}
+
+.stem-card__tier--remix {
+  color: #c4b5fd;
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.stem-card__tier--commercial {
+  color: #6ee7b7;
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.stem-card__editions {
+  margin-left: auto;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.stem-card__footer {
+  padding-top: 12px;
+}
+
+.stem-card__price-value {
+  font-size: 18px;
+}
+
+.stem-card__buy {
+  padding: 9px 22px;
+  border-radius: 12px;
+}
+
+/* Ghost card: softens sparse grids and invites minting */
+.stem-card--ghost {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 340px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.015);
+  color: rgba(255, 255, 255, 0.45);
+  text-decoration: none;
+  font-size: 13.5px;
+  transition: all 0.3s ease;
+}
+
+.stem-card--ghost:hover {
+  border-color: rgba(var(--color-accent-rgb), 0.45);
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(var(--color-accent-rgb), 0.05);
+  transform: translateY(-4px);
+}
+
+.stem-card--ghost__plus {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  color: rgba(var(--color-accent-rgb), 0.9);
+}
+
+/* ============================================================
+   Hero v2 (#1150): ambient canvas + editorial display type
+   ============================================================ */
+
+.marketplace-page {
+  position: relative;
+}
+
+.marketplace-page::before {
+  content: "";
+  position: absolute;
+  top: -120px;
+  left: -10%;
+  right: -10%;
+  height: 480px;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 42% 60% at 18% 0%, rgba(var(--color-accent-rgb), 0.16) 0%, transparent 60%),
+    radial-gradient(ellipse 36% 50% at 78% 8%, rgba(236, 72, 153, 0.07) 0%, transparent 60%);
+}
+
+.marketplace-page > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marketplace-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(var(--color-accent-rgb), 0.85);
+  margin-bottom: 10px;
+}
+
+.marketplace-hero {
+  padding-top: 22px;
+}
+
+.marketplace-title {
+  font-size: clamp(40px, 4.6vw, 58px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.02;
+  background: linear-gradient(135deg, #fff 45%, rgba(var(--color-accent-rgb), 0.95) 110%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.marketplace-subtitle {
+  margin-top: 12px;
+  font-size: 15.5px;
+  max-width: 46ch;
+}
+
+.marketplace-subtitle__stat {
+  color: #fff;
+  font-weight: 600;
+}

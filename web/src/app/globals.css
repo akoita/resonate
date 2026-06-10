@@ -14838,3 +14838,23 @@ tr[draggable="true"]:hover {
   border: 1px solid rgba(245, 158, 11, 0.18);
   color: var(--color-warning, #f59e0b);
 }
+
+/* ============================================================
+   Resonate display language (#1150) — shared editorial tokens
+   ============================================================ */
+
+.rs-kicker {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(139, 92, 246, 0.85);
+}
+
+.rs-display {
+  font-size: clamp(38px, 4.4vw, 54px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.04;
+  color: #fff;
+}
