@@ -401,6 +401,14 @@ export default function StemDetailPage() {
                                         ? undefined
                                         : "The seller hasn't listed a remix license for this stem yet."
                                 }
+                                // The primary buy button already sells the remix
+                                // tier here; a second "Get remix license" entry
+                                // would duplicate it.
+                                hideWhenLicenseRequired={
+                                    !!primaryListing &&
+                                    !isOwnListing &&
+                                    (primaryListing.licenseType ?? "personal") === "remix"
+                                }
                             />
                         )}
                         {canList && (

@@ -169,6 +169,35 @@ describe("RemixCta rendering", () => {
     expect(html).toContain("listed a remix license");
   });
 
+  it("renders nothing in license_required state when hidden by the caller", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility({
+          allowed: false,
+          requiredLicense: "remix",
+          allowedActions: [],
+          reasons: [
+            { code: "license_required", message: "A remix license is required." },
+          ],
+        })}
+        hideWhenLicenseRequired
+      />,
+    );
+    expect(html).toBe("");
+  });
+
+  it("still renders the Remix state when hideWhenLicenseRequired is set", () => {
+    const html = renderToStaticMarkup(
+      <RemixCta
+        trackId="track-1"
+        initialEligibility={eligibility()}
+        hideWhenLicenseRequired
+      />,
+    );
+    expect(html).toContain("remix-cta--remix");
+  });
+
   it("stays interactive when the caller provides a license purchase path", () => {
     const html = renderToStaticMarkup(
       <RemixCta

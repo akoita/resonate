@@ -111,6 +111,7 @@ export function RemixCta({
   initialEligibility,
   onGetLicense,
   licenseUnavailableReason,
+  hideWhenLicenseRequired = false,
 }: {
   trackId: string;
   stemIds?: string[];
@@ -130,6 +131,13 @@ export function RemixCta({
    * reason instead of dead-ending into the marketplace.
    */
   licenseUnavailableReason?: string | null;
+  /**
+   * Hides the "Get remix license" state entirely when another control on
+   * the page already sells the remix license (e.g. the stem page's primary
+   * buy button). The CTA still renders its other states — most importantly
+   * "Remix" once the license is owned.
+   */
+  hideWhenLicenseRequired?: boolean;
 }) {
   const { token, login } = useAuth();
   const router = useRouter();
@@ -185,6 +193,11 @@ export function RemixCta({
   });
 
   if (state.kind === "hidden") {
+    return null;
+  }
+  if (state.kind === "license_required" && hideWhenLicenseRequired) {
+    // Another control on the page already sells this license; rendering a
+    // second purchase entry would duplicate it.
     return null;
   }
 
