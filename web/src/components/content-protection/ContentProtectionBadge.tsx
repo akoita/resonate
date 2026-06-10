@@ -13,6 +13,7 @@ import {
   TIER_COLORS,
 } from "../../lib/stakeConstants";
 import { CONTENT_PROVENANCE_COPY } from "../../lib/verificationSemantics";
+import { API_BASE } from "../../lib/api";
 
 interface ContentProtectionBadgeProps {
   /** The on-chain tokenId to look up stake / attestation for. */
@@ -50,7 +51,7 @@ export default function ContentProtectionBadge({
 
   useEffect(() => {
     if (!attestData?.attester || attestData.attester === "0x0000000000000000000000000000000000000000") return;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+    const backendUrl = API_BASE;
     fetch(`${backendUrl}/api/trust-tier/${attestData.attester}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => { if (data?.tier) setTrustTier(data); })

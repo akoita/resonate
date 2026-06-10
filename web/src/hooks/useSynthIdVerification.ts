@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from 'react';
+import { API_BASE } from '../lib/api';
 
 interface SynthIdResult {
   isAiGenerated: boolean;
@@ -35,7 +36,7 @@ export function useSynthIdVerification(token?: string | null): UseSynthIdVerific
   const [result, setResult] = useState<SynthIdResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+  const backendUrl = API_BASE;
 
   const verify = useCallback(async (stemId: string): Promise<SynthIdResult | null> => {
     setIsLoading(true);

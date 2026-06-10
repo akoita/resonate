@@ -12,6 +12,7 @@ import {
     useContractAddresses,
 } from "../../../hooks/useContracts";
 import { formatRoyaltyBps, isZeroAddress } from "../../../lib/contracts";
+import { API_BASE } from "../../../lib/api";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ListStemModal } from "../../../components/marketplace/ListStemModal";
 import { RemixCta } from "../../../components/remix/RemixCta";
@@ -63,8 +64,7 @@ export default function StemDetailPage() {
         setCatalogStemId(null);
         setCatalogTrackId(null);
         setStemDisplayName(null);
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-        fetch(`${backendUrl}/api/metadata/${chainId}/${tokenId.toString()}`)
+        fetch(`${API_BASE}/api/metadata/${chainId}/${tokenId.toString()}`)
             .then(r => r.ok ? r.json() : null)
             .then(data => {
                 if (data?.image) setArtworkUrl(data.image);
