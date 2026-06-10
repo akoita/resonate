@@ -378,10 +378,20 @@ export default function StemDetailPage() {
                     </div>
                 </div>
 
-                {/* Info grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* On-Chain Metadata */}
-                    <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+                {/* Details: commerce-first main column + provenance side rail.
+                    items-start keeps the rail cards at natural height instead
+                    of stretching to the tallest row. */}
+                <div className="rs-kicker mb-4">Rights & provenance</div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="lg:col-span-2 space-y-6">
+                        {/* License tiers */}
+                        <LicenseTiersPanel
+                            rows={buildTierRows({ listedTiers, pricing })}
+                            stemType={stemType}
+                        />
+
+                        {/* On-Chain Metadata */}
+                        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
                         <h2 className="text-lg font-semibold text-white mb-4">On-Chain Metadata</h2>
                         <div className="space-y-4">
                             <div className="flex justify-between">
@@ -440,64 +450,58 @@ export default function StemDetailPage() {
                             )}
                         </div>
                     </section>
+                    </div>
 
-                    {/* License tiers */}
-                    <LicenseTiersPanel
-                        rows={buildTierRows({ listedTiers, pricing })}
-                        stemType={stemType}
-                    />
-
-                    {/* Remix Lineage */}
-                    <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-                        <h2 className="text-lg font-semibold text-white mb-4">Remix Lineage</h2>
-                        {isRemix && parentIds.length > 0 ? (
-                            <div className="space-y-3">
-                                <p className="text-sm text-zinc-400 mb-4">
-                                    This stem is a remix of {parentIds.length} parent stem{parentIds.length > 1 ? "s" : ""}:
-                                </p>
-                                {parentIds.map((parentId, idx) => (
-                                    <Link
-                                        key={idx}
-                                        href={`/stem/${parentId.toString()}`}
-                                        className="flex items-center justify-between p-3 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 bg-zinc-700 rounded flex items-center justify-center">
-                                                <svg className="w-4 h-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13" />
-                                                </svg>
-                                            </div>
-                                            <span className="text-white font-mono">Stem #{parentId.toString()}</span>
-                                        </div>
-                                        <span className="text-zinc-400">→</span>
-                                    </Link>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-6">
-                                <div
-                                    className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3"
-                                    style={{ background: `rgba(${theme.accentRgb}, 0.12)` }}
-                                >
-                                    <span aria-hidden>✦</span>
-                                </div>
-                                <p className="text-zinc-400">Original stem</p>
-                                <p className="text-sm text-zinc-500">This is not a remix</p>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Content Protection */}
-                    <section>
+                    {/* Side rail: provenance + network context */}
+                    <div className="space-y-6">
+                        {/* Content Protection */}
                         {tokenId && (
                             <ContentProtectionBadge tokenId={tokenId} expanded />
                         )}
-                    </section>
-                </div>
 
-                <div className="mt-8 text-center text-xs text-zinc-600">
-                    <span className="text-zinc-400 font-medium">{totalStems.toString()}</span>{" "}
-                    stems minted on Resonate
+                        {/* Remix Lineage */}
+                        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-5">
+                            <h2 className="text-sm font-semibold text-white mb-3">Remix lineage</h2>
+                            {isRemix && parentIds.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-zinc-500 mb-3">
+                                        Remix of {parentIds.length} parent stem{parentIds.length > 1 ? "s" : ""}:
+                                    </p>
+                                    {parentIds.map((parentId, idx) => (
+                                        <Link
+                                            key={idx}
+                                            href={`/stem/${parentId.toString()}`}
+                                            className="flex items-center justify-between px-3 py-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition-colors text-sm"
+                                        >
+                                            <span className="text-white font-mono">Stem #{parentId.toString()}</span>
+                                            <span className="text-zinc-400">→</span>
+                                        </Link>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-3">
+                                    <div
+                                        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                                        style={{ background: `rgba(${theme.accentRgb}, 0.12)`, color: `rgb(${theme.accentRgb})` }}
+                                    >
+                                        <span aria-hidden>✦</span>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm text-zinc-200">Original stem</p>
+                                        <p className="text-xs text-zinc-500">
+                                            First generation — not derived from another stem
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+
+                        {/* Network stat */}
+                        <section className="bg-zinc-900 border border-zinc-800 rounded-lg px-5 py-4 flex items-baseline justify-between">
+                            <span className="text-xs text-zinc-500">Stems minted on Resonate</span>
+                            <span className="text-white font-semibold">{totalStems.toString()}</span>
+                        </section>
+                    </div>
                 </div>
             </div>
 

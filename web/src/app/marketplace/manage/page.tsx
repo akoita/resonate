@@ -399,7 +399,7 @@ export default function MarketplaceListingManagerPage() {
       <main className="marketplace-page marketplace-manager">
         <section className="marketplace-hero marketplace-manager-hero">
           <div className="marketplace-manager-hero__copy">
-            <span className="marketplace-manager-kicker">Seller workspace</span>
+            <span className="rs-kicker">Seller workspace</span>
             <h1 className="marketplace-title">Listing Manager</h1>
             <p className="marketplace-subtitle">Connect a wallet to manage your marketplace listings.</p>
           </div>
@@ -417,7 +417,7 @@ export default function MarketplaceListingManagerPage() {
     <main className="marketplace-page marketplace-manager">
       <section className="marketplace-hero marketplace-manager-hero">
         <div className="marketplace-manager-hero__copy">
-          <span className="marketplace-manager-kicker">Seller workspace</span>
+          <span className="rs-kicker">Seller workspace</span>
           <h1 className="marketplace-title">Listing Manager</h1>
           <p className="marketplace-subtitle">
             Track active, expiring, expired, sold, and cancelled stem listings from one owner view.
@@ -468,13 +468,15 @@ export default function MarketplaceListingManagerPage() {
           />
         </div>
         <div className="marketplace-manager-toolbar">
-          <div className="marketplace-toolbar__group" role="tablist" aria-label="Listing status">
+          {/* Toggle-button group, not tabs: these filter the list in place. */}
+          <div className="marketplace-segment" role="group" aria-label="Listing status">
             {FILTERS.map((filter) => (
               <button
                 key={filter.value}
                 type="button"
+                aria-pressed={status === filter.value}
                 onClick={() => setStatus(filter.value)}
-                className={`stem-pill ${status === filter.value ? "stem-pill--active" : ""}`}
+                className={`marketplace-segment__btn ${status === filter.value ? "marketplace-segment__btn--active" : ""}`}
               >
                 {filter.label}
               </button>
