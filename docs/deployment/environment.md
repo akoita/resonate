@@ -16,7 +16,7 @@ When adding a new environment variable:
 
 | Variable | Scope | Notes |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows |
+| `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows. This is the only browser API base URL: `NEXT_PUBLIC_BACKEND_URL` is not a Resonate variable (removed from code in #1145 after it silently broke browser metadata fetches on deployed environments) |
 | `NEXT_PUBLIC_X402_RPC_URL` | Frontend | Optional browser RPC URL for x402 wallet network switching when using a non-default x402 chain |
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |

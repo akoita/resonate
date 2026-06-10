@@ -1,0 +1,279 @@
+"use client";
+
+import Link from "next/link";
+import {
+  formatListingCountdown,
+  shortAddress,
+  stemTypeTheme,
+} from "../../lib/stemPageTheme";
+
+/**
+ * Presentational sections of the stem detail page (#1145). Kept free of data
+ * fetching so the hero and license panels are render-testable; the page
+ * composes them with live hook/fetch state.
+ */
+
+export type StemIdentity = {
+  tokenId: string;
+  name: string | null;
+  stemType: string | null;
+  artworkUrl: string | null;
+  trackTitle: string | null;
+  artistName: string | null;
+  releaseId: string | null;
+  creatorAddress: string;
+  isAiGenerated: boolean;
+  remixable: boolean | null;
+  listingExpiresAt: string | null;
+};
+
+export function StemHero({
+  identity,
+  isPlaying,
+  onTogglePreview,
+  now,
+}: {
+  identity: StemIdentity;
+  /** Preview wiring; omit when no catalog stem id is available. */
+  isPlaying?: boolean;
+  onTogglePreview?: () => void;
+  now?: Date;
+}) {
+  const theme = stemTypeTheme(identity.stemType);
+  const countdown = formatListingCountdown(identity.listingExpiresAt, now);
+  const displayName =
+    identity.name ?? (identity.stemType
+      ? `${identity.stemType.charAt(0).toUpperCase()}${identity.stemType.slice(1)} Stem`
+      : `Stem #${identity.tokenId}`);
+
+  return (
+    <div className="relative overflow-hidden stem-hero">
+      {/* Ambient backdrop: the artwork's own colors, blurred behind a fade. */}
+      <div className="absolute inset-0" aria-hidden>
+        {identity.artworkUrl && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={identity.artworkUrl}
+            alt=""
+            className="w-full h-full object-cover blur-3xl scale-110 opacity-25"
+          />
+        )}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(180deg, rgba(${theme.accentRgb}, 0.12) 0%, rgba(0,0,0,0.82) 55%, #000 100%)`,
+          }}
+        />
+      </div>
+
+      <div className="relative max-w-5xl mx-auto px-4 pt-8 pb-10">
+        <Link
+          href="/marketplace"
+          className="text-sm text-zinc-400 hover:text-white inline-flex items-center gap-1"
+        >
+          ← Back to Marketplace
+        </Link>
+
+        <div className="flex items-start gap-8 mt-6 flex-wrap">
+          {/* Artwork with type-colored ring + preview overlay */}
+          <div
+            className="relative w-52 h-52 rounded-2xl overflow-hidden shrink-0 bg-zinc-900 group"
+            style={{
+              boxShadow: `0 0 0 2px rgba(${theme.accentRgb}, 0.55), 0 0 64px rgba(${theme.accentRgb}, 0.25)`,
+            }}
+          >
+            {identity.artworkUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={identity.artworkUrl}
+                alt={displayName}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-6xl">
+                {theme.emoji}
+              </div>
+            )}
+            {onTogglePreview && (
+              <button
+                type="button"
+                onClick={onTogglePreview}
+                aria-label={isPlaying ? "Pause preview" : "Play preview"}
+                className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/45 transition-colors stem-hero__preview"
+              >
+                <span
+                  className={`w-14 h-14 rounded-full flex items-center justify-center text-xl text-white transition-opacity ${
+                    isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                  }`}
+                  style={{ background: `rgba(${theme.accentRgb}, 0.9)` }}
+                >
+                  {isPlaying ? "⏸" : "▶"}
+                </span>
+              </button>
+            )}
+          </div>
+
+          {/* Identity */}
+          <div className="flex-1 min-w-[16rem]">
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              {identity.isAiGenerated && (
+                <span className="stem-type-badge stem-type-badge--ai">🤖 AI</span>
+              )}
+              {identity.stemType && (
+                <span className={`stem-type-badge ${theme.badgeClass}`}>
+                  {identity.stemType}
+                </span>
+              )}
+              {identity.remixable === true && (
+                <span
+                  className="stem-type-badge"
+                  style={{ background: "rgba(168, 85, 247, 0.25)", color: "#d8b4fe" }}
+                >
+                  Remixable
+                </span>
+              )}
+              <span className="stem-type-badge" style={{ background: "rgba(16,185,129,0.2)", color: "#6ee7b7" }}>
+                ✓ NFT
+              </span>
+            </div>
+
+            <h1 className="text-4xl font-bold text-white leading-tight stem-hero__title">
+              {displayName}
+            </h1>
+
+            {(identity.trackTitle || identity.artistName) && (
+              <p className="text-zinc-300 mt-2 stem-hero__attribution">
+                {identity.trackTitle && (
+                  <>
+                    from{" "}
+                    {identity.releaseId ? (
+                      <Link
+                        href={`/release/${identity.releaseId}`}
+                        className="text-white hover:underline underline-offset-4"
+                        style={{ textDecorationColor: `rgb(${theme.accentRgb})` }}
+                      >
+                        {identity.trackTitle}
+                      </Link>
+                    ) : (
+                      <span className="text-white">{identity.trackTitle}</span>
+                    )}
+                  </>
+                )}
+                {identity.artistName && (
+                  <span className="text-zinc-400"> · {identity.artistName}</span>
+                )}
+              </p>
+            )}
+
+            <div className="flex items-center gap-3 mt-4 flex-wrap text-sm">
+              <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-zinc-300 font-mono">
+                Token #{identity.tokenId}
+              </span>
+              <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-zinc-400">
+                by <span className="font-mono text-zinc-300">{shortAddress(identity.creatorAddress)}</span>
+              </span>
+              {countdown && (
+                <span
+                  className="px-3 py-1 rounded-full font-medium stem-hero__countdown"
+                  style={{
+                    background: `rgba(${theme.accentRgb}, 0.16)`,
+                    color: `rgb(${theme.accentRgb})`,
+                    border: `1px solid rgba(${theme.accentRgb}, 0.35)`,
+                  }}
+                >
+                  ⏱ {countdown}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export type TierAvailability = {
+  tier: "personal" | "remix" | "commercial";
+  label: string;
+  description: string;
+  priceUsd: number | null;
+  listed: boolean;
+};
+
+export function buildTierRows(input: {
+  listedTiers: Partial<Record<"personal" | "remix" | "commercial", boolean>>;
+  pricing: {
+    basePlayPriceUsd?: number | null;
+    remixLicenseUsd?: number | null;
+    commercialLicenseUsd?: number | null;
+  } | null;
+}): TierAvailability[] {
+  return [
+    {
+      tier: "personal" as const,
+      label: "Personal",
+      description: "Stream & collect — personal listening",
+      priceUsd: input.pricing?.basePlayPriceUsd ?? null,
+    },
+    {
+      tier: "remix" as const,
+      label: "Remix",
+      description: "Derivative works · unlocks Remix Studio",
+      priceUsd: input.pricing?.remixLicenseUsd ?? null,
+    },
+    {
+      tier: "commercial" as const,
+      label: "Commercial",
+      description: "Ads, films, products, monetized content",
+      priceUsd: input.pricing?.commercialLicenseUsd ?? null,
+    },
+  ].map((row) => ({ ...row, listed: !!input.listedTiers[row.tier] }));
+}
+
+export function LicenseTiersPanel({
+  rows,
+  stemType,
+}: {
+  rows: TierAvailability[];
+  stemType?: string | null;
+}) {
+  const theme = stemTypeTheme(stemType);
+  return (
+    <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 license-tiers-panel">
+      <h2 className="text-lg font-semibold text-white mb-1">License tiers</h2>
+      <p className="text-xs text-zinc-500 mb-4">
+        What rights can be bought for this stem right now.
+      </p>
+      <ul className="space-y-2">
+        {rows.map((row) => (
+          <li
+            key={row.tier}
+            className={`flex items-center justify-between gap-3 border rounded-md px-4 py-3 license-tiers-panel__row license-tiers-panel__row--${row.tier} ${
+              row.listed ? "border-zinc-700" : "border-zinc-800 opacity-60"
+            }`}
+          >
+            <div>
+              <div className="text-sm text-zinc-200 flex items-center gap-2">
+                {row.label}
+                {row.tier === "remix" && (
+                  <span style={{ color: `rgb(${theme.accentRgb})` }} aria-hidden>
+                    ✦
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-zinc-500">{row.description}</div>
+            </div>
+            <div className="text-right shrink-0">
+              {row.priceUsd != null && (
+                <div className="text-sm text-zinc-200">${row.priceUsd.toFixed(2)}</div>
+              )}
+              <div className={`text-xs ${row.listed ? "text-emerald-400" : "text-zinc-500"}`}>
+                {row.listed ? "Listed" : "Not listed"}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

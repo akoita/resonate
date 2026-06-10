@@ -111,6 +111,19 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- Eligibility policy v2 (#1145, `2026-06-10.v2`): track-default requests
+  (the release-page CTA, no stem filter) are a **partial allowance** — one
+  licensed stem enables the track, non-remixable mints are excluded rather
+  than blocking, and the created draft contains only licensed remixable
+  stems. Explicit stem selections (project creation, generation, stem-scoped
+  CTAs) still require every selected stem to be licensed and remixable.
+- Remix access surface (#1145): `/stem/[tokenId]` is the polished asset page
+  — type-themed hero with artwork, attribution, audio preview, an action
+  rail with Buy/Remix/List, and a license-tiers panel; reachable from
+  marketplace card titles and release-page minted-stem chips. Catalog
+  metadata fetches use the canonical `API_BASE` (a prior undocumented
+  `NEXT_PUBLIC_BACKEND_URL` dependency silently removed the Remix card on
+  deployed environments).
 - UI (#895): `/remix/studio/[projectId]` — editable studio
   (`web/src/components/remix/RemixStudioEditor.tsx`): inline title editing,
   source attribution linking to the release, rights badge derived from the

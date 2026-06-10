@@ -191,10 +191,12 @@ export function RemixCta({
         return;
       }
 
+      // Track-default eligibility can be a partial allowance: build the
+      // project from licensed, remixable stems only.
       const projectStemIds =
         requestedStemIds ??
         eligibility.stems
-          .filter((stem) => stem.licensed)
+          .filter((stem) => stem.licensed && stem.remixable !== false)
           .map((stem) => stem.stemId);
       const project = await createRemixProject(token, {
         sourceTrackId: trackId,

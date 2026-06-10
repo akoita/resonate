@@ -745,7 +745,16 @@ export default function MarketplacePage() {
 
                                 {/* Body */}
                                 <div className="stem-card__body">
-                                    <div className="stem-card__title">{listing.stem?.title}</div>
+                                    <div className="stem-card__title">
+                                        <Link
+                                            href={`/stem/${listing.tokenId}`}
+                                            title="View stem details, license tiers, and remix access"
+                                            style={{ color: "inherit", textDecoration: "none" }}
+                                            className="stem-card__title-link"
+                                        >
+                                            {listing.stem?.title}
+                                        </Link>
+                                    </div>
                                     <div className="stem-card__meta">
                                         {listing.stem?.releaseId ? (
                                             <Link href={`/release/${listing.stem.releaseId}`} style={{ color: "inherit", textDecoration: "none" }}>

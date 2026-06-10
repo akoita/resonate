@@ -79,6 +79,7 @@ export class RemixEligibilityService {
       rightsRoute,
       contentStatus: track.contentStatus,
       sourceOptedIn: this.isSourceOptedIn(rightsRoute),
+      explicitStemSelection: !!input.stemIds?.length,
       stems,
     });
 

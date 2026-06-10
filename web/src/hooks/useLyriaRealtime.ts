@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { API_BASE } from '../lib/api';
 
 interface RealtimeControls {
   bpm: number;
@@ -125,7 +126,7 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
   const getSocket = useCallback(() => {
     if (socketRef.current?.connected) return socketRef.current;
 
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3001';
+    const backendUrl = API_BASE;
     const socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
     });

@@ -1,5 +1,59 @@
 # Security Best Practices Report
 
+## Stem Detail Page Redesign And Remix Access - 2026-06-10
+
+### Scope Reviewed
+
+Changed files (#1145):
+
+- `web/src/app/stem/[tokenId]/page.tsx` (redesign) + 3 more files losing the
+  undocumented `NEXT_PUBLIC_BACKEND_URL` (`ContentProtectionBadge`,
+  `useSynthIdVerification`, `useLyriaRealtime`)
+- `web/src/components/stem/StemDetailSections.tsx`,
+  `web/src/lib/stemPageTheme.ts` (+ tests)
+- `web/src/app/marketplace/page.tsx`, `web/src/app/release/[id]/page.tsx`
+  (navigation links)
+- `backend/src/modules/remix/remix-eligibility.policy.ts` + service
+  (partial allowance v2), `web/src/components/remix/RemixCta.tsx`
+  (licensed+remixable subset filter)
+
+### Executive Summary
+
+No Critical or High findings. The config fix removes an undocumented env
+dependency that silently disabled the remix entry point on deployed
+environments; all browser fetches now use the canonical `API_BASE`. The
+redesigned page consumes only public endpoints (token metadata, public
+listings, stem pricing, catalog preview) plus the authenticated eligibility
+CTA; no new authority paths. The partial-allowance policy relaxes only
+track-default CTA gating — explicit stem selections (project creation,
+generation) still require every stem licensed and remixable, so no rights
+expansion reaches project inputs; drafts are built from the licensed,
+remixable subset on both client and server.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- New external links (explorer, ipfs.io gateway) use
+  `rel="noopener noreferrer"`; artwork renders via `img` from API-served
+  URLs, no `dangerouslySetInnerHTML`.
+- Copy-link writes the current URL to the clipboard; no user-generated
+  content involved.
+- The metadata-fallback banner reveals only that the catalog is unreachable.
+
+### Scans Run
+
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie' <changed frontend files>`
+- `rg -i 'password|secret|api_key|private_key' <changed files>`
+- Hardcoded non-localhost URL grep (explorer/ipfs allowlist)
+- `git diff --check`
+
 ## Seller License-Tier Listings - 2026-06-10
 
 ### Scope Reviewed

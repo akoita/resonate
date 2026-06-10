@@ -1,6 +1,6 @@
 import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 
-export const REMIX_POLICY_VERSION = "2026-06-09.v1";
+export const REMIX_POLICY_VERSION = "2026-06-10.v2";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -46,6 +46,14 @@ export type RemixEligibilityPolicyInput = {
    * caller passes the conservative default computed by the service.
    */
   sourceOptedIn: boolean;
+  /**
+   * True when the caller named specific stems (project creation, generation,
+   * stem-scoped CTAs): every selected stem must then be licensed and
+   * remixable. False for track-default requests (release-page CTA), where
+   * one licensed stem is enough and non-remixable mints are simply excluded
+   * rather than blocking the track.
+   */
+  explicitStemSelection: boolean;
   stems: RemixStemPolicyInput[];
 };
 
@@ -120,14 +128,19 @@ export function evaluateRemixEligibility(
 ): RemixEligibilityDecision {
   const reasons = sourceDenialReasons(input);
 
-  const nonRemixableStems = input.stems.filter(
-    (stem) => stem.mintRemixable === false,
-  );
-  for (const stem of nonRemixableStems) {
-    reasons.push({
-      code: "stem_not_remixable",
-      message: `Stem ${stem.stemId} was minted without remix rights.`,
-    });
+  // Explicitly selecting a non-remixable mint is a hard denial. For
+  // track-default requests those stems are excluded from consideration
+  // instead, so one locked stem cannot block remixing the rest of the track.
+  if (input.explicitStemSelection) {
+    const nonRemixableStems = input.stems.filter(
+      (stem) => stem.mintRemixable === false,
+    );
+    for (const stem of nonRemixableStems) {
+      reasons.push({
+        code: "stem_not_remixable",
+        message: `Stem ${stem.stemId} was minted without remix rights.`,
+      });
+    }
   }
 
   if (reasons.length > 0) {
@@ -140,8 +153,17 @@ export function evaluateRemixEligibility(
     };
   }
 
-  const unlicensedStems = input.stems.filter((stem) => !stem.licensed);
-  if (input.stems.length === 0 || unlicensedStems.length > 0) {
+  const candidateStems = input.explicitStemSelection
+    ? input.stems
+    : input.stems.filter((stem) => stem.mintRemixable !== false);
+  const licensedStems = candidateStems.filter((stem) => stem.licensed);
+  // Explicit selections must be fully licensed (they become project/
+  // generation inputs verbatim). Track-default requests are CTA gating:
+  // one licensed stem makes the track remixable with the licensed subset.
+  const licenseSatisfied = input.explicitStemSelection
+    ? candidateStems.length > 0 && licensedStems.length === candidateStems.length
+    : licensedStems.length > 0;
+  if (!licenseSatisfied) {
     return {
       allowed: false,
       requiredLicense: "remix",
@@ -150,7 +172,7 @@ export function evaluateRemixEligibility(
         {
           code: "license_required",
           message:
-            input.stems.length === 0
+            candidateStems.length === 0
               ? "Select at least one stem and hold a remix license for it."
               : "A remix license is required for the selected stems.",
         },
