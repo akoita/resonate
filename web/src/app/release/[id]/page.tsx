@@ -2191,7 +2191,18 @@ export default function ReleaseDetails() {
                                             stem.type === "guitar" ? "🎸" : "🎵"}
                                   </span>
                                   <span className="nft-stem-name">
-                                    {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                                    {stem.ipnftId ? (
+                                      <a
+                                        href={`/stem/${stem.ipnftId}`}
+                                        title="View the minted stem's token page"
+                                        style={{ color: "inherit", textDecoration: "underline", textUnderlineOffset: 3 }}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        {stem.type.charAt(0).toUpperCase() + stem.type.slice(1)}
+                                      </a>
+                                    ) : (
+                                      stem.type.charAt(0).toUpperCase() + stem.type.slice(1)
+                                    )}
                                   </span>
                                   <MintStemButton
                                     stemId={stem.id}
