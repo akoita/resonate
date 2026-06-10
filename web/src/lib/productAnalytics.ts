@@ -48,6 +48,11 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "community.artist_tab_viewed",
   "community.room_selected",
   "community.room_join_clicked",
+  "remix.cta_impression",
+  "remix.cta_clicked",
+  "remix.studio_opened",
+  "remix.studio_saved",
+  "remix.studio_action_unavailable",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];
