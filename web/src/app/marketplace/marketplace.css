@@ -283,7 +283,9 @@
 }
 
 .marketplace-manager {
-  max-width: 1120px;
+  /* Matches the stem detail content column (Tailwind max-w-6xl) so the
+     seller workspace and the public stem pages share one content width. */
+  max-width: 72rem;
   margin: 0 auto;
   padding: var(--space-6);
 }

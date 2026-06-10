@@ -19,6 +19,9 @@ import type { LicenseType } from "../../../components/marketplace/LicenseTypeSel
 import { RemixCta } from "../../../components/remix/RemixCta";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
+import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
+import { findPaymentAssetForToken, ZERO_PAYMENT_TOKEN } from "../../../lib/payments";
+import { formatListingPrice } from "../../../lib/listingPricing";
 import { shortAddress, stemTypeTheme } from "../../../lib/stemPageTheme";
 import {
     buildTierRows,
@@ -219,6 +222,20 @@ export default function StemDetailPage() {
     const signer = (smartAccountAddress || address)?.toLowerCase();
     const isOwnListing = !!primaryListing && !!signer && primaryListing.seller.toLowerCase() === signer;
 
+    const { assets: paymentAssets } = usePaymentAssets(chainId);
+    const primaryListingPriceLabel = useMemo(() => {
+        if (!primaryListing) return null;
+        const token = primaryListing.paymentToken?.toLowerCase();
+        const asset = !token || token === ZERO_PAYMENT_TOKEN
+            ? null
+            : findPaymentAssetForToken(paymentAssets, primaryListing.chainId, primaryListing.paymentToken);
+        try {
+            return formatListingPrice({ priceUnits: BigInt(primaryListing.price), asset });
+        } catch {
+            return null; // malformed indexer price: CTA still works without it
+        }
+    }, [paymentAssets, primaryListing]);
+
     const stemType = attr("Type") ?? primaryListing?.stem?.type ?? null;
     const theme = stemTypeTheme(stemType);
     const displayTitle = meta?.name ?? primaryListing?.stem?.title ?? null;
@@ -332,6 +349,7 @@ export default function StemDetailPage() {
                                 }}
                             >
                                 Buy · {primaryListing.licenseType ?? "personal"} license
+                                {primaryListingPriceLabel ? ` · ${primaryListingPriceLabel}` : ""}
                             </button>
                         )}
                         {primaryListing && isOwnListing && (
@@ -359,6 +377,11 @@ export default function StemDetailPage() {
                             >
                                 List for Sale
                             </button>
+                        )}
+                        {!primaryListing && metaState !== "loading" && (
+                            <span className="px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 text-sm text-zinc-500">
+                                Not listed right now — tier prices below are seller defaults
+                            </span>
                         )}
                     </div>
                     <div className="flex items-center gap-3">
