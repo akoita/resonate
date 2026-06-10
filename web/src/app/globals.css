@@ -12,7 +12,7 @@
  * preserves the existing plain-CSS pages' default typography while
  * letting utility classes take effect where they're used.
  */
-@layer theme, components, utilities;
+@layer reset, theme, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "../**/*.{js,ts,jsx,tsx}";
@@ -343,10 +343,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+/*
+ * Universal reset lives in the lowest cascade layer (#1150). Unlayered, it
+ * outranked every rule inside @layer — including all Tailwind margin/padding
+ * utilities, which silently computed to 0 app-wide. Inside `reset` it still
+ * zeroes UA defaults but yields to layered utilities and to any plain-CSS
+ * rule (those are unlayered and always win over layers).
+ */
+@layer reset {
+  * {
+    box-sizing: border-box;
+    padding: 0;
+    margin: 0;
+  }
 }
 
 a {
