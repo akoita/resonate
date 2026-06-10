@@ -56,6 +56,9 @@ const PROJECT_INCLUDE = {
       release: {
         select: {
           id: true,
+          // Analytics attribution (#1121): remix.project_created facts
+          // aggregate under the source artist in the warehouse.
+          artistId: true,
           title: true,
           primaryArtist: true,
           rightsRoute: true,
@@ -136,6 +139,12 @@ export class RemixProjectService {
       include: PROJECT_INCLUDE,
     });
 
+    // Artist attribution (#1121): the signal belongs to the artist whose
+    // track is being remixed. Without artistId in the payload the warehouse
+    // aggregates the fact under "unknown" and the source artist's action
+    // cockpit never sees it.
+    const sourceArtistId = project.sourceTrack?.release?.artistId ?? null;
+
     this.eventBus.publish({
       eventName: "remix.project_created",
       eventVersion: 1,
@@ -143,6 +152,7 @@ export class RemixProjectService {
       remixProjectId: project.id,
       creatorId: input.userId,
       sourceTrackId: input.sourceTrackId,
+      ...(sourceArtistId ? { artistId: sourceArtistId } : {}),
       stemIds,
       mode,
       policyVersion: eligibility.policyVersion,
