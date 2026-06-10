@@ -693,6 +693,36 @@ describe("Remix eligibility and projects (integration)", () => {
         expect(forced.generationJobId).toBe(`rmxgen_${created.id}`);
       });
 
+      it("normalizes unexpected provider failures to provider_unavailable", async () => {
+        const explodingProvider = {
+          createRemixDraft: jest
+            .fn()
+            .mockRejectedValue(new Error("vendor boom")),
+        };
+        const svc = new RemixProjectService(
+          eventBus,
+          eligibilityService,
+          explodingProvider,
+        );
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Exploding Provider",
+        });
+        await expect(svc.generateDraft(CREATOR_ID, created.id)).rejects.toMatchObject({
+          code: "provider_unavailable",
+          retryable: true,
+        });
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_failed",
+            remixProjectId: created.id,
+            errorCode: "provider_unavailable",
+          }),
+        );
+      });
+
       it("re-checks eligibility and enforces ownership", async () => {
         process.env.REMIX_GENERATION_ENABLED = "true";
         const created = await projectService.createProject({

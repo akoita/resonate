@@ -309,23 +309,37 @@ export class RemixProjectService {
     try {
       job = await this.generationProvider.createRemixDraft(input);
     } catch (error) {
-      if (error instanceof RemixGenerationProviderError) {
-        this.eventBus.publish({
-          eventName: "remix.generation_failed",
-          eventVersion: 1,
-          occurredAt: new Date().toISOString(),
-          remixProjectId: project.id,
-          creatorId: userId,
-          sourceTrackId: project.sourceTrackId,
-          errorCode: error.code,
-          policyVersion: eligibility.policyVersion,
-        });
-      }
-      throw error;
+      // Keep the boundary contract total: unknown provider exceptions are
+      // normalized so the failed event and the HTTP error shape always fire.
+      const normalized =
+        error instanceof RemixGenerationProviderError
+          ? error
+          : new RemixGenerationProviderError(
+              "provider_unavailable",
+              "The remix generation provider failed unexpectedly. Please try again later.",
+              true,
+            );
+      this.eventBus.publish({
+        eventName: "remix.generation_failed",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        remixProjectId: project.id,
+        creatorId: userId,
+        sourceTrackId: project.sourceTrackId,
+        errorCode: normalized.code,
+        policyVersion: eligibility.policyVersion,
+      });
+      throw normalized;
     }
 
-    const updated = await prisma.remixProject.update({
-      where: { id: project.id },
+    // Conditional write so a concurrent generate cannot clobber recorded
+    // provenance (the pre-check above is read-then-act). Double provider
+    // execution itself is prevented by queued jobs in D3.
+    const claimed = await prisma.remixProject.updateMany({
+      where: {
+        id: project.id,
+        ...(options.force ? {} : { generationJobId: null }),
+      },
       data: {
         generationProvider: job.provider,
         generationJobId: job.jobId,
@@ -340,8 +354,13 @@ export class RemixProjectService {
           requestedAt: new Date().toISOString(),
         },
       },
-      include: PROJECT_INCLUDE,
     });
+    if (claimed.count === 0) {
+      throw new BadRequestException(
+        "A generation job was recorded by a concurrent request; reload the project.",
+      );
+    }
+    const updated = (await loadProject(project.id))!;
 
     this.eventBus.publish({
       eventName: "remix.generation_started",
