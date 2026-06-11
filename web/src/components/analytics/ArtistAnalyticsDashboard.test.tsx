@@ -103,6 +103,8 @@ describe("ArtistAnalyticsDashboard", () => {
     expect(html).toContain("Reward early supporters");
     expect(html).toContain("Open benefits");
     expect(html).toContain("Review remix supply");
+    expect(html).toContain("Review remix supply pricing");
+    expect(html).toContain("Triage fan questions");
     expect(html).toContain("Relist expired marketplace inventory");
     expect(html).toContain("Open expired listings");
     expect(html).toContain("Improve marketplace checkout conversion");
@@ -330,6 +332,53 @@ const dashboard: ArtistAnalyticsDashboardData = {
       cta: {
         label: "Review remix supply",
         href: "/marketplace/manage?status=active",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "review_remix_supply_pricing",
+      type: "review_remix_supply_pricing",
+      title: "Review remix supply pricing",
+      description:
+        "Remix demand is visible, but your seller workspace has no active marketplace inventory in this analytics window.",
+      reason: "5 aggregate remix demand signals and no active owner inventory in the last 30 days.",
+      priority: "medium",
+      confidence: 0.66,
+      sourceSignal: {
+        category: "remix",
+        summary: "Remix demand with no active owner inventory",
+        count: 5,
+      },
+      cta: {
+        label: "Review active listings",
+        href: "/marketplace/manage?status=active",
+      },
+      privacy: {
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      },
+    },
+    {
+      id: "triage_fan_questions",
+      type: "triage_fan_questions",
+      title: "Triage fan questions",
+      description: "Fans are posting in your community rooms without a recent announcement or campaign update signal.",
+      reason: "5 aggregate fan messages and no recent artist update signal in the last 30 days.",
+      priority: "medium",
+      confidence: 0.64,
+      sourceSignal: {
+        category: "community",
+        summary: "Fan messages without recent artist updates",
+        count: 5,
+      },
+      cta: {
+        label: "Open community",
+        href: "/artist/artist-1?tab=community",
       },
       privacy: {
         aggregateOnly: true,

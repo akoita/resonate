@@ -589,6 +589,285 @@ describe("analytics", () => {
     expect(cardsByType.get("improve_marketplace_conversion")).toBeUndefined();
   });
 
+  it("derives remix supply pricing cards from attributed remix demand and empty active inventory", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+
+    await ingest.ingest({
+      eventName: "marketplace.owner_inventory_viewed",
+      occurredAt: recentAnalyticsIso(10),
+      payload: {
+        artistId: "artist-remix-pricing-high",
+        statusFilter: "active",
+        activeCount: 0,
+        expiredCount: 2,
+        expiringSoonCount: 0,
+        relistableCount: 2,
+        totalListings: 2,
+      },
+    });
+    for (let index = 0; index < 25; index += 1) {
+      await ingest.ingest({
+        eventName: index % 2 === 0 ? "remix.cta_clicked" : "remix.cta_impression",
+        occurredAt: recentAnalyticsIso(20 + index),
+        payload: {
+          artistId: "artist-remix-pricing-high",
+          trackId: "track-remix-demand",
+          variant: "license_required",
+          licensePathAvailable: false,
+        },
+      });
+    }
+
+    await ingest.ingest({
+      eventName: "marketplace.owner_inventory_viewed",
+      occurredAt: recentAnalyticsIso(60),
+      payload: {
+        artistId: "artist-remix-pricing-medium",
+        statusFilter: "active",
+        activeCount: 0,
+        expiredCount: 0,
+        expiringSoonCount: 0,
+        relistableCount: 0,
+        totalListings: 0,
+      },
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "remix.project_created",
+        occurredAt: recentAnalyticsIso(70 + index),
+        payload: {
+          artistId: "artist-remix-pricing-medium",
+          remixProjectId: `project-medium-${index}`,
+          sourceTrackId: "track-remix-medium",
+          stemIds: ["stem-medium"],
+        },
+      });
+    }
+
+    await ingest.ingest({
+      eventName: "marketplace.owner_inventory_viewed",
+      occurredAt: recentAnalyticsIso(90),
+      payload: {
+        artistId: "artist-remix-pricing-small",
+        statusFilter: "active",
+        activeCount: 0,
+        expiredCount: 0,
+        expiringSoonCount: 0,
+        relistableCount: 0,
+        totalListings: 0,
+      },
+    });
+    for (let index = 0; index < 4; index += 1) {
+      await ingest.ingest({
+        eventName: "remix.cta_clicked",
+        occurredAt: recentAnalyticsIso(100 + index),
+        payload: {
+          artistId: "artist-remix-pricing-small",
+          trackId: "track-remix-small",
+        },
+      });
+    }
+
+    await ingest.ingest({
+      eventName: "marketplace.owner_inventory_viewed",
+      occurredAt: recentAnalyticsIso(120),
+      payload: {
+        artistId: "artist-remix-pricing-active",
+        statusFilter: "active",
+        activeCount: 1,
+        expiredCount: 0,
+        expiringSoonCount: 0,
+        relistableCount: 0,
+        totalListings: 1,
+      },
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "remix.cta_clicked",
+        occurredAt: recentAnalyticsIso(130 + index),
+        payload: {
+          artistId: "artist-remix-pricing-active",
+          trackId: "track-remix-active",
+        },
+      });
+    }
+
+    await ingest.ingest({
+      eventName: "marketplace.owner_inventory_viewed",
+      occurredAt: recentAnalyticsIso(150),
+      payload: {
+        artistId: "artist-remix-pricing-unattributed",
+        statusFilter: "active",
+        activeCount: 0,
+        expiredCount: 0,
+        expiringSoonCount: 0,
+        relistableCount: 0,
+        totalListings: 0,
+      },
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "remix.cta_clicked",
+        occurredAt: recentAnalyticsIso(160 + index),
+        payload: {
+          trackId: "track-remix-unattributed",
+        },
+      });
+    }
+
+    const highResult = await analytics.getArtistDashboard("artist-remix-pricing-high", 30);
+    const highCard = new Map(highResult.actions.map((action) => [action.type, action])).get(
+      "review_remix_supply_pricing",
+    );
+    expect(highCard).toEqual(expect.objectContaining({
+      priority: "high",
+      confidence: 0.8,
+      reason: expect.stringContaining("25 aggregate remix demand signals"),
+      sourceSignal: expect.objectContaining({
+        category: "remix",
+        summary: "Remix demand with no active owner inventory",
+        count: 25,
+      }),
+      cta: expect.objectContaining({ href: "/marketplace/manage?status=active" }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      }),
+    }));
+
+    const mediumResult = await analytics.getArtistDashboard("artist-remix-pricing-medium", 30);
+    expect(new Map(mediumResult.actions.map((action) => [action.type, action])).get("review_remix_supply_pricing"))
+      .toEqual(expect.objectContaining({
+        priority: "medium",
+        confidence: 0.66,
+        sourceSignal: expect.objectContaining({ count: 5 }),
+      }));
+
+    const smallResult = await analytics.getArtistDashboard("artist-remix-pricing-small", 30);
+    expect(smallResult.actions.map((action) => action.type)).not.toContain("review_remix_supply_pricing");
+
+    const activeResult = await analytics.getArtistDashboard("artist-remix-pricing-active", 30);
+    expect(activeResult.actions.map((action) => action.type)).not.toContain("review_remix_supply_pricing");
+
+    const unattributedResult = await analytics.getArtistDashboard("artist-remix-pricing-unattributed", 30);
+    expect(unattributedResult.actions.map((action) => action.type)).not.toContain("review_remix_supply_pricing");
+  });
+
+  it("derives fan-triage cards from attributed community messages without recent artist updates", async () => {
+    const ingest = new AnalyticsIngestService();
+    const analytics = new AnalyticsService(ingest);
+    const encodedArtistId = "artist fan/triage";
+
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "community.message_created",
+        occurredAt: recentAnalyticsIso(10 + index),
+        payload: {
+          artistId: encodedArtistId,
+          roomId: "room-fan-triage",
+          messageId: `message-fan-${index}`,
+          messageType: "message",
+        },
+      });
+    }
+    for (let index = 0; index < 25; index += 1) {
+      await ingest.ingest({
+        eventName: "community.message_created",
+        occurredAt: recentAnalyticsIso(20 + index),
+        payload: {
+          artistId: "artist-fan-triage-high",
+          roomId: "room-fan-triage-high",
+          messageId: `message-fan-high-${index}`,
+          messageType: "message",
+        },
+      });
+    }
+    for (let index = 0; index < 4; index += 1) {
+      await ingest.ingest({
+        eventName: "community.message_created",
+        occurredAt: recentAnalyticsIso(50 + index),
+        payload: {
+          artistId: "artist-fan-triage-small",
+          roomId: "room-fan-triage-small",
+          messageId: `message-fan-small-${index}`,
+          messageType: "message",
+        },
+      });
+    }
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "community.message_created",
+        occurredAt: recentAnalyticsIso(70 + index),
+        payload: {
+          artistId: "artist-fan-triage-active",
+          roomId: "room-fan-triage-active",
+          messageId: `message-fan-active-${index}`,
+          messageType: "message",
+        },
+      });
+    }
+    await ingest.ingest({
+      eventName: "community.message_created",
+      occurredAt: recentAnalyticsIso(80),
+      payload: {
+        artistId: "artist-fan-triage-active",
+        roomId: "room-fan-triage-active",
+        messageId: "message-artist-update",
+        messageType: "announcement",
+      },
+    });
+    for (let index = 0; index < 5; index += 1) {
+      await ingest.ingest({
+        eventName: "community.message_created",
+        occurredAt: recentAnalyticsIso(90 + index),
+        payload: {
+          roomId: "room-fan-triage-unattributed",
+          messageId: `message-fan-unattributed-${index}`,
+          messageType: "message",
+        },
+      });
+    }
+
+    const result = await analytics.getArtistDashboard(encodedArtistId, 30);
+    const card = new Map(result.actions.map((action) => [action.type, action])).get("triage_fan_questions");
+    expect(card).toEqual(expect.objectContaining({
+      priority: "medium",
+      confidence: 0.64,
+      reason: expect.stringContaining("5 aggregate fan messages"),
+      sourceSignal: expect.objectContaining({
+        category: "community",
+        summary: "Fan messages without recent artist updates",
+        count: 5,
+      }),
+      cta: expect.objectContaining({ href: `/artist/${encodeURIComponent(encodedArtistId)}?tab=community` }),
+      privacy: expect.objectContaining({
+        aggregateOnly: true,
+        thresholdApplied: true,
+        minimumThreshold: 5,
+      }),
+    }));
+
+    const highResult = await analytics.getArtistDashboard("artist-fan-triage-high", 30);
+    expect(new Map(highResult.actions.map((action) => [action.type, action])).get("triage_fan_questions")).toEqual(
+      expect.objectContaining({
+        priority: "high",
+        confidence: 0.78,
+        sourceSignal: expect.objectContaining({ count: 25 }),
+      }),
+    );
+
+    const smallResult = await analytics.getArtistDashboard("artist-fan-triage-small", 30);
+    expect(smallResult.actions.map((action) => action.type)).not.toContain("triage_fan_questions");
+
+    const activeResult = await analytics.getArtistDashboard("artist-fan-triage-active", 30);
+    expect(activeResult.actions.map((action) => action.type)).not.toContain("triage_fan_questions");
+
+    const unattributedResult = await analytics.getArtistDashboard("room-fan-triage-unattributed", 30);
+    expect(unattributedResult.actions.map((action) => action.type)).not.toContain("triage_fan_questions");
+  });
+
   it("reads current reports from analytics facts generated by warehouse layers", async () => {
     const ingest = new AnalyticsIngestService();
     const warehouse = new AnalyticsWarehouseExportService(ingest);

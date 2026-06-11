@@ -408,6 +408,7 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       country: stringPayload(clean.payload, "country"),
       roomId: stringPayload(clean.payload, "roomId"),
       roomType: stringPayload(clean.payload, "roomType"),
+      messageType: stringPayload(clean.payload, "messageType"),
       roleType: stringPayload(clean.payload, "roleType"),
       benefitRuleId: stringPayload(clean.payload, "benefitRuleId"),
       benefitType: stringPayload(clean.payload, "benefitType"),

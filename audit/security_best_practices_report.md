@@ -1,5 +1,61 @@
 # Security Best Practices Report
 
+## Artist Action Cockpit P7 Tail Cards - 2026-06-11
+
+### Scope Reviewed
+
+Changed files (#1121):
+
+- `backend/src/modules/analytics/analytics.service.ts`
+  (`review_remix_supply_pricing`, `triage_fan_questions` derivation)
+- `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`,
+  `backend/src/modules/analytics/analytics_warehouse.ts`,
+  `backend/src/events/event_types.ts`, and
+  `backend/src/modules/community/community_rooms.service.ts`
+  (compact `artistId` and `messageType` attribution for community messages)
+- `web/src/lib/api.ts` and
+  `web/src/components/analytics/ArtistAnalyticsDashboard.test.tsx`
+  (frontend card type mirror and real-shape fixtures)
+- `docs/features/analytics_dashboard.md` and `docs/features/README.md`
+
+### Executive Summary
+
+No Critical or High findings. The new action cards are deterministic,
+server-derived, and use only artist-attributed facts or artist-owned owner
+inventory summaries. Listener-derived remix demand and community message counts
+reuse the existing five-signal floor before surfacing counts. The bridge update
+adds compact attribution metadata for `community.message_created`; it does not
+include message bodies, author ids in dashboard DTOs, wallet addresses, room
+membership, or per-listener drilldowns.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The remix supply-pricing card requires an actual
+  `marketplace.owner_inventory_viewed` snapshot before treating active owner
+  inventory as zero, so missing analytics is not interpreted as supply absence.
+- The fan-triage card is suppressed by aggregate artist update signals
+  (`announcement` or `campaign_update`) and never inspects message content.
+- The frontend change only mirrors backend response types and renders existing
+  card schema fields; no HTML injection, cookie handling, or secret-bearing
+  client config paths were added.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/analytics backend/src/modules/community backend/src/events --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/analytics backend/src/modules/community backend/src/events`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/analytics backend/src/modules/community backend/src/events`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/components/analytics web/src/lib/api.ts`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD|document\.cookie|setCookie|httpOnly.*false' web/src/components/analytics web/src/lib/api.ts`
+- `git diff --check`
+
 ## Stem Detail Page Redesign And Remix Access - 2026-06-10
 
 ### Scope Reviewed
