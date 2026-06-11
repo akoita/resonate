@@ -49,6 +49,63 @@ export type RemixGenerationConstraints = {
   explicitAllowed?: boolean;
 };
 
+/** Bounds enforced at the endpoint before any provider work (#1162). */
+export const REMIX_GENERATION_SUPPORTED_DURATIONS = [30, 60, 120, 180] as const;
+export const REMIX_GENERATION_BPM_MIN = 40;
+export const REMIX_GENERATION_BPM_MAX = 220;
+const REMIX_GENERATION_KEY_PATTERN = /^[A-G][#b]?m?(in|aj)?(or)?$/i;
+
+/**
+ * Pure runtime validation for client-submitted constraints. Returns the
+ * field-level problems so the controller can answer 400 with specifics
+ * instead of letting out-of-bounds values reach a paid provider.
+ */
+export function validateRemixGenerationConstraints(
+  constraints: RemixGenerationConstraints | undefined,
+): string[] {
+  if (!constraints) return [];
+  const problems: string[] = [];
+  if (constraints.durationSeconds !== undefined) {
+    if (
+      !REMIX_GENERATION_SUPPORTED_DURATIONS.includes(
+        constraints.durationSeconds as (typeof REMIX_GENERATION_SUPPORTED_DURATIONS)[number],
+      )
+    ) {
+      problems.push(
+        `constraints.durationSeconds must be one of: ${REMIX_GENERATION_SUPPORTED_DURATIONS.join(", ")}`,
+      );
+    }
+  }
+  if (constraints.bpm !== undefined) {
+    if (
+      !Number.isFinite(constraints.bpm) ||
+      constraints.bpm < REMIX_GENERATION_BPM_MIN ||
+      constraints.bpm > REMIX_GENERATION_BPM_MAX
+    ) {
+      problems.push(
+        `constraints.bpm must be between ${REMIX_GENERATION_BPM_MIN} and ${REMIX_GENERATION_BPM_MAX}`,
+      );
+    }
+  }
+  if (constraints.key !== undefined) {
+    if (
+      typeof constraints.key !== "string" ||
+      !REMIX_GENERATION_KEY_PATTERN.test(constraints.key.trim())
+    ) {
+      problems.push(
+        'constraints.key must be a musical key such as "C", "F#", "Bbm", or "Am"',
+      );
+    }
+  }
+  if (
+    constraints.explicitAllowed !== undefined &&
+    typeof constraints.explicitAllowed !== "boolean"
+  ) {
+    problems.push("constraints.explicitAllowed must be a boolean");
+  }
+  return problems;
+}
+
 export type RemixGenerationProvenance = {
   remixProjectId: string;
   creatorUserId: string;
@@ -114,6 +171,15 @@ export function buildRemixGenerationInput(
   project: ProjectForGeneration,
   constraints: RemixGenerationConstraints = {},
 ): RemixGenerationInput {
+  // Defensive (#1162 review prereq): the DB column is a plain string; an
+  // unknown mode must fail the boundary contract, not flow to a provider.
+  if (!["stem_mix", "variation", "extension"].includes(project.mode)) {
+    throw new RemixGenerationProviderError(
+      "invalid_input",
+      `Unknown remix project mode: ${project.mode}`,
+      false,
+    );
+  }
   const mode = project.mode as RemixGenerationInput["mode"];
   const prompt =
     mode === "stem_mix" ? undefined : project.prompt?.trim() || undefined;

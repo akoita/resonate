@@ -20,6 +20,7 @@ import {
 } from "./remix-project.service";
 import {
   RemixGenerationProviderError,
+  validateRemixGenerationConstraints,
   type RemixGenerationConstraints,
   type RemixGenerationErrorCode,
 } from "./remix-generation.provider";
@@ -125,6 +126,17 @@ export class RemixController {
       force?: boolean;
     } = {},
   ) {
+    // Bounds before any project/provider work (#1162): out-of-range
+    // durations or tempos must never reach a paid provider.
+    const constraintProblems = validateRemixGenerationConstraints(
+      body?.constraints,
+    );
+    if (constraintProblems.length > 0) {
+      throw new BadRequestException({
+        message: "Invalid generation constraints",
+        problems: constraintProblems,
+      });
+    }
     try {
       return await this.projectService.generateDraft(req.user.userId, id, {
         constraints: body?.constraints,

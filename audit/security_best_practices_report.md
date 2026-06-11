@@ -2616,3 +2616,53 @@ cd backend && npm run test  # 767 passed
 cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 28 passed
 cd backend && npm run lint  # tsc clean
 ```
+
+## Scan: feat/1162-remix-lyria-provider (2026-06-11)
+
+**Scope:** `backend/src/modules/remix/lyria-remix-generation.provider.ts`
+(new), `remix-generation.provider.ts` (constraint validation + mode guard),
+`remix.controller.ts` (bounds check), `remix.module.ts` /
+`generation.module.ts` (wiring), `web/src/lib/api.ts`,
+`web/src/components/remix/RemixStudioEditor.tsx`, tests and docs for issue
+#1162 (first real remix generation provider, backlog D2).
+
+**Findings:** none (no Critical/High/Medium/Low).
+
+### Review Notes
+
+- Credentials are reused from the existing catalog Lyria stack
+  (`GOOGLE_AI_API_KEY` / `LYRIA_PROJECT_ID` ADC); no new secrets, and the
+  remix provider holds no credential of its own.
+- Double gate: `REMIX_GENERATION_PROVIDER_KIND` only selects the
+  implementation; `REMIX_GENERATION_ENABLED !== "true"` still short-circuits
+  every provider call (checked per request, tested), so kind selection
+  alone can never enable paid generation.
+- Client-submitted constraints are bounds-checked at the endpoint before
+  any project or provider work (duration whitelist, bpm 40–220, key
+  pattern, boolean check) — out-of-range values cannot reach a paid vendor
+  call. Combined with #1144's per-user generation rate limit (enforced
+  first), cost abuse surface is bounded.
+- `stem_mix` is rejected (`invalid_input`) rather than silently generating
+  unrelated audio from a text prompt — honest-output guarantee.
+- Voice/likeness remains type-level `false` in the provenance contract; the
+  provider never inspects or forwards a likeness flag.
+- Generated audio is written through the existing storage provider under
+  `remix-drafts/<projectId>/`; URIs are recorded in project metadata only
+  readable by the owner-scoped project API.
+- Vendor errors are normalized; raw provider error bodies are not returned
+  to clients (only the normalized code/message/retryable contract).
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|\$queryRaw|executeRaw|eval\(' \
+  backend/src/modules/remix/lyria-remix-generation.provider.ts \
+  backend/src/modules/remix/remix-generation.provider.ts \
+  backend/src/modules/remix/remix.controller.ts backend/src/modules/remix/remix.module.ts
+git diff --check
+cd backend && npm run test  # 778 passed
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 28 passed
+cd backend && npm run lint  # tsc clean
+cd web && npx vitest run    # 445 passed
+cd web && npm run build     # pass
+```

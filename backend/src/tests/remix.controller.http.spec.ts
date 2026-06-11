@@ -203,6 +203,18 @@ describe('RemixController (e2e)', () => {
     });
   });
 
+  it('POST /remix/projects/:id/generate → 400 with field problems for out-of-bounds constraints (#1162)', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/generate')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ constraints: { durationSeconds: 45, bpm: 600 } })
+      .expect(400);
+    expect(res.body.message).toBe('Invalid generation constraints');
+    expect(res.body.problems.join(' ')).toContain('durationSeconds');
+    expect(res.body.problems.join(' ')).toContain('bpm');
+    expect(mockProjectService.generateDraft).not.toHaveBeenCalled();
+  });
+
   it('POST /remix/projects/:id/generate → 503 with the normalized error contract when disabled', async () => {
     mockProjectService.generateDraft.mockRejectedValueOnce(
       new RemixGenerationProviderError(

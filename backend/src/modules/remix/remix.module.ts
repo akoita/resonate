@@ -1,5 +1,8 @@
 import { Module } from "@nestjs/common";
 import { SharedModule } from "../shared/shared.module";
+import { GenerationModule } from "../generation/generation.module";
+import { LyriaClient } from "../generation/lyria.client";
+import { StorageProvider } from "../storage/storage_provider";
 import { RemixController } from "./remix.controller";
 import { RemixService } from "./remix.service";
 import { RemixEligibilityService } from "./remix-eligibility.service";
@@ -8,18 +11,27 @@ import {
   REMIX_GENERATION_PROVIDER,
   StubRemixGenerationProvider,
 } from "./remix-generation.provider";
+import { LyriaRemixGenerationProvider } from "./lyria-remix-generation.provider";
 
 @Module({
-  imports: [SharedModule],
+  imports: [SharedModule, GenerationModule],
   controllers: [RemixController],
   providers: [
     RemixService,
     RemixEligibilityService,
     RemixProjectService,
-    // Provider boundary (#896): swap this binding to move Remix Studio onto
-    // Lyria, audio-conditioned models, or DSP/local tools without touching
-    // the project service.
-    { provide: REMIX_GENERATION_PROVIDER, useClass: StubRemixGenerationProvider },
+    // Provider boundary (#896): REMIX_GENERATION_PROVIDER_KIND selects the
+    // implementation (default stub; "lyria" reuses the catalog generation
+    // stack, #1162). REMIX_GENERATION_ENABLED stays the master gate inside
+    // every provider, so kind selection alone never enables generation.
+    {
+      provide: REMIX_GENERATION_PROVIDER,
+      useFactory: (lyriaClient: LyriaClient, storageProvider: StorageProvider) =>
+        process.env.REMIX_GENERATION_PROVIDER_KIND === "lyria"
+          ? new LyriaRemixGenerationProvider(lyriaClient, storageProvider)
+          : new StubRemixGenerationProvider(),
+      inject: [LyriaClient, StorageProvider],
+    },
   ],
   exports: [RemixEligibilityService, RemixProjectService],
 })

@@ -171,14 +171,26 @@ from the JWT, never the request body.
   `docs/deployment/environment.md`); the input's policy context types
   `voiceLikenessAllowed` as literal `false`.
 
+- Generation provider (#1162, backlog D2): `LyriaRemixGenerationProvider`
+  reuses the catalog Lyria stack behind the provider boundary, selected via
+  `REMIX_GENERATION_PROVIDER_KIND=lyria` with `REMIX_GENERATION_ENABLED` as
+  the master gate. Prompt-based variation/extension only — stem_mix is
+  rejected with `invalid_input` (needs audio conditioning). Output audio is
+  stored through the storage provider under `remix-drafts/<projectId>/` and
+  recorded on the project (`generationProvider`, `generationJobId`,
+  `generationMetadata`: outputUri/synthId/seed/sampleRate/cost). Endpoint
+  constraints are bounds-checked (duration ∈ {30,60,120,180}, bpm 40–220,
+  key pattern) before any provider work. The studio Draft status panel has a
+  Generate/Regenerate button for prompted modes with honest disabled
+  reasons; playback of the stored draft arrives with C3.
+
 ## Planned Surfaces
 
 - UI: marketplace listing card remix affordances beyond the existing
   `Remixable` badge (deliberately excluded from #894 to avoid per-card
   eligibility fan-out).
-- UI: Web Audio stem preview in the studio (backlog C3).
-- UI: studio Generate button — ships with the first real provider (backlog
-  D2) so the action never appears before it can work.
+- UI: Web Audio stem preview in the studio (backlog C3), including playback
+  of the generated AI draft (`generationMetadata.outputUri`).
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
 - Events: `remix.generation_completed` (with queued jobs, backlog D3),

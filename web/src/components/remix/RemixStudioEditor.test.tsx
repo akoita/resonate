@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixProject } from "../../lib/api";
 import {
+  describeGenerateAvailability,
+  generationErrorMessage,
   buildProjectPatch,
   clampGainDb,
   classifyProjectLoadError,
@@ -244,5 +246,45 @@ describe("RemixStudioPage shell", () => {
     const html = renderToStaticMarkup(<RemixStudioPage />);
     expect(html).toContain("aria-busy");
     expect(html).toContain("animate-pulse");
+  });
+});
+
+
+describe("describeGenerateAvailability (#1162)", () => {
+  const base = { mode: "variation", prompt: "darker", saving: false, dirty: false, generating: false };
+
+  it("is enabled for a saved, prompted project", () => {
+    expect(describeGenerateAvailability(base)).toEqual({ enabled: true, reason: null });
+  });
+
+  it("explains stem_mix, blank prompt, and unsaved edits", () => {
+    expect(describeGenerateAvailability({ ...base, mode: "stem_mix" }).reason).toContain(
+      "variation and extension",
+    );
+    expect(describeGenerateAvailability({ ...base, prompt: "  " }).reason).toContain(
+      "Write a prompt",
+    );
+    expect(describeGenerateAvailability({ ...base, dirty: true }).reason).toContain(
+      "Save your changes",
+    );
+  });
+
+  it("is inert without a reason while saving or generating", () => {
+    expect(describeGenerateAvailability({ ...base, generating: true })).toEqual({
+      enabled: false,
+      reason: null,
+    });
+    expect(describeGenerateAvailability({ ...base, saving: true }).enabled).toBe(false);
+  });
+});
+
+describe("generationErrorMessage (#1162)", () => {
+  it("maps normalized codes to user copy and passes provider messages through", () => {
+    expect(generationErrorMessage("provider_disabled", "x")).toContain("not enabled");
+    expect(generationErrorMessage("provider_rejected", "x")).toContain("rejected this prompt");
+    expect(generationErrorMessage("invalid_input", "A prompt is required.")).toBe(
+      "A prompt is required.",
+    );
+    expect(generationErrorMessage("unknown", "x")).toContain("try again later");
   });
 });

@@ -3922,6 +3922,28 @@ export async function updateRemixProject(
   );
 }
 
+export type RemixGenerationError = {
+  code:
+    | "provider_disabled"
+    | "invalid_input"
+    | "provider_rejected"
+    | "provider_unavailable";
+  message: string;
+  retryable: boolean;
+};
+
+export async function generateRemixDraft(
+  token: string,
+  projectId: string,
+  options: { force?: boolean } = {}
+) {
+  return apiRequest<RemixProject>(
+    `/remix/projects/${projectId}/generate`,
+    { method: "POST", body: JSON.stringify(options) },
+    token
+  );
+}
+
 export async function getRemixEligibility(
   token: string,
   trackId: string,
