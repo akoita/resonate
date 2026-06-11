@@ -130,11 +130,14 @@ Acceptance:
 - A user can open a project, adjust stem settings, and persist edits.
 - Layout works on desktop and mobile without overlapping controls.
 
-### C3. Add audio preview foundation
+### C3. Add audio preview foundation — shipped (#1165)
 
-- Reuse existing preview endpoints where possible.
-- Add Web Audio based stem gain/mute/solo preview.
-- Keep full-quality download gated by license/export policy.
+- Reuses existing public stem preview endpoints for source-stem arrangement
+  playback.
+- Adds Web Audio based stem gain/mute/solo preview in the studio.
+- Adds owner-scoped generated draft playback through
+  `GET /remix/projects/:id/draft-audio`.
+- Keeps full-quality download gated by license/export policy.
 
 Acceptance:
 

@@ -6,12 +6,20 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
   generateRemixDraft,
+  getRemixDraftAudioBlob,
+  getStemPreviewUrl,
   updateRemixProject,
   type RemixProject,
   type RemixProjectPatch,
   type RemixProjectSource,
 } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
+import {
+  remixDraftOutputUri,
+  startStemArrangementPreview,
+  type PreviewStemState,
+  type StemArrangementPreviewHandle,
+} from "../../lib/remixAudioPreview";
 
 export const GAIN_DB_MIN = -24;
 export const GAIN_DB_MAX = 6;
@@ -194,6 +202,17 @@ export function generationErrorMessage(code: string, message: string): string {
   }
 }
 
+export function stemPreviewStates(
+  project: RemixProject,
+  edits: ProjectEdits,
+): PreviewStemState[] {
+  return project.stems.map((stem) => ({
+    stemId: stem.stemId,
+    gainDb: edits.stems[stem.stemId]?.gainDb ?? stem.gainDb,
+    muted: edits.stems[stem.stemId]?.muted ?? stem.muted,
+  }));
+}
+
 const UNAVAILABLE_ACTIONS = [
   {
     key: "publish",
@@ -226,6 +245,15 @@ export function RemixStudioEditor({
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [stemPreviewStatus, setStemPreviewStatus] = useState<
+    "idle" | "loading" | "playing"
+  >("idle");
+  const [draftPlaybackStatus, setDraftPlaybackStatus] = useState<
+    "idle" | "loading" | "playing"
+  >("idle");
+  const stemPreviewRef = useRef<StemArrangementPreviewHandle | null>(null);
+  const draftAudioRef = useRef<HTMLAudioElement | null>(null);
+  const draftObjectUrlRef = useRef<string | null>(null);
 
   // Funnel (#1143): one open event per mounted project. Compact payload —
   // ids, counts, and mode only.
@@ -253,6 +281,38 @@ export function RemixStudioEditor({
   // must ignore prompts when mode is stem_mix.
   const promptEnabled = edits.mode !== "stem_mix";
   const titleBlank = edits.title.trim() === "";
+  const draftOutputUri = remixDraftOutputUri(project.generationMetadata);
+
+  const stopStemPreview = () => {
+    stemPreviewRef.current?.stop();
+    stemPreviewRef.current = null;
+    setStemPreviewStatus("idle");
+  };
+
+  const stopDraftPlayback = () => {
+    draftAudioRef.current?.pause();
+    draftAudioRef.current = null;
+    if (draftObjectUrlRef.current) {
+      URL.revokeObjectURL(draftObjectUrlRef.current);
+      draftObjectUrlRef.current = null;
+    }
+    setDraftPlaybackStatus("idle");
+  };
+
+  useEffect(() => {
+    return () => {
+      stemPreviewRef.current?.stop();
+      draftAudioRef.current?.pause();
+      if (draftObjectUrlRef.current) {
+        URL.revokeObjectURL(draftObjectUrlRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (stemPreviewStatus !== "playing" || !stemPreviewRef.current) return;
+    stemPreviewRef.current.update(stemPreviewStates(project, edits), soloStemId);
+  }, [edits, project, soloStemId, stemPreviewStatus]);
 
   const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
     setEdits((prev) => ({
@@ -275,6 +335,9 @@ export function RemixStudioEditor({
       });
       setProject(updated);
       setEdits(initialEdits(updated));
+      // Review fix (#1165): a regenerated draft invalidates the cached
+      // playback blob — otherwise Play draft replays the previous output.
+      stopDraftPlayback();
       addToast({
         type: "success",
         title: "Draft generated",
@@ -306,6 +369,69 @@ export function RemixStudioEditor({
       });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleStemPreview = async () => {
+    if (stemPreviewStatus !== "idle") {
+      stopStemPreview();
+      return;
+    }
+    setStemPreviewStatus("loading");
+    try {
+      const handle = await startStemArrangementPreview({
+        stems: stemPreviewStates(project, edits),
+        soloStemId,
+        urlForStem: getStemPreviewUrl,
+        onEnded: () => {
+          stemPreviewRef.current = null;
+          setStemPreviewStatus("idle");
+        },
+      });
+      stemPreviewRef.current = handle;
+      setStemPreviewStatus("playing");
+    } catch {
+      stemPreviewRef.current = null;
+      setStemPreviewStatus("idle");
+      addToast({
+        type: "error",
+        title: "Preview unavailable",
+        message: "The stem previews could not be loaded. Please try again.",
+      });
+    }
+  };
+
+  const handleDraftPlayback = async () => {
+    if (draftPlaybackStatus !== "idle") {
+      stopDraftPlayback();
+      return;
+    }
+    if (!token || !draftOutputUri) return;
+    setDraftPlaybackStatus("loading");
+    try {
+      const blob = await getRemixDraftAudioBlob(token, project.id);
+      const objectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objectUrl);
+      draftObjectUrlRef.current = objectUrl;
+      draftAudioRef.current = audio;
+      audio.onended = stopDraftPlayback;
+      audio.onerror = () => {
+        stopDraftPlayback();
+        addToast({
+          type: "error",
+          title: "Draft playback failed",
+          message: "The generated draft could not be played.",
+        });
+      };
+      await audio.play();
+      setDraftPlaybackStatus("playing");
+    } catch {
+      stopDraftPlayback();
+      addToast({
+        type: "error",
+        title: "Draft playback unavailable",
+        message: "The generated draft audio could not be loaded.",
+      });
     }
   };
 
@@ -393,21 +519,34 @@ export function RemixStudioEditor({
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         {/* Stem controls */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
             <h2 className="text-lg font-semibold text-white">Stems</h2>
-            {soloStemId && (
+            <div className="flex items-center gap-3">
+              {soloStemId && (
+                <button
+                  type="button"
+                  className="text-xs text-purple-300 hover:text-purple-200"
+                  onClick={() => setSoloStemId(null)}
+                >
+                  Clear solo
+                </button>
+              )}
               <button
                 type="button"
-                className="text-xs text-purple-300 hover:text-purple-200"
-                onClick={() => setSoloStemId(null)}
+                className="ui-btn ui-btn-ghost remix-stem-preview-btn"
+                onClick={() => void handleStemPreview()}
               >
-                Clear solo
+                {stemPreviewStatus === "loading"
+                  ? "Loading preview..."
+                  : stemPreviewStatus === "playing"
+                    ? "Stop preview"
+                    : "Play preview"}
               </button>
-            )}
+            </div>
           </div>
           <p className="text-zinc-500 text-xs mb-4">
-            Mute and gain are saved with your draft. Solo is a preview-only
-            control and is not saved.
+            Preview uses streaming-quality source stems. Mute and gain are
+            saved with your draft; solo changes playback only and is not saved.
           </p>
           <ul className="space-y-3">
             {project.stems.map((stem) => {
@@ -547,7 +686,7 @@ export function RemixStudioEditor({
                 </p>
                 <p className="remix-generation-placeholder">
                   {project.generationJobId
-                    ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}). Playback arrives with audio preview.`
+                    ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}).`
                     : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
                 </p>
               </div>
@@ -584,6 +723,24 @@ export function RemixStudioEditor({
                   {availability.reason && (
                     <p className="text-xs text-zinc-500 mt-2 max-w-[16rem]">
                       {availability.reason}
+                    </p>
+                  )}
+                  {draftOutputUri && (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost remix-draft-playback-btn mt-3"
+                      onClick={() => void handleDraftPlayback()}
+                    >
+                      {draftPlaybackStatus === "loading"
+                        ? "Loading draft..."
+                        : draftPlaybackStatus === "playing"
+                          ? "Stop draft"
+                          : "Play AI draft"}
+                    </button>
+                  )}
+                  {project.generationJobId && !draftOutputUri && (
+                    <p className="text-xs text-zinc-500 mt-3 max-w-[16rem]">
+                      This generation has no playable draft output yet.
                     </p>
                   )}
                 </div>

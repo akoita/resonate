@@ -20,6 +20,7 @@ import {
   type RemixGenerationConstraints,
   type RemixGenerationProvider,
 } from "./remix-generation.provider";
+import { StorageProvider } from "../storage/storage_provider";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -38,6 +39,50 @@ export type RemixProjectStemUpdate = {
 type RemixProjectWithStems = NonNullable<
   Awaited<ReturnType<typeof loadProject>>
 >;
+
+export type RemixDraftAudio = {
+  data: Buffer;
+  mimeType: string;
+};
+
+/**
+ * Review fix (#1165): the D2 Lyria provider stores .wav files, so a
+ * hardcoded audio/mpeg lied to players about the codec. Matches the
+ * extension anywhere in the URI because the local provider's URIs end in
+ * a /blob segment rather than the filename.
+ */
+export function draftMimeTypeFromUri(uri: string): string {
+  const normalized = uri.toLowerCase();
+  if (normalized.includes(".wav")) return "audio/wav";
+  if (normalized.includes(".mp3") || normalized.includes(".mpeg")) {
+    return "audio/mpeg";
+  }
+  if (normalized.includes(".ogg")) return "audio/ogg";
+  return "application/octet-stream";
+}
+
+/** Stored mime recorded by the provider at write time (#1166 review port). */
+export function draftMimeTypeFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const output = (metadata as { output?: unknown }).output;
+  if (!output || typeof output !== "object") return null;
+  const mimeType = (output as { mimeType?: unknown }).mimeType;
+  return typeof mimeType === "string" && mimeType.trim() ? mimeType : null;
+}
+
+export function draftOutputUriFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const output = (metadata as { output?: unknown }).output;
+  if (!output || typeof output !== "object") {
+    return null;
+  }
+  const outputUri = (output as { outputUri?: unknown }).outputUri;
+  return typeof outputUri === "string" && outputUri.trim()
+    ? outputUri
+    : null;
+}
 
 /**
  * Shared read shape: stem catalog labels and the public source-track summary
@@ -105,6 +150,7 @@ export class RemixProjectService {
     private readonly eligibilityService: RemixEligibilityService,
     @Inject(REMIX_GENERATION_PROVIDER)
     private readonly generationProvider: RemixGenerationProvider,
+    private readonly storageProvider: StorageProvider,
   ) {}
 
   /**
@@ -439,6 +485,31 @@ export class RemixProjectService {
     });
 
     return this.toResponse(updated);
+  }
+
+  async getDraftAudio(
+    userId: string,
+    projectId: string,
+  ): Promise<RemixDraftAudio> {
+    const project = await this.loadOwnedProject(userId, projectId);
+    const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
+    if (!outputUri) {
+      throw new NotFoundException("Remix draft audio not found");
+    }
+
+    const data = await this.storageProvider.download(outputUri);
+    if (!data) {
+      throw new NotFoundException("Remix draft audio not found");
+    }
+
+    return {
+      data,
+      // Ground truth recorded at generation time; URI-derived detection is
+      // the fallback for drafts stored before mimeType was recorded.
+      mimeType:
+        draftMimeTypeFromMetadata(project.generationMetadata) ??
+        draftMimeTypeFromUri(outputUri),
+    };
   }
 
   private async loadOwnedProject(userId: string, projectId: string) {

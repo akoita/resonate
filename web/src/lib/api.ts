@@ -3944,6 +3944,29 @@ export async function generateRemixDraft(
   );
 }
 
+export async function getRemixDraftAudioBlob(
+  token: string,
+  projectId: string,
+) {
+  const response = await fetch(
+    `${API_BASE}/remix/projects/${projectId}/draft-audio`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      formatApiErrorMessage(response.status, response.statusText, detail),
+    );
+  }
+
+  return response.blob();
+}
+
 export async function getRemixEligibility(
   token: string,
   trackId: string,

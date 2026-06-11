@@ -119,6 +119,7 @@ describe("LyriaRemixGenerationProvider", () => {
     expect(job.estimatedCostUsd).toBeCloseTo(0.12);
     expect(job.outputMetadata).toEqual({
       outputUri: "gs://stems/remix-drafts/project-1/x.wav",
+      mimeType: "audio/wav",
       synthIdPresent: true,
       seed: 42,
       sampleRate: 48000,

@@ -11,8 +11,14 @@ import {
   initialEdits,
   RemixStudioEditor,
   saveStatusLabel,
+  stemPreviewStates,
   stemDisplayName,
 } from "./RemixStudioEditor";
+import {
+  dbToLinearGain,
+  remixDraftOutputUri,
+  stemPreviewGain,
+} from "../../lib/remixAudioPreview";
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
 
 const mockUseAuth = vi.fn(() => ({ token: "jwt-token", login: vi.fn() }));
@@ -127,6 +133,36 @@ describe("stemDisplayName", () => {
   });
 });
 
+describe("audio preview helpers (#1165)", () => {
+  it("converts dB gain and applies mute/solo state", () => {
+    expect(dbToLinearGain(0)).toBeCloseTo(1);
+    expect(dbToLinearGain(-6)).toBeCloseTo(0.501, 3);
+    expect(stemPreviewGain({ stemId: "a", gainDb: -3, muted: true }, null)).toBe(0);
+    expect(stemPreviewGain({ stemId: "a", gainDb: -3, muted: false }, "b")).toBe(0);
+    expect(
+      stemPreviewGain({ stemId: "a", gainDb: -3, muted: false }, "a"),
+    ).toBeCloseTo(0.708, 3);
+  });
+
+  it("extracts playable output metadata defensively", () => {
+    expect(remixDraftOutputUri(null)).toBeNull();
+    expect(remixDraftOutputUri({ output: { outputUri: "" } })).toBeNull();
+    expect(
+      remixDraftOutputUri({ output: { outputUri: "/storage/draft.mp3" } }),
+    ).toBe("/storage/draft.mp3");
+  });
+
+  it("builds preview stem state from local edits", () => {
+    const p = project();
+    const edits = initialEdits(p);
+    edits.stems["stem-1"] = { gainDb: -12, muted: true };
+    expect(stemPreviewStates(p, edits)).toEqual([
+      { stemId: "stem-1", gainDb: -12, muted: true },
+      { stemId: "stem-2", gainDb: null, muted: true },
+    ]);
+  });
+});
+
 describe("buildProjectPatch", () => {
   it("returns an empty patch when nothing changed", () => {
     const p = project();
@@ -198,7 +234,8 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("remix license · private drafts");
     expect(html).toContain("Lead Vocal");
     expect(html).toContain("Drums");
-    expect(html).toContain("Solo is a preview-only control");
+    expect(html).toContain("Play preview");
+    expect(html).toContain("solo changes playback only and is not saved");
     // Publish/export are aria-disabled with honest reasons, not hidden.
     expect(html).toContain("remix-action-unavailable--publish");
     expect(html).toContain("remix-action-unavailable--export");
@@ -207,6 +244,44 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toMatch(/remix-action-unavailable--publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-unavailable--publish/);
     expect(html).toContain("No AI draft yet");
     expect(html).toContain("All changes saved");
+  });
+
+  it("shows AI draft playback when generation output exists", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "job-1",
+          generationProvider: "lyria-3-pro-preview",
+          generationMetadata: {
+            output: {
+              outputUri: "/storage/remix-drafts/job-1.mp3",
+              synthIdPresent: true,
+              seed: 99,
+              sampleRate: 48000,
+            },
+          },
+        })}
+      />,
+    );
+
+    expect(html).toContain("AI draft recorded");
+    expect(html).toContain("Play AI draft");
+    expect(html).not.toContain("Playback arrives with audio preview");
+  });
+
+  it("shows no-output copy when a generation job has no playable draft", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "job-1",
+          generationProvider: "remix-stub",
+          generationMetadata: { output: { outputUri: null } },
+        })}
+      />,
+    );
+
+    expect(html).toContain("This generation has no playable draft output yet");
+    expect(html).not.toContain("Play AI draft");
   });
 
   it("disables the prompt box with an explanation in stem mix mode", () => {
