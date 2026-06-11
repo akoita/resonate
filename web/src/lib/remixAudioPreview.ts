@@ -1,5 +1,6 @@
 export type RemixDraftOutputMetadata = {
   outputUri: string | null;
+  mimeType?: string | null;
   synthIdPresent?: boolean | null;
   seed?: number | null;
   sampleRate?: number | null;

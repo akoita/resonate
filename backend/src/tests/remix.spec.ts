@@ -17,7 +17,10 @@ describe("remix", () => {
   });
 });
 
-import { draftMimeTypeFromUri } from "../modules/remix/remix-project.service";
+import {
+  draftMimeTypeFromMetadata,
+  draftMimeTypeFromUri,
+} from "../modules/remix/remix-project.service";
 
 describe("draftMimeTypeFromUri (#1165 review fix)", () => {
   it("derives the stored draft's mime from its URI instead of assuming mpeg", () => {
@@ -27,5 +30,19 @@ describe("draftMimeTypeFromUri (#1165 review fix)", () => {
     // The local provider's URIs end in a /blob segment, not the filename.
     expect(draftMimeTypeFromUri("/catalog/stems/remix-draft-p1-j1.wav/blob")).toBe("audio/wav");
     expect(draftMimeTypeFromUri("/storage/unknown-format")).toBe("application/octet-stream");
+  });
+});
+
+describe("draftMimeTypeFromMetadata (#1166 review port)", () => {
+  it("prefers the provider-recorded mime over any URI heuristic", () => {
+    expect(
+      draftMimeTypeFromMetadata({ output: { mimeType: "audio/wav", outputUri: "/x.mp3" } }),
+    ).toBe("audio/wav");
+  });
+
+  it("returns null for drafts stored before mimeType was recorded", () => {
+    expect(draftMimeTypeFromMetadata({ output: { outputUri: "/x.wav" } })).toBeNull();
+    expect(draftMimeTypeFromMetadata({ output: { mimeType: "  " } })).toBeNull();
+    expect(draftMimeTypeFromMetadata(null)).toBeNull();
   });
 });

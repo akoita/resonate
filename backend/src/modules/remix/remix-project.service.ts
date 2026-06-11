@@ -61,6 +61,15 @@ export function draftMimeTypeFromUri(uri: string): string {
   return "application/octet-stream";
 }
 
+/** Stored mime recorded by the provider at write time (#1166 review port). */
+export function draftMimeTypeFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const output = (metadata as { output?: unknown }).output;
+  if (!output || typeof output !== "object") return null;
+  const mimeType = (output as { mimeType?: unknown }).mimeType;
+  return typeof mimeType === "string" && mimeType.trim() ? mimeType : null;
+}
+
 export function draftOutputUriFromMetadata(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== "object") {
     return null;
@@ -493,7 +502,14 @@ export class RemixProjectService {
       throw new NotFoundException("Remix draft audio not found");
     }
 
-    return { data, mimeType: draftMimeTypeFromUri(outputUri) };
+    return {
+      data,
+      // Ground truth recorded at generation time; URI-derived detection is
+      // the fallback for drafts stored before mimeType was recorded.
+      mimeType:
+        draftMimeTypeFromMetadata(project.generationMetadata) ??
+        draftMimeTypeFromUri(outputUri),
+    };
   }
 
   private async loadOwnedProject(userId: string, projectId: string) {

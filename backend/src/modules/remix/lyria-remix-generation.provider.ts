@@ -114,6 +114,7 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
       estimatedCostUsd: estimateRemixGenerationCostUsd(durationSeconds),
       outputMetadata: {
         outputUri,
+        mimeType: result.mimeType,
         synthIdPresent: result.synthIdPresent,
         seed: result.seed,
         sampleRate: result.sampleRate,

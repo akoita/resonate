@@ -111,6 +111,7 @@ describe("StubRemixGenerationProvider", () => {
       estimatedCostUsd: 0.12,
       outputMetadata: {
         outputUri: null,
+        mimeType: null,
         synthIdPresent: null,
         seed: null,
         sampleRate: null,

@@ -139,6 +139,8 @@ export type RemixGenerationJob = {
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: {
     outputUri: string | null;
+    /** Recorded at write time so playback never guesses from extensions. */
+    mimeType: string | null;
     synthIdPresent: boolean | null;
     seed: number | null;
     sampleRate: number | null;
@@ -246,6 +248,7 @@ export class StubRemixGenerationProvider implements RemixGenerationProvider {
       ),
       outputMetadata: {
         outputUri: null,
+        mimeType: null,
         synthIdPresent: null,
         seed: null,
         sampleRate: null,
