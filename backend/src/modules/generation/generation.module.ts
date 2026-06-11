@@ -22,7 +22,7 @@ import { SynthIdController } from './synthid.controller';
   ],
   controllers: [GenerationController, SynthIdController],
   providers: [GenerationService, GenerationProcessor, LyriaClient, LyriaRealtimeService, SynthIdService],
-  exports: [GenerationService, LyriaRealtimeService, SynthIdService],
+  exports: [GenerationService, LyriaClient, LyriaRealtimeService, SynthIdService],
 })
 export class GenerationModule {}
 
