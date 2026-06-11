@@ -335,6 +335,9 @@ export function RemixStudioEditor({
       });
       setProject(updated);
       setEdits(initialEdits(updated));
+      // Review fix (#1165): a regenerated draft invalidates the cached
+      // playback blob — otherwise Play draft replays the previous output.
+      stopDraftPlayback();
       addToast({
         type: "success",
         title: "Draft generated",

@@ -16,3 +16,16 @@ describe("remix", () => {
     expect(result.status).toBe("submitted");
   });
 });
+
+import { draftMimeTypeFromUri } from "../modules/remix/remix-project.service";
+
+describe("draftMimeTypeFromUri (#1165 review fix)", () => {
+  it("derives the stored draft's mime from its URI instead of assuming mpeg", () => {
+    // D2's Lyria provider writes .wav files.
+    expect(draftMimeTypeFromUri("/storage/remix-draft-p1-j1.wav")).toBe("audio/wav");
+    expect(draftMimeTypeFromUri("/storage/remix-drafts/playable.mp3")).toBe("audio/mpeg");
+    // The local provider's URIs end in a /blob segment, not the filename.
+    expect(draftMimeTypeFromUri("/catalog/stems/remix-draft-p1-j1.wav/blob")).toBe("audio/wav");
+    expect(draftMimeTypeFromUri("/storage/unknown-format")).toBe("application/octet-stream");
+  });
+});

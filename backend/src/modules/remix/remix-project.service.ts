@@ -45,6 +45,22 @@ export type RemixDraftAudio = {
   mimeType: string;
 };
 
+/**
+ * Review fix (#1165): the D2 Lyria provider stores .wav files, so a
+ * hardcoded audio/mpeg lied to players about the codec. Matches the
+ * extension anywhere in the URI because the local provider's URIs end in
+ * a /blob segment rather than the filename.
+ */
+export function draftMimeTypeFromUri(uri: string): string {
+  const normalized = uri.toLowerCase();
+  if (normalized.includes(".wav")) return "audio/wav";
+  if (normalized.includes(".mp3") || normalized.includes(".mpeg")) {
+    return "audio/mpeg";
+  }
+  if (normalized.includes(".ogg")) return "audio/ogg";
+  return "application/octet-stream";
+}
+
 export function draftOutputUriFromMetadata(metadata: unknown): string | null {
   if (!metadata || typeof metadata !== "object") {
     return null;
@@ -477,7 +493,7 @@ export class RemixProjectService {
       throw new NotFoundException("Remix draft audio not found");
     }
 
-    return { data, mimeType: "audio/mpeg" };
+    return { data, mimeType: draftMimeTypeFromUri(outputUri) };
   }
 
   private async loadOwnedProject(userId: string, projectId: string) {
