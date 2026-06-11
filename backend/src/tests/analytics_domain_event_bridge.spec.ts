@@ -414,6 +414,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         roomId: "room_919",
         messageId: "message_919",
         messageType: "message",
+        artistId: "artist_919",
         body: "do not persist message body",
       },
       {
@@ -424,6 +425,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         roomId: "campaign_room_919",
         messageId: "campaign_update_919",
         messageType: "campaign_update",
+        artistId: "artist_919",
         campaignId: "campaign_919",
         campaignSlug: "campaign-slug-919",
         campaignStatus: "active",
@@ -882,6 +884,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
           roomId: "room_919",
           messageId: "message_919",
           messageType: "message",
+          artistId: "artist_919",
         }),
       }),
     );
@@ -894,6 +897,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
           roomId: "campaign_room_919",
           messageId: "campaign_update_919",
           messageType: "campaign_update",
+          artistId: "artist_919",
           campaignId: "campaign_919",
           campaignSlug: "campaign-slug-919",
           campaignStatus: "active",

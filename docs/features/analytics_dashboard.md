@@ -85,6 +85,18 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   a challenge. A true "launch remix challenge" action stays deferred until
   artist remix opt-in settings and a challenge surface exist (remix backlog
   A1, issue #1121).
+- `review_remix_supply_pricing` opens `/marketplace/manage?status=active` when
+  attributed aggregate remix demand (`remix.project_created` and legacy
+  `remix.created` facts — server-attributed only; `remix.cta_*` product events
+  carry no artist attribution by design and are excluded) reaches the
+  five-signal floor and an artist-owned `marketplace.owner_inventory_viewed`
+  snapshot shows no active owner inventory. The card uses the existing owner inventory aggregate only;
+  it does not infer supply coverage from missing inventory analytics.
+- `triage_fan_questions` opens `/artist/:id?tab=community` when attributed
+  `community.message_created` fan-message facts in the artist's rooms meet the
+  five-signal floor and no `announcement` or `campaign_update` message signal
+  is visible in the selected window. Message bodies, authors, room membership,
+  and per-fan drilldowns are excluded.
 - `relist_expired_inventory` opens `/marketplace/manage?status=expired` when
   owner-visible marketplace inventory reports expired or cancelled listings
   that can use the existing relist workflow.
@@ -99,8 +111,8 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
 Each card includes `id`, `type`, `title`, `description`, `reason`, `priority`,
 `confidence`, `sourceSignal`, `cta`, and `privacy`. Listener-derived cards use
 aggregate counts only and apply a minimum signal threshold before surfacing
-counts. Shows, holder-room, remix, and purchase-intent cards follow the same
-aggregate floor before counts are surfaced. Marketplace owner-inventory cards
+counts. Shows, holder-room, remix, community fan-message, and purchase-intent
+cards follow the same aggregate floor before counts are surfaced. Marketplace owner-inventory cards
 use artist-owned seller workspace summaries and do not expose seller wallet
 addresses in the artist analytics DTO. The DTO does not include listener
 identities, wallet addresses, raw play history, cohort membership, private room

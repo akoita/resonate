@@ -69,6 +69,8 @@ type ArtistActionCardType =
   | "invite_holder_collectors"
   | "reward_early_supporters"
   | "prepare_remix_challenge"
+  | "review_remix_supply_pricing"
+  | "triage_fan_questions"
   | "relist_expired_inventory"
   | "improve_marketplace_conversion"
   | "review_marketplace_pricing";
@@ -214,9 +216,13 @@ interface ArtistWorkflowSignals {
    * so pre-studio aggregates keep counting (#1121).
    */
   remixCreations: number;
+  remixDemandSignals: number;
+  communityFanMessages: number;
+  communityArtistMessages: number;
   marketplacePurchaseIntents: number;
   artistSettledCommerceCount: number;
   marketplaceInventory: {
+    seen: boolean;
     relistableCount: number;
     expiredCount: number;
     expiringSoonCount: number;
@@ -1137,6 +1143,70 @@ export class AnalyticsService {
       });
     }
 
+    if (
+      input.workflowSignals.remixDemandSignals >= this.artistActionMinimumSignalCount &&
+      input.workflowSignals.marketplaceInventory.seen &&
+      input.workflowSignals.marketplaceInventory.activeCount === 0
+    ) {
+      cards.push({
+        id: "review_remix_supply_pricing",
+        type: "review_remix_supply_pricing",
+        title: "Review remix supply pricing",
+        description:
+          "Remix demand is visible, but your seller workspace has no active marketplace inventory in this analytics window.",
+        reason: `${input.workflowSignals.remixDemandSignals} aggregate remix demand signals and no active owner inventory in the last ${input.days} days.`,
+        priority:
+          input.workflowSignals.remixDemandSignals >= this.artistActionHighIntentSignalCount ? "high" : "medium",
+        confidence:
+          input.workflowSignals.remixDemandSignals >= this.artistActionHighIntentSignalCount ? 0.8 : 0.66,
+        sourceSignal: {
+          category: "remix",
+          summary: "Remix demand with no active owner inventory",
+          count: input.workflowSignals.remixDemandSignals,
+        },
+        cta: {
+          label: "Review active listings",
+          href: "/marketplace/manage?status=active",
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
+    if (
+      input.workflowSignals.communityFanMessages >= this.artistActionMinimumSignalCount &&
+      input.workflowSignals.communityArtistMessages === 0
+    ) {
+      cards.push({
+        id: "triage_fan_questions",
+        type: "triage_fan_questions",
+        title: "Triage fan questions",
+        description: "Fans are posting in your community rooms without a recent announcement or campaign update signal.",
+        reason: `${input.workflowSignals.communityFanMessages} aggregate fan messages and no recent artist update signal in the last ${input.days} days.`,
+        priority:
+          input.workflowSignals.communityFanMessages >= this.artistActionHighIntentSignalCount ? "high" : "medium",
+        confidence:
+          input.workflowSignals.communityFanMessages >= this.artistActionHighIntentSignalCount ? 0.78 : 0.64,
+        sourceSignal: {
+          category: "community",
+          summary: "Fan messages without recent artist updates",
+          count: input.workflowSignals.communityFanMessages,
+        },
+        cta: {
+          label: "Open community",
+          href: `/artist/${encodeURIComponent(input.artistId)}?tab=community`,
+        },
+        privacy: {
+          aggregateOnly: true,
+          thresholdApplied: true,
+          minimumThreshold: this.artistActionMinimumSignalCount,
+        },
+      });
+    }
+
     if (input.workflowSignals.marketplaceInventory.relistableCount > 0) {
       const relistableCount = input.workflowSignals.marketplaceInventory.relistableCount;
       cards.push({
@@ -1231,9 +1301,12 @@ export class AnalyticsService {
     let holderRoomJoins = 0;
     let benefitRuleCreations = 0;
     let remixCreations = 0;
+    let communityFanMessages = 0;
+    let communityArtistMessages = 0;
     let marketplacePurchaseIntents = 0;
     let artistSettledCommerceCount = 0;
     const marketplaceInventory = {
+      seen: false,
       relistableCount: 0,
       expiredCount: 0,
       expiringSoonCount: 0,
@@ -1327,6 +1400,15 @@ export class AnalyticsService {
         remixCreations += fact.count;
       }
 
+      if (eventName === "community.message_created") {
+        const messageType = this.stringDimension(fact.dimensions, "messageType") ?? "message";
+        if (messageType === "announcement" || messageType === "campaign_update") {
+          communityArtistMessages += fact.count;
+        } else {
+          communityFanMessages += fact.count;
+        }
+      }
+
       if (eventName === "marketplace.purchase_intent") {
         marketplacePurchaseIntents += fact.count;
       }
@@ -1342,6 +1424,7 @@ export class AnalyticsService {
       }
 
       if (eventName === "marketplace.owner_inventory_viewed") {
+        marketplaceInventory.seen = true;
         marketplaceInventory.relistableCount = Math.max(
           marketplaceInventory.relistableCount,
           this.numberDimension(fact.dimensions, "relistableCount") ?? 0,
@@ -1372,6 +1455,14 @@ export class AnalyticsService {
       benefitRuleCreations,
       earlySupporterReward: topSignal(supporterRolesByCampaign) ?? topSignal(supporterRoomJoinsByCampaign),
       remixCreations,
+      // Server-attributed signals only (#1168 review): remix.cta_* product
+      // events carry no artistId by design (compact payloads, #1160), so in
+      // production they aggregate under "unknown" — counting them here would
+      // be silent dead weight, and client-supplied artistId would be a
+      // client-trusted claim. Drafts are the trustworthy demand signal.
+      remixDemandSignals: remixCreations,
+      communityFanMessages,
+      communityArtistMessages,
       marketplacePurchaseIntents,
       artistSettledCommerceCount,
       marketplaceInventory,

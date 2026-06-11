@@ -1270,7 +1270,9 @@ function roomMembershipSource(room: { roomType: string }) {
 }
 
 function campaignSourceRef(room: { ownerType: string; ownerId: string }) {
-  return room.ownerType === "show_campaign" ? { campaignId: room.ownerId } : {};
+  const artistRef =
+    "artistId" in room && typeof room.artistId === "string" ? { artistId: room.artistId } : {};
+  return room.ownerType === "show_campaign" ? { campaignId: room.ownerId, ...artistRef } : artistRef;
 }
 
 function membershipDto(membership: { role: string; status: string; joinedAt: Date; endedAt: Date | null }) {

@@ -335,8 +335,12 @@ export interface CommunityMessageCreatedEvent extends BaseEvent {
   roomId: string;
   messageId: string;
   messageType: string;
+  artistId?: string | null;
   campaignId?: string | null;
   campaignSlug?: string | null;
+  campaignStatus?: string | null;
+  city?: string | null;
+  country?: string | null;
 }
 
 export interface CommunityMessageReportedEvent extends BaseEvent {
