@@ -18,7 +18,10 @@ function normalizeRemixConsent(input: unknown): ArtistRemixConsent {
 
 @Injectable()
 export class ArtistService {
-    constructor(private readonly eventBus: EventBus = new EventBus()) {}
+    // Required injection (#1170 review): a defaulted `new EventBus()` would
+    // silently split the bus if module wiring ever regressed — consent events
+    // would publish where no analytics bridge subscribes.
+    constructor(private readonly eventBus: EventBus) {}
 
     async getProfile(userId: string) {
         return prisma.artist.findUnique({

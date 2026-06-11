@@ -17,7 +17,7 @@ let service: ArtistService;
 
 describe('ArtistService (integration)', () => {
   beforeAll(async () => {
-    service = new ArtistService();
+    service = new ArtistService(new EventBus());
     await prisma.user.create({
       data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}user@test.resonate` },
     });
@@ -71,6 +71,29 @@ describe('ArtistService (integration)', () => {
     await settingsService.updateSettings(`${TEST_PREFIX}user`, profile!.id, {
       remixConsent: 'allowed',
     });
+    eventBus.destroy();
+  });
+
+  it('rejects remix consent values outside allowed|disabled (#1170 review)', async () => {
+    const eventBus = new EventBus();
+    const publishSpy = jest.spyOn(eventBus, 'publish');
+    const settingsService = new ArtistService(eventBus);
+    const profile = await service.getProfile(`${TEST_PREFIX}user`);
+
+    await expect(
+      settingsService.updateSettings(`${TEST_PREFIX}user`, profile!.id, {
+        remixConsent: 'sometimes',
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(
+      settingsService.updateSettings(`${TEST_PREFIX}user`, profile!.id, {
+        remixConsent: 42,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    // Invalid input never mutates or emits.
+    expect(publishSpy).not.toHaveBeenCalled();
+    const settings = await settingsService.getSettings(`${TEST_PREFIX}user`, profile!.id);
+    expect(settings.remixConsent).toBe('allowed');
     eventBus.destroy();
   });
 
