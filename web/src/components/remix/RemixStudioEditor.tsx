@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
+  generateRemixDraft,
   updateRemixProject,
   type RemixProject,
   type RemixProjectPatch,
@@ -140,6 +141,59 @@ export function saveStatusLabel(input: {
   return "All changes saved";
 }
 
+/**
+ * Whether the Generate button is actionable, and the honest reason when it
+ * is not (#1162). Prompt-based modes only; stem_mix drafts are arranged in
+ * the studio, and pretending a text prompt regenerates the mix would
+ * misrepresent the result.
+ */
+export function describeGenerateAvailability(input: {
+  mode: string;
+  prompt: string;
+  saving: boolean;
+  dirty: boolean;
+  generating: boolean;
+}): { enabled: boolean; reason: string | null } {
+  if (input.mode === "stem_mix") {
+    return {
+      enabled: false,
+      reason:
+        "AI generation applies to variation and extension modes. Stem mix uses only your stem settings.",
+    };
+  }
+  if (input.prompt.trim() === "") {
+    return {
+      enabled: false,
+      reason: "Write a prompt first — generation follows your direction.",
+    };
+  }
+  if (input.dirty) {
+    return {
+      enabled: false,
+      reason: "Save your changes first so generation uses the saved draft.",
+    };
+  }
+  if (input.saving || input.generating) {
+    return { enabled: false, reason: null };
+  }
+  return { enabled: true, reason: null };
+}
+
+/** Toast copy per normalized provider error code (#1162). */
+export function generationErrorMessage(code: string, message: string): string {
+  switch (code) {
+    case "provider_disabled":
+      return "AI generation is not enabled on this environment yet.";
+    case "provider_rejected":
+      return "The provider rejected this prompt. Adjust it and try again.";
+    case "invalid_input":
+    case "provider_unavailable":
+      return message;
+    default:
+      return "Generation failed. Please try again later.";
+  }
+}
+
 const UNAVAILABLE_ACTIONS = [
   {
     key: "publish",
@@ -171,6 +225,7 @@ export function RemixStudioEditor({
   );
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   // Funnel (#1143): one open event per mounted project. Compact payload —
   // ids, counts, and mode only.
@@ -207,6 +262,55 @@ export function RemixStudioEditor({
         [stemId]: { ...prev.stems[stemId], ...update },
       },
     }));
+  };
+
+  const handleGenerate = async () => {
+    if (!token || generating) return;
+    setGenerating(true);
+    try {
+      // force=true on regenerate: the backend's duplicate-job guard
+      // otherwise rejects projects with a recorded generation job.
+      const updated = await generateRemixDraft(token, project.id, {
+        force: !!project.generationJobId,
+      });
+      setProject(updated);
+      setEdits(initialEdits(updated));
+      addToast({
+        type: "success",
+        title: "Draft generated",
+        message: "Your AI remix draft is recorded on this project.",
+      });
+      void recordProductAnalytics(token, "remix.studio_saved", {
+        source: "remix_studio",
+        subjectType: "remix_project",
+        subjectId: updated.id,
+        payload: { projectId: updated.id, mode: updated.mode },
+      });
+    } catch (error) {
+      // apiRequest throws Error("API <status>: <json>") — recover the
+      // normalized provider error contract when present.
+      let code = "unknown";
+      let message = "Generation failed. Please try again later.";
+      if (error instanceof Error) {
+        const jsonStart = error.message.indexOf("{");
+        if (jsonStart >= 0) {
+          try {
+            const parsed = JSON.parse(error.message.slice(jsonStart));
+            code = parsed.code ?? code;
+            message = parsed.message ?? message;
+          } catch {
+            // keep defaults
+          }
+        }
+      }
+      addToast({
+        type: "error",
+        title: "Generation failed",
+        message: generationErrorMessage(code, message),
+      });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSave = async () => {
@@ -434,20 +538,61 @@ export function RemixStudioEditor({
           </div>
         </section>
 
-        {/* Draft status */}
+        {/* Draft status + AI generation (#1162) */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-white mb-3">Draft status</h2>
-          <div className="text-sm text-zinc-400 space-y-1">
-            <p>
-              Status: <span className="text-zinc-200">{project.status}</span>
-              {" · "}Policy:{" "}
-              <span className="text-zinc-200">{project.policyVersion}</span>
-            </p>
-            <p className="remix-generation-placeholder">
-              {project.generationJobId
-                ? `Generation job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"})`
-                : "No AI draft yet — AI remix generation arrives with the generation provider (#896)."}
-            </p>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold text-white mb-3">Draft status</h2>
+              <div className="text-sm text-zinc-400 space-y-1">
+                <p>
+                  Status: <span className="text-zinc-200">{project.status}</span>
+                  {" · "}Policy:{" "}
+                  <span className="text-zinc-200">{project.policyVersion}</span>
+                </p>
+                <p className="remix-generation-placeholder">
+                  {project.generationJobId
+                    ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}). Playback arrives with audio preview.`
+                    : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
+                </p>
+              </div>
+            </div>
+            {(() => {
+              const availability = describeGenerateAvailability({
+                mode: edits.mode,
+                prompt: edits.prompt,
+                saving,
+                dirty,
+                generating,
+              });
+              return (
+                <div className="text-right">
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-primary remix-generate-btn"
+                    aria-disabled={!availability.enabled || undefined}
+                    title={availability.reason ?? undefined}
+                    onClick={(e) => {
+                      if (!availability.enabled) {
+                        e.preventDefault();
+                        return;
+                      }
+                      void handleGenerate();
+                    }}
+                  >
+                    {generating
+                      ? "Generating..."
+                      : project.generationJobId
+                        ? "Regenerate draft"
+                        : "Generate AI draft"}
+                  </button>
+                  {availability.reason && (
+                    <p className="text-xs text-zinc-500 mt-2 max-w-[16rem]">
+                      {availability.reason}
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </section>
 
