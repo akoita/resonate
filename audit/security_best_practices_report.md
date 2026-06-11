@@ -2578,3 +2578,41 @@ cd backend && npm run lint   # tsc clean
 cd web && npx vitest run     # 441 passed
 cd web && npm run build      # pass
 ```
+
+## Scan: fix/1144-remix-rate-limit (2026-06-11)
+
+**Scope:** `backend/src/modules/remix/remix-project.service.ts` (per-user
+sliding-window rate limits on remix project creation and generation),
+integration tests, env/feature docs for issue #1144.
+
+**Findings:** none (no Critical/High/Medium/Low).
+
+### Review Notes
+
+- Closes a pre-public-launch abuse gap from the change-impact checklist:
+  authenticated users could create unbounded RemixProject rows and spam the
+  (config-disabled) generation endpoint. Limits are enforced before any
+  eligibility/database work, so throttled callers cost nothing downstream.
+- Denied attempts consume the caller's budget (requests counted, not
+  successes), preventing probe loops against the eligibility policy.
+- Limits are per-user in-memory sliding windows keyed by action+userId —
+  same trade-off as the existing catalog generation limiter (resets on
+  restart, per-instance on horizontal scale); acceptable for current
+  single-instance Cloud Run deployment and documented in the PR.
+- HTTP 429 (not the catalog's 400) so agents and the frontend can
+  distinguish throttling from invalid input; messages contain the ceiling
+  and no sensitive data.
+- New env vars (`REMIX_PROJECT_RATE_LIMIT`, `REMIX_GENERATION_RATE_LIMIT`)
+  are optional with safe defaults and documented in
+  `docs/deployment/environment.md`; no secrets, raw SQL, or new endpoints.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|\$queryRaw|executeRaw|eval\(' \
+  backend/src/modules/remix/remix-project.service.ts
+git diff --check
+cd backend && npm run test  # 767 passed
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 28 passed
+cd backend && npm run lint  # tsc clean
+```

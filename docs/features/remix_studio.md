@@ -195,6 +195,10 @@ from the JWT, never the request body.
 - Artist voice/likeness is disabled until explicit consent exists.
 - Public remixer/contributor credentials require publication, rights-safe
   attribution, and explicit profile/verifier display consent.
+- Abuse limits (#1144): project creation and generation are throttled per
+  user with sliding-window hourly ceilings (`REMIX_PROJECT_RATE_LIMIT`,
+  default 20; `REMIX_GENERATION_RATE_LIMIT`, default 10) returning HTTP 429
+  with an actionable message.
 
 ## Verification
 
