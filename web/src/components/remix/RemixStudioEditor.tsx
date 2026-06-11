@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
@@ -10,6 +10,7 @@ import {
   type RemixProjectPatch,
   type RemixProjectSource,
 } from "../../lib/api";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 
 export const GAIN_DB_MIN = -24;
 export const GAIN_DB_MAX = 6;
@@ -143,12 +144,15 @@ const UNAVAILABLE_ACTIONS = [
   {
     key: "publish",
     label: "Publish on Resonate",
+    // reasonCode is the analytics-safe identifier; reason stays human text.
+    reasonCode: "publish_not_available",
     reason:
       "Publishing remixes inside Resonate is not available yet. Drafts stay private to you.",
   },
   {
     key: "export",
     label: "Export audio",
+    reasonCode: "export_rights_required",
     reason:
       "Export requires a license that explicitly grants export rights. Your remix license covers private drafts only.",
   },
@@ -167,6 +171,25 @@ export function RemixStudioEditor({
   );
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Funnel (#1143): one open event per mounted project. Compact payload —
+  // ids, counts, and mode only.
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (!token || openedRef.current) return;
+    openedRef.current = true;
+    void recordProductAnalytics(token, "remix.studio_opened", {
+      source: "remix_studio",
+      subjectType: "remix_project",
+      subjectId: persistedProject.id,
+      payload: {
+        projectId: persistedProject.id,
+        sourceTrackId: persistedProject.sourceTrackId,
+        stemCount: persistedProject.stems.length,
+        mode: persistedProject.mode,
+      },
+    });
+  }, [token, persistedProject]);
 
   const patch = buildProjectPatch(project, edits);
   const dirty = Object.keys(patch).length > 0;
@@ -193,6 +216,12 @@ export function RemixStudioEditor({
       const updated = await updateRemixProject(token, project.id, patch);
       setProject(updated);
       setEdits(initialEdits(updated));
+      void recordProductAnalytics(token, "remix.studio_saved", {
+        source: "remix_studio",
+        subjectType: "remix_project",
+        subjectId: updated.id,
+        payload: { projectId: updated.id, mode: updated.mode },
+      });
     } catch {
       addToast({
         type: "error",
@@ -432,7 +461,20 @@ export function RemixStudioEditor({
                 aria-disabled="true"
                 title={action.reason}
                 className={`ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--${action.key}`}
-                onClick={(e) => e.preventDefault()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Demand signal for locked workflows (#1143).
+                  void recordProductAnalytics(token, "remix.studio_action_unavailable", {
+                    source: "remix_studio",
+                    subjectType: "remix_project",
+                    subjectId: project.id,
+                    payload: {
+                      projectId: project.id,
+                      action: action.key,
+                      reasonCode: action.reasonCode,
+                    },
+                  });
+                }}
               >
                 {action.label}
                 <span className="sr-only"> — {action.reason}</span>

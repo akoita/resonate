@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixEligibilityResponse, RemixProject } from "../../lib/api";
-import { findReusableDraft, RemixCta, resolveRemixCtaState } from "./RemixCta";
+import {
+  buildRemixCtaAnalyticsPayload,
+  findReusableDraft,
+  RemixCta,
+  remixCtaClickOutcome,
+  resolveRemixCtaState,
+} from "./RemixCta";
 
 const mockUseAuth = vi.fn(() => ({ token: "jwt-token", login: vi.fn() }));
 
@@ -117,6 +123,48 @@ describe("resolveRemixCtaState", () => {
       kind: "blocked",
       reason: "Remixing is not available for this source.",
     });
+  });
+});
+
+describe("remix CTA analytics helpers", () => {
+  it("builds a compact impression payload — ids and state codes only", () => {
+    expect(
+      buildRemixCtaAnalyticsPayload({
+        trackId: "track-1",
+        stemIds: ["stem-1", "stem-2"],
+        stateKind: "license_required",
+        variant: "button",
+        licensePathAvailable: true,
+      }),
+    ).toEqual({
+      trackId: "track-1",
+      stemIds: ["stem-1", "stem-2"],
+      state: "license_required",
+      variant: "button",
+      licensePathAvailable: true,
+    });
+  });
+
+  it("omits the license-path flag outside the license_required state", () => {
+    const payload = buildRemixCtaAnalyticsPayload({
+      trackId: "track-1",
+      stateKind: "remix",
+      variant: "chip",
+    });
+    expect(payload).toEqual({
+      trackId: "track-1",
+      stemIds: [],
+      state: "remix",
+      variant: "chip",
+    });
+    expect("licensePathAvailable" in payload).toBe(false);
+  });
+
+  it("maps click outcomes per state and license path", () => {
+    expect(remixCtaClickOutcome("remix", false)).toBe("studio_opened");
+    expect(remixCtaClickOutcome("license_required", true)).toBe("license_purchase");
+    expect(remixCtaClickOutcome("license_required", false)).toBe("marketplace");
+    expect(remixCtaClickOutcome("signed_out", false)).toBe("login");
   });
 });
 

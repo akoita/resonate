@@ -2539,3 +2539,42 @@ cd backend && npx jest --runInBand --config jest.integration.config.js --testPat
 cd backend && npm run lint           # tsc clean
 cd web && npx vitest run             # 438 passed
 ```
+
+## Scan: feat/1143-remix-product-analytics (2026-06-11)
+
+**Scope:** `backend/src/modules/analytics/analytics.controller.ts` (allow-list
+extension), `web/src/lib/productAnalytics.ts`,
+`web/src/components/remix/RemixCta.tsx`,
+`web/src/components/remix/RemixStudioEditor.tsx`, tests and docs for issue
+#1143 (remix CTA + studio funnel product analytics).
+
+**Findings:** none (no Critical/High/Medium/Low).
+
+### Review Notes
+
+- Five new event names added to the authenticated product-analytics
+  allow-list; the deny-by-default posture is unchanged and regression-tested
+  (`remix.prompt_typed` rejected with 400).
+- Payloads are compact identifiers and enum codes only: track/stem/project
+  ids, CTA state, variant, click outcome, mode, stem count, and stable
+  `reasonCode` strings. No titles, prompts, free-text reasons, wallets, or
+  listener identities are emitted; the prompt box content is never sent.
+- The endpoint requires authentication, so anonymous (signed-out) traffic is
+  not recordable — documented as a limitation rather than worked around with
+  an unauthenticated path.
+- No new endpoints, guards, secrets, raw SQL, or environment variables.
+
+### Commands Run
+
+```bash
+rg -n 'password|secret|api_key|private_key|\$queryRaw|executeRaw|eval\(' \
+  backend/src/modules/analytics/analytics.controller.ts \
+  web/src/lib/productAnalytics.ts \
+  web/src/components/remix/RemixCta.tsx \
+  web/src/components/remix/RemixStudioEditor.tsx
+git diff --check
+cd backend && npm run test   # 767 passed (incl. new controller contract tests)
+cd backend && npm run lint   # tsc clean
+cd web && npx vitest run     # 441 passed
+cd web && npm run build      # pass
+```

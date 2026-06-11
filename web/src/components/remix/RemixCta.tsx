@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
@@ -11,6 +11,10 @@ import {
   type RemixEligibilityResponse,
   type RemixProject,
 } from "../../lib/api";
+import {
+  recordProductAnalytics,
+  type ProductAnalyticsPayload,
+} from "../../lib/productAnalytics";
 
 export type RemixCtaVariant = "button" | "chip";
 
@@ -57,6 +61,41 @@ export function resolveRemixCtaState(input: {
     input.eligibility.reasons[0]?.message ||
     "Remixing is not available for this source.";
   return { kind: "blocked", label: "Remix unavailable", reason };
+}
+
+/**
+ * Compact funnel payload (#1143): ids and state codes only — no titles,
+ * prompts, or free-text reasons, per the product-analytics allow-list
+ * privacy constraints.
+ */
+export function buildRemixCtaAnalyticsPayload(input: {
+  trackId: string;
+  stemIds?: string[];
+  stateKind: Exclude<RemixCtaState["kind"], "hidden">;
+  variant: RemixCtaVariant;
+  licensePathAvailable?: boolean;
+}): ProductAnalyticsPayload {
+  return {
+    trackId: input.trackId,
+    stemIds: input.stemIds ?? [],
+    state: input.stateKind,
+    variant: input.variant,
+    ...(input.stateKind === "license_required"
+      ? { licensePathAvailable: !!input.licensePathAvailable }
+      : {}),
+  };
+}
+
+/** Where a CTA click routes; recorded alongside remix.cta_clicked. */
+export function remixCtaClickOutcome(
+  stateKind: "remix" | "license_required" | "signed_out",
+  hasLicensePath: boolean,
+): "studio_opened" | "license_purchase" | "marketplace" | "login" {
+  if (stateKind === "remix") return "studio_opened";
+  if (stateKind === "license_required") {
+    return hasLicensePath ? "license_purchase" : "marketplace";
+  }
+  return "login";
 }
 
 /**
@@ -192,6 +231,40 @@ export function RemixCta({
     eligibility,
   });
 
+  // Funnel impression (#1143): once per resolved visible state per source.
+  // Signed-out states cannot be recorded (the analytics endpoint is
+  // authenticated), so impressions cover signed-in sessions only.
+  const impressionKeyRef = useRef<string | null>(null);
+  const stateKind = state.kind;
+  useEffect(() => {
+    if (!token || stateKind === "hidden") return;
+    if (stateKind === "license_required" && hideWhenLicenseRequired) return;
+    const key = `${requestKey}|${stateKind}`;
+    if (impressionKeyRef.current === key) return;
+    impressionKeyRef.current = key;
+    void recordProductAnalytics(token, "remix.cta_impression", {
+      source: "remix_cta",
+      subjectType: "track",
+      subjectId: trackId,
+      payload: buildRemixCtaAnalyticsPayload({
+        trackId,
+        stemIds: stemIdsKey ? stemIdsKey.split(",") : [],
+        stateKind,
+        variant,
+        licensePathAvailable: !!onGetLicense,
+      }),
+    });
+  }, [
+    token,
+    stateKind,
+    requestKey,
+    trackId,
+    stemIdsKey,
+    variant,
+    onGetLicense,
+    hideWhenLicenseRequired,
+  ]);
+
   if (state.kind === "hidden") {
     return null;
   }
@@ -243,6 +316,27 @@ export function RemixCta({
 
   const handleClick = (event: React.MouseEvent) => {
     event.stopPropagation();
+    if (
+      state.kind === "remix" ||
+      state.kind === "license_required" ||
+      state.kind === "signed_out"
+    ) {
+      void recordProductAnalytics(token, "remix.cta_clicked", {
+        source: "remix_cta",
+        subjectType: "track",
+        subjectId: trackId,
+        payload: {
+          ...buildRemixCtaAnalyticsPayload({
+            trackId,
+            stemIds: stemIdsKey ? stemIdsKey.split(",") : [],
+            stateKind: state.kind,
+            variant,
+            licensePathAvailable: !!onGetLicense,
+          }),
+          outcome: remixCtaClickOutcome(state.kind, !!onGetLicense),
+        },
+      });
+    }
     if (state.kind === "remix") {
       void handleRemix();
       return;

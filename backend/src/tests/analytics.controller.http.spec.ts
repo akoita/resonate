@@ -472,6 +472,76 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it("accepts remix funnel product analytics events", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "remix.cta_impression",
+        sessionId: "product-session-remix",
+        subjectType: "track",
+        subjectId: "track-1",
+        clientEventId: "client-event-remix-1",
+        payload: {
+          trackId: "track-1",
+          stemIds: ["stem-1", "stem-2"],
+          state: "license_required",
+          variant: "button",
+          licensePathAvailable: true,
+        },
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "remix.studio_action_unavailable",
+        sessionId: "product-session-remix",
+        subjectType: "remix_project",
+        subjectId: "project-1",
+        clientEventId: "client-event-remix-2",
+        payload: {
+          projectId: "project-1",
+          action: "export",
+          reasonCode: "export_rights_required",
+        },
+      })
+      .expect(201);
+
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "remix.cta_impression",
+        subjectType: "track",
+        subjectId: "track-1",
+        payload: expect.objectContaining({
+          state: "license_required",
+          variant: "button",
+        }),
+        actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+      }),
+    );
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: "remix.studio_action_unavailable",
+        payload: expect.objectContaining({ reasonCode: "export_rights_required" }),
+      }),
+    );
+  });
+
+  it("rejects non-allow-listed remix event names", async () => {
+    await request(app.getHttpServer())
+      .post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({
+        eventName: "remix.prompt_typed",
+        payload: { prompt: "should never be accepted" },
+      })
+      .expect(400);
+
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
   it("rejects unsupported product analytics event names", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")
