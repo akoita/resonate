@@ -3,15 +3,18 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpException,
   Param,
   Patch,
   Post,
   Query,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Response } from "express";
 import { RemixService } from "./remix.service";
 import { RemixEligibilityService } from "./remix-eligibility.service";
 import {
@@ -90,6 +93,18 @@ export class RemixController {
   @Get("projects")
   listProjects(@Req() req: any) {
     return this.projectService.listProjects(req.user.userId);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("projects/:id/draft-audio")
+  async getDraftAudio(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Headers("range") range: string,
+    @Res() res: Response,
+  ) {
+    const audio = await this.projectService.getDraftAudio(req.user.userId, id);
+    this.sendAudioResponse(audio, range, res);
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -185,5 +200,47 @@ export class RemixController {
   @Get(":remixId")
   get(@Param("remixId") remixId: string) {
     return this.remixService.getRemix(remixId);
+  }
+
+  private sendAudioResponse(
+    audio: { data: Buffer; mimeType?: string | null },
+    range: string,
+    res: Response,
+  ) {
+    const fileSize = audio.data.length;
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = Number.parseInt(parts[0], 10);
+      const parsedEnd = parts[1] ? Number.parseInt(parts[1], 10) : fileSize - 1;
+      if (!Number.isFinite(start) || start >= fileSize) {
+        res.status(416).set({ "Content-Range": `bytes */${fileSize}` }).send();
+        return;
+      }
+      const boundedEnd = Number.isFinite(parsedEnd)
+        ? Math.min(parsedEnd, fileSize - 1)
+        : fileSize - 1;
+      if (boundedEnd < start) {
+        res.status(416).set({ "Content-Range": `bytes */${fileSize}` }).send();
+        return;
+      }
+      const chunk = audio.data.subarray(start, boundedEnd + 1);
+      res.status(206).set({
+        "Content-Range": `bytes ${start}-${boundedEnd}/${fileSize}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunk.length,
+        "Content-Type": audio.mimeType || "audio/mpeg",
+        "Cache-Control": "private, no-store",
+      });
+      res.end(chunk);
+      return;
+    }
+
+    res.set({
+      "Content-Length": fileSize,
+      "Content-Type": audio.mimeType || "audio/mpeg",
+      "Accept-Ranges": "bytes",
+      "Cache-Control": "private, no-store",
+    });
+    res.end(audio.data);
   }
 }

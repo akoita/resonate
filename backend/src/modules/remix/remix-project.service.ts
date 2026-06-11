@@ -20,6 +20,7 @@ import {
   type RemixGenerationConstraints,
   type RemixGenerationProvider,
 } from "./remix-generation.provider";
+import { StorageProvider } from "../storage/storage_provider";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -38,6 +39,25 @@ export type RemixProjectStemUpdate = {
 type RemixProjectWithStems = NonNullable<
   Awaited<ReturnType<typeof loadProject>>
 >;
+
+export type RemixDraftAudio = {
+  data: Buffer;
+  mimeType: string;
+};
+
+export function draftOutputUriFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+  const output = (metadata as { output?: unknown }).output;
+  if (!output || typeof output !== "object") {
+    return null;
+  }
+  const outputUri = (output as { outputUri?: unknown }).outputUri;
+  return typeof outputUri === "string" && outputUri.trim()
+    ? outputUri
+    : null;
+}
 
 /**
  * Shared read shape: stem catalog labels and the public source-track summary
@@ -105,6 +125,7 @@ export class RemixProjectService {
     private readonly eligibilityService: RemixEligibilityService,
     @Inject(REMIX_GENERATION_PROVIDER)
     private readonly generationProvider: RemixGenerationProvider,
+    private readonly storageProvider: StorageProvider,
   ) {}
 
   /**
@@ -439,6 +460,24 @@ export class RemixProjectService {
     });
 
     return this.toResponse(updated);
+  }
+
+  async getDraftAudio(
+    userId: string,
+    projectId: string,
+  ): Promise<RemixDraftAudio> {
+    const project = await this.loadOwnedProject(userId, projectId);
+    const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
+    if (!outputUri) {
+      throw new NotFoundException("Remix draft audio not found");
+    }
+
+    const data = await this.storageProvider.download(outputUri);
+    if (!data) {
+      throw new NotFoundException("Remix draft audio not found");
+    }
+
+    return { data, mimeType: "audio/mpeg" };
   }
 
   private async loadOwnedProject(userId: string, projectId: string) {

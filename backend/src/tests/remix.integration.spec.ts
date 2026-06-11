@@ -36,6 +36,12 @@ const X402_STEM_ID = `${TEST_PREFIX}stem_x402`;
 const FAILED_X402_STEM_ID = `${TEST_PREFIX}stem_x402_failed`;
 const BLOCKED_STEM_ID = `${TEST_PREFIX}stem_blocked`;
 const QUARANTINED_STEM_ID = `${TEST_PREFIX}stem_quarantined`;
+const storageProvider = {
+  upload: jest.fn(),
+  download: jest.fn(),
+  downloadRange: jest.fn(),
+  delete: jest.fn(),
+};
 
 describe("Remix eligibility and projects (integration)", () => {
   let eligibilityService: RemixEligibilityService;
@@ -302,7 +308,9 @@ describe("Remix eligibility and projects (integration)", () => {
       eventBus,
       eligibilityService,
       new StubRemixGenerationProvider(),
+      storageProvider,
     );
+    storageProvider.download.mockResolvedValue(Buffer.from("draft audio"));
   });
 
   describe("eligibility", () => {
@@ -477,6 +485,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new EventBus(),
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
+        storageProvider,
       );
       const read = await freshService.getProject(CREATOR_ID, created.id);
       expect(read.title).toBe("Neon Drift (Flip)");
@@ -558,6 +567,47 @@ describe("Remix eligibility and projects (integration)", () => {
       await expect(
         projectService.getProject(CREATOR_ID, `${TEST_PREFIX}missing_project`),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it("streams generated draft audio for the project owner only", async () => {
+      const created = await projectService.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Playable Draft",
+      });
+
+      await expect(
+        projectService.getDraftAudio(CREATOR_ID, created.id),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      await prisma.remixProject.update({
+        where: { id: created.id },
+        data: {
+          generationMetadata: {
+            output: {
+              outputUri: "/storage/remix-drafts/playable.mp3",
+              synthIdPresent: true,
+              seed: 42,
+              sampleRate: 48000,
+            },
+          },
+        },
+      });
+
+      storageProvider.download.mockResolvedValueOnce(Buffer.from("private audio"));
+      const audio = await projectService.getDraftAudio(CREATOR_ID, created.id);
+
+      expect(audio).toEqual({
+        data: Buffer.from("private audio"),
+        mimeType: "audio/mpeg",
+      });
+      expect(storageProvider.download).toHaveBeenCalledWith(
+        "/storage/remix-drafts/playable.mp3",
+      );
+      await expect(
+        projectService.getDraftAudio(OTHER_USER_ID, created.id),
+      ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
     it("lists only the caller's projects", async () => {
@@ -726,6 +776,7 @@ describe("Remix eligibility and projects (integration)", () => {
           eventBus,
           eligibilityService,
           explodingProvider,
+          storageProvider,
         );
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -827,6 +878,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new EventBus(),
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
+        storageProvider,
       );
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];

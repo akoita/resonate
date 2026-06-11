@@ -22,11 +22,12 @@ and rights badge, stem mute/solo/gain controls, remix mode selector, prompt
 box, draft status panel, persisted saves, and honest unavailable
 publish/export states. The `RemixGenerationProvider` boundary and
 `POST /remix/projects/:id/generate` are wired
-([#896](https://github.com/akoita/resonate/issues/896)) with a config-gated
-stub provider (`REMIX_GENERATION_ENABLED`, default off) — generation is not
-user-visible yet. The first real provider with a studio Generate button
-(backlog D2), queue-backed jobs (D3), and audio preview (C3) remain planned;
-the MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
+([#896](https://github.com/akoita/resonate/issues/896)). The first real
+provider with a studio Generate button (backlog D2) and the audio preview
+foundation (C3) are shipped: users can preview the source-stem arrangement and
+play generated draft output inside the owner-scoped studio. Queue-backed jobs
+(D3), publish/export, and artist controls remain planned; the MVP epic is
+[#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
 `POST /remix/create` compatibility shim and is slated for removal with the
@@ -170,6 +171,11 @@ from the JWT, never the request body.
   stub provider gated by `REMIX_GENERATION_ENABLED` (see
   `docs/deployment/environment.md`); the input's policy context types
   `voiceLikenessAllowed` as literal `false`.
+- API (#1165): `GET /remix/projects/:id/draft-audio` — owner-scoped,
+  JWT-authenticated stream for generated draft playback. The endpoint reads
+  `generationMetadata.output.outputUri` through the storage provider and
+  returns 404 when no playable draft exists. It does not expose raw storage
+  URIs or create a download/export path.
 
 - Generation provider (#1162, backlog D2): `LyriaRemixGenerationProvider`
   reuses the catalog Lyria stack behind the provider boundary, selected via
@@ -182,15 +188,18 @@ from the JWT, never the request body.
   constraints are bounds-checked (duration ∈ {30,60,120,180}, bpm 40–220,
   key pattern) before any provider work. The studio Draft status panel has a
   Generate/Regenerate button for prompted modes with honest disabled
-  reasons; playback of the stored draft arrives with C3.
+  reasons and, since #1165, playback for stored draft output.
+- UI (#1165): the studio Stems panel has a Web Audio preview transport that
+  fetches existing public stem preview streams, starts the arrangement in sync,
+  and applies persisted gain/mute plus preview-only solo live while editing.
+  The Draft status panel can play generated AI draft audio through the
+  owner-scoped `draft-audio` endpoint when provider metadata contains output.
 
 ## Planned Surfaces
 
 - UI: marketplace listing card remix affordances beyond the existing
   `Remixable` badge (deliberately excluded from #894 to avoid per-card
   eligibility fan-out).
-- UI: Web Audio stem preview in the studio (backlog C3), including playback
-  of the generated AI draft (`generationMetadata.outputUri`).
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
 - Events: `remix.generation_completed` (with queued jobs, backlog D3),
@@ -238,8 +247,7 @@ Implemented today:
 
 Remaining for later slices:
 
-- Playwright test for the studio happy path (once audio preview/C3 gives it
-  observable behavior worth driving end to end);
+- Playwright test for the studio happy path with observable audio controls;
 - provider-failure tests for normalized generation errors (#896).
 
 ## References

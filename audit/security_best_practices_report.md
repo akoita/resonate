@@ -2666,3 +2666,49 @@ cd backend && npm run lint  # tsc clean
 cd web && npx vitest run    # 445 passed
 cd web && npm run build     # pass
 ```
+
+## Scan: feat/1165-studio-audio-preview (2026-06-11)
+
+**Scope:** `backend/src/modules/remix/remix.controller.ts`,
+`backend/src/modules/remix/remix-project.service.ts`,
+`web/src/components/remix/RemixStudioEditor.tsx`,
+`web/src/lib/remixAudioPreview.ts`, `web/src/lib/api.ts`, tests and docs for
+issue #1165 (Remix Studio source-stem preview and generated draft playback).
+
+**Findings:** none (no Critical/High/Medium/Low).
+
+### Review Notes
+
+- Draft audio is owner-scoped through JWT auth and project ownership checks;
+  the endpoint streams bytes through the storage provider and returns 404 for
+  missing or malformed generation metadata.
+- Raw storage URIs are not returned to the browser, and the studio adds no
+  download/export affordance. Export remains deferred to the licensed export
+  policy surface.
+- Source-stem preview uses the existing public preview endpoint and Web Audio
+  gain nodes for mute/gain/solo playback. Persisted edit semantics are
+  unchanged; solo remains preview-only state.
+- No new secrets, environment variables, raw SQL, or dynamic HTML sinks were
+  added.
+
+### Commands Run
+
+```bash
+rg -n '(api[_-]?key|secret|private[_-]?key|BEGIN (RSA|OPENSSH|EC|PRIVATE)|password\s*=|token\s*=)' \
+  backend/src/modules/remix backend/src/tests/remix.controller.http.spec.ts \
+  backend/src/tests/remix.integration.spec.ts web/src/components/remix \
+  web/src/lib/remixAudioPreview.ts docs/features docs/issue-1165-implementation-plan.md
+rg --pcre2 -n 'https?://(?!localhost|github.com|book.getfoundry.sh|docs.runtimeverification.com|docs.certora.com|www.w3.org|storage.googleapis.com)' \
+  backend/src/modules/remix web/src/components/remix web/src/lib/remixAudioPreview.ts \
+  web/src/lib/api.ts docs/features/remix_studio.md docs/features/README.md \
+  docs/issue-1165-implementation-plan.md
+rg -n '\$queryRaw|\$executeRaw|innerHTML|dangerouslySetInnerHTML|eval\(' \
+  backend/src/modules/remix web/src/components/remix web/src/lib/remixAudioPreview.ts
+git diff --check
+cd backend && npm run lint  # tsc clean after npx prisma generate
+cd backend && npx jest --runInBand src/tests/remix.controller.http.spec.ts  # 24 passed
+cd backend && npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 29 passed
+cd web && npx vitest run src/components/remix/RemixStudioEditor.test.tsx  # 25 passed
+cd web && npx eslint src/components/remix/RemixStudioEditor.tsx src/components/remix/RemixStudioEditor.test.tsx src/lib/remixAudioPreview.ts src/lib/api.ts
+cd web && npm run build  # pass
+```

@@ -42,6 +42,9 @@ const mockProjectService = {
   generateDraft: jest
     .fn()
     .mockResolvedValue({ id: 'proj-1', generationJobId: 'rmxgen_proj-1' }),
+  getDraftAudio: jest
+    .fn()
+    .mockResolvedValue({ data: Buffer.from('draft-audio'), mimeType: 'audio/mpeg' }),
 };
 
 describe('RemixController (e2e)', () => {
@@ -74,6 +77,12 @@ describe('RemixController (e2e)', () => {
 
   it('GET /remix/projects/:id → 401 without JWT', async () => {
     await request(app.getHttpServer()).get('/remix/projects/proj-1').expect(401);
+  });
+
+  it('GET /remix/projects/:id/draft-audio → 401 without JWT', async () => {
+    await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/draft-audio')
+      .expect(401);
   });
 
   it('PATCH /remix/projects/:id → 401 without JWT', async () => {
@@ -169,6 +178,35 @@ describe('RemixController (e2e)', () => {
       .get('/remix/projects/proj-1')
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
+  });
+
+  it('GET /remix/projects/:id/draft-audio → 200 streams owner draft audio', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/draft-audio')
+      .set('Authorization', `Bearer ${token}`)
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(200);
+
+    expect(mockProjectService.getDraftAudio).toHaveBeenCalledWith(
+      'user-1',
+      'proj-1',
+    );
+    expect(res.headers['content-type']).toContain('audio/mpeg');
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.body.toString()).toBe('draft-audio');
+  });
+
+  it('GET /remix/projects/:id/draft-audio → 404 when no draft exists', async () => {
+    mockProjectService.getDraftAudio.mockRejectedValueOnce(new NotFoundException());
+    await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/draft-audio')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
   });
 
   it('PATCH /remix/projects/:id → 200 and routes patch to the service', async () => {
