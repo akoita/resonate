@@ -6,7 +6,6 @@ import {
 import { prisma } from "../../db/prisma";
 import {
   evaluateRemixEligibility,
-  REMIX_ELIGIBLE_ROUTES,
   type RemixEligibilityDecision,
   type RemixStemPolicyInput,
 } from "./remix-eligibility.policy";
@@ -37,7 +36,12 @@ export class RemixEligibilityService {
         id: true,
         contentStatus: true,
         rightsRoute: true,
-        release: { select: { rightsRoute: true } },
+        release: {
+          select: {
+            rightsRoute: true,
+            artist: { select: { remixConsent: true } },
+          },
+        },
         stems: {
           select: {
             id: true,
@@ -78,7 +82,11 @@ export class RemixEligibilityService {
     const decision = evaluateRemixEligibility({
       rightsRoute,
       contentStatus: track.contentStatus,
-      sourceOptedIn: this.isSourceOptedIn(rightsRoute),
+      sourceOptedIn: this.isSourceOptedIn(track.release?.artist?.remixConsent),
+      artistRemixConsent:
+        track.release?.artist?.remixConsent === "disabled"
+          ? "disabled"
+          : "allowed",
       explicitStemSelection: !!input.stemIds?.length,
       stems,
     });
@@ -99,16 +107,11 @@ export class RemixEligibilityService {
   }
 
   /**
-   * Conservative source opt-in hook. Until artist-level remix opt-in settings
-   * exist, sources on remix-eligible rights routes are treated as opted in.
-   * Replacing this with an explicit artist/release flag must not change the
-   * eligibility API shape.
+   * Artist-level remix consent is a revocation hook layered on top of
+   * per-stem remixable mints. Default/null keeps existing artists allowed.
    */
-  private isSourceOptedIn(rightsRoute: string | null): boolean {
-    return (
-      !!rightsRoute &&
-      (REMIX_ELIGIBLE_ROUTES as readonly string[]).includes(rightsRoute)
-    );
+  private isSourceOptedIn(remixConsent?: string | null): boolean {
+    return remixConsent !== "disabled";
   }
 
   /**

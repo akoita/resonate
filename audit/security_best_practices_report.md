@@ -1,5 +1,64 @@
 # Security Best Practices Report
 
+## Artist Remix Consent Control - 2026-06-11
+
+### Scope Reviewed
+
+Changed files (#1169):
+
+- `backend/prisma/schema.prisma` and migration
+  `20260611193000_artist_remix_consent`
+- `backend/src/modules/artist/*` (owner-scoped settings API)
+- `backend/src/modules/remix/remix-eligibility.policy.ts` and
+  `remix-eligibility.service.ts` (server-side policy enforcement)
+- `backend/src/events/event_types.ts` and
+  `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- Backend policy, controller, integration, and analytics bridge tests
+- `web/src/components/settings/ArtistRemixSettingsPanel.tsx`,
+  `web/src/app/settings/page.tsx`, and `web/src/lib/api.ts`
+- `docs/features/remix_studio.md`,
+  `docs/features/remix_studio_backlog.md`, and `docs/features/README.md`
+
+### Executive Summary
+
+No Critical or High findings. The artist-level remix setting is enforced in
+the backend eligibility policy, not merely hidden in the UI. The settings API
+resolves the managed artist from the authenticated user and rejects route ids
+that do not belong to that user; the client update body carries only
+`remixConsent`. Existing artists keep default eligibility through the
+`allowed` migration default, while `disabled` denies project creation and
+generation with `artist_remix_disabled`.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The new domain event bridge includes `artistId` in `payloadKeys`, avoiding
+  silent attribution loss during compact payload construction.
+- The frontend panel does not render user-supplied HTML, touch cookies, add
+  browser secrets, or trust a client-submitted artist id for authorization.
+- Secret/config scans hit pre-existing shared analytics/auth utilities
+  (`analytics_identity.ts`, BigQuery endpoints) and the existing mock-auth
+  `localStorage` check in `web/src/lib/api.ts`; none were introduced by this
+  slice.
+- Change impact checklist sections reviewed: API contract, privacy and
+  permission boundaries, analytics/events, frontend copy/state, feature docs,
+  Prisma migration, and validation scope.
+
+### Scans Run
+
+- `rg -i 'password|secret|api_key|private_key' backend/src/modules/artist backend/src/modules/remix backend/src/modules/analytics backend/src/events web/src/components/settings/ArtistRemixSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw|\$executeRaw' backend/src/modules/artist backend/src/modules/remix backend/src/modules/analytics backend/src/events`
+- `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|localStorage|sessionStorage' web/src/components/settings/ArtistRemixSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts`
+- `rg 'https?://(?!localhost)' backend/src/modules/artist backend/src/modules/remix backend/src/modules/analytics backend/src/events web/src/components/settings/ArtistRemixSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts -P`
+- `git diff --check`
+
 ## Artist Action Cockpit P7 Tail Cards - 2026-06-11
 
 ### Scope Reviewed

@@ -142,6 +142,52 @@ describe('API Client', () => {
     });
   });
 
+  describe('artist settings', () => {
+    it('fetches route-scoped artist settings with authentication', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'artist-settings/v1',
+            artistId: 'artist 1',
+            remixConsent: 'allowed',
+            updatedAt: '2026-06-11T19:30:00.000Z',
+          }),
+      });
+
+      const result = await api.getArtistSettings('artist-token', 'artist 1');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/artists/artist%201/settings');
+      expect(opts.cache).toBe('no-store');
+      expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
+      expect(result.remixConsent).toBe('allowed');
+    });
+
+    it('updates remix consent without sending a trusted artist id in the body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            schemaVersion: 'artist-settings/v1',
+            artistId: 'artist 1',
+            remixConsent: 'disabled',
+            updatedAt: '2026-06-11T19:35:00.000Z',
+          }),
+      });
+
+      await api.updateArtistSettings('artist-token', 'artist 1', { remixConsent: 'disabled' });
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/artists/artist%201/settings');
+      expect(opts.method).toBe('PATCH');
+      expect(opts.headers.get('Authorization')).toBe('Bearer artist-token');
+      expect(opts.body).toBe(JSON.stringify({ remixConsent: 'disabled' }));
+    });
+  });
+
   describe('getAgentQualityDashboard', () => {
     it('fetches aggregate AI DJ quality metrics for operators', async () => {
       mockFetch.mockResolvedValueOnce({

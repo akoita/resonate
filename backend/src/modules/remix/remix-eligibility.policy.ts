@@ -1,6 +1,6 @@
 import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 
-export const REMIX_POLICY_VERSION = "2026-06-10.v2";
+export const REMIX_POLICY_VERSION = "2026-06-11.v3";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -17,6 +17,7 @@ export const REMIX_DENIAL_CODES = [
   "source_under_monitoring",
   "source_rights_unknown",
   "source_not_opted_in",
+  "artist_remix_disabled",
   "stem_not_remixable",
   "license_required",
 ] as const;
@@ -42,10 +43,12 @@ export type RemixEligibilityPolicyInput = {
   /** Track.contentStatus: clean, quarantined, dmca_removed. */
   contentStatus: string;
   /**
-   * Source opt-in hook. Until artist-level remix opt-in settings exist, the
-   * caller passes the conservative default computed by the service.
+   * Source opt-in hook. Artist-level remix consent defaults to allowed, and
+   * disabled artist consent is a global revocation override.
    */
   sourceOptedIn: boolean;
+  /** Artist.remixConsent resolved server-side from the source release artist. */
+  artistRemixConsent?: "allowed" | "disabled";
   /**
    * True when the caller named specific stems (project creation, generation,
    * stem-scoped CTAs): every selected stem must then be licensed and
@@ -113,7 +116,12 @@ function sourceDenialReasons(
     });
   }
 
-  if (reasons.length === 0 && !input.sourceOptedIn) {
+  if (reasons.length === 0 && input.artistRemixConsent === "disabled") {
+    reasons.push({
+      code: "artist_remix_disabled",
+      message: "The artist has disabled Remix Studio access for this source.",
+    });
+  } else if (reasons.length === 0 && !input.sourceOptedIn) {
     reasons.push({
       code: "source_not_opted_in",
       message: "The rightsholder has not enabled remixing for this source.",

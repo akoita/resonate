@@ -5,6 +5,7 @@ import {
   validateRemixGenerationConstraints,
   type RemixGenerationInput,
 } from "../modules/remix/remix-generation.provider";
+import { REMIX_POLICY_VERSION } from "../modules/remix/remix-eligibility.policy";
 import type { LyriaClient } from "../modules/generation/lyria.client";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
@@ -24,7 +25,7 @@ function generationInput(
       licenseId: "purchase-1",
       sourceRightsRoute: "STANDARD_ESCROW",
       sourceContentStatus: "clean",
-      sourcePolicyVersion: "2026-06-10.v2",
+      sourcePolicyVersion: REMIX_POLICY_VERSION,
       voiceLikenessAllowed: false,
     },
     ...overrides,

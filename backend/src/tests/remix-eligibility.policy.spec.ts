@@ -74,6 +74,20 @@ describe("remix eligibility policy", () => {
     expect(decision.reasons.map((r) => r.code)).toContain("source_not_opted_in");
   });
 
+  it("denies sources when artist remix consent is disabled", () => {
+    const decision = evaluateRemixEligibility(
+      input({ artistRemixConsent: "disabled", sourceOptedIn: false }),
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.requiredLicense).toBeNull();
+    expect(decision.reasons).toEqual([
+      {
+        code: "artist_remix_disabled",
+        message: "The artist has disabled Remix Studio access for this source.",
+      },
+    ]);
+  });
+
   it("denies stems minted as non-remixable", () => {
     const decision = evaluateRemixEligibility(
       input({

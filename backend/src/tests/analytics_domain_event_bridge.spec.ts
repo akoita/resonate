@@ -212,6 +212,15 @@ describe("AnalyticsDomainEventBridgeService", () => {
         title: "Track 919",
       },
       {
+        eventName: "artist.remix_consent_updated",
+        eventVersion: 1,
+        occurredAt,
+        artistId: "artist_919",
+        userId: "artist_user_919",
+        previous: "allowed",
+        next: "disabled",
+      },
+      {
         eventName: "payment.settled",
         eventVersion: 1,
         occurredAt,
@@ -872,6 +881,19 @@ describe("AnalyticsDomainEventBridgeService", () => {
           roomType: "show_city_demand",
           city: "Paris",
           country: "FR",
+        }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "artist.remix_consent_updated",
+        subjectType: "artist",
+        subjectId: "artist_919",
+        actorId: "artist_user_919",
+        payload: expect.objectContaining({
+          artistId: "artist_919",
+          previous: "allowed",
+          next: "disabled",
         }),
       }),
     );
