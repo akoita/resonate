@@ -109,7 +109,7 @@ describe("LyriaRemixGenerationProvider", () => {
 
     expect(upload).toHaveBeenCalledWith(
       expect.any(Buffer),
-      expect.stringMatching(/^remix-drafts\/project-1\/.+\.wav$/),
+      expect.stringMatching(/^remix-draft-project-1-.+\.wav$/),
       "audio/wav",
     );
 

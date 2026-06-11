@@ -280,12 +280,8 @@ export function RemixStudioEditor({
         title: "Draft generated",
         message: "Your AI remix draft is recorded on this project.",
       });
-      void recordProductAnalytics(token, "remix.studio_saved", {
-        source: "remix_studio",
-        subjectType: "remix_project",
-        subjectId: updated.id,
-        payload: { projectId: updated.id, mode: updated.mode },
-      });
+      // No frontend analytics here: emitting studio_saved would muddy save
+      // metrics, and the backend already records remix.generation_started.
     } catch (error) {
       // apiRequest throws Error("API <status>: <json>") — recover the
       // normalized provider error contract when present.

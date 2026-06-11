@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { LyriaClient } from "../generation/lyria.client";
 import { StorageProvider } from "../storage/storage_provider";
 import {
-  REMIX_GENERATION_COST_PER_30_SECONDS_USD,
+  estimateRemixGenerationCostUsd,
   REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
   RemixGenerationProviderError,
   type RemixGenerationInput,
@@ -83,7 +83,10 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     }
 
     const extension = extensionForMimeType(result.mimeType);
-    const filename = `remix-drafts/${input.provenance.remixProjectId}/${jobId}.${extension}`;
+    // Flat name: the local storage provider writes join(uploadDir, filename)
+    // without creating subdirectories, so path separators would ENOENT on
+    // local dev. GCS treats the name as an opaque object key either way.
+    const filename = `remix-draft-${input.provenance.remixProjectId}-${jobId}.${extension}`;
     let outputUri: string;
     try {
       const stored = await this.storageProvider.upload(
@@ -108,8 +111,7 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     return {
       provider: result.provider,
       jobId,
-      estimatedCostUsd:
-        Math.ceil(durationSeconds / 30) * REMIX_GENERATION_COST_PER_30_SECONDS_USD,
+      estimatedCostUsd: estimateRemixGenerationCostUsd(durationSeconds),
       outputMetadata: {
         outputUri,
         synthIdPresent: result.synthIdPresent,
