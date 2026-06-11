@@ -157,7 +157,12 @@ Acceptance:
 - Remix Studio is not coupled directly to a single AI provider.
 - Provider calls are mockable in unit and integration tests.
 
-### D2. Add first AI draft provider
+### D2. Add first AI draft provider — shipped (#1162)
+
+Lyria-backed provider (`LyriaRemixGenerationProvider`) selected via
+`REMIX_GENERATION_PROVIDER_KIND=lyria`, prompt-based variation/extension
+only (stem_mix needs audio conditioning — deferred), synchronous in D2 with
+output stored through the storage provider; studio Generate button included.
 
 - Reuse the existing generation stack where appropriate.
 - Support prompt-based variation or extension as the first shippable mode.

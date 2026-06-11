@@ -112,6 +112,7 @@ When adding a new environment variable:
 | `TRUST_STAKE_USD_MIN` | Backend | Optional protocol minimum canonical USD stake requirement per release track. Defaults to `5`, keeping USDC upload staking at 5 USDC per release track |
 | `AGENT_KEY_ENCRYPTION_KEY` | Backend | Generate with `./backend/scripts/generate-agent-encryption-key.sh` for local KMS mode |
 | `REMIX_GENERATION_ENABLED` | Backend | Optional opt-in flag (`true`) for AI remix draft generation through the `RemixGenerationProvider` boundary. Default off: `POST /remix/projects/:id/generate` returns a normalized `provider_disabled` error until a real provider rollout enables it |
+| `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default) or `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind |
 | `REMIX_PROJECT_RATE_LIMIT` | Backend | Optional per-user hourly ceiling for `POST /remix/projects` (sliding window, default `20`). Exceeding it returns HTTP 429 with an actionable message (#1144) |
 | `REMIX_GENERATION_RATE_LIMIT` | Backend | Optional per-user hourly ceiling for `POST /remix/projects/:id/generate` (sliding window, default `10` — stricter than drafting because generation will carry provider cost once a real provider ships). Exceeding it returns HTTP 429 (#1144) |
 | `X402_ENABLED` | Backend | Enables the x402 payment and storefront purchase surfaces |
