@@ -1301,7 +1301,6 @@ export class AnalyticsService {
     let holderRoomJoins = 0;
     let benefitRuleCreations = 0;
     let remixCreations = 0;
-    let remixCtaSignals = 0;
     let communityFanMessages = 0;
     let communityArtistMessages = 0;
     let marketplacePurchaseIntents = 0;
@@ -1401,10 +1400,6 @@ export class AnalyticsService {
         remixCreations += fact.count;
       }
 
-      if (eventName === "remix.cta_impression" || eventName === "remix.cta_clicked") {
-        remixCtaSignals += fact.count;
-      }
-
       if (eventName === "community.message_created") {
         const messageType = this.stringDimension(fact.dimensions, "messageType") ?? "message";
         if (messageType === "announcement" || messageType === "campaign_update") {
@@ -1460,7 +1455,12 @@ export class AnalyticsService {
       benefitRuleCreations,
       earlySupporterReward: topSignal(supporterRolesByCampaign) ?? topSignal(supporterRoomJoinsByCampaign),
       remixCreations,
-      remixDemandSignals: remixCreations + remixCtaSignals,
+      // Server-attributed signals only (#1168 review): remix.cta_* product
+      // events carry no artistId by design (compact payloads, #1160), so in
+      // production they aggregate under "unknown" — counting them here would
+      // be silent dead weight, and client-supplied artistId would be a
+      // client-trusted claim. Drafts are the trustworthy demand signal.
+      remixDemandSignals: remixCreations,
       communityFanMessages,
       communityArtistMessages,
       marketplacePurchaseIntents,

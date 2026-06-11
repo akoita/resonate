@@ -86,10 +86,11 @@ The same `GET /analytics/artist/:id/v1?days=N` response now includes an
   artist remix opt-in settings and a challenge surface exist (remix backlog
   A1, issue #1121).
 - `review_remix_supply_pricing` opens `/marketplace/manage?status=active` when
-  attributed aggregate remix demand (`remix.project_created`, legacy
-  `remix.created`, and `remix.cta_*` facts) reaches the five-signal floor and
-  an artist-owned `marketplace.owner_inventory_viewed` snapshot shows no active
-  owner inventory. The card uses the existing owner inventory aggregate only;
+  attributed aggregate remix demand (`remix.project_created` and legacy
+  `remix.created` facts — server-attributed only; `remix.cta_*` product events
+  carry no artist attribution by design and are excluded) reaches the
+  five-signal floor and an artist-owned `marketplace.owner_inventory_viewed`
+  snapshot shows no active owner inventory. The card uses the existing owner inventory aggregate only;
   it does not infer supply coverage from missing inventory analytics.
 - `triage_fan_questions` opens `/artist/:id?tab=community` when attributed
   `community.message_created` fan-message facts in the artist's rooms meet the
