@@ -21,17 +21,24 @@ token is explicitly out of scope.
 
 ## Workstream A: Product And Policy Foundation
 
-### A1. Define artist opt-in settings
+### A1. Define artist opt-in settings — shipped (#1169)
 
-- Add source policy fields for remix eligibility.
-- Support disabled, manual approval, and allowed-with-license states.
+- Add artist-level remix consent for eligibility.
+- Support `allowed` and `disabled` states.
+- Keep per-stem `StemNftMint.remixable` as the existing affirmative consent.
 - Keep voice/likeness consent separate from stem remix consent.
 
 Acceptance:
 
 - Backend can answer whether a track or stem is artist-opted-in for remixing.
-- Default policy is conservative and does not silently enable remixing for all
-  uploads.
+- Existing artists keep current eligibility by default: `allowed` is the
+  migration default, and per-stem `remixable` still gates source access.
+- Artist-level `disabled` is a global revocation override enforced by
+  `REMIX_POLICY_VERSION` `2026-06-11.v3` with deny reason
+  `artist_remix_disabled`.
+- Existing private drafts are not deleted and remain editable, but generation
+  re-checks eligibility and is denied while disabled.
+- Manual approval states remain deferred.
 
 ### A2. Implement remix eligibility service — shipped (#892)
 

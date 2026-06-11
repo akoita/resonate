@@ -267,7 +267,7 @@ describe("analytics", () => {
                 sourceTrackId: "track-remix-source",
                 stemIds: ["stem-1", "stem-2"],
                 mode: "stem_mix",
-                policyVersion: "2026-06-10.v2",
+                policyVersion: "2026-06-11.v3",
               },
             },
       );

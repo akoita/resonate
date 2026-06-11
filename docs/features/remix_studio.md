@@ -25,8 +25,10 @@ publish/export states. The `RemixGenerationProvider` boundary and
 ([#896](https://github.com/akoita/resonate/issues/896)). The first real
 provider with a studio Generate button (backlog D2) and the audio preview
 foundation (C3) are shipped: users can preview the source-stem arrangement and
-play generated draft output inside the owner-scoped studio. Queue-backed jobs
-(D3), publish/export, and artist controls remain planned; the MVP epic is
+  play generated draft output inside the owner-scoped studio. Artist remix
+consent controls (backlog A1) are shipped: artists can globally disable remix
+access while preserving existing private drafts. Queue-backed jobs (D3),
+publish/export, and manual approval states remain planned; the MVP epic is
 [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
@@ -81,9 +83,14 @@ from the JWT, never the request body.
   allow/deny response with `allowed`, `requiredLicense`, `allowedActions`,
   structured `reasons` (`source_blocked`, `source_quarantined`,
   `source_removed`, `source_under_monitoring`, `source_rights_unknown`,
-  `source_not_opted_in`, `stem_not_remixable`, `license_required`),
+  `source_not_opted_in`, `artist_remix_disabled`, `stem_not_remixable`,
+  `license_required`),
   `policyVersion`, per-stem remixability/license state. Designed for the three
   CTA states: enabled, license required, disabled with reason.
+- API: `GET /artists/:id/settings` and `PATCH /artists/:id/settings` —
+  owner-only artist settings reads/updates. The authenticated user's artist
+  profile is resolved server-side; the client cannot select a different artist
+  by body payload.
 - API: `POST /remix/projects` — eligibility-gated durable project creation;
   policy denials return 403 with the full eligibility payload.
 - API: `GET /remix/projects` — owner-scoped project list.
@@ -97,7 +104,9 @@ from the JWT, never the request body.
   attribution, and export-policy placeholders.
 - Events: `remix.project_created` (carries the source release's `artistId`
   for artist-cockpit attribution, #1121), `remix.policy_rejected`,
-  `remix.license_required` (governed analytics bridge mappings included).
+  `remix.license_required`, and `artist.remix_consent_updated` (governed
+  analytics bridge mappings included; the artist-consent bridge payload
+  explicitly includes `artistId`).
 - Product analytics (#1143), allow-listed in `POST /analytics/product/event`
   and emitted from the web client with compact id/state payloads only (no
   titles, prompts, or free-text reasons):
@@ -131,12 +140,14 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
-- Eligibility policy v2 (#1145, `2026-06-10.v2`): track-default requests
+- Eligibility policy v3 (#1145/#1169, `2026-06-11.v3`): track-default requests
   (the release-page CTA, no stem filter) are a **partial allowance** — one
   licensed stem enables the track, non-remixable mints are excluded rather
   than blocking, and the created draft contains only licensed remixable
   stems. Explicit stem selections (project creation, generation, stem-scoped
   CTAs) still require every selected stem to be licensed and remixable.
+  Artist-level `disabled` remix consent is a global revocation override and
+  denies all source selections with `artist_remix_disabled`.
 - Remix access surface (#1145): `/stem/[tokenId]` is the polished asset page
   — type-themed hero with artwork, attribution, audio preview, an action
   rail with Buy/Remix/List, and a license-tiers panel; reachable from
@@ -194,12 +205,18 @@ from the JWT, never the request body.
   and applies persisted gain/mute plus preview-only solo live while editing.
   The Draft status panel can play generated AI draft audio through the
   owner-scoped `draft-audio` endpoint when provider metadata contains output.
+- UI (#1169): `/settings` has an Artist / Remix Studio consent control for
+  artist profiles. The copy states the server policy consequence directly:
+  disabling blocks new remix projects and generation, does not delete existing
+  private drafts, and keeps existing drafts editable.
 
 ## Planned Surfaces
 
 - UI: marketplace listing card remix affordances beyond the existing
   `Remixable` badge (deliberately excluded from #894 to avoid per-card
   eligibility fan-out).
+- API/UI: manual approval remix consent states remain deferred; the shipped
+  A1 slice supports `allowed` and `disabled`.
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
 - Events: `remix.generation_completed` (with queued jobs, backlog D3),
@@ -209,7 +226,15 @@ from the JWT, never the request body.
 
 - Source release must not be blocked or quarantined.
 - Source route must allow marketplace/licensing use.
-- Artist or rightsholder must opt in to remix creation.
+- Artist or rightsholder consent is two-layered: each stem still needs the
+  existing `StemNftMint.remixable` affirmative consent, and the artist-level
+  global setting defaults to `allowed`.
+- Artist-level `disabled` consent is a global revocation override. While
+  disabled, new remix projects and draft generation are denied server-side
+  even when stems are otherwise remixable and licensed.
+- Existing private drafts are not deleted when an artist disables remix access
+  and can still be edited, but `generateDraft` re-runs eligibility and denies
+  generation while disabled.
 - User must own or purchase a valid remix license before AI generation.
 - AI-generated derivatives follow the same royalty obligations as human remixes.
 - Draft, publish, export, and monetize are separate rights.
@@ -227,12 +252,19 @@ Implemented today:
 
 - `backend/src/tests/remix-eligibility.policy.spec.ts` — pure policy unit
   tests for blocked, quarantined, dmca-removed, limited-monitoring, unknown,
-  standard, trusted, opt-out, non-remixable-mint, missing-license, and
-  already-licensed cases (`npm run test`).
+  standard, trusted, opt-out, artist-disabled, non-remixable-mint,
+  missing-license, and already-licensed cases (`npm run test`).
 - `backend/src/tests/remix.integration.spec.ts` — Testcontainers Postgres
   coverage for eligibility against real rights/mint/purchase/x402 rows,
-  durable project create/read/update, restart durability, ownership
-  enforcement, and policy denial events (`npm run test:integration`).
+  default artist remix consent preserving existing eligibility,
+  artist-disabled policy denial, durable project create/read/update, restart
+  durability, ownership enforcement, generation re-check denial while artist
+  remix consent is disabled, and policy denial events (`npm run
+  test:integration`).
+- `backend/src/tests/artist.integration.spec.ts` — Prisma-backed artist
+  settings update plus `artist.remix_consent_updated` event emission.
+- `backend/src/tests/artist.controller.http.spec.ts` — authenticated settings
+  route contracts, route-scoped ownership, and 403 for another user's artist.
 - `backend/src/tests/remix.controller.http.spec.ts` — HTTP contract: guards,
   routing, status codes, and JWT-not-body identity.
 - `web/src/components/remix/RemixCta.test.tsx` — CTA state resolution,
