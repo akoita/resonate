@@ -245,6 +245,12 @@ from the JWT, never the request body.
   user with sliding-window hourly ceilings (`REMIX_PROJECT_RATE_LIMIT`,
   default 20; `REMIX_GENERATION_RATE_LIMIT`, default 10) returning HTTP 429
   with an actionable message.
+- Post-purchase settling (#1173): a wallet remix purchase is proven by the
+  indexed `StemPurchase` row, which lags the transaction (minutes during
+  indexer backfills). The stem page applies the purchase to its listings
+  optimistically, polls eligibility on a backoff schedule (~8 minutes
+  total), shows an honest "finalizing your remix access" notice, and never
+  hides the remix CTA from an in-session purchaser.
 
 ## Verification
 

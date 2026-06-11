@@ -80,8 +80,15 @@ interface BuyModalProps {
   tierPricesUsd?: Partial<Record<LicenseType, number>>;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess?: (txHash: string) => void;
+  onSuccess?: (txHash: string, purchase?: BuyModalPurchase) => void;
 }
+
+/** What was actually bought (#1173): pages use this to settle eligibility. */
+export type BuyModalPurchase = {
+  licenseType: LicenseType;
+  amount: bigint;
+  listingId: bigint;
+};
 
 const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
 
@@ -289,7 +296,11 @@ export function BuyModal({
     try {
       if (listingChainMismatch) return;
       const hash = await buy(selectedListingId, amount);
-      onSuccess?.(hash);
+      onSuccess?.(hash, {
+        licenseType: selectedLicense,
+        amount,
+        listingId: selectedListingId,
+      });
     } catch {
       // Error handled by hook
     }

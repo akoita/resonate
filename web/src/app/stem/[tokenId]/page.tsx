@@ -14,11 +14,17 @@ import {
 import { formatRoyaltyBps, isZeroAddress } from "../../../lib/contracts";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { ListStemModal } from "../../../components/marketplace/ListStemModal";
-import { BuyModal } from "../../../components/marketplace/BuyModal";
+import { BuyModal, type BuyModalPurchase } from "../../../components/marketplace/BuyModal";
 import type { LicenseType } from "../../../components/marketplace/LicenseTypeSelector";
 import { RemixCta } from "../../../components/remix/RemixCta";
 import ContentProtectionBadge from "../../../components/content-protection/ContentProtectionBadge";
-import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
+import { API_BASE, getReleaseArtworkUrl, getRemixEligibility } from "../../../lib/api";
+import {
+    applyPurchaseToListings,
+    POST_PURCHASE_ELIGIBILITY_DELAYS_MS,
+    postPurchaseNotice,
+    type PostPurchaseSettling,
+} from "../../../lib/postPurchase";
 import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import { findPaymentAssetForToken, ZERO_PAYMENT_TOKEN } from "../../../lib/payments";
 import { formatListingPrice } from "../../../lib/listingPricing";
@@ -94,7 +100,7 @@ export default function StemDetailPage() {
     const tokenIdStr = params.tokenId as string;
     const tokenId = tokenIdStr ? BigInt(tokenIdStr) : undefined;
 
-    const { address, smartAccountAddress } = useAuth();
+    const { address, smartAccountAddress, token } = useAuth();
     const { chainId } = useContractAddresses();
     const { data: stemData, loading: stemLoading, error: stemError } = useStemData(tokenId);
     const { uri, loading: uriLoading } = useTokenURI(tokenId);
@@ -124,6 +130,12 @@ export default function StemDetailPage() {
     // Bumped after a purchase: refetches listings and remounts the Remix CTA
     // so the page reflects the new license without a reload.
     const [refreshNonce, setRefreshNonce] = useState(0);
+    // Post-purchase eligibility settling (#1173): set after an in-session
+    // remix purchase; cleared once eligibility recognizes the license.
+    const [settling, setSettling] = useState<PostPurchaseSettling | null>(null);
+    // In-session purchases the indexer may not reflect yet: re-applied to
+    // every listings refetch so the rail never resells consumed inventory.
+    const consumedPurchasesRef = useRef<Map<string, bigint>>(new Map());
     const [linkCopied, setLinkCopied] = useState(false);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -163,11 +175,24 @@ export default function StemDetailPage() {
             .then((r) => (r.ok ? r.json() : null))
             .then((data) => {
                 if (cancelled || !data?.listings) return;
-                setListings(
-                    (data.listings as StemListingRow[]).filter(
-                        (l) => l.tokenId === tokenId?.toString(),
-                    ),
+                let rows = (data.listings as StemListingRow[]).filter(
+                    (l) => l.tokenId === tokenId?.toString(),
                 );
+                // Re-apply in-session purchases the indexer hasn't reflected
+                // yet (#1173); entries self-heal once the API stops returning
+                // the consumed listing.
+                const returnedIds = new Set(rows.map((l) => l.listingId));
+                for (const [listingId, amount] of consumedPurchasesRef.current) {
+                    if (!returnedIds.has(listingId)) {
+                        consumedPurchasesRef.current.delete(listingId);
+                        continue;
+                    }
+                    rows = applyPurchaseToListings(rows, {
+                        listingId: BigInt(listingId),
+                        amount,
+                    });
+                }
+                setListings(rows);
             })
             .catch(() => { /* commerce rail degrades to no listings */ });
         fetch(`${API_BASE}/api/stem-pricing/${encodeURIComponent(catalogStemId)}`)
@@ -186,6 +211,50 @@ export default function StemDetailPage() {
             cancelled = true;
         };
     }, [catalogStemId, tokenId, refreshNonce]);
+
+    // Eligibility settling loop (#1173): after an in-session remix purchase,
+    // poll eligibility on a backoff schedule. Registration normally lands in
+    // seconds but can take minutes when the indexer is backfilling.
+    useEffect(() => {
+        if (!settling || settling.phase !== "polling") return;
+        if (!token || !catalogTrackId || !catalogStemId) return;
+        let cancelled = false;
+        const timers: ReturnType<typeof setTimeout>[] = [];
+
+        const checkAt = (delayIndex: number) => {
+            if (delayIndex >= POST_PURCHASE_ELIGIBILITY_DELAYS_MS.length) {
+                if (!cancelled) setSettling({ phase: "exhausted" });
+                return;
+            }
+            timers.push(
+                setTimeout(async () => {
+                    if (cancelled) return;
+                    try {
+                        const eligibility = await getRemixEligibility(
+                            token,
+                            catalogTrackId,
+                            [catalogStemId],
+                        );
+                        if (cancelled) return;
+                        if (eligibility.allowed) {
+                            setSettling(null);
+                            // Remounts the CTA so it renders the Remix state.
+                            setRefreshNonce((n) => n + 1);
+                            return;
+                        }
+                    } catch {
+                        // Transient failure: keep the schedule going.
+                    }
+                    checkAt(delayIndex + 1);
+                }, POST_PURCHASE_ELIGIBILITY_DELAYS_MS[delayIndex]),
+            );
+        };
+        checkAt(0);
+        return () => {
+            cancelled = true;
+            for (const timer of timers) clearTimeout(timer);
+        };
+    }, [settling, token, catalogTrackId, catalogStemId]);
 
     const attr = useCallback(
         (name: string): string | null => {
@@ -404,7 +473,12 @@ export default function StemDetailPage() {
                                 // The primary buy button already sells the remix
                                 // tier here; a second "Get remix license" entry
                                 // would duplicate it.
+                                // Never suppress the CTA for someone who just
+                                // bought in-session (#1173): while settling, the
+                                // license-required state stays visible with its
+                                // reason instead of an empty rail.
                                 hideWhenLicenseRequired={
+                                    !settling &&
                                     !!primaryListing &&
                                     !isOwnListing &&
                                     (primaryListing.licenseType ?? "personal") === "remix"
@@ -420,7 +494,15 @@ export default function StemDetailPage() {
                                 List for Sale
                             </button>
                         )}
-                        {!primaryListing && metaState !== "loading" && (
+                        {settling && (
+                            <span
+                                className="px-4 py-2.5 rounded-lg border border-emerald-700/40 bg-emerald-500/10 text-sm text-emerald-300 stem-settling-notice"
+                                role="status"
+                            >
+                                {postPurchaseNotice(settling.phase)}
+                            </span>
+                        )}
+                        {!settling && !primaryListing && metaState !== "loading" && (
                             <span className="px-4 py-2.5 rounded-lg border border-zinc-800 bg-zinc-950/60 text-sm text-zinc-500">
                                 Not listed right now — tier prices below are seller defaults
                             </span>
@@ -595,9 +677,26 @@ export default function StemDetailPage() {
                         commercial: pricing.commercialLicenseUsd ?? undefined,
                     } : undefined}
                     isOpen={true}
-                    onClose={() => setBuyListing(null)}
-                    onSuccess={() => {
+                    onClose={() => {
                         setBuyListing(null);
+                        // x402 checkout completes inside the modal without
+                        // onSuccess; its settlement proof is synchronous, so a
+                        // single refresh on close keeps the CTA honest (#1173).
+                        setRefreshNonce((n) => n + 1);
+                    }}
+                    onSuccess={(_txHash, purchase?: BuyModalPurchase) => {
+                        setBuyListing(null);
+                        if (purchase) {
+                            // Optimistic inventory: never keep selling what the
+                            // buyer just consumed while the indexer catches up.
+                            const key = purchase.listingId.toString();
+                            const prior = consumedPurchasesRef.current.get(key) ?? 0n;
+                            consumedPurchasesRef.current.set(key, prior + purchase.amount);
+                            setListings((prev) => applyPurchaseToListings(prev, purchase));
+                            if (purchase.licenseType === "remix") {
+                                setSettling({ phase: "polling" });
+                            }
+                        }
                         // Refresh listings and re-evaluate remix eligibility so
                         // a remix-tier purchase flips the CTA without a reload.
                         setRefreshNonce((n) => n + 1);
