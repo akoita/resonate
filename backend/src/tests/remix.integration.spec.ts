@@ -18,6 +18,7 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { RemixProjectService } from "../modules/remix/remix-project.service";
+import { HttpException } from "@nestjs/common";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 
 const TEST_PREFIX = `remix_${Date.now()}_`;
@@ -811,6 +812,98 @@ describe("Remix eligibility and projects (integration)", () => {
           title: "   ",
         }),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe("rate limits (#1144)", () => {
+    const limitedService = (env: Record<string, string>) => {
+      const previous: Record<string, string | undefined> = {};
+      for (const [key, value] of Object.entries(env)) {
+        previous[key] = process.env[key];
+        process.env[key] = value;
+      }
+      // Limits are read at construction, so a fresh instance picks them up.
+      const service = new RemixProjectService(
+        new EventBus(),
+        new RemixEligibilityService(),
+        new StubRemixGenerationProvider(),
+      );
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      return service;
+    };
+
+    const expect429 = async (promise: Promise<unknown>) => {
+      await expect(promise).rejects.toMatchObject({
+        status: 429,
+        message: expect.stringContaining("Rate limit exceeded"),
+      });
+      await promise.catch((error) => {
+        expect(error).toBeInstanceOf(HttpException);
+      });
+    };
+
+    it("throttles project creation per user with an actionable 429", async () => {
+      const service = limitedService({ REMIX_PROJECT_RATE_LIMIT: "2" });
+
+      const first = await service.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Rate Limit One",
+      });
+      const second = await service.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Rate Limit Two",
+      });
+      expect(first.id).toBeDefined();
+      expect(second.id).toBeDefined();
+
+      await expect429(
+        service.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Rate Limit Three",
+        }),
+      );
+
+      // The window is per user: another user is not throttled. Denied
+      // attempts (no remix license) still consume the caller's budget —
+      // throttling counts requests, not successes.
+      await expect(
+        service.createProject({
+          userId: `${TEST_PREFIX}other-user`,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Other User Draft",
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+    });
+
+    it("throttles generation requests before any project work", async () => {
+      const service = limitedService({ REMIX_GENERATION_RATE_LIMIT: "1" });
+      const project = await service.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Generation Rate Limit",
+      });
+
+      // First call consumes the budget (provider stub is config-disabled,
+      // so it fails provider_disabled — the request still counts; the
+      // controller maps that code to 503).
+      await expect(
+        service.generateDraft(CREATOR_ID, project.id),
+      ).rejects.toMatchObject({ code: "provider_disabled" });
+
+      // Second call is throttled before touching the project at all:
+      // even a nonexistent project id returns 429, not 404.
+      await expect429(service.generateDraft(CREATOR_ID, "missing-project"));
     });
   });
 });

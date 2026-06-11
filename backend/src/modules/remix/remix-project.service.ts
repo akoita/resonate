@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
@@ -75,14 +77,61 @@ function loadProject(projectId: string) {
   });
 }
 
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
+
+function rateLimitFromEnv(name: string, fallback: number): number {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 @Injectable()
 export class RemixProjectService {
+  // Pre-public-launch abuse limits (#1144), mirroring the catalog
+  // generation pattern: per-user sliding window, env-configurable.
+  // Generation is stricter than drafting since it will carry real
+  // provider cost once backlog D2 ships.
+  private readonly maxProjectsPerHour = rateLimitFromEnv(
+    "REMIX_PROJECT_RATE_LIMIT",
+    20,
+  );
+  private readonly maxGenerationsPerHour = rateLimitFromEnv(
+    "REMIX_GENERATION_RATE_LIMIT",
+    10,
+  );
+  private readonly rateLimits = new Map<string, number[]>();
+
   constructor(
     private readonly eventBus: EventBus,
     private readonly eligibilityService: RemixEligibilityService,
     @Inject(REMIX_GENERATION_PROVIDER)
     private readonly generationProvider: RemixGenerationProvider,
   ) {}
+
+  /**
+   * Per-user sliding-window limit. 429 (not the catalog's 400) so agent
+   * and frontend callers can distinguish throttling from invalid input.
+   */
+  private enforceRateLimit(
+    action: "create" | "generate",
+    userId: string,
+    maxPerHour: number,
+  ): void {
+    const key = `${action}:${userId}`;
+    const now = Date.now();
+    const timestamps = (this.rateLimits.get(key) ?? []).filter(
+      (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+    );
+    if (timestamps.length >= maxPerHour) {
+      throw new HttpException(
+        `Rate limit exceeded: maximum ${maxPerHour} remix ${
+          action === "create" ? "project creations" : "generation requests"
+        } per hour. Try again later.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    timestamps.push(now);
+    this.rateLimits.set(key, timestamps);
+  }
 
   async createProject(input: {
     userId: string;
@@ -92,6 +141,8 @@ export class RemixProjectService {
     mode?: string;
     prompt?: string | null;
   }) {
+    this.enforceRateLimit("create", input.userId, this.maxProjectsPerHour);
+
     const title = input.title?.trim();
     if (!title) {
       throw new BadRequestException("title is required");
@@ -256,6 +307,8 @@ export class RemixProjectService {
     projectId: string,
     options: { constraints?: RemixGenerationConstraints; force?: boolean } = {},
   ) {
+    this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour);
+
     const project = await this.loadOwnedProject(userId, projectId);
     const stemIds = project.stems.map((stem) => stem.stemId);
 
