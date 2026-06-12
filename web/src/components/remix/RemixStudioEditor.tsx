@@ -200,6 +200,9 @@ export function generationErrorMessage(code: string, message: string): string {
       return "The provider rejected this prompt. Adjust it and try again.";
     case "invalid_input":
     case "provider_unavailable":
+    // The transport strips the normalized code but keeps the server's
+    // human-readable message — show it rather than a generic fallback.
+    case "server_message":
       return message;
     default:
       return "Generation failed. Please try again later.";
@@ -350,8 +353,11 @@ export function RemixStudioEditor({
       // No frontend analytics here: emitting studio_saved would muddy save
       // metrics, and the backend already records remix.generation_started.
     } catch (error) {
-      // apiRequest throws Error("API <status>: <json>") — recover the
-      // normalized provider error contract when present.
+      // apiRequest throws Error("API <status>: <text>"), where <text> is the
+      // server's extracted message field (the normalized error `code` is
+      // discarded by the transport) or, rarely, a raw JSON body. Recover
+      // whichever is present so the user sees the server's actual reason
+      // instead of a generic fallback.
       let code = "unknown";
       let message = "Generation failed. Please try again later.";
       if (error instanceof Error) {
@@ -363,6 +369,12 @@ export function RemixStudioEditor({
             message = parsed.message ?? message;
           } catch {
             // keep defaults
+          }
+        } else {
+          const prefixed = error.message.match(/^API \d+: (.+)$/s);
+          if (prefixed?.[1]?.trim()) {
+            code = "server_message";
+            message = prefixed[1].trim();
           }
         }
       }
