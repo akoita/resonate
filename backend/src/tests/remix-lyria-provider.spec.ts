@@ -183,11 +183,25 @@ describe("buildLyriaRemixPrompt source matching (#1182 slice 3)", () => {
       userPrompt: "darker",
       bpm: 93,
       key: "G minor",
-      matchSource: true,
+      sourceMatched: { bpm: true, key: true },
     });
     expect(prompt).toContain("Tempo around 93 BPM.");
     expect(prompt).toContain("In the key of G minor.");
-    expect(prompt).toContain("match the source stems' measured tempo and key");
+    expect(prompt).toContain(
+      "The tempo and key were measured from the source stems",
+    );
+  });
+
+  it("names only the measured hint under mixed provenance", () => {
+    const prompt = buildLyriaRemixPrompt({
+      mode: "variation",
+      userPrompt: "darker",
+      bpm: 140, // explicit user constraint
+      key: "G minor", // measured
+      sourceMatched: { bpm: false, key: true },
+    });
+    expect(prompt).toContain("The key was measured from the source stems");
+    expect(prompt).not.toContain("tempo and key were measured");
   });
 
   it("adds no source-matching sentence for explicit user constraints", () => {

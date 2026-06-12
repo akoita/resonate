@@ -71,9 +71,10 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
       userPrompt,
       bpm: input.constraints.bpm ?? hints.bpm,
       key: input.constraints.key ?? hints.key,
-      matchSource:
-        (input.constraints.bpm === undefined && hints.bpm !== undefined) ||
-        (input.constraints.key === undefined && hints.key !== undefined),
+      sourceMatched: {
+        bpm: input.constraints.bpm === undefined && hints.bpm !== undefined,
+        key: input.constraints.key === undefined && hints.key !== undefined,
+      },
     });
 
     const jobId = randomUUID();
@@ -139,8 +140,8 @@ export function buildLyriaRemixPrompt(input: {
   userPrompt: string;
   bpm?: number;
   key?: string;
-  /** True when tempo/key were measured from the source stems (#1182 slice 3). */
-  matchSource?: boolean;
+  /** Which hints were measured from the source stems (#1182 slice 3). */
+  sourceMatched?: { bpm?: boolean; key?: boolean };
 }): string {
   const parts = [
     input.mode === "variation"
@@ -149,9 +150,19 @@ export function buildLyriaRemixPrompt(input: {
   ];
   if (input.bpm) parts.push(`Tempo around ${input.bpm} BPM.`);
   if (input.key) parts.push(`In the key of ${input.key}.`);
-  if (input.matchSource && (input.bpm || input.key)) {
+  // Name only what was actually measured: with mixed provenance (user
+  // tempo + measured key) a blanket sentence would overclaim.
+  const matchedBpm = !!(input.sourceMatched?.bpm && input.bpm);
+  const matchedKey = !!(input.sourceMatched?.key && input.key);
+  if (matchedBpm || matchedKey) {
+    const subject =
+      matchedBpm && matchedKey
+        ? "The tempo and key were"
+        : matchedBpm
+          ? "The tempo was"
+          : "The key was";
     parts.push(
-      "These match the source stems' measured tempo and key — stay musically compatible with them.",
+      `${subject} measured from the source stems — stay musically compatible with them.`,
     );
   }
   return parts.join(" ");
