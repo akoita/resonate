@@ -1,6 +1,8 @@
 import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 
-export const REMIX_POLICY_VERSION = "2026-06-11.v3";
+// v4 (#1174): owning the source artist profile satisfies the remix-license
+// requirement on the artist's own material; all other checks unchanged.
+export const REMIX_POLICY_VERSION = "2026-06-12.v4";
 
 export const REMIX_ACTIONS = [
   "private_draft",

@@ -104,6 +104,8 @@ export interface RemixProjectCreatedEvent extends BaseEvent {
   sourceTrackId: string;
   stemIds: string[];
   mode: string;
+  /** Creator owns the source artist profile (#1174) — not buyer demand. */
+  creatorOwner?: boolean;
   policyVersion: string;
 }
 

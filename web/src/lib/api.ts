@@ -3875,6 +3875,8 @@ export type RemixEligibilityResponse = {
   requiredLicense: "remix" | null;
   allowedActions: Array<"private_draft" | "publish_resonate" | "export">;
   reasons: RemixDenialReason[];
+  /** Caller owns the source artist profile — license satisfied by ownership (#1174). */
+  creatorOwner?: boolean;
   policyVersion: string;
   source: {
     trackId: string;

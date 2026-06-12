@@ -367,6 +367,8 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       commercePosture: stringPayload(clean.payload, "commercePosture"),
       trackId: stringPayload(clean.payload, "trackId"),
       firstPick: booleanPayload(clean.payload, "firstPick"),
+      // Artist-owner remix drafts (#1174): excluded from buyer-demand counts.
+      creatorOwner: booleanPayload(clean.payload, "creatorOwner"),
       sessionDurationMs: numberPayload(clean.payload, "sessionDurationMs"),
       score: numberPayload(clean.payload, "score"),
       playbackInstanceId: stringPayload(clean.payload, "playbackInstanceId"),

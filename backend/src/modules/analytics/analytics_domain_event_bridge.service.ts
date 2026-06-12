@@ -1026,6 +1026,9 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "artistId",
       "stemIds",
       "mode",
+      // Artist-owner remixes (#1174): lets demand signals exclude artists
+      // remixing their own material from buyer-demand counts.
+      "creatorOwner",
       "policyVersion",
     ],
     sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId"],
