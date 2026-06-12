@@ -6,6 +6,7 @@ import { StemsProcessor } from "./stems.processor";
 import { StemPubSubPublisher } from "./stem-pubsub.publisher";
 import { StemResultSubscriber } from "./stem-result.subscriber";
 import { StemWatchdogService } from "./stem-watchdog.service";
+import { StemFeatureBackfillService } from "./stem-feature-backfill.service";
 import { ArtistModule } from "../artist/artist.module";
 import { CatalogModule } from "../catalog/catalog.module";
 
@@ -28,7 +29,8 @@ import { CatalogModule } from "../catalog/catalog.module";
     StemPubSubPublisher,
     StemResultSubscriber,
     StemWatchdogService,
+    StemFeatureBackfillService,
   ],
-  exports: [IngestionService],
+  exports: [IngestionService, StemFeatureBackfillService],
 })
 export class IngestionModule { }

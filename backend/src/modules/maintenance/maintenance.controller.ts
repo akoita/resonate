@@ -4,11 +4,29 @@ import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { AnalyticsWarehouseLoadRequest } from "../analytics/analytics_warehouse_loader";
 import { CommunityCohortGenerationRequest } from "../community/community_cohort_generation.service";
+import {
+  StemFeatureBackfillRequest,
+  StemFeatureBackfillService,
+} from "../ingestion/stem-feature-backfill.service";
 import { MaintenanceService } from "./maintenance.service";
 
 @Controller("admin")
 export class MaintenanceController {
-  constructor(private readonly maintenanceService: MaintenanceService) {}
+  constructor(
+    private readonly maintenanceService: MaintenanceService,
+    private readonly stemFeatureBackfillService: StemFeatureBackfillService,
+  ) {}
+
+  /**
+   * Backfills measured audio features (#1184) for stems ingested before
+   * feature extraction shipped. Batch-bounded; re-run until remaining=0.
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("stems/backfill-audio-features")
+  async backfillStemAudioFeatures(@Body() body: StemFeatureBackfillRequest) {
+    return this.stemFeatureBackfillService.backfill(body ?? {});
+  }
 
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")

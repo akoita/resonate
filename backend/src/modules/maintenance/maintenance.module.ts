@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { CommunityModule } from "../community/community.module";
+import { IngestionModule } from "../ingestion/ingestion.module";
 import { MaintenanceController } from "./maintenance.controller";
 import { MaintenanceService } from "./maintenance.service";
 
@@ -17,6 +18,7 @@ import { MaintenanceService } from "./maintenance.service";
     }),
     AnalyticsModule,
     CommunityModule,
+    IngestionModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService],
