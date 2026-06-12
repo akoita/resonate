@@ -26,6 +26,10 @@ import {
   type RemixGenerationProvider,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
+import {
+  REMIX_STEM_MIX_RENDERER,
+  type StemMixRenderer,
+} from "./remix-stem-mix.renderer";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -194,6 +198,8 @@ export class RemixProjectService {
     private readonly eligibilityService: RemixEligibilityService,
     @Inject(REMIX_GENERATION_PROVIDER)
     private readonly generationProvider: RemixGenerationProvider,
+    @Inject(REMIX_STEM_MIX_RENDERER)
+    private readonly stemMixRenderer: StemMixRenderer,
     private readonly storageProvider: StorageProvider,
     @InjectQueue(REMIX_GENERATION_QUEUE)
     private readonly generationQueue: Queue<RemixGenerationJobData>,
@@ -593,9 +599,23 @@ export class RemixProjectService {
     }
 
     try {
-      const providerJob = await this.generationProvider.createRemixDraft(
-        data.generationInput,
-      );
+      // Mode routing (#1189): stem_mix renders the arranged stems with
+      // ffmpeg (no AI, no cost, outside the REMIX_GENERATION_ENABLED gate
+      // which exists for paid generation); prompted modes go to the AI
+      // provider as before, which never sees stem_mix.
+      const providerJob =
+        data.generationInput.mode === "stem_mix"
+          ? await this.stemMixRenderer.render({
+              remixProjectId: project.id,
+              stems: project.stems.map((stem) => ({
+                stemId: stem.stemId,
+                gainDb: stem.gainDb,
+                muted: stem.muted,
+              })),
+            })
+          : await this.generationProvider.createRemixDraft(
+              data.generationInput,
+            );
       const completedAt = new Date().toISOString();
       const completedMetadata = {
         ...currentMetadata,

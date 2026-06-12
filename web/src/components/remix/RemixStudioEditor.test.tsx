@@ -270,7 +270,9 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("Publishing remixes inside Resonate is not available yet");
     expect(html).toContain("Export requires a license that explicitly grants export rights");
     expect(html).toMatch(/remix-action-unavailable--publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-unavailable--publish/);
-    expect(html).toContain("No AI draft yet");
+    // stem_mix placeholder invites a render (#1189), not an AI prompt.
+    expect(html).toContain("No draft yet. Render your arranged stems");
+    expect(html).toContain("Render mix");
     expect(html).toContain("All changes saved");
   });
 
@@ -404,16 +406,25 @@ describe("describeGenerateAvailability (#1162)", () => {
     expect(describeGenerateAvailability(base)).toEqual({ enabled: true, reason: null });
   });
 
-  it("explains stem_mix, blank prompt, and unsaved edits", () => {
-    expect(describeGenerateAvailability({ ...base, mode: "stem_mix" }).reason).toContain(
-      "variation and extension",
-    );
+  it("enables stem_mix without a prompt — render needs no direction (#1189)", () => {
+    expect(
+      describeGenerateAvailability({ ...base, mode: "stem_mix", prompt: "" }),
+    ).toEqual({ enabled: true, reason: null });
+  });
+
+  it("explains blank prompt and unsaved edits", () => {
     expect(describeGenerateAvailability({ ...base, prompt: "  " }).reason).toContain(
       "Write a prompt",
     );
     expect(describeGenerateAvailability({ ...base, dirty: true }).reason).toContain(
       "Save your changes",
     );
+    // Unsaved edits still block stem_mix renders: the render uses the
+    // saved arrangement.
+    expect(
+      describeGenerateAvailability({ ...base, mode: "stem_mix", dirty: true })
+        .enabled,
+    ).toBe(false);
   });
 
   it("is inert without a reason while saving or generating", () => {
