@@ -902,6 +902,62 @@ describe("Remix eligibility and projects (integration)", () => {
         );
       });
 
+      it("reclaims stale pending jobs on retry and drops superseded worker results", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Stale Reclaim",
+        });
+        const first = await projectService.generateDraft(CREATOR_ID, created.id);
+        const staleJobData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+
+        // Fresh pending job: retry still conflicts.
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id, { retry: true }),
+        ).rejects.toBeInstanceOf(HttpException);
+
+        // Simulate a worker that died (deploy/OOM): the job never reaches a
+        // terminal state. Backdate the claim beyond the stale window.
+        const staleIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        await prisma.$executeRaw`
+          UPDATE "RemixProject"
+          SET "generationMetadata" =
+            jsonb_set("generationMetadata", '{requestedAt}', to_jsonb(${staleIso}::text))
+          WHERE "id" = ${created.id}
+        `;
+
+        const retried = await projectService.generateDraft(CREATOR_ID, created.id, {
+          retry: true,
+        });
+        expect(retried.generationJobId).not.toBe(first.generationJobId);
+        expect(retried.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "pending",
+            retryOfJobId: first.generationJobId,
+          }),
+        );
+
+        // If the original worker run resurfaces, it must not touch the
+        // replacement job's metadata or publish completion events.
+        const staleResult = await projectService.processGenerationJob(staleJobData);
+        expect(staleResult).toEqual(
+          expect.objectContaining({ skipped: true, reason: "stale_job" }),
+        );
+        const after = await projectService.getProject(CREATOR_ID, created.id);
+        expect(after.generationJobId).toBe(retried.generationJobId);
+        expect(after.generationMetadata).toEqual(
+          expect.objectContaining({ status: "pending" }),
+        );
+        expect(publishSpy).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_completed",
+            generationJobId: first.generationJobId,
+          }),
+        );
+      });
+
       it("normalizes unexpected provider failures to provider_unavailable", async () => {
         const explodingProvider = {
           createRemixDraft: jest

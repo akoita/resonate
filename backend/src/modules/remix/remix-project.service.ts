@@ -175,6 +175,14 @@ export class RemixProjectService {
     "REMIX_GENERATION_RATE_LIMIT",
     10,
   );
+  // A pending/processing job whose worker died (deploy, OOM, lost Redis
+  // job) has no in-band path back to a terminal state — the in-process
+  // worker is the only writer. After this window an explicit retry may
+  // reclaim the project instead of hitting the active-job conflict.
+  private readonly generationStaleAfterMs = rateLimitFromEnv(
+    "REMIX_GENERATION_STALE_AFTER_MS",
+    15 * 60 * 1000,
+  );
   private readonly rateLimits = new Map<string, number[]>();
 
   constructor(
@@ -421,7 +429,8 @@ export class RemixProjectService {
     }
     if (
       retryRequested &&
-      (currentStatus === "pending" || currentStatus === "processing")
+      (currentStatus === "pending" || currentStatus === "processing") &&
+      !this.generationJobIsStale(project.generationMetadata)
     ) {
       throw new ConflictException(
         `Generation job ${project.generationJobId} is still active for this project.`,
@@ -560,8 +569,10 @@ export class RemixProjectService {
       return { skipped: true, reason: "already_completed" };
     }
 
-    await prisma.remixProject.update({
-      where: { id: project.id },
+    // jobId-scoped writes: after a stale reclaim, a superseded worker run
+    // must never overwrite the replacement job's metadata.
+    const claimed = await prisma.remixProject.updateMany({
+      where: { id: project.id, generationJobId: data.jobId },
       data: {
         generationMetadata: {
           ...currentMetadata,
@@ -570,6 +581,9 @@ export class RemixProjectService {
         } as Prisma.JsonObject,
       },
     });
+    if (claimed.count === 0) {
+      return { skipped: true, reason: "stale_job" };
+    }
 
     try {
       const providerJob = await this.generationProvider.createRemixDraft(
@@ -587,13 +601,19 @@ export class RemixProjectService {
         errorCode: null,
         errorMessage: null,
       };
-      await prisma.remixProject.update({
-        where: { id: project.id },
+      const persisted = await prisma.remixProject.updateMany({
+        where: { id: project.id, generationJobId: data.jobId },
         data: {
           generationProvider: providerJob.provider,
           generationMetadata: completedMetadata as Prisma.JsonObject,
         },
       });
+      if (persisted.count === 0) {
+        // Superseded mid-flight by a stale-window retry; the provider call
+        // succeeded but its result belongs to a job the project no longer
+        // tracks. Drop it without publishing a completion event.
+        return { skipped: true, reason: "stale_job" };
+      }
       this.eventBus.publish({
         eventName: "remix.generation_completed",
         eventVersion: 1,
@@ -642,6 +662,11 @@ export class RemixProjectService {
             AND (
               "generationJobId" IS NULL
               OR COALESCE("generationMetadata"->>'status', 'completed') IN ('completed', 'failed')
+              OR COALESCE(
+                   ("generationMetadata"->>'processingStartedAt')::timestamptz,
+                   ("generationMetadata"->>'requestedAt')::timestamptz,
+                   '-infinity'::timestamptz
+                 ) <= NOW() - make_interval(secs => ${this.generationStaleAfterMs / 1000})
             )
         `
       : await prisma.$executeRaw`
@@ -662,6 +687,20 @@ export class RemixProjectService {
     }
   }
 
+  private generationJobIsStale(metadata: unknown): boolean {
+    const meta = normalizeMetadataObject(metadata);
+    const startedRaw =
+      typeof meta.processingStartedAt === "string"
+        ? meta.processingStartedAt
+        : typeof meta.requestedAt === "string"
+          ? meta.requestedAt
+          : null;
+    if (!startedRaw) return true;
+    const startedAt = Date.parse(startedRaw);
+    if (Number.isNaN(startedAt)) return true;
+    return Date.now() - startedAt >= this.generationStaleAfterMs;
+  }
+
   private async recordGenerationFailure(input: {
     project: RemixProjectWithStems;
     userId: string;
@@ -670,7 +709,7 @@ export class RemixProjectService {
     error: RemixGenerationProviderError;
   }) {
     const failedAt = new Date().toISOString();
-    await prisma.remixProject.updateMany({
+    const persisted = await prisma.remixProject.updateMany({
       where: { id: input.project.id, generationJobId: input.jobId },
       data: {
         generationMetadata: {
@@ -683,6 +722,11 @@ export class RemixProjectService {
         } as Prisma.JsonObject,
       },
     });
+    if (persisted.count === 0) {
+      // Superseded by a stale-window retry — the failure belongs to a job
+      // the project no longer tracks.
+      return;
+    }
     this.eventBus.publish({
       eventName: "remix.generation_failed",
       eventVersion: 1,
