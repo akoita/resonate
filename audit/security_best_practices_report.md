@@ -28,7 +28,30 @@ that do not belong to that user; the client update body carries only
 `remixConsent`. Existing artists keep default eligibility through the
 `allowed` migration default, while `disabled` denies project creation and
 generation with `artist_remix_disabled`.
+## Remix Studio Queue-Backed Generation Jobs - 2026-06-12
 
+### Scope Reviewed
+
+Changed files (#1167):
+
+- `backend/src/modules/remix/remix-project.service.ts`,
+  `backend/src/modules/remix/remix-generation.processor.ts`,
+  `backend/src/modules/remix/remix.controller.ts`,
+  `backend/src/modules/remix/remix.module.ts`
+- `backend/src/events/event_types.ts` and
+  `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- `web/src/lib/api.ts` and
+  `web/src/components/remix/RemixStudioEditor.tsx`
+- Remix backend/web tests and feature documentation
+
+### Executive Summary
+
+No Critical or High findings. The generate endpoint remains JWT owner-scoped,
+validates constraints/rate limits/eligibility before enqueue, and blocks
+duplicate active work with a conditional database claim. The new worker calls
+only the existing `RemixGenerationProvider` boundary, records terminal
+completed/failed state, and emits compact lifecycle events that carry ids and
+status only, not prompts or raw audio/storage content.
 ### Critical Findings
 
 None.
@@ -57,7 +80,30 @@ None.
 - `rg 'rawQuery|executeRaw|\$queryRaw|\$executeRaw' backend/src/modules/artist backend/src/modules/remix backend/src/modules/analytics backend/src/events`
 - `rg 'dangerouslySetInnerHTML|innerHTML|document\.cookie|setCookie|localStorage|sessionStorage' web/src/components/settings/ArtistRemixSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts`
 - `rg 'https?://(?!localhost)' backend/src/modules/artist backend/src/modules/remix backend/src/modules/analytics backend/src/events web/src/components/settings/ArtistRemixSettingsPanel.tsx web/src/app/settings/page.tsx web/src/lib/api.ts -P`
-- `git diff --check`
+- The new `prisma.$executeRaw` calls use Prisma tagged templates with bound
+  `jobId`, `projectId`, and JSON metadata parameters; no string-concatenated
+  SQL was introduced.
+- BullMQ job data is built server-side after ownership, draft status, prompt,
+  constraint, rate-limit, and remix eligibility checks. Client-supplied job ids
+  are not accepted.
+- `force=true` remains a compatibility alias, but new client behavior uses
+  explicit `retry=true` and still refuses pending/processing duplicates.
+- Studio polling uses the existing authenticated `getRemixProject` helper and
+  does not expose raw storage URIs. Draft playback still goes through the
+  owner-scoped `draft-audio` endpoint.
+- No new environment variables, secrets, hardcoded production URLs, cookies, or
+  `dangerouslySetInnerHTML` paths were added.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/`
+- `rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/`
+- `rg 'JSON\.parse|eval\(' backend/src/`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/`
+- `rg 'document\.cookie|setCookie|httpOnly.*false' web/src/`- `git diff --check`
 
 ## Artist Action Cockpit P7 Tail Cards - 2026-06-11
 

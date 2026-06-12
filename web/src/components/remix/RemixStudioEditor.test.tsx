@@ -10,6 +10,10 @@ import {
   describeSourceRights,
   initialEdits,
   RemixStudioEditor,
+  remixGenerationFailureMessage,
+  remixGenerationIsActive,
+  remixGenerationPlayableOutputUri,
+  remixGenerationStatus,
   saveStatusLabel,
   stemPreviewStates,
   stemDisplayName,
@@ -152,6 +156,30 @@ describe("audio preview helpers (#1165)", () => {
     ).toBe("/storage/draft.mp3");
   });
 
+  it("classifies queued generation metadata for status and playback", () => {
+    expect(remixGenerationStatus({ status: "pending" })).toBe("pending");
+    expect(remixGenerationIsActive({ status: "processing" })).toBe(true);
+    expect(
+      remixGenerationPlayableOutputUri({
+        status: "pending",
+        output: { outputUri: "/storage/draft.mp3" },
+      }),
+    ).toBeNull();
+    expect(
+      remixGenerationPlayableOutputUri({
+        status: "completed",
+        output: { outputUri: "/storage/draft.mp3" },
+      }),
+    ).toBe("/storage/draft.mp3");
+    expect(
+      remixGenerationFailureMessage({
+        status: "failed",
+        errorCode: "provider_rejected",
+        errorMessage: "Rejected.",
+      }),
+    ).toContain("rejected this prompt");
+  });
+
   it("builds preview stem state from local edits", () => {
     const p = project();
     const edits = initialEdits(p);
@@ -269,6 +297,50 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).not.toContain("Playback arrives with audio preview");
   });
 
+  it("shows queued state without draft playback while generation is pending", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "job-1",
+          generationProvider: "remix-queue",
+          generationMetadata: {
+            status: "pending",
+            output: { outputUri: "/storage/remix-drafts/job-1.mp3" },
+          },
+        })}
+      />,
+    );
+
+    expect(html).toContain("AI generation queued");
+    expect(html).toContain("Queued...");
+    expect(html).toContain("Generation is already queued");
+    expect(html).not.toContain("Play AI draft");
+  });
+
+  it("shows failed state and retry copy", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "job-1",
+          generationProvider: "remix-queue",
+          mode: "variation",
+          prompt: "darker",
+          generationMetadata: {
+            status: "failed",
+            errorCode: "provider_unavailable",
+            errorMessage: "The provider timed out.",
+            retryable: true,
+          },
+        })}
+      />,
+    );
+
+    expect(html).toContain("AI generation failed");
+    expect(html).toContain("The provider timed out.");
+    expect(html).toContain("Retry generation");
+    expect(html).not.toContain("Play AI draft");
+  });
+
   it("shows no-output copy when a generation job has no playable draft", () => {
     const html = renderToStaticMarkup(
       <RemixStudioEditor
@@ -349,6 +421,9 @@ describe("describeGenerateAvailability (#1162)", () => {
       enabled: false,
       reason: null,
     });
+    expect(
+      describeGenerateAvailability({ ...base, generationActive: true }).reason,
+    ).toContain("already queued");
     expect(describeGenerateAvailability({ ...base, saving: true }).enabled).toBe(false);
   });
 });

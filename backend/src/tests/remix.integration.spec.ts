@@ -43,6 +43,9 @@ const storageProvider = {
   downloadRange: jest.fn(),
   delete: jest.fn(),
 };
+const generationQueue = {
+  add: jest.fn().mockResolvedValue({ id: "queued" }),
+};
 
 describe("Remix eligibility and projects (integration)", () => {
   let eligibilityService: RemixEligibilityService;
@@ -310,7 +313,9 @@ describe("Remix eligibility and projects (integration)", () => {
       eligibilityService,
       new StubRemixGenerationProvider(),
       storageProvider,
+      generationQueue as any,
     );
+    generationQueue.add.mockClear();
     storageProvider.download.mockResolvedValue(Buffer.from("draft audio"));
   });
 
@@ -521,6 +526,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
         storageProvider,
+        generationQueue as any,
       );
       const read = await freshService.getProject(CREATOR_ID, created.id);
       expect(read.title).toBe("Neon Drift (Flip)");
@@ -749,7 +755,7 @@ describe("Remix eligibility and projects (integration)", () => {
         }
       });
 
-      it("persists provider provenance and emits remix.generation_started", async () => {
+      it("enqueues pending generation, then records completed provider provenance", async () => {
         process.env.REMIX_GENERATION_ENABLED = "true";
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -764,27 +770,63 @@ describe("Remix eligibility and projects (integration)", () => {
           created.id,
           { constraints: { durationSeconds: 60 } },
         );
-        expect(generated.generationProvider).toBe("remix-stub");
-        expect(generated.generationJobId).toBe(`rmxgen_${created.id}`);
+        expect(generated.generationProvider).toBe("remix-queue");
+        expect(generated.generationJobId).toMatch(new RegExp(`^rmxgen_${created.id}_`));
         expect(generated.generationMetadata).toEqual(
           expect.objectContaining({
+            status: "pending",
             mode: "variation",
-            estimatedCostUsd: 0.12,
+            estimatedCostUsd: null,
             voiceLikenessAllowed: false,
             policyVersion: expect.any(String),
           }),
+        );
+        expect(generationQueue.add).toHaveBeenCalledWith(
+          "generate-remix-draft",
+          expect.objectContaining({
+            jobId: generated.generationJobId,
+            projectId: created.id,
+            generationInput: expect.objectContaining({
+              mode: "variation",
+              constraints: { durationSeconds: 60 },
+            }),
+          }),
+          expect.objectContaining({ attempts: 1, jobId: generated.generationJobId }),
         );
         expect(publishSpy).toHaveBeenCalledWith(
           expect.objectContaining({
             eventName: "remix.generation_started",
             remixProjectId: created.id,
-            provider: "remix-stub",
+            provider: "remix-queue",
+            generationJobId: generated.generationJobId,
             mode: "variation",
+          }),
+        );
+
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+        await projectService.processGenerationJob(queuedData);
+        const completed = await projectService.getProject(CREATOR_ID, created.id);
+        expect(completed.generationProvider).toBe("remix-stub");
+        expect(completed.generationJobId).toBe(generated.generationJobId);
+        expect(completed.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "completed",
+            estimatedCostUsd: 0.12,
+            providerJobId: `rmxgen_${created.id}`,
+            completedAt: expect.any(String),
+          }),
+        );
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_completed",
+            remixProjectId: created.id,
+            provider: "remix-stub",
+            generationJobId: generated.generationJobId,
           }),
         );
       });
 
-      it("returns the normalized provider_disabled error when generation is off", async () => {
+      it("records normalized provider_disabled failures from the worker", async () => {
         delete process.env.REMIX_GENERATION_ENABLED;
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -792,19 +834,28 @@ describe("Remix eligibility and projects (integration)", () => {
           stemIds: [LICENSED_STEM_ID],
           title: "Disabled Env",
         });
+        const pending = await projectService.generateDraft(CREATOR_ID, created.id);
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
         await expect(
-          projectService.generateDraft(CREATOR_ID, created.id),
+          projectService.processGenerationJob(queuedData),
         ).rejects.toMatchObject({ code: "provider_disabled", retryable: false });
         expect(publishSpy).toHaveBeenCalledWith(
           expect.objectContaining({
             eventName: "remix.generation_failed",
             remixProjectId: created.id,
+            generationJobId: pending.generationJobId,
             errorCode: "provider_disabled",
           }),
         );
-        // No provenance is persisted on failure.
         const read = await projectService.getProject(CREATOR_ID, created.id);
-        expect(read.generationJobId).toBeNull();
+        expect(read.generationJobId).toBe(pending.generationJobId);
+        expect(read.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "failed",
+            errorCode: "provider_disabled",
+            retryable: false,
+          }),
+        );
       });
 
       it("requires a prompt for prompted modes", async () => {
@@ -821,7 +872,7 @@ describe("Remix eligibility and projects (integration)", () => {
         ).rejects.toBeInstanceOf(BadRequestException);
       });
 
-      it("rejects duplicate generation jobs unless forced", async () => {
+      it("rejects duplicate active generation jobs and allows explicit retry after completion", async () => {
         process.env.REMIX_GENERATION_ENABLED = "true";
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -829,14 +880,82 @@ describe("Remix eligibility and projects (integration)", () => {
           stemIds: [LICENSED_STEM_ID],
           title: "Double Generate",
         });
-        await projectService.generateDraft(CREATOR_ID, created.id);
+        const first = await projectService.generateDraft(CREATOR_ID, created.id);
         await expect(
           projectService.generateDraft(CREATOR_ID, created.id),
         ).rejects.toBeInstanceOf(BadRequestException);
-        const forced = await projectService.generateDraft(CREATOR_ID, created.id, {
-          force: true,
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id, { retry: true }),
+        ).rejects.toBeInstanceOf(HttpException);
+
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+        await projectService.processGenerationJob(queuedData);
+        const retried = await projectService.generateDraft(CREATOR_ID, created.id, {
+          retry: true,
         });
-        expect(forced.generationJobId).toBe(`rmxgen_${created.id}`);
+        expect(retried.generationJobId).not.toBe(first.generationJobId);
+        expect(retried.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "pending",
+            retryOfJobId: first.generationJobId,
+          }),
+        );
+      });
+
+      it("reclaims stale pending jobs on retry and drops superseded worker results", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Stale Reclaim",
+        });
+        const first = await projectService.generateDraft(CREATOR_ID, created.id);
+        const staleJobData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+
+        // Fresh pending job: retry still conflicts.
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id, { retry: true }),
+        ).rejects.toBeInstanceOf(HttpException);
+
+        // Simulate a worker that died (deploy/OOM): the job never reaches a
+        // terminal state. Backdate the claim beyond the stale window.
+        const staleIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        await prisma.$executeRaw`
+          UPDATE "RemixProject"
+          SET "generationMetadata" =
+            jsonb_set("generationMetadata", '{requestedAt}', to_jsonb(${staleIso}::text))
+          WHERE "id" = ${created.id}
+        `;
+
+        const retried = await projectService.generateDraft(CREATOR_ID, created.id, {
+          retry: true,
+        });
+        expect(retried.generationJobId).not.toBe(first.generationJobId);
+        expect(retried.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "pending",
+            retryOfJobId: first.generationJobId,
+          }),
+        );
+
+        // If the original worker run resurfaces, it must not touch the
+        // replacement job's metadata or publish completion events.
+        const staleResult = await projectService.processGenerationJob(staleJobData);
+        expect(staleResult).toEqual(
+          expect.objectContaining({ skipped: true, reason: "stale_job" }),
+        );
+        const after = await projectService.getProject(CREATOR_ID, created.id);
+        expect(after.generationJobId).toBe(retried.generationJobId);
+        expect(after.generationMetadata).toEqual(
+          expect.objectContaining({ status: "pending" }),
+        );
+        expect(publishSpy).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_completed",
+            generationJobId: first.generationJobId,
+          }),
+        );
       });
 
       it("normalizes unexpected provider failures to provider_unavailable", async () => {
@@ -850,6 +969,7 @@ describe("Remix eligibility and projects (integration)", () => {
           eligibilityService,
           explodingProvider,
           storageProvider,
+          generationQueue as any,
         );
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -857,7 +977,9 @@ describe("Remix eligibility and projects (integration)", () => {
           stemIds: [LICENSED_STEM_ID],
           title: "Exploding Provider",
         });
-        await expect(svc.generateDraft(CREATOR_ID, created.id)).rejects.toMatchObject({
+        const pending = await svc.generateDraft(CREATOR_ID, created.id);
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+        await expect(svc.processGenerationJob(queuedData)).rejects.toMatchObject({
           code: "provider_unavailable",
           retryable: true,
         });
@@ -865,6 +987,7 @@ describe("Remix eligibility and projects (integration)", () => {
           expect.objectContaining({
             eventName: "remix.generation_failed",
             remixProjectId: created.id,
+            generationJobId: pending.generationJobId,
             errorCode: "provider_unavailable",
           }),
         );
@@ -952,6 +1075,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
         storageProvider,
+        generationQueue as any,
       );
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];
@@ -1019,12 +1143,13 @@ describe("Remix eligibility and projects (integration)", () => {
         title: "Generation Rate Limit",
       });
 
-      // First call consumes the budget (provider stub is config-disabled,
-      // so it fails provider_disabled — the request still counts; the
-      // controller maps that code to 503).
-      await expect(
-        service.generateDraft(CREATOR_ID, project.id),
-      ).rejects.toMatchObject({ code: "provider_disabled" });
+      // First call consumes the budget and queues work; provider failures now
+      // happen in the worker rather than on the request path.
+      await expect(service.generateDraft(CREATOR_ID, project.id)).resolves.toEqual(
+        expect.objectContaining({
+          generationMetadata: expect.objectContaining({ status: "pending" }),
+        }),
+      );
 
       // Second call is throttled before touching the project at all:
       // even a nonexistent project id returns 429, not 404.

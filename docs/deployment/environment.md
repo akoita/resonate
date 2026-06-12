@@ -115,6 +115,7 @@ When adding a new environment variable:
 | `REMIX_GENERATION_PROVIDER_KIND` | Backend | Selects the remix generation implementation: `stub` (default) or `lyria` (#1162 — reuses the catalog Lyria stack: `GOOGLE_AI_API_KEY` or `LYRIA_PROJECT_ID`/`LYRIA_LOCATION`, plus the storage provider for draft output). `REMIX_GENERATION_ENABLED` remains the master gate regardless of kind |
 | `REMIX_PROJECT_RATE_LIMIT` | Backend | Optional per-user hourly ceiling for `POST /remix/projects` (sliding window, default `20`). Exceeding it returns HTTP 429 with an actionable message (#1144) |
 | `REMIX_GENERATION_RATE_LIMIT` | Backend | Optional per-user hourly ceiling for `POST /remix/projects/:id/generate` (sliding window, default `10` — stricter than drafting because generation will carry provider cost once a real provider ships). Exceeding it returns HTTP 429 (#1144) |
+| `REMIX_GENERATION_STALE_AFTER_MS` | Backend | Age (ms, default `900000` = 15 min) after which a non-terminal `pending`/`processing` generation job is considered abandoned (worker died, lost Redis job) and an explicit `retry=true` may reclaim the project instead of receiving HTTP 409 (#1167) |
 | `X402_ENABLED` | Backend | Enables the x402 payment and storefront purchase surfaces |
 | `X402_PAYOUT_ADDRESS` | Backend | Required when x402 is enabled; receives USDC payments |
 | `X402_NETWORK` | Backend | CAIP-2 network id for x402 (`eip155:84532` Base Sepolia or `eip155:8453` Base mainnet) |
