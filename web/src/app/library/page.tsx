@@ -39,6 +39,7 @@ import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
+import { RemixCta } from "../../components/remix/RemixCta";
 import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
@@ -185,6 +186,7 @@ export default function LibraryPage() {
                 id: string;
                 title: string;
                 artist?: string;
+                trackId?: string;
                 releaseTitle?: string;
                 genre?: string;
                 durationSeconds?: number;
@@ -229,6 +231,7 @@ export default function LibraryPage() {
                 // Stem-specific fields
                 stemType: stem.type,
                 tokenId: stem.tokenId,
+                sourceTrackId: stem.trackId,
                 listingId: stem.activeListingId,
                 purchaseDate: stem.purchasedAt,
                 isOwned: true,
@@ -612,7 +615,29 @@ export default function LibraryPage() {
                             )}
                         </div>
                         <div className="library-item-title">
-                            {track.title}
+                            {track.stemType && track.tokenId ? (
+                                <span
+                                    className="clickable hover:underline"
+                                    title="Open stem page"
+                                    role="link"
+                                    tabIndex={0}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        router.push(`/stem/${track.tokenId}`);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            router.push(`/stem/${track.tokenId}`);
+                                        }
+                                    }}
+                                >
+                                    {track.title}
+                                </span>
+                            ) : (
+                                track.title
+                            )}
                             {track.stemType && (
                                 <span style={{ 
                                     fontSize: "0.7em", 
@@ -654,9 +679,27 @@ export default function LibraryPage() {
                             )}
                         </div>
                         <div className="library-item-actions">
+                            {track.stemType && track.sourceTrackId && (
+                                <span onClick={(e) => e.stopPropagation()}>
+                                    <RemixCta
+                                        trackId={track.sourceTrackId}
+                                        stemIds={[track.id]}
+                                        trackTitle={track.title}
+                                        variant="chip"
+                                        hideWhenLicenseRequired
+                                    />
+                                </span>
+                            )}
                             <TrackActionMenu
                                 actions={[
                                     { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
+                                    ...(track.stemType && track.tokenId
+                                        ? [{
+                                            label: "View stem page",
+                                            icon: "🎛️",
+                                            onClick: () => router.push(`/stem/${track.tokenId}`),
+                                        }]
+                                        : []),
                                 ]}
                             />
                         </div>

@@ -142,6 +142,13 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- UI (#1175): the Library → Stems tab is a real entry point for owned
+  stems — stem titles link to `/stem/[tokenId]` (with a matching "View stem
+  page" row action), and each row renders the eligibility-backed `RemixCta`
+  chip (stem-scoped, license-required state hidden since the stem page is
+  the buy surface). The collection API (`GET /api/metadata/collection/:address`)
+  exposes the source `trackId` to drive it. Unminted stems render without a
+  link.
 - Eligibility policy v3 (#1145/#1169, `2026-06-11.v3`): track-default requests
   (the release-page CTA, no stem filter) are a **partial allowance** — one
   licensed stem enables the track, non-remixable mints are excluded rather

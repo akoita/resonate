@@ -97,6 +97,8 @@ export interface LocalTrack {
     // Stem ownership extensions
     stemType?: string;
     tokenId?: string;
+    // Source catalog track id (drives the eligibility-backed Remix CTA, #1175)
+    sourceTrackId?: string;
     listingId?: string; // If listed for sale
     purchaseDate?: string;
     isOwned?: boolean;
