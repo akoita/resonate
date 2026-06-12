@@ -362,6 +362,18 @@ describe("generationErrorMessage (#1162)", () => {
     );
     expect(generationErrorMessage("unknown", "x")).toContain("try again later");
   });
+
+  it("shows the server's extracted message when the transport strips the code", () => {
+    // apiRequest throws "API 503: <server message>" — observed live on
+    // staging: the toast showed a generic fallback instead of the server's
+    // clear "not enabled on this environment yet" reason.
+    expect(
+      generationErrorMessage(
+        "server_message",
+        "AI remix generation is not enabled on this environment yet.",
+      ),
+    ).toBe("AI remix generation is not enabled on this environment yet.");
+  });
 });
 
 
