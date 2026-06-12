@@ -133,6 +133,29 @@ class AnalyzeEndpointTest(unittest.TestCase):
         self.assertEqual(body["features"]["schemaVersion"], SCHEMA_VERSION)
         self.assertIsNotNone(body["features"]["tempoBpm"])
 
+    def test_analyze_rejects_oversized_uploads(self):
+        """Uploads past WORKER_MAX_UPLOAD_BYTES are refused with 413 (#1184
+        review): librosa loads whole files into memory, so the cap is the
+        OOM guard."""
+        from unittest.mock import patch
+
+        from fastapi.testclient import TestClient
+
+        import main
+
+        client = TestClient(main.app)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_wav(Path(tmp) / "clip.wav", _click_track(120.0, 2.0))
+            with patch.object(main, "MAX_UPLOAD_BYTES", 1024), open(
+                path, "rb"
+            ) as audio:
+                response = client.post(
+                    "/analyze",
+                    files={"file": ("clip.wav", audio, "audio/wav")},
+                )
+
+        self.assertEqual(response.status_code, 413)
+
     def test_analyze_neutralizes_path_traversal_filenames(self):
         """Client-controlled multipart filenames must never escape the temp
         dir (#1184 review): only the basename is used for the scratch file."""

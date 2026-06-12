@@ -40,6 +40,11 @@ RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 DEMUCS_MODEL = "htdemucs_6s"
 DEMUCS_DEVICE = os.getenv("DEMUCS_DEVICE", "auto").strip().lower()
 
+# Upload ceiling for /separate and /analyze (#1184 review): librosa/demucs
+# load whole files into memory, so an unbounded upload is an OOM lever even
+# on a deployment-protected service. 200 MiB covers multi-minute lossless WAVs.
+MAX_UPLOAD_BYTES = int(os.getenv("WORKER_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
 
@@ -106,6 +111,23 @@ def demucs_attempt_env(device: str) -> dict:
         env["CUDA_VISIBLE_DEVICES"] = ""
         env["NVIDIA_VISIBLE_DEVICES"] = ""
     return env
+
+
+def save_upload_capped(upload_file, dest_path: Path) -> None:
+    """Stream a multipart upload to disk, aborting past MAX_UPLOAD_BYTES."""
+    written = 0
+    with open(dest_path, "wb") as buffer:
+        while True:
+            chunk = upload_file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload exceeds the {MAX_UPLOAD_BYTES} byte limit",
+                )
+            buffer.write(chunk)
 
 
 async def run_demucs_attempt(
@@ -414,8 +436,7 @@ async def separate_audio(
         # Basename only: the multipart filename is client-controlled and a
         # path like ../../x would escape the temp dir (#1184 review).
         input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        save_upload_capped(file, input_path)
 
         try:
             results, stem_features = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
@@ -443,8 +464,7 @@ async def analyze_audio(file: UploadFile = File(...)):
     with tempfile.TemporaryDirectory() as temp_dir:
         # Basename only: the multipart filename is client-controlled (#1184 review).
         input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        save_upload_capped(file, input_path)
         try:
             features = extract_stem_features(input_path)
         except Exception as e:

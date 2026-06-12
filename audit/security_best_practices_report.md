@@ -2908,6 +2908,12 @@ HTTP separation response, backend boundary sanitizer
   the pre-existing `/separate` pattern; both now use the basename only with
   an empty-basename fallback, and a regression test posts a traversal
   filename and asserts no file lands outside the temp dir.
+- Review finding (fixed in-branch): uploads were uncapped while librosa and
+  demucs load whole files into memory — an OOM lever even behind
+  deployment-level auth. Both endpoints now stream uploads to disk with a
+  `WORKER_MAX_UPLOAD_BYTES` ceiling (default 200 MiB, documented in
+  docs/deployment/environment.md) and refuse oversized bodies with 413;
+  regression test included.
 
 ### Commands Run
 
