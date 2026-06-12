@@ -491,15 +491,35 @@ export class RemixProjectService {
             null,
           contentStatus: project.sourceTrack.contentStatus,
         },
-        stems: project.stems,
+        // Per-stem features (#1184) feed prompt conditioning; muted
+        // stems are excluded from hint derivation like from renders.
+        stems: project.stems.map((stem) => ({
+          stemId: stem.stemId,
+          muted: stem.muted,
+          audioFeatures: stem.stem.audioFeatures ?? undefined,
+        })),
       },
       options.constraints,
     );
     const jobId = `rmxgen_${project.id}_${randomUUID()}`;
     const requestedAt = new Date().toISOString();
+    // Honest grounding provenance (#1181/#1182): stem_audio = the draft is
+    // rendered from the licensed stems; feature_conditioned = prompt
+    // generation guided by measured stem tempo/key; prompt_only = nothing
+    // from the source audio shaped the output.
+    const grounding =
+      generationInput.mode === "stem_mix"
+        ? "stem_audio"
+        : generationInput.sourceFeatureHints
+          ? "feature_conditioned"
+          : "prompt_only";
     const pendingMetadata = {
       status: "pending",
       mode: generationInput.mode,
+      grounding,
+      ...(generationInput.sourceFeatureHints
+        ? { sourceFeatureHints: generationInput.sourceFeatureHints }
+        : {}),
       stemIds: generationInput.stemIds,
       constraints: generationInput.constraints as object,
       estimatedCostUsd: null,

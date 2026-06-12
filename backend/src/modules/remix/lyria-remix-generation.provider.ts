@@ -62,11 +62,19 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     const durationSeconds =
       input.constraints.durationSeconds ??
       REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
+    // Explicit user constraints always win; measured source features
+    // (#1184) fill the gaps so the output stays musically compatible with
+    // the stems the user licensed (#1182 slice 3).
+    const hints = input.sourceFeatureHints ?? {};
     const prompt = buildLyriaRemixPrompt({
       mode: input.mode,
       userPrompt,
-      bpm: input.constraints.bpm,
-      key: input.constraints.key,
+      bpm: input.constraints.bpm ?? hints.bpm,
+      key: input.constraints.key ?? hints.key,
+      sourceMatched: {
+        bpm: input.constraints.bpm === undefined && hints.bpm !== undefined,
+        key: input.constraints.key === undefined && hints.key !== undefined,
+      },
     });
 
     const jobId = randomUUID();
@@ -132,6 +140,8 @@ export function buildLyriaRemixPrompt(input: {
   userPrompt: string;
   bpm?: number;
   key?: string;
+  /** Which hints were measured from the source stems (#1182 slice 3). */
+  sourceMatched?: { bpm?: boolean; key?: boolean };
 }): string {
   const parts = [
     input.mode === "variation"
@@ -140,6 +150,21 @@ export function buildLyriaRemixPrompt(input: {
   ];
   if (input.bpm) parts.push(`Tempo around ${input.bpm} BPM.`);
   if (input.key) parts.push(`In the key of ${input.key}.`);
+  // Name only what was actually measured: with mixed provenance (user
+  // tempo + measured key) a blanket sentence would overclaim.
+  const matchedBpm = !!(input.sourceMatched?.bpm && input.bpm);
+  const matchedKey = !!(input.sourceMatched?.key && input.key);
+  if (matchedBpm || matchedKey) {
+    const subject =
+      matchedBpm && matchedKey
+        ? "The tempo and key were"
+        : matchedBpm
+          ? "The tempo was"
+          : "The key was";
+    parts.push(
+      `${subject} measured from the source stems — stay musically compatible with them.`,
+    );
+  }
   return parts.join(" ");
 }
 
