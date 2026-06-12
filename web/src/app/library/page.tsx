@@ -619,9 +619,18 @@ export default function LibraryPage() {
                                 <span
                                     className="clickable hover:underline"
                                     title="Open stem page"
+                                    role="link"
+                                    tabIndex={0}
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         router.push(`/stem/${track.tokenId}`);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            router.push(`/stem/${track.tokenId}`);
+                                        }
                                     }}
                                 >
                                     {track.title}
