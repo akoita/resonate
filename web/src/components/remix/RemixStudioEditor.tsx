@@ -240,6 +240,36 @@ export function remixGenerationPlayableOutputUri(
   return remixDraftOutputUri(metadata);
 }
 
+/**
+ * Honest draft provenance (#1181): says exactly what of the source audio
+ * shaped the draft, including the prompt-only case where nothing did.
+ */
+export function groundingDescription(
+  metadata: RemixGenerationMetadata | null,
+): string | null {
+  if (!metadata?.grounding) return null;
+  switch (metadata.grounding) {
+    case "stem_audio":
+      return "Rendered from your licensed stems — the draft contains the source audio itself.";
+    case "feature_conditioned": {
+      const hints = metadata.sourceFeatureHints;
+      const measured = [
+        hints?.bpm ? `${hints.bpm} BPM` : null,
+        hints?.key ?? null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      return `AI-generated from your prompt, matched to the stems' measured ${
+        measured || "tempo and key"
+      }. The model does not hear the source audio.`;
+    }
+    case "prompt_only":
+      return "AI-generated from your prompt only — not derived from the source audio. (The source stems have no measured features yet.)";
+    default:
+      return null;
+  }
+}
+
 export function remixGenerationFailureMessage(
   metadata: RemixGenerationMetadata | null,
 ): string | null {
@@ -826,6 +856,19 @@ export function RemixStudioEditor({
                           ? "No draft yet. Render your arranged stems into a mix, or switch to a prompted mode for AI generation."
                           : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
                 </p>
+                {(() => {
+                  const grounding = groundingDescription(
+                    project.generationMetadata,
+                  );
+                  return (
+                    project.generationJobId &&
+                    grounding && (
+                      <p className="text-zinc-500 text-xs remix-generation-grounding">
+                        {grounding}
+                      </p>
+                    )
+                  );
+                })()}
                 {generationFailure && (
                   <p className="text-red-300 remix-generation-error">
                     {generationFailure}

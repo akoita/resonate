@@ -3931,9 +3931,18 @@ export type RemixGenerationStatus =
   | "completed"
   | "failed";
 
+export type RemixGenerationGrounding =
+  | "stem_audio"
+  | "feature_conditioned"
+  | "prompt_only";
+
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
+  /** Honest provenance (#1181): what of the source audio shaped this draft. */
+  grounding?: RemixGenerationGrounding | string;
+  /** Measured tempo/key hints applied to the prompt (#1182 slice 3). */
+  sourceFeatureHints?: { bpm?: number; key?: string };
   stemIds?: string[];
   constraints?: Record<string, unknown>;
   estimatedCostUsd?: number | null;

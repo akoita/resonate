@@ -4,6 +4,7 @@ import type { RemixProject } from "../../lib/api";
 import {
   describeGenerateAvailability,
   generationErrorMessage,
+  groundingDescription,
   buildProjectPatch,
   clampGainDb,
   classifyProjectLoadError,
@@ -283,6 +284,8 @@ describe("RemixStudioEditor rendering", () => {
           generationJobId: "job-1",
           generationProvider: "lyria-3-pro-preview",
           generationMetadata: {
+            grounding: "feature_conditioned",
+            sourceFeatureHints: { bpm: 93, key: "G minor" },
             output: {
               outputUri: "/storage/remix-drafts/job-1.mp3",
               synthIdPresent: true,
@@ -295,6 +298,9 @@ describe("RemixStudioEditor rendering", () => {
     );
 
     expect(html).toContain("AI draft recorded");
+    // Honest provenance line (#1181)
+    expect(html).toContain("matched to the stems&#x27; measured 93 BPM, G minor");
+    expect(html).toContain("does not hear the source audio");
     expect(html).toContain("Play AI draft");
     expect(html).not.toContain("Playback arrives with audio preview");
   });
@@ -436,6 +442,38 @@ describe("describeGenerateAvailability (#1162)", () => {
       describeGenerateAvailability({ ...base, generationActive: true }).reason,
     ).toContain("already queued");
     expect(describeGenerateAvailability({ ...base, saving: true }).enabled).toBe(false);
+  });
+});
+
+describe("groundingDescription (#1181)", () => {
+  it("states that rendered drafts contain the source audio", () => {
+    expect(groundingDescription({ grounding: "stem_audio" })).toContain(
+      "contains the source audio itself",
+    );
+  });
+
+  it("names the measured hints for feature-conditioned drafts", () => {
+    expect(
+      groundingDescription({
+        grounding: "feature_conditioned",
+        sourceFeatureHints: { bpm: 93, key: "G minor" },
+      }),
+    ).toContain("measured 93 BPM, G minor");
+    expect(
+      groundingDescription({ grounding: "feature_conditioned" }),
+    ).toContain("measured tempo and key");
+  });
+
+  it("is explicit that prompt-only drafts are not derived from the source", () => {
+    expect(groundingDescription({ grounding: "prompt_only" })).toContain(
+      "not derived from the source audio",
+    );
+  });
+
+  it("returns null for legacy metadata without grounding", () => {
+    expect(groundingDescription(null)).toBeNull();
+    expect(groundingDescription({})).toBeNull();
+    expect(groundingDescription({ grounding: "future_mode" })).toBeNull();
   });
 });
 

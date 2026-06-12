@@ -143,6 +143,14 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- Honest draft provenance labels (#1181): the studio draft panel states,
+  per draft, exactly what of the source audio shaped it — rendered drafts
+  "contain the source audio itself", feature-conditioned drafts name the
+  measured tempo/key and state the model "does not hear the source audio",
+  and prompt-only drafts say they are "not derived from the source audio".
+  Legacy drafts without grounding metadata show no claim rather than a
+  guessed one. Remix CTA copy was reviewed and makes no AI-derivation
+  claims ("Remix" refers to the licensed remix workflow).
 - Feature-conditioned prompts (#1182 slice 3): prompted-mode generation
   derives tempo/key hints from the unmuted source stems' measured features
   (#1184) — highest-confidence beat track and key estimate win; muted stems
