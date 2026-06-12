@@ -903,6 +903,10 @@ describe("Remix eligibility and projects (integration)", () => {
             estimatedCostUsd: null,
             voiceLikenessAllowed: false,
             policyVersion: expect.any(String),
+            // Feature conditioning (#1182 slice 3): the licensed stem's
+            // measured features ground the prompt.
+            grounding: "feature_conditioned",
+            sourceFeatureHints: { bpm: 93, key: "G minor" },
           }),
         );
         expect(generationQueue.add).toHaveBeenCalledWith(
@@ -913,6 +917,7 @@ describe("Remix eligibility and projects (integration)", () => {
             generationInput: expect.objectContaining({
               mode: "variation",
               constraints: { durationSeconds: 60 },
+              sourceFeatureHints: { bpm: 93, key: "G minor" },
             }),
           }),
           expect.objectContaining({ attempts: 1, jobId: generated.generationJobId }),
@@ -971,7 +976,12 @@ describe("Remix eligibility and projects (integration)", () => {
             created.id,
           );
           expect(pending.generationMetadata).toEqual(
-            expect.objectContaining({ status: "pending", mode: "stem_mix" }),
+            expect.objectContaining({
+              status: "pending",
+              mode: "stem_mix",
+              // Rendered drafts ARE the source audio (#1182 slice 3).
+              grounding: "stem_audio",
+            }),
           );
 
           const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;

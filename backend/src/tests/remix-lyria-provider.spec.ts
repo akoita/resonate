@@ -176,6 +176,31 @@ describe("buildLyriaRemixPrompt", () => {
   });
 });
 
+describe("buildLyriaRemixPrompt source matching (#1182 slice 3)", () => {
+  it("marks measured hints as source-matched", () => {
+    const prompt = buildLyriaRemixPrompt({
+      mode: "variation",
+      userPrompt: "darker",
+      bpm: 93,
+      key: "G minor",
+      matchSource: true,
+    });
+    expect(prompt).toContain("Tempo around 93 BPM.");
+    expect(prompt).toContain("In the key of G minor.");
+    expect(prompt).toContain("match the source stems' measured tempo and key");
+  });
+
+  it("adds no source-matching sentence for explicit user constraints", () => {
+    const prompt = buildLyriaRemixPrompt({
+      mode: "extension",
+      userPrompt: "build a drop",
+      bpm: 140,
+      key: "Am",
+    });
+    expect(prompt).not.toContain("source stems' measured");
+  });
+});
+
 describe("normalizeLyriaError", () => {
   it("passes through already-normalized errors", () => {
     const original = new RemixGenerationProviderError("invalid_input", "x", false);

@@ -106,6 +106,73 @@ export function validateRemixGenerationConstraints(
   return problems;
 }
 
+export type SourceFeatureHints = {
+  bpm?: number;
+  key?: string;
+};
+
+/**
+ * Derives musical hints from the project's unmuted stems' worker-measured
+ * features (#1184) for prompt conditioning (#1182 slice 3). Tempo comes from
+ * the highest-confidence beat track, key from the highest-confidence
+ * estimate; stems without v1 features contribute nothing. Pure so the
+ * selection policy is unit-testable.
+ */
+export function deriveSourceFeatureHints(
+  stems: Array<{ muted?: boolean; audioFeatures?: unknown }>,
+): SourceFeatureHints {
+  let bpm: number | undefined;
+  let bpmConfidence = -1;
+  let key: string | undefined;
+  let keyConfidence = -1;
+  for (const stem of stems) {
+    if (stem.muted) continue;
+    const features = stem.audioFeatures as
+      | {
+          schemaVersion?: unknown;
+          tempoBpm?: unknown;
+          tempoConfidence?: unknown;
+          key?: { tonic?: unknown; mode?: unknown; confidence?: unknown } | null;
+        }
+      | null
+      | undefined;
+    if (!features || features.schemaVersion !== "stem-audio-features/v1") {
+      continue;
+    }
+    if (
+      typeof features.tempoBpm === "number" &&
+      Number.isFinite(features.tempoBpm) &&
+      features.tempoBpm > 0
+    ) {
+      const confidence =
+        typeof features.tempoConfidence === "number"
+          ? features.tempoConfidence
+          : 0;
+      if (confidence > bpmConfidence) {
+        bpmConfidence = confidence;
+        bpm = Math.round(features.tempoBpm);
+      }
+    }
+    const stemKey = features.key;
+    if (
+      stemKey &&
+      typeof stemKey.tonic === "string" &&
+      (stemKey.mode === "major" || stemKey.mode === "minor")
+    ) {
+      const confidence =
+        typeof stemKey.confidence === "number" ? stemKey.confidence : 0;
+      if (confidence > keyConfidence) {
+        keyConfidence = confidence;
+        key = `${stemKey.tonic} ${stemKey.mode}`;
+      }
+    }
+  }
+  return {
+    ...(bpm !== undefined ? { bpm } : {}),
+    ...(key !== undefined ? { key } : {}),
+  };
+}
+
 export type RemixGenerationProvenance = {
   remixProjectId: string;
   creatorUserId: string;
@@ -129,6 +196,12 @@ export type RemixGenerationInput = {
   /** Absent for stem_mix: prompts only apply to the prompted modes. */
   prompt?: string;
   constraints: RemixGenerationConstraints;
+  /**
+   * Measured tempo/key from the source stems (#1184), used as prompt
+   * conditioning when the user sets no explicit constraint. Absent when no
+   * stem carries features yet.
+   */
+  sourceFeatureHints?: SourceFeatureHints;
   provenance: RemixGenerationProvenance;
 };
 
@@ -161,7 +234,7 @@ type ProjectForGeneration = {
   licenseId: string | null;
   policyVersion: string;
   source: { rightsRoute: string | null; contentStatus: string };
-  stems: Array<{ stemId: string }>;
+  stems: Array<{ stemId: string; muted?: boolean; audioFeatures?: unknown }>;
 };
 
 /**
@@ -185,11 +258,17 @@ export function buildRemixGenerationInput(
   const mode = project.mode as RemixGenerationInput["mode"];
   const prompt =
     mode === "stem_mix" ? undefined : project.prompt?.trim() || undefined;
+  // Feature conditioning (#1182 slice 3) applies to prompted modes only;
+  // stem_mix renders the audio itself and needs no hints.
+  const hints =
+    mode === "stem_mix" ? {} : deriveSourceFeatureHints(project.stems);
+  const hasHints = hints.bpm !== undefined || hints.key !== undefined;
   return {
     sourceTrackId: project.sourceTrackId,
     stemIds: project.stems.map((stem) => stem.stemId),
     mode,
     ...(prompt ? { prompt } : {}),
+    ...(hasHints ? { sourceFeatureHints: hints } : {}),
     constraints,
     provenance: {
       remixProjectId: project.id,

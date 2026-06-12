@@ -143,6 +143,16 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- Feature-conditioned prompts (#1182 slice 3): prompted-mode generation
+  derives tempo/key hints from the unmuted source stems' measured features
+  (#1184) — highest-confidence beat track and key estimate win; muted stems
+  are excluded. Explicit user constraints always take precedence; derived
+  hints fill the gaps and the Lyria prompt says they were measured from the
+  source stems. Every generation now records honest `grounding` provenance
+  in `generationMetadata` (#1181): `stem_audio` (rendered from the licensed
+  stems), `feature_conditioned` (prompt guided by measured tempo/key), or
+  `prompt_only` (nothing from the source audio shaped the output, e.g.
+  stems ingested before #1184 carry no features yet).
 - Stem mix rendering (#1189, slice 2 of #1182): `stem_mix` projects render
   the saved arrangement (per-stem gain/mute) into one MP3 server-side with
   ffmpeg — zero AI, zero vendor cost, so the render path sits outside the

@@ -62,11 +62,18 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     const durationSeconds =
       input.constraints.durationSeconds ??
       REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
+    // Explicit user constraints always win; measured source features
+    // (#1184) fill the gaps so the output stays musically compatible with
+    // the stems the user licensed (#1182 slice 3).
+    const hints = input.sourceFeatureHints ?? {};
     const prompt = buildLyriaRemixPrompt({
       mode: input.mode,
       userPrompt,
-      bpm: input.constraints.bpm,
-      key: input.constraints.key,
+      bpm: input.constraints.bpm ?? hints.bpm,
+      key: input.constraints.key ?? hints.key,
+      matchSource:
+        (input.constraints.bpm === undefined && hints.bpm !== undefined) ||
+        (input.constraints.key === undefined && hints.key !== undefined),
     });
 
     const jobId = randomUUID();
@@ -132,6 +139,8 @@ export function buildLyriaRemixPrompt(input: {
   userPrompt: string;
   bpm?: number;
   key?: string;
+  /** True when tempo/key were measured from the source stems (#1182 slice 3). */
+  matchSource?: boolean;
 }): string {
   const parts = [
     input.mode === "variation"
@@ -140,6 +149,11 @@ export function buildLyriaRemixPrompt(input: {
   ];
   if (input.bpm) parts.push(`Tempo around ${input.bpm} BPM.`);
   if (input.key) parts.push(`In the key of ${input.key}.`);
+  if (input.matchSource && (input.bpm || input.key)) {
+    parts.push(
+      "These match the source stems' measured tempo and key — stay musically compatible with them.",
+    );
+  }
   return parts.join(" ");
 }
 

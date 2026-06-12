@@ -3001,3 +3001,31 @@ npm run test  # 807 passed
 npx jest --runInBand --config jest.integration.config.js --testPathPattern='(catalog.integration|flow1_ingestion|x402)'  # 30 passed
 git diff --check
 ```
+
+
+## 2026-06-12 — #1182 slice 3: feature-conditioned prompts
+
+Scope: `deriveSourceFeatureHints` in the generation boundary,
+hint-fallback + source-matched phrasing in the Lyria provider, `grounding`
+provenance (`stem_audio` / `feature_conditioned` / `prompt_only`) recorded
+in generation metadata.
+
+### Findings
+
+- Hints derive only from `Stem.audioFeatures`, which is already sanitized
+  at the ingestion boundary (#1184) — and the derivation re-validates shape
+  (schemaVersion, finite positive tempo, major/minor mode) so a manually
+  edited row cannot inject prompt text: tonic/mode reach the prompt only as
+  validated enum-ish values, tempo as a rounded number.
+- Explicit user constraints always override derived hints; the endpoint's
+  constraint validation (#1162) is unchanged and still runs first.
+- No new endpoints, env vars, secrets, or subprocess/file surfaces.
+
+### Commands Run
+
+```bash
+npx jest --runInBand src/tests/remix-generation.spec.ts src/tests/remix-lyria-provider.spec.ts  # 25 passed
+npm run test  # 818 passed
+npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 38 passed
+git diff --check
+```
