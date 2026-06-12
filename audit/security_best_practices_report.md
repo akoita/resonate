@@ -2964,6 +2964,27 @@ the backend runtime Dockerfile, studio "Render mix" enablement.
   paths are now required to stay inside the uploads dir. (2) ffmpeg now runs
   with `-hide_banner -loglevel error` so execFile's bounded stderr buffer
   cannot be exhausted by progress output on long renders.
+## 2026-06-12 — Uploads path-containment sweep (#1189 review follow-up)
+
+Scope: shared `resolveContainedPath` helper
+(`backend/src/modules/storage/path_containment.ts`) applied wherever a
+stored or cross-service relative path met `join(uploadsDir, ...)`.
+
+### Findings
+
+- Four pre-existing sites joined unconstrained values into the uploads
+  directory: the local storage provider (`upload` writes a caller-supplied
+  filename verbatim; `download`/`delete` use a URI-derived segment), the
+  stem-result subscriber (path from the worker's Pub/Sub message — a real
+  trust boundary), the ingestion service (worker-reported relative path),
+  and the catalog stem-blob read (DB-derived filename). All values are
+  server-produced today; this is defense in depth at the filesystem
+  boundary, matching the in-PR fixes from the #1188/#1190 reviews.
+- Behavior on escape: uploads throw; reads/deletes treat the path as
+  absent. Nested relative paths that stay inside the directory keep
+  working (worker results are `release/track/stem.mp3`-shaped).
+- Helper unit-tested (traversal, absolute, bare-parent, in-base dot
+  segments). Full unit suite + catalog/flow1/x402 integration suites green.
 
 ### Commands Run
 
@@ -2974,4 +2995,9 @@ git diff --check
 # Backend: 806 unit passed (+5 renderer args/smoke spec, smoke skips without ffmpeg),
 #          remix integration 38 passed (stem_mix routes to renderer, AI provider untouched)
 # Web: 479 vitest passed, lint 0 errors
+rg -n 'join\(.*upload' backend/src/modules --type ts   # sweep inventory
+npx jest --runInBand src/tests/path_containment.spec.ts  # 5 passed
+npm run test  # 807 passed
+npx jest --runInBand --config jest.integration.config.js --testPathPattern='(catalog.integration|flow1_ingestion|x402)'  # 30 passed
+git diff --check
 ```

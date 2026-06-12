@@ -6,6 +6,7 @@ import { Queue } from "bullmq";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Agent } from "undici";
 import { EventBus } from "../shared/event_bus";
+import { resolveContainedPath } from "../storage/path_containment";
 import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
@@ -513,8 +514,12 @@ export class IngestionService {
 
           // 2. Process, Encrypt, and Upload the AI-generated Stems
           for (const [type, relativePath] of Object.entries(result.stems)) {
-            const absolutePath = join(process.cwd(), "uploads", "stems", relativePath);
-            if (existsSync(absolutePath)) {
+            // Worker-reported path — containment (sweep from #1189 review).
+            const absolutePath = resolveContainedPath(
+              join(process.cwd(), "uploads", "stems"),
+              relativePath,
+            );
+            if (absolutePath && existsSync(absolutePath)) {
               let data: Buffer = readFileSync(absolutePath);
               const stemId = this.generateId("stem");
 
