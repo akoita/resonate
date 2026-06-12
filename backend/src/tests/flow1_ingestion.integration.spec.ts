@@ -112,7 +112,22 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
         title: 'Flow Track',
         position: 1,
         stems: [
-          { id: stemId1, uri: '/catalog/stems/vocals.mp3', type: 'vocals', mimeType: 'audio/mpeg' },
+          {
+            id: stemId1,
+            uri: '/catalog/stems/vocals.mp3',
+            type: 'vocals',
+            mimeType: 'audio/mpeg',
+            // Worker-measured features (#1184) ride stems.processed into
+            // the catalog upsert.
+            audioFeatures: {
+              schemaVersion: 'stem-audio-features/v1',
+              extractor: { name: 'librosa', version: '0.10.2' },
+              tempoBpm: 120.5,
+              key: { tonic: 'C', mode: 'major', confidence: 0.8 },
+              energyRms: 0.12,
+            },
+          },
+          // Old-worker payload shape: no features at all (#1184 rollout).
           { id: stemId2, uri: '/catalog/stems/drums.mp3', type: 'drums', mimeType: 'audio/mpeg' },
         ],
       }],
@@ -128,6 +143,18 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
     const stems = await prisma.stem.findMany({ where: { trackId: realTrackId } });
     expect(stems.length).toBeGreaterThanOrEqual(2);
     expect(stems.map(s => s.type)).toEqual(expect.arrayContaining(['vocals', 'drums']));
+
+    // Assert: audio features persisted where provided, null where absent (#1184)
+    const vocalsStem = stems.find(s => s.id === stemId1);
+    expect(vocalsStem?.audioFeatures).toEqual(
+      expect.objectContaining({
+        schemaVersion: 'stem-audio-features/v1',
+        tempoBpm: 120.5,
+        key: expect.objectContaining({ tonic: 'C', mode: 'major' }),
+      }),
+    );
+    const drumsStem = stems.find(s => s.id === stemId2);
+    expect(drumsStem?.audioFeatures ?? null).toBeNull();
 
     // Assert: Release marked "ready"
     const releaseAfterProcessed = await prisma.release.findUnique({ where: { id: releaseId } });

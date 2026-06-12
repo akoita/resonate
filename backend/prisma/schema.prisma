@@ -531,6 +531,9 @@ model Stem {
   data               Bytes?
   mimeType           String?
   durationSeconds    Float?
+  // Measured musical features (tempo/key/beats/energy) extracted by the
+  // demucs worker (#1184). The JSON carries its own schemaVersion.
+  audioFeatures      Json?
   encryptionMetadata String?
   isEncrypted        Boolean             @default(false)
   storageProvider    String              @default("local")

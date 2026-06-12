@@ -41,6 +41,12 @@ export interface StemResultMessage {
   status: "completed" | "failed";
   /** GCS URIs for each separated stem type */
   stems?: Record<string, string>;
+  /**
+   * Measured musical features per stem type (#1184). Optional for rollout
+   * compatibility: old workers omit it, and a per-stem extraction failure
+   * sends null for that stem.
+   */
+  stemFeatures?: Record<string, unknown | null>;
   error?: string;
   /** Passed through from the original job */
   originalStemMeta?: {

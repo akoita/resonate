@@ -624,6 +624,10 @@ export class CatalogService implements OnModuleInit {
                   data: stem.data, // Present in sync/test mode, undefined in production (fetched from storage URI)
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
+                  // Sanitized worker measurements (#1184); undefined (old
+                  // payloads) leaves the column untouched.
+                  audioFeatures:
+                    (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
                   isEncrypted: stem.isEncrypted ?? false,
                   encryptionMetadata: stem.encryptionMetadata,
                   storageProvider: stem.storageProvider ?? "local",
@@ -634,6 +638,8 @@ export class CatalogService implements OnModuleInit {
                   data: stem.data, // Present in sync/test mode, undefined in production
                   mimeType: stem.mimeType,
                   durationSeconds: stem.durationSeconds,
+                  audioFeatures:
+                    (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
                   isEncrypted: stem.isEncrypted ?? false,
                   encryptionMetadata: stem.encryptionMetadata,
                   storageProvider: stem.storageProvider ?? "local",
