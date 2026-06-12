@@ -58,6 +58,8 @@ export interface StemsProcessedEvent extends BaseEvent {
       data?: Buffer;
       mimeType?: string;
       durationSeconds?: number;
+      /** Sanitized worker-measured musical features (#1184), null when extraction failed. */
+      audioFeatures?: unknown | null;
       isEncrypted?: boolean;
       encryptionMetadata?: string;
       storageProvider?: string;

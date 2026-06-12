@@ -67,6 +67,7 @@ When adding a new environment variable:
 | `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |
 | `DEMUCS_CLOUD_RUN_JOB_PROJECT` | Backend | Optional project for on-demand Demucs Cloud Run Job execution. Defaults to `GCP_PROJECT_ID` when unset |
 | `DEMUCS_CLOUD_RUN_JOB_REGION` | Backend | Cloud Run region for on-demand Demucs jobs |
+| `WORKER_MAX_UPLOAD_BYTES` | Demucs worker | Optional upload ceiling for the worker's `/separate` and `/analyze` endpoints (default `209715200` = 200 MiB). Oversized uploads are refused with HTTP 413 before touching disk-backed processing (#1184) |
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
 | `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
 | `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |

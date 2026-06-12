@@ -14,6 +14,8 @@ import time
 from typing import Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor
 
+from audio_features import extract_stem_features
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +39,11 @@ SUBSCRIPTION_NAME = os.getenv("PUBSUB_SUBSCRIPTION", "stem-separate-worker")
 RESULTS_TOPIC = os.getenv("PUBSUB_RESULTS_TOPIC", "stem-results")
 DEMUCS_MODEL = "htdemucs_6s"
 DEMUCS_DEVICE = os.getenv("DEMUCS_DEVICE", "auto").strip().lower()
+
+# Upload ceiling for /separate and /analyze (#1184 review): librosa/demucs
+# load whole files into memory, so an unbounded upload is an OOM lever even
+# on a deployment-protected service. 200 MiB covers multi-minute lossless WAVs.
+MAX_UPLOAD_BYTES = int(os.getenv("WORKER_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
 
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
@@ -104,6 +111,23 @@ def demucs_attempt_env(device: str) -> dict:
         env["CUDA_VISIBLE_DEVICES"] = ""
         env["NVIDIA_VISIBLE_DEVICES"] = ""
     return env
+
+
+def save_upload_capped(upload_file, dest_path: Path) -> None:
+    """Stream a multipart upload to disk, aborting past MAX_UPLOAD_BYTES."""
+    written = 0
+    with open(dest_path, "wb") as buffer:
+        while True:
+            chunk = upload_file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            written += len(chunk)
+            if written > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload exceeds the {MAX_UPLOAD_BYTES} byte limit",
+                )
+            buffer.write(chunk)
 
 
 async def run_demucs_attempt(
@@ -288,8 +312,12 @@ def download_from_gcs(gcs_uri: str, dest_path: Path) -> Path:
     return dest_path
 
 
-async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str, track_id: str, callback_url: Optional[str] = None) -> dict:
-    """Run Demucs separation and return stems dict. Shared by HTTP and Pub/Sub paths."""
+async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str, track_id: str, callback_url: Optional[str] = None) -> tuple[dict, dict]:
+    """Run Demucs separation; returns (stems uri map, stemFeatures map).
+
+    Both maps are keyed by stem type. Feature extraction failure for one
+    stem records None for that stem and never fails separation (#1184).
+    """
     ensure_output_base_dir()
 
     # Output directory for this specific track
@@ -343,6 +371,7 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
 
     stems_list = ["vocals.wav", "drums.wav", "bass.wav", "other.wav", "piano.wav", "guitar.wav"]
     results = {}
+    stem_features = {}
     for stem in stems_list:
         stem_src = demucs_out_path / stem
         if stem_src.exists():
@@ -361,6 +390,21 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
             if ffmpeg_proc.returncode == 0 and stem_dest_mp3.exists():
                 stem_name = stem.replace(".wav", "")
 
+                # Measured musical features from the lossless WAV (#1184).
+                # Failure degrades to None for this stem only.
+                try:
+                    feature_start = time.monotonic()
+                    stem_features[stem_name] = extract_stem_features(stem_src)
+                    logger.info(
+                        f"[features] {stem_name} extracted in "
+                        f"{time.monotonic() - feature_start:.2f}s"
+                    )
+                except Exception as feature_error:
+                    logger.warning(
+                        f"[features] extraction failed for {stem_name}: {feature_error}"
+                    )
+                    stem_features[stem_name] = None
+
                 if STORAGE_MODE == "gcs" and GCS_BUCKET:
                     gcs_key = f"stems/{release_id}/{track_id}/{mp3_filename}"
                     url = upload_to_gcs(stem_dest_mp3, gcs_key)
@@ -374,7 +418,7 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
         else:
             logger.warning(f"Stem {stem} not found in output")
 
-    return results
+    return results, stem_features
 
 
 # ─── HTTP endpoint (Phase 1 legacy) ───────────────────────────────────
@@ -389,22 +433,44 @@ async def separate_audio(
     logger.info(f"[HTTP] Processing separation for release={release_id}, track={track_id}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        input_path = Path(temp_dir) / file.filename
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Basename only: the multipart filename is client-controlled and a
+        # path like ../../x would escape the temp dir (#1184 review).
+        input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
+        save_upload_capped(file, input_path)
 
         try:
-            results = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
+            results, stem_features = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
             return {
                 "status": "success",
                 "release_id": release_id,
                 "track_id": track_id,
                 "storage_mode": STORAGE_MODE,
-                "stems": results
+                "stems": results,
+                "stemFeatures": stem_features,
             }
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/analyze")
+async def analyze_audio(file: UploadFile = File(...)):
+    """Extract stem audio features from one uploaded file (#1184).
+
+    Backfill/diagnostic surface. Inbound auth posture deliberately matches
+    /separate: no in-app auth, the worker relies on deployment-level
+    protection (Cloud Run IAM / private networking).
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Basename only: the multipart filename is client-controlled (#1184 review).
+        input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
+        save_upload_capped(file, input_path)
+        try:
+            features = extract_stem_features(input_path)
+        except Exception as e:
+            logger.warning(f"[analyze] extraction failed: {e}")
+            raise HTTPException(status_code=422, detail=f"Could not analyze audio: {e}")
+        return {"status": "success", "features": features}
 
 
 # ─── Pub/Sub consumer (Phase 2 event-driven) ──────────────────────────
@@ -492,7 +558,7 @@ async def process_pubsub_message(message_data: dict):
                 return  # Skip Demucs entirely
 
         # Run separation (with progress callbacks if callbackUrl provided)
-        results = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
+        results, stem_features = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
 
         # Publish result to stem-results topic
         from google.cloud import pubsub_v1
@@ -508,6 +574,7 @@ async def process_pubsub_message(message_data: dict):
             "trackPosition": message_data.get("trackPosition"),
             "status": "completed",
             "stems": results,
+            "stemFeatures": stem_features,
             "originalStemMeta": {
                 **original_stem_meta,
                 "uri": original_stem_uri,

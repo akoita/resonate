@@ -2873,3 +2873,59 @@ cd web && npx vitest run src/components/remix/RemixStudioEditor.test.tsx  # 25 p
 cd web && npx eslint src/components/remix/RemixStudioEditor.tsx src/components/remix/RemixStudioEditor.test.tsx src/lib/remixAudioPreview.ts src/lib/api.ts
 cd web && npm run build  # pass
 ```
+
+## 2026-06-12 — #1184 Stem Audio Feature Extraction (slice 1 of #1182)
+
+Scope: `workers/demucs/audio_features.py` (librosa extraction) +
+`/analyze` endpoint, `stemFeatures` map on Pub/Sub results and the legacy
+HTTP separation response, backend boundary sanitizer
+(`backend/src/modules/ingestion/stem-audio-features.ts`), nullable
+`Stem.audioFeatures` column, remix project read exposure.
+
+### Findings
+
+- Worker payloads are treated as untrusted at the backend boundary: the
+  sanitizer whitelists fields, requires `schemaVersion`
+  `stem-audio-features/v1` and an extractor name, clamps BPM to 30–300,
+  bounds confidences to [0,1], and nulls non-finite numerics. Malformed
+  payloads are dropped with a warning — never a 500, never persisted raw.
+- `POST /analyze` deliberately matches `/separate`'s inbound auth posture
+  (no in-app auth; deployment-level protection via Cloud Run IAM/private
+  networking). It writes uploads only to a `TemporaryDirectory` and returns
+  derived numbers, no echo of file contents; decode failures are 422.
+- Feature extraction runs on worker-produced WAVs inside the separation
+  flow; per-stem failure degrades to `features: null` and cannot fail or
+  block stem persistence.
+- The Prisma migration is additive (`ALTER TABLE "Stem" ADD COLUMN
+  "audioFeatures" JSONB`); old payloads without `stemFeatures` skip the
+  column entirely (undefined, not null-overwrite).
+- No new secrets, env vars, raw SQL, dynamic HTML sinks, or external
+  endpoints. librosa pinned (0.10.2.post1) in worker requirements.
+- Review finding (fixed in-branch): both upload endpoints joined the
+  client-controlled multipart filename to the scratch directory, so a
+  filename like `../../x` escaped the TemporaryDirectory (write-anywhere as
+  the container user). `/analyze` was introduced with the flaw copied from
+  the pre-existing `/separate` pattern; both now use the basename only with
+  an empty-basename fallback, and a regression test posts a traversal
+  filename and asserts no file lands outside the temp dir.
+- Review finding (fixed in-branch): uploads were uncapped while librosa and
+  demucs load whole files into memory — an OOM lever even behind
+  deployment-level auth. Both endpoints now stream uploads to disk with a
+  `WORKER_MAX_UPLOAD_BYTES` ceiling (default 200 MiB, documented in
+  docs/deployment/environment.md) and refuse oversized bodies with 413;
+  regression test included.
+
+### Commands Run
+
+```bash
+rg -n '(api[_-]?key|secret|private[_-]?key|password\s*=|token\s*=)' \
+  workers/demucs/audio_features.py workers/demucs/test_audio_features.py \
+  backend/src/modules/ingestion/stem-audio-features.ts
+rg -n '\$queryRaw|\$executeRaw|innerHTML|eval\(' \
+  backend/src/modules/ingestion/stem-audio-features.ts workers/demucs/audio_features.py
+git diff --check
+# Worker: 13 passed (test_main + test_audio_features, venv with librosa)
+# Backend: 802 unit passed (7 new sanitizer), remix+flow1 integration 40 passed
+# Web: 470 passed, lint 0 errors
+# Docker: CPU Dockerfile build verification (librosa/numba) — see PR notes
+```

@@ -123,7 +123,20 @@ describe("Remix eligibility and projects (integration)", () => {
 
     await prisma.stem.createMany({
       data: [
-        { id: LICENSED_STEM_ID, trackId: TRACK_ID, type: "vocals", uri: "local://licensed" },
+        {
+          id: LICENSED_STEM_ID,
+          trackId: TRACK_ID,
+          type: "vocals",
+          uri: "local://licensed",
+          // Worker-measured features (#1184): exposed on project reads.
+          audioFeatures: {
+            schemaVersion: "stem-audio-features/v1",
+            extractor: { name: "librosa", version: "0.10.2" },
+            tempoBpm: 92.5,
+            key: { tonic: "G", mode: "minor", confidence: 0.7 },
+            energyRms: 0.08,
+          },
+        },
         { id: UNLICENSED_STEM_ID, trackId: TRACK_ID, type: "drums", uri: "local://unlicensed" },
         { id: NON_REMIXABLE_STEM_ID, trackId: TRACK_ID, type: "bass", uri: "local://locked" },
         { id: X402_STEM_ID, trackId: TRACK_ID, type: "other", uri: "local://x402" },
@@ -602,6 +615,15 @@ describe("Remix eligibility and projects (integration)", () => {
       });
       expect(created.stems[0]).toEqual(
         expect.objectContaining({ type: "vocals" }),
+      );
+      // Worker-measured features (#1184) ride the project read shape so
+      // grounding slices need no extra round-trips.
+      expect(created.stems[0].audioFeatures).toEqual(
+        expect.objectContaining({
+          schemaVersion: "stem-audio-features/v1",
+          tempoBpm: 92.5,
+          key: expect.objectContaining({ tonic: "G", mode: "minor" }),
+        }),
       );
 
       // Durability: a brand-new service instance reads the same record.

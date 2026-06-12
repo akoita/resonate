@@ -6,6 +6,7 @@ import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
 import type { StemResultMessage } from "./stem-pubsub.publisher";
+import { sanitizeStemAudioFeatures } from "./stem-audio-features";
 import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 
 const TOPIC_RESULTS = "stem-results";
@@ -157,6 +158,18 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     // Process each AI-generated stem
     for (const [type, stemUri] of Object.entries(result.stems!)) {
       try {
+        // Worker-measured musical features (#1184): sanitize at the
+        // boundary; malformed or missing features degrade to null and
+        // never block stem persistence.
+        const rawFeatures = result.stemFeatures?.[type] ?? null;
+        const audioFeatures = rawFeatures
+          ? sanitizeStemAudioFeatures(rawFeatures)
+          : null;
+        if (rawFeatures && !audioFeatures) {
+          this.logger.warn(
+            `Dropping malformed audio features for stem type ${type} (track ${result.trackId})`,
+          );
+        }
         // Download stem data
         let data: Buffer | null = null;
         if (stemUri.startsWith("http://") || stemUri.startsWith("https://")) {
@@ -229,6 +242,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           data,
           mimeType: "audio/mpeg",
           durationSeconds: result.originalStemMeta?.durationSeconds,
+          audioFeatures,
           isEncrypted,
           encryptionMetadata,
           storageProvider: storage.provider,
