@@ -2136,9 +2136,11 @@ export class CatalogService implements OnModuleInit {
 
         const filename = this.getLocalStemFilename(stem);
         const uploadDir = join(process.cwd(), "uploads", "stems");
-        const absolutePath = join(uploadDir, filename);
+        // DB-derived filename — containment (sweep from #1189 review).
+        const { resolveContainedPath } = await import("../storage/path_containment");
+        const absolutePath = resolveContainedPath(uploadDir, filename);
 
-        if (existsSync(absolutePath)) {
+        if (absolutePath && existsSync(absolutePath)) {
           console.log(`[Catalog] Serving stem ${stem.id} from disk: ${absolutePath}`);
           return {
             data: readFileSync(absolutePath),

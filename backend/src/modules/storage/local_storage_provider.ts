@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { StorageProvider, StorageResult } from './storage_provider';
 import { join } from 'path';
+import { resolveContainedPath } from './path_containment';
 import { writeFileSync, existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
 
 @Injectable()
@@ -20,7 +21,10 @@ export class LocalStorageProvider extends StorageProvider {
 
     async upload(data: Buffer, filename: string, mimeType: string): Promise<StorageResult> {
         this.ensureUploadDir();
-        const absolutePath = join(this.uploadDir, filename);
+        const absolutePath = resolveContainedPath(this.uploadDir, filename);
+        if (!absolutePath) {
+            throw new Error(`Refusing to write outside the upload directory: ${filename}`);
+        }
         writeFileSync(absolutePath, data);
 
         return {
@@ -35,9 +39,9 @@ export class LocalStorageProvider extends StorageProvider {
         // Extract filename from URI
         const parts = uri.split('/');
         const filename = parts[parts.length - 2];
-        const absolutePath = join(this.uploadDir, filename);
+        const absolutePath = resolveContainedPath(this.uploadDir, filename);
 
-        if (existsSync(absolutePath)) {
+        if (absolutePath && existsSync(absolutePath)) {
             unlinkSync(absolutePath);
         }
     }
@@ -47,9 +51,9 @@ export class LocalStorageProvider extends StorageProvider {
         // Extract filename from URI (format: http://localhost:3000/catalog/stems/{filename}/blob)
         const parts = uri.split('/');
         const filename = parts[parts.length - 2];
-        const absolutePath = join(this.uploadDir, filename);
+        const absolutePath = resolveContainedPath(this.uploadDir, filename);
 
-        if (existsSync(absolutePath)) {
+        if (absolutePath && existsSync(absolutePath)) {
             return readFileSync(absolutePath);
         }
         return null;

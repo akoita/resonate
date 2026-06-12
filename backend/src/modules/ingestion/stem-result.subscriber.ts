@@ -7,6 +7,7 @@ import { ArtistService } from "../artist/artist.service";
 import { prisma } from "../../db/prisma";
 import type { StemResultMessage } from "./stem-pubsub.publisher";
 import { sanitizeStemAudioFeatures } from "./stem-audio-features";
+import { resolveContainedPath } from "../storage/path_containment";
 import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
 
 const TOPIC_RESULTS = "stem-results";
@@ -190,8 +191,10 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           const { join } = await import("path");
           const { readFileSync, existsSync } = await import("fs");
           const uploadsDir = join(process.cwd(), "uploads", "stems");
-          const localPath = join(uploadsDir, stemUri);
-          if (existsSync(localPath)) {
+          // stemUri arrives in the worker result message — containment
+          // keeps a traversal-shaped path from reading outside uploads.
+          const localPath = resolveContainedPath(uploadsDir, stemUri);
+          if (localPath && existsSync(localPath)) {
             data = readFileSync(localPath);
             this.logger.log(`Read stem ${type} from local path: ${localPath} (${data.length} bytes)`);
           } else {
