@@ -440,6 +440,16 @@ export type ArtistProfile = {
   imageUrl?: string | null;
   summary?: string | null;
   socialLinks?: Record<string, unknown> | null;
+  remixConsent?: ArtistRemixConsent | null;
+};
+
+export type ArtistRemixConsent = "allowed" | "disabled";
+
+export type ArtistSettingsResponse = {
+  schemaVersion: "artist-settings/v1";
+  artistId: string;
+  remixConsent: ArtistRemixConsent;
+  updatedAt: string;
 };
 
 export type ArtistAnalyticsPayout = {
@@ -660,9 +670,34 @@ export async function getArtistMe(token: string) {
       userId: "test-user",
       displayName: "Test Artist",
       payoutAddress: "0x742d35Cc6634C0532925a3b844Bc17e7595f1ea2c",
+      remixConsent: "allowed" as const,
     };
   }
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
+}
+
+export async function getArtistSettings(token: string, artistId: string) {
+  return apiRequest<ArtistSettingsResponse>(
+    `/artists/${encodeURIComponent(artistId)}/settings`,
+    { cache: "no-store", silentErrorCodes: [403, 404] },
+    token,
+  );
+}
+
+export async function updateArtistSettings(
+  token: string,
+  artistId: string,
+  input: { remixConsent: ArtistRemixConsent },
+) {
+  return apiRequest<ArtistSettingsResponse>(
+    `/artists/${encodeURIComponent(artistId)}/settings`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ remixConsent: input.remixConsent }),
+      silentErrorCodes: [403, 404],
+    },
+    token,
+  );
 }
 
 export async function getArtistAnalyticsDashboard(

@@ -26,6 +26,7 @@ const TEST_PREFIX = `remix_${Date.now()}_`;
 const CREATOR_ID = `${TEST_PREFIX}creator`;
 const OTHER_USER_ID = `${TEST_PREFIX}other`;
 const CREATOR_WALLET = `0x${"a1".repeat(20)}`;
+const ARTIST_ID = `${TEST_PREFIX}artist`;
 const TRACK_ID = `${TEST_PREFIX}track`;
 const BLOCKED_TRACK_ID = `${TEST_PREFIX}track_blocked`;
 const QUARANTINED_TRACK_ID = `${TEST_PREFIX}track_quarantined`;
@@ -64,7 +65,7 @@ describe("Remix eligibility and projects (integration)", () => {
     });
     await prisma.artist.create({
       data: {
-        id: `${TEST_PREFIX}artist`,
+        id: ARTIST_ID,
         userId: CREATOR_ID,
         displayName: "Remix Test Artist",
         payoutAddress: `0x${"b2".repeat(20)}`,
@@ -73,7 +74,7 @@ describe("Remix eligibility and projects (integration)", () => {
     const release = await prisma.release.create({
       data: {
         id: `${TEST_PREFIX}release`,
-        artistId: `${TEST_PREFIX}artist`,
+        artistId: ARTIST_ID,
         title: "Remixable Release",
         status: "ready",
         rightsRoute: "STANDARD_ESCROW",
@@ -320,6 +321,12 @@ describe("Remix eligibility and projects (integration)", () => {
 
   describe("eligibility", () => {
     it("allows private drafts for a licensed stem on a standard route", async () => {
+      const artist = await prisma.artist.findUnique({
+        where: { id: ARTIST_ID },
+        select: { remixConsent: true },
+      });
+      expect(artist?.remixConsent).toBe("allowed");
+
       const result = await eligibilityService.checkEligibility({
         userId: CREATOR_ID,
         trackId: TRACK_ID,
@@ -331,6 +338,34 @@ describe("Remix eligibility and projects (integration)", () => {
         { stemId: LICENSED_STEM_ID, remixable: true, licensed: true },
       ]);
       expect(result.source.rightsRoute).toBe("STANDARD_ESCROW");
+    });
+
+    it("denies and restores eligibility when the source artist toggles remix consent", async () => {
+      await prisma.artist.update({
+        where: { id: ARTIST_ID },
+        data: { remixConsent: "disabled" },
+      });
+      const disabled = await eligibilityService.checkEligibility({
+        userId: CREATOR_ID,
+        trackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+      });
+      expect(disabled.allowed).toBe(false);
+      expect(disabled.requiredLicense).toBeNull();
+      expect(disabled.reasons.map((reason) => reason.code)).toEqual([
+        "artist_remix_disabled",
+      ]);
+
+      await prisma.artist.update({
+        where: { id: ARTIST_ID },
+        data: { remixConsent: "allowed" },
+      });
+      const restored = await eligibilityService.checkEligibility({
+        userId: CREATOR_ID,
+        trackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+      });
+      expect(restored.allowed).toBe(true);
     });
 
     it("accepts listing-backed x402 settlements as remix licenses", async () => {
@@ -467,7 +502,7 @@ describe("Remix eligibility and projects (integration)", () => {
           sourceTrackId: TRACK_ID,
           // Source-artist attribution (#1121): the warehouse aggregates this
           // fact under the artist whose track is being remixed.
-          artistId: `${TEST_PREFIX}artist`,
+          artistId: ARTIST_ID,
         }),
       );
 
@@ -614,6 +649,44 @@ describe("Remix eligibility and projects (integration)", () => {
       await expect(
         projectService.getDraftAudio(OTHER_USER_ID, created.id),
       ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it("keeps existing drafts editable but denies generation after artist disables remix consent", async () => {
+      const created = await projectService.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Consent Sensitive Draft",
+      });
+
+      const edited = await projectService.updateProject(CREATOR_ID, created.id, {
+        title: "Consent Sensitive Draft v2",
+      });
+      expect(edited.title).toBe("Consent Sensitive Draft v2");
+
+      await prisma.artist.update({
+        where: { id: ARTIST_ID },
+        data: { remixConsent: "disabled" },
+      });
+      try {
+        await expect(
+          projectService.generateDraft(CREATOR_ID, created.id, { force: true }),
+        ).rejects.toMatchObject({
+          response: expect.objectContaining({
+            eligibility: expect.objectContaining({
+              allowed: false,
+              reasons: expect.arrayContaining([
+                expect.objectContaining({ code: "artist_remix_disabled" }),
+              ]),
+            }),
+          }),
+        });
+      } finally {
+        await prisma.artist.update({
+          where: { id: ARTIST_ID },
+          data: { remixConsent: "allowed" },
+        });
+      }
     });
 
     it("lists only the caller's projects", async () => {

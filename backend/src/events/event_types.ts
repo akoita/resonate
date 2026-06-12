@@ -157,6 +157,14 @@ export interface RemixGenerationFailedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
+  eventName: "artist.remix_consent_updated";
+  artistId: string;
+  userId: string;
+  previous: "allowed" | "disabled";
+  next: "allowed" | "disabled";
+}
+
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
   eventName: "recommendation.preferences_updated";
   userId: string;
@@ -1152,6 +1160,7 @@ export type ResonateEvent =
   | RemixGenerationStartedEvent
   | RemixGenerationCompletedEvent
   | RemixGenerationFailedEvent
+  | ArtistRemixConsentUpdatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent

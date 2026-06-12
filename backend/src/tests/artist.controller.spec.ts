@@ -13,6 +13,8 @@ const mockArtistService = {
   getProfile: jest.fn().mockResolvedValue({ id: 'a1' }),
   findById: jest.fn(),
   createProfile: jest.fn().mockResolvedValue({ id: 'a1' }),
+  getSettings: jest.fn().mockResolvedValue({ artistId: 'a1', remixConsent: 'allowed' }),
+  updateSettings: jest.fn().mockResolvedValue({ artistId: 'a1', remixConsent: 'disabled' }),
 };
 
 function makeController() {
@@ -42,6 +44,24 @@ describe('ArtistController', () => {
       const ctrl = makeController();
       ctrl.getMe({ user: { userId: 'user-42' } });
       expect(mockArtistService.getProfile).toHaveBeenCalledWith('user-42');
+    });
+  });
+
+  describe('settings — userId extraction', () => {
+    it('passes req.user.userId and route artist id to service for reads', () => {
+      const ctrl = makeController();
+      ctrl.getSettings({ user: { userId: 'user-42' } }, 'artist-42');
+      expect(mockArtistService.getSettings).toHaveBeenCalledWith('user-42', 'artist-42');
+    });
+
+    it('passes req.user.userId and route artist id to service for updates', () => {
+      const ctrl = makeController();
+      ctrl.updateSettings({ user: { userId: 'user-42' } }, 'artist-42', { remixConsent: 'disabled' });
+      expect(mockArtistService.updateSettings).toHaveBeenCalledWith(
+        'user-42',
+        'artist-42',
+        { remixConsent: 'disabled' },
+      );
     });
   });
 });

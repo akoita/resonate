@@ -2,6 +2,7 @@ import {
     Body,
     Controller,
     Get,
+    Patch,
     Post,
     Request,
     UseGuards,
@@ -19,6 +20,22 @@ export class ArtistController {
     @Get("me")
     getMe(@Request() req: any) {
         return this.artistService.getProfile(req.user.userId);
+    }
+
+    @UseGuards(AuthGuard("jwt"))
+    @Get(":id/settings")
+    getSettings(@Request() req: any, @Param("id") id: string) {
+        return this.artistService.getSettings(req.user.userId, id);
+    }
+
+    @UseGuards(AuthGuard("jwt"))
+    @Patch(":id/settings")
+    updateSettings(
+        @Request() req: any,
+        @Param("id") id: string,
+        @Body() body: { remixConsent?: unknown },
+    ) {
+        return this.artistService.updateSettings(req.user.userId, id, body);
     }
 
     @Get(":id")

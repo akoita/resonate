@@ -437,4 +437,54 @@ describe("generationErrorMessage (#1162)", () => {
     );
     expect(generationErrorMessage("unknown", "x")).toContain("try again later");
   });
+
+  it("shows the server's extracted message when the transport strips the code", () => {
+    // apiRequest throws "API 503: <server message>" — observed live on
+    // staging: the toast showed a generic fallback instead of the server's
+    // clear "not enabled on this environment yet" reason.
+    expect(
+      generationErrorMessage(
+        "server_message",
+        "AI remix generation is not enabled on this environment yet.",
+      ),
+    ).toBe("AI remix generation is not enabled on this environment yet.");
+  });
+});
+
+
+describe("prompt preset chips (#1177)", () => {
+  it("renders no chips in stem_mix mode", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).not.toContain("Prompt presets");
+  });
+
+  it("renders mode-specific chips in prompted modes", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={{ ...project(), mode: "variation" }} />,
+    );
+    expect(html).toContain("Prompt presets");
+    expect(html).toContain("Lo-fi chill");
+    expect(html).toContain("Club remix");
+    expect(html).not.toContain("Build a drop");
+
+    const extensionHtml = renderToStaticMarkup(
+      <RemixStudioEditor project={{ ...project(), mode: "extension" }} />,
+    );
+    expect(extensionHtml).toContain("Build a drop");
+    expect(extensionHtml).not.toContain("Lo-fi chill");
+  });
+
+  it("marks the chip active when the saved prompt matches its text", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={{
+          ...project(),
+          mode: "variation",
+          prompt:
+            "A slowed, dusty lo-fi reinterpretation with mellow keys, soft vinyl crackle, and a relaxed head-nod groove.",
+        }}
+      />,
+    );
+    expect(html).toContain('aria-pressed="true"');
+  });
 });

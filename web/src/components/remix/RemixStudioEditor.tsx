@@ -17,6 +17,10 @@ import {
 } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
+  activePresetLabel,
+  presetsForMode,
+} from "../../lib/remixPromptPresets";
+import {
   remixDraftOutputUri,
   startStemArrangementPreview,
   type PreviewStemState,
@@ -205,6 +209,9 @@ export function generationErrorMessage(code: string, message: string): string {
       return "The provider rejected this prompt. Adjust it and try again.";
     case "invalid_input":
     case "provider_unavailable":
+    // The transport strips the normalized code but keeps the server's
+    // human-readable message — show it rather than a generic fallback.
+    case "server_message":
       return message;
     default:
       return "Generation failed. Please try again later.";
@@ -429,8 +436,11 @@ export function RemixStudioEditor({
       // No frontend analytics here: emitting studio_saved would muddy save
       // metrics, and the backend already records remix.generation_started.
     } catch (error) {
-      // apiRequest throws Error("API <status>: <json>") — recover the
-      // normalized provider error contract when present.
+      // apiRequest throws Error("API <status>: <text>"), where <text> is the
+      // server's extracted message field (the normalized error `code` is
+      // discarded by the transport) or, rarely, a raw JSON body. Recover
+      // whichever is present so the user sees the server's actual reason
+      // instead of a generic fallback.
       let code = "unknown";
       let message = "Generation failed. Please try again later.";
       if (error instanceof Error) {
@@ -442,6 +452,12 @@ export function RemixStudioEditor({
             message = parsed.message ?? message;
           } catch {
             // keep defaults
+          }
+        } else {
+          const prefixed = error.message.match(/^API \d+: (.+)$/s);
+          if (prefixed?.[1]?.trim()) {
+            code = "server_message";
+            message = prefixed[1].trim();
           }
         }
       }
@@ -736,6 +752,40 @@ export function RemixStudioEditor({
             <label className="block text-sm text-zinc-400 mb-1" htmlFor="remix-prompt">
               Prompt
             </label>
+            {/* Prompt presets (#1177): transparent templates — clicking fills
+                the editable textarea with the full text, never a hidden
+                augmentation. Only prompted modes have presets. */}
+            {promptEnabled && presetsForMode(edits.mode).length > 0 && (
+              <div
+                className="flex items-center gap-2 flex-wrap mb-2"
+                role="group"
+                aria-label="Prompt presets"
+              >
+                {presetsForMode(edits.mode).map((preset) => {
+                  const active =
+                    activePresetLabel(edits.mode, edits.prompt) === preset.label;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      disabled={saving}
+                      aria-pressed={active}
+                      title={preset.prompt}
+                      className={`px-3 py-1 rounded-full text-xs border transition-colors remix-prompt-preset ${
+                        active
+                          ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                          : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+                      }`}
+                      onClick={() =>
+                        setEdits((prev) => ({ ...prev, prompt: preset.prompt }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <textarea
               id="remix-prompt"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"

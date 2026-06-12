@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
@@ -25,7 +26,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "taste" | "community" | "cohorts" | "notifications";
+type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "notifications";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -44,6 +45,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Taste Memory",
         eyebrow: "Recommendations",
         description: "Signals that guide discovery and AI DJ.",
+    },
+    {
+        id: "artist",
+        label: "Artist",
+        eyebrow: "Remix Studio",
+        description: "Catalog-level consent for remix access.",
     },
     {
         id: "community",
@@ -451,6 +458,10 @@ export default function SettingsPage() {
 
                         {activeSection === "taste" ? (
                             <TasteMemorySettingsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "artist" ? (
+                            <ArtistRemixSettingsPanel token={token} addToast={addToast} />
                         ) : null}
 
                         {activeSection === "community" ? (

@@ -1111,6 +1111,16 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId", "generationJobId"],
   },
   {
+    eventName: "artist.remix_consent_updated",
+    producer: "artist-service",
+    subjectType: "artist",
+    subjectIdKeys: ["artistId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "artist_remix_consent:v1",
+    payloadKeys: ["artistId", "previous", "next"],
+    sourceRefKeys: ["artistId", "previous", "next"],
+  },
+  {
     eventName: "release_rights.request_updated",
     producer: "rights-service",
     subjectType: "release_rights_request",
