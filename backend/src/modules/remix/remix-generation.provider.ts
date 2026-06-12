@@ -118,6 +118,11 @@ export type SourceFeatureHints = {
  * estimate; stems without v1 features contribute nothing. Pure so the
  * selection policy is unit-testable.
  */
+const HINT_TONICS = new Set([
+  "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+  "Db", "Eb", "Gb", "Ab", "Bb",
+]);
+
 export function deriveSourceFeatureHints(
   stems: Array<{ muted?: boolean; audioFeatures?: unknown }>,
 ): SourceFeatureHints {
@@ -154,9 +159,12 @@ export function deriveSourceFeatureHints(
       }
     }
     const stemKey = features.key;
+    // Tonic is enum-validated, not just typeof-checked: these strings reach
+    // the vendor prompt, and a hand-edited row must not inject text.
     if (
       stemKey &&
       typeof stemKey.tonic === "string" &&
+      HINT_TONICS.has(stemKey.tonic) &&
       (stemKey.mode === "major" || stemKey.mode === "minor")
     ) {
       const confidence =
