@@ -2901,6 +2901,13 @@ HTTP separation response, backend boundary sanitizer
   column entirely (undefined, not null-overwrite).
 - No new secrets, env vars, raw SQL, dynamic HTML sinks, or external
   endpoints. librosa pinned (0.10.2.post1) in worker requirements.
+- Review finding (fixed in-branch): both upload endpoints joined the
+  client-controlled multipart filename to the scratch directory, so a
+  filename like `../../x` escaped the TemporaryDirectory (write-anywhere as
+  the container user). `/analyze` was introduced with the flaw copied from
+  the pre-existing `/separate` pattern; both now use the basename only with
+  an empty-basename fallback, and a regression test posts a traversal
+  filename and asserts no file lands outside the temp dir.
 
 ### Commands Run
 

@@ -133,6 +133,36 @@ class AnalyzeEndpointTest(unittest.TestCase):
         self.assertEqual(body["features"]["schemaVersion"], SCHEMA_VERSION)
         self.assertIsNotNone(body["features"]["tempoBpm"])
 
+    def test_analyze_neutralizes_path_traversal_filenames(self):
+        """Client-controlled multipart filenames must never escape the temp
+        dir (#1184 review): only the basename is used for the scratch file."""
+        from fastapi.testclient import TestClient
+
+        import main
+
+        client = TestClient(main.app)
+        escape_target = Path(tempfile.gettempdir()) / "resonate-1184-escape.wav"
+        escape_target.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = _write_wav(Path(tmp) / "clip.wav", _click_track(120.0, 2.0))
+            with open(path, "rb") as audio:
+                response = client.post(
+                    "/analyze",
+                    files={
+                        "file": (
+                            "../../../" + escape_target.name,
+                            audio,
+                            "audio/wav",
+                        )
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            escape_target.exists(),
+            "upload escaped the temporary directory",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

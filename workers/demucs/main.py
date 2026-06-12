@@ -411,7 +411,9 @@ async def separate_audio(
     logger.info(f"[HTTP] Processing separation for release={release_id}, track={track_id}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        input_path = Path(temp_dir) / file.filename
+        # Basename only: the multipart filename is client-controlled and a
+        # path like ../../x would escape the temp dir (#1184 review).
+        input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -439,7 +441,8 @@ async def analyze_audio(file: UploadFile = File(...)):
     protection (Cloud Run IAM / private networking).
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-        input_path = Path(temp_dir) / (file.filename or "audio")
+        # Basename only: the multipart filename is client-controlled (#1184 review).
+        input_path = Path(temp_dir) / (Path(file.filename or "audio").name or "audio")
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         try:
