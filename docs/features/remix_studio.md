@@ -200,6 +200,11 @@ from the JWT, never the request body.
   key pattern) before any provider work. The studio Draft status panel has a
   Generate/Regenerate button for prompted modes with honest disabled
   reasons and, since #1165, playback for stored draft output.
+- Prompt presets (#1177): curated, mode-specific chips above the prompt box
+  (variation: Lo-fi chill / Club remix / Darker / Acoustic; extension:
+  Build a drop / Add a bridge / Outro). Clicking fills the editable
+  textarea with the full preset text — transparent templates, never hidden
+  prompt augmentation; hidden in stem_mix like the prompt itself.
 - UI (#1165): the studio Stems panel has a Web Audio preview transport that
   fetches existing public stem preview streams, starts the arrangement in sync,
   and applies persisted gain/mute plus preview-only solo live while editing.

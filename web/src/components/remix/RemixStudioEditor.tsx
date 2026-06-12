@@ -15,6 +15,10 @@ import {
 } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
+  activePresetLabel,
+  presetsForMode,
+} from "../../lib/remixPromptPresets";
+import {
   remixDraftOutputUri,
   startStemArrangementPreview,
   type PreviewStemState,
@@ -653,6 +657,40 @@ export function RemixStudioEditor({
             <label className="block text-sm text-zinc-400 mb-1" htmlFor="remix-prompt">
               Prompt
             </label>
+            {/* Prompt presets (#1177): transparent templates — clicking fills
+                the editable textarea with the full text, never a hidden
+                augmentation. Only prompted modes have presets. */}
+            {promptEnabled && presetsForMode(edits.mode).length > 0 && (
+              <div
+                className="flex items-center gap-2 flex-wrap mb-2"
+                role="group"
+                aria-label="Prompt presets"
+              >
+                {presetsForMode(edits.mode).map((preset) => {
+                  const active =
+                    activePresetLabel(edits.mode, edits.prompt) === preset.label;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      disabled={saving}
+                      aria-pressed={active}
+                      title={preset.prompt}
+                      className={`px-3 py-1 rounded-full text-xs border transition-colors remix-prompt-preset ${
+                        active
+                          ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                          : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
+                      }`}
+                      onClick={() =>
+                        setEdits((prev) => ({ ...prev, prompt: preset.prompt }))
+                      }
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <textarea
               id="remix-prompt"
               className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"
