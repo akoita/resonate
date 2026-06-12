@@ -142,6 +142,20 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- Stem audio feature extraction (#1184, slice 1 of #1182): the demucs
+  worker measures tempo (BPM + bounded confidence heuristic), beat anchors
+  (`beatCount`, `firstBeatSec`), key (Krumhansl chroma template matching),
+  RMS energy, and onset density per separated stem (`workers/demucs/
+  audio_features.py`, librosa, schema `stem-audio-features/v1`). Features
+  ride the `stems`-sibling `stemFeatures` map on Pub/Sub results and the
+  legacy HTTP response, are sanitized at the backend boundary (schema check,
+  BPM clamped to 30-300, malformed payloads dropped with a warning), persist
+  on `Stem.audioFeatures` (nullable JSON), and are exposed on remix project
+  stem reads. A `POST /analyze` worker endpoint (same inbound auth posture
+  as `/separate`: deployment-level protection) supports backfill and
+  isolated testing. Extraction failure for one stem never fails separation.
+  Stems separated before this slice have `audioFeatures: null` until a
+  backfill pass runs (deferred, tracked in #1182). Chords/structure are v2.
 - UI (#1175): the Library → Stems tab is a real entry point for owned
   stems — stem titles link to `/stem/[tokenId]` (with a matching "View stem
   page" row action), and each row renders the eligibility-backed `RemixCta`
