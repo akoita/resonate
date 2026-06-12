@@ -294,6 +294,9 @@ export class RemixProjectService {
       ...(sourceArtistId ? { artistId: sourceArtistId } : {}),
       stemIds,
       mode,
+      // Distinguishes artist-owner remixes from licensed-buyer remixes
+      // (#1174) so demand signals don't count artists remixing themselves.
+      creatorOwner: eligibility.creatorOwner,
       policyVersion: eligibility.policyVersion,
     });
 

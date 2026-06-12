@@ -149,7 +149,15 @@ from the JWT, never the request body.
   the buy surface). The collection API (`GET /api/metadata/collection/:address`)
   exposes the source `trackId` to drive it. Unminted stems render without a
   link.
-- Eligibility policy v3 (#1145/#1169, `2026-06-11.v3`): track-default requests
+- Artist-owner access (#1174, policy `2026-06-12.v4`): the user who owns the
+  source artist profile counts as remix-licensed for their own material — no
+  self-purchase required, so owners see `Remix` instead of `Get remix
+  license`. Ownership satisfies **only** the license requirement: content
+  status, rights route, per-mint remixability, and the artist's own disabled
+  consent still deny. The eligibility response and `remix.project_created`
+  events carry `creatorOwner` so cockpit demand signals exclude artists
+  remixing themselves.
+- Eligibility policy v3 (#1145/#1169, superseded by v4 above): track-default requests
   (the release-page CTA, no stem filter) are a **partial allowance** — one
   licensed stem enables the track, non-remixable mints are excluded rather
   than blocking, and the created draft contains only licensed remixable

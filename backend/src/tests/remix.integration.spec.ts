@@ -25,6 +25,10 @@ const TEST_PREFIX = `remix_${Date.now()}_`;
 
 const CREATOR_ID = `${TEST_PREFIX}creator`;
 const OTHER_USER_ID = `${TEST_PREFIX}other`;
+// Owns the artist profile (#1174). Distinct from CREATOR_ID, which is the
+// licensed *buyer* persona — conflating them would let the owner bypass
+// satisfy license-proof tests vacuously.
+const ARTIST_OWNER_ID = `${TEST_PREFIX}artist_owner`;
 const CREATOR_WALLET = `0x${"a1".repeat(20)}`;
 const ARTIST_ID = `${TEST_PREFIX}artist`;
 const TRACK_ID = `${TEST_PREFIX}track`;
@@ -60,13 +64,19 @@ describe("Remix eligibility and projects (integration)", () => {
     await prisma.user.create({
       data: { id: OTHER_USER_ID, email: `${TEST_PREFIX}other@test.resonate` },
     });
+    await prisma.user.create({
+      data: {
+        id: ARTIST_OWNER_ID,
+        email: `${TEST_PREFIX}artist_owner@test.resonate`,
+      },
+    });
     await prisma.wallet.create({
       data: { userId: CREATOR_ID, address: CREATOR_WALLET, chainId: 31337 },
     });
     await prisma.artist.create({
       data: {
         id: ARTIST_ID,
-        userId: CREATOR_ID,
+        userId: ARTIST_OWNER_ID,
         displayName: "Remix Test Artist",
         payoutAddress: `0x${"b2".repeat(20)}`,
       },
@@ -270,7 +280,9 @@ describe("Remix eligibility and projects (integration)", () => {
 
   afterAll(async () => {
     await prisma.remixProject.deleteMany({
-      where: { creatorUserId: { in: [CREATOR_ID, OTHER_USER_ID] } },
+      where: {
+        creatorUserId: { in: [CREATOR_ID, OTHER_USER_ID, ARTIST_OWNER_ID] },
+      },
     });
     await prisma.x402Settlement.deleteMany({
       where: { receiptId: { startsWith: TEST_PREFIX } },
@@ -300,7 +312,7 @@ describe("Remix eligibility and projects (integration)", () => {
       where: { userId: { in: [CREATOR_ID, OTHER_USER_ID] } },
     });
     await prisma.user.deleteMany({
-      where: { id: { in: [CREATOR_ID, OTHER_USER_ID] } },
+      where: { id: { in: [CREATOR_ID, OTHER_USER_ID, ARTIST_OWNER_ID] } },
     });
   });
 
@@ -366,6 +378,78 @@ describe("Remix eligibility and projects (integration)", () => {
         stemIds: [LICENSED_STEM_ID],
       });
       expect(restored.allowed).toBe(true);
+    });
+
+    it("treats the artist owner as licensed for their own stems without a purchase (#1174)", async () => {
+      const result = await eligibilityService.checkEligibility({
+        userId: ARTIST_OWNER_ID,
+        trackId: TRACK_ID,
+        stemIds: [UNLICENSED_STEM_ID],
+      });
+      expect(result.allowed).toBe(true);
+      expect(result.creatorOwner).toBe(true);
+      expect(result.requiredLicense).toBeNull();
+      expect(result.stems).toEqual([
+        { stemId: UNLICENSED_STEM_ID, remixable: null, licensed: true },
+      ]);
+    });
+
+    it("marks non-owners with creatorOwner=false", async () => {
+      const result = await eligibilityService.checkEligibility({
+        userId: CREATOR_ID,
+        trackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+      });
+      expect(result.creatorOwner).toBe(false);
+    });
+
+    it("ownership does not bypass non-remixable mints", async () => {
+      const result = await eligibilityService.checkEligibility({
+        userId: ARTIST_OWNER_ID,
+        trackId: TRACK_ID,
+        stemIds: [NON_REMIXABLE_STEM_ID],
+      });
+      expect(result.allowed).toBe(false);
+      expect(result.creatorOwner).toBe(true);
+      expect(result.reasons.map((reason) => reason.code)).toContain(
+        "stem_not_remixable",
+      );
+    });
+
+    it("ownership does not bypass quarantined sources", async () => {
+      const result = await eligibilityService.checkEligibility({
+        userId: ARTIST_OWNER_ID,
+        trackId: QUARANTINED_TRACK_ID,
+      });
+      expect(result.allowed).toBe(false);
+      expect(result.creatorOwner).toBe(true);
+      expect(result.reasons.map((reason) => reason.code)).toContain(
+        "source_quarantined",
+      );
+    });
+
+    it("ownership does not bypass the artist's own disabled remix consent", async () => {
+      await prisma.artist.update({
+        where: { id: ARTIST_ID },
+        data: { remixConsent: "disabled" },
+      });
+      try {
+        const result = await eligibilityService.checkEligibility({
+          userId: ARTIST_OWNER_ID,
+          trackId: TRACK_ID,
+          stemIds: [UNLICENSED_STEM_ID],
+        });
+        expect(result.allowed).toBe(false);
+        expect(result.creatorOwner).toBe(true);
+        expect(result.reasons.map((reason) => reason.code)).toEqual([
+          "artist_remix_disabled",
+        ]);
+      } finally {
+        await prisma.artist.update({
+          where: { id: ARTIST_ID },
+          data: { remixConsent: "allowed" },
+        });
+      }
     });
 
     it("accepts listing-backed x402 settlements as remix licenses", async () => {

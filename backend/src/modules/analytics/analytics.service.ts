@@ -1397,7 +1397,12 @@ export class AnalyticsService {
       }
 
       if (eventName === "remix.created" || eventName === "remix.project_created") {
-        remixCreations += fact.count;
+        // Artist-owner drafts (#1174) are the artist remixing their own
+        // material — real studio activity, but not buyer demand for the
+        // prepare_remix_challenge card.
+        if (fact.dimensions["creatorOwner"] !== true) {
+          remixCreations += fact.count;
+        }
       }
 
       if (eventName === "community.message_created") {

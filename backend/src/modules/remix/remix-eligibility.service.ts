@@ -11,6 +11,13 @@ import {
 } from "./remix-eligibility.policy";
 
 export type RemixEligibilityResult = RemixEligibilityDecision & {
+  /**
+   * True when the caller owns the source artist profile (#1174). Ownership
+   * satisfies the license requirement only — content-status, rights-route,
+   * consent, and remixable checks still apply unchanged. Surfaced so
+   * analytics can distinguish owner remixes from licensed-buyer remixes.
+   */
+  creatorOwner: boolean;
   source: {
     trackId: string;
     rightsRoute: string | null;
@@ -39,7 +46,7 @@ export class RemixEligibilityService {
         release: {
           select: {
             rightsRoute: true,
-            artist: { select: { remixConsent: true } },
+            artist: { select: { remixConsent: true, userId: true } },
           },
         },
         stems: {
@@ -68,10 +75,19 @@ export class RemixEligibilityService {
     }
 
     const rightsRoute = track.rightsRoute ?? track.release?.rightsRoute ?? null;
-    const licensedStemIds = await this.findLicensedStemIds(
-      input.userId,
-      requestedStemIds,
-    );
+
+    // Artist-owner access (#1174): owning the source artist profile stands
+    // in for a purchased remix license on the artist's own material. It
+    // satisfies ONLY the license requirement — the policy still evaluates
+    // content status, rights route, consent, and per-mint remixability, so
+    // a quarantined track or disabled consent denies the owner too.
+    const sourceArtistUserId = track.release?.artist?.userId ?? null;
+    const creatorOwner =
+      !!sourceArtistUserId && sourceArtistUserId === input.userId;
+
+    const licensedStemIds = creatorOwner
+      ? new Set(requestedStemIds)
+      : await this.findLicensedStemIds(input.userId, requestedStemIds);
 
     const stems: RemixStemPolicyInput[] = requestedStemIds.map((stemId) => ({
       stemId,
@@ -93,6 +109,7 @@ export class RemixEligibilityService {
 
     return {
       ...decision,
+      creatorOwner,
       source: {
         trackId: track.id,
         rightsRoute,
