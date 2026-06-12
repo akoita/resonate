@@ -30,6 +30,11 @@ buyer and machine-commerce surfaces strict about availability.
 - Owner inventory can show `active`, `expiring_soon`, `expired`, `sold`,
   `cancelled`, and `stale` lifecycle states.
 - Backend reconciliation marks active rows as `expired` after `expiresAt <= now`.
+- The buy modal recognizes the zeroed struct a consumed/cancelled listing
+  reads back from the contract (#1172) and renders "this listing is no longer
+  active" with no purchase path, instead of a phantom `TOKEN #0 / 0 ETH`
+  listing. The legacy native-ETH re-list warning fires only for live listings
+  whose payment token is genuinely the zero address.
 - Sellers can receive idempotent `listing_expiring_soon` and `listing_expired`
   notifications.
 - Notification preferences include marketplace lifecycle controls.
