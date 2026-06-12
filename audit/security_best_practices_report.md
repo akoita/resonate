@@ -2930,6 +2930,40 @@ git diff --check
 # Docker: CPU Dockerfile build verification (librosa/numba) — see PR notes
 ```
 
+
+## 2026-06-12 — #1189 Stem Mix Rendering (slice 2 of #1182)
+
+Scope: `backend/src/modules/remix/remix-stem-mix.renderer.ts` (ffmpeg mix of
+arranged stems), worker mode-routing in `remix-project.service.ts`, ffmpeg in
+the backend runtime Dockerfile, studio "Render mix" enablement.
+
+### Findings
+
+- Subprocess safety: ffmpeg runs via `execFile` with an argument array — no
+  shell, and stem-derived values (paths are server-generated temp names;
+  gains are numeric with non-finite coerced to 0dB before reaching the
+  filter graph) are never interpolated into a shell string. A 120s timeout
+  bounds runaway renders; the temp workdir is removed in `finally`.
+- Authorization unchanged: rendering rides the existing generate endpoint —
+  JWT owner scoping, per-user rate limit, and the eligibility re-check all
+  run before enqueue exactly as for AI generation.
+- Encrypted stems are refused with a normalized `invalid_input` instead of
+  feeding ciphertext to ffmpeg; all-muted and missing-stem inputs fail the
+  same way, and every failure reaches the terminal `failed` metadata state
+  (no stuck jobs).
+- The render path is deliberately outside `REMIX_GENERATION_ENABLED`: that
+  gate exists for paid AI generation; rendering is CPU-only with
+  `estimatedCostUsd: 0` and provider `stem-mix-render` recorded in
+  provenance.
+- No new env vars, secrets, raw SQL, or HTML sinks. Backend image gains
+  ffmpeg (apt, runtime stage only).
+- Review findings (fixed in-branch): (1) the local-uploads fallback joined
+  the DB-sourced `Stem.uri` into the uploads dir without containment — a
+  traversal-shaped uri (server-written today, defense-in-depth) could have
+  read arbitrary files into a mix that is served back to the user; resolved
+  paths are now required to stay inside the uploads dir. (2) ffmpeg now runs
+  with `-hide_banner -loglevel error` so execFile's bounded stderr buffer
+  cannot be exhausted by progress output on long renders.
 ## 2026-06-12 — Uploads path-containment sweep (#1189 review follow-up)
 
 Scope: shared `resolveContainedPath` helper
@@ -2955,6 +2989,12 @@ stored or cross-service relative path met `join(uploadsDir, ...)`.
 ### Commands Run
 
 ```bash
+rg -n '(api[_-]?key|secret|private[_-]?key|password\s*=|token\s*=)' backend/src/modules/remix/remix-stem-mix.renderer.ts
+rg -n 'exec\(|execSync|spawnSync|sh -c' backend/src/modules/remix/remix-stem-mix.renderer.ts  # execFile only
+git diff --check
+# Backend: 806 unit passed (+5 renderer args/smoke spec, smoke skips without ffmpeg),
+#          remix integration 38 passed (stem_mix routes to renderer, AI provider untouched)
+# Web: 479 vitest passed, lint 0 errors
 rg -n 'join\(.*upload' backend/src/modules --type ts   # sweep inventory
 npx jest --runInBand src/tests/path_containment.spec.ts  # 5 passed
 npm run test  # 807 passed

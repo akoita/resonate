@@ -33,7 +33,8 @@ FROM node:20-slim
 
 WORKDIR /app
 
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+# openssl for Prisma; ffmpeg for stem_mix draft rendering (#1189)
+RUN apt-get update -y && apt-get install -y openssl ffmpeg && rm -rf /var/lib/apt/lists/*
 
 # Copy production dependencies, Prisma schema, and generated client.
 COPY --from=prod-deps /app/node_modules ./node_modules

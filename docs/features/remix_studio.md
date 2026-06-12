@@ -29,7 +29,8 @@ play generated draft output inside the owner-scoped studio. Artist remix
 consent controls (backlog A1) are shipped: artists can globally disable remix
 access while preserving existing private drafts. Queue-backed jobs (D3) are
 shipped: long-running provider calls run in BullMQ, the studio polls pending
-jobs, and retries are explicit. Publish/export and manual approval states
+jobs, and retries are explicit. Stem-mix rendering (#1189) is shipped: the
+arranged stems render server-side into a real draft with no AI involved. Publish/export and manual approval states
 remain planned; the MVP epic is
 [#891](https://github.com/akoita/resonate/issues/891).
 
@@ -142,6 +143,19 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
+- Stem mix rendering (#1189, slice 2 of #1182): `stem_mix` projects render
+  the saved arrangement (per-stem gain/mute) into one MP3 server-side with
+  ffmpeg — zero AI, zero vendor cost, so the render path sits outside the
+  `REMIX_GENERATION_ENABLED` master gate (which gates paid generation). It
+  reuses the queue-backed generation pipeline end to end: same enqueue
+  endpoint, metadata lifecycle, stale-retry escape, draft-audio stream, and
+  studio polling, recorded as provider `stem-mix-render` with
+  `estimatedCostUsd: 0`. The studio Generate button becomes "Render mix" in
+  stem-mix mode (no prompt required; unsaved edits still block so the render
+  matches what was saved). The output draft literally contains the licensed
+  stem audio — the first stem-grounded draft and the artifact publish/export
+  (backlog E/F) will consume. Encrypted stems are an explicit `invalid_input`
+  deferral until a server-side decrypt path for rendering exists.
 - Stem audio feature extraction (#1184, slice 1 of #1182): the demucs
   worker measures tempo (BPM + bounded confidence heuristic), beat anchors
   (`beatCount`, `firstBeatSec`), key (Krumhansl chroma template matching),
