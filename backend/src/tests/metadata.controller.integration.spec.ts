@@ -187,6 +187,62 @@ describe('MetadataController (integration)', () => {
       expect(result.total).toBe(0);
       expect(result.stems).toEqual([]);
     });
+
+    it('exposes the source trackId on purchased stems (#1175)', async () => {
+      const buyerAddress = `0x${'e1175'.padEnd(40, '0')}`.toLowerCase();
+      const listing = await prisma.stemListing.create({
+        data: {
+          listingId: 911750n,
+          stemId,
+          tokenId: 42n,
+          chainId: 31337,
+          contractAddress: '0xStemMarket',
+          sellerAddress: `0x${'5'.repeat(40)}`,
+          pricePerUnit: '1000000',
+          amount: 1n,
+          paymentToken: `0x${'6'.repeat(40)}`,
+          expiresAt: new Date(Date.now() + 86_400_000),
+          transactionHash: `${TEST_PREFIX}collection_listing`,
+          blockNumber: 200n,
+          status: 'sold',
+          listedAt: new Date(),
+        },
+      });
+      await prisma.stemPurchase.create({
+        data: {
+          listingId: listing.id,
+          buyerAddress,
+          amount: 1n,
+          totalPaid: '1000000',
+          royaltyPaid: '0',
+          protocolFeePaid: '0',
+          sellerReceived: '1000000',
+          licenseType: 'remix',
+          transactionHash: `${TEST_PREFIX}collection_buy`,
+          blockNumber: 201n,
+          purchasedAt: new Date(),
+        },
+      });
+
+      try {
+        const result = await controller.getCollection(buyerAddress);
+        expect(result.total).toBe(1);
+        expect(result.stems[0]).toEqual(
+          expect.objectContaining({
+            id: stemId,
+            trackId: `${TEST_PREFIX}track`,
+            tokenId: '42',
+          }),
+        );
+      } finally {
+        await prisma.stemPurchase
+          .deleteMany({ where: { transactionHash: `${TEST_PREFIX}collection_buy` } })
+          .catch(() => {});
+        await prisma.stemListing
+          .deleteMany({ where: { transactionHash: `${TEST_PREFIX}collection_listing` } })
+          .catch(() => {});
+      }
+    });
   });
 
   // ===== getListings =====

@@ -530,6 +530,9 @@ export class MetadataController {
           title: stem.title || stem.type,
           type: stem.type,
           artist: release?.primaryArtist,
+          // Source catalog track id: the library Stems tab needs it to
+          // drive the eligibility-backed Remix CTA on owned stems (#1175).
+          trackId: stem.track?.id ?? stem.trackId,
           trackTitle: stem.track?.title,
           releaseTitle: release?.title,
           genre: release?.genre,
