@@ -92,6 +92,40 @@ export type BuyModalPurchase = {
 
 const LICENSE_TYPES: LicenseType[] = ["personal", "remix", "commercial"];
 
+/**
+ * A consumed or cancelled marketplace listing reads back from the contract
+ * as a zeroed struct (#1172). Without this check the modal rendered
+ * "TOKEN #0 / 0x0000…0000 / 0 ETH" with a misleading legacy-native-ETH
+ * warning for a listing that was never ETH-denominated. The indexed row can
+ * lag the chain (sold-out listings linger transiently), so the modal must
+ * recognize the phantom rather than invite a purchase of nothing.
+ */
+export function isConsumedOnchainListing(
+  listing: { seller: string; amount: bigint } | null | undefined,
+): boolean {
+  if (!listing) return false;
+  return /^0x0{40}$/i.test(listing.seller) || listing.amount === 0n;
+}
+
+/**
+ * The legacy native-ETH re-list warning applies only to LIVE listings whose
+ * payment token is the zero address by design (pre-stablecoin listings). A
+ * consumed listing also reads paymentToken = 0x0, which is what made the
+ * #1172 phantom look like a legacy ETH listing.
+ */
+export function showLegacyNativeWarning(
+  listing:
+    | { seller: string; amount: bigint; paymentToken: string }
+    | null
+    | undefined,
+  stablecoinMarketplaceConfigured: boolean,
+): boolean {
+  if (!listing || isConsumedOnchainListing(listing)) return false;
+  return (
+    isNativePaymentToken(listing.paymentToken) && stablecoinMarketplaceConfigured
+  );
+}
+
 export function BuyModal({
   listingId,
   stemId,
@@ -178,7 +212,11 @@ export function BuyModal({
     assets: paymentAssets,
     chainId,
   });
-  const isLegacyNativeListing = Boolean(listing) && onchainIsNative && stablecoinMarketplaceConfigured;
+  const isConsumedListing = isConsumedOnchainListing(listing);
+  const isLegacyNativeListing = showLegacyNativeWarning(
+    listing,
+    stablecoinMarketplaceConfigured,
+  );
   const onchainAssetLabel = onchainAsset
     ? `${onchainAsset.name} (${onchainSymbol})`
     : onchainIsNative
@@ -378,6 +416,29 @@ export function BuyModal({
           <div className="buy-modal__skeleton">
             <div className="buy-modal__skeleton-line" />
             <div className="buy-modal__skeleton-line" />
+          </div>
+        ) : listing && isConsumedListing ? (
+          <div className="buy-modal__body">
+            <div className="buy-modal__info-card" role="status">
+              <div className="buy-modal__info-icon">⌛</div>
+              <div className="buy-modal__info-details">
+                <div className="buy-modal__info-label">
+                  This listing is no longer active
+                </div>
+                <div className="buy-modal__info-value">
+                  It may have just sold out or been cancelled. Refresh the
+                  page to see current availability.
+                </div>
+              </div>
+            </div>
+            <div className="buy-modal__actions">
+              <button
+                className="buy-modal__btn buy-modal__btn--cancel"
+                onClick={onClose}
+              >
+                Close
+              </button>
+            </div>
           </div>
         ) : listing ? (
           <div className="buy-modal__body">
