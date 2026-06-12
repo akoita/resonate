@@ -176,11 +176,16 @@ Acceptance:
 - A user can generate an AI-assisted draft from an eligible remix project.
 - Provider errors are normalized and visible in project state.
 
-### D3. Queue remix generation jobs
+### D3. Queue remix generation jobs — shipped (#1167)
 
-- Add background job processing for remix draft generation.
-- Emit generation started/completed/failed events.
-- Prevent duplicate active jobs for the same project unless explicitly retried.
+- BullMQ-backed background processing for remix draft generation.
+- `POST /remix/projects/:id/generate` validates/rate-limits/claims a pending
+  job and returns immediately.
+- Worker emits generation started/completed/failed lifecycle events and records
+  terminal `generationMetadata.status`.
+- Duplicate active jobs for the same project are blocked by a conditional
+  project update. Explicit `retry=true` replaces completed/failed jobs;
+  legacy `force=true` is accepted only as a compatibility alias.
 
 Acceptance:
 

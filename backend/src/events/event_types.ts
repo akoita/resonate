@@ -136,11 +136,23 @@ export interface RemixGenerationStartedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+export interface RemixGenerationCompletedEvent extends BaseEvent {
+  eventName: "remix.generation_completed";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  provider: string;
+  generationJobId: string;
+  mode: string;
+  policyVersion: string;
+}
+
 export interface RemixGenerationFailedEvent extends BaseEvent {
   eventName: "remix.generation_failed";
   remixProjectId: string;
   creatorId: string;
   sourceTrackId: string;
+  generationJobId: string;
   errorCode: string;
   policyVersion: string;
 }
@@ -1138,6 +1150,7 @@ export type ResonateEvent =
   | RemixPolicyRejectedEvent
   | RemixLicenseRequiredEvent
   | RemixGenerationStartedEvent
+  | RemixGenerationCompletedEvent
   | RemixGenerationFailedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -7,6 +8,10 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { InjectQueue } from "@nestjs/bullmq";
+import { Queue } from "bullmq";
+import { randomUUID } from "crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import {
@@ -27,6 +32,13 @@ export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
 
 export const REMIX_PROJECT_STATUSES = ["draft", "archived"] as const;
 export type RemixProjectStatus = (typeof REMIX_PROJECT_STATUSES)[number];
+export const REMIX_GENERATION_QUEUE = "remix-generation";
+
+export type RemixGenerationLifecycleStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
 
 export type RemixProjectStemUpdate = {
   stemId: string;
@@ -43,6 +55,13 @@ type RemixProjectWithStems = NonNullable<
 export type RemixDraftAudio = {
   data: Buffer;
   mimeType: string;
+};
+
+export type RemixGenerationJobData = {
+  jobId: string;
+  userId: string;
+  projectId: string;
+  generationInput: ReturnType<typeof buildRemixGenerationInput>;
 };
 
 /**
@@ -81,6 +100,19 @@ export function draftOutputUriFromMetadata(metadata: unknown): string | null {
   const outputUri = (output as { outputUri?: unknown }).outputUri;
   return typeof outputUri === "string" && outputUri.trim()
     ? outputUri
+    : null;
+}
+
+export function remixGenerationStatusFromMetadata(
+  metadata: unknown,
+): RemixGenerationLifecycleStatus | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const status = (metadata as { status?: unknown }).status;
+  return status === "pending" ||
+    status === "processing" ||
+    status === "completed" ||
+    status === "failed"
+    ? status
     : null;
 }
 
@@ -151,6 +183,8 @@ export class RemixProjectService {
     @Inject(REMIX_GENERATION_PROVIDER)
     private readonly generationProvider: RemixGenerationProvider,
     private readonly storageProvider: StorageProvider,
+    @InjectQueue(REMIX_GENERATION_QUEUE)
+    private readonly generationQueue: Queue<RemixGenerationJobData>,
   ) {}
 
   /**
@@ -344,28 +378,53 @@ export class RemixProjectService {
   }
 
   /**
-   * Starts an AI remix draft through the provider boundary. Eligibility is
-   * re-checked here: generation is a rights-relevant action, so the
-   * creation-time decision is not trusted (source state may have changed).
+   * Enqueues an AI remix draft through BullMQ. Eligibility is re-checked here:
+   * generation is a rights-relevant action, so the creation-time decision is
+   * not trusted (source state may have changed). The provider call itself runs
+   * in the worker so the HTTP response is not held open by Lyria/storage.
    */
   async generateDraft(
     userId: string,
     projectId: string,
-    options: { constraints?: RemixGenerationConstraints; force?: boolean } = {},
+    options: {
+      constraints?: RemixGenerationConstraints;
+      retry?: boolean;
+      force?: boolean;
+    } = {},
   ) {
     this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour);
 
     const project = await this.loadOwnedProject(userId, projectId);
     const stemIds = project.stems.map((stem) => stem.stemId);
+    const retryRequested = options.retry === true || options.force === true;
+    const currentStatus = remixGenerationStatusFromMetadata(
+      project.generationMetadata,
+    );
 
     if (project.status !== "draft") {
       throw new BadRequestException(
         "Only draft projects can generate remix drafts",
       );
     }
-    if (project.generationJobId && !options.force) {
+    if (
+      project.generationJobId &&
+      !retryRequested &&
+      (currentStatus === "pending" ||
+        currentStatus === "processing" ||
+        currentStatus === "completed" ||
+        currentStatus === "failed" ||
+        currentStatus === null)
+    ) {
       throw new BadRequestException(
-        `A generation job (${project.generationJobId}) is already recorded for this project. Retry semantics arrive with queued generation; pass force=true to overwrite.`,
+        `A generation job (${project.generationJobId}) is already recorded for this project. Use retry=true to replace a completed or failed generation.`,
+      );
+    }
+    if (
+      retryRequested &&
+      (currentStatus === "pending" || currentStatus === "processing")
+    ) {
+      throw new ConflictException(
+        `Generation job ${project.generationJobId} is still active for this project.`,
       );
     }
     if (
@@ -393,7 +452,7 @@ export class RemixProjectService {
       });
     }
 
-    const input = buildRemixGenerationInput(
+    const generationInput = buildRemixGenerationInput(
       {
         id: project.id,
         creatorUserId: project.creatorUserId,
@@ -414,60 +473,59 @@ export class RemixProjectService {
       },
       options.constraints,
     );
-    let job;
+    const jobId = `rmxgen_${project.id}_${randomUUID()}`;
+    const requestedAt = new Date().toISOString();
+    const pendingMetadata = {
+      status: "pending",
+      mode: generationInput.mode,
+      stemIds: generationInput.stemIds,
+      constraints: generationInput.constraints as object,
+      estimatedCostUsd: null,
+      policyVersion: eligibility.policyVersion,
+      voiceLikenessAllowed: false,
+      output: {
+        outputUri: null,
+        mimeType: null,
+        synthIdPresent: null,
+        seed: null,
+        sampleRate: null,
+      },
+      requestedAt,
+      retryOfJobId: retryRequested ? project.generationJobId : null,
+    };
+
+    await this.claimGenerationJob({
+      projectId: project.id,
+      jobId,
+      retryRequested,
+      metadata: pendingMetadata,
+    });
+
     try {
-      job = await this.generationProvider.createRemixDraft(input);
-    } catch (error) {
-      // Keep the boundary contract total: unknown provider exceptions are
-      // normalized so the failed event and the HTTP error shape always fire.
-      const normalized =
-        error instanceof RemixGenerationProviderError
-          ? error
-          : new RemixGenerationProviderError(
-              "provider_unavailable",
-              "The remix generation provider failed unexpectedly. Please try again later.",
-              true,
-            );
-      this.eventBus.publish({
-        eventName: "remix.generation_failed",
-        eventVersion: 1,
-        occurredAt: new Date().toISOString(),
-        remixProjectId: project.id,
-        creatorId: userId,
-        sourceTrackId: project.sourceTrackId,
-        errorCode: normalized.code,
-        policyVersion: eligibility.policyVersion,
+      await this.generationQueue.add(
+        "generate-remix-draft",
+        { jobId, userId, projectId: project.id, generationInput },
+        {
+          jobId,
+          attempts: 1,
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
+    } catch {
+      const normalized = new RemixGenerationProviderError(
+        "provider_unavailable",
+        "The remix generation job could not be queued. Please try again later.",
+        true,
+      );
+      await this.recordGenerationFailure({
+        project,
+        userId,
+        jobId,
+        metadata: pendingMetadata,
+        error: normalized,
       });
       throw normalized;
-    }
-
-    // Conditional write so a concurrent generate cannot clobber recorded
-    // provenance (the pre-check above is read-then-act). Double provider
-    // execution itself is prevented by queued jobs in D3.
-    const claimed = await prisma.remixProject.updateMany({
-      where: {
-        id: project.id,
-        ...(options.force ? {} : { generationJobId: null }),
-      },
-      data: {
-        generationProvider: job.provider,
-        generationJobId: job.jobId,
-        generationMetadata: {
-          mode: input.mode,
-          stemIds: input.stemIds,
-          constraints: input.constraints as object,
-          estimatedCostUsd: job.estimatedCostUsd ?? null,
-          policyVersion: eligibility.policyVersion,
-          voiceLikenessAllowed: false,
-          output: job.outputMetadata,
-          requestedAt: new Date().toISOString(),
-        },
-      },
-    });
-    if (claimed.count === 0) {
-      throw new BadRequestException(
-        "A generation job was recorded by a concurrent request; reload the project.",
-      );
     }
     const updated = (await loadProject(project.id))!;
 
@@ -478,13 +536,167 @@ export class RemixProjectService {
       remixProjectId: project.id,
       creatorId: userId,
       sourceTrackId: project.sourceTrackId,
-      provider: job.provider,
-      generationJobId: job.jobId,
-      mode: input.mode,
+      provider: "remix-queue",
+      generationJobId: jobId,
+      mode: generationInput.mode,
       policyVersion: eligibility.policyVersion,
     });
 
     return this.toResponse(updated);
+  }
+
+  async processGenerationJob(data: RemixGenerationJobData) {
+    const project = await this.loadOwnedProject(data.userId, data.projectId);
+    if (project.generationJobId !== data.jobId) {
+      return {
+        skipped: true,
+        reason: "stale_job",
+        generationJobId: project.generationJobId,
+      };
+    }
+
+    const currentMetadata = normalizeMetadataObject(project.generationMetadata);
+    if (currentMetadata.status === "completed") {
+      return { skipped: true, reason: "already_completed" };
+    }
+
+    await prisma.remixProject.update({
+      where: { id: project.id },
+      data: {
+        generationMetadata: {
+          ...currentMetadata,
+          status: "processing",
+          processingStartedAt: new Date().toISOString(),
+        } as Prisma.JsonObject,
+      },
+    });
+
+    try {
+      const providerJob = await this.generationProvider.createRemixDraft(
+        data.generationInput,
+      );
+      const completedAt = new Date().toISOString();
+      const completedMetadata = {
+        ...currentMetadata,
+        status: "completed",
+        providerJobId: providerJob.jobId,
+        estimatedCostUsd: providerJob.estimatedCostUsd ?? null,
+        output: providerJob.outputMetadata,
+        completedAt,
+        failedAt: null,
+        errorCode: null,
+        errorMessage: null,
+      };
+      await prisma.remixProject.update({
+        where: { id: project.id },
+        data: {
+          generationProvider: providerJob.provider,
+          generationMetadata: completedMetadata as Prisma.JsonObject,
+        },
+      });
+      this.eventBus.publish({
+        eventName: "remix.generation_completed",
+        eventVersion: 1,
+        occurredAt: completedAt,
+        remixProjectId: project.id,
+        creatorId: data.userId,
+        sourceTrackId: project.sourceTrackId,
+        provider: providerJob.provider,
+        generationJobId: data.jobId,
+        mode: data.generationInput.mode,
+        policyVersion:
+          typeof currentMetadata.policyVersion === "string"
+            ? currentMetadata.policyVersion
+            : project.policyVersion,
+      });
+      return { remixProjectId: project.id, generationJobId: data.jobId };
+    } catch (error) {
+      const normalized = normalizeRemixGenerationError(error);
+      await this.recordGenerationFailure({
+        project,
+        userId: data.userId,
+        jobId: data.jobId,
+        metadata: currentMetadata,
+        error: normalized,
+      });
+      throw normalized;
+    }
+  }
+
+  private async claimGenerationJob(input: {
+    projectId: string;
+    jobId: string;
+    retryRequested: boolean;
+    metadata: Record<string, unknown>;
+  }) {
+    const metadataJson = JSON.stringify(input.metadata);
+    const updated = input.retryRequested
+      ? await prisma.$executeRaw`
+          UPDATE "RemixProject"
+          SET
+            "generationProvider" = 'remix-queue',
+            "generationJobId" = ${input.jobId},
+            "generationMetadata" = ${metadataJson}::jsonb,
+            "updatedAt" = NOW()
+          WHERE "id" = ${input.projectId}
+            AND (
+              "generationJobId" IS NULL
+              OR COALESCE("generationMetadata"->>'status', 'completed') IN ('completed', 'failed')
+            )
+        `
+      : await prisma.$executeRaw`
+          UPDATE "RemixProject"
+          SET
+            "generationProvider" = 'remix-queue',
+            "generationJobId" = ${input.jobId},
+            "generationMetadata" = ${metadataJson}::jsonb,
+            "updatedAt" = NOW()
+          WHERE "id" = ${input.projectId}
+            AND "generationJobId" IS NULL
+        `;
+
+    if (updated === 0) {
+      throw new ConflictException(
+        "A generation job is already active or recorded for this project; reload the project.",
+      );
+    }
+  }
+
+  private async recordGenerationFailure(input: {
+    project: RemixProjectWithStems;
+    userId: string;
+    jobId: string;
+    metadata: Record<string, unknown>;
+    error: RemixGenerationProviderError;
+  }) {
+    const failedAt = new Date().toISOString();
+    await prisma.remixProject.updateMany({
+      where: { id: input.project.id, generationJobId: input.jobId },
+      data: {
+        generationMetadata: {
+          ...input.metadata,
+          status: "failed",
+          failedAt,
+          errorCode: input.error.code,
+          errorMessage: input.error.message,
+          retryable: input.error.retryable,
+        } as Prisma.JsonObject,
+      },
+    });
+    this.eventBus.publish({
+      eventName: "remix.generation_failed",
+      eventVersion: 1,
+      occurredAt: failedAt,
+      remixProjectId: input.project.id,
+      creatorId: input.userId,
+      sourceTrackId: input.project.sourceTrackId,
+      generationJobId: input.jobId,
+      errorCode: input.error.code,
+      policyVersion:
+        typeof input.metadata.policyVersion === "string"
+          ? input.metadata.policyVersion
+          : input.project.policyVersion,
+    });
   }
 
   async getDraftAudio(
@@ -604,4 +816,23 @@ export class RemixProjectService {
       ...(eligibility ? { eligibility } : {}),
     };
   }
+}
+
+function normalizeMetadataObject(metadata: unknown): Record<string, unknown> {
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? { ...(metadata as Record<string, unknown>) }
+    : {};
+}
+
+function normalizeRemixGenerationError(
+  error: unknown,
+): RemixGenerationProviderError {
+  if (error instanceof RemixGenerationProviderError) {
+    return error;
+  }
+  return new RemixGenerationProviderError(
+    "provider_unavailable",
+    "The remix generation provider failed unexpectedly. Please try again later.",
+    true,
+  );
 }

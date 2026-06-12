@@ -26,7 +26,9 @@ publish/export states. The `RemixGenerationProvider` boundary and
 provider with a studio Generate button (backlog D2) and the audio preview
 foundation (C3) are shipped: users can preview the source-stem arrangement and
 play generated draft output inside the owner-scoped studio. Queue-backed jobs
-(D3), publish/export, and artist controls remain planned; the MVP epic is
+(D3) are shipped: long-running provider calls run in BullMQ, the studio polls
+pending jobs, and retries are explicit. Publish/export and artist controls
+remain planned; the MVP epic is
 [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
@@ -160,17 +162,22 @@ from the JWT, never the request body.
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
 
-- API (#896, shipped behind config): `POST /remix/projects/:id/generate` —
+- API (#896/#1167, shipped behind config): `POST /remix/projects/:id/generate` —
   owner-only, re-runs eligibility before generating, requires a prompt for
-  prompted modes (and strips prompts for stem mix), rejects duplicate jobs
-  without `force=true`, persists provider/job/cost/policy provenance on the
-  project, and emits `remix.generation_started` / `remix.generation_failed`.
-  Provider failures return the normalized `{ code, message, retryable }`
-  contract (`provider_disabled`/`provider_unavailable` → 503,
-  `invalid_input` → 400, `provider_rejected` → 422). The default binding is a
-  stub provider gated by `REMIX_GENERATION_ENABLED` (see
-  `docs/deployment/environment.md`); the input's policy context types
-  `voiceLikenessAllowed` as literal `false`.
+  prompted modes (and strips prompts for stem mix), checks constraint bounds
+  before enqueue, rejects duplicate active jobs, and returns immediately with
+  `generationMetadata.status = pending`. Explicit `retry=true` replaces a
+  completed or failed job; legacy `force=true` is still accepted as a
+  compatibility alias and should not be used by new clients. The BullMQ worker
+  calls the configured provider and records terminal `completed` or `failed`
+  metadata on the project. Events emitted from the backend lifecycle are
+  `remix.generation_started`, `remix.generation_completed`, and
+  `remix.generation_failed`, all carrying the generation job id. Provider
+  failures are normalized into the project metadata using the existing
+  `provider_disabled`/`provider_unavailable`/`invalid_input`/
+  `provider_rejected` codes. The default binding is a stub provider gated by
+  `REMIX_GENERATION_ENABLED` (see `docs/deployment/environment.md`); the
+  input's policy context types `voiceLikenessAllowed` as literal `false`.
 - API (#1165): `GET /remix/projects/:id/draft-audio` — owner-scoped,
   JWT-authenticated stream for generated draft playback. The endpoint reads
   `generationMetadata.output.outputUri` through the storage provider and
@@ -188,7 +195,10 @@ from the JWT, never the request body.
   constraints are bounds-checked (duration ∈ {30,60,120,180}, bpm 40–220,
   key pattern) before any provider work. The studio Draft status panel has a
   Generate/Regenerate button for prompted modes with honest disabled
-  reasons and, since #1165, playback for stored draft output.
+  reasons and, since #1165, playback for stored draft output. Since #1167,
+  the Draft status panel shows queued job state, polls until terminal state,
+  displays normalized failure copy, and only exposes the play control once a
+  completed job records output metadata.
 - UI (#1165): the studio Stems panel has a Web Audio preview transport that
   fetches existing public stem preview streams, starts the arrangement in sync,
   and applies persisted gain/mute plus preview-only solo live while editing.
@@ -202,8 +212,7 @@ from the JWT, never the request body.
   eligibility fan-out).
 - API: `POST /remix/projects/:id/publish`.
 - API: `POST /remix/projects/:id/export`.
-- Events: `remix.generation_completed` (with queued jobs, backlog D3),
-  `remix.published`.
+- Events: `remix.published`.
 
 ## Product Rules
 

@@ -3875,6 +3875,38 @@ export type RemixProjectSource = {
 
 export type RemixProjectMode = "stem_mix" | "variation" | "extension";
 
+export type RemixGenerationStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export type RemixGenerationMetadata = {
+  status?: RemixGenerationStatus;
+  mode?: RemixProjectMode | string;
+  stemIds?: string[];
+  constraints?: Record<string, unknown>;
+  estimatedCostUsd?: number | null;
+  policyVersion?: string;
+  voiceLikenessAllowed?: false;
+  output?: {
+    outputUri: string | null;
+    mimeType?: string | null;
+    synthIdPresent?: boolean | null;
+    seed?: number | null;
+    sampleRate?: number | null;
+  } | null;
+  requestedAt?: string;
+  processingStartedAt?: string;
+  completedAt?: string | null;
+  failedAt?: string | null;
+  retryOfJobId?: string | null;
+  providerJobId?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  retryable?: boolean | null;
+};
+
 export type RemixProject = {
   id: string;
   creatorUserId: string;
@@ -3887,7 +3919,7 @@ export type RemixProject = {
   prompt: string | null;
   generationProvider: string | null;
   generationJobId: string | null;
-  generationMetadata: unknown;
+  generationMetadata: RemixGenerationMetadata | null;
   attribution: string | null;
   exportPolicy: unknown;
   policyVersion: string;
@@ -3937,7 +3969,7 @@ export type RemixGenerationError = {
 export async function generateRemixDraft(
   token: string,
   projectId: string,
-  options: { force?: boolean } = {}
+  options: { force?: boolean; retry?: boolean } = {}
 ) {
   return apiRequest<RemixProject>(
     `/remix/projects/${projectId}/generate`,

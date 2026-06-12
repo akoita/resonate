@@ -138,6 +138,7 @@ export class RemixController {
     @Body()
     body: {
       constraints?: RemixGenerationConstraints;
+      retry?: boolean;
       force?: boolean;
     } = {},
   ) {
@@ -155,6 +156,7 @@ export class RemixController {
     try {
       return await this.projectService.generateDraft(req.user.userId, id, {
         constraints: body?.constraints,
+        retry: body?.retry,
         force: body?.force,
       });
     } catch (error) {

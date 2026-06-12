@@ -6,9 +6,11 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
   generateRemixDraft,
+  getRemixProject,
   getRemixDraftAudioBlob,
   getStemPreviewUrl,
   updateRemixProject,
+  type RemixGenerationMetadata,
   type RemixProject,
   type RemixProjectPatch,
   type RemixProjectSource,
@@ -161,7 +163,14 @@ export function describeGenerateAvailability(input: {
   saving: boolean;
   dirty: boolean;
   generating: boolean;
+  generationActive?: boolean;
 }): { enabled: boolean; reason: string | null } {
+  if (input.generationActive) {
+    return {
+      enabled: false,
+      reason: "Generation is already queued for this draft.",
+    };
+  }
   if (input.mode === "stem_mix") {
     return {
       enabled: false,
@@ -200,6 +209,43 @@ export function generationErrorMessage(code: string, message: string): string {
     default:
       return "Generation failed. Please try again later.";
   }
+}
+
+export function remixGenerationStatus(
+  metadata: RemixGenerationMetadata | null,
+): RemixGenerationMetadata["status"] | null {
+  const status = metadata?.status;
+  return status === "pending" ||
+    status === "processing" ||
+    status === "completed" ||
+    status === "failed"
+    ? status
+    : null;
+}
+
+export function remixGenerationIsActive(
+  metadata: RemixGenerationMetadata | null,
+): boolean {
+  const status = remixGenerationStatus(metadata);
+  return status === "pending" || status === "processing";
+}
+
+export function remixGenerationPlayableOutputUri(
+  metadata: RemixGenerationMetadata | null,
+): string | null {
+  const status = remixGenerationStatus(metadata);
+  if (status && status !== "completed") return null;
+  return remixDraftOutputUri(metadata);
+}
+
+export function remixGenerationFailureMessage(
+  metadata: RemixGenerationMetadata | null,
+): string | null {
+  if (remixGenerationStatus(metadata) !== "failed") return null;
+  return generationErrorMessage(
+    metadata?.errorCode ?? "unknown",
+    metadata?.errorMessage ?? "Generation failed. Please try again later.",
+  );
 }
 
 export function stemPreviewStates(
@@ -281,7 +327,14 @@ export function RemixStudioEditor({
   // must ignore prompts when mode is stem_mix.
   const promptEnabled = edits.mode !== "stem_mix";
   const titleBlank = edits.title.trim() === "";
-  const draftOutputUri = remixDraftOutputUri(project.generationMetadata);
+  const generationStatus = remixGenerationStatus(project.generationMetadata);
+  const generationActive = remixGenerationIsActive(project.generationMetadata);
+  const generationFailure = remixGenerationFailureMessage(
+    project.generationMetadata,
+  );
+  const draftOutputUri = remixGenerationPlayableOutputUri(
+    project.generationMetadata,
+  );
 
   const stopStemPreview = () => {
     stemPreviewRef.current?.stop();
@@ -314,6 +367,37 @@ export function RemixStudioEditor({
     stemPreviewRef.current.update(stemPreviewStates(project, edits), soloStemId);
   }, [edits, project, soloStemId, stemPreviewStatus]);
 
+  useEffect(() => {
+    if (!token || !generationActive) return;
+    let cancelled = false;
+    const refreshProject = async () => {
+      try {
+        const updated = await getRemixProject(token, project.id);
+        if (cancelled) return;
+        setProject(updated);
+        if (!dirty) {
+          setEdits(initialEdits(updated));
+        }
+        if (
+          remixGenerationStatus(updated.generationMetadata) === "completed"
+        ) {
+          stopDraftPlayback();
+        }
+      } catch {
+        // Polling failures should not disrupt local editing; the next interval
+        // or a manual reload can recover.
+      }
+    };
+    const interval = window.setInterval(() => {
+      void refreshProject();
+    }, 4000);
+    void refreshProject();
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [dirty, generationActive, project.id, token]);
+
   const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
     setEdits((prev) => ({
       ...prev,
@@ -325,13 +409,12 @@ export function RemixStudioEditor({
   };
 
   const handleGenerate = async () => {
-    if (!token || generating) return;
+    if (!token || generating || generationActive) return;
     setGenerating(true);
     try {
-      // force=true on regenerate: the backend's duplicate-job guard
-      // otherwise rejects projects with a recorded generation job.
+      const retry = !!project.generationJobId && !generationActive;
       const updated = await generateRemixDraft(token, project.id, {
-        force: !!project.generationJobId,
+        retry,
       });
       setProject(updated);
       setEdits(initialEdits(updated));
@@ -340,8 +423,8 @@ export function RemixStudioEditor({
       stopDraftPlayback();
       addToast({
         type: "success",
-        title: "Draft generated",
-        message: "Your AI remix draft is recorded on this project.",
+        title: retry ? "Retry queued" : "Generation queued",
+        message: "Your AI remix job is queued and this panel will update.",
       });
       // No frontend analytics here: emitting studio_saved would muddy save
       // metrics, and the backend already records remix.generation_started.
@@ -685,10 +768,19 @@ export function RemixStudioEditor({
                   <span className="text-zinc-200">{project.policyVersion}</span>
                 </p>
                 <p className="remix-generation-placeholder">
-                  {project.generationJobId
-                    ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}).`
-                    : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
+                  {generationActive && project.generationJobId
+                    ? `AI generation queued — job ${project.generationJobId}.`
+                    : generationStatus === "failed" && project.generationJobId
+                      ? `AI generation failed — job ${project.generationJobId}.`
+                      : project.generationJobId
+                        ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}).`
+                        : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
                 </p>
+                {generationFailure && (
+                  <p className="text-red-300 remix-generation-error">
+                    {generationFailure}
+                  </p>
+                )}
               </div>
             </div>
             {(() => {
@@ -698,6 +790,7 @@ export function RemixStudioEditor({
                 saving,
                 dirty,
                 generating,
+                generationActive,
               });
               return (
                 <div className="text-right">
@@ -714,11 +807,13 @@ export function RemixStudioEditor({
                       void handleGenerate();
                     }}
                   >
-                    {generating
-                      ? "Generating..."
-                      : project.generationJobId
-                        ? "Regenerate draft"
-                        : "Generate AI draft"}
+                    {generating || generationActive
+                      ? "Queued..."
+                      : generationStatus === "failed"
+                        ? "Retry generation"
+                        : project.generationJobId
+                          ? "Regenerate draft"
+                          : "Generate AI draft"}
                   </button>
                   {availability.reason && (
                     <p className="text-xs text-zinc-500 mt-2 max-w-[16rem]">
@@ -738,7 +833,10 @@ export function RemixStudioEditor({
                           : "Play AI draft"}
                     </button>
                   )}
-                  {project.generationJobId && !draftOutputUri && (
+                  {project.generationJobId &&
+                    !draftOutputUri &&
+                    !generationActive &&
+                    generationStatus !== "failed" && (
                     <p className="text-xs text-zinc-500 mt-3 max-w-[16rem]">
                       This generation has no playable draft output yet.
                     </p>

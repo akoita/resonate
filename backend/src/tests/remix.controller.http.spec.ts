@@ -233,10 +233,11 @@ describe('RemixController (e2e)', () => {
     await request(app.getHttpServer())
       .post('/remix/projects/proj-1/generate')
       .set('Authorization', `Bearer ${token}`)
-      .send({ constraints: { durationSeconds: 60 }, force: true })
+      .send({ constraints: { durationSeconds: 60 }, retry: true, force: true })
       .expect(201);
     expect(mockProjectService.generateDraft).toHaveBeenCalledWith('user-1', 'proj-1', {
       constraints: { durationSeconds: 60 },
+      retry: true,
       force: true,
     });
   });

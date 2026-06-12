@@ -244,6 +244,10 @@ Implemented high-value domain bridge event names:
 - `curator.staked`
 - `curator.reported`
 - `remix.created`
+- `remix.project_created`
+- `remix.generation_started`
+- `remix.generation_completed`
+- `remix.generation_failed`
 - `release_rights.request_updated`
 - `marketplace.listing_notify`
 - `notification.created`
