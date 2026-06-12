@@ -7,3 +7,6 @@ httpx
 google-cloud-storage
 google-cloud-pubsub
 pyacoustid
+# Stem audio feature extraction (#1184). 0.10.x is the last librosa line
+# compatible with numpy<2 on python 3.10 (numba/llvmlite resolve from it).
+librosa==0.10.2.post1

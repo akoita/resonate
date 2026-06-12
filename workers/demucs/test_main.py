@@ -9,9 +9,14 @@ from unittest.mock import patch
 
 os.environ.setdefault("OUTPUT_DIR", tempfile.mkdtemp(prefix="resonate-demucs-test-"))
 
-multipart_probe = types.ModuleType("python_multipart")
-multipart_probe.__version__ = "0.0.13"
-sys.modules.setdefault("python_multipart", multipart_probe)
+# Shim only when the real package is absent: faking it while the real one is
+# installed breaks starlette's `python_multipart.multipart` import.
+try:
+    import python_multipart  # noqa: F401
+except ModuleNotFoundError:
+    multipart_probe = types.ModuleType("python_multipart")
+    multipart_probe.__version__ = "0.0.13"
+    sys.modules.setdefault("python_multipart", multipart_probe)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import main
@@ -100,7 +105,7 @@ class DemucsCpuFallbackTest(unittest.TestCase):
                 patch.object(main, "run_demucs_attempt", fake_run_demucs_attempt),
                 patch.object(main.asyncio, "create_subprocess_exec", fake_create_subprocess_exec),
             ):
-                result = asyncio.run(
+                results, stem_features = asyncio.run(
                     main.run_demucs_separation(
                         input_path=input_path,
                         temp_dir=str(temp_dir),
@@ -110,7 +115,10 @@ class DemucsCpuFallbackTest(unittest.TestCase):
                 )
 
             self.assertEqual(attempts, ["cuda", "cpu"])
-            self.assertEqual(result, {"vocals": "rel_test/trk_test/vocals.mp3"})
+            self.assertEqual(results, {"vocals": "rel_test/trk_test/vocals.mp3"})
+            # The fake stem is not decodable audio: feature extraction must
+            # degrade to None for that stem without failing separation (#1184).
+            self.assertEqual(stem_features, {"vocals": None})
 
     def test_run_demucs_separation_retries_any_cuda_failure_before_raising(self):
         with tempfile.TemporaryDirectory() as temp_dir_name:
