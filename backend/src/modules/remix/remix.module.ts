@@ -17,6 +17,10 @@ import {
 } from "./remix-generation.provider";
 import { LyriaRemixGenerationProvider } from "./lyria-remix-generation.provider";
 import { RemixGenerationProcessor } from "./remix-generation.processor";
+import {
+  FfmpegStemMixRenderer,
+  REMIX_STEM_MIX_RENDERER,
+} from "./remix-stem-mix.renderer";
 
 @Module({
   imports: [
@@ -47,6 +51,14 @@ import { RemixGenerationProcessor } from "./remix-generation.processor";
           ? new LyriaRemixGenerationProvider(lyriaClient, storageProvider)
           : new StubRemixGenerationProvider(),
       inject: [LyriaClient, StorageProvider],
+    },
+    // stem_mix rendering (#1189): pure ffmpeg DSP, no AI gate — the worker
+    // routes stem_mix jobs here instead of the generation provider.
+    {
+      provide: REMIX_STEM_MIX_RENDERER,
+      useFactory: (storageProvider: StorageProvider) =>
+        new FfmpegStemMixRenderer(storageProvider),
+      inject: [StorageProvider],
     },
   ],
   exports: [RemixEligibilityService, RemixProjectService],

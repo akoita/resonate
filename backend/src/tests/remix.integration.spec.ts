@@ -50,6 +50,22 @@ const storageProvider = {
 const generationQueue = {
   add: jest.fn().mockResolvedValue({ id: "queued" }),
 };
+// stem_mix render path (#1189): integration tests inject a fake renderer;
+// the real ffmpeg execution has its own unit/smoke coverage.
+const stemMixRenderer = {
+  render: jest.fn().mockResolvedValue({
+    jobId: "render-job",
+    provider: "stem-mix-render",
+    estimatedCostUsd: 0,
+    outputMetadata: {
+      outputUri: "local://remix-draft-render.mp3",
+      mimeType: "audio/mpeg",
+      synthIdPresent: false,
+      seed: null,
+      sampleRate: null,
+    },
+  }),
+};
 
 describe("Remix eligibility and projects (integration)", () => {
   let eligibilityService: RemixEligibilityService;
@@ -337,6 +353,7 @@ describe("Remix eligibility and projects (integration)", () => {
       eventBus,
       eligibilityService,
       new StubRemixGenerationProvider(),
+      stemMixRenderer,
       storageProvider,
       generationQueue as any,
     );
@@ -631,6 +648,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new EventBus(),
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
+        stemMixRenderer,
         storageProvider,
         generationQueue as any,
       );
@@ -932,6 +950,61 @@ describe("Remix eligibility and projects (integration)", () => {
         );
       });
 
+      it("renders stem_mix projects through the renderer, not the AI provider (#1189)", async () => {
+        // The render path is deliberately outside the AI master gate.
+        delete process.env.REMIX_GENERATION_ENABLED;
+        const createSpy = jest.spyOn(
+          StubRemixGenerationProvider.prototype,
+          "createRemixDraft",
+        );
+        stemMixRenderer.render.mockClear();
+        try {
+          const created = await projectService.createProject({
+            userId: CREATOR_ID,
+            sourceTrackId: TRACK_ID,
+            stemIds: [LICENSED_STEM_ID],
+            title: "Mix Render",
+            mode: "stem_mix",
+          });
+          const pending = await projectService.generateDraft(
+            CREATOR_ID,
+            created.id,
+          );
+          expect(pending.generationMetadata).toEqual(
+            expect.objectContaining({ status: "pending", mode: "stem_mix" }),
+          );
+
+          const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+          await projectService.processGenerationJob(queuedData);
+
+          const completed = await projectService.getProject(
+            CREATOR_ID,
+            created.id,
+          );
+          expect(completed.generationProvider).toBe("stem-mix-render");
+          expect(completed.generationMetadata).toEqual(
+            expect.objectContaining({
+              status: "completed",
+              estimatedCostUsd: 0,
+            }),
+          );
+          expect(stemMixRenderer.render).toHaveBeenCalledWith(
+            expect.objectContaining({
+              remixProjectId: created.id,
+              stems: [
+                expect.objectContaining({
+                  stemId: LICENSED_STEM_ID,
+                  muted: false,
+                }),
+              ],
+            }),
+          );
+          expect(createSpy).not.toHaveBeenCalled();
+        } finally {
+          createSpy.mockRestore();
+        }
+      });
+
       it("records normalized provider_disabled failures from the worker", async () => {
         delete process.env.REMIX_GENERATION_ENABLED;
         const created = await projectService.createProject({
@@ -939,6 +1012,10 @@ describe("Remix eligibility and projects (integration)", () => {
           sourceTrackId: TRACK_ID,
           stemIds: [LICENSED_STEM_ID],
           title: "Disabled Env",
+          // stem_mix routes to the renderer since #1189; the master-gate
+          // contract under test belongs to the AI provider path.
+          mode: "variation",
+          prompt: "darker",
         });
         const pending = await projectService.generateDraft(CREATOR_ID, created.id);
         const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
@@ -1074,6 +1151,7 @@ describe("Remix eligibility and projects (integration)", () => {
           eventBus,
           eligibilityService,
           explodingProvider,
+          stemMixRenderer,
           storageProvider,
           generationQueue as any,
         );
@@ -1082,6 +1160,8 @@ describe("Remix eligibility and projects (integration)", () => {
           sourceTrackId: TRACK_ID,
           stemIds: [LICENSED_STEM_ID],
           title: "Exploding Provider",
+          mode: "variation",
+          prompt: "darker",
         });
         const pending = await svc.generateDraft(CREATOR_ID, created.id);
         const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
@@ -1180,6 +1260,7 @@ describe("Remix eligibility and projects (integration)", () => {
         new EventBus(),
         new RemixEligibilityService(),
         new StubRemixGenerationProvider(),
+        stemMixRenderer,
         storageProvider,
         generationQueue as any,
       );

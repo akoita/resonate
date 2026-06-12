@@ -175,14 +175,9 @@ export function describeGenerateAvailability(input: {
       reason: "Generation is already queued for this draft.",
     };
   }
-  if (input.mode === "stem_mix") {
-    return {
-      enabled: false,
-      reason:
-        "AI generation applies to variation and extension modes. Stem mix uses only your stem settings.",
-    };
-  }
-  if (input.prompt.trim() === "") {
+  // stem_mix renders the arranged stems server-side (#1189) — no prompt,
+  // no AI. Prompted modes still require direction.
+  if (input.mode !== "stem_mix" && input.prompt.trim() === "") {
     return {
       enabled: false,
       reason: "Write a prompt first — generation follows your direction.",
@@ -430,8 +425,11 @@ export function RemixStudioEditor({
       stopDraftPlayback();
       addToast({
         type: "success",
-        title: retry ? "Retry queued" : "Generation queued",
-        message: "Your AI remix job is queued and this panel will update.",
+        title: retry ? "Retry queued" : edits.mode === "stem_mix" ? "Render queued" : "Generation queued",
+        message:
+          edits.mode === "stem_mix"
+            ? "Your stem mix is being rendered and this panel will update."
+            : "Your AI remix job is queued and this panel will update.",
       });
       // No frontend analytics here: emitting studio_saved would muddy save
       // metrics, and the backend already records remix.generation_started.
@@ -824,7 +822,9 @@ export function RemixStudioEditor({
                       ? `AI generation failed — job ${project.generationJobId}.`
                       : project.generationJobId
                         ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}).`
-                        : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
+                        : edits.mode === "stem_mix"
+                          ? "No draft yet. Render your arranged stems into a mix, or switch to a prompted mode for AI generation."
+                          : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
                 </p>
                 {generationFailure && (
                   <p className="text-red-300 remix-generation-error">
@@ -860,10 +860,16 @@ export function RemixStudioEditor({
                     {generating || generationActive
                       ? "Queued..."
                       : generationStatus === "failed"
-                        ? "Retry generation"
+                        ? edits.mode === "stem_mix"
+                          ? "Retry render"
+                          : "Retry generation"
                         : project.generationJobId
-                          ? "Regenerate draft"
-                          : "Generate AI draft"}
+                          ? edits.mode === "stem_mix"
+                            ? "Re-render mix"
+                            : "Regenerate draft"
+                          : edits.mode === "stem_mix"
+                            ? "Render mix"
+                            : "Generate AI draft"}
                   </button>
                   {availability.reason && (
                     <p className="text-xs text-zinc-500 mt-2 max-w-[16rem]">
