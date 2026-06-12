@@ -3894,6 +3894,19 @@ export type RemixProjectStem = {
   stemId: string;
   type: string;
   title: string | null;
+  /** Worker-measured musical features (#1184): tempo, key, beats, energy. */
+  audioFeatures?: {
+    schemaVersion?: string;
+    tempoBpm?: number | null;
+    tempoConfidence?: number | null;
+    beatCount?: number | null;
+    firstBeatSec?: number | null;
+    key?: { tonic: string; mode: "major" | "minor"; confidence: number | null } | null;
+    energyRms?: number | null;
+    onsetDensity?: number | null;
+    durationSeconds?: number | null;
+    sampleRate?: number | null;
+  } | null;
   role: string | null;
   gainDb: number | null;
   muted: boolean;

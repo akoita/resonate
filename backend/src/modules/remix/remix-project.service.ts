@@ -124,7 +124,11 @@ export function remixGenerationStatusFromMetadata(
 const PROJECT_INCLUDE = {
   stems: {
     orderBy: { stemId: "asc" },
-    include: { stem: { select: { type: true, title: true } } },
+    // audioFeatures: worker-measured tempo/key/energy (#1184) for
+    // grounding slices (feature-conditioned prompts, render alignment).
+    include: {
+      stem: { select: { type: true, title: true, audioFeatures: true } },
+    },
   },
   sourceTrack: {
     select: {
@@ -855,6 +859,7 @@ export class RemixProjectService {
         stemId: stem.stemId,
         type: stem.stem.type,
         title: stem.stem.title,
+        audioFeatures: stem.stem.audioFeatures ?? null,
         role: stem.role,
         gainDb: stem.gainDb,
         muted: stem.muted,
