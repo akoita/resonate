@@ -17,6 +17,9 @@ describe("buildStemMixFfmpegArgs (#1189)", () => {
     expect(args).toEqual([
       "-y",
       "-nostdin",
+      "-hide_banner",
+      "-loglevel",
+      "error",
       "-i",
       "/tmp/a.audio",
       "-i",

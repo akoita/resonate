@@ -4,7 +4,7 @@ import { randomUUID } from "crypto";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { join, resolve, sep } from "path";
 import { promisify } from "util";
 import { prisma } from "../../db/prisma";
 import { StorageProvider } from "../storage/storage_provider";
@@ -52,7 +52,8 @@ export function buildStemMixFfmpegArgs(
       false,
     );
   }
-  const args: string[] = ["-y", "-nostdin"];
+  // -loglevel error keeps execFile's stderr buffer tiny on long renders.
+  const args: string[] = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"];
   for (const input of inputs) {
     args.push("-i", input.path);
   }
@@ -202,8 +203,12 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
       return Buffer.from(row.data);
     }
     if (row.storageProvider === "local" && row.uri) {
-      const localPath = join(process.cwd(), "uploads", "stems", row.uri);
-      if (existsSync(localPath)) {
+      // Containment check: Stem.uri is server-written, but the rendered
+      // output is served back to the user, so a traversal-shaped uri must
+      // never read outside the uploads dir into the mix.
+      const uploadsDir = resolve(process.cwd(), "uploads", "stems");
+      const localPath = resolve(uploadsDir, row.uri);
+      if (localPath.startsWith(uploadsDir + sep) && existsSync(localPath)) {
         return readFile(localPath);
       }
     }

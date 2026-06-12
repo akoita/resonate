@@ -2957,6 +2957,13 @@ the backend runtime Dockerfile, studio "Render mix" enablement.
   provenance.
 - No new env vars, secrets, raw SQL, or HTML sinks. Backend image gains
   ffmpeg (apt, runtime stage only).
+- Review findings (fixed in-branch): (1) the local-uploads fallback joined
+  the DB-sourced `Stem.uri` into the uploads dir without containment — a
+  traversal-shaped uri (server-written today, defense-in-depth) could have
+  read arbitrary files into a mix that is served back to the user; resolved
+  paths are now required to stay inside the uploads dir. (2) ffmpeg now runs
+  with `-hide_banner -loglevel error` so execFile's bounded stderr buffer
+  cannot be exhausted by progress output on long renders.
 
 ### Commands Run
 
