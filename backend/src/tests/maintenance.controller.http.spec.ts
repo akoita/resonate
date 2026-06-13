@@ -2,6 +2,7 @@ import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { MaintenanceController } from "../modules/maintenance/maintenance.controller";
+import { StemFeatureBackfillService } from "../modules/ingestion/stem-feature-backfill.service";
 import { MaintenanceService } from "../modules/maintenance/maintenance.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
@@ -17,6 +18,12 @@ const maintenanceService = {
   wipeReleases: jest.fn(),
 };
 
+const stemFeatureBackfillService = {
+  backfill: jest
+    .fn()
+    .mockResolvedValue({ scanned: 2, updated: 2, skipped: [], remaining: 0 }),
+};
+
 describe("MaintenanceController (HTTP)", () => {
   let app: INestApplication;
 
@@ -24,6 +31,7 @@ describe("MaintenanceController (HTTP)", () => {
     app = await createControllerTestApp(MaintenanceController, [
       RolesGuard,
       { provide: MaintenanceService, useValue: maintenanceService },
+      { provide: StemFeatureBackfillService, useValue: stemFeatureBackfillService },
     ]);
   });
 
@@ -100,6 +108,30 @@ describe("MaintenanceController (HTTP)", () => {
       });
 
     expect(maintenanceService.getAnalyticsPipelineHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /admin/stems/backfill-audio-features requires admin role and delegates (#1184)", async () => {
+    await request(app.getHttpServer())
+      .post("/admin/stems/backfill-audio-features")
+      .send({ limit: 10 })
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ limit: 10 })
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/stems/backfill-audio-features")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ limit: 10 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.remaining).toBe(0);
+      });
+
+    expect(stemFeatureBackfillService.backfill).toHaveBeenCalledWith({ limit: 10 });
   });
 
   it("POST /admin/community/cohorts/generate requires admin role and runs cohort generation", async () => {

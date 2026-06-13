@@ -3029,3 +3029,32 @@ npm run test  # 818 passed
 npx jest --runInBand --config jest.integration.config.js --testPathPattern='remix.integration'  # 38 passed
 git diff --check
 ```
+
+
+## 2026-06-13 — Stem feature backfill endpoint (#1182/#1184 follow-up)
+
+Scope: `StemFeatureBackfillService` (ingestion module) +
+`POST /admin/stems/backfill-audio-features` (maintenance controller).
+
+### Findings
+
+- Endpoint is JWT + `Roles("admin")` guarded, matching every other
+  maintenance surface; batch size clamped 1–100 per call so a single
+  request cannot iterate the whole catalog.
+- Worker responses pass through the existing #1184 sanitizer before
+  persistence (schema check, BPM clamp, finite-number coercion); malformed
+  analyses are skipped with a reason, never persisted raw.
+- Stem audio loading reuses the contained-path helper for local reads and
+  excludes encrypted stems at the query level (ciphertext never leaves the
+  backend toward the worker).
+- Outbound call goes only to `DEMUCS_WORKER_URL` (existing internal
+  service config, now documented in environment.md) with a 120s abort —
+  no client-influenced URLs.
+
+### Commands Run
+
+```bash
+npx jest --runInBand --config jest.integration.config.js --testPathPattern='stem-feature-backfill'  # 2 passed
+npm run test && full integration suite  # see PR
+git diff --check
+```

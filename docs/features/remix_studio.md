@@ -186,8 +186,12 @@ from the JWT, never the request body.
   stem reads. A `POST /analyze` worker endpoint (same inbound auth posture
   as `/separate`: deployment-level protection) supports backfill and
   isolated testing. Extraction failure for one stem never fails separation.
-  Stems separated before this slice have `audioFeatures: null` until a
-  backfill pass runs (deferred, tracked in #1182). Chords/structure are v2.
+  Stems separated before this slice are backfillable: admin-only
+  `POST /admin/stems/backfill-audio-features` (batch-bounded `limit`,
+  re-run until `remaining` is 0) sends stored stem audio to the worker's
+  `/analyze` and persists sanitized features — after which their next
+  generation upgrades from `prompt_only` to `feature_conditioned`
+  grounding. Encrypted stems are excluded. Chords/structure are v2.
 - UI (#1175): the Library → Stems tab is a real entry point for owned
   stems — stem titles link to `/stem/[tokenId]` (with a matching "View stem
   page" row action), and each row renders the eligibility-backed `RemixCta`
