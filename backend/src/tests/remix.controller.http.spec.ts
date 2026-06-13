@@ -9,7 +9,12 @@
  */
 
 import request from 'supertest';
-import { ForbiddenException, INestApplication, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  INestApplication,
+  NotFoundException,
+} from '@nestjs/common';
 import { RemixController } from '../modules/remix/remix.controller';
 import { RemixService } from '../modules/remix/remix.service';
 import { RemixEligibilityService } from '../modules/remix/remix-eligibility.service';
@@ -26,7 +31,7 @@ const mockEligibilityService = {
   checkEligibility: jest.fn().mockResolvedValue({
     allowed: true,
     requiredLicense: null,
-    allowedActions: ['private_draft'],
+    allowedActions: ['private_draft', 'publish_resonate'],
     reasons: [],
     policyVersion: 'test.v1',
     source: { trackId: 'track-1', rightsRoute: 'STANDARD_ESCROW', contentStatus: 'clean' },
@@ -45,6 +50,12 @@ const mockProjectService = {
   getDraftAudio: jest
     .fn()
     .mockResolvedValue({ data: Buffer.from('draft-audio'), mimeType: 'audio/mpeg' }),
+  publishProject: jest.fn().mockResolvedValue({
+    id: 'proj-1',
+    status: 'published',
+    publishedReleaseId: 'rel-1',
+    publishedRelease: { releaseId: 'rel-1', trackId: 'trk-1' },
+  }),
 };
 
 describe('RemixController (e2e)', () => {
@@ -283,6 +294,53 @@ describe('RemixController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({})
       .expect(422);
+  });
+
+  // ----- Publish (#1196) -----
+
+  it('POST /remix/projects/:id/publish → 401 without JWT', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/publish')
+      .send({})
+      .expect(401);
+  });
+
+  it('POST /remix/projects/:id/publish → 201 and takes owner from JWT', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/publish')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'attacker' })
+      .expect(201);
+    expect(mockProjectService.publishProject).toHaveBeenCalledWith('user-1', 'proj-1');
+    expect(res.body.publishedRelease).toEqual({ releaseId: 'rel-1', trackId: 'trk-1' });
+  });
+
+  it('POST /remix/projects/:id/publish → 403 with eligibility payload when policy denies', async () => {
+    mockProjectService.publishProject.mockRejectedValueOnce(
+      new ForbiddenException({ message: 'denied', eligibility: { allowed: false } }),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/publish')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(403);
+    expect(res.body.eligibility).toEqual({ allowed: false });
+  });
+
+  it('POST /remix/projects/:id/publish → 409 with a normalized reason for incomplete drafts', async () => {
+    mockProjectService.publishProject.mockRejectedValueOnce(
+      new ConflictException({
+        code: 'draft_not_completed',
+        message: 'Only a completed draft can be published.',
+        generationStatus: 'processing',
+      }),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/publish')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(409);
+    expect(res.body.code).toBe('draft_not_completed');
   });
 
   // ----- Legacy compatibility -----

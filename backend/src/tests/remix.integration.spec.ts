@@ -375,7 +375,7 @@ describe("Remix eligibility and projects (integration)", () => {
         stemIds: [LICENSED_STEM_ID],
       });
       expect(result.allowed).toBe(true);
-      expect(result.allowedActions).toEqual(["private_draft"]);
+      expect(result.allowedActions).toEqual(["private_draft", "publish_resonate"]);
       expect(result.stems).toEqual([
         { stemId: LICENSED_STEM_ID, remixable: true, licensed: true },
       ]);
