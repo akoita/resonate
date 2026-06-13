@@ -6,15 +6,19 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
   generateRemixDraft,
+  getRemixEligibility,
   getRemixProject,
   getRemixDraftAudioBlob,
   getStemPreviewUrl,
+  publishRemixProject,
   updateRemixProject,
+  type RemixEligibilityResponse,
   type RemixGenerationMetadata,
   type RemixProject,
   type RemixProjectPatch,
   type RemixProjectSource,
 } from "../../lib/api";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
   activePresetLabel,
@@ -291,23 +295,108 @@ export function stemPreviewStates(
   }));
 }
 
+// Publishing inside Resonate is live (#1196); export stays honestly locked
+// until exportable license terms exist (backlog E).
 const UNAVAILABLE_ACTIONS = [
-  {
-    key: "publish",
-    label: "Publish on Resonate",
-    // reasonCode is the analytics-safe identifier; reason stays human text.
-    reasonCode: "publish_not_available",
-    reason:
-      "Publishing remixes inside Resonate is not available yet. Drafts stay private to you.",
-  },
   {
     key: "export",
     label: "Export audio",
+    // reasonCode is the analytics-safe identifier; reason stays human text.
     reasonCode: "export_rights_required",
     reason:
-      "Export requires a license that explicitly grants export rights. Your remix license covers private drafts only.",
+      "Export requires a license that explicitly grants export rights. Your remix license covers in-Resonate publishing only.",
   },
 ] as const;
+
+/**
+ * Whether "Publish on Resonate" is actionable, plus the honest reason when it
+ * is not (#1196). Publishing re-checks eligibility server-side, but the studio
+ * gates the button so a denied publish is explained before the round-trip:
+ * only a completed, saved draft on an allowed source can publish.
+ */
+export function describePublishAvailability(input: {
+  status: string;
+  generationStatus: RemixGenerationMetadata["status"] | null;
+  hasDraftOutput: boolean;
+  dirty: boolean;
+  publishing: boolean;
+  eligibility: RemixEligibilityResponse | null;
+}): { enabled: boolean; reason: string | null; reasonCode: string } {
+  if (input.status === "published") {
+    return {
+      enabled: false,
+      reason: "This remix is already published on Resonate.",
+      reasonCode: "publish_already_published",
+    };
+  }
+  if (input.status !== "draft") {
+    return {
+      enabled: false,
+      reason: "Only draft projects can be published.",
+      reasonCode: "publish_not_draft",
+    };
+  }
+  if (input.generationStatus !== "completed" || !input.hasDraftOutput) {
+    return {
+      enabled: false,
+      reason:
+        "Render or generate a draft and wait for it to finish before publishing.",
+      reasonCode: "publish_needs_completed_draft",
+    };
+  }
+  if (input.dirty) {
+    return {
+      enabled: false,
+      reason: "Save your changes first so you publish the saved draft.",
+      reasonCode: "publish_dirty",
+    };
+  }
+  if (!input.eligibility) {
+    return {
+      enabled: false,
+      reason: "Checking whether this source can be published…",
+      reasonCode: "publish_eligibility_loading",
+    };
+  }
+  if (
+    !input.eligibility.allowed ||
+    !input.eligibility.allowedActions.includes("publish_resonate")
+  ) {
+    return {
+      enabled: false,
+      reason:
+        "Publishing isn't allowed for this source right now. Its rights or consent state may have changed.",
+      reasonCode: "publish_not_allowed",
+    };
+  }
+  if (input.publishing) {
+    return { enabled: false, reason: null, reasonCode: "publish_in_progress" };
+  }
+  return { enabled: true, reason: null, reasonCode: "publish_available" };
+}
+
+/**
+ * Confirm-dialog body stating exactly what becomes public: the title, the
+ * source attribution, and the honest AI-provenance label (#1194 copy).
+ */
+export function publishConfirmMessage(input: {
+  title: string;
+  source: RemixProjectSource;
+  grounding: string | null;
+}): string {
+  const attribution = `Remix of "${input.source.trackTitle}"${
+    input.source.artistName ? ` by ${input.source.artistName}` : ""
+  }.`;
+  const lines = [
+    `Publishing makes “${input.title}” a public remix release on Resonate.`,
+    attribution,
+  ];
+  if (input.grounding) lines.push(input.grounding);
+  lines.push(
+    "Anyone on Resonate will be able to find and play it. You won't be able to edit the draft afterward.",
+  );
+  return lines.join("\n\n");
+}
 
 export function RemixStudioEditor({
   project: persistedProject,
@@ -323,6 +412,10 @@ export function RemixStudioEditor({
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
+  const [eligibility, setEligibility] =
+    useState<RemixEligibilityResponse | null>(null);
   const [stemPreviewStatus, setStemPreviewStatus] = useState<
     "idle" | "loading" | "playing"
   >("idle");
@@ -429,6 +522,38 @@ export function RemixStudioEditor({
       window.clearInterval(interval);
     };
   }, [dirty, generationActive, project.id, token]);
+
+  // Publish gating (#1196): eligibility is re-checked server-side at publish
+  // time, but the studio fetches it so the button reflects the live source
+  // state (consent flips, quarantines) instead of a stale creation-time
+  // decision. Only relevant once a completed draft exists on a draft project.
+  const draftReadyToPublish =
+    project.status === "draft" && generationStatus === "completed";
+  useEffect(() => {
+    if (!token || !draftReadyToPublish) {
+      setEligibility(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await getRemixEligibility(
+          token,
+          project.sourceTrackId,
+          project.stems.map((stem) => stem.stemId),
+        );
+        if (!cancelled) setEligibility(result);
+      } catch {
+        // A failed eligibility probe leaves the button in its honest
+        // "checking…" disabled state rather than enabling a publish that
+        // the server would reject.
+        if (!cancelled) setEligibility(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, draftReadyToPublish, project.id, project.sourceTrackId, project.stems]);
 
   const updateStemEdit = (stemId: string, update: Partial<StemEdit>) => {
     setEdits((prev) => ({
@@ -586,6 +711,70 @@ export function RemixStudioEditor({
     }
   };
 
+  const handlePublish = async () => {
+    if (!token || publishing) return;
+    setPublishing(true);
+    try {
+      const published = await publishRemixProject(token, project.id);
+      setProject(published);
+      setEdits(initialEdits(published));
+      setConfirmPublishOpen(false);
+      stopStemPreview();
+      stopDraftPlayback();
+      void recordProductAnalytics(token, "remix.published", {
+        source: "remix_studio",
+        subjectType: "remix_project",
+        subjectId: published.id,
+        payload: {
+          projectId: published.id,
+          releaseId: published.publishedRelease.releaseId,
+          mode: published.mode,
+        },
+      });
+      addToast({
+        type: "success",
+        title: "Published on Resonate",
+        message: "Your remix is now a public release.",
+      });
+    } catch (error) {
+      // Publishing re-checks eligibility server-side; surface the server's
+      // reason (consent flip, quarantine, incomplete draft) rather than a
+      // generic failure.
+      let message =
+        "Your remix could not be published. Please try again later.";
+      if (error instanceof Error) {
+        const prefixed = error.message.match(/^API \d+: (.+)$/s);
+        if (prefixed?.[1]?.trim()) {
+          const detail = prefixed[1].trim();
+          const jsonStart = detail.indexOf("{");
+          if (jsonStart >= 0) {
+            try {
+              const parsed = JSON.parse(detail.slice(jsonStart));
+              message = parsed.message ?? message;
+            } catch {
+              message = detail;
+            }
+          } else {
+            message = detail;
+          }
+        }
+      }
+      addToast({ type: "error", title: "Publish failed", message });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const published = project.status === "published";
+  const publishAvailability = describePublishAvailability({
+    status: project.status,
+    generationStatus,
+    hasDraftOutput: Boolean(draftOutputUri),
+    dirty,
+    publishing,
+    eligibility,
+  });
+
   return (
     <div className="min-h-screen bg-black">
       <div className="bg-gradient-to-b from-purple-900/20 to-transparent">
@@ -601,12 +790,18 @@ export function RemixStudioEditor({
                   : "border-transparent focus:border-zinc-600"
               }`}
               value={edits.title}
-              disabled={saving}
+              disabled={saving || published}
               onChange={(e) =>
                 setEdits((prev) => ({ ...prev, title: e.target.value }))
               }
             />
-            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                published
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                  : "bg-purple-500/20 text-purple-300 border-purple-500/30"
+              }`}
+            >
               {project.status}
             </span>
           </div>
@@ -644,6 +839,26 @@ export function RemixStudioEditor({
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {published && (
+          <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-5 remix-published-banner">
+            <h2 className="text-base font-semibold text-emerald-200">
+              Published on Resonate
+            </h2>
+            <p className="text-sm text-emerald-100/80 mt-1">
+              This draft is now a public remix release. The studio is locked —
+              edits and re-generation are disabled so the release stays in sync.
+            </p>
+            {project.publishedReleaseId && (
+              <Link
+                href={`/release/${project.publishedReleaseId}`}
+                className="ui-btn ui-btn-primary mt-3 inline-flex remix-published-release-link"
+              >
+                View release page
+              </Link>
+            )}
+          </section>
+        )}
+
         {/* Stem controls */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
           <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
@@ -890,10 +1105,14 @@ export function RemixStudioEditor({
                   <button
                     type="button"
                     className="ui-btn ui-btn-primary remix-generate-btn"
-                    aria-disabled={!availability.enabled || undefined}
-                    title={availability.reason ?? undefined}
+                    aria-disabled={!availability.enabled || published || undefined}
+                    title={
+                      published
+                        ? "This remix is published and can no longer be regenerated."
+                        : availability.reason ?? undefined
+                    }
                     onClick={(e) => {
-                      if (!availability.enabled) {
+                      if (!availability.enabled || published) {
                         e.preventDefault();
                         return;
                       }
@@ -946,9 +1165,50 @@ export function RemixStudioEditor({
           </div>
         </section>
 
-        {/* Save + unavailable actions */}
+        {/* Save + publish + unavailable actions */}
         <section className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
+            {published ? (
+              project.publishedReleaseId && (
+                <Link
+                  href={`/release/${project.publishedReleaseId}`}
+                  className="ui-btn ui-btn-primary remix-action-view-release"
+                >
+                  View release
+                </Link>
+              )
+            ) : (
+              <button
+                type="button"
+                className="ui-btn ui-btn-primary remix-action-publish"
+                aria-disabled={!publishAvailability.enabled || undefined}
+                title={publishAvailability.reason ?? undefined}
+                onClick={(e) => {
+                  if (!publishAvailability.enabled) {
+                    e.preventDefault();
+                    // Demand signal for the gated publish flow (#1143/#1196).
+                    void recordProductAnalytics(
+                      token,
+                      "remix.studio_action_unavailable",
+                      {
+                        source: "remix_studio",
+                        subjectType: "remix_project",
+                        subjectId: project.id,
+                        payload: {
+                          projectId: project.id,
+                          action: "publish",
+                          reasonCode: publishAvailability.reasonCode,
+                        },
+                      },
+                    );
+                    return;
+                  }
+                  setConfirmPublishOpen(true);
+                }}
+              >
+                {publishing ? "Publishing..." : "Publish on Resonate"}
+              </button>
+            )}
             {UNAVAILABLE_ACTIONS.map((action) => (
               <button
                 key={action.key}
@@ -985,14 +1245,33 @@ export function RemixStudioEditor({
             <button
               type="button"
               className="ui-btn ui-btn-primary"
-              disabled={!dirty || saving || titleBlank}
+              disabled={!dirty || saving || titleBlank || published}
               onClick={() => void handleSave()}
             >
               {saving ? "Saving..." : "Save changes"}
             </button>
           </div>
         </section>
+        {!published && publishAvailability.reason && (
+          <p className="text-xs text-zinc-500 remix-publish-reason">
+            {publishAvailability.reason}
+          </p>
+        )}
       </div>
+
+      <ConfirmDialog
+        isOpen={confirmPublishOpen}
+        title="Publish this remix?"
+        message={publishConfirmMessage({
+          title: edits.title.trim() || project.title,
+          source: project.source,
+          grounding: groundingDescription(project.generationMetadata),
+        })}
+        confirmLabel={publishing ? "Publishing..." : "Publish on Resonate"}
+        cancelLabel="Keep private"
+        onConfirm={() => handlePublish()}
+        onCancel={() => setConfirmPublishOpen(false)}
+      />
     </div>
   );
 }

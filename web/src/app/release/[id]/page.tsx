@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
@@ -201,6 +202,34 @@ const formatRightsLabel = (value?: string | null): string | null => {
     .split("_")
     .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
     .join(" ");
+};
+
+/**
+ * Listener-facing AI-provenance label for a published remix release (#1196),
+ * mirroring the studio's honest grounding copy (#1194) in third person.
+ */
+const remixProvenanceLabel = (
+  grounding?: string | null,
+): { text: string; ai: boolean } | null => {
+  switch (grounding) {
+    case "stem_audio":
+      return {
+        text: "Made from the source's licensed stems — this release contains the source audio itself.",
+        ai: false,
+      };
+    case "feature_conditioned":
+      return {
+        text: "AI-generated, matched to the source stems' measured tempo and key. The model did not hear the source audio.",
+        ai: true,
+      };
+    case "prompt_only":
+      return {
+        text: "AI-generated from a text prompt only — not derived from the source audio.",
+        ai: true,
+      };
+    default:
+      return null;
+  }
 };
 
 const formatRightsUpgradeStatusLabel = (value?: string | null): string => {
@@ -1333,6 +1362,83 @@ export default function ReleaseDetails() {
             <span className="dot" />
             <span className="track-count">{release.tracks?.length || 0} tracks</span>
           </div>
+
+          {release.remix && (
+            <div
+              className="release-remix-provenance"
+              style={{
+                marginTop: 12,
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid rgba(139, 92, 246, 0.25)",
+                background: "rgba(139, 92, 246, 0.08)",
+                maxWidth: 560,
+              }}
+            >
+              <p
+                className="release-remix-attribution"
+                style={{ margin: 0, fontSize: 13.5, color: "rgba(255,255,255,0.8)" }}
+              >
+                {release.remix.attribution}
+                {release.remix.sourceReleaseId && (
+                  <>
+                    {" · "}
+                    <Link
+                      href={`/release/${release.remix.sourceReleaseId}`}
+                      className="release-remix-source-link"
+                      style={{ color: "#c4b5fd", textDecoration: "underline" }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      View source release
+                    </Link>
+                  </>
+                )}
+              </p>
+              {(() => {
+                const provenance = remixProvenanceLabel(release.remix.grounding);
+                if (!provenance) return null;
+                return (
+                  <p
+                    className="release-remix-ai-label"
+                    style={{
+                      margin: "8px 0 0",
+                      fontSize: 12.5,
+                      color: "rgba(255,255,255,0.6)",
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span
+                      className={`release-remix-ai-badge release-remix-ai-badge--${
+                        provenance.ai ? "ai" : "audio"
+                      }`}
+                      style={{
+                        flexShrink: 0,
+                        padding: "1px 8px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: provenance.ai ? "#fcd34d" : "#6ee7b7",
+                        background: provenance.ai
+                          ? "rgba(245, 158, 11, 0.15)"
+                          : "rgba(16, 185, 129, 0.15)",
+                        border: `1px solid ${
+                          provenance.ai
+                            ? "rgba(245, 158, 11, 0.3)"
+                            : "rgba(16, 185, 129, 0.3)"
+                        }`,
+                      }}
+                    >
+                      {provenance.ai ? "AI-generated" : "Stem-based"}
+                    </span>
+                    <span className="release-remix-ai-text">{provenance.text}</span>
+                  </p>
+                );
+              })()}
+            </div>
+          )}
 
           <ReleaseOverviewStrip items={overviewItems} />
 

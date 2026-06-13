@@ -3,8 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixProject } from "../../lib/api";
 import {
   describeGenerateAvailability,
+  describePublishAvailability,
   generationErrorMessage,
   groundingDescription,
+  publishConfirmMessage,
   buildProjectPatch,
   clampGainDb,
   classifyProjectLoadError,
@@ -19,6 +21,7 @@ import {
   stemPreviewStates,
   stemDisplayName,
 } from "./RemixStudioEditor";
+import type { RemixEligibilityResponse } from "../../lib/api";
 import {
   dbToLinearGain,
   remixDraftOutputUri,
@@ -55,6 +58,7 @@ function project(overrides: Partial<RemixProject> = {}): RemixProject {
     attribution: null,
     exportPolicy: null,
     policyVersion: "2026-06-09.v1",
+    publishedReleaseId: null,
     createdAt: "2026-06-10T00:00:00.000Z",
     updatedAt: "2026-06-10T00:00:00.000Z",
     source: {
@@ -265,16 +269,38 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("Drums");
     expect(html).toContain("Play preview");
     expect(html).toContain("solo changes playback only and is not saved");
-    // Publish/export are aria-disabled with honest reasons, not hidden.
-    expect(html).toContain("remix-action-unavailable--publish");
+    // Publish is now live (#1196) but honestly gated when no completed draft
+    // exists; export stays unavailable with its honest reason.
+    expect(html).toContain("remix-action-publish");
+    expect(html).toContain("Publish on Resonate");
+    expect(html).toMatch(/remix-action-publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-publish/);
     expect(html).toContain("remix-action-unavailable--export");
-    expect(html).toContain("Publishing remixes inside Resonate is not available yet");
     expect(html).toContain("Export requires a license that explicitly grants export rights");
-    expect(html).toMatch(/remix-action-unavailable--publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-unavailable--publish/);
+    // No completed draft yet, so the gated reason is shown.
+    expect(html).toContain("wait for it to finish before publishing");
     // stem_mix placeholder invites a render (#1189), not an AI prompt.
     expect(html).toContain("No draft yet. Render your arranged stems");
     expect(html).toContain("Render mix");
     expect(html).toContain("All changes saved");
+  });
+
+  it("locks the studio and links to the release once published (#1196)", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          status: "published",
+          publishedReleaseId: "rel-published-1",
+        })}
+      />,
+    );
+    expect(html).toContain("remix-published-banner");
+    expect(html).toContain("Published on Resonate");
+    expect(html).toContain("/release/rel-published-1");
+    expect(html).toContain("remix-action-view-release");
+    // Publish CTA is replaced, not shown again.
+    expect(html).not.toContain("remix-action-publish");
+    // Save is disabled in the published state.
+    expect(html).toMatch(/Save changes<\/button>/);
   });
 
   it("shows AI draft playback when generation output exists", () => {
@@ -474,6 +500,107 @@ describe("groundingDescription (#1181)", () => {
     expect(groundingDescription(null)).toBeNull();
     expect(groundingDescription({})).toBeNull();
     expect(groundingDescription({ grounding: "future_mode" })).toBeNull();
+  });
+});
+
+describe("describePublishAvailability (#1196)", () => {
+  const eligible: RemixEligibilityResponse = {
+    allowed: true,
+    requiredLicense: null,
+    allowedActions: ["private_draft", "publish_resonate"],
+    reasons: [],
+    policyVersion: "2026-06-13.v5",
+    source: { trackId: "t1", rightsRoute: "STANDARD_ESCROW", contentStatus: "clean" },
+    stems: [],
+  };
+  const base = {
+    status: "draft",
+    generationStatus: "completed" as const,
+    hasDraftOutput: true,
+    dirty: false,
+    publishing: false,
+    eligibility: eligible,
+  };
+
+  it("enables publish for a completed, saved draft on an allowed source", () => {
+    expect(describePublishAvailability(base)).toEqual({
+      enabled: true,
+      reason: null,
+      reasonCode: "publish_available",
+    });
+  });
+
+  it("blocks until a completed draft exists", () => {
+    expect(
+      describePublishAvailability({ ...base, generationStatus: "processing" })
+        .reasonCode,
+    ).toBe("publish_needs_completed_draft");
+    expect(
+      describePublishAvailability({ ...base, hasDraftOutput: false }).reasonCode,
+    ).toBe("publish_needs_completed_draft");
+  });
+
+  it("asks to save unsaved changes first", () => {
+    const result = describePublishAvailability({ ...base, dirty: true });
+    expect(result.enabled).toBe(false);
+    expect(result.reasonCode).toBe("publish_dirty");
+  });
+
+  it("stays disabled while eligibility is still loading", () => {
+    expect(
+      describePublishAvailability({ ...base, eligibility: null }).reasonCode,
+    ).toBe("publish_eligibility_loading");
+  });
+
+  it("blocks when eligibility no longer grants publish_resonate", () => {
+    expect(
+      describePublishAvailability({
+        ...base,
+        eligibility: { ...eligible, allowedActions: ["private_draft"] },
+      }).reasonCode,
+    ).toBe("publish_not_allowed");
+    expect(
+      describePublishAvailability({
+        ...base,
+        eligibility: { ...eligible, allowed: false },
+      }).reasonCode,
+    ).toBe("publish_not_allowed");
+  });
+
+  it("treats already-published projects as not publishable", () => {
+    expect(
+      describePublishAvailability({ ...base, status: "published" }).reasonCode,
+    ).toBe("publish_already_published");
+  });
+});
+
+describe("publishConfirmMessage (#1196)", () => {
+  const source = {
+    trackId: "t1",
+    trackTitle: "Neon Drift",
+    releaseId: "rel-1",
+    releaseTitle: "Night Signals",
+    artistName: "Aya Volt",
+    rightsRoute: "STANDARD_ESCROW",
+    contentStatus: "clean",
+  };
+
+  it("states the title, source attribution, and AI-provenance label", () => {
+    const message = publishConfirmMessage({
+      title: "Neon Drift (Remix)",
+      source,
+      grounding: groundingDescription({ grounding: "feature_conditioned" }),
+    });
+    expect(message).toContain("Neon Drift (Remix)");
+    expect(message).toContain('Remix of "Neon Drift" by Aya Volt');
+    expect(message).toContain("AI-generated");
+    expect(message).toContain("public remix release");
+  });
+
+  it("omits the provenance line when grounding is unknown", () => {
+    const message = publishConfirmMessage({ title: "X", source, grounding: null });
+    expect(message).toContain('Remix of "Neon Drift" by Aya Volt');
+    expect(message).not.toContain("AI-generated");
   });
 });
 
