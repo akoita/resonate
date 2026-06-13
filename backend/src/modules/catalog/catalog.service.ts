@@ -25,6 +25,18 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
 
+/** Source attribution + AI provenance for a published remix release (#1196). */
+export type RemixReleaseProvenance = {
+  attribution: string;
+  sourceTrackId: string | null;
+  sourceReleaseId: string | null;
+  sourceTrackTitle: string | null;
+  sourceArtistName: string | null;
+  grounding: string | null;
+  aiGenerated: boolean;
+  remixProjectId: string | null;
+};
+
 type AudioRange = { start: number; end: number; total: number };
 type AudioPayload = { data: Buffer; mimeType?: string | null; range?: AudioRange };
 type AudioRequestOptions = { includeRestricted?: boolean; range?: string };
@@ -816,6 +828,9 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            // Remix lineage (#1196): source attribution + AI-provenance
+            // label for published remix releases.
+            generationMetadata: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -1315,6 +1330,9 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            // Remix lineage (#1196): source attribution + AI-provenance
+            // label for published remix releases.
+            generationMetadata: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -1386,6 +1404,8 @@ export class CatalogService implements OnModuleInit {
                 processingStatus: true,
                 processingError: true,
                 contentStatus: true,
+                // Remix lineage (#1196): keep parity with the primary select.
+                generationMetadata: true,
                 rightsRoute: true,
                 rightsFlags: true,
                 rightsReason: true,
@@ -1417,7 +1437,44 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return release;
+    // Remix releases (#1196) carry source attribution + AI provenance from the
+    // published track's lineage metadata, surfaced as a focused summary so the
+    // release page never parses the raw blob.
+    return { ...release, remix: this.deriveRemixProvenance(release) };
+  }
+
+  private deriveRemixProvenance(release: {
+    type: string;
+    tracks?: Array<{ generationMetadata?: unknown }>;
+  }): RemixReleaseProvenance | null {
+    if (release.type !== "remix") return null;
+    const lineage = release.tracks
+      ?.map((track) => track.generationMetadata)
+      .find(
+        (metadata): metadata is Record<string, unknown> =>
+          !!metadata &&
+          typeof metadata === "object" &&
+          (metadata as { kind?: unknown }).kind === "remix_publish",
+      );
+    if (!lineage) return null;
+    const str = (key: string): string | null => {
+      const value = lineage[key];
+      return typeof value === "string" && value ? value : null;
+    };
+    return {
+      attribution:
+        str("attribution") ??
+        `Remix of "${str("sourceTrackTitle") ?? "a track"}"${
+          str("sourceArtistName") ? ` by ${str("sourceArtistName")}` : ""
+        }`,
+      sourceTrackId: str("sourceTrackId"),
+      sourceReleaseId: str("sourceReleaseId"),
+      sourceTrackTitle: str("sourceTrackTitle"),
+      sourceArtistName: str("sourceArtistName"),
+      grounding: str("grounding"),
+      aiGenerated: lineage.aiGenerated === true,
+      remixProjectId: str("remixProjectId"),
+    };
   }
 
   async getReleaseForUser(releaseId: string, userId: string) {
@@ -1520,6 +1577,9 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            // Remix lineage (#1196): source attribution + AI-provenance
+            // label for published remix releases.
+            generationMetadata: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,

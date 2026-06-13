@@ -1,8 +1,11 @@
 import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 
+// v5 (#1196): eligible sources now grant publish_resonate alongside
+// private_draft — the in-Resonate publish slice consumes it server-side at
+// publish time. Export stays closed until exportable license terms exist.
 // v4 (#1174): owning the source artist profile satisfies the remix-license
 // requirement on the artist's own material; all other checks unchanged.
-export const REMIX_POLICY_VERSION = "2026-06-12.v4";
+export const REMIX_POLICY_VERSION = "2026-06-13.v5";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -191,12 +194,12 @@ export function evaluateRemixEligibility(
     };
   }
 
-  // v1 grants private drafts only; publish/export open in later slices once
-  // publication policy and exportable license terms exist.
+  // v5 grants private drafts and in-Resonate publishing (#1196). Export
+  // stays closed until exportable license terms exist (backlog E).
   return {
     allowed: true,
     requiredLicense: null,
-    allowedActions: ["private_draft"],
+    allowedActions: ["private_draft", "publish_resonate"],
     reasons: [],
     policyVersion: REMIX_POLICY_VERSION,
   };

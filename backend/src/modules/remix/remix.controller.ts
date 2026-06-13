@@ -176,6 +176,17 @@ export class RemixController {
   }
 
   /**
+   * Publishes a completed draft as a catalog remix release (#1196, E2).
+   * Owner-only; eligibility is re-checked server-side at publish time and
+   * publish_resonate is enforced on top of `allowed`.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("projects/:id/publish")
+  publishProject(@Req() req: any, @Param("id") id: string) {
+    return this.projectService.publishProject(req.user.userId, id);
+  }
+
+  /**
    * Legacy compatibility endpoint. Creates an in-memory remix record for the
    * early event-flow experiment. Durable remix work must use
    * POST /remix/projects; this endpoint is slated for removal with the Remix

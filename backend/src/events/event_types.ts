@@ -161,6 +161,25 @@ export interface RemixGenerationFailedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+export interface RemixPublishedEvent extends BaseEvent {
+  eventName: "remix.published";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  /** Source-track artist (#1121): cockpit facts aggregate under this id. */
+  artistId?: string;
+  releaseId: string;
+  trackId: string;
+  mode: string;
+  /** stem_audio | feature_conditioned | prompt_only (#1192/#1194). */
+  grounding: string;
+  /** AI integrity (#1164): true when grounding !== "stem_audio". */
+  aiGenerated: boolean;
+  /** Creator owns the source artist profile (#1174) — not buyer demand. */
+  creatorOwner?: boolean;
+  policyVersion: string;
+}
+
 export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   eventName: "artist.remix_consent_updated";
   artistId: string;
@@ -1164,6 +1183,7 @@ export type ResonateEvent =
   | RemixGenerationStartedEvent
   | RemixGenerationCompletedEvent
   | RemixGenerationFailedEvent
+  | RemixPublishedEvent
   | ArtistRemixConsentUpdatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent

@@ -30,12 +30,21 @@ import {
   REMIX_STEM_MIX_RENDERER,
   type StemMixRenderer,
 } from "./remix-stem-mix.renderer";
+import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
 
+/** Statuses a PATCH may set. "published" is reachable only through publish. */
 export const REMIX_PROJECT_STATUSES = ["draft", "archived"] as const;
 export type RemixProjectStatus = (typeof REMIX_PROJECT_STATUSES)[number];
+
+// Published remix releases carry catalog rights provenance like AI-generated
+// releases do: the route is platform policy, not creator proof-of-control
+// evidence. The reason copy is honest about where the audio came from.
+const REMIX_PUBLISH_RIGHTS_SOURCE = "remix_publish";
+const REMIX_PUBLISH_RIGHTS_REASON =
+  "This release was published from a Resonate Remix Studio draft of licensed source material. Rights routing uses the platform remix-publication policy; source lineage is recorded on the track.";
 export const REMIX_GENERATION_QUEUE = "remix-generation";
 
 export type RemixGenerationLifecycleStatus =
@@ -104,6 +113,24 @@ export function draftOutputUriFromMetadata(metadata: unknown): string | null {
   const outputUri = (output as { outputUri?: unknown }).outputUri;
   return typeof outputUri === "string" && outputUri.trim()
     ? outputUri
+    : null;
+}
+
+export type RemixDraftGrounding =
+  | "stem_audio"
+  | "feature_conditioned"
+  | "prompt_only";
+
+/** Honest provenance recorded at generation time (#1181/#1192). */
+export function draftGroundingFromMetadata(
+  metadata: unknown,
+): RemixDraftGrounding | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const grounding = (metadata as { grounding?: unknown }).grounding;
+  return grounding === "stem_audio" ||
+    grounding === "feature_conditioned" ||
+    grounding === "prompt_only"
+    ? grounding
     : null;
 }
 
@@ -340,6 +367,19 @@ export class RemixProjectService {
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
 
+    // Published projects stay readable but are locked (#1196): the draft is
+    // now public catalog audio, so edits would silently desync the release.
+    if (project.status === "published") {
+      throw new ConflictException({
+        code: "project_published",
+        message:
+          "This remix project was published and can no longer be edited.",
+        ...(project.publishedReleaseId
+          ? { releaseId: project.publishedReleaseId }
+          : {}),
+      });
+    }
+
     if (patch.status !== undefined) {
       if (!REMIX_PROJECT_STATUSES.includes(patch.status as RemixProjectStatus)) {
         throw new BadRequestException(
@@ -424,7 +464,9 @@ export class RemixProjectService {
 
     if (project.status !== "draft") {
       throw new BadRequestException(
-        "Only draft projects can generate remix drafts",
+        project.status === "published"
+          ? "This remix project was published and can no longer generate drafts."
+          : "Only draft projects can generate remix drafts",
       );
     }
     if (
@@ -790,6 +832,243 @@ export class RemixProjectService {
     });
   }
 
+  /**
+   * Publishes a completed draft as a catalog remix release (#1196, E2).
+   * Eligibility is re-checked here — the creation-time decision is explicitly
+   * not trusted (consent flips and quarantines must block publication) — and
+   * publish_resonate is enforced on top of `allowed`, since the policy
+   * distinguishes the two. The release is created behind a conditional
+   * status claim so a double publish can never create two releases.
+   */
+  async publishProject(userId: string, projectId: string) {
+    const project = await this.loadOwnedProject(userId, projectId);
+
+    if (project.status !== "draft") {
+      throw new ConflictException({
+        code:
+          project.status === "published"
+            ? "already_published"
+            : "project_not_draft",
+        message:
+          project.status === "published"
+            ? "This remix project is already published."
+            : `Only draft projects can be published (status: ${project.status}).`,
+        ...(project.publishedReleaseId
+          ? { releaseId: project.publishedReleaseId }
+          : {}),
+      });
+    }
+
+    const generationStatus = remixGenerationStatusFromMetadata(
+      project.generationMetadata,
+    );
+    const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
+    if (generationStatus !== "completed" || !outputUri) {
+      throw new ConflictException({
+        code: "draft_not_completed",
+        message:
+          "Only a completed draft can be published. Generate a draft and wait for it to finish first.",
+        generationStatus: generationStatus ?? "none",
+      });
+    }
+
+    const stemIds = project.stems.map((stem) => stem.stemId);
+    const eligibility = await this.eligibilityService.checkEligibility({
+      userId,
+      trackId: project.sourceTrackId,
+      stemIds,
+    });
+    if (!eligibility.allowed) {
+      this.publishDenialEvents(
+        { userId, sourceTrackId: project.sourceTrackId, stemIds },
+        eligibility,
+      );
+      throw new ForbiddenException({
+        message: "Publishing this remix is not allowed for its source",
+        eligibility,
+      });
+    }
+    if (!eligibility.allowedActions.includes("publish_resonate")) {
+      throw new ForbiddenException({
+        message:
+          "Publishing on Resonate is not part of the allowed actions for this remix",
+        eligibility,
+      });
+    }
+
+    const audioBytes = await this.storageProvider.download(outputUri);
+    if (!audioBytes) {
+      throw new ConflictException({
+        code: "draft_output_missing",
+        message:
+          "The draft audio could not be loaded from storage. Regenerate the draft and try again.",
+      });
+    }
+
+    const metadata = normalizeMetadataObject(project.generationMetadata);
+    const output = normalizeMetadataObject(metadata.output);
+    const mimeType =
+      draftMimeTypeFromMetadata(project.generationMetadata) ??
+      draftMimeTypeFromUri(outputUri);
+    const grounding =
+      draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
+    // AI integrity (#1164): stem_audio renders contain the licensed source
+    // audio itself; everything else is generated and must be disclosed.
+    const aiGenerated = grounding !== "stem_audio";
+
+    // Copy the draft audio into a catalog-owned object so the published
+    // release never depends on the draft's working URI.
+    const storageResult = await this.storageProvider.upload(
+      audioBytes,
+      `remix-published-${project.id}${audioExtensionForMimeType(mimeType)}`,
+      mimeType,
+    );
+
+    const artist = await this.resolveCreatorArtist(userId);
+    const sourceArtistId = project.sourceTrack.release.artistId;
+    const sourceArtistName =
+      project.sourceTrack.artist ??
+      project.sourceTrack.release.primaryArtist ??
+      null;
+    const attribution = `Remix of "${project.sourceTrack.title}"${
+      sourceArtistName ? ` by ${sourceArtistName}` : ""
+    }`;
+    const publishedAt = new Date().toISOString();
+
+    // E3 groundwork: enough machine-readable lineage to mint license/
+    // lineage records later without reprocessing, plus the AI-disclosure
+    // shape (#1164) the release page renders.
+    const releaseTrackMetadata = {
+      kind: "remix_publish",
+      remixProjectId: project.id,
+      sourceTrackId: project.sourceTrackId,
+      sourceReleaseId: project.sourceTrack.release.id,
+      sourceTrackTitle: project.sourceTrack.title,
+      sourceArtistName,
+      sourceStemIds: stemIds,
+      attribution,
+      provider: project.generationProvider,
+      mode: project.mode,
+      grounding,
+      aiGenerated,
+      synthIdPresent:
+        typeof output.synthIdPresent === "boolean"
+          ? output.synthIdPresent
+          : null,
+      seed: typeof output.seed === "number" ? output.seed : null,
+      sampleRate:
+        typeof output.sampleRate === "number" ? output.sampleRate : null,
+      policyVersion: eligibility.policyVersion,
+      publishedAt,
+    };
+
+    const rightsFields = {
+      rightsRoute: "STANDARD_ESCROW",
+      rightsFlags: [] as string[],
+      rightsReason: REMIX_PUBLISH_RIGHTS_REASON,
+      rightsPolicyVersion: UPLOAD_RIGHTS_POLICY_VERSION,
+      rightsEvaluatedAt: new Date(),
+    };
+
+    const release = await prisma.$transaction(async (tx) => {
+      // Conditional claim (#1167 standard): only the writer that flips
+      // draft → published creates the release; a concurrent publish sees
+      // zero rows and conflicts instead of creating a second release.
+      const claimed = await tx.remixProject.updateMany({
+        where: { id: project.id, status: "draft" },
+        data: { status: "published", attribution },
+      });
+      if (claimed.count === 0) {
+        throw new ConflictException({
+          code: "already_published",
+          message: "This remix project was already published.",
+        });
+      }
+
+      const createdRelease = await tx.release.create({
+        data: {
+          artistId: artist.id,
+          title: project.title,
+          status: "ready",
+          type: "remix",
+          primaryArtist: artist.displayName,
+          ...rightsFields,
+          rightsSourceType: REMIX_PUBLISH_RIGHTS_SOURCE,
+          tracks: {
+            create: {
+              title: project.title,
+              artist: artist.displayName,
+              processingStatus: "complete",
+              generationMetadata: releaseTrackMetadata as Prisma.JsonObject,
+              ...rightsFields,
+              stems: {
+                create: {
+                  type: "master",
+                  uri: storageResult.uri,
+                  storageProvider: storageResult.provider,
+                  // Local storage serves stem blobs from the DB row, like
+                  // the AI-generation flow.
+                  data:
+                    storageResult.provider === "local"
+                      ? audioBytes
+                      : undefined,
+                  mimeType,
+                },
+              },
+            },
+          },
+        },
+        include: { tracks: { select: { id: true } } },
+      });
+
+      await tx.remixProject.update({
+        where: { id: project.id },
+        data: { publishedReleaseId: createdRelease.id },
+      });
+
+      return createdRelease;
+    });
+
+    const trackId = release.tracks[0].id;
+
+    this.eventBus.publish({
+      eventName: "remix.published",
+      eventVersion: 1,
+      occurredAt: publishedAt,
+      remixProjectId: project.id,
+      creatorId: userId,
+      sourceTrackId: project.sourceTrackId,
+      // Cockpit attribution (#1121): the signal belongs to the artist
+      // whose track was remixed.
+      ...(sourceArtistId ? { artistId: sourceArtistId } : {}),
+      releaseId: release.id,
+      trackId,
+      mode: project.mode,
+      grounding,
+      aiGenerated,
+      creatorOwner: eligibility.creatorOwner,
+      policyVersion: eligibility.policyVersion,
+    });
+
+    const updated = (await loadProject(project.id))!;
+    return {
+      ...this.toResponse(updated),
+      publishedRelease: { releaseId: release.id, trackId },
+    };
+  }
+
+  /**
+   * The catalog release needs an Artist row; remix creators without one get
+   * a profile on first publish (same pattern as the AI-generation flow).
+   */
+  private async resolveCreatorArtist(userId: string) {
+    const existing = await prisma.artist.findFirst({ where: { userId } });
+    if (existing) return existing;
+    return prisma.artist.create({
+      data: { userId, displayName: "Remix Creator", payoutAddress: userId },
+    });
+  }
+
   async getDraftAudio(
     userId: string,
     projectId: string,
@@ -878,6 +1157,7 @@ export class RemixProjectService {
       attribution: project.attribution,
       exportPolicy: project.exportPolicy,
       policyVersion: project.policyVersion,
+      publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       source: {
@@ -908,6 +1188,13 @@ export class RemixProjectService {
       ...(eligibility ? { eligibility } : {}),
     };
   }
+}
+
+function audioExtensionForMimeType(mimeType: string): string {
+  if (mimeType === "audio/wav") return ".wav";
+  if (mimeType === "audio/mpeg") return ".mp3";
+  if (mimeType === "audio/ogg") return ".ogg";
+  return ".bin";
 }
 
 function normalizeMetadataObject(metadata: unknown): Record<string, unknown> {
