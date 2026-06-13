@@ -30,8 +30,20 @@ consent controls (backlog A1) are shipped: artists can globally disable remix
 access while preserving existing private drafts. Queue-backed jobs (D3) are
 shipped: long-running provider calls run in BullMQ, the studio polls pending
 jobs, and retries are explicit. Stem-mix rendering (#1189) is shipped: the
-arranged stems render server-side into a real draft with no AI involved. Publish/export and manual approval states
-remain planned; the MVP epic is
+arranged stems render server-side into a real draft with no AI involved.
+In-Resonate publishing (backlog E2,
+[#1196](https://github.com/akoita/resonate/issues/1196)) is shipped: an owner
+can publish a completed draft as a catalog remix release via
+`POST /remix/projects/:id/publish`. Publishing re-checks eligibility
+server-side at publish time (a consent flip or quarantine between draft and
+publish blocks it) and enforces the policy's `allowedActions.publish_resonate`;
+it creates a `type: "remix"` release with one track carrying machine-readable
+lineage (source track/release/stem IDs, remix project ID, provider, mode,
+`grounding`, AI-disclosure flag, policy version), records the published release
+on the project, and locks the project against further edits/generation. The
+release page renders the source attribution and the honest AI-provenance label.
+Export/download (license-gated) and License-NFT/ancestry minting (E3) remain
+planned; the MVP epic is
 [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
@@ -122,9 +134,13 @@ from the JWT, never the request body.
   - `remix.studio_opened` — studio editor mount; `projectId`,
     `sourceTrackId`, `stemCount`, `mode`.
   - `remix.studio_saved` — successful project PATCH; `projectId`, `mode`.
-  - `remix.studio_action_unavailable` — click on a locked publish/export
-    control; `projectId`, `action`, stable `reasonCode`
-    (`publish_not_available` | `export_rights_required`).
+  - `remix.published` — successful in-Resonate publish; `projectId`,
+    `releaseId`, `mode`.
+  - `remix.studio_action_unavailable` — click on a gated publish control or a
+    locked export control; `projectId`, `action`, stable `reasonCode`
+    (publish gates: `publish_needs_completed_draft` | `publish_dirty` |
+    `publish_eligibility_loading` | `publish_not_allowed`; export:
+    `export_rights_required`).
   - Limitation: the product-analytics endpoint is authenticated, so
     `signed_out` CTA states are only recorded once the user has a session
     elsewhere in the app; fully anonymous impressions are not captured.
@@ -259,6 +275,23 @@ from the JWT, never the request body.
   `generationMetadata.output.outputUri` through the storage provider and
   returns 404 when no playable draft exists. It does not expose raw storage
   URIs or create a download/export path.
+- API (#1196, backlog E2): `POST /remix/projects/:id/publish` — owner-only,
+  publishes a completed draft as a catalog remix release. Re-runs
+  `checkEligibility` at publish time (consent flips and quarantines between
+  draft and publish block it) and enforces `allowedActions.publish_resonate`
+  on top of `allowed`; only completed drafts publish (409 otherwise).
+  Publishing is conflict-safe — a conditional `status='draft'` claim plus a
+  unique `publishedReleaseId` make a double publish unable to create two
+  releases. The created `type: "remix"` release has one track whose audio is a
+  catalog-owned copy of the draft output (served by existing catalog
+  streaming, no new raw-URI surface), with lineage metadata: source
+  track/release/stem IDs, remix project ID, provider, mode, `grounding`,
+  `aiGenerated` (`grounding !== "stem_audio"`, #1164), and policy version.
+  Published projects reject PATCH edits and generation while staying readable.
+  Emits `remix.published` (artistId-attributed for the cockpit, #1121;
+  bridge-whitelisted in the same change). `GET /remix/releases/...` is served
+  by the catalog; `getRelease` returns a focused `remix` provenance summary
+  for `type: "remix"` releases.
 
 - Generation provider (#1162, backlog D2): `LyriaRemixGenerationProvider`
   reuses the catalog Lyria stack behind the provider boundary, selected via
@@ -297,9 +330,10 @@ from the JWT, never the request body.
   eligibility fan-out).
 - API/UI: manual approval remix consent states remain deferred; the shipped
   A1 slice supports `allowed` and `disabled`.
-- API: `POST /remix/projects/:id/publish`.
-- API: `POST /remix/projects/:id/export`.
-- Events: `remix.published`.
+- API: `POST /remix/projects/:id/export` (license-gated download; the export
+  button keeps its honest disabled state).
+- Protocol: License-NFT / AncestryTracker minting from published lineage (E3 —
+  #1196 persists the lineage data only).
 
 ## Product Rules
 

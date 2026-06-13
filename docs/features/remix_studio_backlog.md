@@ -212,20 +212,30 @@ Acceptance:
 - Generated output can be previewed later from the same project.
 - Source lineage is visible in project data.
 
-### E2. Publish inside Resonate
+### E2. Publish inside Resonate — shipped (#1196)
 
-- Create a catalog derivative or remix release when allowed.
-- Attach source track/stem IDs.
-- Surface attribution on release detail.
+- Create a catalog derivative or remix release when allowed. ✅ `type: "remix"`
+  release via `POST /remix/projects/:id/publish`.
+- Attach source track/stem IDs. ✅ Track lineage metadata carries source
+  track/release/stem IDs, remix project ID, provider, mode, `grounding`,
+  AI-disclosure flag, and policy version.
+- Surface attribution on release detail. ✅ Release page renders
+  `Remix of "<track>" by <artist>`, a source-release link, and the
+  AI-provenance label.
 - Create publication-scoped attribution proof for opted-in public
-  remixer/contributor recognition.
+  remixer/contributor recognition. ⏳ Deferred — tracked via the
+  [remix/contributor credential boundaries RFC](../rfc/remix-contributor-credential-boundaries.md);
+  this slice persists the lineage data only.
 
 Acceptance:
 
-- Published remix appears in catalog with source attribution.
-- Publication is blocked when license terms do not allow it.
+- Published remix appears in catalog with source attribution. ✅
+- Publication is blocked when license terms do not allow it. ✅ Eligibility is
+  re-checked server-side at publish time and `allowedActions.publish_resonate`
+  is enforced; consent flips and quarantines between draft and publish block it.
 - Public credential proof is not created for private drafts, unpublished
-  projects, disputed works, or rights-blocked sources.
+  projects, disputed works, or rights-blocked sources. ✅ No credential proof is
+  minted in this slice (deferred to E3 / the credential RFC).
 
 ### E3. Prepare License NFT and ancestry integration
 
