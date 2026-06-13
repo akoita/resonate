@@ -454,6 +454,7 @@ model Release {
   tracks                Track[]
   rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
   rightsReassessments   RightsRouteReassessment[]
+  publishedRemixProject RemixProject?                 @relation("RemixProjectPublishedRelease")
 
   @@index([rightsRoute])
 }
@@ -793,7 +794,7 @@ model RemixProject {
   creatorUserId      String
   sourceTrackId      String
   title              String
-  status             String             @default("draft") // draft, archived
+  status             String             @default("draft") // draft, archived, published
   mode               String             @default("stem_mix") // stem_mix, variation, extension
   licenseType        LicenseType        @default(remix)
   licenseId          String?
@@ -804,10 +805,12 @@ model RemixProject {
   attribution        String?            @db.Text
   exportPolicy       Json?
   policyVersion      String
+  publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   creator            User               @relation(fields: [creatorUserId], references: [id])
   sourceTrack        Track              @relation(fields: [sourceTrackId], references: [id])
+  publishedRelease   Release?           @relation("RemixProjectPublishedRelease", fields: [publishedReleaseId], references: [id])
   stems              RemixProjectStem[]
 
   @@index([creatorUserId, createdAt])

@@ -1114,6 +1114,33 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId", "generationJobId"],
   },
   {
+    eventName: "remix.published",
+    producer: "remix-service",
+    subjectType: "remix_project",
+    subjectIdKeys: ["remixProjectId"],
+    actorIdKeys: ["creatorId"],
+    payloadKeys: [
+      "remixProjectId",
+      "creatorId",
+      "sourceTrackId",
+      // Source-artist attribution (#1121): the warehouse keys facts on
+      // payload artistId; without it the cockpit card never sees these.
+      "artistId",
+      "releaseId",
+      "trackId",
+      "mode",
+      // Provenance (#1192/#1194) and AI disclosure (#1164) of the
+      // published audio.
+      "grounding",
+      "aiGenerated",
+      // Artist-owner remixes (#1174): lets demand signals exclude artists
+      // publishing remixes of their own material from buyer-demand counts.
+      "creatorOwner",
+      "policyVersion",
+    ],
+    sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId", "releaseId"],
+  },
+  {
     eventName: "artist.remix_consent_updated",
     producer: "artist-service",
     subjectType: "artist",

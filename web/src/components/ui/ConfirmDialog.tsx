@@ -284,6 +284,9 @@ export function ConfirmDialog({
                         color: "rgba(255, 255, 255, 0.5)",
                         margin: 0,
                         maxWidth: "320px",
+                        // Honor paragraph breaks in multi-line messages
+                        // (e.g. the remix publish summary, #1196).
+                        whiteSpace: "pre-line",
                     }}>
                         {message}
                     </p>

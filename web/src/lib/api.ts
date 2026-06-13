@@ -359,6 +359,20 @@ export type Release = {
     payoutAddress?: string | null;
   };
   artistCredits?: ReleaseArtistCredit[];
+  /** Present for `type === "remix"` releases published from the studio (#1196). */
+  remix?: RemixReleaseProvenance | null;
+};
+
+/** Source attribution + AI provenance for a published remix release (#1196). */
+export type RemixReleaseProvenance = {
+  attribution: string;
+  sourceTrackId: string | null;
+  sourceReleaseId: string | null;
+  sourceTrackTitle: string | null;
+  sourceArtistName: string | null;
+  grounding: "stem_audio" | "feature_conditioned" | "prompt_only" | string | null;
+  aiGenerated: boolean;
+  remixProjectId: string | null;
 };
 
 export type ReleaseArtistCredit = {
@@ -3982,11 +3996,18 @@ export type RemixProject = {
   attribution: string | null;
   exportPolicy: unknown;
   policyVersion: string;
+  /** Set once the draft is published as a catalog remix release (#1196). */
+  publishedReleaseId: string | null;
   createdAt: string;
   updatedAt: string;
   source: RemixProjectSource;
   stems: RemixProjectStem[];
   eligibility?: RemixEligibilityResponse;
+};
+
+/** Shape returned by POST /remix/projects/:id/publish (#1196). */
+export type RemixPublishResult = RemixProject & {
+  publishedRelease: { releaseId: string; trackId: string };
 };
 
 export type RemixProjectPatch = {
@@ -4089,6 +4110,14 @@ export async function createRemixProject(
   return apiRequest<RemixProject>(
     "/remix/projects",
     { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+export async function publishRemixProject(token: string, projectId: string) {
+  return apiRequest<RemixPublishResult>(
+    `/remix/projects/${projectId}/publish`,
+    { method: "POST" },
     token
   );
 }

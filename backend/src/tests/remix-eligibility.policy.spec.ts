@@ -135,26 +135,34 @@ describe("remix eligibility policy", () => {
     expect(decision.requiredLicense).toBe("remix");
   });
 
-  it("allows private drafts for licensed standard-escrow sources", () => {
+  it("allows private drafts and publish for licensed standard-escrow sources", () => {
     const decision = evaluateRemixEligibility(input());
     expect(decision.allowed).toBe(true);
     expect(decision.requiredLicense).toBeNull();
-    expect(decision.allowedActions).toEqual(["private_draft"]);
+    expect(decision.allowedActions).toEqual([
+      "private_draft",
+      "publish_resonate",
+    ]);
     expect(decision.reasons).toEqual([]);
     expect(decision.policyVersion).toBe(REMIX_POLICY_VERSION);
   });
 
-  it("allows private drafts for licensed trusted-fast-path sources", () => {
+  it("allows private drafts and publish for licensed trusted-fast-path sources", () => {
     const decision = evaluateRemixEligibility(
       input({ rightsRoute: "TRUSTED_FAST_PATH" }),
     );
     expect(decision.allowed).toBe(true);
-    expect(decision.allowedActions).toEqual(["private_draft"]);
+    expect(decision.allowedActions).toEqual([
+      "private_draft",
+      "publish_resonate",
+    ]);
   });
 
-  it("does not grant publish or export actions in v1", () => {
+  // v5 (#1196): publishing inside Resonate is granted; export stays closed
+  // until exportable license terms exist (backlog E).
+  it("grants publish_resonate but not export in v5", () => {
     const decision = evaluateRemixEligibility(input());
-    expect(decision.allowedActions).not.toContain("publish_resonate");
+    expect(decision.allowedActions).toContain("publish_resonate");
     expect(decision.allowedActions).not.toContain("export");
   });
 
@@ -171,7 +179,10 @@ describe("remix eligibility policy", () => {
         }),
       );
       expect(decision.allowed).toBe(true);
-      expect(decision.allowedActions).toEqual(["private_draft"]);
+      expect(decision.allowedActions).toEqual([
+        "private_draft",
+        "publish_resonate",
+      ]);
     });
 
     it("still requires a license when no stem is licensed", () => {
