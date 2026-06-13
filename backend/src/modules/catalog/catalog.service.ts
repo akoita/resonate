@@ -828,9 +828,6 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
-            // Remix lineage (#1196): source attribution + AI-provenance
-            // label for published remix releases.
-            generationMetadata: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -1438,9 +1435,17 @@ export class CatalogService implements OnModuleInit {
     }
 
     // Remix releases (#1196) carry source attribution + AI provenance from the
-    // published track's lineage metadata, surfaced as a focused summary so the
-    // release page never parses the raw blob.
-    return { ...release, remix: this.deriveRemixProvenance(release) };
+    // published track's lineage metadata, surfaced as a focused summary. The
+    // raw generationMetadata blob is read only to derive that summary and is
+    // then stripped — it holds internal fields (generation cost, prompts,
+    // seed) that must never reach this unauthenticated public read.
+    const remix = this.deriveRemixProvenance(release);
+    const { tracks, ...rest } = release;
+    return {
+      ...rest,
+      tracks: tracks?.map(({ generationMetadata: _omit, ...track }) => track),
+      remix,
+    };
   }
 
   private deriveRemixProvenance(release: {
@@ -1577,9 +1582,6 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
-            // Remix lineage (#1196): source attribution + AI-provenance
-            // label for published remix releases.
-            generationMetadata: true,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,

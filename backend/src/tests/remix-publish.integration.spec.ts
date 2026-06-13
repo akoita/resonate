@@ -52,6 +52,23 @@ const storageProvider = {
 const generationQueue = { add: jest.fn().mockResolvedValue({ id: "queued" }) };
 const stemMixRenderer = { render: jest.fn() };
 
+function newCatalog(): CatalogService {
+  const configService = new ConfigService({
+    ENCRYPTION_SECRET:
+      process.env.ENCRYPTION_SECRET ||
+      "test-encryption-secret-for-integration",
+  });
+  return new CatalogService(
+    new EventBus(),
+    new EncryptionService(
+      new AesEncryptionProvider(configService) as any,
+      configService,
+    ) as any,
+    new LocalStorageProvider(),
+    new UploadRightsRoutingService(),
+  );
+}
+
 function completedGenerationMetadata(overrides: Record<string, unknown> = {}) {
   return {
     status: "completed",
@@ -377,27 +394,31 @@ describe("Remix publish (integration)", () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);
 
-    const configService = new ConfigService({
-      ENCRYPTION_SECRET:
-        process.env.ENCRYPTION_SECRET ||
-        "test-encryption-secret-for-integration",
-    });
-    const catalog = new CatalogService(
-      new EventBus(),
-      new EncryptionService(
-        new AesEncryptionProvider(configService) as any,
-        configService,
-      ) as any,
-      new LocalStorageProvider(),
-      new UploadRightsRoutingService(),
-    );
-
-    const stream = await catalog.getTrackStream(
+    const stream = await newCatalog().getTrackStream(
       result.publishedRelease.trackId,
     );
     expect(stream).not.toBeNull();
     expect(Buffer.from(stream!.data)).toEqual(DRAFT_AUDIO);
     expect(stream!.mimeType).toBe("audio/mpeg");
+  });
+
+  it("getRelease exposes the remix summary but strips the raw lineage blob (#1196 security)", async () => {
+    const project = await createProjectRow({ userId: CREATOR_ID });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+
+    const release = await newCatalog().getRelease(result.publishedReleaseId!);
+    expect(release).not.toBeNull();
+    expect(release!.remix).toMatchObject({
+      attribution: 'Remix of "Source Track" by Publish Test Artist',
+      sourceReleaseId: RELEASE_ID,
+      grounding: "stem_audio",
+      aiGenerated: false,
+    });
+    // The public read must not leak the raw generationMetadata blob (it can
+    // hold generation cost, prompts, and seed for AI-generated tracks).
+    for (const track of release!.tracks ?? []) {
+      expect(track).not.toHaveProperty("generationMetadata");
+    }
   });
 
   it("publishes under the existing artist profile for artist-owner remixes (#1174)", async () => {
