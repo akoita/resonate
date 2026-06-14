@@ -1,0 +1,10 @@
+# Stable Audio 3 spike (#1193) — throwaway evaluation deps.
+# Pin against whatever the Stability-AI/stable-audio-3 repo requires at run
+# time; these are the documented baseline. Flash Attention 2 + CUDA required.
+torch
+torchaudio
+# Stability's standalone package (Stable Audio 3 has no diffusers pipeline):
+#   pip install git+https://github.com/Stability-AI/stable-audio-3.git
+# It pulls flash-attn; install flash-attn from a matching CUDA wheel first if
+# the source build is slow:
+#   pip install flash-attn --no-build-isolation
