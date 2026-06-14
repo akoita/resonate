@@ -3058,3 +3058,36 @@ npx jest --runInBand --config jest.integration.config.js --testPathPattern='stem
 npm run test && full integration suite  # see PR
 git diff --check
 ```
+
+## 2026-06-13 — #1199 Graceful client session reset
+
+Scope: public `GET /health` stamp (appVersion/environmentId/dataEpoch),
+frontend environment guard + guided reset dialog + `resetLocalAppState`,
+Settings troubleshooting control.
+
+### Findings
+
+- `GET /health` exposes only a build/environment stamp — no secrets, no
+  user data, no DB access. It is intentionally public (the client must read
+  it before authenticating). `environmentId`/`dataEpoch` are operator-set
+  opaque strings, not infrastructure identifiers.
+- The reset clears only app-owned `localStorage` keys (enumerated allow-list
+  in `authSession.ts`); an unrelated-key survival test guards against
+  over-broad clearing. It cannot and does not touch the platform passkey
+  authenticator — and the dialog copy explicitly tells users their passkey
+  is not deleted, never instructing key deletion (passkeys may control real
+  smart accounts).
+- A failed `/health` is treated as "no change", so a transient network error
+  can never trigger an auth-destroying prompt. Reset is always user-confirmed
+  (guided dialog), never silent/automatic.
+- No new outbound calls beyond `${API_BASE}/health`; 10s abort timeout.
+
+### Commands Run
+
+```bash
+cd web && npx vitest run src/lib/appEnvironment.test.ts src/lib/authSession.test.ts  # 12 passed
+cd web && npx tsc --noEmit   # pre-existing 12-error baseline only
+cd backend && npx tsc --noEmit   # clean (after prisma generate)
+cd backend && npx jest --config jest.integration.config.js --testPathPattern='health.integration'
+git diff --check
+```

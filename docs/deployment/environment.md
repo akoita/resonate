@@ -67,6 +67,9 @@ When adding a new environment variable:
 | `ANALYTICS_RETENTION_PSEUDONYMOUS_DAYS` | Backend | Optional pseudonymous raw analytics event retention window. Defaults to `730` days. |
 | `DEMUCS_CLOUD_RUN_JOB_PROJECT` | Backend | Optional project for on-demand Demucs Cloud Run Job execution. Defaults to `GCP_PROJECT_ID` when unset |
 | `DEMUCS_CLOUD_RUN_JOB_REGION` | Backend | Cloud Run region for on-demand Demucs jobs |
+| `RESONATE_ENVIRONMENT_ID` | Backend | Stable identity of this backend environment, returned by `GET /health` (#1199). Defaults to `local`. Set a distinct value per environment (e.g. `staging`, `prod`, or the project) — when it changes, browsers pointed at it prompt a guided client session reset, which is what makes a backend migration (#915) graceful for users |
+| `RESONATE_DATA_EPOCH` | Backend | Bump this string when data is reset/migrated within the same environment to trigger the same guided client reset without changing `RESONATE_ENVIRONMENT_ID` (#1199). Defaults to `1` |
+| `APP_VERSION` | Backend | Deployed build version surfaced by `GET /health` for client version-skew detection (#1199). Falls back to the backend package version |
 | `DEMUCS_WORKER_URL` | Backend | Demucs worker base URL for separation requests and the stem feature backfill (`POST /admin/stems/backfill-audio-features` → worker `/analyze`). Defaults to `http://localhost:8000` |
 | `WORKER_MAX_UPLOAD_BYTES` | Demucs worker | Optional upload ceiling for the worker's `/separate` and `/analyze` endpoints (default `209715200` = 200 MiB). Oversized uploads are refused with HTTP 413 before touching disk-backed processing (#1184) |
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
