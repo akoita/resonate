@@ -19,8 +19,17 @@ describe("Health", () => {
   });
 
   it("returns ok", async () => {
-    await request(app.getHttpServer()).get("/health").expect(200).expect({
-      status: "ok",
-    });
+    const res = await request(app.getHttpServer()).get("/health").expect(200);
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        appVersion: expect.any(String),
+        environmentId: expect.any(String),
+        dataEpoch: expect.any(String),
+      }),
+    );
+    // Defaults make the stamp meaningful even without env vars set (#1199).
+    expect(res.body.environmentId.length).toBeGreaterThan(0);
+    expect(res.body.dataEpoch.length).toBeGreaterThan(0);
   });
 });

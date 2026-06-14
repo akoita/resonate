@@ -9,6 +9,8 @@ import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSetti
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import { useToast } from "../../components/ui/Toast";
+import { SessionResetDialog } from "../../components/system/SessionResetDialog";
+import { resetLocalAppState } from "../../lib/authSession";
 import {
     getLibrarySourceHandles,
     getUniqueLibrarySourceHandles,
@@ -26,7 +28,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "notifications";
+type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "notifications" | "troubleshooting";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -70,12 +72,29 @@ const SETTINGS_SECTIONS: Array<{
         eyebrow: "Alerts",
         description: "Disputes, marketplace, and realtime delivery.",
     },
+    {
+        id: "troubleshooting",
+        label: "Troubleshooting",
+        eyebrow: "This browser",
+        description: "Reset this browser's saved session if something looks off.",
+    },
 ];
 
 export default function SettingsPage() {
     const { addToast } = useToast();
-    const { token } = useAuth();
+    const { token, disconnect } = useAuth();
     const [activeSection, setActiveSection] = useState<SettingsSectionId>("library");
+    const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+
+    const handleResetLocalSession = () => {
+        resetLocalAppState();
+        try {
+            disconnect();
+        } catch {
+            // best-effort; the storage clear is what matters.
+        }
+        window.location.reload();
+    };
     const [settings, setSettings] = useState<LibrarySettings | null>(null);
     const [sourceNames, setSourceNames] = useState<string[]>([]);
     const [scanning, setScanning] = useState(false);
@@ -504,9 +523,40 @@ export default function SettingsPage() {
                                 <NotificationPreferences />
                             </div>
                         ) : null}
+
+                        {activeSection === "troubleshooting" ? (
+                            <div className="settings-section">
+                                <div className="settings-section-header">
+                                    <div>
+                                        <span className="settings-kicker">This browser</span>
+                                        <h2 className="settings-section-title">Troubleshooting</h2>
+                                        <p className="settings-copy">
+                                            If sign-in or data looks wrong after an update, reset this
+                                            browser&apos;s saved session and start fresh. This only clears
+                                            local data on this device — your passkey is never deleted and
+                                            still controls any account it created, and nothing on-chain is
+                                            affected.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="settings-source">
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => setResetConfirmOpen(true)}
+                                    >
+                                        Reset local session
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : null}
                     </section>
                 </div>
             </main>
+            <SessionResetDialog
+                isOpen={resetConfirmOpen}
+                onReset={handleResetLocalSession}
+                onDismiss={() => setResetConfirmOpen(false)}
+            />
         </AuthGate>
     );
 }

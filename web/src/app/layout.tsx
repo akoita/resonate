@@ -9,6 +9,7 @@ import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
+import { AppStateGuard } from "../components/system/AppStateGuard";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -95,6 +96,7 @@ export default function RootLayout({
         <ToastProvider>
           <ZeroDevProviderClient projectId={process.env.NEXT_PUBLIC_ZERODEV_PROJECT_ID}>
             <AuthProvider>
+              <AppStateGuard />
               <AppShell>{children}</AppShell>
             </AuthProvider>
           </ZeroDevProviderClient>
