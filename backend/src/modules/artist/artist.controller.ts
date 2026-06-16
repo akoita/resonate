@@ -4,6 +4,7 @@ import {
     Get,
     Patch,
     Post,
+    Query,
     Request,
     UseGuards,
     Param,
@@ -20,6 +21,18 @@ export class ArtistController {
     @Get("me")
     getMe(@Request() req: any) {
         return this.artistService.getProfile(req.user.userId);
+    }
+
+    // Declared before `@Get(":id")` so "search" is matched as a literal route
+    // rather than being captured as an artist id param.
+    @UseGuards(AuthGuard("jwt"))
+    @Get("search")
+    search(@Query("q") q?: string, @Query("limit") limit?: string) {
+        const parsedLimit = limit ? Number.parseInt(limit, 10) : undefined;
+        return this.artistService.searchByName(
+            q ?? "",
+            parsedLimit !== undefined && Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+        );
     }
 
     @UseGuards(AuthGuard("jwt"))

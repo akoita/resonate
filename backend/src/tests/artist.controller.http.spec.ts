@@ -26,6 +26,9 @@ const mockArtistService = {
     remixConsent: "disabled",
     updatedAt: "2026-06-11T19:31:00.000Z",
   }),
+  searchByName: jest.fn().mockResolvedValue([
+    { id: "artist-1", displayName: "Bouba", imageUrl: null, profileType: "manager", claimStatus: "claimed" },
+  ]),
 };
 
 describe("ArtistController (e2e)", () => {
@@ -89,5 +92,32 @@ describe("ArtistController (e2e)", () => {
       .get("/artists/missing/settings")
       .set("Authorization", `Bearer ${authToken("user-without-artist")}`)
       .expect(404);
+  });
+
+  it("GET /artists/search -> 401 without JWT", async () => {
+    await request(app.getHttpServer()).get("/artists/search?q=bou").expect(401);
+  });
+
+  it("GET /artists/search -> 200, matched as a literal route (not :id) and forwards q + limit", async () => {
+    const res = await request(app.getHttpServer())
+      .get("/artists/search?q=bou&limit=5")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body[0].displayName).toBe("Bouba");
+    // "search" must hit searchByName, never the :id getById handler.
+    expect(mockArtistService.searchByName).toHaveBeenCalledWith("bou", 5);
+    expect(mockArtistService.findById).not.toHaveBeenCalled();
+  });
+
+  it("GET /artists/search -> defaults the limit when omitted/non-numeric", async () => {
+    await request(app.getHttpServer())
+      .get("/artists/search?q=bou")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    // undefined limit lets the service default apply.
+    expect(mockArtistService.searchByName).toHaveBeenCalledWith("bou", undefined);
   });
 });
