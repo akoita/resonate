@@ -11,6 +11,14 @@ tracked). This runbook is the other gate: does the model actually produce
 **variations/extensions of a specific licensed stem**, fast enough and small
 enough to self-host?
 
+## One-click: Colab notebook
+
+The fastest path is the self-contained notebook **`stable_audio_3_spike_colab.ipynb`**
+in this directory — open it in Colab (or any Jupyter on an Ampere+ GPU), set an
+L4/A100 runtime, paste your HF token, Run-all, listen, score. No repo clone or
+GitHub auth needed; the harness logic is inlined. The CLI steps below are the
+equivalent for a raw VM.
+
 ## The question the spike answers
 
 A pass = a draft that **stays recognizable as the source stem** while applying
