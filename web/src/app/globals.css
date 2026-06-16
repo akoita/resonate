@@ -13991,6 +13991,188 @@ tr[draggable="true"]:hover {
 }
 
 /* ==================================================================
+   ARTIST AUTOCOMPLETE / TAG INPUT
+   Reuse-existing-artist picker for the upload studio (duplicate guard).
+   ================================================================== */
+.artist-suggest {
+  display: block;
+}
+
+.artist-suggest__field {
+  position: relative;
+}
+
+.artist-suggest__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--ds-surface, #15131c);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.artist-suggest__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.artist-suggest__option--active {
+  background: rgba(var(--color-accent-rgb), 0.18);
+}
+
+.artist-suggest__avatar {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: rgba(var(--color-accent-rgb), 0.25);
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.artist-suggest__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.artist-suggest__avatar--add {
+  background: rgba(var(--color-accent-rgb), 0.15);
+  color: var(--color-accent);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.artist-suggest__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-suggest__badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.artist-suggest__create .artist-suggest__name {
+  color: var(--color-muted);
+}
+
+.artist-suggest__create .artist-suggest__name strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.artist-suggest__status {
+  padding: var(--space-2) var(--space-3);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.artist-suggest__hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-muted);
+}
+
+.artist-suggest__hint--existing {
+  color: var(--color-success, #34d399);
+}
+
+/* Chip-based multi-select (Featured artists) */
+.artist-tags {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: transparent;
+}
+
+.artist-tags:focus-within {
+  border-color: rgba(var(--color-accent-rgb), 0.6);
+}
+
+.artist-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: rgba(var(--color-accent-rgb), 0.18);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.artist-tag__remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.artist-tag__remove:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.artist-tags__field-wrap {
+  flex: 1 1 140px;
+  min-width: 140px;
+}
+
+.artist-tags__field {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  padding: 4px 2px;
+  font: inherit;
+}
+
+/* ==================================================================
    ARTIST ANALYTICS Overhaul Premium Styling Override
    ================================================================== */
 

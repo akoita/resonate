@@ -7,6 +7,7 @@ import ArtistGate from "../../../components/auth/ArtistGate";
 import { Button } from "../../../components/ui/Button";
 import { Card } from "../../../components/ui/Card";
 import { Input } from "../../../components/ui/Input";
+import { ArtistAutocomplete, ArtistTagInput } from "../../../components/ui/ArtistAutocomplete";
 import { FileDropZone } from "../../../components/ui/FileDropZone";
 import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
@@ -1086,7 +1087,14 @@ export default function ArtistUploadPage() {
                   </label>
                   <label>
                     Primary artist
-                    <Input name="primaryArtist" placeholder="Aya Lune" value={formData.primaryArtist} onChange={handleInputChange} />
+                    <ArtistAutocomplete
+                      token={token}
+                      name="primaryArtist"
+                      ariaLabel="Primary artist"
+                      placeholder="Aya Lune"
+                      value={formData.primaryArtist}
+                      onChange={(value) => setFormData(prev => ({ ...prev, primaryArtist: value }))}
+                    />
                     {artistProfile?.displayName && (
                       <span className="studio-field-help">
                         Defaults to your managed artist profile: {artistProfile.displayName}.
@@ -1454,22 +1462,25 @@ export default function ArtistUploadPage() {
                       </label>
                       <label>
                         Track artist
-                        <Input
+                        <ArtistAutocomplete
+                          token={token}
+                          ariaLabel="Track artist"
                           value={stems.find(s => s.id === selectedStemId)?.metadata.artist || ""}
                           placeholder={formData.primaryArtist || "Official artist name"}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, artist: val } } : s));
+                          onChange={(value) => {
+                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, artist: value } } : s));
                           }}
                         />
                       </label>
                       <label>
-                        Featured artists (comma-separated)
-                        <Input
+                        Featured artists
+                        <ArtistTagInput
+                          token={token}
+                          ariaLabel="Featured artists"
+                          placeholder="Search or add a featured artist…"
                           value={stems.find(s => s.id === selectedStemId)?.metadata.featuredArtists || ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, featuredArtists: val } } : s));
+                          onChange={(value) => {
+                            setStems(prev => prev.map(s => s.id === selectedStemId ? { ...s, metadata: { ...s.metadata, featuredArtists: value } } : s));
                           }}
                         />
                       </label>

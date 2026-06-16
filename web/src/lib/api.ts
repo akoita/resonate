@@ -690,6 +690,41 @@ export async function getArtistMe(token: string) {
   return apiRequest<ArtistProfile | null>("/artists/me", { silentErrorCodes: [401] }, token);
 }
 
+export type ArtistSearchResult = {
+  id: string;
+  displayName: string;
+  imageUrl?: string | null;
+  profileType?: string | null;
+  claimStatus?: string | null;
+};
+
+/**
+ * Typeahead lookup of existing artist profiles, used by the upload studio so
+ * artists can reuse an existing profile instead of accidentally creating a
+ * duplicate via a typo or casing/spacing difference. Degrades gracefully: on
+ * any error (offline, unauthenticated, mock mode) it returns an empty list so
+ * the field still works as a plain text input.
+ */
+export async function searchArtists(
+  token: string | null | undefined,
+  query: string,
+  limit = 8,
+): Promise<ArtistSearchResult[]> {
+  const q = query.trim();
+  if (!q) return [];
+  try {
+    const params = new URLSearchParams({ q, limit: String(limit) });
+    const results = await apiRequest<ArtistSearchResult[]>(
+      `/artists/search?${params}`,
+      { silentErrorCodes: [400, 401, 403] },
+      token,
+    );
+    return Array.isArray(results) ? results : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function getArtistSettings(token: string, artistId: string) {
   return apiRequest<ArtistSettingsResponse>(
     `/artists/${encodeURIComponent(artistId)}/settings`,
