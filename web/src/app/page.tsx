@@ -7,6 +7,7 @@ import { useAuth } from "../components/auth/AuthProvider";
 import {
   createAgentConfig,
   getAgentConfig,
+  getRelease,
   getReleaseTrackStreamUrl,
   getStemPreviewUrl,
   getSongRecommendations,
@@ -124,6 +125,30 @@ export default function Home() {
   );
 
   useWebSockets((data: ReleaseStatusUpdate) => {
+    // Keep the "Your Releases" panel live without a manual reload. The backend
+    // broadcasts release.status to every client, so only react to releases that
+    // belong to this user's panel: patch the status badge immediately for
+    // instant feedback, then refetch the authoritative release so resource
+    // counts (stems created during processing) reconcile too.
+    if (myReleases.some((release) => release.id === data.releaseId)) {
+      setMyReleases((prev) =>
+        prev.map((release) =>
+          release.id === data.releaseId ? { ...release, status: data.status } : release,
+        ),
+      );
+
+      if (token) {
+        getRelease(data.releaseId, token)
+          .then((fresh) => {
+            if (!fresh) return;
+            setMyReleases((prev) =>
+              prev.map((release) => (release.id === fresh.id ? fresh : release)),
+            );
+          })
+          .catch(() => undefined);
+      }
+    }
+
     if (data.status === "ready") {
       addToast({
         type: "success",
