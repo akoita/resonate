@@ -124,7 +124,7 @@ When adding a new environment variable:
 | `REMIX_AUDIO_STEPS` | Backend | Diffusion steps sent to the audio worker (default `25`; 8 is the turbo/low-fidelity default) |
 | `REMIX_AUDIO_MODEL` | Backend | Stable Audio 3 model size requested from the worker (default `medium`) |
 | `REMIX_AUDIO_TIMEOUT_MS` | Backend | Request timeout for the audio worker (default `360000` = 6 min, generous enough to absorb the worker's scale-to-zero cold model load) |
-| `STABLE_AUDIO_MODEL` | Stable Audio worker | Default model the worker warms at startup (default `medium`) |
+| `STABLE_AUDIO_MODEL` | Stable Audio worker | Default model the worker warms at startup (default `medium`). **Keep in sync with the backend's `REMIX_AUDIO_MODEL`** — the backend sends the model per request, so a mismatch makes the worker warm one model then pay a second ~4-min cold load for the requested one |
 | `WORKER_MAX_UPLOAD_BYTES` | Demucs / Stable Audio workers | Max conditioning/upload size in bytes (default `209715200` = 200 MiB) |
 | `HF_TOKEN` | Stable Audio worker | Hugging Face token (Secret Manager) for the gated `stable-audio-3-medium` download; the HF account must have accepted the model license |
 | `REMIX_PROJECT_RATE_LIMIT` | Backend | Optional per-user hourly ceiling for `POST /remix/projects` (sliding window, default `20`). Exceeding it returns HTTP 429 with an actionable message (#1144) |

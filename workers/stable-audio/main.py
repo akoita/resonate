@@ -38,6 +38,12 @@ def _load_model(name: str):
         return _MODELS[name]
     from stable_audio_3 import StableAudioModel
 
+    # Cap resident models to one: two sizes co-resident could OOM the L4.
+    if _MODELS:
+        log.info("evicting %s to load %s", list(_MODELS), name)
+        _MODELS.clear()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     log.info("loading Stable Audio 3 model: %s", name)
     model = StableAudioModel.from_pretrained(name, device="cuda")
     _MODELS[name] = model
@@ -85,6 +91,10 @@ def _to_stereo(audio: torch.Tensor) -> torch.Tensor:
     if audio.dim() == 1:
         audio = audio.unsqueeze(0)
     if audio.size(0) == 1:
+        # Surface the mono case loudly: this is the spike's unresolved
+        # mono-output artifact (#1207), and a silent up-mix would hide whether
+        # it still reproduces on real GPU hardware.
+        log.warning("model returned mono audio; up-mixing to stereo (#1207)")
         audio = audio.repeat(2, 1)
     return audio
 
@@ -135,11 +145,28 @@ async def generate(
             cfg_scale=cfg_scale,
             seed=used_seed,
         )
+    except torch.cuda.OutOfMemoryError as exc:
+        # Transient: a shorter duration / fewer concurrent jobs may succeed.
+        # 503 maps to the backend's retryable provider_unavailable.
+        torch.cuda.empty_cache()
+        log.exception("generation ran out of GPU memory")
+        raise HTTPException(
+            status_code=503, detail="GPU out of memory; please retry."
+        ) from exc
     except Exception as exc:  # noqa: BLE001
-        # Generation faults (bad prompt/audio for the model) are the caller's
-        # to act on; 422 maps to the backend's non-retryable provider_rejected.
+        message = str(exc)
+        if "out of memory" in message.lower():
+            torch.cuda.empty_cache()
+            log.exception("generation hit a transient GPU fault")
+            raise HTTPException(
+                status_code=503, detail=f"Transient GPU fault: {message}"
+            ) from exc
+        # Genuine generation faults (bad prompt/audio for the model) are the
+        # caller's to act on; 422 maps to the non-retryable provider_rejected.
         log.exception("generation failed")
-        raise HTTPException(status_code=422, detail=f"Generation failed: {exc}") from exc
+        raise HTTPException(
+            status_code=422, detail=f"Generation failed: {message}"
+        ) from exc
 
     tensor = _to_stereo(audio).detach().cpu().float()
     buffer = io.BytesIO()
