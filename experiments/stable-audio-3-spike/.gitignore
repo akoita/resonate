@@ -1,4 +1,5 @@
 outputs/
+spike_outputs/
 *.wav
 *.mp3
 .venv/

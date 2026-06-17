@@ -401,6 +401,26 @@ Remaining for later slices:
 - Playwright test for the studio happy path with observable audio controls;
 - provider-failure tests for normalized generation errors (#896).
 
+### Audio-conditioned generation (#1182 slices 4–5) — spike result
+
+The adopt-gate for true audio conditioning (#1193) is complete:
+
+- **Gate 2 (license):** GO — see
+  [Stable Audio 3 License Review](../rfc/stable-audio-3-license-review.md).
+- **Gate 1 (quality):** **CONDITIONAL GO** — see
+  [Stable Audio 3 Spike Findings](../rfc/stable-audio-3-spike-findings.md).
+  Conditioning `stabilityai/stable-audio-3-medium` on a real stem **preserves
+  source identity** and **steers on text** (recommended `steps=25`,
+  `cfg_scale≈7`, `init_noise_level≈0.2`), but output is **draft-quality, not
+  master-quality** (the *medium* model's autoencoder fidelity ceiling).
+
+Status of slices 4–5: **not yet implemented.** The recommendation is to adopt
+audio conditioning as an *additional draft mode* behind the provider boundary
+(a new `audio_conditioned` grounding kind), keep feature-conditioned Lyria
+(#1192) and stem-mix renders (#1189), and defer any release-grade claim until
+the fidelity follow-ups (larger model, stereo-output fix) in the findings doc
+are done.
+
 ## References
 
 - RFC: [Remix Studio](../rfc/remix-studio.md)
