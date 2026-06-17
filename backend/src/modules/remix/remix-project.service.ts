@@ -675,9 +675,17 @@ export class RemixProjectService {
                 muted: stem.muted,
               })),
             })
-          : await this.generationProvider.createRemixDraft(
-              data.generationInput,
-            );
+          : await this.generationProvider.createRemixDraft({
+              ...data.generationInput,
+              // Live arrangement at process time, mirroring stem_mix, so
+              // audio-conditioned generation (#1182 slice 4) conditions on the
+              // current mix. Prompt-only providers ignore it.
+              stemArrangement: project.stems.map((stem) => ({
+                stemId: stem.stemId,
+                gainDb: stem.gainDb,
+                muted: stem.muted,
+              })),
+            });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
         ...currentMetadata,
