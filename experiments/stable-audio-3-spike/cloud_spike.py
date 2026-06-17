@@ -7,7 +7,6 @@ stable_audio_3 API so a first-run mismatch is diagnostic, not a silent fail.
 Throwaway evaluation infra.
 """
 import inspect
-import io
 import json
 import os
 import time
@@ -24,6 +23,7 @@ NOISE_LEVELS = [float(x) for x in os.environ.get("SPIKE_NOISE", "0.3,0.5,0.7,0.9
 DURATION = int(os.environ.get("SPIKE_DURATION", "30"))
 STEPS = int(os.environ.get("SPIKE_STEPS", "8"))  # 8 = turbo default; 25-50 = quality
 CFG = float(os.environ.get("SPIKE_CFG", "1.0"))
+MODEL = os.environ.get("SPIKE_MODEL", "medium")  # try a larger model w/o a rebuild
 
 
 def log(msg):
@@ -66,7 +66,7 @@ def main():
     # Condition on a real stem when STEM_GCS_URI is set; else a synthetic probe.
     stem_uri = os.environ.get("STEM_GCS_URI", "").strip()
     if stem_uri:
-        src = "source_stem" + os.path.splitext(stem_uri)[1]  # keep real extension
+        src = "source_stem" + (os.path.splitext(stem_uri)[1] or ".wav")  # ext for format infer
         download_gcs(stem_uri, src)
         log(f"conditioning on REAL stem: {stem_uri}")
     else:
@@ -86,7 +86,8 @@ def main():
         log(f"(no from_pretrained sig: {e})")
 
     t0 = time.monotonic()
-    model = StableAudioModel.from_pretrained("medium", device="cuda")
+    log(f"loading model: {MODEL}")
+    model = StableAudioModel.from_pretrained(MODEL, device="cuda")
     load_s = time.monotonic() - t0
     log(f"model loaded in {load_s:.1f}s")
     try:
@@ -97,9 +98,9 @@ def main():
     import torchaudio
     wav, in_sr = torchaudio.load(src)  # torchaudio -> (tensor, sr); mp3 via ffmpeg
     init_audio = (in_sr, wav)  # generate() wants (sample_rate, tensor)
-    metrics = {"gpu": torch.cuda.get_device_name(0), "prompt": PROMPT, "sourceStem": stem_uri or "synthetic",
-               "durationSeconds": DURATION, "steps": STEPS, "cfgScale": CFG,
-               "modelLoadSeconds": round(load_s, 1), "runs": []}
+    metrics = {"gpu": torch.cuda.get_device_name(0), "model": MODEL, "prompt": PROMPT,
+               "sourceStem": stem_uri or "synthetic", "durationSeconds": DURATION,
+               "steps": STEPS, "cfgScale": CFG, "modelLoadSeconds": round(load_s, 1), "runs": []}
     for noise in NOISE_LEVELS:
         torch.cuda.reset_peak_memory_stats()
         g0 = time.monotonic()

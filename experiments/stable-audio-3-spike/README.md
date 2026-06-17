@@ -29,6 +29,7 @@ its image. It is **fully env-driven**, so tuning is a ~5-minute, no-rebuild loop
 | `SPIKE_NOISE` | `0.3,0.5,0.7,0.9` | csv `init_noise_level` sweep (low = faithful) |
 | `SPIKE_STEPS` | `8` | diffusion steps (8 = turbo, 25–50 = quality) |
 | `SPIKE_CFG` | `1.0` | prompt strength (≈7 is the sweet spot) |
+| `SPIKE_MODEL` | `medium` | model size — try a larger one (top fidelity lever) without a rebuild |
 | `SPIKE_DURATION` | `30` | clip seconds |
 | `STEM_GCS_URI` | _(unset → synthetic stem)_ | `gs://…` real stem to condition on |
 | `OUTPUT_BUCKET` | _(required)_ | where clips + `metrics.json` land |
