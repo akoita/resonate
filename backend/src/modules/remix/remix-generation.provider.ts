@@ -197,6 +197,18 @@ export type RemixGenerationProvenance = {
   voiceLikenessAllowed: false;
 };
 
+/**
+ * A project's stem arrangement entry — the per-stem gain/mute the studio
+ * preview models. Owned here (the provider boundary) so the shared
+ * StemAudioMixer and RemixGenerationInput reference one definition without a
+ * circular import.
+ */
+export type StemArrangementEntry = {
+  stemId: string;
+  gainDb: number | null;
+  muted: boolean;
+};
+
 export type RemixGenerationInput = {
   sourceTrackId: string;
   stemIds: string[];
@@ -210,6 +222,12 @@ export type RemixGenerationInput = {
    * stem carries features yet.
    */
   sourceFeatureHints?: SourceFeatureHints;
+  /**
+   * The project's stem arrangement (gain/mute) at process time. Populated for
+   * audio-conditioned generation (#1182 slice 4), which conditions on the
+   * mixed unmuted stems; prompt-only providers (Lyria, stub) ignore it.
+   */
+  stemArrangement?: StemArrangementEntry[];
   provenance: RemixGenerationProvenance;
 };
 

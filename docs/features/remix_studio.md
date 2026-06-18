@@ -414,12 +414,27 @@ The adopt-gate for true audio conditioning (#1193) is complete:
   `cfg_scale≈7`, `init_noise_level≈0.2`), but output is **draft-quality, not
   master-quality** (the *medium* model's autoencoder fidelity ceiling).
 
-Status of slices 4–5: **not yet implemented.** The recommendation is to adopt
-audio conditioning as an *additional draft mode* behind the provider boundary
-(a new `audio_conditioned` grounding kind), keep feature-conditioned Lyria
-(#1192) and stem-mix renders (#1189), and defer any release-grade claim until
-the fidelity follow-ups (larger model, stereo-output fix) in the findings doc
-are done.
+Status of slices 4–5: **partial — slice 4 backend landed behind a default-off
+flag; slice 5 (product surface) pending.**
+
+- **Slice 4 (#1206, this slice):** the `audio-conditioned` provider
+  (`REMIX_GENERATION_PROVIDER_KIND=audio-conditioned`) mixes the project's
+  unmuted stems (shared `StemAudioMixer`, reused from stem-mix render so the
+  encrypted-stem deferral is shared) and sends that audio + the prompt to a
+  self-hosted Stable Audio 3 worker (`workers/stable-audio/`, scale-to-zero
+  Cloud Run GPU). Defaults match the spike (`cfg≈7`, `init_noise_level≈0.2`,
+  `steps=25`). Behind `REMIX_GENERATION_ENABLED`, default off — not yet
+  user-visible.
+- **Slice 5 (#1207, pending):** the honest `audio_conditioned` grounding kind,
+  the Studio label flip from "the model does not hear the source audio" to
+  "conditioned on your stem audio" (AI draft, draft-quality), analytics, and
+  enabling the flag per env.
+
+Keeps feature-conditioned Lyria (#1192) and stem-mix renders (#1189) as the
+other modes; release-grade claims stay deferred until the fidelity follow-ups
+(for example, validating the best supported self-hosted model variant and the
+stereo-output fix) are done. Stable Audio 3 Large is API-only, not a supported
+`workers/stable-audio` model.
 
 ## References
 

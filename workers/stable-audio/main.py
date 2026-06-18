@@ -1,0 +1,217 @@
+"""Stable Audio 3 remix worker (#1182 slice 4).
+
+A warm FastAPI GPU service that turns a conditioning stem mix + a prompt into a
+recognizable-but-changed remix draft, using the model the #1193 adopt-gate
+validated. The backend's AudioConditionedRemixGenerationProvider calls
+`POST /generate`; deployment is scale-to-zero (Cloud Run), so the ~4-min cold
+model load folds into the already-async generation queue (#1167).
+
+Generation knobs come from the request (the backend sends the spike defaults:
+cfg≈7 / init_noise_level≈0.2 / steps=25), so retuning needs no redeploy.
+"""
+import io
+import logging
+import os
+import random
+import tempfile
+from contextlib import asynccontextmanager
+
+import torch
+import torchaudio
+from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, Response
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("stable-audio-worker")
+
+# Stable Audio 3 renders at 44.1 kHz; the autoencoder is stereo.
+OUTPUT_SR = 44100
+ALLOWED_MODELS = {
+    "medium",
+    "small-music",
+    "small-sfx",
+    "medium-base",
+    "small-music-base",
+    "small-sfx-base",
+}
+DEFAULT_MODEL = os.environ.get("STABLE_AUDIO_MODEL", "medium").strip() or "medium"
+MAX_UPLOAD_BYTES = int(os.environ.get("WORKER_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
+
+_MODELS: dict[str, object] = {}
+_STARTUP_MODEL_ERROR: str | None = None
+
+
+def _load_model(name: str):
+    """Load + cache a model by size. First call pays the cold-load cost."""
+    if name not in ALLOWED_MODELS:
+        allowed = ", ".join(sorted(ALLOWED_MODELS))
+        raise ValueError(
+            f"Unsupported Stable Audio 3 model '{name}'. Allowed local models: {allowed}."
+        )
+    if name in _MODELS:
+        return _MODELS[name]
+    from stable_audio_3 import StableAudioModel
+
+    # Cap resident models to one: two sizes co-resident could OOM the L4.
+    if _MODELS:
+        log.info("evicting %s to load %s", list(_MODELS), name)
+        _MODELS.clear()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    log.info("loading Stable Audio 3 model: %s", name)
+    model = StableAudioModel.from_pretrained(name, device="cuda")
+    _MODELS[name] = model
+    log.info("model %s loaded", name)
+    return model
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global _STARTUP_MODEL_ERROR
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        from huggingface_hub import login
+
+        login(token=token)
+    # Warm the default model at startup so the first real request only pays
+    # generation latency, not the load.
+    try:
+        _load_model(DEFAULT_MODEL)
+        _STARTUP_MODEL_ERROR = None
+    except Exception as exc:  # noqa: BLE001 — surfaced via /health, not a crash loop
+        _STARTUP_MODEL_ERROR = f"Failed to load {DEFAULT_MODEL}: {exc}"
+        log.exception("startup model load failed; will retry on first request")
+    yield
+
+
+app = FastAPI(title="Resonate Stable Audio 3 Worker", lifespan=lifespan)
+
+
+@app.get("/health")
+def health():
+    payload = {
+        "status": "ok",
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "defaultModel": DEFAULT_MODEL,
+        "loadedModels": list(_MODELS.keys()),
+    }
+    if _STARTUP_MODEL_ERROR and DEFAULT_MODEL not in _MODELS:
+        payload["status"] = "degraded"
+        payload["error"] = _STARTUP_MODEL_ERROR
+        return JSONResponse(status_code=503, content=payload)
+    return payload
+
+
+def _to_stereo(audio: torch.Tensor) -> torch.Tensor:
+    """Normalize generate() output to a 2D [channels, samples] stereo tensor.
+
+    Drops a leading batch dim, and up-mixes mono to stereo by duplication so a
+    draft never plays back thinner than the source — the spike saw mono output
+    on real stems (#1193 follow-up), so we never assume the channel count.
+    """
+    if audio.dim() == 3:
+        audio = audio[0]
+    if audio.dim() == 1:
+        audio = audio.unsqueeze(0)
+    if audio.size(0) == 1:
+        # Surface the mono case loudly: this is the spike's unresolved
+        # mono-output artifact (#1207), and a silent up-mix would hide whether
+        # it still reproduces on real GPU hardware.
+        log.warning("model returned mono audio; up-mixing to stereo (#1207)")
+        audio = audio.repeat(2, 1)
+    return audio
+
+
+@app.post("/generate")
+async def generate(
+    file: UploadFile,
+    prompt: str = Form(...),
+    cfg_scale: float = Form(1.0),
+    init_noise_level: float = Form(1.0),
+    steps: int = Form(8),
+    duration: float = Form(30),
+    model: str = Form(DEFAULT_MODEL),
+    seed: int | None = Form(None),
+):
+    global _STARTUP_MODEL_ERROR
+    requested_model = model.strip() or DEFAULT_MODEL
+    if requested_model not in ALLOWED_MODELS:
+        allowed = ", ".join(sorted(ALLOWED_MODELS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model '{requested_model}'. Allowed local models: {allowed}.",
+        )
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty conditioning audio.")
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Conditioning audio too large.")
+
+    # torchaudio decodes mp3/wav via ffmpeg (installed in the image).
+    with tempfile.NamedTemporaryFile(suffix=".audio") as tmp:
+        tmp.write(raw)
+        tmp.flush()
+        try:
+            wav, in_sr = torchaudio.load(tmp.name)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=400, detail=f"Could not decode conditioning audio: {exc}"
+            ) from exc
+
+    used_seed = seed if seed is not None else random.randint(1, 2**31 - 1)
+
+    try:
+        sa_model = _load_model(requested_model)
+        if requested_model == DEFAULT_MODEL:
+            _STARTUP_MODEL_ERROR = None
+    except Exception as exc:  # noqa: BLE001
+        log.exception("model load failed")
+        raise HTTPException(status_code=503, detail=f"Model load failed: {exc}") from exc
+
+    try:
+        audio = sa_model.generate(
+            init_audio=(in_sr, wav),  # generate() wants (sample_rate, tensor)
+            init_noise_level=init_noise_level,
+            prompt=prompt,
+            duration=duration,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            seed=used_seed,
+        )
+    except torch.cuda.OutOfMemoryError as exc:
+        # Transient: a shorter duration / fewer concurrent jobs may succeed.
+        # 503 maps to the backend's retryable provider_unavailable.
+        torch.cuda.empty_cache()
+        log.exception("generation ran out of GPU memory")
+        raise HTTPException(
+            status_code=503, detail="GPU out of memory; please retry."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        message = str(exc)
+        if "out of memory" in message.lower():
+            torch.cuda.empty_cache()
+            log.exception("generation hit a transient GPU fault")
+            raise HTTPException(
+                status_code=503, detail=f"Transient GPU fault: {message}"
+            ) from exc
+        # Genuine generation faults (bad prompt/audio for the model) are the
+        # caller's to act on; 422 maps to the non-retryable provider_rejected.
+        log.exception("generation failed")
+        raise HTTPException(
+            status_code=422, detail=f"Generation failed: {message}"
+        ) from exc
+
+    tensor = _to_stereo(audio).detach().cpu().float()
+    buffer = io.BytesIO()
+    torchaudio.save(buffer, tensor, OUTPUT_SR, format="wav")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="audio/wav",
+        headers={"X-Seed": str(used_seed), "X-Sample-Rate": str(OUTPUT_SR)},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def _http_exc(_, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})

@@ -1,0 +1,9 @@
+# Pure-pip deps for the Stable Audio 3 worker. torch comes from the base image
+# (pytorch/pytorch:2.7.1-cuda12.6); stable_audio_3 + flash-attn are installed
+# separately in the Dockerfile because their order/build flags matter (ABI).
+fastapi
+uvicorn[standard]
+python-multipart
+soundfile
+numpy
+huggingface_hub
