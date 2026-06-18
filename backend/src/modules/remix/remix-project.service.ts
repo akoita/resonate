@@ -118,6 +118,7 @@ export function draftOutputUriFromMetadata(metadata: unknown): string | null {
 
 export type RemixDraftGrounding =
   | "stem_audio"
+  | "audio_conditioned"
   | "feature_conditioned"
   | "prompt_only";
 
@@ -128,10 +129,25 @@ export function draftGroundingFromMetadata(
   if (!metadata || typeof metadata !== "object") return null;
   const grounding = (metadata as { grounding?: unknown }).grounding;
   return grounding === "stem_audio" ||
+    grounding === "audio_conditioned" ||
     grounding === "feature_conditioned" ||
     grounding === "prompt_only"
     ? grounding
     : null;
+}
+
+function groundingAiGenerated(grounding: RemixDraftGrounding): boolean {
+  return grounding !== "stem_audio";
+}
+
+function selectRemixDraftGrounding(input: {
+  mode: RemixProjectMode;
+  sourceFeatureHints?: unknown;
+  providerKind?: string | null;
+}): RemixDraftGrounding {
+  if (input.mode === "stem_mix") return "stem_audio";
+  if (input.providerKind === "audio-conditioned") return "audio_conditioned";
+  return input.sourceFeatureHints ? "feature_conditioned" : "prompt_only";
 }
 
 export function remixGenerationStatusFromMetadata(
@@ -545,20 +561,21 @@ export class RemixProjectService {
     );
     const jobId = `rmxgen_${project.id}_${randomUUID()}`;
     const requestedAt = new Date().toISOString();
-    // Honest grounding provenance (#1181/#1182): stem_audio = the draft is
-    // rendered from the licensed stems; feature_conditioned = prompt
-    // generation guided by measured stem tempo/key; prompt_only = nothing
-    // from the source audio shaped the output.
-    const grounding =
-      generationInput.mode === "stem_mix"
-        ? "stem_audio"
-        : generationInput.sourceFeatureHints
-          ? "feature_conditioned"
-          : "prompt_only";
+    // Honest grounding provenance (#1181/#1182): stem_audio = rendered from
+    // licensed stems; audio_conditioned = model conditions on mixed stem audio;
+    // feature_conditioned = prompt generation guided by measured tempo/key;
+    // prompt_only = nothing from the source audio shaped the output.
+    const grounding = selectRemixDraftGrounding({
+      mode: generationInput.mode,
+      sourceFeatureHints: generationInput.sourceFeatureHints,
+      providerKind: process.env.REMIX_GENERATION_PROVIDER_KIND,
+    });
+    const aiGenerated = groundingAiGenerated(grounding);
     const pendingMetadata = {
       status: "pending",
       mode: generationInput.mode,
       grounding,
+      aiGenerated,
       ...(generationInput.sourceFeatureHints
         ? { sourceFeatureHints: generationInput.sourceFeatureHints }
         : {}),
@@ -623,6 +640,8 @@ export class RemixProjectService {
       provider: "remix-queue",
       generationJobId: jobId,
       mode: generationInput.mode,
+      grounding,
+      aiGenerated,
       policyVersion: eligibility.policyVersion,
     });
 
@@ -711,6 +730,13 @@ export class RemixProjectService {
         // tracks. Drop it without publishing a completion event.
         return { skipped: true, reason: "stale_job" };
       }
+      const completedGrounding =
+        draftGroundingFromMetadata(currentMetadata) ??
+        selectRemixDraftGrounding({
+          mode: data.generationInput.mode,
+          sourceFeatureHints: data.generationInput.sourceFeatureHints,
+          providerKind: process.env.REMIX_GENERATION_PROVIDER_KIND,
+        });
       this.eventBus.publish({
         eventName: "remix.generation_completed",
         eventVersion: 1,
@@ -721,6 +747,8 @@ export class RemixProjectService {
         provider: providerJob.provider,
         generationJobId: data.jobId,
         mode: data.generationInput.mode,
+        grounding: completedGrounding,
+        aiGenerated: groundingAiGenerated(completedGrounding),
         policyVersion:
           typeof currentMetadata.policyVersion === "string"
             ? currentMetadata.policyVersion
@@ -824,6 +852,8 @@ export class RemixProjectService {
       // the project no longer tracks.
       return;
     }
+    const grounding =
+      draftGroundingFromMetadata(input.metadata) ?? "prompt_only";
     this.eventBus.publish({
       eventName: "remix.generation_failed",
       eventVersion: 1,
@@ -833,6 +863,8 @@ export class RemixProjectService {
       sourceTrackId: input.project.sourceTrackId,
       generationJobId: input.jobId,
       errorCode: input.error.code,
+      grounding,
+      aiGenerated: groundingAiGenerated(grounding),
       policyVersion:
         typeof input.metadata.policyVersion === "string"
           ? input.metadata.policyVersion
@@ -922,7 +954,7 @@ export class RemixProjectService {
       draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
     // AI integrity (#1164): stem_audio renders contain the licensed source
     // audio itself; everything else is generated and must be disclosed.
-    const aiGenerated = grounding !== "stem_audio";
+    const aiGenerated = groundingAiGenerated(grounding);
 
     // Copy the draft audio into a catalog-owned object so the published
     // release never depends on the draft's working URI.

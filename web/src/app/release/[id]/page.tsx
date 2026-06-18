@@ -217,6 +217,11 @@ const remixProvenanceLabel = (
         text: "Made from the source's licensed stems — this release contains the source audio itself.",
         ai: false,
       };
+    case "audio_conditioned":
+      return {
+        text: "AI-generated draft conditioned on the source stem audio. The model heard the arranged stems, but this is draft-quality audio, not a master.",
+        ai: true,
+      };
     case "feature_conditioned":
       return {
         text: "AI-generated, matched to the source stems' measured tempo and key. The model did not hear the source audio.",

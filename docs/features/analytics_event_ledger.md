@@ -257,6 +257,11 @@ The warehouse/Dataflow processors accept the domain families listed in
 so these bridged events can flow without family renaming just to avoid
 quarantine.
 
+Remix generation events carry the generation job id plus honest draft
+provenance (`grounding`) and AI disclosure (`aiGenerated`) so analytics can
+separate stem renders, audio-conditioned AI drafts, feature-conditioned AI
+drafts, and prompt-only AI drafts.
+
 ## Verification
 
 Current verification:

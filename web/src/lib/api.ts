@@ -370,7 +370,13 @@ export type RemixReleaseProvenance = {
   sourceReleaseId: string | null;
   sourceTrackTitle: string | null;
   sourceArtistName: string | null;
-  grounding: "stem_audio" | "feature_conditioned" | "prompt_only" | string | null;
+  grounding:
+    | "stem_audio"
+    | "audio_conditioned"
+    | "feature_conditioned"
+    | "prompt_only"
+    | string
+    | null;
   aiGenerated: boolean;
   remixProjectId: string | null;
 };
@@ -3982,6 +3988,7 @@ export type RemixGenerationStatus =
 
 export type RemixGenerationGrounding =
   | "stem_audio"
+  | "audio_conditioned"
   | "feature_conditioned"
   | "prompt_only";
 

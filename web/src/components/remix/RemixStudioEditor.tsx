@@ -255,6 +255,8 @@ export function groundingDescription(
   switch (metadata.grounding) {
     case "stem_audio":
       return "Rendered from your licensed stems — the draft contains the source audio itself.";
+    case "audio_conditioned":
+      return "AI draft conditioned on your stem audio — the model heard the arranged stems, but the output is draft quality, not a master.";
     case "feature_conditioned": {
       const hints = metadata.sourceFeatureHints;
       const measured = [
