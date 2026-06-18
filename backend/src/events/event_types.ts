@@ -137,6 +137,10 @@ export interface RemixGenerationStartedEvent extends BaseEvent {
   provider: string;
   generationJobId: string;
   mode: string;
+  /** stem_audio | audio_conditioned | feature_conditioned | prompt_only. */
+  grounding: string;
+  /** AI integrity (#1164): true when grounding !== "stem_audio". */
+  aiGenerated: boolean;
   policyVersion: string;
 }
 
@@ -148,6 +152,10 @@ export interface RemixGenerationCompletedEvent extends BaseEvent {
   provider: string;
   generationJobId: string;
   mode: string;
+  /** stem_audio | audio_conditioned | feature_conditioned | prompt_only. */
+  grounding: string;
+  /** AI integrity (#1164): true when grounding !== "stem_audio". */
+  aiGenerated: boolean;
   policyVersion: string;
 }
 
@@ -158,6 +166,10 @@ export interface RemixGenerationFailedEvent extends BaseEvent {
   sourceTrackId: string;
   generationJobId: string;
   errorCode: string;
+  /** stem_audio | audio_conditioned | feature_conditioned | prompt_only. */
+  grounding: string;
+  /** AI integrity (#1164): true when grounding !== "stem_audio". */
+  aiGenerated: boolean;
   policyVersion: string;
 }
 
@@ -171,7 +183,7 @@ export interface RemixPublishedEvent extends BaseEvent {
   releaseId: string;
   trackId: string;
   mode: string;
-  /** stem_audio | feature_conditioned | prompt_only (#1192/#1194). */
+  /** stem_audio | audio_conditioned | feature_conditioned | prompt_only. */
   grounding: string;
   /** AI integrity (#1164): true when grounding !== "stem_audio". */
   aiGenerated: boolean;

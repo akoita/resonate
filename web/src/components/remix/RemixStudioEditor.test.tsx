@@ -490,6 +490,15 @@ describe("groundingDescription (#1181)", () => {
     ).toContain("measured tempo and key");
   });
 
+  it("labels audio-conditioned drafts as stem-audio conditioned AI drafts", () => {
+    expect(groundingDescription({ grounding: "audio_conditioned" })).toContain(
+      "conditioned on your stem audio",
+    );
+    expect(groundingDescription({ grounding: "audio_conditioned" })).toContain(
+      "draft quality",
+    );
+  });
+
   it("is explicit that prompt-only drafts are not derived from the source", () => {
     expect(groundingDescription({ grounding: "prompt_only" })).toContain(
       "not derived from the source audio",

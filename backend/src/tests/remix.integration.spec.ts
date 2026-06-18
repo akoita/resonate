@@ -870,12 +870,18 @@ describe("Remix eligibility and projects (integration)", () => {
 
     describe("generateDraft", () => {
       const originalEnv = process.env.REMIX_GENERATION_ENABLED;
+      const originalProviderKind = process.env.REMIX_GENERATION_PROVIDER_KIND;
 
       afterEach(() => {
         if (originalEnv === undefined) {
           delete process.env.REMIX_GENERATION_ENABLED;
         } else {
           process.env.REMIX_GENERATION_ENABLED = originalEnv;
+        }
+        if (originalProviderKind === undefined) {
+          delete process.env.REMIX_GENERATION_PROVIDER_KIND;
+        } else {
+          process.env.REMIX_GENERATION_PROVIDER_KIND = originalProviderKind;
         }
       });
 
@@ -929,6 +935,8 @@ describe("Remix eligibility and projects (integration)", () => {
             provider: "remix-queue",
             generationJobId: generated.generationJobId,
             mode: "variation",
+            grounding: "feature_conditioned",
+            aiGenerated: true,
           }),
         );
 
@@ -951,6 +959,59 @@ describe("Remix eligibility and projects (integration)", () => {
             remixProjectId: created.id,
             provider: "remix-stub",
             generationJobId: generated.generationJobId,
+            grounding: "feature_conditioned",
+            aiGenerated: true,
+          }),
+        );
+      });
+
+      it("records audio_conditioned grounding for prompted audio-conditioned provider jobs", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        process.env.REMIX_GENERATION_PROVIDER_KIND = "audio-conditioned";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Audio Conditioned",
+          mode: "variation",
+          prompt: "add a heavy kick while keeping the song recognizable",
+        });
+
+        const pending = await projectService.generateDraft(CREATOR_ID, created.id);
+
+        expect(pending.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "pending",
+            grounding: "audio_conditioned",
+            aiGenerated: true,
+          }),
+        );
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_started",
+            remixProjectId: created.id,
+            grounding: "audio_conditioned",
+            aiGenerated: true,
+          }),
+        );
+
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+        await projectService.processGenerationJob(queuedData);
+
+        const completed = await projectService.getProject(CREATOR_ID, created.id);
+        expect(completed.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "completed",
+            grounding: "audio_conditioned",
+            aiGenerated: true,
+          }),
+        );
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_completed",
+            remixProjectId: created.id,
+            grounding: "audio_conditioned",
+            aiGenerated: true,
           }),
         );
       });
@@ -1038,6 +1099,8 @@ describe("Remix eligibility and projects (integration)", () => {
             remixProjectId: created.id,
             generationJobId: pending.generationJobId,
             errorCode: "provider_disabled",
+            grounding: "feature_conditioned",
+            aiGenerated: true,
           }),
         );
         const read = await projectService.getProject(CREATOR_ID, created.id);
@@ -1185,6 +1248,8 @@ describe("Remix eligibility and projects (integration)", () => {
             remixProjectId: created.id,
             generationJobId: pending.generationJobId,
             errorCode: "provider_unavailable",
+            grounding: "feature_conditioned",
+            aiGenerated: true,
           }),
         );
       });

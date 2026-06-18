@@ -20,8 +20,8 @@ import { type StemAudioMixer } from "./stem-audio-mixer";
  * cfg≈7 / init_noise_level≈0.2 / steps=25).
  *
  * Output is draft-quality, not master-quality (the spike's verdict); the
- * honest grounding label is wired in slice 5 (#1207). Behind the master gate
- * + provider-kind selection, default off.
+ * honest audio_conditioned grounding label is emitted by the project service
+ * (#1207). Behind the master gate + provider-kind selection, default off.
  */
 @Injectable()
 export class AudioConditionedRemixGenerationProvider

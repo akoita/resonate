@@ -159,11 +159,13 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
-- Honest draft provenance labels (#1181): the studio draft panel states,
+- Honest draft provenance labels (#1181/#1207): the studio draft panel states,
   per draft, exactly what of the source audio shaped it — rendered drafts
-  "contain the source audio itself", feature-conditioned drafts name the
-  measured tempo/key and state the model "does not hear the source audio",
-  and prompt-only drafts say they are "not derived from the source audio".
+  "contain the source audio itself", audio-conditioned drafts say the AI draft
+  was conditioned on stem audio while staying draft-quality, feature-conditioned
+  drafts name the measured tempo/key and state the model "does not hear the
+  source audio", and prompt-only drafts say they are "not derived from the
+  source audio".
   Legacy drafts without grounding metadata show no claim rather than a
   guessed one. Remix CTA copy was reviewed and makes no AI-derivation
   claims ("Remix" refers to the licensed remix workflow).
@@ -173,10 +175,11 @@ from the JWT, never the request body.
   are excluded. Explicit user constraints always take precedence; derived
   hints fill the gaps and the Lyria prompt says they were measured from the
   source stems. Every generation now records honest `grounding` provenance
-  in `generationMetadata` (#1181): `stem_audio` (rendered from the licensed
-  stems), `feature_conditioned` (prompt guided by measured tempo/key), or
-  `prompt_only` (nothing from the source audio shaped the output, e.g.
-  stems ingested before #1184 carry no features yet).
+  in `generationMetadata` (#1181/#1207): `stem_audio` (rendered from the
+  licensed stems), `audio_conditioned` (AI provider conditioned on arranged
+  stem audio), `feature_conditioned` (prompt guided by measured tempo/key), or
+  `prompt_only` (nothing from the source audio shaped the output, e.g. stems
+  ingested before #1184 carry no features yet).
 - Stem mix rendering (#1189, slice 2 of #1182): `stem_mix` projects render
   the saved arrangement (per-stem gain/mute) into one MP3 server-side with
   ffmpeg — zero AI, zero vendor cost, so the render path sits outside the
@@ -393,8 +396,8 @@ Implemented today:
 - `web/src/components/remix/RemixStudioEditor.test.tsx` — minimal-patch
   building, gain clamping, rights badge derivation, editor rendering
   (attribution, stem controls, prompt gating by mode, unavailable
-  publish/export with reasons), and the page shell's signed-out/loading
-  states.
+  publish/export with reasons), honest grounding copy including
+  `audio_conditioned`, and the page shell's signed-out/loading states.
 
 Remaining for later slices:
 
@@ -414,8 +417,8 @@ The adopt-gate for true audio conditioning (#1193) is complete:
   `cfg_scale≈7`, `init_noise_level≈0.2`), but output is **draft-quality, not
   master-quality** (the *medium* model's autoencoder fidelity ceiling).
 
-Status of slices 4–5: **partial — slice 4 backend landed behind a default-off
-flag; slice 5 (product surface) pending.**
+Status of slices 4–5: **partial — backend and honest product surface landed
+behind default-off flags; environment enablement and fidelity follow-ups remain.**
 
 - **Slice 4 (#1206, this slice):** the `audio-conditioned` provider
   (`REMIX_GENERATION_PROVIDER_KIND=audio-conditioned`) mixes the project's
@@ -425,10 +428,11 @@ flag; slice 5 (product surface) pending.**
   Cloud Run GPU). Defaults match the spike (`cfg≈7`, `init_noise_level≈0.2`,
   `steps=25`). Behind `REMIX_GENERATION_ENABLED`, default off — not yet
   user-visible.
-- **Slice 5 (#1207, pending):** the honest `audio_conditioned` grounding kind,
-  the Studio label flip from "the model does not hear the source audio" to
-  "conditioned on your stem audio" (AI draft, draft-quality), analytics, and
-  enabling the flag per env.
+- **Slice 5 (#1207):** the honest `audio_conditioned` grounding kind is wired
+  through generation metadata, publish provenance, analytics events, Remix
+  Studio draft-status copy, and published remix release provenance. The label
+  says the model was conditioned on stem audio while making clear the result is
+  an AI draft at draft quality.
 
 Keeps feature-conditioned Lyria (#1192) and stem-mix renders (#1189) as the
 other modes; release-grade claims stay deferred until the fidelity follow-ups

@@ -390,6 +390,33 @@ describe("Remix publish (integration)", () => {
     expect(publishedEvent).toMatchObject({ aiGenerated: true });
   });
 
+  it("marks AI-generated provenance for audio-conditioned drafts", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    expect(track.generationMetadata).toMatchObject({
+      grounding: "audio_conditioned",
+      aiGenerated: true,
+    });
+    const publishedEvent = publishSpy.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.eventName === "remix.published");
+    expect(publishedEvent).toMatchObject({
+      grounding: "audio_conditioned",
+      aiGenerated: true,
+    });
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);

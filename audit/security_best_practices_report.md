@@ -1,5 +1,61 @@
 # Security Best Practices Report
 
+## Audio-Conditioned Remix Grounding Surface - 2026-06-18
+
+### Scope Reviewed
+
+Changed files (#1207):
+
+- `backend/src/modules/remix/remix-project.service.ts` and
+  `backend/src/modules/remix/audio-conditioned-remix-generation.provider.ts`
+- `backend/src/events/event_types.ts` and
+  `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
+- Remix backend integration tests
+- `web/src/lib/api.ts`, `web/src/components/remix/RemixStudioEditor.tsx`, and
+  `web/src/app/release/[id]/page.tsx`
+- Remix Studio feature docs, analytics event ledger, and feature catalog
+
+### Executive Summary
+
+No Critical or High findings. The slice adds honest provenance metadata for
+audio-conditioned remix drafts without exposing prompts, raw storage URIs,
+cookies, client secrets, or new authorization paths. Generation events now carry
+compact `grounding` and `aiGenerated` fields only, and the published release
+surface keeps `audio_conditioned` disclosed as an AI draft.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The changed backend path does not add controllers or new public inputs; it
+  derives `audio_conditioned` server-side from the existing provider-kind
+  configuration and generation mode.
+- The existing `prisma.$executeRaw` calls in `remix-project.service.ts` remain
+  Prisma tagged templates with bound parameters; no string-concatenated SQL was
+  introduced.
+- The UI changes render fixed copy through React text nodes and add no
+  `dangerouslySetInnerHTML`, cookie handling, or browser-exposed secret config.
+- Change impact checklist sections reviewed: product/UX copy, API/client
+  contract, analytics/events, permissions and privacy, deployment/config
+  deferral, documentation/roadmap alignment, and validation scope.
+
+### Scans Run
+
+- `rg -n 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg -n 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/remix backend/src/modules/analytics backend/src/events`
+- `rg -n 'JSON\.parse|eval\(' backend/src/modules/remix backend/src/modules/analytics backend/src/events`
+- `rg -n '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/remix backend/src/modules/analytics | grep -v 'Pipe\|Dto\|Validation'`
+- `rg -n 'dangerouslySetInnerHTML|innerHTML' web/src/app/release web/src/components/remix web/src/lib`
+- `rg -n 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/app/release web/src/components/remix web/src/lib`
+- `rg -n 'document\.cookie|setCookie|httpOnly.*false' web/src/app/release web/src/components/remix web/src/lib`
+- `git diff --check`
+
 ## Artist Remix Consent Control - 2026-06-11
 
 ### Scope Reviewed
