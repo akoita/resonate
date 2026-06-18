@@ -247,18 +247,35 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
   it("honors env overrides for the worker knobs", async () => {
     process.env.REMIX_AUDIO_CFG_SCALE = "5";
     process.env.REMIX_AUDIO_STEPS = "40";
-    process.env.REMIX_AUDIO_MODEL = "large";
+    process.env.REMIX_AUDIO_MODEL = "small-music";
     try {
       const { provider } = buildProvider();
       const job = await provider.createRemixDraft(generationInput());
       const form = fetchMock.mock.calls[0][1].body as FormData;
       expect(form.get("cfg_scale")).toBe("5");
       expect(form.get("steps")).toBe("40");
-      expect(form.get("model")).toBe("large");
-      expect(job.provider).toBe("stable-audio-3-large");
+      expect(form.get("model")).toBe("small-music");
+      expect(job.provider).toBe("stable-audio-3-small-music");
     } finally {
       delete process.env.REMIX_AUDIO_CFG_SCALE;
       delete process.env.REMIX_AUDIO_STEPS;
+      delete process.env.REMIX_AUDIO_MODEL;
+    }
+  });
+
+  it("rejects unsupported self-hosted worker models before calling the worker", async () => {
+    process.env.REMIX_AUDIO_MODEL = "large";
+    try {
+      const { provider, mix } = buildProvider();
+      await expect(
+        provider.createRemixDraft(generationInput()),
+      ).rejects.toMatchObject({
+        code: "provider_unavailable",
+        retryable: false,
+      });
+      expect(mix).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
       delete process.env.REMIX_AUDIO_MODEL;
     }
   });

@@ -432,7 +432,9 @@ flag; slice 5 (product surface) pending.**
 
 Keeps feature-conditioned Lyria (#1192) and stem-mix renders (#1189) as the
 other modes; release-grade claims stay deferred until the fidelity follow-ups
-(larger model via `REMIX_AUDIO_MODEL`, stereo-output fix) are done.
+(for example, validating the best supported self-hosted model variant and the
+stereo-output fix) are done. Stable Audio 3 Large is API-only, not a supported
+`workers/stable-audio` model.
 
 ## References
 

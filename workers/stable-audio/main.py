@@ -26,14 +26,28 @@ log = logging.getLogger("stable-audio-worker")
 
 # Stable Audio 3 renders at 44.1 kHz; the autoencoder is stereo.
 OUTPUT_SR = 44100
-DEFAULT_MODEL = os.environ.get("STABLE_AUDIO_MODEL", "medium")
+ALLOWED_MODELS = {
+    "medium",
+    "small-music",
+    "small-sfx",
+    "medium-base",
+    "small-music-base",
+    "small-sfx-base",
+}
+DEFAULT_MODEL = os.environ.get("STABLE_AUDIO_MODEL", "medium").strip() or "medium"
 MAX_UPLOAD_BYTES = int(os.environ.get("WORKER_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
 
 _MODELS: dict[str, object] = {}
+_STARTUP_MODEL_ERROR: str | None = None
 
 
 def _load_model(name: str):
     """Load + cache a model by size. First call pays the cold-load cost."""
+    if name not in ALLOWED_MODELS:
+        allowed = ", ".join(sorted(ALLOWED_MODELS))
+        raise ValueError(
+            f"Unsupported Stable Audio 3 model '{name}'. Allowed local models: {allowed}."
+        )
     if name in _MODELS:
         return _MODELS[name]
     from stable_audio_3 import StableAudioModel
@@ -53,6 +67,7 @@ def _load_model(name: str):
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    global _STARTUP_MODEL_ERROR
     token = os.environ.get("HF_TOKEN")
     if token:
         from huggingface_hub import login
@@ -62,7 +77,9 @@ async def lifespan(_: FastAPI):
     # generation latency, not the load.
     try:
         _load_model(DEFAULT_MODEL)
-    except Exception:  # noqa: BLE001 — surfaced via /health, not a crash loop
+        _STARTUP_MODEL_ERROR = None
+    except Exception as exc:  # noqa: BLE001 — surfaced via /health, not a crash loop
+        _STARTUP_MODEL_ERROR = f"Failed to load {DEFAULT_MODEL}: {exc}"
         log.exception("startup model load failed; will retry on first request")
     yield
 
@@ -72,11 +89,17 @@ app = FastAPI(title="Resonate Stable Audio 3 Worker", lifespan=lifespan)
 
 @app.get("/health")
 def health():
-    return {
+    payload = {
         "status": "ok",
         "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "defaultModel": DEFAULT_MODEL,
         "loadedModels": list(_MODELS.keys()),
     }
+    if _STARTUP_MODEL_ERROR and DEFAULT_MODEL not in _MODELS:
+        payload["status"] = "degraded"
+        payload["error"] = _STARTUP_MODEL_ERROR
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 def _to_stereo(audio: torch.Tensor) -> torch.Tensor:
@@ -110,6 +133,15 @@ async def generate(
     model: str = Form(DEFAULT_MODEL),
     seed: int | None = Form(None),
 ):
+    global _STARTUP_MODEL_ERROR
+    requested_model = model.strip() or DEFAULT_MODEL
+    if requested_model not in ALLOWED_MODELS:
+        allowed = ", ".join(sorted(ALLOWED_MODELS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model '{requested_model}'. Allowed local models: {allowed}.",
+        )
+
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty conditioning audio.")
@@ -130,7 +162,9 @@ async def generate(
     used_seed = seed if seed is not None else random.randint(1, 2**31 - 1)
 
     try:
-        sa_model = _load_model(model)
+        sa_model = _load_model(requested_model)
+        if requested_model == DEFAULT_MODEL:
+            _STARTUP_MODEL_ERROR = None
     except Exception as exc:  # noqa: BLE001
         log.exception("model load failed")
         raise HTTPException(status_code=503, detail=f"Model load failed: {exc}") from exc

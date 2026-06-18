@@ -69,18 +69,18 @@ export class AudioConditionedRemixGenerationProvider
       );
     }
 
+    const durationSeconds =
+      input.constraints.durationSeconds ??
+      REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
+    const config = readWorkerConfig();
+    const jobId = randomUUID();
+
     // Condition on exactly what the user arranged. The mixer rejects encrypted
     // stems with invalid_input (shared deferral with stem_mix, #1189).
     const mixed = await this.mixer.mixUnmutedStems(
       input.stemArrangement,
       input.provenance.remixProjectId,
     );
-
-    const durationSeconds =
-      input.constraints.durationSeconds ??
-      REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
-    const config = readWorkerConfig();
-    const jobId = randomUUID();
 
     const generated = await this.callWorker({
       config,
@@ -217,6 +217,15 @@ type WorkerConfig = {
   timeoutMs: number;
 };
 
+const SUPPORTED_AUDIO_WORKER_MODELS = [
+  "medium",
+  "small-music",
+  "small-sfx",
+  "medium-base",
+  "small-music-base",
+  "small-sfx-base",
+] as const;
+
 /**
  * Worker connection + generation knobs from env, defaulting to the values the
  * #1193 spike validated (cfg 7 / noise 0.2 / steps 25, medium model). Per-env
@@ -228,9 +237,25 @@ function readWorkerConfig(): WorkerConfig {
     cfgScale: numberEnv(process.env.REMIX_AUDIO_CFG_SCALE, 7),
     noiseLevel: numberEnv(process.env.REMIX_AUDIO_NOISE_LEVEL, 0.2),
     steps: numberEnv(process.env.REMIX_AUDIO_STEPS, 25),
-    model: process.env.REMIX_AUDIO_MODEL ?? "medium",
+    model: modelEnv(process.env.REMIX_AUDIO_MODEL, "medium"),
     timeoutMs: numberEnv(process.env.REMIX_AUDIO_TIMEOUT_MS, 360_000),
   };
+}
+
+function modelEnv(raw: string | undefined, fallback: string): string {
+  const model = raw?.trim() || fallback;
+  if (
+    SUPPORTED_AUDIO_WORKER_MODELS.includes(
+      model as (typeof SUPPORTED_AUDIO_WORKER_MODELS)[number],
+    )
+  ) {
+    return model;
+  }
+  throw new RemixGenerationProviderError(
+    "provider_unavailable",
+    `Unsupported audio worker model "${model}". Supported self-hosted models: ${SUPPORTED_AUDIO_WORKER_MODELS.join(", ")}.`,
+    false,
+  );
 }
 
 function numberEnv(raw: string | undefined, fallback: number): number {
