@@ -209,6 +209,24 @@ export type StemArrangementEntry = {
   muted: boolean;
 };
 
+export type RemixGenerationOutputMetadata = {
+  outputUri: string | null;
+  /** Recorded at write time so playback never guesses from extensions. */
+  mimeType: string | null;
+  synthIdPresent: boolean | null;
+  seed: number | null;
+  sampleRate: number | null;
+};
+
+export type RemixGeneratedLayerMetadata = {
+  kind: "generated_layer";
+  provider: string;
+  jobId: string;
+  prompt: string | null;
+  constraints: RemixGenerationConstraints;
+  output: RemixGenerationOutputMetadata;
+};
+
 export type RemixGenerationInput = {
   sourceTrackId: string;
   stemIds: string[];
@@ -235,15 +253,10 @@ export type RemixGenerationJob = {
   provider: string;
   jobId: string;
   estimatedCostUsd?: number;
+  generatedLayers?: RemixGeneratedLayerMetadata[];
+  sourceArrangement?: StemArrangementEntry[];
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
-  outputMetadata: {
-    outputUri: string | null;
-    /** Recorded at write time so playback never guesses from extensions. */
-    mimeType: string | null;
-    synthIdPresent: boolean | null;
-    seed: number | null;
-    sampleRate: number | null;
-  };
+  outputMetadata: RemixGenerationOutputMetadata;
 };
 
 export interface RemixGenerationProvider {

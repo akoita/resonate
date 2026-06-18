@@ -23,6 +23,10 @@ import {
   REMIX_STEM_MIX_RENDERER,
 } from "./remix-stem-mix.renderer";
 import {
+  FfmpegLayeredRemixRenderer,
+  REMIX_LAYERED_RENDERER,
+} from "./remix-layered-renderer";
+import {
   FfmpegStemAudioMixer,
   STEM_AUDIO_MIXER,
   type StemAudioMixer,
@@ -89,6 +93,14 @@ import {
       provide: REMIX_STEM_MIX_RENDERER,
       useFactory: (mixer: StemAudioMixer, storageProvider: StorageProvider) =>
         new FfmpegStemMixRenderer(mixer, storageProvider),
+      inject: [STEM_AUDIO_MIXER, StorageProvider],
+    },
+    // stem_plus_ai rendering (#1209): prompted provider output is an
+    // additive generated layer, mixed over the arranged licensed stems.
+    {
+      provide: REMIX_LAYERED_RENDERER,
+      useFactory: (mixer: StemAudioMixer, storageProvider: StorageProvider) =>
+        new FfmpegLayeredRemixRenderer(mixer, storageProvider),
       inject: [STEM_AUDIO_MIXER, StorageProvider],
     },
   ],

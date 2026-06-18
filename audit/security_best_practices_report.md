@@ -1,5 +1,68 @@
 # Security Best Practices Report
 
+## Stem+AI Layered Remix Draft Mode - 2026-06-18
+
+### Scope Reviewed
+
+Changed files (#1209):
+
+- `backend/src/modules/remix/remix-project.service.ts`,
+  `backend/src/modules/remix/remix-layered-renderer.ts`,
+  `backend/src/modules/remix/stem-audio-mixer.ts`,
+  `backend/src/modules/remix/remix-generation.provider.ts`, and
+  `backend/src/modules/remix/remix.module.ts`
+- `backend/src/events/event_types.ts`
+- Remix backend unit and integration tests
+- `web/src/lib/api.ts`, `web/src/components/remix/RemixStudioEditor.tsx`, and
+  `web/src/app/release/[id]/page.tsx`
+- Remix Studio feature docs, analytics event ledger, feature catalog, and
+  issue implementation plan
+
+### Executive Summary
+
+No Critical or High findings. The slice adds a server-side layered render path
+for stem-plus-AI drafts without adding public endpoints, client-exposed secrets,
+or new authorization surfaces. Source stems remain read through the existing
+owner-scoped remix project path, generated layer output is normalized into
+metadata, and public UI copy discloses that AI-generated layers are present.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- The changed backend path does not add controllers. Existing remix controller
+  endpoints remain JWT-guarded, and project access still goes through
+  `loadOwnedProject`.
+- The existing `prisma.$executeRaw` calls in `remix-project.service.ts` remain
+  Prisma tagged templates with bound parameters; no string-concatenated SQL was
+  introduced.
+- The layered renderer downloads source/layer audio through existing storage
+  abstractions and uploads the final render with normalized output metadata.
+- Raw prompts are persisted in generation metadata for private provenance, while
+  the public release surface uses fixed provenance copy and AI labeling.
+- The UI changes render fixed copy through React text nodes and add no
+  `dangerouslySetInnerHTML`, cookie handling, or browser-exposed secret config.
+- Change impact checklist sections reviewed: product/UX copy, API/client
+  contract, analytics/events, permissions and privacy, AI provenance, data
+  lifecycle, deployment/config deferral, documentation/roadmap alignment, and
+  validation scope.
+
+### Scans Run
+
+- `rg 'password|secret|api_key|private_key' backend/src/modules/remix backend/src/events --iglob '!*.test.*' --iglob '!*.spec.*'`
+- `rg 'rawQuery|executeRaw|\$queryRaw' backend/src/modules/remix backend/src/events`
+- `rg 'JSON\.parse|eval\(' backend/src/modules/remix backend/src/events`
+- `rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/modules/remix | grep -v 'Pipe\|Dto\|Validation'`
+- `rg 'dangerouslySetInnerHTML|innerHTML' web/src/app/release web/src/components/remix web/src/lib/api.ts`
+- `rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/app/release web/src/components/remix web/src/lib/api.ts`
+- `git diff --check`
+
 ## Audio-Conditioned Remix Grounding Surface - 2026-06-18
 
 ### Scope Reviewed
