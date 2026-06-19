@@ -499,6 +499,15 @@ describe("groundingDescription (#1181)", () => {
     );
   });
 
+  it("labels stem-plus-AI drafts as source stems with generated layers", () => {
+    expect(groundingDescription({ grounding: "stem_plus_ai" })).toContain(
+      "licensed stems plus AI-generated layers",
+    );
+    expect(groundingDescription({ grounding: "stem_plus_ai" })).toContain(
+      "source audio stays",
+    );
+  });
+
   it("is explicit that prompt-only drafts are not derived from the source", () => {
     expect(groundingDescription({ grounding: "prompt_only" })).toContain(
       "not derived from the source audio",

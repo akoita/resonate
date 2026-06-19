@@ -29,6 +29,13 @@ export type MixedStemAudio = {
   stemCount: number;
 };
 
+export type AudioBufferMixInput = {
+  buffer: Buffer;
+  mimeType: string;
+  gainDb?: number | null;
+  label: string;
+};
+
 /**
  * Mixes a project's unmuted stems into one audio buffer. Extracted from the
  * stem_mix renderer (#1189) so audio-conditioned generation (#1182 slice 4)
@@ -40,6 +47,10 @@ export interface StemAudioMixer {
     stems: StemArrangementEntry[],
     label: string,
   ): Promise<MixedStemAudio>;
+  mixAudioBuffers(
+    inputs: AudioBufferMixInput[],
+    label: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; inputCount: number }>;
 }
 
 /**
@@ -177,6 +188,61 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     }
   }
 
+  async mixAudioBuffers(
+    inputs: AudioBufferMixInput[],
+    label: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; inputCount: number }> {
+    if (inputs.length === 0) {
+      throw new RemixGenerationProviderError(
+        "invalid_input",
+        "A layered remix render needs at least one audio input.",
+        false,
+      );
+    }
+
+    const workDir = await mkdtemp(join(tmpdir(), "remix-layer-"));
+    try {
+      const ffmpegInputs: Array<{ path: string; gainDb: number }> = [];
+      for (const input of inputs) {
+        const inputPath = join(
+          workDir,
+          `input-${ffmpegInputs.length}${extensionForMimeType(input.mimeType)}`,
+        );
+        await writeFile(inputPath, input.buffer);
+        ffmpegInputs.push({
+          path: inputPath,
+          gainDb: input.gainDb ?? 0,
+        });
+      }
+
+      const outputPath = join(workDir, "layered.mp3");
+      const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath);
+      const started = Date.now();
+      try {
+        await execFileAsync("ffmpeg", args, { timeout: FFMPEG_TIMEOUT_MS });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`ffmpeg layered mix failed for ${label}: ${message}`);
+        throw new RemixGenerationProviderError(
+          "provider_unavailable",
+          "The layered remix could not be mixed. Please try again later.",
+          true,
+        );
+      }
+      this.logger.log(
+        `[layered-mix] ${label}: mixed ${ffmpegInputs.length} inputs in ${Date.now() - started}ms`,
+      );
+
+      return {
+        buffer: await readFile(outputPath),
+        mimeType: "audio/mpeg",
+        inputCount: ffmpegInputs.length,
+      };
+    } finally {
+      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
   /**
    * Stored bytes in fetch order mirroring the catalog blob path: DB bytes,
    * local uploads directory, then the storage provider.
@@ -211,4 +277,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       return null;
     }
   }
+}
+
+function extensionForMimeType(mimeType: string): string {
+  const normalized = mimeType.toLowerCase();
+  if (normalized.includes("wav")) return ".wav";
+  if (normalized.includes("mpeg") || normalized.includes("mp3")) return ".mp3";
+  if (normalized.includes("ogg")) return ".ogg";
+  return ".audio";
 }

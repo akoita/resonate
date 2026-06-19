@@ -4,6 +4,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { buildStemMixFfmpegArgs } from "../modules/remix/remix-stem-mix.renderer";
 import { RemixGenerationProviderError } from "../modules/remix/remix-generation.provider";
+import { FfmpegStemAudioMixer } from "../modules/remix/stem-audio-mixer";
+import type { StorageProvider } from "../modules/storage/storage_provider";
 
 describe("buildStemMixFfmpegArgs (#1189)", () => {
   it("builds per-input volume filters and a non-normalizing amix", () => {
@@ -119,6 +121,31 @@ const ffmpegAvailable = (() => {
       } finally {
         rmSync(workDir, { recursive: true, force: true });
       }
+    });
+
+    it("mixes source and generated layer buffers into a playable mp3 (#1209)", async () => {
+      const mixer = new FfmpegStemAudioMixer({
+        download: jest.fn(),
+      } as unknown as StorageProvider);
+      const mixed = await mixer.mixAudioBuffers(
+        [
+          {
+            buffer: sineWav(220, 1),
+            mimeType: "Audio/WAV",
+            label: "source",
+          },
+          {
+            buffer: sineWav(880, 0.5),
+            mimeType: "audio/wav",
+            gainDb: -6,
+            label: "layer",
+          },
+        ],
+        "layered-smoke",
+      );
+      expect(mixed.mimeType).toBe("audio/mpeg");
+      expect(mixed.inputCount).toBe(2);
+      expect(mixed.buffer.length).toBeGreaterThan(1000);
     });
   },
 );
