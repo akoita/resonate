@@ -30,6 +30,7 @@ model User {
   folders                     Folder[]
   libraryTracks               LibraryTrack[]
   playlists                   Playlist[]
+  savedPlaylists              SavedPlaylist[]
   sessions                    Session[]
   wallet                      Wallet?
   passkeyIdentities           PasskeyIdentity[]
@@ -946,15 +947,38 @@ model Payment {
 }
 
 model Playlist {
-  id        String   @id @default(uuid())
-  userId    String
-  name      String
-  trackIds  String[]
-  folderId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  folder    Folder?  @relation(fields: [folderId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  id         String   @id @default(uuid())
+  userId     String
+  name       String
+  trackIds   String[]
+  folderId   String?
+  // "private" (default, owner-only) | "public" (anyone can view, listen, and save)
+  visibility String   @default("private")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  folder     Folder?  @relation(fields: [folderId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  savedBy SavedPlaylist[] @relation("SavedPlaylistSource")
+
+  @@index([visibility])
+  @@index([userId])
+}
+
+// A live reference from a user's library to another user's public playlist.
+// Resolved through the public endpoint on read, so owner edits propagate and a
+// source that goes private/deleted surfaces as unavailable instead of stale data.
+model SavedPlaylist {
+  id              String   @id @default(uuid())
+  userId          String
+  sourcePlaylistId String
+  createdAt       DateTime @default(now())
+  user            User     @relation(fields: [userId], references: [id])
+  source          Playlist @relation("SavedPlaylistSource", fields: [sourcePlaylistId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sourcePlaylistId])
+  @@index([userId])
+  @@index([sourcePlaylistId])
 }
 
 model Folder {

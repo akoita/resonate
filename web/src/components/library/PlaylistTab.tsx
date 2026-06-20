@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
     Playlist,
@@ -22,6 +23,12 @@ import { PromptModal } from "../ui/PromptModal";
 import { usePlayer } from "../../lib/playerContext";
 import { getTrack } from "../../lib/localLibrary";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+import { useAuth } from "../auth/AuthProvider";
+import {
+    listSavedPlaylistsAPI,
+    removeSavedPlaylistAPI,
+    type SavedPlaylistView,
+} from "../../lib/api";
 
 interface PlaylistTabProps {
     tracks: LocalTrack[];
@@ -42,8 +49,11 @@ export function PlaylistTab({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editName, setEditName] = useState("");
     const [dragOverId, setDragOverId] = useState<string | null>(null);
+    const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylistView[]>([]);
     const { addToast } = useToast();
     const { playQueue } = usePlayer();
+    const { token } = useAuth();
+    const router = useRouter();
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -56,10 +66,37 @@ export function PlaylistTab({
         setLoading(false);
     }, []);
 
+    const loadSaved = useCallback(async () => {
+        if (!token) {
+            setSavedPlaylists([]);
+            return;
+        }
+        try {
+            setSavedPlaylists(await listSavedPlaylistsAPI(token));
+        } catch {
+            setSavedPlaylists([]);
+        }
+    }, [token]);
+
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadData();
     }, [loadData]);
+
+    useEffect(() => {
+        void loadSaved();
+    }, [loadSaved]);
+
+    const handleRemoveSaved = async (savedPlaylistId: string) => {
+        if (!token) return;
+        try {
+            await removeSavedPlaylistAPI(savedPlaylistId, token);
+            setSavedPlaylists((prev) => prev.filter((s) => s.savedPlaylistId !== savedPlaylistId));
+            addToast({ type: "success", title: "Removed", message: "Removed from your library." });
+        } catch {
+            addToast({ type: "error", title: "Couldn't remove", message: "Please try again." });
+        }
+    };
 
     // Filter playlists for current view (root or inside folder)
     const visiblePlaylists = useMemo(() => {
@@ -275,7 +312,48 @@ export function PlaylistTab({
                 </div>
             )}
 
+            {/* Saved (followed) public playlists — root level only */}
+            {!currentFolder && savedPlaylists.length > 0 && (
+                <div className="playlist-saved-section">
+                    <h3 className="playlist-subsection-title">Saved playlists</h3>
+                    <div className="playlist-grid">
+                        {savedPlaylists.map((saved) => (
+                            <div
+                                key={saved.savedPlaylistId}
+                                className={`playlist-card playlist-saved-card ${saved.available ? "" : "is-unavailable"}`}
+                                onClick={() => saved.available && router.push(`/playlist/${saved.id}`)}
+                                title={saved.available ? "Open playlist" : "This playlist is no longer available"}
+                            >
+                                <div className="playlist-card-icon">{saved.available ? "🎶" : "🚫"}</div>
+                                <div className="playlist-card-title">{saved.name}</div>
+                                <div className="playlist-card-meta">
+                                    {saved.available
+                                        ? `${saved.ownerDisplayName ? `by ${saved.ownerDisplayName} • ` : ""}${saved.trackCount} track${saved.trackCount !== 1 ? "s" : ""}`
+                                        : "Unavailable"}
+                                </div>
+                                <span className="pl-card-badge">Saved</span>
+                                <div className="playlist-card-actions">
+                                    <button
+                                        className="playlist-action-btn"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            void handleRemoveSaved(saved.savedPlaylistId);
+                                        }}
+                                        title="Remove from library"
+                                    >
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Playlists */}
+            {!currentFolder && (visiblePlaylists.length > 0 || folders.length > 0) && (
+                <h3 className="playlist-subsection-title">Your playlists</h3>
+            )}
             <div className="playlist-grid">
                 {visiblePlaylists.length === 0 && folders.length === 0 ? (
                     <div className="playlist-empty">
@@ -340,6 +418,9 @@ export function PlaylistTab({
                                 <div className="playlist-card-meta">
                                     {trackCount} track{trackCount !== 1 ? "s" : ""}
                                 </div>
+                                {playlist.visibility === "public" && (
+                                    <span className="pl-card-badge is-public">Public</span>
+                                )}
                                 <button
                                     className="playlist-play-hover-btn"
                                     onClick={(e) => handlePlayPlaylist(e, playlist)}

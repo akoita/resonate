@@ -438,8 +438,46 @@ export type APIPlaylist = {
   name: string;
   trackIds: string[];
   folderId?: string | null;
+  visibility?: PlaylistVisibility;
   createdAt: string;
   updatedAt: string;
+};
+
+export type PlaylistVisibility = "private" | "public";
+
+export type PublicPlaylistTrack = {
+  id: string;
+  title: string;
+  artist: string | null;
+  album: string | null;
+  duration: number | null;
+  /** Public catalog stream path (prepend API_BASE), or null for owner-device-only tracks. */
+  streamPath: string | null;
+  artworkPath: string | null;
+  catalogTrackId: string | null;
+  releaseId: string | null;
+  playable: boolean;
+};
+
+export type PublicPlaylistView = {
+  id: string;
+  name: string;
+  visibility: PlaylistVisibility;
+  ownerUserId: string;
+  ownerDisplayName: string | null;
+  isOwner: boolean;
+  isSaved: boolean;
+  trackCount: number;
+  playableTrackCount: number;
+  tracks: PublicPlaylistTrack[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SavedPlaylistView = PublicPlaylistView & {
+  savedPlaylistId: string;
+  savedAt: string;
+  available: boolean;
 };
 
 export type APIFolder = {
@@ -3151,7 +3189,7 @@ export async function getPlaylistAPI(id: string, token: string) {
 export async function updatePlaylistAPI(
   id: string,
   token: string,
-  input: { name?: string; folderId?: string | null; trackIds?: string[] }
+  input: { name?: string; folderId?: string | null; trackIds?: string[]; visibility?: PlaylistVisibility }
 ) {
   return apiRequest<APIPlaylist>(
     `/playlists/${id}`,
@@ -3160,8 +3198,54 @@ export async function updatePlaylistAPI(
   );
 }
 
+export async function setPlaylistVisibilityAPI(
+  id: string,
+  token: string,
+  visibility: PlaylistVisibility
+) {
+  return apiRequest<APIPlaylist>(
+    `/playlists/${id}`,
+    { method: "PUT", body: JSON.stringify({ visibility }) },
+    token
+  );
+}
+
 export async function deletePlaylistAPI(id: string, token: string) {
   return apiRequest<void>(`/playlists/${id}`, { method: "DELETE" }, token);
+}
+
+// ========== Public & saved playlists ==========
+
+/**
+ * Fetch a public playlist for viewing/playback. Works unauthenticated; passing
+ * a token lets the backend report `isOwner`/`isSaved` for the current user.
+ */
+export async function getPublicPlaylistAPI(id: string, token?: string) {
+  return apiRequest<PublicPlaylistView>(
+    `/playlists/public/${id}`,
+    { silentErrorCodes: [404] },
+    token
+  );
+}
+
+export async function savePlaylistAPI(token: string, sourcePlaylistId: string) {
+  return apiRequest<SavedPlaylistView>(
+    "/playlists/saved",
+    { method: "POST", body: JSON.stringify({ sourcePlaylistId }) },
+    token
+  );
+}
+
+export async function listSavedPlaylistsAPI(token: string) {
+  return apiRequest<SavedPlaylistView[]>("/playlists/saved", {}, token);
+}
+
+export async function removeSavedPlaylistAPI(savedPlaylistId: string, token: string) {
+  return apiRequest<{ removed: boolean }>(
+    `/playlists/saved/${savedPlaylistId}`,
+    { method: "DELETE" },
+    token
+  );
 }
 
 export async function createFolderAPI(token: string, name: string) {

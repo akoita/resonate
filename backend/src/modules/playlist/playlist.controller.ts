@@ -1,12 +1,30 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req, Query } from "@nestjs/common";
 import { Request } from "express";
 import { AuthGuard } from "@nestjs/passport";
+import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { PlaylistService } from "./playlist.service";
 
 @Controller("playlists")
 @UseGuards(AuthGuard("jwt"))
 export class PlaylistController {
     constructor(private readonly playlistService: PlaylistService) { }
+
+    // Saved (followed) public playlists — declared before ":id" routes so the
+    // "saved" segment is not captured as a playlist id.
+    @Post("saved")
+    savePlaylist(@Req() req: Request, @Body() body: { sourcePlaylistId: string }) {
+        return this.playlistService.savePlaylist((req as any).user.userId, body.sourcePlaylistId);
+    }
+
+    @Get("saved")
+    listSavedPlaylists(@Req() req: Request) {
+        return this.playlistService.listSavedPlaylists((req as any).user.userId);
+    }
+
+    @Delete("saved/:id")
+    removeSavedPlaylist(@Req() req: Request, @Param("id") id: string) {
+        return this.playlistService.removeSavedPlaylist((req as any).user.userId, id);
+    }
 
     // Folders
     @Post("folders")
@@ -46,12 +64,28 @@ export class PlaylistController {
     }
 
     @Put(":id")
-    updatePlaylist(@Req() req: Request, @Param("id") id: string, @Body() body: { name?: string; folderId?: string | null; trackIds?: string[] }) {
+    updatePlaylist(@Req() req: Request, @Param("id") id: string, @Body() body: { name?: string; folderId?: string | null; trackIds?: string[]; visibility?: string }) {
         return this.playlistService.updatePlaylist((req as any).user.userId, id, body);
     }
 
     @Delete(":id")
     deletePlaylist(@Req() req: Request, @Param("id") id: string) {
         return this.playlistService.deletePlaylist((req as any).user.userId, id);
+    }
+}
+
+/**
+ * Public, unauthenticated read for shared playlists. Auth is optional: a valid
+ * token lets the handler report owner/saved state, but anonymous viewers can
+ * still load any playlist whose visibility is "public".
+ */
+@Controller("playlists")
+export class PublicPlaylistController {
+    constructor(private readonly playlistService: PlaylistService) { }
+
+    @UseGuards(OptionalJwtAuthGuard)
+    @Get("public/:id")
+    getPublicPlaylist(@Req() req: Request, @Param("id") id: string) {
+        return this.playlistService.getPublicPlaylist(id, (req as any).user?.userId);
     }
 }
