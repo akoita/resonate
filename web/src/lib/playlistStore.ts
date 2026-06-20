@@ -7,6 +7,7 @@ import {
     createPlaylistAPI,
     listPlaylistsAPI,
     updatePlaylistAPI,
+    setPlaylistVisibilityAPI,
     deletePlaylistAPI,
     createFolderAPI,
     listFoldersAPI,
@@ -35,11 +36,14 @@ function getToken(): string | null {
 // Types
 // ============================================
 
+export type PlaylistVisibility = "private" | "public";
+
 export interface Playlist {
     id: string;
     name: string;
     trackIds: string[];
     folderId: string | null; // null = root level
+    visibility: PlaylistVisibility; // "private" (default) | "public"
     createdAt: string;
     updatedAt: string;
 }
@@ -48,6 +52,27 @@ export interface PlaylistFolder {
     id: string;
     name: string;
     createdAt: string;
+}
+
+/** Map a backend playlist payload into the local Playlist shape (visibility defaults to private). */
+function mapApiPlaylist(p: {
+    id: string;
+    name: string;
+    trackIds: string[];
+    folderId?: string | null;
+    visibility?: PlaylistVisibility;
+    createdAt: string;
+    updatedAt: string;
+}): Playlist {
+    return {
+        id: p.id,
+        name: p.name,
+        trackIds: p.trackIds,
+        folderId: p.folderId ?? null,
+        visibility: p.visibility ?? "private",
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+    };
 }
 
 // ============================================
@@ -65,14 +90,7 @@ export async function createPlaylist(
     if (token) {
         try {
             const apiPlaylist = await createPlaylistAPI(token, { name, folderId: folderId ?? undefined });
-            const playlist: Playlist = {
-                id: apiPlaylist.id,
-                name: apiPlaylist.name,
-                trackIds: apiPlaylist.trackIds,
-                folderId: apiPlaylist.folderId ?? null,
-                createdAt: apiPlaylist.createdAt,
-                updatedAt: apiPlaylist.updatedAt,
-            };
+            const playlist: Playlist = mapApiPlaylist(apiPlaylist);
             await playlistStore.setItem(playlist.id, playlist);
             reportPlaylistEvent("playlist.created", playlist);
             return playlist;
@@ -89,6 +107,7 @@ export async function createPlaylist(
         name,
         trackIds: [],
         folderId,
+        visibility: "private",
         createdAt: now,
         updatedAt: now,
     };
@@ -116,14 +135,7 @@ export async function renamePlaylist(
     if (token && !id.startsWith("playlist_")) {
         try {
             const apiPlaylist = await updatePlaylistAPI(id, token, { name: newName });
-            const playlist: Playlist = {
-                id: apiPlaylist.id,
-                name: apiPlaylist.name,
-                trackIds: apiPlaylist.trackIds,
-                folderId: apiPlaylist.folderId ?? null,
-                createdAt: apiPlaylist.createdAt,
-                updatedAt: apiPlaylist.updatedAt,
-            };
+            const playlist: Playlist = mapApiPlaylist(apiPlaylist);
             await playlistStore.setItem(id, playlist);
             reportPlaylistEvent("playlist.updated", playlist, { field: "name" });
             return playlist;
@@ -158,6 +170,36 @@ export async function deletePlaylist(id: string): Promise<void> {
 }
 
 /**
+ * Change a playlist's visibility (private ⇄ public). Requires the playlist to be
+ * backend-synced (public sharing is meaningless for local-only playlists).
+ */
+export async function setPlaylistVisibility(
+    id: string,
+    visibility: PlaylistVisibility
+): Promise<Playlist | null> {
+    const token = getToken();
+    if (!token || id.startsWith("playlist_")) {
+        // Local-only playlist: cannot be shared until it is synced to the backend.
+        return getPlaylist(id);
+    }
+    try {
+        const apiPlaylist = await setPlaylistVisibilityAPI(id, token, visibility);
+        const playlist = mapApiPlaylist(apiPlaylist);
+        await playlistStore.setItem(id, playlist);
+        recordProductAnalyticsFromBrowser("playlist.visibility_changed", {
+            source: "playlist_store",
+            subjectType: "playlist",
+            subjectId: id,
+            payload: { playlistId: id, visibility, trackCount: playlist.trackIds.length },
+        });
+        return playlist;
+    } catch (err) {
+        console.error("Failed to change playlist visibility on backend", err);
+        return getPlaylist(id);
+    }
+}
+
+/**
  * Move playlist to a different folder (or root if folderId is null)
  */
 export async function movePlaylistToFolder(
@@ -168,14 +210,7 @@ export async function movePlaylistToFolder(
     if (token && !playlistId.startsWith("playlist_")) {
         try {
             const apiPlaylist = await updatePlaylistAPI(playlistId, token, { folderId });
-            const playlist: Playlist = {
-                id: apiPlaylist.id,
-                name: apiPlaylist.name,
-                trackIds: apiPlaylist.trackIds,
-                folderId: apiPlaylist.folderId ?? null,
-                createdAt: apiPlaylist.createdAt,
-                updatedAt: apiPlaylist.updatedAt,
-            };
+            const playlist: Playlist = mapApiPlaylist(apiPlaylist);
             await playlistStore.setItem(playlistId, playlist);
             reportPlaylistEvent("playlist.updated", playlist, { field: "folder" });
             return playlist;
@@ -205,24 +240,9 @@ export async function listPlaylists(): Promise<Playlist[]> {
             const apiPlaylists = await listPlaylistsAPI(token);
             // Sync into local IndexedDB cache
             for (const p of apiPlaylists) {
-                const playlist: Playlist = {
-                    id: p.id,
-                    name: p.name,
-                    trackIds: p.trackIds,
-                    folderId: p.folderId ?? null,
-                    createdAt: p.createdAt,
-                    updatedAt: p.updatedAt,
-                };
-                await playlistStore.setItem(p.id, playlist);
+                await playlistStore.setItem(p.id, mapApiPlaylist(p));
             }
-            return apiPlaylists.map(p => ({
-                id: p.id,
-                name: p.name,
-                trackIds: p.trackIds,
-                folderId: p.folderId ?? null,
-                createdAt: p.createdAt,
-                updatedAt: p.updatedAt,
-            })).sort(
+            return apiPlaylists.map(mapApiPlaylist).sort(
                 (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             );
         } catch (err) {
@@ -380,15 +400,7 @@ export async function syncPlaylists(): Promise<void> {
         // Overwrite local with backend truth
         await playlistStore.clear();
         for (const p of apiPlaylists) {
-            const playlist: Playlist = {
-                id: p.id,
-                name: p.name,
-                trackIds: p.trackIds,
-                folderId: p.folderId ?? null,
-                createdAt: p.createdAt,
-                updatedAt: p.updatedAt,
-            };
-            await playlistStore.setItem(p.id, playlist);
+            await playlistStore.setItem(p.id, mapApiPlaylist(p));
         }
 
         await folderStore.clear();

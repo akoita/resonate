@@ -574,6 +574,32 @@ export interface PlaylistTrackRemovedEvent extends BaseEvent {
   trackCount: number;
 }
 
+export interface PlaylistVisibilityChangedEvent extends BaseEvent {
+  eventName: "playlist.visibility_changed";
+  userId: string;
+  playlistId: string;
+  previousVisibility: string;
+  nextVisibility: string;
+  trackCount: number;
+}
+
+export interface PlaylistSavedToLibraryEvent extends BaseEvent {
+  eventName: "playlist.saved_to_library";
+  // The user saving the playlist into their library.
+  userId: string;
+  savedPlaylistId: string;
+  sourcePlaylistId: string;
+  // The user who owns the source playlist.
+  sourceUserId: string;
+}
+
+export interface PlaylistRemovedFromLibraryEvent extends BaseEvent {
+  eventName: "playlist.removed_from_library";
+  userId: string;
+  savedPlaylistId: string;
+  sourcePlaylistId: string;
+}
+
 export interface CuratorStakedEvent extends BaseEvent {
   eventName: "curator.staked";
   curatorId: string;
@@ -1238,6 +1264,9 @@ export type ResonateEvent =
   | PlaylistDeletedEvent
   | PlaylistTrackAddedEvent
   | PlaylistTrackRemovedEvent
+  | PlaylistVisibilityChangedEvent
+  | PlaylistSavedToLibraryEvent
+  | PlaylistRemovedFromLibraryEvent
   | CuratorStakedEvent
   | CuratorReportedEvent
   | CatalogUpdatedEvent

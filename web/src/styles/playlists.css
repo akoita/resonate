@@ -1,0 +1,225 @@
+/*
+ * Public playlists (#1216) — share control, visibility badges, saved playlists,
+ * and the public playlist viewer. Uses the same tokens as the rest of the app
+ * (accent #7c5cff, glass panels, 20px radii).
+ */
+
+/* Switch primitive */
+.ui-switch {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+.ui-switch:disabled { cursor: not-allowed; opacity: 0.5; }
+.ui-switch-track {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.25s ease, border-color 0.25s ease;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+}
+.ui-switch.is-on .ui-switch-track { background: var(--color-accent); border-color: var(--color-accent); }
+.ui-switch-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transform: translateX(0);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.ui-switch.is-on .ui-switch-thumb { transform: translateX(18px); }
+.ui-switch:focus-visible .ui-switch-track { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+
+/* Visibility + saved badges */
+.pl-visibility-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+  background: rgba(124, 92, 255, 0.14);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.pl-card-badge {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  z-index: 2;
+}
+.pl-card-badge.is-public { color: var(--color-accent); background: rgba(124, 92, 255, 0.16); border-color: rgba(124, 92, 255, 0.4); }
+
+/* Share control (owner) */
+.pl-share { position: relative; display: inline-block; }
+.pl-share-trigger { display: inline-flex; align-items: center; gap: 0.45rem; }
+.pl-share-trigger.is-public { color: var(--color-accent); border-color: rgba(124, 92, 255, 0.4); }
+.pl-share-popover {
+  position: absolute;
+  top: calc(100% + 0.6rem);
+  right: 0;
+  z-index: 40;
+  width: 330px;
+  max-width: 86vw;
+  padding: 1rem;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.5);
+  animation: pl-pop-in 0.18s ease;
+}
+@keyframes pl-pop-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.pl-share-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.pl-share-row-title { font-weight: 600; font-size: 0.95rem; color: #fff; }
+.pl-share-row-sub { font-size: 0.8rem; color: rgba(255, 255, 255, 0.55); margin-top: 0.15rem; line-height: 1.35; }
+.pl-share-link { display: flex; gap: 0.5rem; align-items: stretch; }
+.pl-share-link-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.8rem;
+}
+.pl-share-link-input:focus { outline: none; border-color: var(--color-accent); }
+.pl-share-copy { flex-shrink: 0; }
+.pl-share-hint { display: flex; align-items: flex-start; gap: 0.4rem; font-size: 0.75rem; color: rgba(255, 255, 255, 0.5); line-height: 1.35; }
+.pl-share-hint svg { flex-shrink: 0; margin-top: 1px; }
+
+/* Saved playlists section (library) */
+.playlist-subsection-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 1.75rem 0 0.85rem;
+}
+.playlist-saved-section .playlist-subsection-title { margin-top: 0.5rem; }
+.playlist-saved-card { border-bottom: 4px solid rgba(124, 92, 255, 0.55); }
+.playlist-saved-card.is-unavailable { opacity: 0.55; cursor: not-allowed; border-bottom-color: rgba(255, 255, 255, 0.15); }
+
+/* Public playlist viewer */
+.pl-public-shell {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+.pl-public-skeleton {
+  height: 280px;
+  border-radius: 24px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.04) 30%, rgba(255, 255, 255, 0.08) 50%, rgba(255, 255, 255, 0.04) 70%);
+  background-size: 200% 100%;
+  animation: pl-shimmer 1.4s infinite;
+}
+@keyframes pl-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.pl-public-hero { display: flex; gap: 1.75rem; padding: 1.75rem; border-radius: 24px; align-items: flex-end; }
+.pl-public-hero-art {
+  flex-shrink: 0;
+  width: 200px;
+  height: 200px;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(124, 92, 255, 0.12);
+}
+.pl-public-hero-art img { width: 100%; height: 100%; object-fit: cover; }
+.pl-public-hero-art-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 5rem;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.25), rgba(124, 92, 255, 0.05));
+}
+.pl-public-hero-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.pl-public-hero-label { display: flex; align-items: center; gap: 0.5rem; }
+.pl-public-hero-label .pl-visibility-badge { margin-left: 0; }
+.pl-public-owner-tag { font-size: 0.72rem; font-weight: 600; color: rgba(255, 255, 255, 0.55); }
+.pl-public-hero-title {
+  font-size: clamp(1.8rem, 4vw, 3rem);
+  font-weight: 800;
+  line-height: 1.05;
+  color: #fff;
+  margin: 0;
+  word-break: break-word;
+}
+.pl-public-hero-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: rgba(255, 255, 255, 0.6); }
+.pl-public-curator { color: #fff; font-weight: 600; }
+.pl-public-dot { color: rgba(255, 255, 255, 0.3); }
+.pl-public-hero-actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.6rem; align-items: center; }
+.pl-public-note { margin-top: 0.5rem; font-size: 0.78rem; color: rgba(255, 255, 255, 0.45); }
+.pl-public-tracks { display: flex; flex-direction: column; }
+.pl-public-track { cursor: pointer; }
+.pl-public-track-index {
+  width: 28px;
+  text-align: center;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+.pl-public-track.is-unplayable { cursor: default; opacity: 0.5; }
+.pl-public-unplayable-tag {
+  margin-left: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+.pl-public-empty-list { padding: 2.5rem 1rem; text-align: center; color: rgba(255, 255, 255, 0.5); }
+.pl-public-empty {
+  text-align: center;
+  padding: 3rem 2rem;
+  border-radius: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.pl-public-empty-icon { font-size: 3rem; }
+.pl-public-empty-title { font-size: 1.5rem; font-weight: 700; color: #fff; margin: 0; }
+.pl-public-empty-sub { color: rgba(255, 255, 255, 0.55); margin: 0 0 0.75rem; }
+
+@media (max-width: 640px) {
+  .pl-public-hero { flex-direction: column; align-items: flex-start; }
+  .pl-public-hero-art { width: 140px; height: 140px; }
+}

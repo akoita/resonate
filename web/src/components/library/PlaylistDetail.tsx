@@ -16,6 +16,8 @@ import { formatDuration } from "../../lib/metadataExtractor";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
+import { PlaylistShareControl } from "./PlaylistShareControl";
+import type { PlaylistVisibility } from "../../lib/playlistStore";
 import { useWebSockets } from "../../hooks/useWebSockets";
 import { libraryArtistHref } from "../../lib/artistRoutes";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
@@ -213,7 +215,14 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     </div>
                 )}
                 <div className="detail-hero-content">
-                    <div className="detail-hero-label">Playlist</div>
+                    <div className="detail-hero-label">
+                        Playlist
+                        {playlist.visibility === "public" && (
+                            <span className="pl-visibility-badge" title="Anyone with the link can listen">
+                                Public
+                            </span>
+                        )}
+                    </div>
                     <h1
                         className="detail-hero-title cursor-pointer hover:text-accent"
                         onClick={() => setShowRenameModal(true)}
@@ -228,6 +237,14 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                         <Button variant="primary" onClick={handlePlayAll} disabled={tracks.length === 0}>
                             Play All
                         </Button>
+                        <PlaylistShareControl
+                            playlistId={playlist.id}
+                            visibility={playlist.visibility}
+                            localOnly={playlist.id.startsWith("playlist_")}
+                            onVisibilityChange={(visibility: PlaylistVisibility) =>
+                                setPlaylist((prev) => (prev ? { ...prev, visibility } : prev))
+                            }
+                        />
                     </div>
                 </div>
             </div>
