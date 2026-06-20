@@ -23,8 +23,14 @@ let service: PlaylistService;
 let eventBus: EventBus;
 let events: ResonateEvent[];
 
-/** Seed a catalog-backed (streamable) and a local-only (non-streamable) library track for the owner. */
+let seedCount = 0;
+
+/** Seed a catalog-backed (streamable) and a local-only (non-streamable) library track for the owner.
+ *  Ids are unique per call so repeated seeding does not hit LibraryTrack unique constraints. */
 async function seedOwnerLibrary() {
+  seedCount += 1;
+  const rid = `${releaseId}_${seedCount}`;
+  const ctid = `${catalogTrackId}_${seedCount}`;
   const remote = await prisma.libraryTrack.create({
     data: {
       userId: owner,
@@ -33,9 +39,9 @@ async function seedOwnerLibrary() {
       artist: 'The Owner',
       album: 'Shared Sounds',
       duration: 210,
-      catalogTrackId,
-      remoteUrl: `/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`,
-      remoteArtworkUrl: `/catalog/releases/${releaseId}/artwork`,
+      catalogTrackId: ctid,
+      remoteUrl: `/catalog/releases/${rid}/tracks/${ctid}/stream`,
+      remoteArtworkUrl: `/catalog/releases/${rid}/artwork`,
     },
   });
   const local = await prisma.libraryTrack.create({
@@ -45,11 +51,11 @@ async function seedOwnerLibrary() {
       title: 'Device Demo',
       artist: 'The Owner',
       duration: 120,
-      sourcePath: '/music/demo.mp3',
+      sourcePath: `/music/demo_${seedCount}.mp3`,
       fileSize: 4096,
     },
   });
-  return { remoteId: remote.id, localId: local.id };
+  return { remoteId: remote.id, localId: local.id, releaseId: rid, catalogTrackId: ctid };
 }
 
 describe('PlaylistService — public playlists (integration)', () => {
@@ -112,7 +118,7 @@ describe('PlaylistService — public playlists (integration)', () => {
   });
 
   it('emits visibility_changed and resolves catalog tracks for anonymous viewers', async () => {
-    const { remoteId, localId } = await seedOwnerLibrary();
+    const { remoteId, localId, releaseId: rid, catalogTrackId: ctid } = await seedOwnerLibrary();
     const pl = await service.createPlaylist(owner, {
       name: 'Public Mix',
       trackIds: [remoteId, localId],
@@ -132,8 +138,8 @@ describe('PlaylistService — public playlists (integration)', () => {
 
     const remoteTrack = view.tracks.find((t) => t.id === remoteId)!;
     expect(remoteTrack.playable).toBe(true);
-    expect(remoteTrack.streamPath).toContain(`/catalog/releases/${releaseId}/tracks/${catalogTrackId}/stream`);
-    expect(remoteTrack.artworkPath).toContain(`/catalog/releases/${releaseId}/artwork`);
+    expect(remoteTrack.streamPath).toContain(`/catalog/releases/${rid}/tracks/${ctid}/stream`);
+    expect(remoteTrack.artworkPath).toContain(`/catalog/releases/${rid}/artwork`);
 
     const localTrack = view.tracks.find((t) => t.id === localId)!;
     expect(localTrack.playable).toBe(false);
@@ -146,7 +152,7 @@ describe('PlaylistService — public playlists (integration)', () => {
     await service.updatePlaylist(owner, pl.id, { visibility: 'public' });
 
     const view = await service.getPublicPlaylist(pl.id, viewer);
-    expect(view as Record<string, unknown>).not.toHaveProperty('folderId');
+    expect(view as unknown as Record<string, unknown>).not.toHaveProperty('folderId');
   });
 
   it('saves a public playlist, blocks saving private/own, and re-resolves live', async () => {
