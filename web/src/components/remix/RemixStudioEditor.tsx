@@ -254,7 +254,9 @@ export function groundingDescription(
   if (!metadata?.grounding) return null;
   switch (metadata.grounding) {
     case "stem_audio":
-      return "Rendered from your licensed stems — the draft contains the source audio itself.";
+      return "High-fidelity stem render: the draft contains the licensed source audio with normalized headroom while preserving your relative gain choices.";
+    case "stem_plus_ai":
+      return "Your licensed stems plus AI-generated layers: the source audio stays in the draft, with generated additions combined in one normalized final mix.";
     case "audio_conditioned":
       return "AI draft conditioned on your stem audio — the model heard the arranged stems, but the output is draft quality, not a master.";
     case "feature_conditioned": {

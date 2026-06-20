@@ -372,6 +372,7 @@ export type RemixReleaseProvenance = {
   sourceArtistName: string | null;
   grounding:
     | "stem_audio"
+    | "stem_plus_ai"
     | "audio_conditioned"
     | "feature_conditioned"
     | "prompt_only"
@@ -4072,15 +4073,51 @@ export type RemixGenerationStatus =
 
 export type RemixGenerationGrounding =
   | "stem_audio"
+  | "stem_plus_ai"
   | "audio_conditioned"
   | "feature_conditioned"
   | "prompt_only";
+
+export type RemixGeneratedLayerMetadata = {
+  kind?: "generated_layer" | string;
+  provider?: string;
+  jobId?: string;
+  prompt?: string | null;
+  constraints?: Record<string, unknown>;
+  output?: {
+    outputUri?: string | null;
+    mimeType?: string | null;
+    synthIdPresent?: boolean | null;
+    seed?: number | null;
+    sampleRate?: number | null;
+  } | null;
+};
+
+export type RemixRenderMetadata = {
+  schemaVersion: string;
+  targetLufs: number;
+  loudnessRangeLufs: number;
+  truePeakDbtp: number;
+  outputCodec: "mp3" | string;
+  outputMimeType: "audio/mpeg" | string;
+  outputBitrateKbps: number;
+  outputSampleRateHz: number;
+  outputChannels: number;
+  inputCount: number;
+  activeStemCount: number;
+};
 
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
   /** Honest provenance (#1181): what of the source audio shaped this draft. */
   grounding?: RemixGenerationGrounding | string;
+  /** #1209: generated additive layers mixed over the source stem backbone. */
+  generatedLayers?: RemixGeneratedLayerMetadata[];
+  /** #1209: saved stem arrangement used as the final source-audio backbone. */
+  sourceArrangement?: Array<{ stemId: string; gainDb?: number | null; muted?: boolean }>;
+  /** #1210: versioned final-render settings for reproducibility/audit. */
+  renderMetadata?: RemixRenderMetadata;
   /** Measured tempo/key hints applied to the prompt (#1182 slice 3). */
   sourceFeatureHints?: { bpm?: number; key?: string };
   stemIds?: string[];

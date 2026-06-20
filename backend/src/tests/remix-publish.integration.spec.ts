@@ -417,6 +417,62 @@ describe("Remix publish (integration)", () => {
     });
   });
 
+  it("preserves stem-plus-AI layered provenance for published drafts", async () => {
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "stem_plus_ai",
+        sourceArrangement: [
+          { stemId: LICENSED_STEM_ID, gainDb: 0, muted: false },
+        ],
+        generatedLayers: [
+          {
+            kind: "generated_layer",
+            provider: "lyria-3-pro-preview",
+            jobId: "layer-job",
+            prompt: "add piano",
+            constraints: { durationSeconds: 60 },
+            output: {
+              outputUri: "local://generated-layer.wav",
+              mimeType: "audio/wav",
+              synthIdPresent: true,
+              seed: 7,
+              sampleRate: 48000,
+            },
+          },
+        ],
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    expect(track.generationMetadata).toMatchObject({
+      grounding: "stem_plus_ai",
+      aiGenerated: true,
+      sourceStemIds: [LICENSED_STEM_ID],
+      generatedLayers: [
+        expect.objectContaining({
+          kind: "generated_layer",
+          provider: "lyria-3-pro-preview",
+          output: expect.objectContaining({
+            outputUri: "local://generated-layer.wav",
+          }),
+        }),
+      ],
+    });
+    const publishedEvent = publishSpy.mock.calls
+      .map(([event]) => event)
+      .find((event) => event.eventName === "remix.published");
+    expect(publishedEvent).toMatchObject({
+      grounding: "stem_plus_ai",
+      aiGenerated: true,
+    });
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);

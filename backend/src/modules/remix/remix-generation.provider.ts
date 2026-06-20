@@ -209,6 +209,43 @@ export type StemArrangementEntry = {
   muted: boolean;
 };
 
+export type RemixGenerationOutputMetadata = {
+  outputUri: string | null;
+  /** Recorded at write time so playback never guesses from extensions. */
+  mimeType: string | null;
+  synthIdPresent: boolean | null;
+  seed: number | null;
+  sampleRate: number | null;
+};
+
+export type RemixGeneratedLayerMetadata = {
+  kind: "generated_layer";
+  provider: string;
+  jobId: string;
+  prompt: string | null;
+  constraints: RemixGenerationConstraints;
+  output: RemixGenerationOutputMetadata;
+};
+
+/**
+ * Reproducible final-render settings recorded with every stem-backed draft
+ * (#1210). This is deliberately separate from provider/layer metadata: it
+ * describes the final audio artifact produced by Resonate.
+ */
+export type RemixRenderMetadata = {
+  schemaVersion: string;
+  targetLufs: number;
+  loudnessRangeLufs: number;
+  truePeakDbtp: number;
+  outputCodec: "mp3";
+  outputMimeType: "audio/mpeg";
+  outputBitrateKbps: number;
+  outputSampleRateHz: number;
+  outputChannels: number;
+  inputCount: number;
+  activeStemCount: number;
+};
+
 export type RemixGenerationInput = {
   sourceTrackId: string;
   stemIds: string[];
@@ -235,15 +272,11 @@ export type RemixGenerationJob = {
   provider: string;
   jobId: string;
   estimatedCostUsd?: number;
+  generatedLayers?: RemixGeneratedLayerMetadata[];
+  sourceArrangement?: StemArrangementEntry[];
+  renderMetadata?: RemixRenderMetadata;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
-  outputMetadata: {
-    outputUri: string | null;
-    /** Recorded at write time so playback never guesses from extensions. */
-    mimeType: string | null;
-    synthIdPresent: boolean | null;
-    seed: number | null;
-    sampleRate: number | null;
-  };
+  outputMetadata: RemixGenerationOutputMetadata;
 };
 
 export interface RemixGenerationProvider {

@@ -159,13 +159,14 @@ from the JWT, never the request body.
   in-app since #1141: sellers can list remix-tier licenses from the stem
   page and batch mint-and-list flows, and buying one flips the CTA to
   enabled.
-- Honest draft provenance labels (#1181/#1207): the studio draft panel states,
+- Honest draft provenance labels (#1181/#1207/#1209): the studio draft panel states,
   per draft, exactly what of the source audio shaped it — rendered drafts
-  "contain the source audio itself", audio-conditioned drafts say the AI draft
-  was conditioned on stem audio while staying draft-quality, feature-conditioned
-  drafts name the measured tempo/key and state the model "does not hear the
-  source audio", and prompt-only drafts say they are "not derived from the
-  source audio".
+  "contain the source audio itself", stem-plus-AI drafts say the licensed stems
+  stay in the draft with AI-generated layers mixed on top, audio-conditioned
+  drafts say the AI draft was conditioned on stem audio while staying
+  draft-quality, feature-conditioned drafts name the measured tempo/key and
+  state the model "does not hear the source audio", and prompt-only drafts say
+  they are "not derived from the source audio".
   Legacy drafts without grounding metadata show no claim rather than a
   guessed one. Remix CTA copy was reviewed and makes no AI-derivation
   claims ("Remix" refers to the licensed remix workflow).
@@ -175,9 +176,10 @@ from the JWT, never the request body.
   are excluded. Explicit user constraints always take precedence; derived
   hints fill the gaps and the Lyria prompt says they were measured from the
   source stems. Every generation now records honest `grounding` provenance
-  in `generationMetadata` (#1181/#1207): `stem_audio` (rendered from the
-  licensed stems), `audio_conditioned` (AI provider conditioned on arranged
-  stem audio), `feature_conditioned` (prompt guided by measured tempo/key), or
+  in `generationMetadata` (#1181/#1207/#1209): `stem_audio` (rendered from
+  the licensed stems), `stem_plus_ai` (licensed stem backbone plus generated
+  layers), `audio_conditioned` (AI provider conditioned on arranged stem
+  audio), `feature_conditioned` (prompt guided by measured tempo/key), or
   `prompt_only` (nothing from the source audio shaped the output, e.g. stems
   ingested before #1184 carry no features yet).
 - Stem mix rendering (#1189, slice 2 of #1182): `stem_mix` projects render
@@ -191,8 +193,17 @@ from the JWT, never the request body.
   stem-mix mode (no prompt required; unsaved edits still block so the render
   matches what was saved). The output draft literally contains the licensed
   stem audio — the first stem-grounded draft and the artifact publish/export
-  (backlog E/F) will consume. Encrypted stems are an explicit `invalid_input`
-  deferral until a server-side decrypt path for rendering exists.
+  (backlog E/F) will consume. The #1210 quality foundation applies the
+  versioned `remix-render-policy/v1` after preserving relative per-stem gains:
+  -14 LUFS target, 11 LU loudness range, -1.5 dBTP ceiling, stereo 48 kHz MP3
+  at 320 kbps. Completed drafts persist the complete arrangement and render
+  settings in `sourceArrangement` and `renderMetadata`, so the final artifact
+  is reproducible and auditable. `stem_plus_ai` now renders source stems and
+  the generated layer in one ffmpeg graph, avoiding an intermediate MP3 and a
+  second lossy encode. Encrypted stems remain an explicit, actionable
+  `invalid_input` deferral until the authorization and temporary-plaintext
+  boundary tracked in [#1214](https://github.com/akoita/resonate/issues/1214)
+  is implemented.
 - Stem audio feature extraction (#1184, slice 1 of #1182): the demucs
   worker measures tempo (BPM + bounded confidence heuristic), beat anchors
   (`beatCount`, `firstBeatSec`), key (Krumhansl chroma template matching),
@@ -296,21 +307,24 @@ from the JWT, never the request body.
   by the catalog; `getRelease` returns a focused `remix` provenance summary
   for `type: "remix"` releases.
 
-- Generation provider (#1162, backlog D2): `LyriaRemixGenerationProvider`
+- Generation provider (#1162/#1209, backlog D2): `LyriaRemixGenerationProvider`
   reuses the catalog Lyria stack behind the provider boundary, selected via
   `REMIX_GENERATION_PROVIDER_KIND=lyria` with `REMIX_GENERATION_ENABLED` as
   the master gate. Prompt-based variation/extension only — stem_mix is
-  rejected with `invalid_input` (needs audio conditioning). Output audio is
-  stored through the storage provider under `remix-drafts/<projectId>/` and
-  recorded on the project (`generationProvider`, `generationJobId`,
-  `generationMetadata`: outputUri/synthId/seed/sampleRate/cost). Endpoint
-  constraints are bounds-checked (duration ∈ {30,60,120,180}, bpm 40–220,
-  key pattern) before any provider work. The studio Draft status panel has a
-  Generate/Regenerate button for prompted modes with honest disabled
-  reasons and, since #1165, playback for stored draft output. Since #1167,
-  the Draft status panel shows queued job state, polls until terminal state,
-  displays normalized failure copy, and only exposes the play control once a
-  completed job records output metadata.
+  rejected with `invalid_input` (it is rendered by the stem-mix path). For
+  prompted modes, Lyria output is treated as one additive generated layer and
+  the final draft is rendered by mixing that layer over the saved source-stem
+  arrangement (`grounding: stem_plus_ai`, provider
+  `stem-plus-ai-layered-render`). `generationMetadata` keeps both the final
+  render output and `generatedLayers` metadata for the layer provider/job,
+  prompt, constraints, URI, MIME type, SynthID, seed, and sample rate. Endpoint
+  constraints are bounds-checked (duration ∈ {30,60,120,180}, bpm 40–220, key
+  pattern) before any provider work. The studio Draft status panel has a
+  Generate/Regenerate button for prompted modes with honest disabled reasons
+  and, since #1165, playback for stored draft output. Since #1167, the Draft
+  status panel shows queued job state, polls until terminal state, displays
+  normalized failure copy, and only exposes the play control once a completed
+  job records output metadata.
 - Prompt presets (#1177): curated, mode-specific chips above the prompt box
   (variation: Lo-fi chill / Club remix / Darker / Acoustic; extension:
   Build a drop / Add a bridge / Outro). Clicking fills the editable
@@ -433,9 +447,20 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
   Studio draft-status copy, and published remix release provenance. The label
   says the model was conditioned on stem audio while making clear the result is
   an AI draft at draft quality.
+- **Slice 6 (#1209):** the stronger default AI-remix shape is `stem_plus_ai`:
+  prompted Lyria output is recorded as an additive generated layer, then mixed
+  over the arranged licensed stems with the shared ffmpeg mixer. The final
+  draft keeps the source stem audio and carries generated-layer provenance,
+  while still disclosing AI because generated layers are present.
+- **Quality foundation (#1210):** deterministic and layered final renders use
+  the same versioned loudness/headroom policy, persist full arrangement and
+  render metadata, and normalize storage failures without exposing provider
+  details. Fade, trim, loop, effects, and release-grade mastering remain
+  explicitly out of scope. Encrypted rendering is tracked in #1214.
 
-Keeps feature-conditioned Lyria (#1192) and stem-mix renders (#1189) as the
-other modes; release-grade claims stay deferred until the fidelity follow-ups
+Keeps audio-conditioned Stable Audio full regeneration (#1206/#1207) as an
+experimental draft-quality path and stem-mix renders (#1189) as the zero-AI
+mode; release-grade claims stay deferred until the fidelity follow-ups
 (for example, validating the best supported self-hosted model variant and the
 stereo-output fix) are done. Stable Audio 3 Large is API-only, not a supported
 `workers/stable-audio` model.

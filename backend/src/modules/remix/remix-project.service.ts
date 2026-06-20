@@ -30,7 +30,16 @@ import {
   REMIX_STEM_MIX_RENDERER,
   type StemMixRenderer,
 } from "./remix-stem-mix.renderer";
+import {
+  REMIX_LAYERED_RENDERER,
+  type LayeredRemixRenderer,
+} from "./remix-layered-renderer";
 import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
+import {
+  isValidRemixStemGainDb,
+  REMIX_STEM_GAIN_DB_MAX,
+  REMIX_STEM_GAIN_DB_MIN,
+} from "./remix-gain";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -118,6 +127,7 @@ export function draftOutputUriFromMetadata(metadata: unknown): string | null {
 
 export type RemixDraftGrounding =
   | "stem_audio"
+  | "stem_plus_ai"
   | "audio_conditioned"
   | "feature_conditioned"
   | "prompt_only";
@@ -129,6 +139,7 @@ export function draftGroundingFromMetadata(
   if (!metadata || typeof metadata !== "object") return null;
   const grounding = (metadata as { grounding?: unknown }).grounding;
   return grounding === "stem_audio" ||
+    grounding === "stem_plus_ai" ||
     grounding === "audio_conditioned" ||
     grounding === "feature_conditioned" ||
     grounding === "prompt_only"
@@ -147,6 +158,7 @@ function selectRemixDraftGrounding(input: {
 }): RemixDraftGrounding {
   if (input.mode === "stem_mix") return "stem_audio";
   if (input.providerKind === "audio-conditioned") return "audio_conditioned";
+  if (input.providerKind === "lyria") return "stem_plus_ai";
   return input.sourceFeatureHints ? "feature_conditioned" : "prompt_only";
 }
 
@@ -246,6 +258,8 @@ export class RemixProjectService {
     private readonly storageProvider: StorageProvider,
     @InjectQueue(REMIX_GENERATION_QUEUE)
     private readonly generationQueue: Queue<RemixGenerationJobData>,
+    @Inject(REMIX_LAYERED_RENDERER)
+    private readonly layeredRenderer?: LayeredRemixRenderer,
   ) {}
 
   /**
@@ -416,6 +430,17 @@ export class RemixProjectService {
 
     const projectStemIds = new Set(project.stems.map((stem) => stem.stemId));
     const stemUpdates = patch.stems ?? [];
+    const invalidGain = stemUpdates.find(
+      (stem) =>
+        stem.gainDb !== undefined &&
+        stem.gainDb !== null &&
+        !isValidRemixStemGainDb(stem.gainDb),
+    );
+    if (invalidGain) {
+      throw new BadRequestException(
+        `gainDb must be null or a finite number between ${REMIX_STEM_GAIN_DB_MIN} and ${REMIX_STEM_GAIN_DB_MAX}`,
+      );
+    }
     const unknownStemIds = stemUpdates
       .map((stem) => stem.stemId)
       .filter((stemId) => !projectStemIds.has(stemId));
@@ -680,30 +705,25 @@ export class RemixProjectService {
     }
 
     try {
-      // Mode routing (#1189): stem_mix renders the arranged stems with
-      // ffmpeg (no AI, no cost, outside the REMIX_GENERATION_ENABLED gate
-      // which exists for paid generation); prompted modes go to the AI
-      // provider as before, which never sees stem_mix.
+      const liveStemArrangement = project.stems.map((stem) => ({
+        stemId: stem.stemId,
+        gainDb: stem.gainDb,
+        muted: stem.muted,
+      }));
+      // Mode routing: stem_mix renders arranged stems with pure DSP (#1189);
+      // prompted modes ask the configured provider for generated audio. Lyria
+      // output is treated as one additive layer (#1209), then mixed back over
+      // the live arranged stems so the final draft keeps source fidelity.
       const providerJob =
         data.generationInput.mode === "stem_mix"
           ? await this.stemMixRenderer.render({
               remixProjectId: project.id,
-              stems: project.stems.map((stem) => ({
-                stemId: stem.stemId,
-                gainDb: stem.gainDb,
-                muted: stem.muted,
-              })),
+              stems: liveStemArrangement,
             })
-          : await this.generationProvider.createRemixDraft({
-              ...data.generationInput,
-              // Live arrangement at process time, mirroring stem_mix, so
-              // audio-conditioned generation (#1182 slice 4) conditions on the
-              // current mix. Prompt-only providers ignore it.
-              stemArrangement: project.stems.map((stem) => ({
-                stemId: stem.stemId,
-                gainDb: stem.gainDb,
-                muted: stem.muted,
-              })),
+          : await this.maybeRenderStemPlusAiLayer({
+              projectId: project.id,
+              generationInput: data.generationInput,
+              stems: liveStemArrangement,
             });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
@@ -712,6 +732,15 @@ export class RemixProjectService {
         providerJobId: providerJob.jobId,
         estimatedCostUsd: providerJob.estimatedCostUsd ?? null,
         output: providerJob.outputMetadata,
+        ...(providerJob.generatedLayers
+          ? { generatedLayers: providerJob.generatedLayers }
+          : {}),
+        ...(providerJob.sourceArrangement
+          ? { sourceArrangement: providerJob.sourceArrangement }
+          : {}),
+        ...(providerJob.renderMetadata
+          ? { renderMetadata: providerJob.renderMetadata }
+          : {}),
         completedAt,
         failedAt: null,
         errorCode: null,
@@ -810,6 +839,43 @@ export class RemixProjectService {
         "A generation job is already active or recorded for this project; reload the project.",
       );
     }
+  }
+
+  private async maybeRenderStemPlusAiLayer(input: {
+    projectId: string;
+    generationInput: RemixGenerationJobData["generationInput"];
+    stems: Array<{ stemId: string; gainDb: number | null; muted: boolean }>;
+  }) {
+    const layerJob = await this.generationProvider.createRemixDraft({
+      ...input.generationInput,
+      // Live arrangement at process time, mirroring stem_mix, so
+      // audio-conditioned generation (#1182 slice 4) conditions on the
+      // current mix and #1209 layered rendering keeps source stems current.
+      stemArrangement: input.stems,
+    });
+
+    if (process.env.REMIX_GENERATION_PROVIDER_KIND !== "lyria") {
+      return layerJob;
+    }
+    if (!this.layeredRenderer) {
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        "Layered remix rendering is not available in this environment.",
+        true,
+      );
+    }
+    return this.layeredRenderer.render({
+      remixProjectId: input.projectId,
+      stems: input.stems,
+      layer: {
+        provider: layerJob.provider,
+        jobId: layerJob.jobId,
+        prompt: input.generationInput.prompt ?? null,
+        constraints: input.generationInput.constraints as Record<string, unknown>,
+        output: layerJob.outputMetadata,
+        estimatedCostUsd: layerJob.estimatedCostUsd,
+      },
+    });
   }
 
   private generationJobIsStale(metadata: unknown): boolean {
@@ -991,6 +1057,12 @@ export class RemixProjectService {
       mode: project.mode,
       grounding,
       aiGenerated,
+      ...(Array.isArray(metadata.sourceArrangement)
+        ? { sourceArrangement: metadata.sourceArrangement }
+        : {}),
+      ...(Array.isArray(metadata.generatedLayers)
+        ? { generatedLayers: metadata.generatedLayers }
+        : {}),
       synthIdPresent:
         typeof output.synthIdPresent === "boolean"
           ? output.synthIdPresent

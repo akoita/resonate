@@ -20,6 +20,7 @@ import { RemixEligibilityService } from "../modules/remix/remix-eligibility.serv
 import { RemixProjectService } from "../modules/remix/remix-project.service";
 import { HttpException } from "@nestjs/common";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
+import { REMIX_RENDER_AUDIO_POLICY } from "../modules/remix/stem-audio-mixer";
 
 const TEST_PREFIX = `remix_${Date.now()}_`;
 
@@ -57,6 +58,14 @@ const stemMixRenderer = {
     jobId: "render-job",
     provider: "stem-mix-render",
     estimatedCostUsd: 0,
+    sourceArrangement: [
+      { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+    ],
+    renderMetadata: {
+      ...REMIX_RENDER_AUDIO_POLICY,
+      inputCount: 1,
+      activeStemCount: 1,
+    },
     outputMetadata: {
       outputUri: "local://remix-draft-render.mp3",
       mimeType: "audio/mpeg",
@@ -65,6 +74,9 @@ const stemMixRenderer = {
       sampleRate: null,
     },
   }),
+};
+const layeredRenderer = {
+  render: jest.fn(),
 };
 
 describe("Remix eligibility and projects (integration)", () => {
@@ -358,6 +370,7 @@ describe("Remix eligibility and projects (integration)", () => {
       generationQueue as any,
     );
     generationQueue.add.mockClear();
+    layeredRenderer.render.mockReset();
     storageProvider.download.mockResolvedValue(Buffer.from("draft audio"));
   });
 
@@ -680,6 +693,23 @@ describe("Remix eligibility and projects (integration)", () => {
       );
       const untouched = updated.stems.find((s) => s.stemId === X402_STEM_ID);
       expect(untouched).toEqual(expect.objectContaining({ muted: false }));
+    });
+
+    it("rejects non-finite and out-of-range stem gain", async () => {
+      const created = await projectService.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Gain Guard",
+      });
+
+      for (const gainDb of [Number.NaN, Number.POSITIVE_INFINITY, -24.1, 6.1]) {
+        await expect(
+          projectService.updateProject(CREATOR_ID, created.id, {
+            stems: [{ stemId: LICENSED_STEM_ID, gainDb }],
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      }
     });
 
     it("updates the remix mode and rejects unknown modes", async () => {
@@ -1016,6 +1046,153 @@ describe("Remix eligibility and projects (integration)", () => {
         );
       });
 
+      it("renders Lyria prompted output as one AI layer over the arranged stems (#1209)", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        process.env.REMIX_GENERATION_PROVIDER_KIND = "lyria";
+        const layerProvider = {
+          createRemixDraft: jest.fn().mockResolvedValue({
+            provider: "lyria-3-pro-preview",
+            jobId: "layer-job",
+            estimatedCostUsd: 0.12,
+            outputMetadata: {
+              outputUri: "local://generated-layer.wav",
+              mimeType: "audio/wav",
+              synthIdPresent: true,
+              seed: 909,
+              sampleRate: 48000,
+            },
+          }),
+        };
+        layeredRenderer.render.mockResolvedValue({
+          provider: "stem-plus-ai-layered-render",
+          jobId: "layered-job",
+          estimatedCostUsd: 0.12,
+          sourceArrangement: [
+            { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+          ],
+          generatedLayers: [
+            {
+              kind: "generated_layer",
+              provider: "lyria-3-pro-preview",
+              jobId: "layer-job",
+              prompt: "add piano",
+              constraints: { durationSeconds: 60 },
+              output: {
+                outputUri: "local://generated-layer.wav",
+                mimeType: "audio/wav",
+                synthIdPresent: true,
+                seed: 909,
+                sampleRate: 48000,
+              },
+            },
+          ],
+          renderMetadata: {
+            ...REMIX_RENDER_AUDIO_POLICY,
+            inputCount: 2,
+            activeStemCount: 1,
+          },
+          outputMetadata: {
+            outputUri: "local://stem-plus-ai.mp3",
+            mimeType: "audio/mpeg",
+            synthIdPresent: true,
+            seed: 909,
+            sampleRate: 48000,
+          },
+        });
+        const svc = new RemixProjectService(
+          eventBus,
+          eligibilityService,
+          layerProvider as any,
+          stemMixRenderer,
+          storageProvider,
+          generationQueue as any,
+          layeredRenderer as any,
+        );
+        const created = await svc.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Layered",
+          mode: "variation",
+          prompt: "add piano",
+        });
+
+        const pending = await svc.generateDraft(CREATOR_ID, created.id, {
+          constraints: { durationSeconds: 60 },
+        });
+
+        expect(pending.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "pending",
+            grounding: "stem_plus_ai",
+            aiGenerated: true,
+          }),
+        );
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+        await svc.processGenerationJob(queuedData);
+
+        expect(layerProvider.createRemixDraft).toHaveBeenCalledWith(
+          expect.objectContaining({
+            prompt: "add piano",
+            sourceFeatureHints: { bpm: 93, key: "G minor" },
+            stemArrangement: [
+              { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+            ],
+          }),
+        );
+        expect(layeredRenderer.render).toHaveBeenCalledWith(
+          expect.objectContaining({
+            remixProjectId: created.id,
+            stems: [{ stemId: LICENSED_STEM_ID, gainDb: null, muted: false }],
+            layer: expect.objectContaining({
+              provider: "lyria-3-pro-preview",
+              jobId: "layer-job",
+              prompt: "add piano",
+            }),
+          }),
+        );
+        const completed = await svc.getProject(CREATOR_ID, created.id);
+        expect(completed.generationProvider).toBe(
+          "stem-plus-ai-layered-render",
+        );
+        expect(completed.generationMetadata).toEqual(
+          expect.objectContaining({
+            status: "completed",
+            grounding: "stem_plus_ai",
+            aiGenerated: true,
+            providerJobId: "layered-job",
+            output: expect.objectContaining({
+              outputUri: "local://stem-plus-ai.mp3",
+            }),
+            generatedLayers: [
+              expect.objectContaining({
+                kind: "generated_layer",
+                provider: "lyria-3-pro-preview",
+                output: expect.objectContaining({
+                  outputUri: "local://generated-layer.wav",
+                }),
+              }),
+            ],
+            renderMetadata: expect.objectContaining({
+              schemaVersion: "remix-render-policy/v1",
+              inputCount: 2,
+              activeStemCount: 1,
+              targetLufs: -14,
+              truePeakDbtp: -1.5,
+            }),
+          }),
+        );
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.generation_completed",
+            remixProjectId: created.id,
+            provider: "stem-plus-ai-layered-render",
+            grounding: "stem_plus_ai",
+            aiGenerated: true,
+          }),
+        );
+      });
+
       it("renders stem_mix projects through the renderer, not the AI provider (#1189)", async () => {
         // The render path is deliberately outside the AI master gate.
         delete process.env.REMIX_GENERATION_ENABLED;
@@ -1057,6 +1234,17 @@ describe("Remix eligibility and projects (integration)", () => {
             expect.objectContaining({
               status: "completed",
               estimatedCostUsd: 0,
+              sourceArrangement: [
+                expect.objectContaining({
+                  stemId: LICENSED_STEM_ID,
+                  muted: false,
+                }),
+              ],
+              renderMetadata: expect.objectContaining({
+                schemaVersion: "remix-render-policy/v1",
+                inputCount: 1,
+                activeStemCount: 1,
+              }),
             }),
           );
           expect(stemMixRenderer.render).toHaveBeenCalledWith(
