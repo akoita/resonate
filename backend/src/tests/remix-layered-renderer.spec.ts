@@ -1,12 +1,12 @@
 import { FfmpegLayeredRemixRenderer } from "../modules/remix/remix-layered-renderer";
 import { RemixGenerationProviderError } from "../modules/remix/remix-generation.provider";
 import type { StemAudioMixer } from "../modules/remix/stem-audio-mixer";
+import { REMIX_RENDER_AUDIO_POLICY } from "../modules/remix/stem-audio-mixer";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
 describe("FfmpegLayeredRemixRenderer (#1209)", () => {
   const mixer = {
-    mixUnmutedStems: jest.fn(),
-    mixAudioBuffers: jest.fn(),
+    mixUnmutedStemsWithAudioBuffers: jest.fn(),
   };
   const storageProvider = {
     upload: jest.fn(),
@@ -16,15 +16,15 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
   };
 
   beforeEach(() => {
-    mixer.mixUnmutedStems.mockReset().mockResolvedValue({
-      buffer: Buffer.from("source-mix"),
-      mimeType: "audio/mpeg",
-      stemCount: 1,
-    });
-    mixer.mixAudioBuffers.mockReset().mockResolvedValue({
+    mixer.mixUnmutedStemsWithAudioBuffers.mockReset().mockResolvedValue({
       buffer: Buffer.from("layered-mix"),
       mimeType: "audio/mpeg",
       inputCount: 2,
+      renderMetadata: {
+        ...REMIX_RENDER_AUDIO_POLICY,
+        inputCount: 2,
+        activeStemCount: 1,
+      },
     });
     storageProvider.download.mockReset().mockResolvedValue(Buffer.from("layer"));
     storageProvider.upload.mockReset().mockResolvedValue({
@@ -59,18 +59,10 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       },
     });
 
-    expect(mixer.mixUnmutedStems).toHaveBeenCalledWith(
-      [{ stemId: "stem-1", gainDb: 0, muted: false }],
-      "project-1",
-    );
     expect(storageProvider.download).toHaveBeenCalledWith("local://layer.wav");
-    expect(mixer.mixAudioBuffers).toHaveBeenCalledWith(
+    expect(mixer.mixUnmutedStemsWithAudioBuffers).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
       [
-        expect.objectContaining({
-          buffer: Buffer.from("source-mix"),
-          mimeType: "audio/mpeg",
-          label: "source-stems",
-        }),
         expect.objectContaining({
           buffer: Buffer.from("layer"),
           mimeType: "audio/wav",
@@ -89,6 +81,11 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
         provider: "stem-plus-ai-layered-render",
         estimatedCostUsd: 0.12,
         sourceArrangement: [{ stemId: "stem-1", gainDb: 0, muted: false }],
+        renderMetadata: expect.objectContaining({
+          schemaVersion: "remix-render-policy/v1",
+          activeStemCount: 1,
+          inputCount: 2,
+        }),
         generatedLayers: [
           expect.objectContaining({
             kind: "generated_layer",
@@ -101,6 +98,7 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
           mimeType: "audio/mpeg",
           synthIdPresent: true,
           seed: 123,
+          sampleRate: 48000,
         }),
       }),
     );
@@ -129,6 +127,6 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       code: "provider_unavailable",
       retryable: true,
     } satisfies Partial<RemixGenerationProviderError>);
-    expect(mixer.mixUnmutedStems).not.toHaveBeenCalled();
+    expect(mixer.mixUnmutedStemsWithAudioBuffers).not.toHaveBeenCalled();
   });
 });

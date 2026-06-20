@@ -17,6 +17,7 @@ const TEST_PREFIX = `mixer_${Date.now()}_`;
 const TRACK_ID = `${TEST_PREFIX}track`;
 const STEM_PLAIN = `${TEST_PREFIX}stem_plain`;
 const STEM_ENCRYPTED = `${TEST_PREFIX}stem_encrypted`;
+const STEM_STORED = `${TEST_PREFIX}stem_stored`;
 
 describe("FfmpegStemAudioMixer validation (integration)", () => {
   const storageProvider = {
@@ -62,6 +63,13 @@ describe("FfmpegStemAudioMixer validation (integration)", () => {
           data: Buffer.from("ciphertext"),
           isEncrypted: true,
         },
+        {
+          id: STEM_STORED,
+          trackId: TRACK_ID,
+          type: "bass",
+          uri: "/catalog/stems/stored.wav/blob",
+          storageProvider: "local",
+        },
       ],
     });
   });
@@ -85,7 +93,11 @@ describe("FfmpegStemAudioMixer validation (integration)", () => {
         [{ stemId: STEM_ENCRYPTED, gainDb: 0, muted: false }],
         TEST_PREFIX,
       ),
-    ).rejects.toMatchObject({ code: "invalid_input", retryable: false });
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      retryable: false,
+      message: expect.stringContaining("Mute them before rendering"),
+    });
   });
 
   it("rejects when a requested stem does not exist", async () => {
@@ -118,5 +130,45 @@ describe("FfmpegStemAudioMixer validation (integration)", () => {
         TEST_PREFIX,
       ),
     ).rejects.toMatchObject({ code: "invalid_input" });
+  });
+
+  it("maps a storage outage to retryable provider_unavailable without leaking details", async () => {
+    const warn = jest
+      .spyOn((mixer as any).logger, "warn")
+      .mockImplementation(() => undefined);
+    storageProvider.download.mockRejectedValueOnce(
+      new Error("gs://private-bucket/internal-object.wav permission denied"),
+    );
+
+    const render = mixer.mixUnmutedStems(
+      [{ stemId: STEM_STORED, gainDb: 0, muted: false }],
+      TEST_PREFIX,
+    );
+
+    await expect(render).rejects.toMatchObject({
+      code: "provider_unavailable",
+      retryable: true,
+      message: expect.not.stringContaining("private-bucket"),
+    });
+    expect(warn).toHaveBeenCalledWith(
+      `Storage download failed for stem ${STEM_STORED}`,
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain("private-bucket");
+    warn.mockRestore();
+  });
+
+  it("treats a missing stored object as non-retryable invalid_input", async () => {
+    storageProvider.download.mockResolvedValueOnce(null);
+
+    await expect(
+      mixer.mixUnmutedStems(
+        [{ stemId: STEM_STORED, gainDb: 0, muted: false }],
+        TEST_PREFIX,
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid_input",
+      retryable: false,
+      message: expect.stringContaining(`Audio for stem ${STEM_STORED} is unavailable`),
+    });
   });
 });

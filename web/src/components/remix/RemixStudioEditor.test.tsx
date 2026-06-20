@@ -474,7 +474,10 @@ describe("describeGenerateAvailability (#1162)", () => {
 describe("groundingDescription (#1181)", () => {
   it("states that rendered drafts contain the source audio", () => {
     expect(groundingDescription({ grounding: "stem_audio" })).toContain(
-      "contains the source audio itself",
+      "contains the licensed source audio",
+    );
+    expect(groundingDescription({ grounding: "stem_audio" })).toContain(
+      "normalized headroom",
     );
   });
 
@@ -505,6 +508,9 @@ describe("groundingDescription (#1181)", () => {
     );
     expect(groundingDescription({ grounding: "stem_plus_ai" })).toContain(
       "source audio stays",
+    );
+    expect(groundingDescription({ grounding: "stem_plus_ai" })).toContain(
+      "one normalized final mix",
     );
   });
 

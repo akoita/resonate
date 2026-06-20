@@ -70,6 +70,15 @@ that answers:
 | [Graceful Client Session Reset](session-reset.md) | `implemented` | users, developers, operators | `GET /health` (`appVersion`/`environmentId`/`dataEpoch`), env vars `RESONATE_ENVIRONMENT_ID`/`RESONATE_DATA_EPOCH`/`APP_VERSION`, `web/src/components/system/AppStateGuard.tsx`, `SessionResetDialog`, `web/src/lib/appEnvironment.ts`, `resetLocalAppState`, Settings → Troubleshooting, [#1199](https://github.com/akoita/resonate/issues/1199) | Detects when the browser is talking to a new backend build or a new/reset environment (precursor to state migration #915) and guides the user through a safe reset instead of silent 401s: an environment/data-epoch change triggers a guided session-reset dialog that clears only app-owned localStorage and signs out; an app-version change shows a non-destructive reload banner. Copy is explicit that the passkey is never deleted and still controls any account it created — passkeys live in the platform authenticator and are never touched. A failed /health is treated as no change, so reset is always user-confirmed, never silent. A manual 'Reset local session' control lives in Settings → Troubleshooting. |
 | [Punchline Drops](punchline_drops_mvp.md) | `planned` | artists, listeners | planned drop/shows surfaces | See also [execution plan](punchline_drops_execution_plan.md). |
 
+### Remix Studio quality foundation
+
+Issue [#1210](https://github.com/akoita/resonate/issues/1210) adds the
+versioned `remix-render-policy/v1` to deterministic and `stem_plus_ai` final
+renders. The completed draft records its full source arrangement and render
+settings, and layered drafts avoid an intermediate MP3 encode. Encrypted stems
+remain fail-closed while the authorized decrypt-for-render boundary is tracked
+in [#1214](https://github.com/akoita/resonate/issues/1214).
+
 ## Architecture And Protocol Entry Points
 
 | Area | Start Here |

@@ -50,10 +50,7 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
       );
     }
 
-    const [sourceMix, layerBytes] = await Promise.all([
-      this.mixer.mixUnmutedStems(input.stems, input.remixProjectId),
-      this.storageProvider.download(layerUri),
-    ]);
+    const layerBytes = await this.storageProvider.download(layerUri);
     if (!layerBytes) {
       throw new RemixGenerationProviderError(
         "provider_unavailable",
@@ -62,14 +59,12 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
       );
     }
 
-    const mixed = await this.mixer.mixAudioBuffers(
+    // One final graph: loading the arranged stems and generated layer together
+    // avoids the old source-MP3 intermediate, double normalization, and double
+    // lossy encoding (#1210).
+    const mixed = await this.mixer.mixUnmutedStemsWithAudioBuffers(
+      input.stems,
       [
-        {
-          buffer: sourceMix.buffer,
-          mimeType: sourceMix.mimeType,
-          gainDb: 0,
-          label: "source-stems",
-        },
         {
           buffer: layerBytes,
           mimeType: input.layer.output.mimeType ?? "application/octet-stream",
@@ -101,13 +96,14 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
       jobId,
       estimatedCostUsd: input.layer.estimatedCostUsd ?? undefined,
       sourceArrangement: input.stems,
+      renderMetadata: mixed.renderMetadata,
       generatedLayers: [generatedLayer],
       outputMetadata: {
         outputUri: stored.uri,
         mimeType: mixed.mimeType,
         synthIdPresent: input.layer.output.synthIdPresent,
         seed: input.layer.output.seed,
-        sampleRate: input.layer.output.sampleRate,
+        sampleRate: mixed.renderMetadata.outputSampleRateHz,
       },
     };
   }

@@ -722,6 +722,9 @@ export class RemixProjectService {
         ...(providerJob.sourceArrangement
           ? { sourceArrangement: providerJob.sourceArrangement }
           : {}),
+        ...(providerJob.renderMetadata
+          ? { renderMetadata: providerJob.renderMetadata }
+          : {}),
         completedAt,
         failedAt: null,
         errorCode: null,

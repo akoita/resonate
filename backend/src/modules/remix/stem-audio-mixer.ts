@@ -1,14 +1,14 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { execFile } from "child_process";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
-import { existsSync } from "fs";
 import { tmpdir } from "os";
-import { join, resolve, sep } from "path";
+import { join } from "path";
 import { promisify } from "util";
 import { prisma } from "../../db/prisma";
 import { StorageProvider } from "../storage/storage_provider";
 import {
   RemixGenerationProviderError,
+  type RemixRenderMetadata,
   type StemArrangementEntry,
 } from "./remix-generation.provider";
 
@@ -17,6 +17,23 @@ const execFileAsync = promisify(execFile);
 export const STEM_AUDIO_MIXER = "STEM_AUDIO_MIXER";
 
 const FFMPEG_TIMEOUT_MS = 120_000;
+
+/**
+ * Product audio policy, not environment configuration. Identical saved
+ * arrangements must render identically across environments; changing any
+ * value requires a schema-version bump so old drafts remain auditable.
+ */
+export const REMIX_RENDER_AUDIO_POLICY = Object.freeze({
+  schemaVersion: "remix-render-policy/v1",
+  targetLufs: -14,
+  loudnessRangeLufs: 11,
+  truePeakDbtp: -1.5,
+  outputCodec: "mp3" as const,
+  outputMimeType: "audio/mpeg" as const,
+  outputBitrateKbps: 320,
+  outputSampleRateHz: 48_000,
+  outputChannels: 2,
+});
 
 // Re-exported for back-compat: the canonical definition lives in the provider
 // boundary so RemixGenerationInput and the mixer share one type.
@@ -27,6 +44,7 @@ export type MixedStemAudio = {
   mimeType: string;
   /** Number of unmuted stems that went into the mix. */
   stemCount: number;
+  renderMetadata: RemixRenderMetadata;
 };
 
 export type AudioBufferMixInput = {
@@ -34,6 +52,13 @@ export type AudioBufferMixInput = {
   mimeType: string;
   gainDb?: number | null;
   label: string;
+};
+
+export type MixedAudioBuffers = {
+  buffer: Buffer;
+  mimeType: string;
+  inputCount: number;
+  renderMetadata: RemixRenderMetadata;
 };
 
 /**
@@ -47,10 +72,11 @@ export interface StemAudioMixer {
     stems: StemArrangementEntry[],
     label: string,
   ): Promise<MixedStemAudio>;
-  mixAudioBuffers(
+  mixUnmutedStemsWithAudioBuffers(
+    stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
     label: string,
-  ): Promise<{ buffer: Buffer; mimeType: string; inputCount: number }>;
+  ): Promise<MixedAudioBuffers>;
 }
 
 /**
@@ -81,17 +107,35 @@ export function buildStemMixFfmpegArgs(
     return `[${index}:a]volume=${gain}dB[a${index}]`;
   });
   const mixInputs = inputs.map((_, index) => `[a${index}]`).join("");
-  const filter = `${labelled.join(";")};${mixInputs}amix=inputs=${inputs.length}:duration=longest:normalize=0[mix]`;
+  const policy = REMIX_RENDER_AUDIO_POLICY;
+  const filter = `${labelled.join(";")};${mixInputs}amix=inputs=${inputs.length}:duration=longest:normalize=0[sum];[sum]loudnorm=I=${policy.targetLufs}:LRA=${policy.loudnessRangeLufs}:TP=${policy.truePeakDbtp}[mix]`;
   args.push(
     "-filter_complex",
     filter,
     "-map",
     "[mix]",
+    "-codec:a",
+    "libmp3lame",
     "-b:a",
-    "320k",
+    `${policy.outputBitrateKbps}k`,
+    "-ar",
+    String(policy.outputSampleRateHz),
+    "-ac",
+    String(policy.outputChannels),
     outputPath,
   );
   return args;
+}
+
+function renderMetadata(
+  inputCount: number,
+  activeStemCount: number,
+): RemixRenderMetadata {
+  return {
+    ...REMIX_RENDER_AUDIO_POLICY,
+    inputCount,
+    activeStemCount,
+  };
 }
 
 @Injectable()
@@ -104,6 +148,35 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stems: StemArrangementEntry[],
     label: string,
   ): Promise<MixedStemAudio> {
+    return this.mixStemArrangement(stems, [], label, true);
+  }
+
+  async mixUnmutedStemsWithAudioBuffers(
+    stems: StemArrangementEntry[],
+    inputs: AudioBufferMixInput[],
+    label: string,
+  ): Promise<MixedAudioBuffers> {
+    return this.mixStemArrangement(stems, inputs, label, false);
+  }
+
+  private async mixStemArrangement(
+    stems: StemArrangementEntry[],
+    additionalInputs: AudioBufferMixInput[],
+    label: string,
+    stemOnly: true,
+  ): Promise<MixedStemAudio>;
+  private async mixStemArrangement(
+    stems: StemArrangementEntry[],
+    additionalInputs: AudioBufferMixInput[],
+    label: string,
+    stemOnly: false,
+  ): Promise<MixedAudioBuffers>;
+  private async mixStemArrangement(
+    stems: StemArrangementEntry[],
+    additionalInputs: AudioBufferMixInput[],
+    label: string,
+    stemOnly: boolean,
+  ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const activeStems = stems.filter((stem) => !stem.muted);
     if (activeStems.length === 0) {
       throw new RemixGenerationProviderError(
@@ -119,9 +192,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         id: true,
         uri: true,
         data: true,
-        mimeType: true,
         isEncrypted: true,
-        storageProvider: true,
       },
     });
     const rowsById = new Map(stemRows.map((row) => [row.id, row]));
@@ -140,7 +211,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       // exists (#1189) — shared by audio-conditioned generation (#1182).
       throw new RemixGenerationProviderError(
         "invalid_input",
-        "Encrypted stems cannot be rendered yet.",
+        "Encrypted stems cannot be rendered yet. Mute them before rendering this draft.",
         false,
       );
     }
@@ -162,6 +233,14 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         await writeFile(inputPath, audio);
         ffmpegInputs.push({ path: inputPath, gainDb: stem.gainDb ?? 0 });
       }
+      for (const input of additionalInputs) {
+        const inputPath = join(
+          workDir,
+          `input-${ffmpegInputs.length}${extensionForMimeType(input.mimeType)}`,
+        );
+        await writeFile(inputPath, input.buffer);
+        ffmpegInputs.push({ path: inputPath, gainDb: input.gainDb ?? 0 });
+      }
 
       const outputPath = join(workDir, "mix.mp3");
       const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath);
@@ -182,107 +261,59 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       );
 
       const buffer = await readFile(outputPath);
-      return { buffer, mimeType: "audio/mpeg", stemCount: ffmpegInputs.length };
-    } finally {
-      await rm(workDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-
-  async mixAudioBuffers(
-    inputs: AudioBufferMixInput[],
-    label: string,
-  ): Promise<{ buffer: Buffer; mimeType: string; inputCount: number }> {
-    if (inputs.length === 0) {
-      throw new RemixGenerationProviderError(
-        "invalid_input",
-        "A layered remix render needs at least one audio input.",
-        false,
-      );
-    }
-
-    const workDir = await mkdtemp(join(tmpdir(), "remix-layer-"));
-    try {
-      const ffmpegInputs: Array<{ path: string; gainDb: number }> = [];
-      for (const input of inputs) {
-        const inputPath = join(
-          workDir,
-          `input-${ffmpegInputs.length}${extensionForMimeType(input.mimeType)}`,
-        );
-        await writeFile(inputPath, input.buffer);
-        ffmpegInputs.push({
-          path: inputPath,
-          gainDb: input.gainDb ?? 0,
-        });
-      }
-
-      const outputPath = join(workDir, "layered.mp3");
-      const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath);
-      const started = Date.now();
-      try {
-        await execFileAsync("ffmpeg", args, { timeout: FFMPEG_TIMEOUT_MS });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`ffmpeg layered mix failed for ${label}: ${message}`);
-        throw new RemixGenerationProviderError(
-          "provider_unavailable",
-          "The layered remix could not be mixed. Please try again later.",
-          true,
-        );
-      }
-      this.logger.log(
-        `[layered-mix] ${label}: mixed ${ffmpegInputs.length} inputs in ${Date.now() - started}ms`,
-      );
-
-      return {
-        buffer: await readFile(outputPath),
-        mimeType: "audio/mpeg",
-        inputCount: ffmpegInputs.length,
-      };
+      const metadata = renderMetadata(ffmpegInputs.length, activeStems.length);
+      return stemOnly
+        ? {
+            buffer,
+            mimeType: REMIX_RENDER_AUDIO_POLICY.outputMimeType,
+            stemCount: activeStems.length,
+            renderMetadata: metadata,
+          }
+        : {
+            buffer,
+            mimeType: REMIX_RENDER_AUDIO_POLICY.outputMimeType,
+            inputCount: ffmpegInputs.length,
+            renderMetadata: metadata,
+          };
     } finally {
       await rm(workDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   /**
-   * Stored bytes in fetch order mirroring the catalog blob path: DB bytes,
-   * local uploads directory, then the storage provider.
+   * Stored bytes in fetch order: DB bytes, then the configured storage
+   * provider. Local path containment belongs to LocalStorageProvider so local
+   * and GCS/IPFS reads share one boundary instead of duplicating URI parsing.
    */
   private async loadStemAudio(row: {
     id: string;
     uri: string;
     data: Buffer | Uint8Array | null;
-    storageProvider: string;
   }): Promise<Buffer | null> {
     if (row.data && row.data.length > 0) {
       return Buffer.from(row.data);
     }
-    if (row.storageProvider === "local" && row.uri) {
-      // Containment check: Stem.uri is server-written, but the mixed output is
-      // served back to the user, so a traversal-shaped uri must never read
-      // outside the uploads dir into the mix.
-      const uploadsDir = resolve(process.cwd(), "uploads", "stems");
-      const localPath = resolve(uploadsDir, row.uri);
-      if (localPath.startsWith(uploadsDir + sep) && existsSync(localPath)) {
-        return readFile(localPath);
-      }
-    }
     try {
-      return await this.storageProvider.download(row.uri);
-    } catch (error) {
-      this.logger.warn(
-        `Storage download failed for stem ${row.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
+      const audio = await this.storageProvider.download(row.uri);
+      return audio && audio.length > 0 ? audio : null;
+    } catch {
+      // Do not log provider messages: they can contain bucket names, local
+      // paths, signed URLs, or other storage internals.
+      this.logger.warn(`Storage download failed for stem ${row.id}`);
+      throw new RemixGenerationProviderError(
+        "provider_unavailable",
+        `Stored audio for stem ${row.id} could not be loaded. Please try again later.`,
+        true,
       );
-      return null;
     }
   }
 }
 
 function extensionForMimeType(mimeType: string): string {
-  const normalized = mimeType.toLowerCase();
-  if (normalized.includes("wav")) return ".wav";
-  if (normalized.includes("mpeg") || normalized.includes("mp3")) return ".mp3";
-  if (normalized.includes("ogg")) return ".ogg";
+  const normalized = mimeType.toLowerCase().split(";")[0].trim();
+  if (normalized === "audio/wav" || normalized === "audio/x-wav") return ".wav";
+  if (normalized === "audio/mpeg" || normalized === "audio/mp3") return ".mp3";
+  if (normalized === "audio/ogg") return ".ogg";
+  if (normalized === "audio/flac") return ".flac";
   return ".audio";
 }

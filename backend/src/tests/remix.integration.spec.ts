@@ -20,6 +20,7 @@ import { RemixEligibilityService } from "../modules/remix/remix-eligibility.serv
 import { RemixProjectService } from "../modules/remix/remix-project.service";
 import { HttpException } from "@nestjs/common";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
+import { REMIX_RENDER_AUDIO_POLICY } from "../modules/remix/stem-audio-mixer";
 
 const TEST_PREFIX = `remix_${Date.now()}_`;
 
@@ -57,6 +58,14 @@ const stemMixRenderer = {
     jobId: "render-job",
     provider: "stem-mix-render",
     estimatedCostUsd: 0,
+    sourceArrangement: [
+      { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+    ],
+    renderMetadata: {
+      ...REMIX_RENDER_AUDIO_POLICY,
+      inputCount: 1,
+      activeStemCount: 1,
+    },
     outputMetadata: {
       outputUri: "local://remix-draft-render.mp3",
       mimeType: "audio/mpeg",
@@ -1060,6 +1069,11 @@ describe("Remix eligibility and projects (integration)", () => {
               },
             },
           ],
+          renderMetadata: {
+            ...REMIX_RENDER_AUDIO_POLICY,
+            inputCount: 2,
+            activeStemCount: 1,
+          },
           outputMetadata: {
             outputUri: "local://stem-plus-ai.mp3",
             mimeType: "audio/mpeg",
@@ -1142,6 +1156,13 @@ describe("Remix eligibility and projects (integration)", () => {
                 }),
               }),
             ],
+            renderMetadata: expect.objectContaining({
+              schemaVersion: "remix-render-policy/v1",
+              inputCount: 2,
+              activeStemCount: 1,
+              targetLufs: -14,
+              truePeakDbtp: -1.5,
+            }),
           }),
         );
         expect(publishSpy).toHaveBeenCalledWith(
@@ -1196,6 +1217,17 @@ describe("Remix eligibility and projects (integration)", () => {
             expect.objectContaining({
               status: "completed",
               estimatedCostUsd: 0,
+              sourceArrangement: [
+                expect.objectContaining({
+                  stemId: LICENSED_STEM_ID,
+                  muted: false,
+                }),
+              ],
+              renderMetadata: expect.objectContaining({
+                schemaVersion: "remix-render-policy/v1",
+                inputCount: 1,
+                activeStemCount: 1,
+              }),
             }),
           );
           expect(stemMixRenderer.render).toHaveBeenCalledWith(

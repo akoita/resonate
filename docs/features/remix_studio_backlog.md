@@ -199,6 +199,29 @@ Acceptance:
 - Long-running generation does not block the request/response path.
 - Retry behavior is explicit and tested.
 
+### D4. Productize deterministic render quality — shipped (#1210)
+
+- Applies one versioned loudness/headroom policy to deterministic and layered
+  final renders while preserving relative stem gains.
+- Records the complete source arrangement and exact final-render settings in
+  generation metadata.
+- Mixes source stems and the generated `stem_plus_ai` layer in one ffmpeg
+  graph, avoiding an intermediate MP3 and double lossy encoding.
+- Distinguishes unavailable stored audio from retryable storage failures with
+  safe user-facing errors.
+- Keeps encrypted stems fail-closed with actionable copy; authenticated
+  decrypt-for-render support is tracked in #1214.
+
+Acceptance:
+
+- Common multi-stem arrangements render with normalized headroom and no
+  obvious clipping.
+- A completed draft records enough arrangement and policy data to reproduce
+  or audit its final render.
+- Zero-AI and layered drafts share the same final-render policy.
+- Fade, trim, loop, effects, and release-grade mastering remain follow-ups,
+  not implicit claims of this slice.
+
 ## Workstream E: Publish, Lineage, And Receipts
 
 ### E1. Save generated draft output
