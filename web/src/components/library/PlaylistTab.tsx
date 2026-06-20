@@ -84,6 +84,7 @@ export function PlaylistTab({
     }, [loadData]);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         void loadSaved();
     }, [loadSaved]);
 
