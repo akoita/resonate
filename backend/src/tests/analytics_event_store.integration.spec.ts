@@ -5,6 +5,15 @@ import { AnalyticsService } from "../modules/analytics/analytics.service";
 
 const TEST_PREFIX = `analytics_ledger_${Date.now()}_`;
 
+// Anchor seed events to a point inside the rolling `now - 30 days` aggregation
+// window. Previously hardcoded to 2026-05-20, which silently fell outside the
+// window once the calendar passed 2026-06-19 and broke the artist-report test
+// on every PR — a date-relative anchor keeps it stable.
+const RECENT = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+const OCCURRED_AT = RECENT.toISOString();
+const RECEIVED_AT = new Date(RECENT.getTime() + 1000).toISOString();
+const PAYMENT_AT = new Date(RECENT.getTime() + 60_000).toISOString();
+
 describe("Analytics event store integration", () => {
   const store = new PrismaAnalyticsEventStore();
   const ingest = new AnalyticsIngestService(store);
@@ -25,8 +34,8 @@ describe("Analytics event store integration", () => {
     const result = await ingest.ingest({
       eventId,
       eventName: "license.granted",
-      occurredAt: "2026-05-20T09:00:00.000Z",
-      receivedAt: "2026-05-20T09:00:01.000Z",
+      occurredAt: OCCURRED_AT,
+      receivedAt: RECEIVED_AT,
       producer: "analytics-integration-test",
       environment: "local",
       privacyTier: "pseudonymous",
@@ -60,8 +69,8 @@ describe("Analytics event store integration", () => {
     expect(listed.find((event) => event.eventId === eventId)).toEqual(
       expect.objectContaining({
         eventId,
-        occurredAt: "2026-05-20T09:00:00.000Z",
-        receivedAt: "2026-05-20T09:00:01.000Z",
+        occurredAt: OCCURRED_AT,
+        receivedAt: RECEIVED_AT,
         payload: expect.objectContaining({ artistId: `${TEST_PREFIX}artist` }),
         sourceRefs: { testCase: "persist" },
       }),
@@ -74,7 +83,7 @@ describe("Analytics event store integration", () => {
     await ingest.ingest({
       eventId,
       eventName: "payment.settled",
-      occurredAt: "2026-05-20T09:01:00.000Z",
+      occurredAt: PAYMENT_AT,
       producer: "analytics-integration-test",
       environment: "local",
       privacyTier: "pseudonymous",
@@ -88,7 +97,7 @@ describe("Analytics event store integration", () => {
     await ingest.ingest({
       eventId,
       eventName: "payment.settled",
-      occurredAt: "2026-05-20T09:01:00.000Z",
+      occurredAt: PAYMENT_AT,
       producer: "analytics-integration-test",
       environment: "local",
       privacyTier: "pseudonymous",
