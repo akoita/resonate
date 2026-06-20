@@ -4009,6 +4009,20 @@ export type RemixGeneratedLayerMetadata = {
   } | null;
 };
 
+export type RemixRenderMetadata = {
+  schemaVersion: string;
+  targetLufs: number;
+  loudnessRangeLufs: number;
+  truePeakDbtp: number;
+  outputCodec: "mp3" | string;
+  outputMimeType: "audio/mpeg" | string;
+  outputBitrateKbps: number;
+  outputSampleRateHz: number;
+  outputChannels: number;
+  inputCount: number;
+  activeStemCount: number;
+};
+
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
@@ -4018,6 +4032,8 @@ export type RemixGenerationMetadata = {
   generatedLayers?: RemixGeneratedLayerMetadata[];
   /** #1209: saved stem arrangement used as the final source-audio backbone. */
   sourceArrangement?: Array<{ stemId: string; gainDb?: number | null; muted?: boolean }>;
+  /** #1210: versioned final-render settings for reproducibility/audit. */
+  renderMetadata?: RemixRenderMetadata;
   /** Measured tempo/key hints applied to the prompt (#1182 slice 3). */
   sourceFeatureHints?: { bpm?: number; key?: string };
   stemIds?: string[];

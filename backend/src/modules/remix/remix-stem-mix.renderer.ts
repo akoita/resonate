@@ -59,12 +59,14 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
       jobId,
       provider: "stem-mix-render",
       estimatedCostUsd: 0,
+      sourceArrangement: input.stems,
+      renderMetadata: mixed.renderMetadata,
       outputMetadata: {
         outputUri: stored.uri,
         mimeType: mixed.mimeType,
         synthIdPresent: false,
         seed: null,
-        sampleRate: null,
+        sampleRate: mixed.renderMetadata.outputSampleRateHz,
       },
     };
   }

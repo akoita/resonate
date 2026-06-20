@@ -193,8 +193,17 @@ from the JWT, never the request body.
   stem-mix mode (no prompt required; unsaved edits still block so the render
   matches what was saved). The output draft literally contains the licensed
   stem audio — the first stem-grounded draft and the artifact publish/export
-  (backlog E/F) will consume. Encrypted stems are an explicit `invalid_input`
-  deferral until a server-side decrypt path for rendering exists.
+  (backlog E/F) will consume. The #1210 quality foundation applies the
+  versioned `remix-render-policy/v1` after preserving relative per-stem gains:
+  -14 LUFS target, 11 LU loudness range, -1.5 dBTP ceiling, stereo 48 kHz MP3
+  at 320 kbps. Completed drafts persist the complete arrangement and render
+  settings in `sourceArrangement` and `renderMetadata`, so the final artifact
+  is reproducible and auditable. `stem_plus_ai` now renders source stems and
+  the generated layer in one ffmpeg graph, avoiding an intermediate MP3 and a
+  second lossy encode. Encrypted stems remain an explicit, actionable
+  `invalid_input` deferral until the authorization and temporary-plaintext
+  boundary tracked in [#1214](https://github.com/akoita/resonate/issues/1214)
+  is implemented.
 - Stem audio feature extraction (#1184, slice 1 of #1182): the demucs
   worker measures tempo (BPM + bounded confidence heuristic), beat anchors
   (`beatCount`, `firstBeatSec`), key (Krumhansl chroma template matching),
@@ -443,6 +452,11 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
   over the arranged licensed stems with the shared ffmpeg mixer. The final
   draft keeps the source stem audio and carries generated-layer provenance,
   while still disclosing AI because generated layers are present.
+- **Quality foundation (#1210):** deterministic and layered final renders use
+  the same versioned loudness/headroom policy, persist full arrangement and
+  render metadata, and normalize storage failures without exposing provider
+  details. Fade, trim, loop, effects, and release-grade mastering remain
+  explicitly out of scope. Encrypted rendering is tracked in #1214.
 
 Keeps audio-conditioned Stable Audio full regeneration (#1206/#1207) as an
 experimental draft-quality path and stem-mix renders (#1189) as the zero-AI

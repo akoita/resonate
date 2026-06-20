@@ -1,5 +1,74 @@
 # Security Best Practices Report
 
+## Deterministic Remix Render Quality - 2026-06-20
+
+### Scope Reviewed
+
+Changed files (#1210):
+
+- `backend/src/modules/remix/stem-audio-mixer.ts`, renderers, provider
+  contracts, and generation metadata persistence
+- Remix renderer unit tests and Testcontainers integration tests
+- `web/src/lib/api.ts` and Remix Studio provenance copy
+- Remix Studio feature catalog, feature page, backlog, and implementation plan
+
+### Executive Summary
+
+No Critical or High findings. The slice changes server-side audio processing
+and additive metadata only; it adds no public endpoint, authentication flow,
+client secret, or new user-controlled command execution. ffmpeg continues to
+run through `execFile` with a fixed argument array. Stem gains are rejected at
+the persistence boundary unless they are null or finite values from -24 to
++6 dB, and render inputs are defensively normalized to that same range.
+Storage provider failures no longer write bucket names, paths, signed URLs, or
+provider messages to user responses or logs.
+
+### Critical Findings
+
+None.
+
+### High Findings
+
+None.
+
+### Notes
+
+- Remix project ownership, current eligibility, and license/consent checks
+  remain enforced before the queue worker reaches the renderer.
+- The ffmpeg command uses no shell interpolation. Input files live in a unique
+  temporary directory and are removed in a `finally` block on success or
+  failure.
+- Local path containment remains centralized in `LocalStorageProvider` rather
+  than duplicating URI parsing in the mixer. Other providers use the same
+  storage abstraction.
+- Encrypted stems remain fail-closed before audio loading. The authorized
+  decrypt-for-render trust boundary is separately tracked in #1214.
+- Remix gain validation is enforced by the backend rather than trusting the
+  editor clamp. Non-finite and out-of-range values return a safe 400 before
+  any database write, while legacy/provider values are bounded before ffmpeg.
+- `sourceArrangement` and `renderMetadata` remain owner-scoped generation
+  metadata. Existing publication code exposes only its approved provenance
+  shape.
+- The frontend renders fixed copy through React text nodes and adds no HTML
+  injection, cookie handling, or browser-exposed configuration.
+- Change-impact sections reviewed: product/UX, API/client contract,
+  permissions/privacy, AI provenance, storage lifecycle, deployment/config,
+  documentation, partial-feature tracking, and validation scope. No analytics
+  event change is needed because the existing generation lifecycle is
+  unchanged.
+
+### Scans Run
+
+- `git grep -niE 'password|secret|api_key|private_key'` over changed backend
+  and frontend production scopes, excluding tests
+- `git grep -nE '$queryRaw|$executeRaw|executeRaw|rawQuery'` over Remix backend
+- `git grep -nE 'JSON.parse|eval('` over Remix backend
+- `git grep -nE 'dangerouslySetInnerHTML|innerHTML|document.cookie|setCookie|httpOnly.*false'`
+  over changed frontend scopes
+- `git grep -nE 'NEXT_PUBLIC_.*(SECRET|KEY|PASSWORD)'` over changed frontend
+  scopes
+- `git diff --check`
+
 ## Stem+AI Layered Remix Draft Mode - 2026-06-18
 
 ### Scope Reviewed

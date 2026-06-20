@@ -35,6 +35,11 @@ import {
   type LayeredRemixRenderer,
 } from "./remix-layered-renderer";
 import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
+import {
+  isValidRemixStemGainDb,
+  REMIX_STEM_GAIN_DB_MAX,
+  REMIX_STEM_GAIN_DB_MIN,
+} from "./remix-gain";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -425,6 +430,17 @@ export class RemixProjectService {
 
     const projectStemIds = new Set(project.stems.map((stem) => stem.stemId));
     const stemUpdates = patch.stems ?? [];
+    const invalidGain = stemUpdates.find(
+      (stem) =>
+        stem.gainDb !== undefined &&
+        stem.gainDb !== null &&
+        !isValidRemixStemGainDb(stem.gainDb),
+    );
+    if (invalidGain) {
+      throw new BadRequestException(
+        `gainDb must be null or a finite number between ${REMIX_STEM_GAIN_DB_MIN} and ${REMIX_STEM_GAIN_DB_MAX}`,
+      );
+    }
     const unknownStemIds = stemUpdates
       .map((stem) => stem.stemId)
       .filter((stemId) => !projectStemIds.has(stemId));
@@ -721,6 +737,9 @@ export class RemixProjectService {
           : {}),
         ...(providerJob.sourceArrangement
           ? { sourceArrangement: providerJob.sourceArrangement }
+          : {}),
+        ...(providerJob.renderMetadata
+          ? { renderMetadata: providerJob.renderMetadata }
           : {}),
         completedAt,
         failedAt: null,
