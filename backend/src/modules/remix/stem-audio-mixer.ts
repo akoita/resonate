@@ -11,6 +11,7 @@ import {
   type RemixRenderMetadata,
   type StemArrangementEntry,
 } from "./remix-generation.provider";
+import { normalizeRemixStemGainDb } from "./remix-gain";
 
 const execFileAsync = promisify(execFile);
 
@@ -103,7 +104,7 @@ export function buildStemMixFfmpegArgs(
     args.push("-i", input.path);
   }
   const labelled = inputs.map((input, index) => {
-    const gain = Number.isFinite(input.gainDb) ? input.gainDb : 0;
+    const gain = normalizeRemixStemGainDb(input.gainDb);
     return `[${index}:a]volume=${gain}dB[a${index}]`;
   });
   const mixInputs = inputs.map((_, index) => `[a${index}]`).join("");

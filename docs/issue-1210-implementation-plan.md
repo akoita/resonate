@@ -49,7 +49,8 @@ render differently. Any future tuning must increment the policy version.
 - Add a typed render-policy value beside `StemAudioMixer`.
 - Update `buildStemMixFfmpegArgs` to keep per-input gain, sum the inputs, then
   apply loudness normalization and a true-peak-safe ceiling before MP3 output.
-- Reuse the exact graph from `mixUnmutedStems` and `mixAudioBuffers`.
+- Reuse the exact graph from `mixUnmutedStems` and
+  `mixUnmutedStemsWithAudioBuffers`.
 - Keep ffmpeg execution argument-array based; never interpolate stem-derived
   values into a shell command.
 

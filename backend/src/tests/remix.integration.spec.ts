@@ -695,6 +695,23 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(untouched).toEqual(expect.objectContaining({ muted: false }));
     });
 
+    it("rejects non-finite and out-of-range stem gain", async () => {
+      const created = await projectService.createProject({
+        userId: CREATOR_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [LICENSED_STEM_ID],
+        title: "Gain Guard",
+      });
+
+      for (const gainDb of [Number.NaN, Number.POSITIVE_INFINITY, -24.1, 6.1]) {
+        await expect(
+          projectService.updateProject(CREATOR_ID, created.id, {
+            stems: [{ stemId: LICENSED_STEM_ID, gainDb }],
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      }
+    });
+
     it("updates the remix mode and rejects unknown modes", async () => {
       const created = await projectService.createProject({
         userId: CREATOR_ID,

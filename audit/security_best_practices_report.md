@@ -17,10 +17,11 @@ Changed files (#1210):
 No Critical or High findings. The slice changes server-side audio processing
 and additive metadata only; it adds no public endpoint, authentication flow,
 client secret, or new user-controlled command execution. ffmpeg continues to
-run through `execFile` with a fixed argument array, stem-derived values are
-restricted to finite numeric gains, and storage provider failures no longer
-write bucket names, paths, signed URLs, or provider messages to user responses
-or logs.
+run through `execFile` with a fixed argument array. Stem gains are rejected at
+the persistence boundary unless they are null or finite values from -24 to
++6 dB, and render inputs are defensively normalized to that same range.
+Storage provider failures no longer write bucket names, paths, signed URLs, or
+provider messages to user responses or logs.
 
 ### Critical Findings
 
@@ -42,6 +43,9 @@ None.
   storage abstraction.
 - Encrypted stems remain fail-closed before audio loading. The authorized
   decrypt-for-render trust boundary is separately tracked in #1214.
+- Remix gain validation is enforced by the backend rather than trusting the
+  editor clamp. Non-finite and out-of-range values return a safe 400 before
+  any database write, while legacy/provider values are bounded before ffmpeg.
 - `sourceArrangement` and `renderMetadata` remain owner-scoped generation
   metadata. Existing publication code exposes only its approved provenance
   shape.

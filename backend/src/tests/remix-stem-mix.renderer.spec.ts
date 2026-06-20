@@ -69,6 +69,20 @@ describe("buildStemMixFfmpegArgs (#1189/#1210)", () => {
     expect(filter).toContain("volume=0dB");
     expect(filter).not.toContain("NaN");
   });
+
+  it("clamps out-of-range render gain to the supported product bounds", () => {
+    const args = buildStemMixFfmpegArgs(
+      [
+        { path: "/tmp/loud.audio", gainDb: 1e308 },
+        { path: "/tmp/quiet.audio", gainDb: -100 },
+      ],
+      "/tmp/mix.mp3",
+    );
+    const filter = args[args.indexOf("-filter_complex") + 1];
+    expect(filter).toContain("volume=6dB");
+    expect(filter).toContain("volume=-24dB");
+    expect(filter).not.toContain("1e+308");
+  });
 });
 
 describe("FfmpegStemMixRenderer metadata (#1210)", () => {
