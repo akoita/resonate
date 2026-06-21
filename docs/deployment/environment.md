@@ -183,6 +183,10 @@ When adding a new environment variable:
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
 | `ENABLE_CONTRACT_INDEXER` | Backend | Enables background contract event indexing when set to `true`; deployed environments should only enable it when contract addresses are configured |
 | `INDEXER_POLL_INTERVAL_MS` | Backend | Optional contract indexer poll interval in milliseconds; defaults to `5000` |
+| `ENABLE_SHOWS_ESCROW_INDEXER` | Backend | Enables the `ShowCampaignEscrow` event indexer + on-chain campaign/pledge reconciliation (#948) when `true`; only enable once `SHOW_CAMPAIGN_ESCROW_ADDRESS` (or a per-chain override) is configured. Watches the chain from `INDEXER_CHAIN_ID`/`CHAIN_ID` |
+| `SHOWS_ESCROW_INDEXER_POLL_INTERVAL_MS` | Backend | Optional Shows escrow indexer poll interval in milliseconds; defaults to `5000` |
+| `SHOWS_ESCROW_BLOCKS_PER_BATCH` | Backend | Optional Shows escrow indexer block batch size; defaults to `1000` |
+| `SHOWS_ESCROW_MAX_BATCHES_PER_CYCLE` | Backend | Optional Shows escrow indexer max batches per poll cycle; defaults to `20` |
 | `INDEXER_BLOCKS_PER_BATCH` | Backend | Optional maximum block range fetched per indexer batch; defaults to `1000` |
 | `INDEXER_MAX_BATCHES_PER_CYCLE` | Backend | Optional maximum indexer batches processed per poll cycle; defaults to `20` |
 | `INDEXER_PROGRESS_LOG_LEVEL` | Backend | Optional progress log level for per-batch indexing messages: `silent`, `debug`, or `log`; defaults to `silent` |
