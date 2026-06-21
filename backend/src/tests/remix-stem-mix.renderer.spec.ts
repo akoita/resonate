@@ -115,7 +115,15 @@ describe("FfmpegStemMixRenderer metadata (#1210)", () => {
       { stemId: "muted", gainDb: 2, muted: true },
     ];
 
-    const job = await renderer.render({ remixProjectId: "project", stems: arrangement });
+    const job = await renderer.render({
+      remixProjectId: "project",
+      stems: arrangement,
+      authorization: {
+        userId: "creator",
+        remixProjectId: "project",
+        authorizedStemIds: new Set(["active"]),
+      },
+    });
 
     expect(job.sourceArrangement).toEqual(arrangement);
     expect(job.renderMetadata).toEqual(renderMetadata);

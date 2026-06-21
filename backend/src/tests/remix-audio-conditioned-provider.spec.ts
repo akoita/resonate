@@ -82,6 +82,12 @@ function buildProvider(options: {
 describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
   const originalEnabled = process.env.REMIX_GENERATION_ENABLED;
   const originalWorkerUrl = process.env.REMIX_AUDIO_WORKER_URL;
+  // Worker-time render grant (#1214): the provider forwards it to the mixer.
+  const AUTH = {
+    userId: "user-1",
+    remixProjectId: "project-1",
+    authorizedStemIds: new Set(["stem-1"]),
+  };
   let fetchMock: jest.Mock;
 
   beforeEach(() => {
@@ -117,7 +123,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     process.env.REMIX_GENERATION_ENABLED = "false";
     const { provider, mix } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "provider_disabled", retryable: false });
     expect(mix).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -128,6 +134,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     await expect(
       provider.createRemixDraft(
         generationInput({ mode: "stem_mix", prompt: undefined }),
+        AUTH,
       ),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(mix).not.toHaveBeenCalled();
@@ -136,14 +143,14 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
   it("rejects a missing prompt", async () => {
     const { provider } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput({ prompt: "   " })),
+      provider.createRemixDraft(generationInput({ prompt: "   " }), AUTH),
     ).rejects.toMatchObject({ code: "invalid_input" });
   });
 
   it("rejects when no stem arrangement is provided to condition on", async () => {
     const { provider, mix } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput({ stemArrangement: [] })),
+      provider.createRemixDraft(generationInput({ stemArrangement: [] }), AUTH),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(mix).not.toHaveBeenCalled();
   });
@@ -152,12 +159,13 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     const { provider, mix, upload } = buildProvider();
     const job = await provider.createRemixDraft(
       generationInput({ constraints: { durationSeconds: 60 } }),
+      AUTH,
     );
 
-    // Conditions on the project's arrangement.
+    // Conditions on the project's arrangement, forwarding the render grant.
     expect(mix).toHaveBeenCalledWith(
       [{ stemId: "stem-1", gainDb: 0, muted: false }],
-      "project-1",
+      AUTH,
     );
 
     // Calls the worker's /generate with the spike defaults + the prompt.
@@ -202,7 +210,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
       );
     const { provider } = buildProvider({ mix });
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -213,7 +221,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     );
     const { provider, upload } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "provider_rejected", retryable: false });
     expect(upload).not.toHaveBeenCalled();
   });
@@ -224,7 +232,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     );
     const { provider } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
   });
 
@@ -232,7 +240,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     fetchMock.mockRejectedValue(new Error("The operation was aborted"));
     const { provider } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
   });
 
@@ -240,7 +248,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     const upload = jest.fn().mockRejectedValue(new Error("bucket unavailable"));
     const { provider } = buildProvider({ upload });
     await expect(
-      provider.createRemixDraft(generationInput()),
+      provider.createRemixDraft(generationInput(), AUTH),
     ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
   });
 
@@ -250,7 +258,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     process.env.REMIX_AUDIO_MODEL = "small-music";
     try {
       const { provider } = buildProvider();
-      const job = await provider.createRemixDraft(generationInput());
+      const job = await provider.createRemixDraft(generationInput(), AUTH);
       const form = fetchMock.mock.calls[0][1].body as FormData;
       expect(form.get("cfg_scale")).toBe("5");
       expect(form.get("steps")).toBe("40");
@@ -268,7 +276,7 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     try {
       const { provider, mix } = buildProvider();
       await expect(
-        provider.createRemixDraft(generationInput()),
+        provider.createRemixDraft(generationInput(), AUTH),
       ).rejects.toMatchObject({
         code: "provider_unavailable",
         retryable: false,

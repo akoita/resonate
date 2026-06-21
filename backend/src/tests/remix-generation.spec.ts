@@ -166,6 +166,12 @@ describe("estimateRemixGenerationCostUsd", () => {
 
 describe("StubRemixGenerationProvider", () => {
   const originalEnv = process.env.REMIX_GENERATION_ENABLED;
+  // Stub ignores the render grant (#1214); pass a placeholder.
+  const STUB_AUTH = {
+    userId: "user-1",
+    remixProjectId: "proj-1",
+    authorizedStemIds: new Set<string>(),
+  };
 
   afterEach(() => {
     if (originalEnv === undefined) {
@@ -180,6 +186,7 @@ describe("StubRemixGenerationProvider", () => {
     const provider = new StubRemixGenerationProvider();
     const attempt = provider.createRemixDraft(
       buildRemixGenerationInput(projectFixture()),
+      STUB_AUTH,
     );
     await expect(attempt).rejects.toBeInstanceOf(RemixGenerationProviderError);
     await expect(attempt).rejects.toMatchObject({
@@ -193,6 +200,7 @@ describe("StubRemixGenerationProvider", () => {
     const provider = new StubRemixGenerationProvider();
     const job = await provider.createRemixDraft(
       buildRemixGenerationInput(projectFixture(), { durationSeconds: 60 }),
+      STUB_AUTH,
     );
     expect(job).toEqual({
       provider: "remix-stub",
@@ -212,7 +220,7 @@ describe("StubRemixGenerationProvider", () => {
     process.env.REMIX_GENERATION_ENABLED = "true";
     const provider = new StubRemixGenerationProvider();
     const input = buildRemixGenerationInput(projectFixture({ stems: [] }));
-    await expect(provider.createRemixDraft(input)).rejects.toMatchObject({
+    await expect(provider.createRemixDraft(input, STUB_AUTH)).rejects.toMatchObject({
       code: "invalid_input",
     });
   });
