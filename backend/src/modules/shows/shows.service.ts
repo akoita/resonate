@@ -331,6 +331,32 @@ function defaultChainId() {
   return configuredNumber(["SHOWS_DEFAULT_CHAIN_ID", "PAYMENT_CHAIN_ID", "AA_CHAIN_ID", "CHAIN_ID"], 84532);
 }
 
+/**
+ * Resolve the deployed `ShowCampaignEscrow` address for a chain from
+ * deployment-handoff config (#947). Mirrors the per-chain env pattern used for
+ * the marketplace/content-protection contracts, with a chain-agnostic
+ * `SHOW_CAMPAIGN_ESCROW_ADDRESS` fallback. Returns null for unset, malformed,
+ * or zero addresses so callers fail closed rather than binding to 0x0.
+ */
+const SHOW_CAMPAIGN_ESCROW_ADDRESS_ENVS: Record<number, string[]> = {
+  31337: ["SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  11155111: ["SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  84532: ["BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  421614: ["ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+};
+
+export function configuredShowCampaignEscrowAddress(chainId: number): string | null {
+  const candidates = SHOW_CAMPAIGN_ESCROW_ADDRESS_ENVS[chainId] ?? ["SHOW_CAMPAIGN_ESCROW_ADDRESS"];
+  for (const key of candidates) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) continue;
+    if (/^0x0{40}$/i.test(raw)) continue;
+    return raw;
+  }
+  return null;
+}
+
 function defaultPaymentAssetSymbol() {
   return process.env.SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL?.trim() || "USDC";
 }
@@ -1145,8 +1171,12 @@ export class ShowsService {
       data: {
         status: "active",
         activatedAt: new Date(),
+        // #947: an explicit per-campaign address wins; otherwise discover the
+        // deployed escrow for the campaign's chain from deployment-handoff
+        // config so operators don't paste addresses by hand.
         contractAddress: validateOptionalAddress(optionalText(input.contractAddress), "contractAddress")
-          ?? campaign.contractAddress,
+          ?? campaign.contractAddress
+          ?? configuredShowCampaignEscrowAddress(campaign.chainId ?? defaultChainId()),
         contractCampaignId: optionalText(input.contractCampaignId) ?? campaign.contractCampaignId,
         events: {
           create: {
