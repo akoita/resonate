@@ -1345,12 +1345,20 @@ export class ShowsService {
       throw new BadRequestException("transactionHash is already attached to another pledge");
     }
 
-    const confirmationStatus = input.confirmationStatus
+    const requestedConfirmationStatus = input.confirmationStatus
       ? assertShowPledgeConfirmationStatus(input.confirmationStatus)
       : "pending";
-    if (confirmationStatus === "not_submitted") {
+    if (requestedConfirmationStatus === "not_submitted") {
       throw new BadRequestException("confirmationStatus cannot return to not_submitted once a transaction is provided");
     }
+    // #948: do not trust a wallet-user's "confirmed" claim. A pledge only
+    // reaches "confirmed" from an indexed on-chain Pledged event
+    // (ShowsEscrowIndexerService). Non-operators recording a tx mark it
+    // "pending"; operators retain a manual confirm/fail override.
+    const confirmationStatus =
+      requestedConfirmationStatus === "confirmed" && !isPrivilegedActor(actor)
+        ? "pending"
+        : requestedConfirmationStatus;
 
     const blockNumber = parseOptionalBlockNumber(input.blockNumber);
     const now = new Date();

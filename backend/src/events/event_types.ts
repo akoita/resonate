@@ -206,6 +206,21 @@ export interface RemixEncryptedRenderDeniedEvent extends BaseEvent {
   reason: string;
 }
 
+/**
+ * Security/ops audit event (#948): the ShowCampaignEscrow indexer found
+ * on-chain state with no matching backend record (no bound campaign, or an
+ * on-chain pledge with no backend intent). Carries only identifiers + a coarse
+ * reason — never secrets. Not wired into product analytics.
+ */
+export interface ShowCampaignReconciliationMismatchEvent extends BaseEvent {
+  eventName: "shows.campaign_reconciliation_mismatch";
+  contractCampaignId: string;
+  escrowEventName: string;
+  transactionHash: string;
+  blockNumber: string;
+  reason: string;
+}
+
 export interface RemixPublishedEvent extends BaseEvent {
   eventName: "remix.published";
   remixProjectId: string;
@@ -1256,6 +1271,7 @@ export type ResonateEvent =
   | RemixGenerationFailedEvent
   | RemixEncryptedRenderAuthorizedEvent
   | RemixEncryptedRenderDeniedEvent
+  | ShowCampaignReconciliationMismatchEvent
   | RemixPublishedEvent
   | ArtistRemixConsentUpdatedEvent
   | RecommendationPreferencesUpdatedEvent

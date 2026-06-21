@@ -840,6 +840,40 @@ model IndexerState {
   updatedAt       DateTime @updatedAt
 }
 
+// Per-chain block cursor for the ShowCampaignEscrow indexer (#948). Kept
+// separate from IndexerState so the escrow poller and the marketplace/content
+// indexer advance independently on the same chain.
+model ShowEscrowIndexerState {
+  id              String   @id @default(uuid())
+  chainId         Int      @unique
+  contractAddress String
+  lastBlockNumber BigInt   @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+// Idempotent processed-event log for ShowCampaignEscrow (#948). The
+// (transactionHash, logIndex) unique key makes event ingestion replay-safe
+// across retries and reorgs; reconciliation reads decoded args from here.
+model ShowCampaignEscrowEvent {
+  id                 String    @id @default(uuid())
+  chainId            Int
+  contractAddress    String
+  eventName          String
+  contractCampaignId String?
+  transactionHash    String
+  logIndex           Int
+  blockNumber        BigInt
+  blockHash          String
+  args               Json
+  processedAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  @@unique([transactionHash, logIndex])
+  @@index([contractCampaignId, eventName])
+  @@index([blockNumber])
+  @@index([chainId, contractAddress])
+}
+
 model Session {
   id                String             @id @default(uuid())
   userId            String
@@ -1319,6 +1353,16 @@ model ShowCampaign {
   raisedAmountUnits           String                       @default("0")
   confirmedPledgeCount        Int                          @default(0)
   uniqueBackerCount           Int                          @default(0)
+  // On-chain reconciliation (#948): driven only by indexed ShowCampaignEscrow
+  // events, never by client-submitted progress. onChainStatus mirrors the
+  // contract CampaignStatus enum name; the *Units fields are contract token
+  // base units; lastEscrowIndexedBlock advances the per-campaign cursor.
+  onChainStatus               String?
+  totalRefundedUnits          String                       @default("0")
+  totalReleasedUnits          String                       @default("0")
+  lastEscrowIndexedBlock      BigInt?
+  reconciliationErrorAt       DateTime?
+  reconciliationError         String?                      @db.Text
   bookingTerms                Json?
   fulfillmentNotes            String?                      @db.Text
   metadata                    Json?
