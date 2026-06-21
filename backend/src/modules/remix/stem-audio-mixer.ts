@@ -5,11 +5,16 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { promisify } from "util";
 import { prisma } from "../../db/prisma";
+import {
+  EncryptionService,
+  RenderDecryptionError,
+} from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import {
   RemixGenerationProviderError,
   type RemixRenderMetadata,
   type StemArrangementEntry,
+  type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { normalizeRemixStemGainDb } from "./remix-gain";
 
@@ -66,17 +71,23 @@ export type MixedAudioBuffers = {
  * Mixes a project's unmuted stems into one audio buffer. Extracted from the
  * stem_mix renderer (#1189) so audio-conditioned generation (#1182 slice 4)
  * conditions on exactly what the user arranged, and the encrypted-stem
- * deferral + path-traversal containment live in one place.
+ * decrypt-for-render boundary (#1214) + path-traversal containment live in one
+ * place.
+ *
+ * Every caller passes a {@link StemRenderAuthorization} the generation worker
+ * built after re-verifying project ownership and current eligibility. Encrypted
+ * source stems are decrypted in memory into the mixer's unique temp dir and
+ * never persisted or returned individually.
  */
 export interface StemAudioMixer {
   mixUnmutedStems(
     stems: StemArrangementEntry[],
-    label: string,
+    authorization: StemRenderAuthorization,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
-    label: string,
+    authorization: StemRenderAuthorization,
   ): Promise<MixedAudioBuffers>;
 }
 
@@ -143,41 +154,45 @@ function renderMetadata(
 export class FfmpegStemAudioMixer implements StemAudioMixer {
   private readonly logger = new Logger(FfmpegStemAudioMixer.name);
 
-  constructor(private readonly storageProvider: StorageProvider) {}
+  constructor(
+    private readonly storageProvider: StorageProvider,
+    private readonly encryptionService: EncryptionService,
+  ) {}
 
   async mixUnmutedStems(
     stems: StemArrangementEntry[],
-    label: string,
+    authorization: StemRenderAuthorization,
   ): Promise<MixedStemAudio> {
-    return this.mixStemArrangement(stems, [], label, true);
+    return this.mixStemArrangement(stems, [], authorization, true);
   }
 
   async mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
-    label: string,
+    authorization: StemRenderAuthorization,
   ): Promise<MixedAudioBuffers> {
-    return this.mixStemArrangement(stems, inputs, label, false);
+    return this.mixStemArrangement(stems, inputs, authorization, false);
   }
 
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
     additionalInputs: AudioBufferMixInput[],
-    label: string,
+    authorization: StemRenderAuthorization,
     stemOnly: true,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
     additionalInputs: AudioBufferMixInput[],
-    label: string,
+    authorization: StemRenderAuthorization,
     stemOnly: false,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
     additionalInputs: AudioBufferMixInput[],
-    label: string,
+    authorization: StemRenderAuthorization,
     stemOnly: boolean,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
+    const label = authorization.remixProjectId;
     const activeStems = stems.filter((stem) => !stem.muted);
     if (activeStems.length === 0) {
       throw new RemixGenerationProviderError(
@@ -194,6 +209,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         uri: true,
         data: true,
         isEncrypted: true,
+        encryptionMetadata: true,
       },
     });
     const rowsById = new Map(stemRows.map((row) => [row.id, row]));
@@ -205,24 +221,13 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         false,
       );
     }
-    const encrypted = stemRows.filter((row) => row.isEncrypted);
-    if (encrypted.length > 0) {
-      // Honest deferral: feeding ciphertext to ffmpeg would "succeed" into
-      // noise or fail confusingly. Lifted when a server-side decrypt path
-      // exists (#1189) — shared by audio-conditioned generation (#1182).
-      throw new RemixGenerationProviderError(
-        "invalid_input",
-        "Encrypted stems cannot be rendered yet. Mute them before rendering this draft.",
-        false,
-      );
-    }
 
     const workDir = await mkdtemp(join(tmpdir(), "remix-mix-"));
     try {
       const ffmpegInputs: Array<{ path: string; gainDb: number }> = [];
       for (const stem of activeStems) {
         const row = rowsById.get(stem.stemId)!;
-        const audio = await this.loadStemAudio(row);
+        const audio = await this.loadStemAudio(row, authorization);
         if (!audio) {
           throw new RemixGenerationProviderError(
             "invalid_input",
@@ -282,11 +287,74 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
   }
 
   /**
+   * Returns plaintext audio for one active stem (#1214).
+   *
    * Stored bytes in fetch order: DB bytes, then the configured storage
    * provider. Local path containment belongs to LocalStorageProvider so local
    * and GCS/IPFS reads share one boundary instead of duplicating URI parsing.
+   *
+   * For `isEncrypted` rows the loaded bytes are ciphertext: they are decrypted
+   * in memory through the strict render boundary only after the stem is
+   * confirmed authorized for this render. We never return ciphertext as audio,
+   * and never write plaintext anywhere except the caller's temp dir.
    */
-  private async loadStemAudio(row: {
+  private async loadStemAudio(
+    row: {
+      id: string;
+      uri: string;
+      data: Buffer | Uint8Array | null;
+      isEncrypted: boolean;
+      encryptionMetadata: string | null;
+    },
+    authorization: StemRenderAuthorization,
+  ): Promise<Buffer | null> {
+    const raw = await this.loadStoredBytes(row);
+    if (!raw) {
+      return null;
+    }
+    if (!row.isEncrypted) {
+      return raw;
+    }
+
+    // Defense in depth: only decrypt stems the worker re-confirmed as eligible
+    // for this owned project. An encrypted stem outside that set must never be
+    // decrypted, even though the arrangement comes from the owned project.
+    if (!authorization.authorizedStemIds.has(row.id)) {
+      this.logger.warn(
+        `Refusing to decrypt unauthorized encrypted stem for project ${authorization.remixProjectId}`,
+      );
+      throw new RemixGenerationProviderError(
+        "invalid_input",
+        "A source stem is no longer authorized for this remix render.",
+        false,
+      );
+    }
+
+    const internalAuthSig = {
+      // Sentinel + internal purpose: the AES provider grants access only when
+      // INTERNAL_SERVICE_KEY matches (SBPR-004 / #1214). No user signature.
+      address: "0x0000000000000000000000000000000000000000",
+      sig: "remix-render-authorized",
+      signedMessage: "Remix render decryption authorization",
+      internalKey: process.env.INTERNAL_SERVICE_KEY,
+    };
+
+    try {
+      const plaintext = await this.encryptionService.decryptForRender(
+        raw,
+        row.encryptionMetadata ?? "",
+        internalAuthSig,
+      );
+      if (!plaintext || plaintext.length === 0) {
+        return null;
+      }
+      return plaintext;
+    } catch (error) {
+      throw this.mapDecryptError(error, row.id);
+    }
+  }
+
+  private async loadStoredBytes(row: {
     id: string;
     uri: string;
     data: Buffer | Uint8Array | null;
@@ -307,6 +375,55 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         true,
       );
     }
+  }
+
+  /**
+   * Translate strict render-decryption failures into safe provider errors.
+   * The reason codes carry no secrets; the user-facing messages never name
+   * keys, metadata, URIs, or provider internals.
+   */
+  private mapDecryptError(
+    error: unknown,
+    stemId: string,
+  ): RemixGenerationProviderError {
+    if (error instanceof RenderDecryptionError) {
+      switch (error.reason) {
+        case "unauthorized":
+          return new RemixGenerationProviderError(
+            "invalid_input",
+            "A source stem is no longer authorized for this remix render.",
+            false,
+          );
+        case "invalid_metadata":
+          return new RemixGenerationProviderError(
+            "invalid_input",
+            `Source audio for stem ${stemId} could not be prepared for rendering.`,
+            false,
+          );
+        case "encryption_disabled":
+        case "decryption_failed":
+        default:
+          // Opaque + retryable: distinguishing a transient key/provider fault
+          // from corrupt ciphertext here would leak internals.
+          this.logger.warn(
+            `Render decryption failed for stem ${stemId}: ${error.reason}`,
+          );
+          return new RemixGenerationProviderError(
+            "provider_unavailable",
+            `Source audio for stem ${stemId} could not be prepared for rendering. Please try again later.`,
+            true,
+          );
+      }
+    }
+    if (error instanceof RemixGenerationProviderError) {
+      return error;
+    }
+    this.logger.warn(`Unexpected render decryption error for stem ${stemId}`);
+    return new RemixGenerationProviderError(
+      "provider_unavailable",
+      `Source audio for stem ${stemId} could not be prepared for rendering. Please try again later.`,
+      true,
+    );
   }
 }
 

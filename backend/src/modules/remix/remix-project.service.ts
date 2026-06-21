@@ -24,6 +24,7 @@ import {
   RemixGenerationProviderError,
   type RemixGenerationConstraints,
   type RemixGenerationProvider,
+  type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
 import {
@@ -710,6 +711,65 @@ export class RemixProjectService {
         gainDb: stem.gainDb,
         muted: stem.muted,
       }));
+      const activeStemIds = liveStemArrangement
+        .filter((stem) => !stem.muted)
+        .map((stem) => stem.stemId);
+
+      // #1214: re-verify ownership + current eligibility in the worker before
+      // any render path can load or decrypt source audio. The request-time
+      // check is not sufficient — consent, quarantine, licensing, content
+      // status, and project state can change while a job is queued.
+      const encryptedActiveStemCount = await prisma.stem.count({
+        where: { id: { in: activeStemIds }, isEncrypted: true },
+      });
+      const renderEligibility = await this.eligibilityService.checkEligibility({
+        userId: data.userId,
+        trackId: project.sourceTrackId,
+        stemIds: project.stems.map((stem) => stem.stemId),
+      });
+      if (!renderEligibility.allowed) {
+        if (encryptedActiveStemCount > 0) {
+          this.eventBus.publish({
+            eventName: "remix.encrypted_render_denied",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            remixProjectId: project.id,
+            creatorId: data.userId,
+            sourceTrackId: project.sourceTrackId,
+            generationJobId: data.jobId,
+            purpose: "remix-render-authorized",
+            encryptedStemCount: encryptedActiveStemCount,
+            reason: "ineligible",
+          });
+        }
+        throw new RemixGenerationProviderError(
+          "invalid_input",
+          "This remix can no longer be generated because the source's remix permissions changed.",
+          false,
+        );
+      }
+
+      // Render grant built here (never from the queue payload): only stems the
+      // worker just re-confirmed as eligible may be decrypted by the mixer.
+      const renderAuthorization: StemRenderAuthorization = {
+        userId: data.userId,
+        remixProjectId: project.id,
+        authorizedStemIds: new Set(activeStemIds),
+      };
+      if (encryptedActiveStemCount > 0) {
+        this.eventBus.publish({
+          eventName: "remix.encrypted_render_authorized",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          remixProjectId: project.id,
+          creatorId: data.userId,
+          sourceTrackId: project.sourceTrackId,
+          generationJobId: data.jobId,
+          purpose: "remix-render-authorized",
+          encryptedStemCount: encryptedActiveStemCount,
+        });
+      }
+
       // Mode routing: stem_mix renders arranged stems with pure DSP (#1189);
       // prompted modes ask the configured provider for generated audio. Lyria
       // output is treated as one additive layer (#1209), then mixed back over
@@ -719,11 +779,13 @@ export class RemixProjectService {
           ? await this.stemMixRenderer.render({
               remixProjectId: project.id,
               stems: liveStemArrangement,
+              authorization: renderAuthorization,
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
               generationInput: data.generationInput,
               stems: liveStemArrangement,
+              authorization: renderAuthorization,
             });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
@@ -845,14 +907,18 @@ export class RemixProjectService {
     projectId: string;
     generationInput: RemixGenerationJobData["generationInput"];
     stems: Array<{ stemId: string; gainDb: number | null; muted: boolean }>;
+    authorization: StemRenderAuthorization;
   }) {
-    const layerJob = await this.generationProvider.createRemixDraft({
-      ...input.generationInput,
-      // Live arrangement at process time, mirroring stem_mix, so
-      // audio-conditioned generation (#1182 slice 4) conditions on the
-      // current mix and #1209 layered rendering keeps source stems current.
-      stemArrangement: input.stems,
-    });
+    const layerJob = await this.generationProvider.createRemixDraft(
+      {
+        ...input.generationInput,
+        // Live arrangement at process time, mirroring stem_mix, so
+        // audio-conditioned generation (#1182 slice 4) conditions on the
+        // current mix and #1209 layered rendering keeps source stems current.
+        stemArrangement: input.stems,
+      },
+      input.authorization,
+    );
 
     if (process.env.REMIX_GENERATION_PROVIDER_KIND !== "lyria") {
       return layerJob;
@@ -867,6 +933,7 @@ export class RemixProjectService {
     return this.layeredRenderer.render({
       remixProjectId: input.projectId,
       stems: input.stems,
+      authorization: input.authorization,
       layer: {
         provider: layerJob.provider,
         jobId: layerJob.jobId,
