@@ -397,6 +397,24 @@ export function serializePublicShowCampaign(campaign: any) {
       }))
     : undefined;
 
+  // #950: fan-visible dispute state. Derived from the disputes relation when
+  // included; never exposes operator notes, reasons, or initiator identity.
+  const disputeRows: Array<{ status?: string }> = Array.isArray(campaign.disputes)
+    ? campaign.disputes
+    : [];
+  const disputeStatus = disputeRows.some((d) => d.status === "open")
+    ? "active"
+    : disputeRows.some((d) => d.status === "resolved")
+      ? "resolved"
+      : "none";
+  const disputeWindowClosesAt =
+    campaign.status === "fulfilled" && campaign.fulfilledAt
+      ? new Date(
+          new Date(campaign.fulfilledAt).getTime() +
+            (campaign.disputeWindowSeconds ?? 0) * 1000,
+        ).toISOString()
+      : null;
+
   return {
     id: campaign.id,
     slug: campaign.slug,
@@ -434,6 +452,9 @@ export function serializePublicShowCampaign(campaign: any) {
     releasePolicy: campaign.releasePolicy,
     depositReleaseBps: campaign.depositReleaseBps,
     disputeWindowSeconds: campaign.disputeWindowSeconds,
+    // #950: fan-visible dispute summary (no operator notes / initiator identity).
+    disputeStatus,
+    disputeWindowClosesAt,
     // On-chain reconciliation (driven by the #948 indexer).
     onChainStatus: campaign.onChainStatus ?? null,
     raisedAmountUnits: campaign.raisedAmountUnits,
@@ -503,6 +524,7 @@ export class ShowsService {
       include: {
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        disputes: { select: { status: true } },
       },
       orderBy: [{ createdAt: "desc" }],
       take: 100,
@@ -517,6 +539,7 @@ export class ShowsService {
       include: {
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        disputes: { select: { status: true } },
       },
     });
     if (!campaign) {
@@ -1708,6 +1731,10 @@ export class ShowsService {
 
     const evidence = optionalJsonObject(input.evidence, "evidence");
     const evidenceBundleId = optionalText(input.evidenceBundleId) ?? campaign.bookingEvidenceBundleId;
+    // #950: booking confirmation cannot proceed without an evidence reference.
+    if (!evidenceBundleId) {
+      throw new BadRequestException("Booking confirmation requires a booking evidence bundle reference");
+    }
     const now = new Date();
     return prisma.showCampaign.update({
       where: { id: campaign.id },
@@ -1746,6 +1773,12 @@ export class ShowsService {
 
     const evidence = optionalJsonObject(input.evidence, "evidence");
     const evidenceBundleId = optionalText(input.evidenceBundleId) ?? campaign.fulfillmentEvidenceBundleId;
+    // #950: fulfillment confirmation cannot proceed without an evidence reference.
+    if (!evidenceBundleId) {
+      throw new BadRequestException("Fulfillment confirmation requires a fulfillment evidence bundle reference");
+    }
+    // #950: an open dispute blocks fulfillment progress toward final release.
+    await this.assertNoOpenDispute(campaign.id);
     const now = new Date();
     return prisma.showCampaign.update({
       where: { id: campaign.id },
@@ -1770,6 +1803,127 @@ export class ShowsService {
         },
       },
       include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
+    });
+  }
+
+  /** #950: an open dispute blocks actions that move funds toward final release. */
+  private async assertNoOpenDispute(campaignId: string): Promise<void> {
+    const open = await prisma.showCampaignDispute.findFirst({
+      where: { campaignId, status: "open" },
+      select: { id: true },
+    });
+    if (open) {
+      throw new BadRequestException("An open dispute must be resolved before this action");
+    }
+  }
+
+  /**
+   * #950: open an off-chain dispute on a Shows escrow campaign. MVP is
+   * operator-driven (fan-initiated disputes are a documented follow-up). Only
+   * valid between booking confirmation and final release, and — once fulfilled
+   * — only within the on-chain dispute window. An open dispute is the backend
+   * signal that final release must wait (the contract independently time-locks).
+   */
+  async initiateDispute(
+    actor: Actor,
+    campaignId: string,
+    input: { reason?: string | null } = {},
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can initiate a campaign dispute");
+    }
+    const campaign = await this.findCampaignOrThrow(campaignId);
+    if (!["booking_confirmed", "deposit_released", "fulfilled"].includes(campaign.status)) {
+      throw new BadRequestException(
+        "Disputes can only be raised between booking confirmation and final release",
+      );
+    }
+    if (campaign.status === "fulfilled" && campaign.fulfilledAt) {
+      const windowEnds = campaign.fulfilledAt.getTime() + (campaign.disputeWindowSeconds ?? 0) * 1000;
+      if (Date.now() > windowEnds) {
+        throw new BadRequestException("The dispute window has closed for this campaign");
+      }
+    }
+    const existing = await prisma.showCampaignDispute.findFirst({
+      where: { campaignId: campaign.id, status: "open" },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException("An open dispute already exists for this campaign");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const dispute = await tx.showCampaignDispute.create({
+        data: {
+          campaignId: campaign.id,
+          initiatorUserId: actor.userId,
+          initiatorRole: actor.role ?? "operator",
+          reason: optionalText(input.reason),
+          status: "open",
+        },
+      });
+      await tx.showCampaignEvent.create({
+        data: {
+          campaignId: campaign.id,
+          eventType: "dispute_initiated",
+          actorUserId: actor.userId,
+          previousStatus: campaign.status,
+          nextStatus: campaign.status,
+          metadata: { disputeId: dispute.id, reason: optionalText(input.reason) },
+        },
+      });
+      return dispute;
+    });
+  }
+
+  /**
+   * #950: resolve an open dispute (operator-only). Resolution is audited; it
+   * does NOT itself release funds — release stays gated by the contract's
+   * time-lock and a separate operator release action.
+   */
+  async resolveDispute(
+    actor: Actor,
+    campaignId: string,
+    disputeId: string,
+    input: { outcome: string; operatorNote?: string | null },
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can resolve a campaign dispute");
+    }
+    const outcome = optionalText(input.outcome);
+    if (!outcome || !["upheld", "rejected", "inconclusive"].includes(outcome)) {
+      throw new BadRequestException("outcome must be one of: upheld, rejected, inconclusive");
+    }
+    const dispute = await prisma.showCampaignDispute.findFirst({
+      where: { id: disputeId, campaignId },
+    });
+    if (!dispute) {
+      throw new NotFoundException("Dispute not found for this campaign");
+    }
+    if (dispute.status !== "open") {
+      throw new BadRequestException("Only an open dispute can be resolved");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const resolved = await tx.showCampaignDispute.update({
+        where: { id: dispute.id },
+        data: {
+          status: "resolved",
+          outcome: outcome as "upheld" | "rejected" | "inconclusive",
+          operatorNote: optionalText(input.operatorNote),
+          resolvedByUserId: actor.userId,
+          resolvedAt: new Date(),
+        },
+      });
+      await tx.showCampaignEvent.create({
+        data: {
+          campaignId,
+          eventType: "dispute_resolved",
+          actorUserId: actor.userId,
+          metadata: { disputeId: dispute.id, outcome },
+        },
+      });
+      return resolved;
     });
   }
 

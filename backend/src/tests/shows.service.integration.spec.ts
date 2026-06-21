@@ -1068,4 +1068,77 @@ describe("ShowsService integration", () => {
       { evidenceBundleId: `${TEST_PREFIX}late-booking-evidence` },
     )).rejects.toThrow(BadRequestException);
   });
+
+  it("requires evidence to confirm booking and fulfillment (#950)", async () => {
+    const { campaign } = await createFundedCampaign("Dijon");
+    // No evidence bundle → booking confirmation is rejected.
+    await expect(
+      service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/evidence/i);
+
+    await service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {
+      evidenceBundleId: `${TEST_PREFIX}dijon-booking`,
+    });
+    // Fulfillment also requires evidence.
+    await expect(
+      service.confirmFulfillment({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/evidence/i);
+  });
+
+  it("runs the off-chain dispute lifecycle and blocks release while open (#950)", async () => {
+    const { campaign } = await createFundedCampaign("Grenoble");
+    await service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {
+      evidenceBundleId: `${TEST_PREFIX}grenoble-booking`,
+    });
+
+    // Non-operators cannot initiate.
+    await expect(
+      service.initiateDispute({ userId: listenerId, role: "listener" }, campaign.id, { reason: "no-show risk" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const dispute = await service.initiateDispute(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { reason: "venue hold disputed" },
+    );
+    expect(dispute.status).toBe("open");
+
+    // A second open dispute is rejected.
+    await expect(
+      service.initiateDispute({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/already exists/i);
+
+    // An open dispute blocks fulfillment (progress toward final release).
+    await expect(
+      service.confirmFulfillment({ userId: operatorUserId, role: "operator" }, campaign.id, {
+        evidenceBundleId: `${TEST_PREFIX}grenoble-fulfillment`,
+      }),
+    ).rejects.toThrow(/open dispute/i);
+
+    // Public DTO surfaces the active dispute without leaking notes/reason.
+    const active = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+    expect(active.disputeStatus).toBe("active");
+    expect(JSON.stringify(active)).not.toContain("venue hold disputed");
+
+    // Resolve, then fulfillment proceeds.
+    await expect(
+      service.resolveDispute({ userId: operatorUserId, role: "operator" }, campaign.id, dispute.id, {
+        outcome: "rejected",
+        operatorNote: "evidence sufficient",
+      }),
+    ).resolves.toMatchObject({ status: "resolved", outcome: "rejected" });
+
+    const fulfilled = await service.confirmFulfillment(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { evidenceBundleId: `${TEST_PREFIX}grenoble-fulfillment` },
+    );
+    expect(fulfilled.status).toBe("fulfilled");
+
+    // After fulfillment the DTO exposes the dispute window close time + resolved status.
+    const resolvedView = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+    expect(resolvedView.disputeStatus).toBe("resolved");
+    expect(resolvedView.disputeWindowClosesAt).toBeTruthy();
+    expect(JSON.stringify(resolvedView)).not.toContain("evidence sufficient");
+  });
 });
