@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { ShowsService } from "../modules/shows/shows.service";
 
@@ -860,24 +860,24 @@ describe("ShowsService integration", () => {
   it("rejects pledge intents whose wallet is not the caller's registered wallet (#1221)", async () => {
     const { campaign, tier } = await createActiveCampaignWithTier("Nantes");
 
-    // A foreign address (not the listener's registered wallet) is rejected,
-    // closing the pledge-attribution hijack from the #948 review.
-    await expect(
-      service.createPledgeIntent(
-        { userId: listenerId, role: "listener" },
-        campaign.id,
-        { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
-      ),
-    ).rejects.toThrow(/must match your connected wallet/);
+    // A foreign address (not the listener's registered wallet) is rejected
+    // (403 Forbidden), closing the pledge-attribution hijack from the #948 review.
+    const foreign = service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(foreign).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(foreign).rejects.toThrow(/must match your connected wallet/);
 
-    // A caller with no registered wallet cannot pledge at all.
-    await expect(
-      service.createPledgeIntent(
-        { userId: operatorUserId, role: "operator" },
-        campaign.id,
-        { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
-      ),
-    ).rejects.toThrow(/Connect a wallet/);
+    // A caller with no registered wallet cannot pledge at all (400 Bad Request).
+    const noWallet = service.createPledgeIntent(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(noWallet).rejects.toBeInstanceOf(BadRequestException);
+    await expect(noWallet).rejects.toThrow(/Connect a wallet/);
 
     // The caller's own registered wallet succeeds.
     const ok = await service.createPledgeIntent(
