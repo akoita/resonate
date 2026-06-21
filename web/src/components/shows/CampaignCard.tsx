@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
+import { CampaignTrustBadge } from "./CampaignTrustBadge";
 import {
   campaignDisplayInitial,
   campaignDisplayTitle,
@@ -69,6 +70,7 @@ export function CampaignCard({ campaign }: Props) {
         ) : null}
       </div>
       <div className="campaign-card__body">
+        <CampaignTrustBadge campaign={campaign} className="campaign-card__trust" />
         <h3 className="campaign-card__title">
           {displayTitle}
         </h3>
