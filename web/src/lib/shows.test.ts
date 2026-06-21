@@ -208,6 +208,20 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     expect(byLabel["Funding deadline"]).toBe("2026-07-01");
   });
 
+  it("does not throw on a malformed date (server-render safety)", () => {
+    const run = () =>
+      campaignTerms({
+        goalCents: 1000,
+        currency: "USD",
+        deadline: "not-a-date",
+        thresholdBackers: 0,
+      } as unknown as Campaign);
+    expect(run).not.toThrow();
+    const byLabel = Object.fromEntries(run().map((t) => [t.label, t.value]));
+    expect(byLabel["Funding deadline"]).toBe("not-a-date");
+    expect(byLabel["Minimum backers"]).toBe("—");
+  });
+
   it("labels every pledge state and masks addresses", () => {
     expect(pledgeStateLabel("submitted", "pending")).toContain("awaiting on-chain");
     expect(pledgeStateLabel("confirmed")).toBe("Confirmed on-chain");

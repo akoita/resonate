@@ -248,8 +248,13 @@ export type CampaignTerm = { label: string; value: string };
  * Values are formatted for display; pure so it is unit-testable.
  */
 export function campaignTerms(campaign: Campaign): CampaignTerm[] {
-  const fmtDate = (iso?: string | null) =>
-    iso ? new Date(iso).toISOString().slice(0, 10) : "—";
+  // Guard against malformed dates: new Date("bad").toISOString() throws, which
+  // would 500 the server-rendered detail page. Fall back to the raw value.
+  const fmtDate = (iso?: string | null) => {
+    if (!iso) return "—";
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+  };
   const depositPct =
     campaign.depositReleaseBps != null
       ? `${(campaign.depositReleaseBps / 100).toFixed(campaign.depositReleaseBps % 100 === 0 ? 0 : 2)}%`
