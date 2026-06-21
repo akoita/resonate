@@ -3226,8 +3226,9 @@
   flex-direction: column;
   gap: 8px;
 }
-.campaign-trust__badge {
+.campaign-trust-badge {
   align-self: flex-start;
+  display: inline-block;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -3236,11 +3237,17 @@
   border-radius: 999px;
   border: 1px solid currentColor;
 }
-.campaign-trust__badge--positive { color: #4ade80; }
-.campaign-trust__badge--info { color: #60a5fa; }
-.campaign-trust__badge--neutral { color: #cbd5e1; }
-.campaign-trust__badge--warning { color: #fbbf24; }
-.campaign-trust__badge--danger { color: #f87171; }
+.campaign-trust-badge--positive { color: #4ade80; }
+.campaign-trust-badge--info { color: #60a5fa; }
+.campaign-trust-badge--neutral { color: #cbd5e1; }
+.campaign-trust-badge--warning { color: #fbbf24; }
+.campaign-trust-badge--danger { color: #f87171; }
+/* Card placement: a compact pill above the title. */
+.campaign-card__trust {
+  margin-bottom: 8px;
+  font-size: 0.66rem;
+  padding: 3px 8px;
+}
 .campaign-trust__description {
   margin: 0;
   font-size: 0.9rem;

@@ -4,6 +4,7 @@ import {
   maskAddress,
   type Campaign,
 } from "../../lib/shows";
+import { CampaignTrustBadge } from "./CampaignTrustBadge";
 
 interface Props {
   campaign: Campaign;
@@ -62,9 +63,7 @@ export function CampaignTrustPanel({ campaign }: Props) {
       data-trust={trust.key}
     >
       <div className="campaign-trust__header">
-        <span className={`campaign-trust__badge campaign-trust__badge--${trust.tone}`}>
-          {trust.label}
-        </span>
+        <CampaignTrustBadge campaign={campaign} />
         <p className="campaign-trust__description">{trust.description}</p>
       </div>
 
