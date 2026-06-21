@@ -13,6 +13,7 @@ import {
   type Address,
 } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import { resolveIndexerChainId } from "../contracts/indexer.service";
@@ -30,6 +31,11 @@ import { configuredShowCampaignEscrowAddress } from "./shows.service";
  * pollers advance independently.
  *
  * Disabled unless `ENABLE_SHOWS_ESCROW_INDEXER=true`.
+ *
+ * Single-writer by design (Cloud Run minScale=1, in-process `isIndexing` guard):
+ * per-event reconciliation runs in one transaction and the read-modify-write of
+ * campaign `*Units` totals assumes no concurrent writer. Scaling the indexer to
+ * multiple instances would require advisory locking or atomic increments.
  */
 
 const ESCROW_EVENTS = [
@@ -90,6 +96,15 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
 };
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+type MismatchInput = {
+  chainId?: number;
+  contractCampaignId: string;
+  transactionHash: string;
+  blockNumber: bigint;
+  reason: string;
+  eventName: string;
+};
 
 function parsePositiveIntegerEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -262,50 +277,70 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     }
   }
 
-  /** Decode + persist one log idempotently, then reconcile. */
+  /**
+   * Decode + persist + reconcile one log atomically (#948 review hardening).
+   *
+   * The event row, all reconciliation writes, and the processedAt stamp commit
+   * in ONE transaction: a reconcile failure rolls back the row too, so the
+   * event is retried cleanly on the next cycle (no permanently-dropped payment
+   * state, no half-applied accounting). The skip guard consults processedAt, so
+   * a row left unprocessed by a legacy/partial run is re-attempted. Mismatch
+   * domain events are collected and published only after the tx commits.
+   */
   async processLog(log: Log, chainId: number, escrowAddress: string) {
     const { transactionHash, logIndex, blockNumber, blockHash } = log;
     if (transactionHash == null || logIndex == null) return;
 
     const existing = await prisma.showCampaignEscrowEvent.findUnique({
       where: { transactionHash_logIndex: { transactionHash, logIndex } },
+      select: { processedAt: true },
     });
-    if (existing) return; // idempotent: already processed
+    if (existing?.processedAt) return; // idempotent: already fully reconciled
 
     const decoded = this.decode(log);
     if (!decoded) return;
     const { eventName, args } = decoded;
     const contractCampaignId =
       args.campaignId !== undefined ? String(args.campaignId) : null;
-
-    await prisma.showCampaignEscrowEvent.create({
-      data: {
-        chainId,
-        contractAddress: escrowAddress,
-        eventName,
-        contractCampaignId,
-        transactionHash,
-        logIndex,
-        blockNumber: blockNumber ?? 0n,
-        blockHash: blockHash ?? "",
-        args: sanitizeArgs(args),
-      },
-    });
+    const ctx = {
+      chainId,
+      escrowAddress,
+      transactionHash,
+      blockNumber: blockNumber ?? 0n,
+    };
+    const mismatches: MismatchInput[] = [];
 
     try {
-      await this.reconcile(eventName, args, {
-        chainId,
-        escrowAddress,
-        transactionHash,
-        blockNumber: blockNumber ?? 0n,
+      await prisma.$transaction(async (tx) => {
+        // Upsert tolerates a row left over from an earlier rolled-back/legacy run.
+        await tx.showCampaignEscrowEvent.upsert({
+          where: { transactionHash_logIndex: { transactionHash, logIndex } },
+          create: {
+            chainId,
+            contractAddress: escrowAddress,
+            eventName,
+            contractCampaignId,
+            transactionHash,
+            logIndex,
+            blockNumber: blockNumber ?? 0n,
+            blockHash: blockHash ?? "",
+            args: sanitizeArgs(args),
+          },
+          update: {},
+        });
+
+        await this.reconcile(tx, eventName, args, ctx, (m) => mismatches.push(m));
+
+        await tx.showCampaignEscrowEvent.update({
+          where: { transactionHash_logIndex: { transactionHash, logIndex } },
+          data: { processedAt: new Date() },
+        });
       });
-      await prisma.showCampaignEscrowEvent.update({
-        where: { transactionHash_logIndex: { transactionHash, logIndex } },
-        data: { processedAt: new Date() },
-      });
+      // Side effects only after the durable state committed.
+      for (const m of mismatches) this.emitMismatch(m);
     } catch (error) {
       this.logger.error(
-        `Reconcile failed for ${eventName} (campaign ${contractCampaignId}): ${
+        `Reconcile failed for ${eventName} (campaign ${contractCampaignId}); will retry: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -325,6 +360,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
   }
 
   private async reconcile(
+    tx: Prisma.TransactionClient,
     eventName: string,
     args: any,
     ctx: {
@@ -333,6 +369,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       transactionHash: string;
       blockNumber: bigint;
     },
+    pushMismatch: (m: MismatchInput) => void,
   ): Promise<void> {
     // Contract-only events with no campaign mapping: recorded, not reconciled.
     if (eventName === "CampaignPaused" || eventName === "ConfirmerUpdated") {
@@ -340,18 +377,25 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     }
 
     const contractCampaignId = String(args.campaignId);
-    const campaign = await prisma.showCampaign.findFirst({
+    // Bind strictly to (chainId, escrow address, campaignId). fail-closed if the
+    // triple is ambiguous so events can't mutate the wrong campaign (review #2).
+    const matches = await tx.showCampaign.findMany({
       where: {
         chainId: ctx.chainId,
         contractAddress: { equals: ctx.escrowAddress, mode: "insensitive" },
         contractCampaignId,
       },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        totalRefundedUnits: true,
+        totalReleasedUnits: true,
+      },
+      take: 2,
     });
 
-    if (!campaign) {
-      // On-chain campaign with no backend binding: surface drift, do not crash.
-      this.emitMismatch({
+    if (matches.length === 0) {
+      pushMismatch({
         ...ctx,
         contractCampaignId,
         reason: `no backend campaign bound to escrow campaign ${contractCampaignId}`,
@@ -359,6 +403,16 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       });
       return;
     }
+    if (matches.length > 1) {
+      pushMismatch({
+        ...ctx,
+        contractCampaignId,
+        reason: `multiple backend campaigns bound to escrow campaign ${contractCampaignId}`,
+        eventName,
+      });
+      return;
+    }
+    const campaign = matches[0];
 
     const data: Record<string, unknown> = {
       lastEscrowIndexedBlock: ctx.blockNumber,
@@ -384,9 +438,13 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         eventType = "campaign_activated";
         break;
       case "Pledged":
+        // Ignore a late/reordered pledge on a terminal campaign (review M2).
+        if (campaign.status === "cancelled" || campaign.status === "refunded") {
+          break;
+        }
         // Authoritative cumulative total from chain; confirm the matching pledge.
         data.raisedAmountUnits = String(args.totalPledged);
-        await this.confirmPledgeFromChain(campaign.id, args, ctx);
+        await this.confirmPledgeFromChain(tx, campaign.id, args, ctx, pushMismatch);
         break;
       case "CampaignFunded":
         data.onChainStatus = "Funded";
@@ -424,31 +482,17 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         eventType = "refund_available";
         break;
       case "RefundClaimed":
-        await this.markPledgeRefunded(campaign.id, args, ctx);
-        data.totalRefundedUnits = addUnits(
-          (
-            await prisma.showCampaign.findUnique({
-              where: { id: campaign.id },
-              select: { totalRefundedUnits: true },
-            })
-          )?.totalRefundedUnits,
-          String(args.amount),
-        );
+        await this.markPledgeRefunded(tx, campaign.id, args, ctx);
+        // Snapshot read from the same tx; the once-only (txHash,logIndex) guard
+        // makes this read-modify-write safe under the single-writer indexer.
+        data.totalRefundedUnits = addUnits(campaign.totalRefundedUnits, String(args.amount));
         break;
       case "DepositReleased":
         data.onChainStatus = "DepositReleased";
         if (this.canAdvance(campaign.status, "deposit_released"))
           data.status = "deposit_released";
         data.depositReleasedAt = new Date();
-        data.totalReleasedUnits = addUnits(
-          (
-            await prisma.showCampaign.findUnique({
-              where: { id: campaign.id },
-              select: { totalReleasedUnits: true },
-            })
-          )?.totalReleasedUnits,
-          String(args.amount),
-        );
+        data.totalReleasedUnits = addUnits(campaign.totalReleasedUnits, String(args.amount));
         eventType = "deposit_released";
         break;
       case "FulfillmentConfirmed":
@@ -461,15 +505,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         data.onChainStatus = "Released";
         if (this.canAdvance(campaign.status, "released")) data.status = "released";
         data.releasedAt = new Date();
-        data.totalReleasedUnits = addUnits(
-          (
-            await prisma.showCampaign.findUnique({
-              where: { id: campaign.id },
-              select: { totalReleasedUnits: true },
-            })
-          )?.totalReleasedUnits,
-          String(args.amount),
-        );
+        data.totalReleasedUnits = addUnits(campaign.totalReleasedUnits, String(args.amount));
         eventType = "campaign_released";
         break;
       case "AuthorityUpdated":
@@ -485,13 +521,13 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     data.reconciliationError = null;
     data.reconciliationErrorAt = null;
 
-    await prisma.showCampaign.update({ where: { id: campaign.id }, data });
+    await tx.showCampaign.update({ where: { id: campaign.id }, data });
 
     // Recompute backer counts from confirmed pledges (authoritative DB view).
-    await this.recomputeBackerCounts(campaign.id);
+    await this.recomputeBackerCounts(tx, campaign.id);
 
     if (eventType) {
-      await prisma.showCampaignEvent.create({
+      await tx.showCampaignEvent.create({
         data: {
           campaignId: campaign.id,
           eventType,
@@ -507,33 +543,38 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
 
   /** Confirm a backer's pledge from an on-chain Pledged event (not client claim). */
   private async confirmPledgeFromChain(
+    tx: Prisma.TransactionClient,
     campaignId: string,
     args: any,
     ctx: { transactionHash: string; blockNumber: bigint },
+    pushMismatch: (m: MismatchInput) => void,
   ): Promise<void> {
     const backer = String(args.backer).toLowerCase();
     const amount = String(args.amount);
-    const pledge = await prisma.showPledge.findFirst({
+    // Match on (backer, exact amount): never confirm a different-amount intent
+    // against this on-chain pledge (review M1). No match → drift, not a guess.
+    const pledge = await tx.showPledge.findFirst({
       where: {
         campaignId,
         walletAddress: { equals: backer, mode: "insensitive" },
+        amountUnits: amount,
         status: { in: ["intent_created", "submitted"] },
       },
       orderBy: { createdAt: "asc" },
     });
     if (!pledge) {
       // A pledge happened on chain without a matching backend intent.
-      this.emitMismatch({
+      pushMismatch({
         contractCampaignId: String(args.campaignId),
         transactionHash: ctx.transactionHash,
         blockNumber: ctx.blockNumber,
-        reason: `on-chain pledge from ${backer} has no matching backend intent`,
+        reason: `on-chain pledge from ${backer} (${amount}) has no matching backend intent`,
         eventName: "Pledged",
       });
       return;
     }
     const now = new Date();
-    await prisma.showPledge.update({
+    await tx.showPledge.update({
       where: { id: pledge.id },
       data: {
         status: "confirmed",
@@ -560,12 +601,13 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
   }
 
   private async markPledgeRefunded(
+    tx: Prisma.TransactionClient,
     campaignId: string,
     args: any,
     ctx: { transactionHash: string; blockNumber: bigint },
   ): Promise<void> {
     const backer = String(args.backer).toLowerCase();
-    const pledge = await prisma.showPledge.findFirst({
+    const pledge = await tx.showPledge.findFirst({
       where: {
         campaignId,
         walletAddress: { equals: backer, mode: "insensitive" },
@@ -575,7 +617,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     });
     if (!pledge) return;
     const now = new Date();
-    await prisma.showPledge.update({
+    await tx.showPledge.update({
       where: { id: pledge.id },
       data: {
         status: "refunded",
@@ -596,13 +638,16 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     });
   }
 
-  private async recomputeBackerCounts(campaignId: string): Promise<void> {
-    const confirmed = await prisma.showPledge.findMany({
+  private async recomputeBackerCounts(
+    tx: Prisma.TransactionClient,
+    campaignId: string,
+  ): Promise<void> {
+    const confirmed = await tx.showPledge.findMany({
       where: { campaignId, status: { in: ["confirmed", "released"] } },
       select: { walletAddress: true },
     });
     const uniqueWallets = new Set(confirmed.map((p) => p.walletAddress.toLowerCase()));
-    await prisma.showCampaign.update({
+    await tx.showCampaign.update({
       where: { id: campaignId },
       data: {
         confirmedPledgeCount: confirmed.length,
@@ -630,14 +675,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     return n > c;
   }
 
-  private emitMismatch(input: {
-    chainId?: number;
-    contractCampaignId: string;
-    transactionHash: string;
-    blockNumber: bigint;
-    reason: string;
-    eventName: string;
-  }): void {
+  private emitMismatch(input: MismatchInput): void {
     this.logger.warn(
       `Reconciliation mismatch (${input.eventName}, campaign ${input.contractCampaignId}): ${input.reason}`,
     );
