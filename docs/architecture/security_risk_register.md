@@ -18,6 +18,7 @@ owner: "@akoita"
 | Wallets | Unauthorized spend | High | Budget caps, signed intents, rate limits |
 | Uploads | Malicious file upload | Medium | File type checks, virus scan, size limits |
 | IP Rights | Unauthorized remix/commercial use | High | Licensing checks, audit logs |
+| Encrypted stems | Plaintext exposure during server-side remix render (#1214) | High | Worker-time ownership + eligibility re-check before any decrypt; strict in-memory `decryptForRender` (no on-disk cache, fail-closed, ciphertext never reaches ffmpeg/providers); plaintext only in a unique temp dir removed in `finally`; `remix.encrypted_render_authorized`/`remix.encrypted_render_denied` audit events; `INTERNAL_SERVICE_KEY`-gated decrypt with no non-prod fallback |
 | Payments | Reorgs or failed tx | Medium | Confirmation depth, retries |
 | APIs | Credential leakage | High | Short-lived JWTs, secret rotation |
 

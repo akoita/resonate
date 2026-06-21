@@ -200,10 +200,15 @@ from the JWT, never the request body.
   settings in `sourceArrangement` and `renderMetadata`, so the final artifact
   is reproducible and auditable. `stem_plus_ai` now renders source stems and
   the generated layer in one ffmpeg graph, avoiding an intermediate MP3 and a
-  second lossy encode. Encrypted stems remain an explicit, actionable
-  `invalid_input` deferral until the authorization and temporary-plaintext
-  boundary tracked in [#1214](https://github.com/akoita/resonate/issues/1214)
-  is implemented.
+  second lossy encode. Encrypted source stems now render
+  ([#1214](https://github.com/akoita/resonate/issues/1214)): the generation
+  worker re-verifies project ownership and current eligibility, then the shared
+  mixer decrypts each authorized encrypted stem in memory through a strict
+  fail-closed boundary (`EncryptionService.decryptForRender`) into its unique,
+  unconditionally-cleaned temp dir. Plaintext is never cached, uploaded, logged,
+  or returned individually, and ciphertext is never passed to ffmpeg or a
+  provider. See [Encrypted Stem Rendering](#encrypted-stem-rendering-1214) below
+  for the key-access, audit, and revocation details.
 - Stem audio feature extraction (#1184, slice 1 of #1182): the demucs
   worker measures tempo (BPM + bounded confidence heuristic), beat anchors
   (`beatCount`, `firstBeatSec`), key (Krumhansl chroma template matching),
@@ -437,7 +442,8 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
 - **Slice 4 (#1206, this slice):** the `audio-conditioned` provider
   (`REMIX_GENERATION_PROVIDER_KIND=audio-conditioned`) mixes the project's
   unmuted stems (shared `StemAudioMixer`, reused from stem-mix render so the
-  encrypted-stem deferral is shared) and sends that audio + the prompt to a
+  encrypted-stem decrypt-for-render boundary is shared, #1214) and sends that
+  audio + the prompt to a
   self-hosted Stable Audio 3 worker (`workers/stable-audio/`, scale-to-zero
   Cloud Run GPU). Defaults match the spike (`cfg≈7`, `init_noise_level≈0.2`,
   `steps=25`). Behind `REMIX_GENERATION_ENABLED`, default off — not yet
@@ -456,7 +462,7 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
   the same versioned loudness/headroom policy, persist full arrangement and
   render metadata, and normalize storage failures without exposing provider
   details. Fade, trim, loop, effects, and release-grade mastering remain
-  explicitly out of scope. Encrypted rendering is tracked in #1214.
+  explicitly out of scope. Encrypted rendering shipped in #1214 (see below).
 
 Keeps audio-conditioned Stable Audio full regeneration (#1206/#1207) as an
 experimental draft-quality path and stem-mix renders (#1189) as the zero-AI
@@ -464,6 +470,86 @@ mode; release-grade claims stay deferred until the fidelity follow-ups
 (for example, validating the best supported self-hosted model variant and the
 stereo-output fix) are done. Stable Audio 3 Large is API-only, not a supported
 `workers/stable-audio` model.
+
+### Encrypted Stem Rendering (#1214)
+
+Status: **implemented.** Deterministic `stem_mix`, `stem_plus_ai` layered, and
+audio-conditioned renders can use eligible encrypted source stems without ever
+exposing plaintext through persistent storage, public APIs, logs, or provider
+error messages.
+
+How it works:
+
+- **Worker-time authorization.** `RemixProjectService.processGenerationJob`
+  re-verifies project ownership and current remix eligibility
+  (`RemixEligibilityService.checkEligibility`) immediately before any render
+  path runs. The request-time check at enqueue is not trusted, because consent,
+  quarantine, licensing, content status, and project state can change while a
+  job is queued. A revoked, quarantined, consent-disabled, unlicensed, or
+  rights-blocked source fails **before** any stem is decrypted.
+- **Render grant.** When the re-check passes, the worker builds an in-process
+  `StemRenderAuthorization` (`userId`, `remixProjectId`, the set of re-confirmed
+  `authorizedStemIds`) and threads it through the renderers into the shared
+  `StemAudioMixer`. The grant is built in the worker, never read from the queue
+  payload, and never carries key material.
+- **Strict decrypt boundary.** For each authorized encrypted stem the mixer
+  calls `EncryptionService.decryptForRender`, which decrypts the loaded
+  ciphertext **in memory only**. It never writes to the on-disk decrypted cache
+  and never falls back to returning the raw buffer: a stem flagged
+  `isEncrypted` with missing/invalid metadata, a missing internal key, denied
+  access, or corrupt ciphertext fails closed, so ciphertext can never reach
+  ffmpeg or a generation provider. Decrypted plaintext lives only in the mixer's
+  unique OS temp dir, which is removed unconditionally in a `finally` block on
+  every success and failure path. Individual decrypted stems are never uploaded.
+
+Key access & deployment:
+
+- Decryption reuses the existing AES provider's internal-service bypass
+  (SBPR-004) under a narrowly named `remix-render-authorized` purpose. It
+  requires `INTERNAL_SERVICE_KEY` to be set in **every** environment — there is
+  no non-production fallback for this purpose (unlike marketplace preview). If
+  `INTERNAL_SERVICE_KEY` is unset, encrypted renders fail closed.
+- Required env vars (already used by encryption): `ENCRYPTION_SECRET` (or
+  `JWT_SECRET` fallback) for AES key derivation, `INTERNAL_SERVICE_KEY` for the
+  internal render grant. No new secret is introduced.
+- Key rotation/revocation: AES keys derive per-content from
+  `ENCRYPTION_SECRET` + the stem's `keyId`. Rotating `ENCRYPTION_SECRET`
+  invalidates decryption of previously encrypted stems (they fail closed as
+  `decryption_failed`), so rotate in lockstep with re-encryption. Revoking a
+  source's remix rights (consent flip, quarantine, DMCA, license expiry) is
+  enforced by the worker-time eligibility re-check and blocks decryption on the
+  next render attempt.
+
+Audit & incident response:
+
+- Two compact security/audit domain events are emitted (not wired into product
+  analytics): `remix.encrypted_render_authorized` (a render decrypted N
+  encrypted stems for an owned, eligible project) and
+  `remix.encrypted_render_denied` (a render with encrypted stems was rejected
+  at the worker-time re-check). Both carry only project/creator/source IDs, the
+  internal purpose, outcome, and encrypted-stem count — never stem bytes,
+  encryption metadata, keys, storage URIs, prompts, or provider error bodies.
+- On suspected key compromise: unset/rotate `INTERNAL_SERVICE_KEY` to disable
+  all internal render decryption immediately (renders fail closed), then rotate
+  `ENCRYPTION_SECRET` and re-encrypt affected stems. The audit events above
+  bound the blast radius (which projects/sources decrypted encrypted stems and
+  when).
+
+Code & tests:
+
+- `backend/src/modules/encryption/encryption.service.ts`
+  (`decryptForRender`, `RenderDecryptionError`),
+  `backend/src/modules/encryption/providers/aes_encryption_provider.ts`
+  (`remix-render-authorized` purpose),
+  `backend/src/modules/remix/stem-audio-mixer.ts` (decrypt boundary + cleanup),
+  `backend/src/modules/remix/remix-project.service.ts` (worker-time re-check +
+  audit events).
+- Tests: `backend/src/tests/encryption-render-decrypt.spec.ts` (strict
+  decryption unit tests incl. no-cache + fail-closed),
+  `backend/src/tests/remix-stem-audio-mixer.integration.spec.ts` (authorization
+  gate, decrypt failure mapping, mixed/muted arrangements, cleanup, ffmpeg-gated
+  decrypt+mix e2e), `backend/src/tests/remix.integration.spec.ts` (worker-time
+  denial never reaches the render/decrypt boundary).
 
 ## References
 
