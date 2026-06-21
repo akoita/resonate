@@ -361,6 +361,103 @@ function defaultPaymentAssetSymbol() {
   return process.env.SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL?.trim() || "USDC";
 }
 
+/**
+ * Public campaign DTO (#949). Explicit whitelist for unauthenticated reads:
+ * exposes the trust state, immutable terms, and on-chain reconciliation fields
+ * the fan-facing UI needs, while NEVER leaking sensitive authority evidence /
+ * credential references, internal storage URIs, ops notes, indexer cursors, or
+ * the raw lifecycle-event log (which carries actor ids and metadata).
+ */
+export function serializePublicShowCampaign(campaign: any) {
+  const tiers = Array.isArray(campaign.tiers)
+    ? campaign.tiers.map((tier: any) => ({
+        id: tier.id,
+        title: tier.title,
+        description: tier.description ?? null,
+        amountUnits: tier.amountUnits,
+        currency: tier.currency,
+        paymentAssetId: tier.paymentAssetId ?? null,
+        paymentAssetSymbol: tier.paymentAssetSymbol,
+        paymentAssetDecimals: tier.paymentAssetDecimals,
+        maxBackers: tier.maxBackers ?? null,
+        sortOrder: tier.sortOrder,
+        benefits: tier.benefits ?? null,
+        isActive: tier.isActive,
+      }))
+    : undefined;
+  const visuals = Array.isArray(campaign.visuals)
+    ? campaign.visuals.map((visual: any) => ({
+        id: visual.id,
+        role: visual.role,
+        publicUrl: visual.publicUrl,
+        mimeType: visual.mimeType,
+        sortOrder: visual.sortOrder,
+        caption: visual.caption ?? null,
+        credit: visual.credit ?? null,
+      }))
+    : undefined;
+
+  return {
+    id: campaign.id,
+    slug: campaign.slug,
+    artistId: campaign.artistId ?? null,
+    artistDisplayName: campaign.artistDisplayName,
+    artistImageUrl: campaign.artistImageUrl ?? null,
+    heroImageUrl: campaign.heroImageUrl ?? null,
+    cardImageUrl: campaign.cardImageUrl ?? null,
+    title: campaign.title,
+    description: campaign.description ?? null,
+    city: campaign.city,
+    country: campaign.country,
+    venueTarget: campaign.venueTarget ?? null,
+    targetDate: campaign.targetDate ?? null,
+    deadline: campaign.deadline,
+    bookingDeadline: campaign.bookingDeadline ?? null,
+    goalAmountUnits: campaign.goalAmountUnits,
+    minimumBackers: campaign.minimumBackers ?? null,
+    currency: campaign.currency,
+    paymentAssetId: campaign.paymentAssetId ?? null,
+    paymentAssetSymbol: campaign.paymentAssetSymbol,
+    paymentAssetDecimals: campaign.paymentAssetDecimals,
+    paymentTokenAddress: campaign.paymentTokenAddress ?? null,
+    chainId: campaign.chainId,
+    contractAddress: campaign.contractAddress ?? null,
+    contractCampaignId: campaign.contractCampaignId ?? null,
+    status: campaign.status,
+    campaignLevel: campaign.campaignLevel,
+    // Authority/beneficiary SUMMARY only — status + beneficiary (public on-chain
+    // data), never the evidence-bundle / credential identifiers.
+    artistAuthorityStatus: campaign.artistAuthorityStatus,
+    beneficiaryAddress: campaign.beneficiaryAddress ?? null,
+    beneficiaryType: campaign.beneficiaryType ?? null,
+    // Immutable terms + release policy.
+    releasePolicy: campaign.releasePolicy,
+    depositReleaseBps: campaign.depositReleaseBps,
+    disputeWindowSeconds: campaign.disputeWindowSeconds,
+    // On-chain reconciliation (driven by the #948 indexer).
+    onChainStatus: campaign.onChainStatus ?? null,
+    raisedAmountUnits: campaign.raisedAmountUnits,
+    totalRefundedUnits: campaign.totalRefundedUnits,
+    totalReleasedUnits: campaign.totalReleasedUnits,
+    confirmedPledgeCount: campaign.confirmedPledgeCount,
+    uniqueBackerCount: campaign.uniqueBackerCount,
+    // Lifecycle timestamps (public state transitions).
+    activatedAt: campaign.activatedAt ?? null,
+    fundedAt: campaign.fundedAt ?? null,
+    bookingConfirmedAt: campaign.bookingConfirmedAt ?? null,
+    depositReleasedAt: campaign.depositReleasedAt ?? null,
+    fulfilledAt: campaign.fulfilledAt ?? null,
+    releasedAt: campaign.releasedAt ?? null,
+    cancelledAt: campaign.cancelledAt ?? null,
+    refundAvailableAt: campaign.refundAvailableAt ?? null,
+    refundedAt: campaign.refundedAt ?? null,
+    createdAt: campaign.createdAt,
+    updatedAt: campaign.updatedAt,
+    ...(tiers !== undefined ? { tiers } : {}),
+    ...(visuals !== undefined ? { visuals } : {}),
+  };
+}
+
 function configuredDefaultPaymentTokenAddress() {
   return validateOptionalAddress(
     optionalText(process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS)
@@ -398,7 +495,7 @@ export class ShowsService {
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
     const includeSignals = query.includeSignals === true;
-    return prisma.showCampaign.findMany({
+    const campaigns = await prisma.showCampaign.findMany({
       where: {
         ...(query.status ? { status: query.status as any } : {}),
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
@@ -410,6 +507,8 @@ export class ShowsService {
       orderBy: [{ createdAt: "desc" }],
       take: 100,
     });
+    // #949: whitelist DTO — never leak sensitive authority/internal fields.
+    return campaigns.map((campaign) => serializePublicShowCampaign(campaign));
   }
 
   async getCampaign(slug: string) {
@@ -418,13 +517,14 @@ export class ShowsService {
       include: {
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-        events: { orderBy: { occurredAt: "desc" }, take: 50 },
       },
     });
     if (!campaign) {
       throw new NotFoundException("Show campaign not found");
     }
-    return campaign;
+    // #949: public reads go through a whitelist DTO so sensitive authority
+    // evidence / credential references and internal fields are never exposed.
+    return serializePublicShowCampaign(campaign);
   }
 
   async createSignal(actor: Actor, input: CreateSignalInput) {

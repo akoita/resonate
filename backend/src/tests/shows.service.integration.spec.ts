@@ -905,6 +905,32 @@ describe("ShowsService integration", () => {
     expect(withSignals.some((campaign) => campaign.artistDisplayName === `${TEST_PREFIX}Signal Artist`)).toBe(true);
   });
 
+  it("public campaign reads expose trust/terms but never sensitive authority evidence (#949)", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Strasbourg");
+
+    const publicCampaign = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+
+    // Trust + immutable terms the fan UI needs are present.
+    expect(publicCampaign.campaignLevel).toBe("active_escrow_campaign");
+    expect(publicCampaign.artistAuthorityStatus).toBe("artist_authorized");
+    expect(publicCampaign.beneficiaryAddress).toBe(artistWallet);
+    expect(publicCampaign.releasePolicy).toBeDefined();
+    expect(publicCampaign.disputeWindowSeconds).toBeDefined();
+    expect(publicCampaign).toHaveProperty("depositReleaseBps");
+    expect(Array.isArray(publicCampaign.tiers)).toBe(true);
+
+    // Sensitive evidence / internal fields are NOT exposed.
+    expect(publicCampaign).not.toHaveProperty("authorityCredentialId");
+    expect(publicCampaign).not.toHaveProperty("authorityEvidenceBundleId");
+    expect(publicCampaign).not.toHaveProperty("events");
+    expect(publicCampaign).not.toHaveProperty("heroImageStorageUri");
+    expect(publicCampaign).not.toHaveProperty("bookingTerms");
+    expect(publicCampaign).not.toHaveProperty("reconciliationError");
+    // The serialized payload as a whole leaks none of the evidence ids.
+    expect(JSON.stringify(publicCampaign)).not.toContain("-authority");
+    expect(JSON.stringify(publicCampaign)).not.toContain("-credential");
+  });
+
   it("cancels an active campaign into refund availability with lifecycle events", async () => {
     const { campaign } = await createActiveCampaignWithTier("Rennes");
 
