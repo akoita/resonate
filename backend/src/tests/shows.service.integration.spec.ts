@@ -765,7 +765,10 @@ describe("ShowsService integration", () => {
     });
     expect(intent.pledge.events[0].eventType).toBe("pledge_intent_created");
 
-    const confirmed = await service.confirmPledge(
+    // #948: a wallet user recording their tx cannot self-confirm. The pledge
+    // is "submitted"/"pending" until the on-chain Pledged event is indexed; a
+    // client-claimed "confirmed" is intentionally downgraded.
+    const submitted = await service.confirmPledge(
       { userId: listenerId, role: "listener" },
       intent.pledge.id,
       {
@@ -775,11 +778,11 @@ describe("ShowsService integration", () => {
       },
     );
 
-    expect(confirmed.pledge.status).toBe("confirmed");
-    expect(confirmed.pledge.confirmationStatus).toBe("confirmed");
-    expect(confirmed.pledge.transactionHash).toBe(txHash);
-    expect(confirmed.pledge.blockNumber).toBe("123456");
-    expect(confirmed.pledge.events[0].eventType).toBe("pledge_confirmed");
+    expect(submitted.pledge.status).toBe("submitted");
+    expect(submitted.pledge.confirmationStatus).toBe("pending");
+    expect(submitted.pledge.transactionHash).toBe(txHash);
+    expect(submitted.pledge.blockNumber).toBe("123456");
+    expect(submitted.pledge.events[0].eventType).toBe("pledge_submitted");
 
     const storedCampaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(storedCampaign.raisedAmountUnits).toBe("0");
@@ -804,8 +807,10 @@ describe("ShowsService integration", () => {
         walletAddress: listenerWallet,
       },
     );
+    // Operator manual-confirm (privileged override) establishes a confirmed
+    // pledge precondition; wallet users can no longer self-confirm (#948).
     await service.confirmPledge(
-      { userId: listenerId, role: "listener" },
+      { userId: operatorUserId, role: "operator" },
       intent.pledge.id,
       {
         transactionHash: "0x" + "b".repeat(64),
