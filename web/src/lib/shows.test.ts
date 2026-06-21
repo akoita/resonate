@@ -4,6 +4,12 @@ import {
   campaignDisplayInitial,
   campaignDisplayTitle,
   campaignRouteCode,
+  campaignTrustState,
+  campaignTerms,
+  pledgeStateLabel,
+  maskAddress,
+  chainName,
+  releasePolicyLabel,
 } from "./shows";
 import type { Release } from "./api";
 
@@ -134,5 +140,82 @@ describe("Shows campaign presentation", () => {
       optionId: "profile:public-sennarin",
       releaseCount: 1,
     });
+  });
+});
+
+describe("Shows trust / terms / pledge helpers (#949)", () => {
+  const baseCampaign = {
+    campaignLevel: "active_escrow_campaign",
+    rawStatus: "active",
+    artistAuthorityStatus: "artist_authorized",
+  };
+
+  it("derives the trust state across the campaign ladder and terminal states", () => {
+    expect(campaignTrustState(baseCampaign).key).toBe("authorized_escrow");
+    expect(campaignTrustState({ ...baseCampaign, campaignLevel: "signal" }).key).toBe(
+      "demand_signal",
+    );
+    expect(
+      campaignTrustState({ ...baseCampaign, campaignLevel: "provisional_campaign", artistAuthorityStatus: "none" }).key,
+    ).toBe("provisional");
+    expect(campaignTrustState({ ...baseCampaign, artistAuthorityStatus: "revoked" }).key).toBe(
+      "authority_revoked",
+    );
+    expect(campaignTrustState({ ...baseCampaign, rawStatus: "refund_available" }).key).toBe(
+      "refund_available",
+    );
+    expect(campaignTrustState({ ...baseCampaign, rawStatus: "cancelled" }).key).toBe("cancelled");
+    // Terminal/refund wins over authority + level.
+    expect(
+      campaignTrustState({ campaignLevel: "signal", rawStatus: "cancelled", artistAuthorityStatus: "revoked" }).key,
+    ).toBe("cancelled");
+  });
+
+  it("never implies a guaranteed ticket in trust descriptions", () => {
+    for (const key of ["demand_signal", "provisional", "authorized_escrow"]) {
+      const state = campaignTrustState(
+        key === "demand_signal"
+          ? { ...baseCampaign, campaignLevel: "signal" }
+          : key === "provisional"
+            ? { ...baseCampaign, campaignLevel: "provisional_campaign", artistAuthorityStatus: "none" }
+            : baseCampaign,
+      );
+      expect(state.description.toLowerCase()).not.toContain("guarantee");
+      expect(state.description.toLowerCase()).not.toContain("ticket");
+    }
+  });
+
+  it("formats immutable terms a fan can read before signing", () => {
+    const terms = campaignTerms({
+      goalCents: 300000,
+      currency: "USD",
+      deadline: "2026-07-01T00:00:00.000Z",
+      bookingDeadline: "2026-07-15T00:00:00.000Z",
+      thresholdBackers: 100,
+      paymentAssetSymbol: "USDC",
+      chainId: 84532,
+      depositReleaseBps: 1000,
+      disputeWindowSeconds: 604800,
+      releasePolicy: "staged_release",
+    } as any);
+    const byLabel = Object.fromEntries(terms.map((t) => [t.label, t.value]));
+    expect(byLabel["Minimum backers"]).toBe("100");
+    expect(byLabel["Payment"]).toBe("USDC on Base Sepolia");
+    expect(byLabel["Deposit released on booking"]).toBe("10%");
+    expect(byLabel["Dispute window"]).toBe("7 days");
+    expect(byLabel["Refund policy"]).toContain("Staged release");
+    expect(byLabel["Funding deadline"]).toBe("2026-07-01");
+  });
+
+  it("labels every pledge state and masks addresses", () => {
+    expect(pledgeStateLabel("submitted", "pending")).toContain("awaiting on-chain");
+    expect(pledgeStateLabel("confirmed")).toBe("Confirmed on-chain");
+    expect(pledgeStateLabel("refund_available")).toBe("Refund available");
+    expect(pledgeStateLabel("released")).toBe("Funds released to artist");
+    expect(pledgeStateLabel("weird_state")).toBe("weird state");
+    expect(maskAddress("0x1234567890abcdef1234567890abcdef12345678")).toBe("0x1234…5678");
+    expect(maskAddress(null)).toBe("—");
+    expect(chainName(11155111)).toBe("Sepolia");
+    expect(releasePolicyLabel("refund_only_until_booking")).toContain("Refund-only");
   });
 });

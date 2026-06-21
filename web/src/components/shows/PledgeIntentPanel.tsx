@@ -14,6 +14,7 @@ import {
   createPledgeIntent,
   formatMoney,
   listMyShowPledges,
+  pledgeStateLabel,
   type Campaign,
   type CampaignTier,
   type ShowPledgeIntent,
@@ -207,11 +208,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           {latestPledge ? (
             <>
               <strong>{latestPledgeAmount}</strong>
-              <small>
-                {latestPledge.status.replaceAll("_", " ")}
-                {" · "}
-                {latestPledge.confirmationStatus.replaceAll("_", " ")}
-              </small>
+              <small>{pledgeStateLabel(latestPledge.status, latestPledge.confirmationStatus)}</small>
               {latestPledgeTxUrl ? (
                 <a href={latestPledgeTxUrl} target="_blank" rel="noreferrer noopener">
                   View transaction
