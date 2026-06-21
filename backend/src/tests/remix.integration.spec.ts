@@ -1139,6 +1139,11 @@ describe("Remix eligibility and projects (integration)", () => {
               { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
             ],
           }),
+          // Worker-time render grant (#1214) is forwarded as the 2nd arg.
+          expect.objectContaining({
+            remixProjectId: created.id,
+            authorizedStemIds: expect.any(Set),
+          }),
         );
         expect(layeredRenderer.render).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1472,6 +1477,43 @@ describe("Remix eligibility and projects (integration)", () => {
               eventName: "remix.policy_rejected",
               sourceTrackId: TRACK_ID,
             }),
+          );
+        } finally {
+          await prisma.track.update({
+            where: { id: TRACK_ID },
+            data: { contentStatus: "clean" },
+          });
+        }
+      });
+
+      it("re-checks eligibility in the worker and never renders when rights changed after enqueue (#1214)", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        stemMixRenderer.render.mockClear();
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Quarantined Before Render",
+          mode: "stem_mix",
+        });
+        const pending = await projectService.generateDraft(CREATOR_ID, created.id);
+        const queuedData = generationQueue.add.mock.calls.at(-1)?.[1] as any;
+
+        // Source is quarantined AFTER the job was queued but BEFORE it runs.
+        await prisma.track.update({
+          where: { id: TRACK_ID },
+          data: { contentStatus: "quarantined" },
+        });
+        try {
+          await expect(
+            projectService.processGenerationJob(queuedData),
+          ).rejects.toMatchObject({ code: "invalid_input", retryable: false });
+          // The render path (and therefore the decrypt boundary) is never reached.
+          expect(stemMixRenderer.render).not.toHaveBeenCalled();
+          const failed = await projectService.getProject(CREATOR_ID, created.id);
+          expect(failed.generationJobId).toBe(pending.generationJobId);
+          expect(failed.generationMetadata).toEqual(
+            expect.objectContaining({ status: "failed", retryable: false }),
           );
         } finally {
           await prisma.track.update({
