@@ -282,7 +282,17 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
             renderMetadata: metadata,
           };
     } finally {
-      await rm(workDir, { recursive: true, force: true }).catch(() => {});
+      // Plaintext for encrypted stems lives only here; deletion must run on
+      // every success/failure path. Log (never silently swallow) a cleanup
+      // failure so a leaking-disk condition is observable. The dir path carries
+      // no secret — only the random mkdtemp suffix.
+      await rm(workDir, { recursive: true, force: true }).catch((error) => {
+        this.logger.warn(
+          `Failed to remove remix render temp dir ${workDir}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
     }
   }
 

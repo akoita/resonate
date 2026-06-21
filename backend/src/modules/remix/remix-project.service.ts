@@ -1388,6 +1388,20 @@ function normalizeRemixGenerationError(
   if (error instanceof RemixGenerationProviderError) {
     return error;
   }
+  // Worker-time eligibility re-check (#1214) can throw NotFound (source track
+  // deleted) or BadRequest (a stem no longer belongs to the track). Those are
+  // permanent, not transient: surface them as non-retryable invalid_input so a
+  // retry does not keep re-hitting the same dead source.
+  if (
+    error instanceof NotFoundException ||
+    error instanceof BadRequestException
+  ) {
+    return new RemixGenerationProviderError(
+      "invalid_input",
+      "This remix can no longer be generated for its source.",
+      false,
+    );
+  }
   return new RemixGenerationProviderError(
     "provider_unavailable",
     "The remix generation provider failed unexpectedly. Please try again later.",
