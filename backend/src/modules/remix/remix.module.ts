@@ -3,6 +3,7 @@ import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "../shared/shared.module";
 import { GenerationModule } from "../generation/generation.module";
 import { LyriaClient } from "../generation/lyria.client";
+import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import { RemixController } from "./remix.controller";
 import { RemixService } from "./remix.service";
@@ -56,9 +57,11 @@ import {
     // path-traversal containment live in one place.
     {
       provide: STEM_AUDIO_MIXER,
-      useFactory: (storageProvider: StorageProvider) =>
-        new FfmpegStemAudioMixer(storageProvider),
-      inject: [StorageProvider],
+      useFactory: (
+        storageProvider: StorageProvider,
+        encryptionService: EncryptionService,
+      ) => new FfmpegStemAudioMixer(storageProvider, encryptionService),
+      inject: [StorageProvider, EncryptionService],
     },
     // Provider boundary (#896): REMIX_GENERATION_PROVIDER_KIND selects the
     // implementation (default stub; "lyria" reuses the catalog generation

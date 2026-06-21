@@ -209,6 +209,24 @@ export type StemArrangementEntry = {
   muted: boolean;
 };
 
+/**
+ * Worker-time render authorization (#1214). Built in the generation worker
+ * *after* it re-verifies project ownership and current remix eligibility, then
+ * threaded into the shared StemAudioMixer so encrypted source stems are only
+ * ever decrypted for an owned, currently-eligible project. Never built from the
+ * queue payload and never carries key material.
+ */
+export type StemRenderAuthorization = {
+  /** Owner of the remix project (the source of the internal decrypt grant). */
+  userId: string;
+  remixProjectId: string;
+  /**
+   * Stem ids the worker re-confirmed as eligible for this render. The mixer
+   * refuses to decrypt any encrypted stem that is not in this set.
+   */
+  authorizedStemIds: ReadonlySet<string>;
+};
+
 export type RemixGenerationOutputMetadata = {
   outputUri: string | null;
   /** Recorded at write time so playback never guesses from extensions. */
@@ -280,7 +298,15 @@ export type RemixGenerationJob = {
 };
 
 export interface RemixGenerationProvider {
-  createRemixDraft(input: RemixGenerationInput): Promise<RemixGenerationJob>;
+  /**
+   * @param authorization Worker-time render grant (#1214). Providers that
+   *   condition on the source stems (audio-conditioned) pass it to the mixer so
+   *   encrypted stems can be decrypted; prompt-only providers ignore it.
+   */
+  createRemixDraft(
+    input: RemixGenerationInput,
+    authorization: StemRenderAuthorization,
+  ): Promise<RemixGenerationJob>;
 }
 
 type ProjectForGeneration = {
@@ -363,6 +389,7 @@ export class StubRemixGenerationProvider implements RemixGenerationProvider {
 
   async createRemixDraft(
     input: RemixGenerationInput,
+    _authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob> {
     if (process.env.REMIX_GENERATION_ENABLED !== "true") {
       throw new RemixGenerationProviderError(

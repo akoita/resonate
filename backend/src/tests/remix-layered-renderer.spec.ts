@@ -39,10 +39,17 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       storageProvider as unknown as StorageProvider,
     );
 
+  const authorization = {
+    userId: "creator",
+    remixProjectId: "project-1",
+    authorizedStemIds: new Set(["stem-1"]),
+  };
+
   it("mixes arranged stems and the generated layer into one stored draft", async () => {
     const job = await renderer().render({
       remixProjectId: "project-1",
       stems: [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      authorization,
       layer: {
         provider: "lyria-3-pro-preview",
         jobId: "layer-job",
@@ -69,7 +76,7 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
           label: "generated-layer",
         }),
       ],
-      "project-1",
+      authorization,
     );
     expect(storageProvider.upload).toHaveBeenCalledWith(
       Buffer.from("layered-mix"),
@@ -109,6 +116,7 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
       renderer().render({
         remixProjectId: "project-1",
         stems: [],
+        authorization,
         layer: {
           provider: "lyria",
           jobId: "layer-job",

@@ -173,6 +173,39 @@ export interface RemixGenerationFailedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+/**
+ * Security/audit events (#1214): a backend render decrypted (or was denied
+ * decrypting) one or more encrypted source stems. Deliberately compact — they
+ * carry only project/creator/source identifiers, the internal purpose, the
+ * outcome, and the encrypted-stem count. They MUST NOT include stem bytes,
+ * encryption metadata, keys, storage URIs, prompts, or provider error bodies.
+ * Not wired into the analytics bridge: these are audit signals, not product
+ * analytics.
+ */
+export interface RemixEncryptedRenderAuthorizedEvent extends BaseEvent {
+  eventName: "remix.encrypted_render_authorized";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  generationJobId: string;
+  /** Internal decrypt purpose, e.g. "remix-render-authorized". */
+  purpose: string;
+  /** How many active source stems were encrypted for this render. */
+  encryptedStemCount: number;
+}
+
+export interface RemixEncryptedRenderDeniedEvent extends BaseEvent {
+  eventName: "remix.encrypted_render_denied";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  generationJobId: string;
+  purpose: string;
+  encryptedStemCount: number;
+  /** Coarse reason code, e.g. "ineligible" — never a raw provider/error body. */
+  reason: string;
+}
+
 export interface RemixPublishedEvent extends BaseEvent {
   eventName: "remix.published";
   remixProjectId: string;
@@ -1221,6 +1254,8 @@ export type ResonateEvent =
   | RemixGenerationStartedEvent
   | RemixGenerationCompletedEvent
   | RemixGenerationFailedEvent
+  | RemixEncryptedRenderAuthorizedEvent
+  | RemixEncryptedRenderDeniedEvent
   | RemixPublishedEvent
   | ArtistRemixConsentUpdatedEvent
   | RecommendationPreferencesUpdatedEvent

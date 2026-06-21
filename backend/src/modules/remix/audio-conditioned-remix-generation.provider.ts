@@ -8,6 +8,7 @@ import {
   type RemixGenerationInput,
   type RemixGenerationJob,
   type RemixGenerationProvider,
+  type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
 
@@ -38,6 +39,7 @@ export class AudioConditionedRemixGenerationProvider
 
   async createRemixDraft(
     input: RemixGenerationInput,
+    authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob> {
     if (process.env.REMIX_GENERATION_ENABLED !== "true") {
       throw new RemixGenerationProviderError(
@@ -75,11 +77,12 @@ export class AudioConditionedRemixGenerationProvider
     const config = readWorkerConfig();
     const jobId = randomUUID();
 
-    // Condition on exactly what the user arranged. The mixer rejects encrypted
-    // stems with invalid_input (shared deferral with stem_mix, #1189).
+    // Condition on exactly what the user arranged. The shared mixer decrypts
+    // any authorized encrypted source stems in memory (#1214) before the mix
+    // is sent to the worker; ciphertext never leaves the backend.
     const mixed = await this.mixer.mixUnmutedStems(
       input.stemArrangement,
-      input.provenance.remixProjectId,
+      authorization,
     );
 
     const generated = await this.callWorker({

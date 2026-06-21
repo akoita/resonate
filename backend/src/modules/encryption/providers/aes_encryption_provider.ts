@@ -145,6 +145,11 @@ export class AesEncryptionProvider extends EncryptionProvider {
                 'preview-authorized',
                 'ownership-verified',
                 'x402-payment-verified',
+                // Backend-initiated remix render decryption (#1214). The remix
+                // worker re-verifies project ownership + current eligibility
+                // before it ever reaches this path; the bypass still requires
+                // INTERNAL_SERVICE_KEY in every environment.
+                'remix-render-authorized',
             ]);
             const isInternalBypass = internalBypassSignatures.has(context.authSig.sig);
             if (internalKey) {
