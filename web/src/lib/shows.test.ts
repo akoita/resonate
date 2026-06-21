@@ -10,6 +10,7 @@ import {
   maskAddress,
   chainName,
   releasePolicyLabel,
+  type Campaign,
 } from "./shows";
 import type { Release } from "./api";
 
@@ -197,7 +198,7 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
       depositReleaseBps: 1000,
       disputeWindowSeconds: 604800,
       releasePolicy: "staged_release",
-    } as any);
+    } as unknown as Campaign);
     const byLabel = Object.fromEntries(terms.map((t) => [t.label, t.value]));
     expect(byLabel["Minimum backers"]).toBe("100");
     expect(byLabel["Payment"]).toBe("USDC on Base Sepolia");
