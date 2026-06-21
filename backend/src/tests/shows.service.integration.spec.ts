@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { ShowsService } from "../modules/shows/shows.service";
 
@@ -129,6 +129,10 @@ describe("ShowsService integration", () => {
         { id: otherArtistUserId, email: `${TEST_PREFIX}other_artist@test.resonate` },
       ],
     });
+    // #1221: pledge intents bind to the caller's registered wallet.
+    await prisma.wallet.create({
+      data: { userId: listenerId, address: listenerWallet, chainId: 84532 },
+    });
     await prisma.artist.create({
       data: {
         id: artistId,
@@ -204,6 +208,7 @@ describe("ShowsService integration", () => {
     }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId, creditedArtistId] } } }).catch(() => {});
+    await prisma.wallet.deleteMany({ where: { userId: { in: [listenerId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
     }).catch(() => {});
@@ -850,6 +855,37 @@ describe("ShowsService integration", () => {
         receipt: { source: "integration-test" },
       },
     });
+  });
+
+  it("rejects pledge intents whose wallet is not the caller's registered wallet (#1221)", async () => {
+    const { campaign, tier } = await createActiveCampaignWithTier("Nantes");
+
+    // A foreign address (not the listener's registered wallet) is rejected
+    // (403 Forbidden), closing the pledge-attribution hijack from the #948 review.
+    const foreign = service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(foreign).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(foreign).rejects.toThrow(/must match your connected wallet/);
+
+    // A caller with no registered wallet cannot pledge at all (400 Bad Request).
+    const noWallet = service.createPledgeIntent(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(noWallet).rejects.toBeInstanceOf(BadRequestException);
+    await expect(noWallet).rejects.toThrow(/Connect a wallet/);
+
+    // The caller's own registered wallet succeeds.
+    const ok = await service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: listenerWallet },
+    );
+    expect(ok.pledge.status).toBe("intent_created");
   });
 
   it("rejects pledge intents that bypass campaign, wallet, or tier rules", async () => {
