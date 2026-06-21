@@ -3205,3 +3205,88 @@
   .gallery-lightbox__stage img { max-height: 64vh; }
   .gallery-lightbox__close { top: 14px; right: 14px; }
 }
+
+/* ============ #949 Campaign trust / terms panel ============ */
+.show-detail__pledge-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.campaign-trust {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.campaign-trust__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.campaign-trust__badge {
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.campaign-trust__badge--positive { color: #4ade80; }
+.campaign-trust__badge--info { color: #60a5fa; }
+.campaign-trust__badge--neutral { color: #cbd5e1; }
+.campaign-trust__badge--warning { color: #fbbf24; }
+.campaign-trust__badge--danger { color: #f87171; }
+.campaign-trust__description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+.campaign-trust__authority {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 0.85rem;
+}
+.campaign-trust__authority-label {
+  color: rgba(255, 255, 255, 0.55);
+}
+.campaign-trust__authority-value {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+.campaign-trust__terms-title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.campaign-trust__terms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+.campaign-trust__term dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.campaign-trust__term dd {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+.campaign-trust__terms-note {
+  margin: 14px 0 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+@media (max-width: 560px) {
+  .campaign-trust__terms-grid { grid-template-columns: 1fr; }
+}

@@ -51,6 +51,15 @@ export interface Campaign {
   goalCents: number;
   raisedCents: number;
   currency: "EUR" | "USD";
+  // #949 trust/terms fields from the public DTO.
+  paymentAssetSymbol?: string | null;
+  chainId?: number | null;
+  releasePolicy?: string | null;
+  depositReleaseBps?: number | null;
+  disputeWindowSeconds?: number | null;
+  onChainStatus?: string | null;
+  totalRefundedUnits?: string | null;
+  totalReleasedUnits?: string | null;
   backerCount: number;
   thresholdBackers: number;
   heroImage: string;      // optional; empty string → gradient placeholder
@@ -95,6 +104,210 @@ export function campaignVisualEndpoint(
   return campaign.backendId
     ? `${API_BASE}/shows/campaigns/${encodeURIComponent(campaign.backendId)}/visuals/${slot}`
     : "";
+}
+
+// ============ #949 trust / terms / pledge presentation helpers ============
+
+export type CampaignTrustTone = "neutral" | "info" | "positive" | "warning" | "danger";
+
+export type CampaignTrustState = {
+  key:
+    | "demand_signal"
+    | "provisional"
+    | "authorized_escrow"
+    | "authority_revoked"
+    | "refund_available"
+    | "cancelled";
+  label: string;
+  tone: CampaignTrustTone;
+  /** Short, honest description — never implies a guaranteed ticket. */
+  description: string;
+};
+
+/**
+ * Derive the fan-facing trust state from campaign level + backend status +
+ * artist-authority status. Order matters: terminal/refund states win, then
+ * authority problems, then the escrow ladder.
+ */
+export function campaignTrustState(
+  campaign: Pick<
+    Campaign,
+    "campaignLevel" | "rawStatus" | "artistAuthorityStatus"
+  >,
+): CampaignTrustState {
+  const level = campaign.campaignLevel;
+  const status = campaign.rawStatus;
+  const authority = campaign.artistAuthorityStatus;
+
+  if (status === "cancelled") {
+    return {
+      key: "cancelled",
+      label: "Cancelled",
+      tone: "danger",
+      description: "This campaign was cancelled. Pledged funds are refundable.",
+    };
+  }
+  if (status === "refund_available" || status === "refunded") {
+    return {
+      key: "refund_available",
+      label: "Refund available",
+      tone: "warning",
+      description:
+        "Funding conditions were not met. Backers can claim a refund of their pledge.",
+    };
+  }
+  if (authority === "revoked" || authority === "expired" || authority === "rejected") {
+    return {
+      key: "authority_revoked",
+      label: "Authority revoked",
+      tone: "danger",
+      description:
+        "Artist authorization is no longer valid, so this campaign cannot take pledges.",
+    };
+  }
+  if (level === "signal") {
+    return {
+      key: "demand_signal",
+      label: "Demand signal",
+      tone: "neutral",
+      description:
+        "An open, fan-proposed demand signal. No funds are escrowed and no show is booked yet.",
+    };
+  }
+  if (
+    level === "active_escrow_campaign" &&
+    (authority === "artist_authorized" || authority === "trusted_source_authorized")
+  ) {
+    return {
+      key: "authorized_escrow",
+      label: "Artist-authorized escrow",
+      tone: "positive",
+      description:
+        "An artist-authorized campaign with funds held in escrow. Release depends on booking and fulfillment.",
+    };
+  }
+  return {
+    key: "provisional",
+    label: "Provisional campaign",
+    tone: "info",
+    description:
+      "A provisional campaign awaiting verified artist authority before escrow activation.",
+  };
+}
+
+export function chainName(chainId?: number | null): string {
+  switch (chainId) {
+    case 1:
+      return "Ethereum";
+    case 11155111:
+      return "Sepolia";
+    case 84532:
+      return "Base Sepolia";
+    case 421614:
+      return "Arbitrum Sepolia";
+    case 31337:
+    case 1337:
+      return "Local";
+    default:
+      return chainId ? `Chain ${chainId}` : "—";
+  }
+}
+
+export function releasePolicyLabel(policy?: string | null): string {
+  switch (policy) {
+    case "refund_only_until_booking":
+      return "Refund-only until booking is confirmed";
+    case "staged_release":
+      return "Staged release (deposit on booking, remainder on fulfillment)";
+    case "manual_ops_release":
+      return "Manual operator release";
+    default:
+      return "Refund-first";
+  }
+}
+
+export function maskAddress(address?: string | null): string {
+  if (!address) return "—";
+  const value = address.trim();
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function formatDisputeWindow(seconds?: number | null): string {
+  if (!seconds || seconds <= 0) return "—";
+  const days = Math.floor(seconds / 86_400);
+  if (days >= 1) return `${days} day${days === 1 ? "" : "s"}`;
+  const hours = Math.max(1, Math.floor(seconds / 3_600));
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+export type CampaignTerm = { label: string; value: string };
+
+/**
+ * The immutable terms a fan must be able to read before signing a pledge.
+ * Values are formatted for display; pure so it is unit-testable.
+ */
+export function campaignTerms(campaign: Campaign): CampaignTerm[] {
+  // Guard against malformed dates: new Date("bad").toISOString() throws, which
+  // would 500 the server-rendered detail page. Fall back to the raw value.
+  const fmtDate = (iso?: string | null) => {
+    if (!iso) return "—";
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+  };
+  const depositPct =
+    campaign.depositReleaseBps != null
+      ? `${(campaign.depositReleaseBps / 100).toFixed(campaign.depositReleaseBps % 100 === 0 ? 0 : 2)}%`
+      : "—";
+  return [
+    { label: "Funding goal", value: formatMoney(campaign.goalCents, campaign.currency) },
+    { label: "Funding deadline", value: fmtDate(campaign.deadline) },
+    {
+      label: "Minimum backers",
+      value: campaign.thresholdBackers > 0 ? String(campaign.thresholdBackers) : "—",
+    },
+    {
+      label: "Payment",
+      value: `${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)}`,
+    },
+    { label: "Booking deadline", value: fmtDate(campaign.bookingDeadline) },
+    { label: "Deposit released on booking", value: depositPct },
+    { label: "Dispute window", value: formatDisputeWindow(campaign.disputeWindowSeconds) },
+    { label: "Refund policy", value: releasePolicyLabel(campaign.releasePolicy) },
+  ];
+}
+
+/** Human-readable pledge state covering every backend status. */
+export function pledgeStateLabel(
+  status: string,
+  confirmationStatus?: string | null,
+): string {
+  switch (status) {
+    case "intent_created":
+      return "Pledge started";
+    case "submitted":
+      return confirmationStatus === "pending"
+        ? "Submitted — awaiting on-chain confirmation"
+        : "Submitted";
+    case "confirmed":
+      return "Confirmed on-chain";
+    case "refund_available":
+      return "Refund available";
+    case "refunded":
+      return "Refunded";
+    case "deposit_released":
+      return "Deposit released to artist";
+    case "fulfilled":
+      return "Show fulfilled";
+    case "released":
+      return "Funds released to artist";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status.replaceAll("_", " ");
+  }
 }
 
 export type CatalogArtistCandidate = {
@@ -356,6 +569,13 @@ type BackendShowCampaign = {
   beneficiaryAddress?: string | null;
   beneficiaryType?: string | null;
   bookingDeadline?: string | null;
+  chainId?: number | null;
+  releasePolicy?: string | null;
+  depositReleaseBps?: number | null;
+  disputeWindowSeconds?: number | null;
+  onChainStatus?: string | null;
+  totalRefundedUnits?: string | null;
+  totalReleasedUnits?: string | null;
   contractAddress?: string | null;
   contractCampaignId?: string | null;
   description?: string | null;
@@ -997,6 +1217,14 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     goalCents: unitsToCents(campaign.goalAmountUnits, decimals),
     raisedCents: unitsToCents(campaign.raisedAmountUnits, decimals),
     currency: campaign.currency === "EUR" ? "EUR" : "USD",
+    paymentAssetSymbol: campaign.paymentAssetSymbol ?? "USDC",
+    chainId: campaign.chainId ?? null,
+    releasePolicy: campaign.releasePolicy ?? null,
+    depositReleaseBps: campaign.depositReleaseBps ?? null,
+    disputeWindowSeconds: campaign.disputeWindowSeconds ?? null,
+    onChainStatus: campaign.onChainStatus ?? null,
+    totalRefundedUnits: campaign.totalRefundedUnits ?? null,
+    totalReleasedUnits: campaign.totalReleasedUnits ?? null,
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
     heroImage: mediaUrl(campaign.heroImageUrl),
