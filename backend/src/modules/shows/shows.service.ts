@@ -1211,6 +1211,23 @@ export class ShowsService {
       throw new BadRequestException("walletAddress is required");
     }
 
+    // #1221 (from the #948 review): bind the pledge to the caller's own
+    // registered wallet. Without this, a client could attach a victim's public
+    // address to an intent; the on-chain Pledged event from that victim would
+    // then confirm the attacker's intent (escrow indexer matches on backer
+    // wallet), attributing the victim's payment — and any community supporter
+    // credentials keyed on pledge.userId — to the attacker.
+    const callerWallet = await prisma.wallet.findUnique({
+      where: { userId: actor.userId },
+      select: { address: true },
+    });
+    if (!callerWallet?.address) {
+      throw new BadRequestException("Connect a wallet before pledging");
+    }
+    if (callerWallet.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new ForbiddenException("walletAddress must match your connected wallet");
+    }
+
     const tierId = optionalText(input.tierId);
     const tier = tierId ? campaign.tiers.find((candidate) => candidate.id === tierId) : null;
     if (tierId && !tier) {
