@@ -136,6 +136,65 @@ The backend still links individual campaigns with `contractAddress` and
 `contractCampaignId`; the global escrow address is the deployment/runtime
 default used by operators and future reconciliation jobs.
 
+#### Local Anvil deploy + smoke check
+
+For local development and CI validation against a throwaway chain:
+
+```bash
+# 1. Start a local node (chain id 31337) — the default Anvil key is used
+#    automatically for local chains (see DeploymentKey.s.sol).
+anvil
+
+# 2. Deploy + write handoffs for the local network.
+cd contracts
+forge script script/DeployShowCampaignEscrow.s.sol --rpc-url http://localhost:8545 --broadcast
+CHAIN_ID=31337 bash scripts/write-show-campaign-escrow-handoff.sh
+
+# 3. Post-deploy smoke check (read-only: constants, owner, paused state).
+SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow> \
+  forge script script/SmokeShowCampaignEscrow.s.sol --rpc-url http://localhost:8545
+
+# 4. Optional write smoke (local/owner only): also create a campaign + confirmer.
+SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow> SMOKE_CREATE_CAMPAIGN=true \
+  forge script script/SmokeShowCampaignEscrow.s.sol --rpc-url http://localhost:8545 --broadcast
+```
+
+[`SmokeShowCampaignEscrow.s.sol`](../../contracts/script/SmokeShowCampaignEscrow.s.sol)
+asserts `BPS_DENOMINATOR == 10000`, `MAX_DEPOSIT_RELEASE_BPS == 3000`, a
+non-zero owner, and an unpaused initial state; the optional write path verifies
+basic campaign creation and a confirmer round-trip. Run the read-only form
+against a testnet after deploy (no signer required); run the write form only on
+a chain where the deployer is the owner. The `.local.*` handoff files are
+throwaway and are not committed — only real-network records are.
+
+#### Backend address discovery
+
+The backend resolves the deployed escrow from config via
+`configuredShowCampaignEscrowAddress(chainId)` (per-chain env with a
+chain-agnostic fallback), reading:
+
+```bash
+SHOW_CAMPAIGN_ESCROW_ADDRESS                 # chain-agnostic fallback / local
+SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS
+BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS
+ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS
+```
+
+It fails closed (returns no address) for unset, malformed, or zero values, and
+is used as the default `contractAddress` when a campaign is activated without an
+explicit per-campaign address.
+
+#### Verification and rollback
+
+`ShowCampaignEscrow` is a non-upgradeable `Ownable` contract, so there is no
+proxy to migrate. To "roll back" a bad deployment, deploy a fresh instance and
+re-promote the new `SHOW_CAMPAIGN_ESCROW_ADDRESS` /
+`NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before any
+live pledge execution; campaigns already bound to the prior address keep their
+`contractAddress` and must be drained/refunded on that instance. Verify the
+contract on the target explorer using the Foundry verification flow documented
+below.
+
 Frontend publish CI can validate a promoted escrow address by setting
 `FRONTEND_SHOW_CAMPAIGN_DEPLOYMENT_ENV_FILE` to the reviewed handoff file before
 running `.github/scripts/export-frontend-build-args.sh`. When that file is
