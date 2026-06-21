@@ -907,6 +907,22 @@ describe("ShowsService integration", () => {
 
   it("public campaign reads expose trust/terms but never sensitive authority evidence (#949)", async () => {
     const { campaign } = await createActiveCampaignWithTier("Strasbourg");
+    // Populate an internal storage URI + a visual carrying a storage URI so the
+    // withholding assertions below run against actually-present data.
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { heroImageStorageUri: "gs://internal-bucket/hero.webp", heroImageMimeType: "image/webp" },
+    });
+    await prisma.showCampaignVisual.create({
+      data: {
+        campaignId: campaign.id,
+        role: "gallery",
+        publicUrl: "https://cdn.example/g1.webp",
+        storageUri: "gs://internal-bucket/g1.webp",
+        mimeType: "image/webp",
+        sortOrder: 0,
+      },
+    });
 
     const publicCampaign = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
 
@@ -924,11 +940,28 @@ describe("ShowsService integration", () => {
     expect(publicCampaign).not.toHaveProperty("authorityEvidenceBundleId");
     expect(publicCampaign).not.toHaveProperty("events");
     expect(publicCampaign).not.toHaveProperty("heroImageStorageUri");
+    expect(publicCampaign).not.toHaveProperty("cardImageStorageUri");
     expect(publicCampaign).not.toHaveProperty("bookingTerms");
     expect(publicCampaign).not.toHaveProperty("reconciliationError");
-    // The serialized payload as a whole leaks none of the evidence ids.
+    expect(publicCampaign).not.toHaveProperty("lastEscrowIndexedBlock");
+    // Visuals expose only public fields — never the internal storage URI.
+    const visuals = (publicCampaign.visuals ?? []) as Array<Record<string, unknown>>;
+    expect(visuals.length).toBeGreaterThan(0);
+    for (const visual of visuals) {
+      expect(visual).not.toHaveProperty("storageUri");
+      expect(visual).toHaveProperty("publicUrl");
+    }
+    // The serialized payload as a whole leaks no evidence ids or storage URIs.
     expect(JSON.stringify(publicCampaign)).not.toContain("-authority");
     expect(JSON.stringify(publicCampaign)).not.toContain("-credential");
+    expect(JSON.stringify(publicCampaign)).not.toContain("internal-bucket");
+
+    // listCampaigns goes through the same DTO — assert it withholds too.
+    const listed = (await service.listCampaigns()) as Array<Record<string, unknown>>;
+    const listedCampaign = listed.find((c) => c.id === campaign.id);
+    expect(listedCampaign).toBeDefined();
+    expect(listedCampaign).not.toHaveProperty("authorityEvidenceBundleId");
+    expect(listedCampaign).not.toHaveProperty("heroImageStorageUri");
   });
 
   it("cancels an active campaign into refund availability with lifecycle events", async () => {
