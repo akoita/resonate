@@ -34,6 +34,9 @@ const EVENT_ABIS = {
     "event CampaignFunded(uint256 indexed campaignId, uint256 totalPledged, uint256 uniqueBackers)",
   ),
   RefundAvailable: parseAbiItem("event RefundAvailable(uint256 indexed campaignId)"),
+  FundsReleased: parseAbiItem(
+    "event FundsReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount)",
+  ),
   RefundClaimed: parseAbiItem(
     "event RefundClaimed(uint256 indexed campaignId, address indexed backer, uint256 amount)",
   ),
@@ -242,5 +245,32 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     });
     // No secret leakage in the audit event.
     expect(JSON.stringify(mismatches[0])).not.toContain(ESCROW);
+  });
+
+  it("alerts when funds are released on-chain while an off-chain dispute is open (#950)", async () => {
+    const campaign = await seedCampaign("release-dispute", "5");
+    await prisma.showCampaignDispute.create({
+      data: { campaignId: campaign.id, initiatorRole: "operator", status: "open" },
+    });
+    mismatches.length = 0;
+
+    await service.processLog(
+      buildLog("FundsReleased", {
+        campaignId: 5n,
+        beneficiary: BACKER as `0x${string}`,
+        amount: 1000n,
+      }),
+      CHAIN_ID,
+      ESCROW,
+    );
+
+    // Chain is authoritative — status advances — but the open dispute is flagged.
+    const released = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(released.onChainStatus).toBe("Released");
+    expect(
+      mismatches.some(
+        (m) => m.escrowEventName === "FundsReleased" && /dispute is open/.test(m.reason),
+      ),
+    ).toBe(true);
   });
 });

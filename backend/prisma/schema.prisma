@@ -36,6 +36,7 @@ model User {
   passkeyIdentities           PasskeyIdentity[]
   sessionKeys                 SessionKey[]
   showCampaignEvents          ShowCampaignEvent[]          @relation("ShowCampaignEventActor")
+  showCampaignDisputes        ShowCampaignDispute[]        @relation("ShowCampaignDisputeInitiator")
   showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
@@ -1305,6 +1306,44 @@ enum ShowCampaignEventType {
   pledge_released
   pledge_failed
   operator_note
+  dispute_initiated
+  dispute_resolved
+}
+
+enum ShowCampaignDisputeStatus {
+  open
+  resolved
+  cancelled
+}
+
+enum ShowCampaignDisputeOutcome {
+  upheld
+  rejected
+  inconclusive
+}
+
+// Off-chain dispute record for Shows escrow campaigns (#950). The escrow
+// contract already time-locks releaseFunds for disputeWindowSeconds and has no
+// on-chain dispute concept, so MVP disputes are operator-driven and tracked
+// here; an open dispute is the backend signal that final release must wait.
+model ShowCampaignDispute {
+  id               String                     @id @default(uuid())
+  campaignId       String
+  initiatorUserId  String?
+  initiatorRole    String
+  reason           String?                    @db.Text
+  status           ShowCampaignDisputeStatus  @default(open)
+  outcome          ShowCampaignDisputeOutcome?
+  operatorNote     String?                    @db.Text
+  resolvedByUserId String?
+  resolvedAt       DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  campaign         ShowCampaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  initiator        User?                      @relation("ShowCampaignDisputeInitiator", fields: [initiatorUserId], references: [id])
+
+  @@index([campaignId, status])
+  @@index([status, createdAt])
 }
 
 model ShowCampaign {
@@ -1382,6 +1421,7 @@ model ShowCampaign {
   pledges                     ShowPledge[]
   events                      ShowCampaignEvent[]
   visuals                     ShowCampaignVisual[]
+  disputes                    ShowCampaignDispute[]
 
   @@index([artistId])
   @@index([status, deadline])

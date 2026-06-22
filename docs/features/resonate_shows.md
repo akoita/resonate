@@ -123,6 +123,35 @@ Positioning:
 7. When the threshold misses, the intended production flow refunds pledges
    automatically.
 
+## Evidence, Disputes & Release Authority (MVP)
+
+Booking and fulfillment confirmation are evidence-gated: an operator/admin must
+attach a booking evidence bundle to confirm booking, and a fulfillment evidence
+bundle to confirm fulfillment (#950). Final release is gated by the `ShowCampaignEscrow` contract, which time-locks
+`releaseFunds` until `fulfilledAt + disputeWindowSeconds`. The backend
+complements this by blocking **fulfillment progress** while a dispute is open
+(an open dispute can't advance a campaign to `fulfilled`). It does **not** block
+the on-chain release itself — release is operator-triggered and time-locked — so
+if `FundsReleased` is observed while an off-chain dispute is still open, the
+#948 indexer records the release (chain is authoritative) and emits a
+`shows.campaign_reconciliation_mismatch` ops alert. Enforcing release-blocking
+on-chain (an actual on-chain dispute state) is a tracked follow-up.
+
+**MVP authority model.** Disputes are off-chain and operator-driven: an
+operator/admin can open a dispute (between booking confirmation and the close of
+the post-fulfillment dispute window) and resolve it with an audited outcome
+(`upheld` / `rejected` / `inconclusive`). Every dispute action writes a
+`ShowCampaignEvent`. Fans see a redacted `disputeStatus` and the dispute-window
+close time, but never operator notes, dispute reasons, or initiator identity.
+Pause/cancel/reject/release remain operator/admin actions; the contract owner /
+configured confirmer is the on-chain release authority.
+
+**Future path.** Fan-initiated disputes (with backer-stake rules), evidence
+submission by both parties, and decentralized resolution (a jury/DAO or an
+oracle attestation feeding an on-chain dispute state) are deliberately deferred;
+the current contract exposes only a time-based window, so richer dispute
+settlement is a later protocol slice rather than MVP scope.
+
 ## Current UI Surfaces
 
 | Surface | Status | Notes |
@@ -137,7 +166,7 @@ Positioning:
 | Pledge flow | partial | Backend pledge intent, transaction submission, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, and attach the mined transaction to the backend receipt. A pledge intent's `walletAddress` must match the caller's own registered wallet (#1221), so a backer's on-chain pledge cannot be attributed to another account. **A wallet user's pledge reaches `confirmed` only from the indexed on-chain `Pledged` event (#948), never from a client-submitted claim; operators retain a manual confirm/fail override.** Fans see their latest campaign pledge and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
 | Campaign community | partial | Shows detail pages expose a connected campaign-community panel. Any authenticated fan can join the open campaign-owned `show_city_demand` room to signal coarse city interest without pledging. Confirmed backers can join the private `show_campaign_supporter` room, artists/operators can post `campaign_update` messages, supporters can post room messages, and confirmed or released pledge support derives private supporter badges/roles. Public profiles can show campaign support only through listener `showCampaignSupport` opt-in. Refund-only, refunded, failed, and cancelled support no longer grants private supporter room access or public campaign-support display. Compact `community.show_city_interest_joined`, `community.campaign_room_joined`, `community.campaign_update_viewed`, `community.badge_granted`, `community.role_granted`, and `community.message_created` analytics connect community activity to campaign state without message bodies, raw location, or wallet holdings. |
 | Attendance credentials | planned | [#1098](https://github.com/akoita/resonate/issues/1098) defines the boundary before implementation: no NFT-backed attendance credential yet; start with off-chain opt-in attendance badges backed by confirmed attendance, fulfilled ticket/pledge state, guest-list confirmation, or operator grant. Public display and partner verification must not expose raw location source, ticket price, pledge amount, wallet address, private room membership, city-scene cohort membership, refund/dispute/moderation state, or raw eligibility rules. |
-| Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, lifecycle-event, and promotional visual state. Public read routes, visual reads, signal creation, draft escrow campaign creation/update, draft visual upload, draft visual replacement/deletion/reordering, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. Public campaign reads (`GET /shows/campaigns`, `GET /shows/campaigns/:slug`) go through a whitelist DTO (#949) that exposes trust state, immutable terms (goal, deadline, min backers, payment asset/network, release policy, deposit-release bps, dispute window, booking deadline), beneficiary summary, and on-chain reconciliation totals, while withholding sensitive authority evidence/credential references, internal storage URIs, ops notes, indexer cursors, and the raw lifecycle-event log. |
+| Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, lifecycle-event, and promotional visual state. Public read routes, visual reads, signal creation, draft escrow campaign creation/update, draft visual upload, draft visual replacement/deletion/reordering, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. Public campaign reads (`GET /shows/campaigns`, `GET /shows/campaigns/:slug`) go through a whitelist DTO (#949) that exposes trust state, immutable terms (goal, deadline, min backers, payment asset/network, release policy, deposit-release bps, dispute window, booking deadline), beneficiary summary, and on-chain reconciliation totals, while withholding sensitive authority evidence/credential references, internal storage URIs, ops notes, indexer cursors, and the raw lifecycle-event log. Booking and fulfillment confirmation now require an evidence bundle reference (#950), and an off-chain dispute workflow (`POST /shows/campaigns/:id/dispute`, `PATCH .../dispute/:disputeId/resolve`) records `ShowCampaignDispute` rows; an open dispute blocks fulfillment progress toward final release, and the public DTO surfaces a fan-visible `disputeStatus` + `disputeWindowClosesAt` without leaking operator notes, dispute reasons, or initiator identity. |
 | Operator controls | partial | Admin/operator users can manage campaign lifecycle from the campaign detail page: approve artist authority, bind beneficiary data, activate with escrow contract IDs, cancel to refunds, confirm booking, and confirm fulfillment. Artist-owned campaign management remains a follow-up UI. |
 
 ## Production Beta Requirements

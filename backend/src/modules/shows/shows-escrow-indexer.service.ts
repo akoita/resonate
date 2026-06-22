@@ -501,13 +501,29 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         data.fulfilledAt = new Date();
         eventType = "fulfillment_confirmed";
         break;
-      case "FundsReleased":
+      case "FundsReleased": {
         data.onChainStatus = "Released";
         if (this.canAdvance(campaign.status, "released")) data.status = "released";
         data.releasedAt = new Date();
         data.totalReleasedUnits = addUnits(campaign.totalReleasedUnits, String(args.amount));
         eventType = "campaign_released";
+        // #950: on-chain release is authoritative, but a release that lands
+        // while an off-chain dispute is still open is an ops red flag — record
+        // it (we can't undo the chain) and surface a reconciliation mismatch.
+        const openDispute = await tx.showCampaignDispute.findFirst({
+          where: { campaignId: campaign.id, status: "open" },
+          select: { id: true },
+        });
+        if (openDispute) {
+          pushMismatch({
+            ...ctx,
+            contractCampaignId,
+            reason: `funds released on-chain while an off-chain dispute is open`,
+            eventName,
+          });
+        }
         break;
+      }
       case "AuthorityUpdated":
         if (args.beneficiary && args.beneficiary !== ZERO_ADDRESS) {
           data.beneficiaryAddress = String(args.beneficiary);
