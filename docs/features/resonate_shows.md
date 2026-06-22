@@ -127,10 +127,15 @@ Positioning:
 
 Booking and fulfillment confirmation are evidence-gated: an operator/admin must
 attach a booking evidence bundle to confirm booking, and a fulfillment evidence
-bundle to confirm fulfillment (#950). Final release is protected two ways: the
-`ShowCampaignEscrow` contract time-locks `releaseFunds` until
-`fulfilledAt + disputeWindowSeconds`, and the backend blocks fulfillment
-progress while a dispute is open.
+bundle to confirm fulfillment (#950). Final release is gated by the `ShowCampaignEscrow` contract, which time-locks
+`releaseFunds` until `fulfilledAt + disputeWindowSeconds`. The backend
+complements this by blocking **fulfillment progress** while a dispute is open
+(an open dispute can't advance a campaign to `fulfilled`). It does **not** block
+the on-chain release itself — release is operator-triggered and time-locked — so
+if `FundsReleased` is observed while an off-chain dispute is still open, the
+#948 indexer records the release (chain is authoritative) and emits a
+`shows.campaign_reconciliation_mismatch` ops alert. Enforcing release-blocking
+on-chain (an actual on-chain dispute state) is a tracked follow-up.
 
 **MVP authority model.** Disputes are off-chain and operator-driven: an
 operator/admin can open a dispute (between booking confirmation and the close of

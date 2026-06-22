@@ -97,6 +97,8 @@ export const SHOW_CAMPAIGN_EVENT_TYPES = [
   "pledge_released",
   "pledge_failed",
   "operator_note",
+  "dispute_initiated",
+  "dispute_resolved",
 ] as const satisfies readonly ShowCampaignEventType[];
 
 export function assertShowCampaignStatus(value: string): ShowCampaignStatus {

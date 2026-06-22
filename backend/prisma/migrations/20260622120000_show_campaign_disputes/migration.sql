@@ -7,8 +7,8 @@ CREATE TYPE "ShowCampaignDisputeStatus" AS ENUM ('open', 'resolved', 'cancelled'
 CREATE TYPE "ShowCampaignDisputeOutcome" AS ENUM ('upheld', 'rejected', 'inconclusive');
 
 -- AlterEnum
-ALTER TYPE "ShowCampaignEventType" ADD VALUE 'dispute_initiated';
-ALTER TYPE "ShowCampaignEventType" ADD VALUE 'dispute_resolved';
+ALTER TYPE "ShowCampaignEventType" ADD VALUE IF NOT EXISTS 'dispute_initiated';
+ALTER TYPE "ShowCampaignEventType" ADD VALUE IF NOT EXISTS 'dispute_resolved';
 
 -- CreateTable
 CREATE TABLE "ShowCampaignDispute" (
