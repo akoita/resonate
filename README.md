@@ -161,6 +161,7 @@ make local-aa-down   # Stop Anvil + Alto
 
 | Document | Description |
 | --- | --- |
+| [User Guide](docs/features/user_manual.md) | In-app manual at `/help` — how to use Resonate (all personas) |
 | [Getting Started](docs/getting-started.md) | Full development setup guide |
 | [Feature Catalog](docs/features/README.md) | Index of all platform capabilities |
 | [Project Specification](docs/rfc/RESONATE_SPECS.md) | Vision, architecture, and roadmap |
