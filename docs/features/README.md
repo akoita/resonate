@@ -104,3 +104,8 @@ When a feature is added, materially changed, exposed to users, hidden, or
 removed, update this catalog and the feature's dedicated page in the same PR.
 If a feature only exists as an RFC, keep it in the RFC until it becomes a
 user-facing or developer-facing capability, then add it here.
+
+When the change is **user-facing**, also update the in-app
+[User Guide](user_manual.md) (`/help`) in the same PR — edit the matching
+article in `web/src/lib/help/content.ts` so the end-user manual stays in sync
+with what the catalog records.
