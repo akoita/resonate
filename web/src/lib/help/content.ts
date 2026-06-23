@@ -982,6 +982,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "disputes",
+        heading: "Handling a dispute",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Between booking confirmation and the final release of funds, an operator can raise a dispute if something looks wrong — for example a venue falling through. While a dispute is open, backers see that final release is paused. Resolving a dispute is recorded for the audit trail; it does not by itself move money — release always stays gated by the on-chain time-lock.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Shows", href: "/shows", description: "Browse and create campaigns." },
