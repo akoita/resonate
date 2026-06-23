@@ -46,6 +46,14 @@ export class ShowsController {
     return this.showsService.getCampaign(slug);
   }
 
+  // #949: operator/owner-scoped read (sensitive authority evidence + disputes).
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin", "operator", "artist")
+  @Get("campaigns/:id/manage")
+  getManagedCampaign(@Param("id") id: string, @Request() req: any) {
+    return this.showsService.getManagedCampaign(this.actorFromRequest(req), id);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Get("campaigns/:id/community")
   getCampaignCommunity(@Param("id") id: string, @Request() req: any) {
