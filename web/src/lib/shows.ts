@@ -638,7 +638,10 @@ type BackendShowCampaign = {
   totalReleasedUnits?: string | null;
   disputeStatus?: string | null;
   disputeWindowClosesAt?: string | null;
-  // #949 managed-read-only fields (operator/owner scoped).
+  // #949 managed-read-only fields (operator/owner scoped). The managed DTO's
+  // dispute shape is intentionally structurally identical to the UI-facing
+  // ShowCampaignDispute, so we reuse it directly here; if the backend dispute
+  // payload ever diverges, give this its own raw type.
   bookingEvidenceBundleId?: string | null;
   fulfillmentEvidenceBundleId?: string | null;
   disputes?: ShowCampaignDispute[];
