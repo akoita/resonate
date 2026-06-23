@@ -60,6 +60,9 @@ export interface Campaign {
   onChainStatus?: string | null;
   totalRefundedUnits?: string | null;
   totalReleasedUnits?: string | null;
+  // #950 fan-visible dispute state (no operator notes / reason / initiator).
+  disputeStatus?: string | null;
+  disputeWindowClosesAt?: string | null;
   backerCount: number;
   thresholdBackers: number;
   heroImage: string;      // optional; empty string → gradient placeholder
@@ -275,6 +278,45 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
     { label: "Dispute window", value: formatDisputeWindow(campaign.disputeWindowSeconds) },
     { label: "Refund policy", value: releasePolicyLabel(campaign.releasePolicy) },
   ];
+}
+
+export type CampaignDisputeView = {
+  /** "active" | "resolved" | "none" — fan-visible status from the public DTO. */
+  status: string;
+  label: string;
+  tone: CampaignTrustTone;
+  /** Dispute-window close time (post-fulfillment), formatted, or null. */
+  windowClosesAt: string | null;
+  windowOpen: boolean;
+};
+
+/**
+ * #950: fan-visible dispute summary for the detail page. Derives only from the
+ * public DTO fields (`disputeStatus`, `disputeWindowClosesAt`) — never operator
+ * notes, reasons, or initiator identity (the backend withholds those).
+ */
+export function campaignDisputeView(
+  campaign: Pick<Campaign, "disputeStatus" | "disputeWindowClosesAt">,
+): CampaignDisputeView {
+  const status = campaign.disputeStatus ?? "none";
+  const closesAtIso = campaign.disputeWindowClosesAt ?? null;
+  const windowOpen = closesAtIso ? new Date(closesAtIso).getTime() > Date.now() : false;
+  const windowClosesAt = (() => {
+    if (!closesAtIso) return null;
+    const date = new Date(closesAtIso);
+    return Number.isNaN(date.getTime()) ? closesAtIso : date.toISOString().slice(0, 10);
+  })();
+  const label =
+    status === "active"
+      ? "Dispute under review"
+      : status === "resolved"
+        ? "Dispute resolved"
+        : windowOpen
+          ? "Dispute window open"
+          : "No active dispute";
+  const tone: CampaignTrustTone =
+    status === "active" ? "warning" : status === "resolved" ? "info" : windowOpen ? "info" : "neutral";
+  return { status, label, tone, windowClosesAt, windowOpen };
 }
 
 /** Human-readable pledge state covering every backend status. */
@@ -576,6 +618,8 @@ type BackendShowCampaign = {
   onChainStatus?: string | null;
   totalRefundedUnits?: string | null;
   totalReleasedUnits?: string | null;
+  disputeStatus?: string | null;
+  disputeWindowClosesAt?: string | null;
   contractAddress?: string | null;
   contractCampaignId?: string | null;
   description?: string | null;
@@ -1225,6 +1269,8 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     onChainStatus: campaign.onChainStatus ?? null,
     totalRefundedUnits: campaign.totalRefundedUnits ?? null,
     totalReleasedUnits: campaign.totalReleasedUnits ?? null,
+    disputeStatus: campaign.disputeStatus ?? null,
+    disputeWindowClosesAt: campaign.disputeWindowClosesAt ?? null,
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
     heroImage: mediaUrl(campaign.heroImageUrl),

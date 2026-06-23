@@ -10,6 +10,7 @@ import {
   maskAddress,
   chainName,
   releasePolicyLabel,
+  campaignDisputeView,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -220,6 +221,28 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     const byLabel = Object.fromEntries(run().map((t) => [t.label, t.value]));
     expect(byLabel["Funding deadline"]).toBe("not-a-date");
     expect(byLabel["Minimum backers"]).toBe("—");
+  });
+
+  it("derives the fan-visible dispute view (#950)", () => {
+    const future = new Date(Date.now() + 3 * 86400_000).toISOString();
+    const past = new Date(Date.now() - 86400_000).toISOString();
+
+    const active = campaignDisputeView({ disputeStatus: "active", disputeWindowClosesAt: future });
+    expect(active.label).toBe("Dispute under review");
+    expect(active.tone).toBe("warning");
+
+    const resolved = campaignDisputeView({ disputeStatus: "resolved", disputeWindowClosesAt: past });
+    expect(resolved.label).toBe("Dispute resolved");
+    expect(resolved.windowOpen).toBe(false);
+
+    const windowOpen = campaignDisputeView({ disputeStatus: "none", disputeWindowClosesAt: future });
+    expect(windowOpen.label).toBe("Dispute window open");
+    expect(windowOpen.windowOpen).toBe(true);
+    expect(windowOpen.windowClosesAt).toBe(future.slice(0, 10));
+
+    const none = campaignDisputeView({ disputeStatus: "none", disputeWindowClosesAt: null });
+    expect(none.label).toBe("No active dispute");
+    expect(none.windowOpen).toBe(false);
   });
 
   it("labels every pledge state and masks addresses", () => {

@@ -3314,3 +3314,17 @@
 @media (max-width: 560px) {
   .campaign-trust__terms-grid { grid-template-columns: 1fr; }
 }
+
+/* #950: fan-visible dispute row in the trust panel */
+.campaign-trust__dispute {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.campaign-trust__dispute-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.66);
+}

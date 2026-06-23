@@ -921,6 +921,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "The fan-risk terms are approved by the artist and then locked — they can't be quietly changed after you pledge.",
               "You can view the escrow contract that holds the funds.",
               "If the goal isn't met or the show isn't confirmed, your pledge is refunded automatically.",
+              "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
+              "After a show is marked fulfilled, funds release only once a dispute window closes; while a dispute is under review, release stays paused. The campaign page shows the dispute status and the window's close date.",
             ],
           },
         ],

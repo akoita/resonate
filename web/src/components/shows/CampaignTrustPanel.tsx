@@ -1,6 +1,7 @@
 import {
   campaignTrustState,
   campaignTerms,
+  campaignDisputeView,
   maskAddress,
   type Campaign,
 } from "../../lib/shows";
@@ -55,6 +56,10 @@ function humanizeBeneficiaryType(type?: string | null): string {
 export function CampaignTrustPanel({ campaign }: Props) {
   const trust = campaignTrustState(campaign);
   const terms = campaignTerms(campaign);
+  const dispute = campaignDisputeView(campaign);
+  // Only surface the dispute row when there's something to say: an active or
+  // resolved dispute, or an open post-fulfillment dispute window.
+  const showDispute = dispute.status !== "none" || dispute.windowOpen;
 
   return (
     <section
@@ -93,6 +98,21 @@ export function CampaignTrustPanel({ campaign }: Props) {
           after booking and fulfillment under the campaign&apos;s published policy.
         </p>
       </div>
+
+      {showDispute ? (
+        <div className="campaign-trust__dispute" data-dispute={dispute.status}>
+          <span className={`campaign-trust-badge campaign-trust-badge--${dispute.tone}`}>
+            {dispute.label}
+          </span>
+          <p className="campaign-trust__dispute-note">
+            {dispute.status === "active"
+              ? "A dispute is under operator review. Final release is paused until it resolves."
+              : dispute.windowClosesAt
+                ? `Backers can raise a dispute until ${dispute.windowClosesAt}; funds are released only after this window closes.`
+                : "The dispute window for this campaign has closed."}
+          </p>
+        </div>
+      ) : null}
     </section>
   );
 }
