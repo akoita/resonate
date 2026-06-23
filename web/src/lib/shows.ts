@@ -28,6 +28,19 @@ export interface CampaignVisual {
   credit?: string | null;
 }
 
+// #949/#950 operator-scoped managed read: a dispute as the operator sees it
+// (reason / operator note / initiator — withheld from the public DTO).
+export interface ShowCampaignDispute {
+  id: string;
+  status: string;
+  outcome?: string | null;
+  reason?: string | null;
+  operatorNote?: string | null;
+  initiatorRole?: string | null;
+  createdAt?: string | null;
+  resolvedAt?: string | null;
+}
+
 export interface Campaign {
   id: string;
   backendId: string;
@@ -63,6 +76,11 @@ export interface Campaign {
   // #950 fan-visible dispute state (no operator notes / reason / initiator).
   disputeStatus?: string | null;
   disputeWindowClosesAt?: string | null;
+  // #949 operator-scoped managed read only (GET /shows/campaigns/:id/manage).
+  // Absent on the public read; populated by getManagedShowCampaign.
+  bookingEvidenceBundleId?: string | null;
+  fulfillmentEvidenceBundleId?: string | null;
+  disputes?: ShowCampaignDispute[];
   backerCount: number;
   thresholdBackers: number;
   heroImage: string;      // optional; empty string → gradient placeholder
@@ -620,6 +638,10 @@ type BackendShowCampaign = {
   totalReleasedUnits?: string | null;
   disputeStatus?: string | null;
   disputeWindowClosesAt?: string | null;
+  // #949 managed-read-only fields (operator/owner scoped).
+  bookingEvidenceBundleId?: string | null;
+  fulfillmentEvidenceBundleId?: string | null;
+  disputes?: ShowCampaignDispute[];
   contractAddress?: string | null;
   contractCampaignId?: string | null;
   description?: string | null;
@@ -1176,6 +1198,89 @@ export async function confirmShowCampaignFulfillment(input: {
   });
 }
 
+/**
+ * #949 operator-scoped managed read. Returns the campaign with the fields the
+ * public DTO withholds (authority credential/evidence ids, the dispute list)
+ * so the operator panel can prefill inputs and act on open disputes. Requires
+ * an operator/admin or the owning artist's token (403 otherwise → null).
+ */
+export async function getManagedShowCampaign(input: {
+  campaignId: string;
+  token: string;
+}): Promise<Campaign | null> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaignId)}/manage`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    return null;
+  }
+  return mapBackendCampaign(await response.json() as BackendShowCampaign);
+}
+
+/**
+ * #950 operator-only: raise a dispute against a campaign in the booking →
+ * release window. Returns the created dispute; refetch the managed campaign to
+ * refresh the panel's dispute list.
+ */
+export async function initiateShowCampaignDispute(input: {
+  campaign: Campaign;
+  token: string;
+  reason?: string | null;
+}): Promise<ShowCampaignDispute> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/dispute`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({ reason: input.reason }),
+    },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Raising the dispute failed with status ${response.status}`);
+  }
+  return await response.json() as ShowCampaignDispute;
+}
+
+/**
+ * #950 operator-only: resolve an open dispute. Resolution is audited and does
+ * NOT itself release funds — release stays gated by the contract time-lock.
+ */
+export async function resolveShowCampaignDispute(input: {
+  campaign: Campaign;
+  token: string;
+  disputeId: string;
+  outcome: "upheld" | "rejected" | "inconclusive";
+  operatorNote?: string | null;
+}): Promise<ShowCampaignDispute> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/dispute/${encodeURIComponent(input.disputeId)}/resolve`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({ outcome: input.outcome, operatorNote: input.operatorNote }),
+    },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Resolving the dispute failed with status ${response.status}`);
+  }
+  return await response.json() as ShowCampaignDispute;
+}
+
 // Re-exported as a sync getter for synchronous render paths (e.g. initial
 // Sennarin hero render before client-side fetch resolves). Keep the async
 // API above as the canonical one — delete this when a real API hooks in.
@@ -1271,6 +1376,11 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     totalReleasedUnits: campaign.totalReleasedUnits ?? null,
     disputeStatus: campaign.disputeStatus ?? null,
     disputeWindowClosesAt: campaign.disputeWindowClosesAt ?? null,
+    // Managed-read-only; undefined on the public read. The mapper passes them
+    // through so getManagedShowCampaign surfaces them in the operator panel.
+    bookingEvidenceBundleId: campaign.bookingEvidenceBundleId ?? null,
+    fulfillmentEvidenceBundleId: campaign.fulfillmentEvidenceBundleId ?? null,
+    disputes: Array.isArray(campaign.disputes) ? campaign.disputes : [],
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
     heroImage: mediaUrl(campaign.heroImageUrl),

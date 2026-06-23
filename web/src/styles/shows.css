@@ -2056,6 +2056,61 @@
   background: rgba(127, 29, 29, 0.18);
 }
 
+/* ─── Operator disputes (#950) ────────────────────────────────────── */
+
+.show-detail__operator-hint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.62);
+}
+
+.show-detail__operator-dispute {
+  display: grid;
+  gap: 10px;
+}
+
+.show-detail__operator-dispute-head {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(254, 215, 170, 0.92);
+}
+
+.show-detail__operator-dispute-reason {
+  margin: 0;
+  border-left: 2px solid rgba(248, 113, 113, 0.4);
+  padding-left: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.show-detail__operator-dispute-history {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 10px;
+}
+
+.show-detail__operator-dispute-history li {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.show-detail__operator-dispute-history span {
+  text-transform: capitalize;
+}
+
+.show-detail__operator-dispute-history em {
+  font-style: normal;
+  color: rgba(148, 163, 184, 0.85);
+}
+
 /* ─── Brief + Pledge Panel Grid ───────────────────────────────────── */
 
 .show-detail__brief-grid {
