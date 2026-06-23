@@ -216,6 +216,107 @@ export function campaignTrustState(
   };
 }
 
+export type CampaignPledgeAvailability = {
+  /** True only when the backend would accept a new pledge. */
+  open: boolean;
+  key:
+    | "open"
+    | "pending_authority"
+    | "not_authorized"
+    | "signal"
+    | "closed_refund"
+    | "cancelled"
+    | "closed";
+  /** Short heading for the empty state (unused when `open`). */
+  title: string;
+  /** Honest one-liner explaining why pledging is/ isn't open. */
+  message: string;
+};
+
+/**
+ * Mirror the backend's `ensurePledgeableCampaign` so the pledge panel shows an
+ * honest empty state instead of a live form that would only error on submit.
+ * Order matches the trust ladder: terminal/refund first, then authority
+ * problems, then the escrow-readiness gate. Deliberately time-independent
+ * (no deadline check) to stay deterministic across SSR/CSR — the server still
+ * rejects expired-deadline pledges.
+ */
+export function campaignPledgeAvailability(
+  campaign: Pick<
+    Campaign,
+    | "campaignLevel"
+    | "rawStatus"
+    | "artistAuthorityStatus"
+    | "beneficiaryAddress"
+    | "beneficiaryType"
+  >,
+): CampaignPledgeAvailability {
+  const status = campaign.rawStatus;
+  const level = campaign.campaignLevel;
+  const authority = campaign.artistAuthorityStatus;
+  const authorized =
+    authority === "artist_authorized" || authority === "trusted_source_authorized";
+
+  if (status === "cancelled") {
+    return {
+      open: false,
+      key: "cancelled",
+      title: "Pledging closed",
+      message: "This campaign was cancelled. If you backed it, you can claim a refund below.",
+    };
+  }
+  if (status === "refund_available" || status === "refunded") {
+    return {
+      open: false,
+      key: "closed_refund",
+      title: "Pledging closed",
+      message:
+        "Funding conditions weren't met. Backers can claim any refund still available below.",
+    };
+  }
+  if (authority === "revoked" || authority === "expired" || authority === "rejected") {
+    return {
+      open: false,
+      key: "not_authorized",
+      title: "Not open for pledging",
+      message:
+        "Artist authorization isn't valid for this campaign, so it can't take escrow pledges.",
+    };
+  }
+  if (level === "signal") {
+    return {
+      open: false,
+      key: "signal",
+      title: "Open demand signal",
+      message:
+        "This is a fan-proposed demand signal — no funds are escrowed yet. Backing opens only if it's authorized as an escrow campaign.",
+    };
+  }
+  if (
+    level !== "active_escrow_campaign" ||
+    !authorized ||
+    !campaign.beneficiaryAddress ||
+    !campaign.beneficiaryType
+  ) {
+    return {
+      open: false,
+      key: "pending_authority",
+      title: "Awaiting artist authority",
+      message:
+        "This campaign is provisional. Pledging opens once an operator verifies the artist's authority and the escrow terms are locked.",
+    };
+  }
+  if (status !== "active") {
+    return {
+      open: false,
+      key: "closed",
+      title: "Pledging closed",
+      message: "This campaign isn't accepting new pledges right now.",
+    };
+  }
+  return { open: true, key: "open", title: "", message: "" };
+}
+
 export function chainName(chainId?: number | null): string {
   switch (chainId) {
     case 1:

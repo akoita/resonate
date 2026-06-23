@@ -2359,6 +2359,41 @@
   opacity: 0.72;
 }
 
+/* Empty state shown when the campaign can't take pledges yet (#949):
+   awaiting authority, rejected/revoked, demand signal, or terminal. */
+.show-detail__pledge-empty {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.show-detail__pledge-empty strong {
+  color: rgba(241, 245, 249, 0.95);
+  font-size: 14px;
+}
+
+.show-detail__pledge-empty p {
+  margin: 0;
+  color: rgba(203, 213, 225, 0.72);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* Authority problems read as a warning; terminal/refund stay neutral. */
+.show-detail__pledge-empty[data-state="not_authorized"] {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.12);
+}
+
+.show-detail__pledge-empty[data-state="pending_authority"] {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(30, 58, 138, 0.12);
+}
+
 .show-detail__pledge-result,
 .show-detail__pledge-error {
   margin-top: 14px;

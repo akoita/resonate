@@ -399,7 +399,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
         </fieldset>
       </div>
 
-      {notice ? <p className="show-detail__operator-notice">{notice}</p> : null}
+      {notice ? <p className="show-detail__operator-notice" role="status">{notice}</p> : null}
       {error ? <p className="show-detail__operator-error" role="alert">{error}</p> : null}
 
       <ConfirmDialog

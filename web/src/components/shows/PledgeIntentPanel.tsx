@@ -11,6 +11,7 @@ import {
 import { getExplorerTxUrl } from "../../lib/explorer";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
+  campaignPledgeAvailability,
   createPledgeIntent,
   formatMoney,
   listMyShowPledges,
@@ -37,6 +38,8 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     error: refundError,
     txHash: refundTxHash,
   } = useShowRefundExecution();
+  const availability = campaignPledgeAvailability(campaign);
+  const pledgingOpen = availability.open;
   const tiers = campaign.tiers.length > 0 ? campaign.tiers : fallbackTiers;
   const [selectedTierId, setSelectedTierId] = useState(tiers[1]?.id ?? tiers[0]?.id ?? "");
   const [intent, setIntent] = useState<ShowPledgeIntent | null>(null);
@@ -177,30 +180,38 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     <article className="show-detail__pledge-panel" aria-label="Pledge tiers">
       <div className="show-detail__pledge-header">
         <span className="shows-home-section__kicker">Signal tiers</span>
-        <span className="show-detail__soon-pill">Receipt-ready</span>
+        <span className="show-detail__soon-pill">{pledgingOpen ? "Receipt-ready" : "Preview"}</span>
       </div>
-      <div className="show-detail__tiers">
-        {tiers.map((tier, index) => {
-          const selected = tier.id === selectedTier?.id;
-          return (
-            <button
-              key={tier.id}
-              type="button"
-              className={`show-detail__tier ${index === 1 ? "show-detail__tier--featured" : ""} ${
-                selected ? "show-detail__tier--selected" : ""
-              }`}
-              onClick={() => setSelectedTierId(tier.id)}
-              aria-pressed={selected}
-            >
-              <strong>{formatMoney(tier.amountCents, tier.currency)}</strong>
-              <span>{tier.title}</span>
-              {tier.description ? (
-                <small>{tier.description}</small>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+
+      {pledgingOpen ? (
+        <div className="show-detail__tiers" role="group" aria-label="Pledge tiers">
+          {tiers.map((tier, index) => {
+            const selected = tier.id === selectedTier?.id;
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                className={`show-detail__tier ${index === 1 ? "show-detail__tier--featured" : ""} ${
+                  selected ? "show-detail__tier--selected" : ""
+                }`}
+                onClick={() => setSelectedTierId(tier.id)}
+                aria-pressed={selected}
+              >
+                <strong>{formatMoney(tier.amountCents, tier.currency)}</strong>
+                <span>{tier.title}</span>
+                {tier.description ? (
+                  <small>{tier.description}</small>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="show-detail__pledge-empty" role="note" data-state={availability.key}>
+          <strong>{availability.title}</strong>
+          <p>{availability.message}</p>
+        </div>
+      )}
 
       {latestPledge || myPledgesLoading ? (
         <div className="show-detail__my-pledge" aria-live="polite">
@@ -231,14 +242,16 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        className="show-detail__pledge-action"
-        onClick={pledge}
-        disabled={loading || pending || refundPending || !selectedTier}
-      >
-        {buttonLabel}
-      </button>
+      {pledgingOpen ? (
+        <button
+          type="button"
+          className="show-detail__pledge-action"
+          onClick={pledge}
+          disabled={loading || pending || refundPending || !selectedTier}
+        >
+          {buttonLabel}
+        </button>
+      ) : null}
 
       {intent ? (
         <div className="show-detail__pledge-result" role="status">
