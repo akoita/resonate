@@ -152,6 +152,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [error, setError] = useState<string | null>(null);
 
   const isEdit = Boolean(campaign);
+  // #946: once artist authority is approved, the critical fan-risk terms are
+  // locked server-side (updateDraftCampaign refuses changes until authority is
+  // revoked). Mirror that in the editor so operators/artists see read-only
+  // fields and the amendment path instead of hitting a save error.
+  const termsLocked = isEdit
+    && (campaign?.artistAuthorityStatus === "artist_authorized"
+      || campaign?.artistAuthorityStatus === "trusted_source_authorized");
   const isPrivileged = role === "admin" || role === "operator";
   const selectedArtistCandidate = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
   const canSubmit = status === "authenticated"
@@ -520,6 +527,22 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
   return (
     <section className="shows-create__form" aria-label={isEdit ? "Edit show campaign" : "Create show campaign"}>
+      {termsLocked ? (
+        <div className="shows-create__panel shows-create__locked-note" role="status">
+          <h2>Approved terms are locked</h2>
+          <p>
+            This campaign&rsquo;s artist authority is approved, so its funding
+            terms &mdash; goal, deadlines, beneficiary wallet, payment token, and
+            pledge tiers &mdash; are locked and can&rsquo;t be changed here. You
+            can still update the title, pitch, visuals, and evidence reference.
+          </p>
+          <p>
+            To amend a locked term, an operator must revoke artist authority from
+            the <Link href={`/shows/${campaign?.id}`}>campaign page</Link>, make
+            the change, then request re-approval.
+          </p>
+        </div>
+      ) : null}
       <div className="shows-create__panel">
         <h2>Campaign</h2>
         <label>
@@ -684,20 +707,20 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         <div className="shows-create__split">
           <label>
             Goal ({PAYMENT_SYMBOL})
-            <input value={goalAmount} onChange={(event) => setGoalAmount(event.target.value)} inputMode="decimal" />
+            <input value={goalAmount} onChange={(event) => setGoalAmount(event.target.value)} inputMode="decimal" disabled={termsLocked} />
           </label>
           <label>
             Minimum backers
-            <input value={minimumBackers} onChange={(event) => setMinimumBackers(event.target.value)} inputMode="numeric" />
+            <input value={minimumBackers} onChange={(event) => setMinimumBackers(event.target.value)} inputMode="numeric" disabled={termsLocked} />
           </label>
         </div>
         <label>
           Funding deadline
-          <input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} />
+          <input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} disabled={termsLocked} />
         </label>
         <label>
           Booking deadline
-          <input type="datetime-local" value={bookingDeadline} onChange={(event) => setBookingDeadline(event.target.value)} />
+          <input type="datetime-local" value={bookingDeadline} onChange={(event) => setBookingDeadline(event.target.value)} disabled={termsLocked} />
         </label>
         <label>
           Target show date
@@ -710,6 +733,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             onChange={(event) => setPaymentTokenAddress(event.target.value)}
             placeholder={isPrivileged ? "0x..." : "Platform default"}
             readOnly={!isPrivileged}
+            disabled={termsLocked}
           />
         </label>
         <small>Chain {chainId}. Asset defaults to {PAYMENT_SYMBOL} with {PAYMENT_DECIMALS} decimals.</small>
@@ -724,6 +748,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             onChange={(event) => setBeneficiaryAddress(event.target.value)}
             placeholder="0x..."
             readOnly={!isPrivileged}
+            disabled={termsLocked}
           />
         </label>
         <label>
@@ -739,7 +764,11 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
       <div className="shows-create__panel shows-create__panel--wide">
         <div className="shows-create__panel-header">
           <h2>Pledge tiers</h2>
-          <button type="button" onClick={() => setTiers((current) => [...current, { title: "", description: "", amount: "" }])}>
+          <button
+            type="button"
+            onClick={() => setTiers((current) => [...current, { title: "", description: "", amount: "" }])}
+            disabled={termsLocked}
+          >
             Add tier
           </button>
         </div>
@@ -748,17 +777,17 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
             <div key={index} className="shows-create__tier">
               <label>
                 Title
-                <input value={tier.title} onChange={(event) => updateTier(index, { title: event.target.value })} />
+                <input value={tier.title} onChange={(event) => updateTier(index, { title: event.target.value })} disabled={termsLocked} />
               </label>
               <label>
                 Amount ({PAYMENT_SYMBOL})
-                <input value={tier.amount} onChange={(event) => updateTier(index, { amount: event.target.value })} inputMode="decimal" />
+                <input value={tier.amount} onChange={(event) => updateTier(index, { amount: event.target.value })} inputMode="decimal" disabled={termsLocked} />
               </label>
               <label>
                 Description
                 <input value={tier.description} onChange={(event) => updateTier(index, { description: event.target.value })} />
               </label>
-              {tiers.length > 1 ? (
+              {tiers.length > 1 && !termsLocked ? (
                 <button type="button" className="shows-create__remove-tier" onClick={() => removeTier(index)}>
                   Remove tier
                 </button>

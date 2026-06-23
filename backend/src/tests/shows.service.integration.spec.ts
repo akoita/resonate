@@ -744,6 +744,299 @@ describe("ShowsService integration", () => {
     expect(expired.events[0].eventType).toBe("artist_authority_expired");
   });
 
+  it("blocks self-issued artist authority at campaign creation (#946)", async () => {
+    // A self-serve artist must not be able to stand up an already-authorized
+    // escrow campaign and then self-activate it; authorization is operator-only.
+    await expect(service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "1000000",
+        bookingDeadline: futureIso(48),
+        artistAuthorityStatus: "artist_authorized",
+      },
+    )).rejects.toThrow(ForbiddenException);
+
+    // An operator may create an authorized campaign — and its approved terms are
+    // snapshotted immediately, so they are locked from creation onward.
+    const opCampaign = await service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "1000000",
+        bookingDeadline: futureIso(48),
+        artistAuthorityStatus: "artist_authorized",
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+      },
+    );
+    expect(opCampaign.artistAuthorityStatus).toBe("artist_authorized");
+    const storedOp = await prisma.showCampaign.findUniqueOrThrow({ where: { id: opCampaign.id } });
+    expect(storedOp.approvedTermsHash).toBeTruthy();
+
+    await expect(service.updateDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      opCampaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "7777777",
+        bookingDeadline: futureIso(48),
+      },
+    )).rejects.toThrow(BadRequestException);
+  });
+
+  it("locks critical terms after authority approval and refuses silent changes (#946)", async () => {
+    const deadline = futureIso(37);
+    const booking = futureIso(52);
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}grenoble-authority`,
+      },
+    );
+    const approved = await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      {
+        authorityStatus: "artist_authorized",
+        authorityCredentialId: `${TEST_PREFIX}grenoble-credential`,
+      },
+    );
+    expect(approved.approvedTermsHash).toBeTruthy();
+    expect(approved.events[0].metadata).toMatchObject({ approvedTermsHash: approved.approvedTermsHash });
+
+    // Bumping the goal after approval is refused.
+    await expect(service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "9999999",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    // An operator swapping the beneficiary wallet is refused too.
+    await expect(service.updateDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+        beneficiaryAddress: "0x" + "b".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    const stored = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(stored.goalAmountUnits).toBe("1500000");
+    expect(stored.beneficiaryAddress).toBe(artistWallet.toLowerCase());
+
+    // Re-saving with identical critical terms (only changing pitch copy) is allowed.
+    const edited = await service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+        description: "Refreshed pitch copy after approval",
+      },
+    );
+    expect(edited.description).toBe("Refreshed pitch copy after approval");
+    expect(edited.artistAuthorityStatus).toBe("artist_authorized");
+    expect(edited.goalAmountUnits).toBe("1500000");
+  });
+
+  it("reopens term edits after revocation and requires re-approval before activation (#946)", async () => {
+    const deadline = futureIso(38);
+    const booking = futureIso(53);
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2000000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}rennes-authority`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}rennes-credential` },
+    );
+
+    // Locked while approved.
+    await expect(service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2500000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    // Revoking clears the lock so terms can be amended.
+    await service.revokeAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { reason: "artist requested a higher goal" },
+    );
+    const afterRevoke = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(afterRevoke.approvedTermsHash).toBeNull();
+    expect(afterRevoke.artistAuthorityStatus).toBe("revoked");
+
+    const edited = await service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2500000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    );
+    expect(edited.goalAmountUnits).toBe("2500000");
+
+    // Activation is blocked until authority is granted again on the new terms.
+    await expect(service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {},
+    )).rejects.toThrow(BadRequestException);
+
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}rennes-authority-2`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}rennes-credential-2` },
+    );
+    const activated = await service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      { contractAddress: "0x" + "6".repeat(40), contractCampaignId: "1" },
+    );
+    expect(activated.status).toBe("active");
+    const finalCampaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(finalCampaign.goalAmountUnits).toBe("2500000");
+  });
+
+  it("refuses activation when terms drift from the approved snapshot (#946)", async () => {
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Dijon",
+        country: "FR",
+        deadline: futureIso(39),
+        goalAmountUnits: "1800000",
+        bookingDeadline: futureIso(54),
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}dijon-authority`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}dijon-credential` },
+    );
+
+    // Simulate an out-of-band write that bypasses the update lock entirely.
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { goalAmountUnits: "9000000" },
+    });
+
+    await expect(service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {},
+    )).rejects.toThrow(BadRequestException);
+  });
+
   it("creates pledge intents, confirms receipts, and keeps progress indexer-owned", async () => {
     const { campaign, tier } = await createActiveCampaignWithTier("Marseille");
 

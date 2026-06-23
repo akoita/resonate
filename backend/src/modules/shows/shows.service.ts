@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type {
   Artist,
   ShowArtistAuthorityStatus,
@@ -178,6 +178,148 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "revoked",
   "expired",
 ];
+
+// #946: the fan-risk terms that the artist signs and an operator approves.
+// Once authority is approved these become immutable (see approvedTermsHash):
+// changing any of them requires revoking authority and re-approving, so a
+// campaign can never silently swap the beneficiary wallet, goal, deadline, or
+// refund/release terms out from under fans who already read them.
+type CriticalTermsSource = {
+  goalAmountUnits: string;
+  deadline: Date | string;
+  bookingDeadline?: Date | string | null;
+  minimumBackers?: number | null;
+  currency: string;
+  paymentAssetSymbol: string;
+  paymentAssetDecimals: number;
+  paymentTokenAddress?: string | null;
+  chainId: number;
+  beneficiaryAddress?: string | null;
+  beneficiaryType?: ShowCampaignBeneficiaryType | null;
+  depositReleaseBps: number;
+  releasePolicy: ShowCampaignReleasePolicy;
+  disputeWindowSeconds: number;
+  tiers: Array<{
+    title: string;
+    amountUnits: string;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    maxBackers?: number | null;
+    benefits?: unknown;
+  }>;
+};
+
+function isoOrNull(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+// Canonical, presentation-independent view of the fan-risk terms. Tier order
+// and sortOrder are deliberately excluded — reordering tiers is not a change to
+// what a backer receives, so it must not break the lock.
+function buildCriticalTermsSnapshot(source: CriticalTermsSource) {
+  const tiers = (source.tiers ?? [])
+    .map((tier) => ({
+      title: tier.title,
+      amountUnits: tier.amountUnits,
+      currency: tier.currency,
+      paymentAssetSymbol: tier.paymentAssetSymbol,
+      paymentAssetDecimals: tier.paymentAssetDecimals,
+      maxBackers: tier.maxBackers ?? null,
+      benefits: tier.benefits ?? null,
+    }))
+    .sort((a, b) => a.amountUnits.localeCompare(b.amountUnits) || a.title.localeCompare(b.title));
+
+  return {
+    goalAmountUnits: source.goalAmountUnits,
+    deadline: isoOrNull(source.deadline),
+    bookingDeadline: isoOrNull(source.bookingDeadline),
+    minimumBackers: source.minimumBackers ?? null,
+    currency: source.currency,
+    paymentAssetSymbol: source.paymentAssetSymbol,
+    paymentAssetDecimals: source.paymentAssetDecimals,
+    paymentTokenAddress: source.paymentTokenAddress ?? null,
+    chainId: source.chainId,
+    beneficiaryAddress: source.beneficiaryAddress ?? null,
+    beneficiaryType: source.beneficiaryType ?? null,
+    depositReleaseBps: source.depositReleaseBps,
+    releasePolicy: source.releasePolicy,
+    disputeWindowSeconds: source.disputeWindowSeconds,
+    tiers,
+  };
+}
+
+// Deterministic JSON: object keys sorted recursively so the hash is stable
+// regardless of property insertion order.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`);
+  return `{${entries.join(",")}}`;
+}
+
+function hashCriticalTerms(source: CriticalTermsSource): string {
+  return createHash("sha256").update(stableStringify(buildCriticalTermsSnapshot(source))).digest("hex");
+}
+
+// Build the critical-terms source from a persisted campaign row plus its tiers.
+// `overrides` lets the approval path fold in a freshly-bound beneficiary before
+// snapshotting.
+function campaignCriticalTerms(
+  campaign: {
+    goalAmountUnits: string;
+    deadline: Date;
+    bookingDeadline: Date | null;
+    minimumBackers: number | null;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    paymentTokenAddress: string | null;
+    chainId: number;
+    beneficiaryAddress: string | null;
+    beneficiaryType: ShowCampaignBeneficiaryType | null;
+    depositReleaseBps: number;
+    releasePolicy: ShowCampaignReleasePolicy;
+    disputeWindowSeconds: number;
+  },
+  tiers: Array<{
+    title: string;
+    amountUnits: string;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    maxBackers: number | null;
+    benefits: unknown;
+  }>,
+  overrides: { beneficiaryAddress?: string | null; beneficiaryType?: ShowCampaignBeneficiaryType | null } = {},
+): CriticalTermsSource {
+  return {
+    goalAmountUnits: campaign.goalAmountUnits,
+    deadline: campaign.deadline,
+    bookingDeadline: campaign.bookingDeadline,
+    minimumBackers: campaign.minimumBackers,
+    currency: campaign.currency,
+    paymentAssetSymbol: campaign.paymentAssetSymbol,
+    paymentAssetDecimals: campaign.paymentAssetDecimals,
+    paymentTokenAddress: campaign.paymentTokenAddress,
+    chainId: campaign.chainId,
+    beneficiaryAddress: overrides.beneficiaryAddress ?? campaign.beneficiaryAddress,
+    beneficiaryType: overrides.beneficiaryType ?? campaign.beneficiaryType,
+    depositReleaseBps: campaign.depositReleaseBps,
+    releasePolicy: campaign.releasePolicy,
+    disputeWindowSeconds: campaign.disputeWindowSeconds,
+    tiers,
+  };
+}
+
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
@@ -615,13 +757,53 @@ export class ShowsService {
     const authorityStatus = input.artistAuthorityStatus
       ? assertShowArtistAuthorityStatus(input.artistAuthorityStatus)
       : "none";
+    if (TERMINAL_AUTHORITY_STATUSES.includes(authorityStatus)) {
+      throw new BadRequestException("Use the authority review endpoints for terminal authority states");
+    }
+    // #946: escrow authorization is an operator decision. Without this guard a
+    // self-serve artist could POST artistAuthorityStatus:"artist_authorized"
+    // and then self-activate an escrow campaign with their own payout wallet,
+    // bypassing operator review entirely (mirrors the guard in requestAuthority).
+    if (AUTHORIZED_STATUSES.includes(authorityStatus) && !isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Authority approval must be performed by an operator");
+    }
     const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
+    const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
+    const disputeWindowSeconds = input.disputeWindowSeconds ?? DEFAULT_DISPUTE_WINDOW_SECONDS;
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
     const slug = await this.uniqueSlug(title, normalized.country);
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
+
+    // #946: if an operator stands a campaign up already authorized, the approved
+    // terms must be snapshotted now so the same immutability lock applies as when
+    // authority is granted through the review flow.
+    const authorizedAtCreate = AUTHORIZED_STATUSES.includes(authorityStatus);
+    if (authorizedAtCreate && (!beneficiary.address || !beneficiary.type)) {
+      throw new BadRequestException("beneficiaryAddress and beneficiaryType are required to create an authorized campaign");
+    }
+    const approvedTermsSource: CriticalTermsSource | null = authorizedAtCreate
+      ? {
+          goalAmountUnits: normalized.goalAmountUnits,
+          deadline: normalized.deadline,
+          bookingDeadline,
+          minimumBackers: normalized.minimumBackers ?? null,
+          currency: normalized.currency,
+          paymentAssetSymbol: normalized.paymentAssetSymbol,
+          paymentAssetDecimals: normalized.paymentAssetDecimals,
+          paymentTokenAddress: normalized.paymentTokenAddress ?? null,
+          chainId: normalized.chainId,
+          beneficiaryAddress: beneficiary.address,
+          beneficiaryType: beneficiary.type,
+          depositReleaseBps,
+          releasePolicy,
+          disputeWindowSeconds,
+          tiers,
+        }
+      : null;
+    const approvedTermsHash = approvedTermsSource ? hashCriticalTerms(approvedTermsSource) : null;
 
     const campaign = await prisma.showCampaign.create({
       data: {
@@ -633,12 +815,16 @@ export class ShowsService {
         artistAuthorityStatus: authorityStatus,
         authorityCredentialId: optionalText(input.authorityCredentialId),
         authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
+        approvedTermsHash,
         beneficiaryAddress: beneficiary.address,
         beneficiaryType: beneficiary.type,
-        bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
+        bookingDeadline,
         releasePolicy,
         depositReleaseBps,
-        disputeWindowSeconds: input.disputeWindowSeconds ?? DEFAULT_DISPUTE_WINDOW_SECONDS,
+        disputeWindowSeconds,
+        ...(approvedTermsSource
+          ? { metadata: mergeMetadata(normalized.metadata as Prisma.JsonValue | undefined, { approvedTerms: buildCriticalTermsSnapshot(approvedTermsSource) }) }
+          : {}),
         ...(tiers.length > 0 ? { tiers: { create: tiers } } : {}),
         events: {
           create: {
@@ -648,6 +834,7 @@ export class ShowsService {
             metadata: {
               campaignLevel,
               artistAuthorityStatus: authorityStatus,
+              ...(approvedTermsHash ? { approvedTermsHash } : {}),
               source: "shows-api",
             },
           },
@@ -697,6 +884,43 @@ export class ShowsService {
       : campaign.releasePolicy;
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
+    const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
+    const disputeWindowSeconds = input.disputeWindowSeconds ?? campaign.disputeWindowSeconds;
+
+    // #946: once artist authority is approved the critical fan-risk terms are
+    // locked. We refuse any edit that would change them (the update endpoint is
+    // a full replace, so an unchanged edit re-sends identical terms and hashes
+    // the same). To change terms, an operator must revoke authority — which
+    // clears the snapshot — then request re-approval.
+    if (AUTHORIZED_STATUSES.includes(campaign.artistAuthorityStatus)) {
+      const nextTermsHash = hashCriticalTerms({
+        goalAmountUnits: normalized.goalAmountUnits,
+        deadline: normalized.deadline,
+        bookingDeadline,
+        minimumBackers: normalized.minimumBackers ?? null,
+        currency: normalized.currency,
+        paymentAssetSymbol: normalized.paymentAssetSymbol,
+        paymentAssetDecimals: normalized.paymentAssetDecimals,
+        paymentTokenAddress: normalized.paymentTokenAddress ?? null,
+        chainId: normalized.chainId,
+        beneficiaryAddress: beneficiary.address,
+        beneficiaryType: beneficiary.type,
+        depositReleaseBps,
+        releasePolicy,
+        disputeWindowSeconds,
+        tiers,
+      });
+      let approvedHash = campaign.approvedTermsHash;
+      if (!approvedHash) {
+        const existingTiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+        approvedHash = hashCriticalTerms(campaignCriticalTerms(campaign, existingTiers));
+      }
+      if (nextTermsHash !== approvedHash) {
+        throw new BadRequestException(
+          "Critical campaign terms are locked after artist authority approval; revoke authority before changing terms, then request re-approval",
+        );
+      }
+    }
 
     return prisma.$transaction(async (tx) => {
       await tx.showCampaignTier.deleteMany({ where: { campaignId: campaign.id } });
@@ -708,10 +932,10 @@ export class ShowsService {
           beneficiaryAddress: beneficiary.address,
           beneficiaryType: beneficiary.type,
           authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
-          bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
+          bookingDeadline,
           releasePolicy,
           depositReleaseBps,
-          disputeWindowSeconds: input.disputeWindowSeconds ?? campaign.disputeWindowSeconds,
+          disputeWindowSeconds,
           tiers: tiers.length > 0 ? { create: tiers } : undefined,
           events: {
             create: {
@@ -1137,6 +1361,13 @@ export class ShowsService {
       throw new BadRequestException("beneficiaryAddress and beneficiaryType are required for authority approval");
     }
 
+    // #946: snapshot exactly the fan-risk terms being approved (with the freshly
+    // bound beneficiary). approvedTermsHash then locks those terms until
+    // authority is revoked, and activation re-verifies the live terms match.
+    const tiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+    const approvedTermsSource = campaignCriticalTerms(campaign, tiers, { beneficiaryAddress, beneficiaryType });
+    const approvedTermsHash = hashCriticalTerms(approvedTermsSource);
+
     return prisma.showCampaign.update({
       where: { id: campaign.id },
       data: {
@@ -1145,6 +1376,8 @@ export class ShowsService {
         authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId) ?? campaign.authorityEvidenceBundleId,
         beneficiaryAddress,
         beneficiaryType,
+        approvedTermsHash,
+        metadata: mergeMetadata(campaign.metadata, { approvedTerms: buildCriticalTermsSnapshot(approvedTermsSource) }),
         artistAcceptedAt: new Date(),
         events: {
           create: {
@@ -1152,7 +1385,7 @@ export class ShowsService {
             actorUserId: actor.userId,
             previousStatus: campaign.status,
             nextStatus: campaign.status,
-            metadata: { artistAuthorityStatus: authorityStatus },
+            metadata: { artistAuthorityStatus: authorityStatus, approvedTermsHash },
           },
         },
       },
@@ -1177,8 +1410,11 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "rejected",
         authorityCredentialId: null,
+        // #946: clear the approved-terms lock so the campaign can be re-edited.
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityRejectionEvidence: evidence } : {}),
         }),
         events: {
@@ -1215,8 +1451,12 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "revoked",
         authorityCredentialId: null,
+        // #946: clearing the lock is what lets an operator amend terms — revoke,
+        // edit, then request re-approval (which re-snapshots the new terms).
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityRevocationEvidence: evidence } : {}),
         }),
         events: {
@@ -1253,8 +1493,11 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "expired",
         authorityCredentialId: null,
+        // #946: clear the approved-terms lock so the campaign can be re-edited.
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityExpiryEvidence: evidence } : {}),
         }),
         events: {
@@ -1287,6 +1530,20 @@ export class ShowsService {
     }
     if (campaign.status !== "draft") {
       throw new BadRequestException("Only draft campaigns can be activated");
+    }
+
+    // #946: defense in depth. The update lock should already prevent terms from
+    // drifting after approval, but re-verify here so a direct DB edit or any
+    // future write path that bypasses updateDraftCampaign can never activate a
+    // campaign on terms the artist never approved.
+    if (campaign.approvedTermsHash) {
+      const tiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+      const liveTermsHash = hashCriticalTerms(campaignCriticalTerms(campaign, tiers));
+      if (liveTermsHash !== campaign.approvedTermsHash) {
+        throw new BadRequestException(
+          "Campaign terms changed since artist authority approval; re-approval is required before activation",
+        );
+      }
     }
 
     return prisma.showCampaign.update({

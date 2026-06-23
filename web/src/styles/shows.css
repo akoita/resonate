@@ -419,6 +419,23 @@
   outline: none;
 }
 
+.shows-create__panel input:disabled,
+.shows-create__panel select:disabled,
+.shows-create__panel textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* #946: approved-terms lock banner on the campaign editor. */
+.shows-create__locked-note {
+  border-color: rgba(245, 196, 92, 0.35);
+  background: rgba(245, 196, 92, 0.08);
+}
+
+.shows-create__locked-note h2 {
+  color: #f5c45c;
+}
+
 .shows-create__artist-context {
   min-height: 48px;
   display: flex;
