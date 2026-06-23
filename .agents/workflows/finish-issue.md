@@ -137,6 +137,10 @@ Check the changed files (`git diff --name-only main`) and run the appropriate se
 - For every durable feature that is added, materially changed, exposed, hidden, or removed:
   - update `docs/features/README.md`
   - add or update the feature's dedicated page with status, use cases, API/UI entry points, test steps, and related docs
+- **If the change is user-facing** (something a listener, artist, producer, curator, or operator can see or do), update the in-app **User Guide** in the same branch:
+  - edit or add the matching article in `web/src/lib/help/content.ts` (plain language; accurate `keywords`/`appLinks`/`related`/`status`)
+  - add or refresh a screenshot where a public or signed-in screen exists (`web/scripts/capture-help-screenshots.mjs`)
+  - keep `web/src/lib/help/help.test.ts` green (`cd web && npx vitest run src/lib/help`)
 - Skip this step if the change is trivial or purely internal refactoring
 
 ## 7. Update architecture docs

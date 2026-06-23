@@ -67,6 +67,10 @@ Update when relevant:
 
 - feature page under `docs/features/`
 - `docs/features/README.md`
+- the in-app **User Guide** (`/help`) for user-facing changes — edit the
+  matching article in `web/src/lib/help/content.ts` and refresh screenshots via
+  `web/scripts/capture-help-screenshots.mjs` (keep `web/src/lib/help/help.test.ts`
+  green)
 - route-level or component tests
 - screenshots/manual QA notes for visual polish changes
 
@@ -248,6 +252,7 @@ Update when relevant:
 
 - `docs/features/README.md`
 - dedicated feature page
+- the in-app User Guide (`/help`) when the change is user-facing
 - architecture docs
 - RFC only when design intent or tradeoffs changed
 - GitHub issue checklists or PR summary

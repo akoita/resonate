@@ -109,8 +109,28 @@ reading the whole codebase.
    updates for a later cleanup PR unless the user explicitly scopes the work to
    code only.
 
-5. **Use `/finish-issue` to enforce this.** The finish workflow includes the
-   feature catalog check alongside security scans, tests, commits, and PR work.
+5. **Update the in-app User Guide for user-facing changes.** The User Guide at
+   `/help` ([feature page](docs/features/user_manual.md); content in
+   `web/src/lib/help/content.ts`) is the end-user manual. When a change adds,
+   materially changes, exposes, hides, or removes something a **listener,
+   artist, producer, curator, or operator can see or do**, update or add the
+   matching article **in the same branch**:
+   - Write in plain language — no contract names, API routes, or DB details.
+   - Keep `keywords`, `appLinks` (in-app deep links), `related`, and `status`
+     accurate; mark `partial`/`coming-soon` honestly.
+   - Illustrate with a screenshot when a public or signed-in screen exists, and
+     refresh images via `web/scripts/capture-help-screenshots.mjs` (it captures
+     public surfaces from staging and signed-in shells via mock auth — see the
+     [feature page](docs/features/user_manual.md)).
+   - The content-integrity test `web/src/lib/help/help.test.ts` must stay green:
+     it guards unique slugs, valid related links, known categories/audiences,
+     and that **every referenced screenshot file exists**.
+   - Not every change needs a guide edit — pure internal, backend, infra, or
+     refactor work with no user-visible effect usually does not.
+
+6. **Use `/finish-issue` to enforce this.** The finish workflow includes the
+   feature catalog **and User Guide** check alongside security scans, tests,
+   commits, and PR work.
 
 ---
 
