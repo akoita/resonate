@@ -57,11 +57,17 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 
 ## Screenshots
 
-Illustrations live in `web/public/help/screenshots/` and are captured from the
-**public** surfaces of staging with `web/scripts/capture-help-screenshots.mjs`
-(`BASE_URL=… node scripts/capture-help-screenshots.mjs`). Captured today:
-Discover, Catalog, Shows, a Shows campaign, the Marketplace, the Player, the
-Wallet, and the connect wall.
+Illustrations live in `web/public/help/screenshots/` and are captured with
+`web/scripts/capture-help-screenshots.mjs` in two passes:
+
+- **Public pass** (from staging): Discover, Catalog, Shows, a Shows campaign,
+  the Marketplace, the Player, the Wallet, and the connect wall.
+- **Signed-in pass** (from a local instance): the screens behind the connect
+  wall — Upload, Create, Settings, AI DJ, Sonic Radar, Library, and the Dispute
+  Center. The script injects the same mock-auth `localStorage` the E2E tests use
+  (`web/tests/auth.setup.ts`) to render the signed-in shells, so no real passkey
+  login is needed. Run it against a local instance:
+  `BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs`.
 
 ## Surfaces
 
@@ -81,10 +87,13 @@ community, disputes, settings/privacy, troubleshooting, and the desktop app.
 
 Tracked follow-ups:
 
-- Authenticated-only screens (Create, Upload, Settings, Disputes, AI DJ,
-  Sonic Radar, Community, Library) are documented with text and deep links;
-  capturing logged-in screenshots needs an authenticated capture pass and is
-  deferred (passkey login can't be automated in the public capture script).
+- Signed-in screens are now illustrated via the mock-auth capture pass (Upload,
+  Create, Settings, AI DJ, Sonic Radar, Library, Disputes). A few **data-heavy
+  owner views** still show an empty/error state without a seeded backend, so
+  they're documented with text + deep links rather than screenshots: Artist
+  Analytics, Managed Catalog, and the Community benefits/cohorts hub. Capturing
+  these needs a seeded local backend (the mock JWT isn't accepted by the backend
+  for owner-scoped data) and is deferred.
 - The guide should keep expanding as features ship — it is a living surface,
   like the feature catalog.
 
