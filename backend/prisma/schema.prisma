@@ -1380,6 +1380,13 @@ model ShowCampaign {
   artistAuthorityStatus       ShowArtistAuthorityStatus    @default(none)
   authorityCredentialId       String?
   authorityEvidenceBundleId   String?
+  // #946: tamper-evident hash of the critical fan-risk terms (goal, deadline,
+  // beneficiary, payment asset/network, deposit-release bps, release policy,
+  // dispute window, booking deadline, tiers) snapshotted at the moment artist
+  // authority is approved. Once set, those terms are locked: editing them is
+  // refused until authority is revoked, and activation re-verifies the live
+  // terms still hash to this value. The full snapshot lives in metadata.approvedTerms.
+  approvedTermsHash           String?
   beneficiaryAddress          String?
   beneficiaryType             ShowCampaignBeneficiaryType?
   bookingDeadline             DateTime?
