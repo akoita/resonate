@@ -895,6 +895,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open a campaign to see its goal, deadline, backers, and the artist-approved terms.",
               "Send your signal — a free way to show interest — or pledge funds toward the goal.",
+              "Before signing, a confirmation step recaps your pledge amount and the refund and release terms — review it, then confirm.",
               "Approve the pledge with your passkey; it's held in escrow, not paid out yet.",
             ],
           },

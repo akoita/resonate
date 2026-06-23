@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import {
   useShowPledgeExecution,
   useShowRefundExecution,
@@ -15,6 +16,7 @@ import {
   createPledgeIntent,
   formatMoney,
   listMyShowPledges,
+  pledgeConfirmSummary,
   pledgeStateLabel,
   type Campaign,
   type CampaignTier,
@@ -49,6 +51,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
   const [myPledgesLoading, setMyPledgesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const selectedTier = useMemo(
     () => tiers.find((tier) => tier.id === selectedTierId) ?? tiers[0],
@@ -155,6 +158,18 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     }
   }
 
+  // #1240: gate the wallet signature behind an explicit terms confirmation.
+  // If the wallet isn't connected yet, connect first (no dialog); otherwise
+  // open the confirm dialog and run the pledge only once the fan confirms.
+  async function handlePledgeClick() {
+    if (!selectedTier) return;
+    if (!token || !walletAddress) {
+      await connect();
+      return;
+    }
+    setConfirmOpen(true);
+  }
+
   async function refund() {
     if (!latestPledge) return;
     if (!token || !walletAddress) {
@@ -246,7 +261,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         <button
           type="button"
           className="show-detail__pledge-action"
-          onClick={pledge}
+          onClick={handlePledgeClick}
           disabled={loading || pending || refundPending || !selectedTier}
         >
           {buttonLabel}
@@ -279,6 +294,21 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         <p className="show-detail__pledge-error" role="alert">
           {activeError}
         </p>
+      ) : null}
+
+      {pledgingOpen && selectedTier ? (
+        <ConfirmDialog
+          isOpen={confirmOpen}
+          title="Confirm your pledge"
+          message={pledgeConfirmSummary(campaign, selectedTier)}
+          confirmLabel="Pledge with wallet"
+          cancelLabel="Cancel"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={async () => {
+            setConfirmOpen(false);
+            await pledge();
+          }}
+        />
       ) : null}
     </article>
   );

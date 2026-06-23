@@ -12,6 +12,7 @@ import {
   releasePolicyLabel,
   campaignDisputeView,
   campaignPledgeAvailability,
+  pledgeConfirmSummary,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -338,5 +339,49 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
     } as unknown as Campaign);
     expect(result.open).toBe(false);
     expect(result.key).toBe("closed");
+  });
+});
+
+describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
+  const campaign = {
+    goalCents: 300000,
+    currency: "USD",
+    deadline: "2026-07-01T00:00:00.000Z",
+    bookingDeadline: "2026-07-15T00:00:00.000Z",
+    thresholdBackers: 100,
+    paymentAssetSymbol: "USDC",
+    chainId: 84532,
+    depositReleaseBps: 1000,
+    disputeWindowSeconds: 604800,
+    releasePolicy: "staged_release",
+  } as unknown as Campaign;
+
+  const tier = { title: "Ticket intent", amountCents: 7500, currency: "USD" as const };
+
+  it("summarizes the selected tier amount and the fan-risk terms", () => {
+    const summary = pledgeConfirmSummary(campaign, tier);
+    expect(summary).toContain("$75");
+    expect(summary).toContain("Ticket intent");
+    expect(summary).toContain("Payment: USDC on Base Sepolia");
+    expect(summary).toContain("Deposit released on booking: 10%");
+    expect(summary).toContain("Dispute window: 7 days");
+    expect(summary).toContain("Refund policy: Staged release");
+  });
+
+  it("never promises a guaranteed ticket", () => {
+    const summary = pledgeConfirmSummary(campaign, tier).toLowerCase();
+    expect(summary).toContain("never guarantees a ticket");
+    expect(summary).toContain("refunded automatically");
+    expect(summary).not.toContain("guaranteed ticket");
+  });
+
+  it("omits term rows that are unknown rather than showing a dash", () => {
+    const summary = pledgeConfirmSummary(
+      { ...campaign, depositReleaseBps: null } as unknown as Campaign,
+      tier,
+    );
+    expect(summary).not.toContain("Deposit released on booking");
+    // Other known rows still present.
+    expect(summary).toContain("Dispute window: 7 days");
   });
 });

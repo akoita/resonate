@@ -399,6 +399,33 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
   ];
 }
 
+/**
+ * #1240: pre-sign confirmation summary shown before the wallet signature, so a
+ * fan confirms the fan-risk terms at the moment of commitment (not just on the
+ * page). Composed from {@link campaignTerms} + {@link formatMoney} so it can't
+ * drift from the on-page terms panel. Returned as a `\n`-joined string for the
+ * shared `ConfirmDialog` (which renders `message` with `white-space: pre-line`).
+ */
+export function pledgeConfirmSummary(
+  campaign: Campaign,
+  tier: Pick<CampaignTier, "title" | "amountCents" | "currency">,
+): string {
+  const terms = campaignTerms(campaign);
+  const pick = (label: string) => terms.find((term) => term.label === label)?.value;
+  const lines = [`You're pledging ${formatMoney(tier.amountCents, tier.currency)} — ${tier.title}.`, ""];
+  for (const label of ["Payment", "Deposit released on booking", "Refund policy", "Dispute window"]) {
+    const value = pick(label);
+    if (value && value !== "—") {
+      lines.push(`${label}: ${value}`);
+    }
+  }
+  lines.push("");
+  lines.push(
+    "Funds are held in escrow. Funding never guarantees a ticket — your pledge is refunded automatically if the show isn't confirmed.",
+  );
+  return lines.join("\n");
+}
+
 export type CampaignDisputeView = {
   /** "active" | "resolved" | "none" — fan-visible status from the public DTO. */
   status: string;
