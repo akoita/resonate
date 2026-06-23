@@ -14,6 +14,9 @@ import type { HelpArticle } from "./types";
 
 const SHOT = "/help/screenshots";
 const STAGING = "Staging";
+// Authenticated-only screens, captured from a local instance in a signed-in
+// preview state (sample data), since signed-in screens aren't publicly reachable.
+const LOCAL = "Signed-in preview";
 
 export const HELP_ARTICLES: HelpArticle[] = [
   // ───────────────────────────── Get started ─────────────────────────────
@@ -314,9 +317,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "steps",
             items: [
               "Open AI DJ and connect if you haven't already.",
+              "The first time, give your DJ a name to set up your agent.",
               "Choose a session intent or a mood to set the direction.",
               "Press play — use Next AI Pick to skip ahead, and your feedback shapes future picks.",
             ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/ai-dj.png`,
+              alt: "The AI DJ setup dialog headed 'Name Your DJ' with a text field and a Next button, explaining the DJ will curate, negotiate, and remix tracks for you in real time.",
+              caption: "Setting up your AI DJ the first time you open it.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -327,6 +342,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Sonic Radar is your discovery dashboard — AI-curated releases and stems chosen from across the catalog so you keep finding music outside your usual rotation.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/sonic-radar.png`,
+              alt: "The Sonic Radar page with a radar icon, the heading 'Sonic Radar', a description of AI-curated discoveries, and a 'No discoveries yet' empty state with a 'Launch AI DJ' button.",
+              caption: "Sonic Radar before your first session — launch the AI DJ to start filling it.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
           {
             kind: "callout",
@@ -359,6 +385,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Your library is everything you have saved. Save a track from Discover, a release page, the catalog, or the Player, and it appears here ready to play.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/library.png`,
+              alt: "The 'My Library' page with tabs for Tracks, Artists, Albums, Playlists, Stems, and AI Creations, a search field, and a 'Your library is quiet' empty state offering to add a music folder or browse the catalog.",
+              caption: "Your library starts empty — save tracks or add a local music folder to fill it.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -550,8 +587,20 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Open Create and connect if needed.",
               "Describe the music you want — genre, mood, instruments, tempo.",
+              "Pick a duration and an optional style preset.",
               "Generate, preview the result, and refine your prompt until you're happy.",
             ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/create.png`,
+              alt: "The 'Create with AI' page with a prompt text area describing a track, duration options (30s, 1 min, 2 min, 3 min), and style presets such as Lo-fi Chill, Afrobeat, Ambient, Funk, and Jazz.",
+              caption: "Create: describe the track, choose a length and style, and generate.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -637,7 +686,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
-      { label: "Remix Studio", href: "/remix", description: "Your remix projects and drafts." },
+      { label: "Browse the catalog", href: "/catalog", description: "Open a release or stem to find its Remix button." },
       { label: "Marketplace", href: "/marketplace", description: "Collect a remix-tier stem to get started." },
     ],
     related: ["marketplace-buy", "create-ai-music", "rights-protection"],
@@ -664,6 +713,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Add your audio file and cover art.",
               "Resonate processes the track and separates it into stems (vocals, drums, bass, and more) automatically.",
             ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/upload.png`,
+              alt: "The Upload page with a 'Drop audio files here or browse' drop zone supporting MP3/WAV/FLAC/AIFF, and a Release Settings panel with release type, artwork, release title, primary artist, and genre fields plus a Publish release button.",
+              caption: "The upload studio: drop your audio on the left, fill in release details on the right.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -1005,6 +1065,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Track the case from the Disputes area as it's reviewed.",
             ],
           },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/disputes.png`,
+              alt: "The Dispute Center page with a reputation summary (upheld and rejected counts), tabs for My Reports, Against My Content, and Jury Duty, and a 'No reports filed yet' empty state.",
+              caption: "The Dispute Center: your reports, claims against your content, and jury duty in one place.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
         ],
       },
       {
@@ -1055,6 +1126,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "You decide how much your activity personalizes Resonate. From Settings you can view a plain-language summary of your taste, opt in or out of social taste matching, control city/scene discovery, choose whether AI DJ playback trains your taste, hide or downrank signals, and reset your taste inputs — without ever exposing your raw history.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/settings.png`,
+              alt: "The Settings page with a left-hand list of sections — Library, Taste Memory, Artist, Community, Listener Cohorts, and Notifications — and the Library section open on the right.",
+              caption: "Settings groups your controls by area — pick Taste Memory, Notifications, and more from the left.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
