@@ -65,6 +65,20 @@ describe("CampaignTrustPanel (#949)", () => {
     expect(html).not.toContain("0x1234567890abcdef1234567890abcdef12345678");
   });
 
+  it("surfaces an active dispute and hides the row when there is none (#950)", () => {
+    const active = renderToStaticMarkup(
+      <CampaignTrustPanel
+        campaign={{ ...baseCampaign, disputeStatus: "active", disputeWindowClosesAt: "2026-08-01T00:00:00.000Z" }}
+      />,
+    );
+    expect(active).toContain('data-dispute="active"');
+    expect(active).toContain("Dispute under review");
+    expect(active).toContain("Final release is paused");
+
+    const none = renderToStaticMarkup(<CampaignTrustPanel campaign={baseCampaign} />);
+    expect(none).not.toContain("campaign-trust__dispute");
+  });
+
   it("surfaces refund-available and cancelled trust states", () => {
     const refund = renderToStaticMarkup(
       <CampaignTrustPanel campaign={{ ...baseCampaign, rawStatus: "refund_available" }} />,
