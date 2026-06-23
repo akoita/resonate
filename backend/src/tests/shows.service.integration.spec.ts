@@ -1293,6 +1293,35 @@ describe("ShowsService integration", () => {
     expect(listedCampaign).not.toHaveProperty("heroImageStorageUri");
   });
 
+  it("operator-scoped read exposes evidence ids + disputes to operator/owner, denies strangers (#949)", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Annecy");
+    await prisma.showCampaignDispute.create({
+      data: { campaignId: campaign.id, initiatorRole: "operator", status: "open", reason: "venue check" },
+    });
+
+    // Operator sees the withheld authority evidence ids + the dispute list.
+    const managed = (await service.getManagedCampaign(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+    )) as Record<string, any>;
+    expect(managed.authorityCredentialId).toBe(`${TEST_PREFIX}Annecy-credential`);
+    expect(managed.authorityEvidenceBundleId).toBe(`${TEST_PREFIX}Annecy-authority`);
+    expect(Array.isArray(managed.disputes)).toBe(true);
+    expect(managed.disputes[0]).toMatchObject({ status: "open", reason: "venue check" });
+
+    // The owning artist can read it too.
+    const owned = (await service.getManagedCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+    )) as Record<string, any>;
+    expect(owned.authorityEvidenceBundleId).toBe(`${TEST_PREFIX}Annecy-authority`);
+
+    // A stranger (non-owner, non-operator) is denied.
+    await expect(
+      service.getManagedCampaign({ userId: listenerId, role: "listener" }, campaign.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it("cancels an active campaign into refund availability with lifecycle events", async () => {
     const { campaign } = await createActiveCampaignWithTier("Rennes");
 
