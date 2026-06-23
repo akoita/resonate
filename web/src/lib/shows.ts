@@ -271,7 +271,7 @@ export function campaignPledgeAvailability(
       key: "closed_refund",
       title: "Pledging closed",
       message:
-        "Funding conditions weren't met. Backers can claim a refund of their pledge below.",
+        "Funding conditions weren't met. Backers can claim any refund still available below.",
     };
   }
   if (authority === "revoked" || authority === "expired" || authority === "rejected") {
