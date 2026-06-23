@@ -621,6 +621,35 @@ export function serializePublicShowCampaign(campaign: any) {
   };
 }
 
+/**
+ * Operator/owner view of a campaign (#949 operator-scoped read). Extends the
+ * public DTO with the fields the public read withholds — authority evidence /
+ * credential ids and the full dispute list (id, reason, outcome, operator note)
+ * — so the operator console can prefill review inputs and resolve a specific
+ * dispute by id. Only reachable behind owner/operator authorization.
+ */
+export function serializeManagedShowCampaign(campaign: any) {
+  return {
+    ...serializePublicShowCampaign(campaign),
+    authorityCredentialId: campaign.authorityCredentialId ?? null,
+    authorityEvidenceBundleId: campaign.authorityEvidenceBundleId ?? null,
+    bookingEvidenceBundleId: campaign.bookingEvidenceBundleId ?? null,
+    fulfillmentEvidenceBundleId: campaign.fulfillmentEvidenceBundleId ?? null,
+    disputes: Array.isArray(campaign.disputes)
+      ? campaign.disputes.map((d: any) => ({
+          id: d.id,
+          status: d.status,
+          outcome: d.outcome ?? null,
+          reason: d.reason ?? null,
+          operatorNote: d.operatorNote ?? null,
+          initiatorRole: d.initiatorRole ?? null,
+          createdAt: d.createdAt,
+          resolvedAt: d.resolvedAt ?? null,
+        }))
+      : [],
+  };
+}
+
 function configuredDefaultPaymentTokenAddress() {
   return validateOptionalAddress(
     optionalText(process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS)
@@ -690,6 +719,26 @@ export class ShowsService {
     // #949: public reads go through a whitelist DTO so sensitive authority
     // evidence / credential references and internal fields are never exposed.
     return serializePublicShowCampaign(campaign);
+  }
+
+  /**
+   * #949: operator/owner-scoped campaign read. Reuses getCampaignForMutation's
+   * authorization (operator/admin OR the campaign's managing artist), then
+   * returns the managed DTO including the withheld authority evidence ids and
+   * the full dispute list (so the operator console can prefill review inputs
+   * and resolve a dispute by id, unblocking the #950 operator controls).
+   */
+  async getManagedCampaign(actor: Actor, campaignId: string) {
+    const base = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await prisma.showCampaign.findUnique({
+      where: { id: base.id },
+      include: {
+        tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        disputes: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    return serializeManagedShowCampaign(campaign!);
   }
 
   async createSignal(actor: Actor, input: CreateSignalInput) {
