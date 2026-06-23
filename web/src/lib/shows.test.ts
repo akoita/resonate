@@ -11,6 +11,7 @@ import {
   chainName,
   releasePolicyLabel,
   campaignDisputeView,
+  campaignPledgeAvailability,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -255,5 +256,87 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     expect(maskAddress(null)).toBe("—");
     expect(chainName(11155111)).toBe("Sepolia");
     expect(releasePolicyLabel("refund_only_until_booking")).toContain("Refund-only");
+  });
+});
+
+describe("campaignPledgeAvailability empty states (#949)", () => {
+  const openCampaign = {
+    campaignLevel: "active_escrow_campaign",
+    rawStatus: "active",
+    artistAuthorityStatus: "artist_authorized",
+    beneficiaryAddress: "0x1234567890abcdef1234567890abcdef12345678",
+    beneficiaryType: "wallet",
+  } as unknown as Campaign;
+
+  it("opens pledging only when the campaign mirrors the server's pledgeable gate", () => {
+    const result = campaignPledgeAvailability(openCampaign);
+    expect(result.open).toBe(true);
+    expect(result.key).toBe("open");
+  });
+
+  it("flags a provisional campaign as awaiting artist authority", () => {
+    const result = campaignPledgeAvailability({
+      ...openCampaign,
+      campaignLevel: "provisional_campaign",
+      artistAuthorityStatus: "none",
+    } as unknown as Campaign);
+    expect(result.open).toBe(false);
+    expect(result.key).toBe("pending_authority");
+    expect(result.message.toLowerCase()).toContain("operator");
+  });
+
+  it("treats an unbound beneficiary as still pending even when authorized", () => {
+    const result = campaignPledgeAvailability({
+      ...openCampaign,
+      beneficiaryAddress: null,
+      beneficiaryType: null,
+    } as unknown as Campaign);
+    expect(result.key).toBe("pending_authority");
+  });
+
+  it("flags revoked / rejected / expired authority as not authorized", () => {
+    for (const authority of ["revoked", "rejected", "expired"]) {
+      const result = campaignPledgeAvailability({
+        ...openCampaign,
+        artistAuthorityStatus: authority,
+      } as unknown as Campaign);
+      expect(result.open).toBe(false);
+      expect(result.key).toBe("not_authorized");
+    }
+  });
+
+  it("labels a demand signal honestly (no escrow)", () => {
+    const result = campaignPledgeAvailability({
+      ...openCampaign,
+      campaignLevel: "signal",
+    } as unknown as Campaign);
+    expect(result.key).toBe("signal");
+    expect(result.message.toLowerCase()).toContain("demand signal");
+  });
+
+  it("closes pledging for terminal/refund states ahead of authority checks", () => {
+    expect(campaignPledgeAvailability({ ...openCampaign, rawStatus: "cancelled" } as unknown as Campaign).key).toBe(
+      "cancelled",
+    );
+    expect(
+      campaignPledgeAvailability({ ...openCampaign, rawStatus: "refund_available" } as unknown as Campaign).key,
+    ).toBe("closed_refund");
+    // Terminal wins even when authority is also broken.
+    expect(
+      campaignPledgeAvailability({
+        ...openCampaign,
+        rawStatus: "cancelled",
+        artistAuthorityStatus: "revoked",
+      } as unknown as Campaign).key,
+    ).toBe("cancelled");
+  });
+
+  it("closes pledging for an authorized campaign that is no longer active", () => {
+    const result = campaignPledgeAvailability({
+      ...openCampaign,
+      rawStatus: "booking_confirmed",
+    } as unknown as Campaign);
+    expect(result.open).toBe(false);
+    expect(result.key).toBe("closed");
   });
 });

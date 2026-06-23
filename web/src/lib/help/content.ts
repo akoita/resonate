@@ -899,6 +899,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             ],
           },
           {
+            kind: "paragraph",
+            text: "Pledging only opens once a campaign is an artist-authorized escrow campaign. Until then — while it's still a demand signal or awaiting artist authority — the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
+          },
+          {
             kind: "figure",
             figure: {
               src: `${SHOT}/show-campaign.png`,
