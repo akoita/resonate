@@ -183,6 +183,12 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "press photo via Crossover Music Magazine"),
       },
       {
+        key: "angels",
+        file: "felicia-angels-cover.jpg",
+        caption: "Felicia Farerre — “In the Company of Angels” cover.",
+        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "album cover art"),
+      },
+      {
         key: "venue",
         file: "felicia-farerre-dublin-venue.jpg",
         caption: "3Olympia Theatre, Dublin — the proposed setting for this fictional campaign.",
