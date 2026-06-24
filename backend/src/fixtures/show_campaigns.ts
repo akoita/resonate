@@ -3,13 +3,22 @@ import { extname, resolve } from "path";
 import type { PrismaClient } from "@prisma/client";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
+export type ShowGalleryAsset = {
+  /** Stable suffix for the visual id: `sample-<slug>-<key>`. */
+  key: string;
+  file: string;
+  caption: string;
+  credit: string;
+};
+
 export type ShowCampaignFixture = {
   artist: {
     id: string;
     displayName: string;
     summary: string;
     socialLinks: Record<string, string>;
-    portraitAsset?: string;
+    /** Gallery key whose image is used as the artist portrait; falls back to the hero. */
+    portraitKey?: string;
   };
   campaign: {
     id: string;
@@ -28,8 +37,9 @@ export type ShowCampaignFixture = {
     currency: "EUR" | "USD";
     description: string;
     heroAsset: string;
-    cityAsset: string;
   };
+  /** Immersive gallery images (venue, city, real artist photos/artwork). */
+  gallery: ShowGalleryAsset[];
   tiers: Array<{
     id: string;
     title: string;
@@ -60,6 +70,10 @@ const standardTiers = (prefix: string): ShowCampaignFixture["tiers"] => [
   },
 ];
 
+/** Credit string for an image owned by the artist/label with no open license (demo use only). */
+const OFFICIAL_DEMO_CREDIT = (owner: string, source: string) =>
+  `© ${owner} — ${source}; all rights reserved, used for non-commercial demo content only`;
+
 export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
   {
     artist: {
@@ -71,6 +85,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e",
         instagram: "https://www.instagram.com/senna__rin/",
       },
+      portraitKey: "mv",
     },
     campaign: {
       id: "sample-show-sennarin-paris",
@@ -89,8 +104,27 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "EUR",
       description: "A cinematic Paris night for a voice built to fill the room. This fan-created concept pairs SennaRin's atmospheric sound with the ornate intimacy of Le Trianon—turning scattered European demand into one visible, refundable signal.",
       heroAsset: "sennarin-paris-hero.jpg",
-      cityAsset: "sennarin-paris-venue.jpg",
     },
+    gallery: [
+      {
+        key: "mv",
+        file: "sennarin-mv.jpg",
+        caption: "SennaRin in a still from one of her official music videos.",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "official music video (via YouTube)"),
+      },
+      {
+        key: "studio",
+        file: "sennarin-studio.jpg",
+        caption: "SennaRin recording in studio.",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "official video (via YouTube)"),
+      },
+      {
+        key: "venue",
+        file: "sennarin-paris-venue.jpg",
+        caption: "Le Trianon, Paris — the proposed setting for this fictional campaign.",
+        credit: "Celette, CC BY-SA 4.0 (Wikimedia Commons)",
+      },
+    ],
     tiers: standardTiers("sennarin-paris"),
     sources: [
       { label: "SennaRin official website", url: "https://www.sennarin.com/" },
@@ -126,8 +160,21 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "EUR",
       description: "From trailer-scale power to a pin-drop vocal, Felicia Farerre's music invites a theatrical room. This Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre, backed by a fan signal strong enough to begin a real booking conversation.",
       heroAsset: "felicia-farerre-dublin-hero.jpg",
-      cityAsset: "felicia-farerre-dublin-venue.jpg",
     },
+    gallery: [
+      {
+        key: "artwork",
+        file: "felicia-farerre-artwork.jpg",
+        caption: "Felicia Farerre — official release artwork, “The Healing Hour”.",
+        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "official release artwork (feliciafarerre.com)"),
+      },
+      {
+        key: "venue",
+        file: "felicia-farerre-dublin-venue.jpg",
+        caption: "3Olympia Theatre, Dublin — the proposed setting for this fictional campaign.",
+        credit: "William Murphy, CC BY-SA 2.0 (Wikimedia Commons)",
+      },
+    ],
     tiers: standardTiers("felicia-farerre-dublin"),
     sources: [
       { label: "Felicia Farerre official website", url: "https://www.feliciafarerre.com/" },
@@ -145,7 +192,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537",
         instagram: "https://www.instagram.com/leonalewis/",
       },
-      portraitAsset: "leona-lewis-portrait.jpg",
+      portraitKey: "portrait",
     },
     campaign: {
       id: "sample-show-leona-lewis-lagos",
@@ -164,8 +211,27 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "USD",
       description: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept brings Leona Lewis's pop-soul catalogue into a city that knows how to turn a great vocal into a communal event—if the demand signal can make the journey viable.",
       heroAsset: "leona-lewis-lagos-hero.jpg",
-      cityAsset: "leona-lewis-lagos-city.jpg",
     },
+    gallery: [
+      {
+        key: "portrait",
+        file: "leona-lewis-portrait.jpg",
+        caption: "Leona Lewis.",
+        credit: "Mercy For Animals; crop by Lucas Secret, CC BY 2.0 (Wikimedia Commons)",
+      },
+      {
+        key: "performance",
+        file: "leona-lewis-performance.jpg",
+        caption: "Leona Lewis performing (Royal Variety Performance, 2011).",
+        credit: "Royal Variety Charity, CC BY-SA 3.0 (Wikimedia Commons)",
+      },
+      {
+        key: "city",
+        file: "leona-lewis-lagos-city.jpg",
+        caption: "Lagos skyline.",
+        credit: "SmartAfricanBoy, CC BY-SA 4.0 (Wikimedia Commons)",
+      },
+    ],
     tiers: standardTiers("leona-lewis-lagos"),
     sources: [
       { label: "Leona Lewis official website", url: "https://www.leonalewismusic.com/" },
@@ -183,7 +249,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/cf580d82-3f3e-4b86-8874-7e0fbe794f01",
         instagram: "https://www.instagram.com/ayanakamura_officiel/",
       },
-      portraitAsset: "aya-nakamura-portrait.jpg",
+      portraitKey: "portrait",
     },
     campaign: {
       id: "sample-show-aya-nakamura-montreal",
@@ -202,8 +268,21 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "USD",
       description: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line. This concept turns that cultural fit into a measurable signal for an electric Aya Nakamura night at MTELUS.",
       heroAsset: "aya-nakamura-montreal-hero.jpg",
-      cityAsset: "aya-nakamura-montreal-city.jpg",
     },
+    gallery: [
+      {
+        key: "portrait",
+        file: "aya-nakamura-portrait.jpg",
+        caption: "Aya Nakamura performing.",
+        credit: "Ayanakamura_officielfan, CC0 (Wikimedia Commons)",
+      },
+      {
+        key: "city",
+        file: "aya-nakamura-montreal-city.jpg",
+        caption: "Montréal at night.",
+        credit: "Mathieu Landretti, CC BY-SA 4.0 (Wikimedia Commons)",
+      },
+    ],
     tiers: standardTiers("aya-nakamura-montreal"),
     sources: [
       { label: "Aya Nakamura official website", url: "https://ayanakamura.com/" },
@@ -230,6 +309,16 @@ function mimeTypeFor(path: string): string {
   throw new Error(`Unsupported show fixture image type: ${extension || "none"}`);
 }
 
+/** Total number of campaign visuals the fixtures produce (hero + card + gallery). */
+export function expectedVisualCount(): number {
+  return SHOW_CAMPAIGN_FIXTURES.reduce((total, fixture) => total + 2 + fixture.gallery.length, 0);
+}
+
+/** Total number of campaign tiers the fixtures produce. */
+export function expectedTierCount(): number {
+  return SHOW_CAMPAIGN_FIXTURES.reduce((total, fixture) => total + fixture.tiers.length, 0);
+}
+
 export function validateShowCampaignFixtures(assetDirectory: string) {
   const ids = new Set<string>();
   const slugs = new Set<string>();
@@ -240,8 +329,18 @@ export function validateShowCampaignFixtures(assetDirectory: string) {
     slugs.add(fixture.campaign.slug);
     if (!fixture.artist.summary.trim()) throw new Error(`Missing artist summary: ${fixture.artist.displayName}`);
     if (fixture.sources.length < 2) throw new Error(`Insufficient sources: ${fixture.artist.displayName}`);
-    const assetNames = [fixture.campaign.heroAsset, fixture.campaign.cityAsset, fixture.artist.portraitAsset]
-      .filter((value): value is string => Boolean(value));
+    if (fixture.gallery.length === 0) throw new Error(`No gallery images: ${fixture.artist.displayName}`);
+
+    const galleryKeys = new Set<string>();
+    for (const asset of fixture.gallery) {
+      if (galleryKeys.has(asset.key)) throw new Error(`Duplicate gallery key ${asset.key} on ${fixture.campaign.slug}`);
+      galleryKeys.add(asset.key);
+    }
+    if (fixture.artist.portraitKey && !galleryKeys.has(fixture.artist.portraitKey)) {
+      throw new Error(`portraitKey ${fixture.artist.portraitKey} not present in gallery for ${fixture.campaign.slug}`);
+    }
+
+    const assetNames = [fixture.campaign.heroAsset, ...fixture.gallery.map((asset) => asset.file)];
     for (const assetName of assetNames) {
       const path = resolve(assetDirectory, assetName);
       if (!existsSync(path)) throw new Error(`Missing show fixture asset: ${path}`);
@@ -271,21 +370,65 @@ export async function applyShowCampaignFixtures(
       return { mimeType, storageUri: stored.uri };
     };
 
+    const visualUrl = (key: string) => `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-${key}`;
+
     const hero = await uploadAsset(fixture.campaign.heroAsset);
-    const city = await uploadAsset(fixture.campaign.cityAsset);
-    const portrait = fixture.artist.portraitAsset
-      ? await uploadAsset(fixture.artist.portraitAsset)
-      : null;
+    const gallery: Array<{ asset: ShowGalleryAsset; stored: { mimeType: string; storageUri: string } }> = [];
+    for (const asset of fixture.gallery) {
+      const stored = await uploadAsset(asset.file);
+      gallery.push({ asset, stored });
+    }
+
     const heroUrl = `/shows/campaigns/${fixture.campaign.id}/visuals/hero`;
     const cardUrl = `/shows/campaigns/${fixture.campaign.id}/visuals/card`;
+    const artistImageUrl = fixture.artist.portraitKey ? visualUrl(fixture.artist.portraitKey) : heroUrl;
+
+    const campaignData = {
+      slug: fixture.campaign.slug,
+      artistId: fixture.artist.id,
+      artistDisplayName: fixture.artist.displayName,
+      artistImageUrl,
+      heroImageUrl: heroUrl,
+      heroImageStorageUri: hero.storageUri,
+      heroImageMimeType: hero.mimeType,
+      cardImageUrl: cardUrl,
+      cardImageStorageUri: hero.storageUri,
+      cardImageMimeType: hero.mimeType,
+      title: fixture.campaign.title,
+      description: fixture.campaign.description,
+      city: fixture.campaign.city,
+      country: fixture.campaign.country,
+      venueTarget: fixture.campaign.venueTarget,
+      targetDate: dateFrom(now, fixture.campaign.targetDays),
+      deadline: dateFrom(now, fixture.campaign.deadlineDays),
+      bookingDeadline: dateFrom(now, fixture.campaign.bookingDeadlineDays),
+      goalAmountUnits: fixture.campaign.goalAmountUnits,
+      raisedAmountUnits: fixture.campaign.raisedAmountUnits,
+      minimumBackers: fixture.campaign.minimumBackers,
+      confirmedPledgeCount: fixture.campaign.confirmedPledgeCount,
+      uniqueBackerCount: fixture.campaign.confirmedPledgeCount,
+      currency: fixture.campaign.currency,
+      paymentAssetSymbol: "USDC",
+      paymentAssetDecimals: 6,
+      chainId: options.chainId,
+      status: "active" as const,
+      campaignLevel: "active_escrow_campaign" as const,
+      artistAuthorityStatus: "none" as const,
+      metadata: {
+        fixture: true,
+        fixtureSet: "sample-show-campaigns/v1",
+        fictionalCampaign: true,
+        artistEndorsed: false,
+        venueConfirmed: false,
+        sources: fixture.sources,
+      },
+    };
 
     await prisma.artist.upsert({
       where: { id: fixture.artist.id },
       update: {
         displayName: fixture.artist.displayName,
-        imageUrl: portrait
-          ? `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-portrait`
-          : heroUrl,
+        imageUrl: artistImageUrl,
         summary: fixture.artist.summary,
         socialLinks: fixture.artist.socialLinks,
         profileType: "fixture",
@@ -294,9 +437,7 @@ export async function applyShowCampaignFixtures(
       create: {
         id: fixture.artist.id,
         displayName: fixture.artist.displayName,
-        imageUrl: portrait
-          ? `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-portrait`
-          : heroUrl,
+        imageUrl: artistImageUrl,
         summary: fixture.artist.summary,
         socialLinks: fixture.artist.socialLinks,
         profileType: "fixture",
@@ -306,91 +447,8 @@ export async function applyShowCampaignFixtures(
 
     await prisma.showCampaign.upsert({
       where: { id: fixture.campaign.id },
-      update: {
-        slug: fixture.campaign.slug,
-        artistId: fixture.artist.id,
-        artistDisplayName: fixture.artist.displayName,
-        artistImageUrl: portrait
-          ? `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-portrait`
-          : heroUrl,
-        heroImageUrl: heroUrl,
-        heroImageStorageUri: hero.storageUri,
-        heroImageMimeType: hero.mimeType,
-        cardImageUrl: cardUrl,
-        cardImageStorageUri: hero.storageUri,
-        cardImageMimeType: hero.mimeType,
-        title: fixture.campaign.title,
-        description: fixture.campaign.description,
-        city: fixture.campaign.city,
-        country: fixture.campaign.country,
-        venueTarget: fixture.campaign.venueTarget,
-        targetDate: dateFrom(now, fixture.campaign.targetDays),
-        deadline: dateFrom(now, fixture.campaign.deadlineDays),
-        bookingDeadline: dateFrom(now, fixture.campaign.bookingDeadlineDays),
-        goalAmountUnits: fixture.campaign.goalAmountUnits,
-        raisedAmountUnits: fixture.campaign.raisedAmountUnits,
-        minimumBackers: fixture.campaign.minimumBackers,
-        confirmedPledgeCount: fixture.campaign.confirmedPledgeCount,
-        uniqueBackerCount: fixture.campaign.confirmedPledgeCount,
-        currency: fixture.campaign.currency,
-        paymentAssetSymbol: "USDC",
-        paymentAssetDecimals: 6,
-        chainId: options.chainId,
-        status: "active",
-        campaignLevel: "active_escrow_campaign",
-        artistAuthorityStatus: "none",
-        metadata: {
-          fixture: true,
-          fixtureSet: "sample-show-campaigns/v1",
-          fictionalCampaign: true,
-          artistEndorsed: false,
-          venueConfirmed: false,
-          sources: fixture.sources,
-        },
-      },
-      create: {
-        id: fixture.campaign.id,
-        slug: fixture.campaign.slug,
-        artistId: fixture.artist.id,
-        artistDisplayName: fixture.artist.displayName,
-        artistImageUrl: portrait
-          ? `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-portrait`
-          : heroUrl,
-        heroImageUrl: heroUrl,
-        heroImageStorageUri: hero.storageUri,
-        heroImageMimeType: hero.mimeType,
-        cardImageUrl: cardUrl,
-        cardImageStorageUri: hero.storageUri,
-        cardImageMimeType: hero.mimeType,
-        title: fixture.campaign.title,
-        description: fixture.campaign.description,
-        city: fixture.campaign.city,
-        country: fixture.campaign.country,
-        venueTarget: fixture.campaign.venueTarget,
-        targetDate: dateFrom(now, fixture.campaign.targetDays),
-        deadline: dateFrom(now, fixture.campaign.deadlineDays),
-        bookingDeadline: dateFrom(now, fixture.campaign.bookingDeadlineDays),
-        goalAmountUnits: fixture.campaign.goalAmountUnits,
-        raisedAmountUnits: fixture.campaign.raisedAmountUnits,
-        minimumBackers: fixture.campaign.minimumBackers,
-        confirmedPledgeCount: fixture.campaign.confirmedPledgeCount,
-        uniqueBackerCount: fixture.campaign.confirmedPledgeCount,
-        currency: fixture.campaign.currency,
-        paymentAssetSymbol: "USDC",
-        paymentAssetDecimals: 6,
-        chainId: options.chainId,
-        status: "active",
-        campaignLevel: "active_escrow_campaign",
-        artistAuthorityStatus: "none",
-        metadata: {
-          fixture: true,
-          fixtureSet: "sample-show-campaigns/v1",
-          fictionalCampaign: true,
-          artistEndorsed: false,
-          venueConfirmed: false,
-          sources: fixture.sources,
-        },
-      },
+      update: campaignData,
+      create: { id: fixture.campaign.id, ...campaignData },
     });
 
     await prisma.showCampaignTier.deleteMany({ where: { campaignId: fixture.campaign.id } });
@@ -430,28 +488,17 @@ export async function applyShowCampaignFixtures(
           caption: `${fixture.campaign.title} campaign preview.`,
           credit: "AI-generated campaign concept artwork; not an artist photograph",
         },
-        {
-          id: `sample-${fixture.campaign.slug}-city`,
+        ...gallery.map(({ asset, stored }, index) => ({
+          id: `sample-${fixture.campaign.slug}-${asset.key}`,
           campaignId: fixture.campaign.id,
           role: "gallery",
-          publicUrl: `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-city`,
-          storageUri: city.storageUri,
-          mimeType: city.mimeType,
-          sortOrder: 10,
-          caption: `${fixture.campaign.venueTarget}, the proposed setting for this fictional campaign.`,
-          credit: "Openly licensed source; full attribution in backend/fixtures/show-campaigns/README.md",
-        },
-        ...(portrait ? [{
-          id: `sample-${fixture.campaign.slug}-portrait`,
-          campaignId: fixture.campaign.id,
-          role: "gallery",
-          publicUrl: `/shows/campaigns/${fixture.campaign.id}/visuals/sample-${fixture.campaign.slug}-portrait`,
-          storageUri: portrait.storageUri,
-          mimeType: portrait.mimeType,
-          sortOrder: 11,
-          caption: fixture.artist.displayName,
-          credit: "Openly licensed artist photograph; full attribution in backend/fixtures/show-campaigns/README.md",
-        }] : []),
+          publicUrl: visualUrl(asset.key),
+          storageUri: stored.storageUri,
+          mimeType: stored.mimeType,
+          sortOrder: 10 + index,
+          caption: asset.caption,
+          credit: asset.credit,
+        })),
       ],
     });
   }

@@ -2,6 +2,8 @@ import { resolve } from "path";
 import { prisma } from "../db/prisma";
 import {
   applyShowCampaignFixtures,
+  expectedTierCount,
+  expectedVisualCount,
   SHOW_CAMPAIGN_FIXTURES,
 } from "../fixtures/show_campaigns";
 import { StorageProvider, type StorageResult } from "../modules/storage/storage_provider";
@@ -63,9 +65,10 @@ describe("sample show campaign fixture creation", () => {
       include: { tiers: true, visuals: true, artist: true },
     });
 
-    expect(campaigns).toHaveLength(4);
-    expect(campaigns.reduce((count, campaign) => count + campaign.tiers.length, 0)).toBe(12);
-    expect(campaigns.reduce((count, campaign) => count + campaign.visuals.length, 0)).toBe(14);
+    expect(campaigns).toHaveLength(SHOW_CAMPAIGN_FIXTURES.length);
+    expect(campaigns.reduce((count, campaign) => count + campaign.tiers.length, 0)).toBe(expectedTierCount());
+    expect(campaigns.reduce((count, campaign) => count + campaign.visuals.length, 0)).toBe(expectedVisualCount());
+    expect(campaigns.every((campaign) => campaign.visuals.some((visual) => visual.role === "gallery"))).toBe(true);
     expect(campaigns.every((campaign) => campaign.artist?.profileType === "fixture")).toBe(true);
     expect(campaigns.every((campaign) => (campaign.metadata as { fictionalCampaign?: boolean }).fictionalCampaign)).toBe(true);
     expect(await prisma.showCampaign.count({ where: { id: `${TEST_PREFIX}campaign` } })).toBe(1);

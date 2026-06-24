@@ -542,6 +542,11 @@ const LEONA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/e/e
 const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Eko_Atlantic_%28Lagos%29_Skyline.jpg";
 const AYA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/b/b1/Aya_Nakamura_IMG_4756_%28cropped%29.jpg";
 const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
+// Real artist images. CC for Leona; SennaRin/Felicia are official artist channels (all rights reserved, demo only).
+const SENNARIN_MV_IMAGE = "https://img.youtube.com/vi/ohFxsyrQQ68/maxresdefault.jpg";
+const SENNARIN_STUDIO_IMAGE = "https://img.youtube.com/vi/u8TUrQY7Kls/maxresdefault.jpg";
+const FELICIA_ARTWORK_IMAGE = "https://static.wixstatic.com/media/cdac98_e599aa7517da4be78e946559efe70559~mv2.jpg/v1/fill/w_1024,h_1024,al_c,q_85,enc_auto/the-healing-hour.jpg";
+const LEONA_PERFORMANCE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/d/d3/Leona_Lewis_-_Royal_Variety_Performance_2011_-_05.jpg";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
@@ -573,14 +578,18 @@ const CAMPAIGNS: Campaign[] = [
   {
     ...sampleBase,
     id: "sennarin-paris", backendId: "sennarin-paris",
-    artistName: "SennaRin", artistSlug: "sennarin", artistImage: PARIS_VENUE_IMAGE,
+    artistName: "SennaRin", artistSlug: "sennarin", artistImage: SENNARIN_MV_IMAGE,
     artistSummary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers before making her solo debut with the 2022 EP Dignified. Her expressive low register has become closely associated with cinematic anime themes.",
     artistLinks: { official: "https://www.sennarin.com/", musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e" },
     title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
     targetDate: addDays(180), deadline: addDays(21), bookingDeadline: addDays(52),
     goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
     heroImage: PARIS_VENUE_IMAGE, cardImage: PARIS_VENUE_IMAGE,
-    visuals: [{ id: "sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 10, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" }],
+    visuals: [
+      { id: "sample-sennarin-paris-mv", role: "gallery", url: SENNARIN_MV_IMAGE, sortOrder: 10, caption: "SennaRin in a still from one of her official music videos.", credit: "© SennaRin / label — official video, demo use only" },
+      { id: "sample-sennarin-paris-studio", role: "gallery", url: SENNARIN_STUDIO_IMAGE, sortOrder: 11, caption: "SennaRin recording in studio.", credit: "© SennaRin / label — official video, demo use only" },
+      { id: "sample-sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 12, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" },
+    ],
     featured: true,
     tagline: "A cinematic Paris night for a voice built to fill the room. This fan-created concept turns scattered European demand into one visible, refundable signal.",
     tiers: sampleTiers("sennarin-paris", "EUR"),
@@ -588,14 +597,17 @@ const CAMPAIGNS: Campaign[] = [
   {
     ...sampleBase,
     id: "felicia-farerre-dublin", backendId: "felicia-farerre-dublin",
-    artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: DUBLIN_VENUE_IMAGE,
+    artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: FELICIA_ARTWORK_IMAGE,
     artistSummary: "Felicia Farerre is an American recording artist, composer, producer and author whose signature vocal style spans television, advertising, films and movie trailers.",
     artistLinks: { official: "https://www.feliciafarerre.com/", musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080" },
     title: "Felicia Farerre in Dublin", city: "Dublin", country: "IE", venue: "3Olympia Theatre",
     targetDate: addDays(205), deadline: addDays(28), bookingDeadline: addDays(60),
     goalCents: 7_000_000, raisedCents: 2_940_000, currency: "EUR", backerCount: 94, thresholdBackers: 350,
     heroImage: DUBLIN_VENUE_IMAGE, cardImage: DUBLIN_VENUE_IMAGE,
-    visuals: [{ id: "felicia-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 10, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" }],
+    visuals: [
+      { id: "sample-felicia-farerre-dublin-artwork", role: "gallery", url: FELICIA_ARTWORK_IMAGE, sortOrder: 10, caption: "Felicia Farerre — official release artwork, “The Healing Hour”.", credit: "© Felicia Farerre — official artwork, demo use only" },
+      { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 11, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
+    ],
     tagline: "From trailer-scale power to a pin-drop vocal, this fan-created Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre.",
     tiers: sampleTiers("felicia-farerre-dublin", "EUR"),
   },
@@ -610,8 +622,9 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 12_000_000, raisedCents: 4_560_000, currency: "USD", backerCount: 211, thresholdBackers: 650,
     heroImage: LEONA_PORTRAIT_IMAGE, cardImage: LEONA_PORTRAIT_IMAGE,
     visuals: [
-      { id: "leona-portrait", role: "gallery", url: LEONA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Leona Lewis.", credit: "Mercy For Animals MFA / Lucas Secret, CC BY 2.0" },
-      { id: "leona-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 11, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
+      { id: "sample-leona-lewis-lagos-portrait", role: "gallery", url: LEONA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Leona Lewis.", credit: "Mercy For Animals / Lucas Secret, CC BY 2.0" },
+      { id: "sample-leona-lewis-lagos-performance", role: "gallery", url: LEONA_PERFORMANCE_IMAGE, sortOrder: 11, caption: "Leona Lewis performing (Royal Variety, 2011).", credit: "Royal Variety Charity, CC BY-SA 3.0" },
+      { id: "sample-leona-lewis-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 12, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
     ],
     tagline: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept turns local demand into a signal strong enough to make the journey viable.",
     tiers: sampleTiers("leona-lewis-lagos", "USD"),
@@ -627,8 +640,8 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 9_500_000, raisedCents: 7_410_000, currency: "USD", backerCount: 306, thresholdBackers: 550,
     heroImage: AYA_PORTRAIT_IMAGE, cardImage: AYA_PORTRAIT_IMAGE,
     visuals: [
-      { id: "aya-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura performing.", credit: "Ayanakamura_officielfan, CC0" },
-      { id: "aya-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 11, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
+      { id: "sample-aya-nakamura-montreal-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura performing.", credit: "Ayanakamura_officielfan, CC0" },
+      { id: "sample-aya-nakamura-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 11, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
     ],
     tagline: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line.",
     tiers: sampleTiers("aya-nakamura-montreal", "USD"),
