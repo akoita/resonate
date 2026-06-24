@@ -15128,3 +15128,91 @@ tr[draggable="true"]:hover {
   line-height: 1.04;
   color: #fff;
 }
+
+/* ── Update-available prompt ──────────────────────────────────────────────
+   Persistent, non-intrusive "a new version was deployed → refresh" snackbar.
+   Bottom-centre, clear of the bottom-right toasts and the player bar. */
+.update-prompt {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--space-5) + 4.5rem);
+  margin-inline: auto;
+  width: fit-content;
+  max-width: min(92vw, 30rem);
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border-radius: var(--r-radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+  backdrop-filter: blur(var(--glass-blur, 12px)) saturate(1.2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  color: var(--color-text);
+  animation: update-prompt-in 220ms ease-out;
+}
+@keyframes update-prompt-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.update-prompt__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--r-primary, var(--color-accent));
+  animation: update-prompt-pulse 1.6s ease-in-out infinite;
+}
+@keyframes update-prompt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.update-prompt__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.update-prompt__title { font-size: 0.875rem; font-weight: 600; }
+.update-prompt__hint { font-size: 0.78rem; color: var(--color-text-muted); }
+.update-prompt__refresh {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.95rem;
+  border: none;
+  border-radius: var(--r-radius-full);
+  background: var(--r-primary, var(--color-accent));
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+.update-prompt__refresh:hover { filter: brightness(1.08); }
+.update-prompt__refresh:active { transform: translateY(1px); }
+.update-prompt__dismiss {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.update-prompt__dismiss:hover { background: var(--color-surface-hover); color: var(--color-text); }
+.update-prompt__refresh:focus-visible,
+.update-prompt__dismiss:focus-visible {
+  outline: 2px solid var(--r-primary, var(--color-accent));
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-prompt,
+  .update-prompt__dot { animation: none; }
+}

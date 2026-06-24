@@ -10,6 +10,7 @@ import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
 import { AppStateGuard } from "../components/system/AppStateGuard";
+import UpdateAvailablePrompt from "../components/system/UpdateAvailablePrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -100,6 +101,7 @@ export default function RootLayout({
               <AppShell>{children}</AppShell>
             </AuthProvider>
           </ZeroDevProviderClient>
+          <UpdateAvailablePrompt />
         </ToastProvider>
       </body>
     </html>
