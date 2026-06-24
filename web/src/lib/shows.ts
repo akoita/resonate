@@ -543,8 +543,8 @@ const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71
 // Real, recent artist photos — official/press images, all rights reserved, used for demo only.
 const AYA_PORTRAIT_IMAGE = "https://www.opinion-internationale.com/wp-content/uploads/2024/03/aya-nakamura.jpeg";
 const LEONA_LIVE_IMAGE = "https://cdn-p.smehost.net/sites/5cfaf3980b294dd89a79248f35560b2f/wp-content/uploads/2023/12/Leona-Dec9-992x992.jpg";
-const SENNARIN_PORTRAIT_IMAGE = "https://www.lisani.jp/admin/wp-content/uploads/2023/12/2312251930-ak-001-1600x1200.jpg";
-const SENNARIN_STUDIO_IMAGE = "https://img.youtube.com/vi/u8TUrQY7Kls/maxresdefault.jpg";
+const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?format=jpg&name=large";
+const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
 const FELICIA_PORTRAIT_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia-1.jpg";
 const FELICIA_STUDIO_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia_Farerre.png";
 
@@ -586,8 +586,8 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
     heroImage: PARIS_VENUE_IMAGE, cardImage: PARIS_VENUE_IMAGE,
     visuals: [
-      { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin (2023 press photo).", credit: "© SennaRin / label — press photo, demo use only" },
-      { id: "sample-sennarin-paris-studio", role: "gallery", url: SENNARIN_STUDIO_IMAGE, sortOrder: 11, caption: "SennaRin recording in studio.", credit: "© SennaRin / label — official video, demo use only" },
+      { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
+      { id: "sample-sennarin-paris-editorial", role: "gallery", url: SENNARIN_EDITORIAL_IMAGE, sortOrder: 11, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
       { id: "sample-sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 12, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" },
     ],
     featured: true,

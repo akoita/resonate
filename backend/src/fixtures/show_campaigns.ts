@@ -109,14 +109,14 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       {
         key: "portrait",
         file: "sennarin-portrait.jpg",
-        caption: "SennaRin (2023 press photo).",
-        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "press photo via Lisani.jp, 2023"),
+        caption: "SennaRin.",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / staff", "official photo via @senna_rin on X"),
       },
       {
-        key: "studio",
-        file: "sennarin-studio.jpg",
-        caption: "SennaRin recording in studio.",
-        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "official video (via YouTube)"),
+        key: "editorial",
+        file: "sennarin-editorial.jpg",
+        caption: "SennaRin.",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / staff", "official photo via @senna_rin on X"),
       },
       {
         key: "venue",

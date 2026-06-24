@@ -50,8 +50,8 @@ Each campaign gallery mixes three kinds of image:
 | File | Creator/source | License | Source |
 | --- | --- | --- | --- |
 | `sennarin-paris-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as SennaRin's likeness |
-| `sennarin-portrait.jpg` | SennaRin / label | All rights reserved — demo use only | Press photo (2023) via [Lisani.jp](https://www.lisani.jp/) |
-| `sennarin-studio.jpg` | SennaRin / label | All rights reserved — demo use only | Still from an official SennaRin video (via YouTube) |
+| `sennarin-portrait.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-editorial.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
 | `felicia-farerre-dublin-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Felicia Farerre's likeness |
 | `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo (2022) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
