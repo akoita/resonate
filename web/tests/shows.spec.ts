@@ -10,6 +10,12 @@ import { test, expect } from "@playwright/test";
 
 test.describe.configure({ mode: "serial", retries: 2 });
 
+// Disable the time-based featured-hero / event-row auto-rotation (it honors
+// prefers-reduced-motion) so the featured-campaign assertions are deterministic.
+test.beforeEach(async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+});
+
 test("home hero features the SennaRin campaign and links to its detail page", async ({ page }) => {
   await page.goto("/");
   await page.waitForLoadState("domcontentloaded");

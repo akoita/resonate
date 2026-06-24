@@ -10,9 +10,6 @@ export default defineConfig({
     baseURL: process.env.BASE_URL ?? "http://localhost:3001",
     headless: true,
     trace: "on-first-retry",
-    // Deterministic UI: disables time-based auto-rotation (featured hero +
-    // "Upcoming Live Events"), which honor prefers-reduced-motion.
-    reducedMotion: "reduce",
   },
   projects: [
     {
