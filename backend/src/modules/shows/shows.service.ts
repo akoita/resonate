@@ -378,6 +378,7 @@ export class ShowsService {
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
       },
       include: {
+        artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
       },
@@ -390,6 +391,7 @@ export class ShowsService {
     const campaign = await prisma.showCampaign.findUnique({
       where: { slug },
       include: {
+        artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         events: { orderBy: { occurredAt: "desc" }, take: 50 },

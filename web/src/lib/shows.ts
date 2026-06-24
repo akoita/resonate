@@ -41,6 +41,10 @@ export interface Campaign {
   artistName: string;
   artistId?: string | null;
   artistSlug: string;
+  artistImage: string;
+  artistSummary?: string | null;
+  artistLinks: Record<string, string>;
+  isSample: boolean;
   title: string;
   city: string;
   country: string;
@@ -330,6 +334,11 @@ type BackendShowCampaign = {
   slug: string;
   artistId?: string | null;
   artistDisplayName: string;
+  artist?: {
+    imageUrl?: string | null;
+    summary?: string | null;
+    socialLinks?: unknown;
+  } | null;
   heroImageUrl?: string | null;
   cardImageUrl?: string | null;
   visuals?: BackendShowCampaignVisual[];
@@ -359,6 +368,7 @@ type BackendShowCampaign = {
   contractAddress?: string | null;
   contractCampaignId?: string | null;
   description?: string | null;
+  metadata?: unknown;
   tiers?: BackendShowCampaignTier[];
 };
 
@@ -387,6 +397,7 @@ const addDays = (days: number): string => {
   return d.toISOString();
 };
 
+/* Historical placeholder campaigns retained in the diff for easy review.
 const CAMPAIGNS: Campaign[] = [
   {
     id: "sennarin-paris",
@@ -521,6 +532,106 @@ const CAMPAIGNS: Campaign[] = [
     etherscanUrl: SEPOLIA_ETHERSCAN,
     tagline: "Afrobeats in its capital — the campaign just opened.",
     tiers: [],
+  },
+];
+*/
+
+const PARIS_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/0/0e/Le_Trianon%2C_80_boulevard_de_Rochechouart%2C_Paris_18e.jpg";
+const DUBLIN_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/a/a1/Dame_Street_-_The_Olympia_Theatre_%283433685951%29.jpg";
+const LEONA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/e/ed/Leona_Lewis_2014.jpg";
+const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Eko_Atlantic_%28Lagos%29_Skyline.jpg";
+const AYA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/b/b1/Aya_Nakamura_IMG_4756_%28cropped%29.jpg";
+const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
+
+function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
+  return [
+    { id: `${prefix}-fan-signal`, title: "Fan signal", amountCents: 2_500, currency, paymentAssetSymbol: "USDC", description: "Refundable support signal and campaign receipt." },
+    { id: `${prefix}-ticket-intent`, title: "Ticket intent", amountCents: 7_500, currency, paymentAssetSymbol: "USDC", description: "Priority allocation if the concept advances to a confirmed show." },
+    { id: `${prefix}-patron-circle`, title: "Patron circle", amountCents: 25_000, currency, paymentAssetSymbol: "USDC", description: "Premium campaign receipt and patron allocation." },
+  ];
+}
+
+const sampleBase = {
+  rawStatus: "active",
+  campaignLevel: "active_escrow_campaign",
+  artistAuthorityStatus: "none",
+  authorityCredentialId: null,
+  authorityEvidenceBundleId: null,
+  beneficiaryAddress: null,
+  beneficiaryType: null,
+  status: "active" as const,
+  featured: false,
+  contractAddress: SEPOLIA_REVENUE_ESCROW,
+  escrowContractAddress: null,
+  contractCampaignId: null,
+  paymentTokenAddress: null,
+  etherscanUrl: SEPOLIA_ETHERSCAN,
+  isSample: true,
+};
+
+const CAMPAIGNS: Campaign[] = [
+  {
+    ...sampleBase,
+    id: "sennarin-paris", backendId: "sennarin-paris",
+    artistName: "SennaRin", artistSlug: "sennarin", artistImage: PARIS_VENUE_IMAGE,
+    artistSummary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers before making her solo debut with the 2022 EP Dignified. Her expressive low register has become closely associated with cinematic anime themes.",
+    artistLinks: { official: "https://www.sennarin.com/", musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e" },
+    title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
+    targetDate: addDays(180), deadline: addDays(21), bookingDeadline: addDays(52),
+    goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
+    heroImage: PARIS_VENUE_IMAGE, cardImage: PARIS_VENUE_IMAGE,
+    visuals: [{ id: "sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 10, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" }],
+    featured: true,
+    tagline: "A cinematic Paris night for a voice built to fill the room. This fan-created concept turns scattered European demand into one visible, refundable signal.",
+    tiers: sampleTiers("sennarin-paris", "EUR"),
+  },
+  {
+    ...sampleBase,
+    id: "felicia-farerre-dublin", backendId: "felicia-farerre-dublin",
+    artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: DUBLIN_VENUE_IMAGE,
+    artistSummary: "Felicia Farerre is an American recording artist, composer, producer and author whose signature vocal style spans television, advertising, films and movie trailers.",
+    artistLinks: { official: "https://www.feliciafarerre.com/", musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080" },
+    title: "Felicia Farerre in Dublin", city: "Dublin", country: "IE", venue: "3Olympia Theatre",
+    targetDate: addDays(205), deadline: addDays(28), bookingDeadline: addDays(60),
+    goalCents: 7_000_000, raisedCents: 2_940_000, currency: "EUR", backerCount: 94, thresholdBackers: 350,
+    heroImage: DUBLIN_VENUE_IMAGE, cardImage: DUBLIN_VENUE_IMAGE,
+    visuals: [{ id: "felicia-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 10, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" }],
+    tagline: "From trailer-scale power to a pin-drop vocal, this fan-created Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre.",
+    tiers: sampleTiers("felicia-farerre-dublin", "EUR"),
+  },
+  {
+    ...sampleBase,
+    id: "leona-lewis-lagos", backendId: "leona-lewis-lagos",
+    artistName: "Leona Lewis", artistSlug: "leona-lewis", artistImage: LEONA_PORTRAIT_IMAGE,
+    artistSummary: "London-born singer, songwriter and actress Leona Lewis trained at the BRIT School before winning The X Factor in 2006. Spirit and the global reach of Bleeding Love established a pop-soul career defined by range and emotional scale.",
+    artistLinks: { official: "https://www.leonalewismusic.com/", musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537" },
+    title: "Leona Lewis in Lagos", city: "Lagos", country: "NG", venue: "Eko Convention Centre",
+    targetDate: addDays(225), deadline: addDays(35), bookingDeadline: addDays(68),
+    goalCents: 12_000_000, raisedCents: 4_560_000, currency: "USD", backerCount: 211, thresholdBackers: 650,
+    heroImage: LEONA_PORTRAIT_IMAGE, cardImage: LEONA_PORTRAIT_IMAGE,
+    visuals: [
+      { id: "leona-portrait", role: "gallery", url: LEONA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Leona Lewis.", credit: "Mercy For Animals MFA / Lucas Secret, CC BY 2.0" },
+      { id: "leona-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 11, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
+    ],
+    tagline: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept turns local demand into a signal strong enough to make the journey viable.",
+    tiers: sampleTiers("leona-lewis-lagos", "USD"),
+  },
+  {
+    ...sampleBase,
+    id: "aya-nakamura-montreal", backendId: "aya-nakamura-montreal",
+    artistName: "Aya Nakamura", artistSlug: "aya-nakamura", artistImage: AYA_PORTRAIT_IMAGE,
+    artistSummary: "Bamako-born French-Malian singer-songwriter Aya Nakamura grew from publishing music online in 2014 into one of francophone pop's defining international voices, blending R&B, Afrobeats and pop.",
+    artistLinks: { official: "https://ayanakamura.com/", musicbrainz: "https://musicbrainz.org/artist/cf580d82-3f3e-4b86-8874-7e0fbe794f01" },
+    title: "Aya Nakamura in Montréal", city: "Montréal", country: "CA", venue: "MTELUS",
+    targetDate: addDays(165), deadline: addDays(18), bookingDeadline: addDays(48),
+    goalCents: 9_500_000, raisedCents: 7_410_000, currency: "USD", backerCount: 306, thresholdBackers: 550,
+    heroImage: AYA_PORTRAIT_IMAGE, cardImage: AYA_PORTRAIT_IMAGE,
+    visuals: [
+      { id: "aya-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura performing.", credit: "Ayanakamura_officielfan, CC0" },
+      { id: "aya-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 11, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
+    ],
+    tagline: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line.",
+    tiers: sampleTiers("aya-nakamura-montreal", "USD"),
   },
 ];
 
@@ -987,6 +1098,10 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     artistName: campaign.artistDisplayName,
     artistId: campaign.artistId ?? null,
     artistSlug: slugify(campaign.artistDisplayName),
+    artistImage: mediaUrl(campaign.artist?.imageUrl),
+    artistSummary: campaign.artist?.summary ?? null,
+    artistLinks: stringRecord(campaign.artist?.socialLinks),
+    isSample: booleanField(campaign.metadata, "fixture"),
     title: campaign.title,
     city: campaign.city,
     country: campaign.country,
@@ -1036,6 +1151,17 @@ function mediaUrl(value?: string | null): string {
     return value;
   }
   return `${API_BASE}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+  );
+}
+
+function booleanField(value: unknown, field: string): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>)[field] === true);
 }
 
 function unitsToCents(amountUnits: string, decimals: number): number {

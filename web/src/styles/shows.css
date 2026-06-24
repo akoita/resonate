@@ -2047,6 +2047,79 @@
   gap: 24px;
 }
 
+.show-detail__artist-story {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.55fr) minmax(0, 1.45fr);
+  gap: clamp(28px, 4vw, 56px);
+  align-items: center;
+  padding: clamp(28px, 5vw, 64px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 30px;
+  background: linear-gradient(145deg, rgba(124, 84, 255, 0.11), rgba(255, 255, 255, 0.015));
+  overflow: hidden;
+}
+
+.show-detail__artist-story > img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 22px;
+  filter: saturate(0.9) contrast(1.04);
+}
+
+.show-detail__artist-story h2 {
+  margin: 10px 0 18px;
+}
+
+.show-detail__artist-story p {
+  max-width: 68ch;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: clamp(15px, 1.2vw, 18px);
+  line-height: 1.75;
+}
+
+.show-detail__artist-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.show-detail__artist-links a {
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--color-signal) 30%, transparent);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+  text-transform: capitalize;
+}
+
+.show-detail__artist-links a:hover {
+  background: color-mix(in srgb, var(--color-signal) 14%, transparent);
+}
+
+.show-detail__visual-frame figcaption small,
+.gallery-lightbox__caption small {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+}
+
+@media (max-width: 720px) {
+  .show-detail__artist-story {
+    grid-template-columns: 1fr;
+  }
+
+  .show-detail__artist-story > img {
+    max-height: 420px;
+  }
+}
+
 .show-detail__brief,
 .show-detail__pledge-panel {
   border-radius: 28px;

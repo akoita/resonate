@@ -106,6 +106,29 @@ export default async function CampaignDetailPage({ params }: Props) {
           </section>
         ) : null}
 
+        {campaign.artistSummary ? (
+          <section className="show-detail__artist-story" aria-label={`About ${campaign.artistName}`}>
+            {campaign.artistImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- artist media is supplied by the backend fixture manifest.
+              <img src={campaign.artistImage} alt={campaign.artistName} />
+            ) : null}
+            <div>
+              <span className="shows-home-section__kicker">Meet the artist</span>
+              <h2 className="shows-home-section__title">{campaign.artistName}</h2>
+              <p>{campaign.artistSummary}</p>
+              {Object.keys(campaign.artistLinks).length > 0 ? (
+                <nav className="show-detail__artist-links" aria-label={`${campaign.artistName} links`}>
+                  {Object.entries(campaign.artistLinks).map(([label, url]) => (
+                    <a key={label} href={url} target="_blank" rel="noreferrer noopener">
+                      {label.replace(/(^|_)(\w)/g, (_match, _separator, letter: string) => ` ${letter.toUpperCase()}`).trim()} ↗
+                    </a>
+                  ))}
+                </nav>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         <section className="show-detail__snapshot" aria-label="Campaign snapshot">
           <article className="show-detail__signal-card show-detail__signal-card--primary">
             <span className="show-detail__signal-label">Campaign signal</span>
