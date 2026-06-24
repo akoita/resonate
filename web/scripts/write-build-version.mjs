@@ -37,7 +37,7 @@ writeFileSync(
   target,
   `// AUTO-GENERATED at build time by scripts/write-build-version.mjs.\n` +
     `// The committed default ("dev") is used for local dev and tests.\n` +
-    `export const BUILD_VERSION = ${JSON.stringify(version)};\n`,
+    `export const BUILD_VERSION: string = ${JSON.stringify(version)};\n`,
 );
 
 console.log(`[build-version] buildVersion.ts -> ${version}`);
