@@ -52,7 +52,7 @@ Each campaign gallery mixes three kinds of image:
 
 | File | Creator/source | License | Source |
 | --- | --- | --- | --- |
-| `sennarin-paris-hero.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo (cropped to remove caption) via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-paris-hero.jpg` | SennaRin / staff | All rights reserved — demo use only | Wide hero composed from her editorial portrait (blurred-fill background + portrait) via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-portrait.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-editorial.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |

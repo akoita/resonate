@@ -969,6 +969,8 @@ const LEONA_VEGAS_IMAGE = "https://media.gettyimages.com/id/2244640781/fr/photo/
 const LEONA_WIMBLEDON_IMAGE = "https://media.gettyimages.com/id/2224469193/fr/photo/london-england-leona-lewis-attends-day-eleven-of-the-wimbledon-tennis-championships-at-the.jpg?s=612x612&w=0&k=20&c=Oo7AU7Zq2wPOeH7fNWru720wz2Vd6zBQNXNfO8UeuNg=";
 const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?format=jpg&name=large";
 const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
+// Wide hero composed from her cinematic @senna_rin editorial portrait, locally committed.
+const SENNARIN_HERO_IMAGE = "/shows/sennarin-paris-hero.jpg";
 // "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
 const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
 // Wide hero composed from her "After Rain" cover (locally committed, demo use only).
@@ -1011,7 +1013,7 @@ const CAMPAIGNS: Campaign[] = [
     title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
     targetDate: addDays(180), deadline: addDays(21), bookingDeadline: addDays(52),
     goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
-    heroImage: SENNARIN_PORTRAIT_IMAGE, cardImage: SENNARIN_PORTRAIT_IMAGE,
+    heroImage: SENNARIN_HERO_IMAGE, cardImage: SENNARIN_PORTRAIT_IMAGE,
     visuals: [
       { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
       { id: "sample-sennarin-paris-editorial", role: "gallery", url: SENNARIN_EDITORIAL_IMAGE, sortOrder: 11, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
@@ -1048,7 +1050,7 @@ const CAMPAIGNS: Campaign[] = [
     title: "Leona Lewis in Lagos", city: "Lagos", country: "NG", venue: "Eko Convention Centre",
     targetDate: addDays(225), deadline: addDays(35), bookingDeadline: addDays(68),
     goalCents: 12_000_000, raisedCents: 4_560_000, currency: "USD", backerCount: 211, thresholdBackers: 650,
-    heroImage: LEONA_HERO_IMAGE, cardImage: LEONA_HERO_IMAGE,
+    heroImage: LEONA_HERO_IMAGE, cardImage: LEONA_WIMBLEDON_IMAGE,
     visuals: [
       { id: "sample-leona-lewis-lagos-live", role: "gallery", url: LEONA_LIVE_IMAGE, sortOrder: 10, caption: "Leona Lewis performing live (amfAR Venice, 2023).", credit: "© Getty Images — editorial, demo use only" },
       { id: "sample-leona-lewis-lagos-vegas", role: "gallery", url: LEONA_VEGAS_IMAGE, sortOrder: 11, caption: "Leona Lewis on her Las Vegas Christmas show.", credit: "© Getty Images — editorial, demo use only" },
