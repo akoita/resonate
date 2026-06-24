@@ -971,6 +971,7 @@ const LEONA_VEGAS_IMAGE = "/shows/leona-lewis-vegas.jpg";
 const LEONA_WIMBLEDON_IMAGE = "/shows/leona-lewis-wimbledon.jpg";
 const SENNARIN_PORTRAIT_IMAGE = "/shows/sennarin-portrait.jpg";
 const SENNARIN_EDITORIAL_IMAGE = "/shows/sennarin-editorial.jpg";
+const SENNARIN_BAND_IMAGE = "/shows/sennarin-band.jpg";
 // Wide hero composed from her cinematic @senna_rin editorial portrait, locally committed.
 const SENNARIN_HERO_IMAGE = "/shows/sennarin-paris-hero.jpg";
 // "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
@@ -1019,7 +1020,8 @@ const CAMPAIGNS: Campaign[] = [
     visuals: [
       { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
       { id: "sample-sennarin-paris-editorial", role: "gallery", url: SENNARIN_EDITORIAL_IMAGE, sortOrder: 11, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
-      { id: "sample-sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 12, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" },
+      { id: "sample-sennarin-paris-band", role: "gallery", url: SENNARIN_BAND_IMAGE, sortOrder: 12, caption: "SennaRin (centre) with her band.", credit: "© SennaRin / staff — official photo, demo use only" },
+      { id: "sample-sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 13, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" },
     ],
     featured: true,
     tagline: "A cinematic Paris night for a voice built to fill the room. This fan-created concept turns scattered European demand into one visible, refundable signal.",
