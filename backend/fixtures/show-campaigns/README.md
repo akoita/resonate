@@ -52,11 +52,11 @@ Each campaign gallery mixes three kinds of image:
 
 | File | Creator/source | License | Source |
 | --- | --- | --- | --- |
-| `sennarin-paris-hero.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo (cropped to remove caption) via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-paris-hero.jpg` | SennaRin / staff | All rights reserved — demo use only | Wide hero composed from her editorial portrait (blurred-fill background + portrait) via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-portrait.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-editorial.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
-| `felicia-farerre-dublin-hero.jpg` | Felicia Farerre | All rights reserved — demo use only | Official release artwork “Unspoken” (cropped to remove title text) via [her YouTube](https://www.youtube.com/@FeliciaFarerre) |
+| `felicia-farerre-dublin-hero.jpg` | Felicia Farerre | All rights reserved — demo use only | Wide hero composed from her “After Rain” single cover art (blurred-fill background + portrait) via [her official site](https://www.feliciafarerre.com/) |
 | `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | “After Rain” single cover art via [her official site](https://www.feliciafarerre.com/) |
 | `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
@@ -65,7 +65,7 @@ Each campaign gallery mixes three kinds of image:
 | `leona-lewis-vegas.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Las Vegas Christmas show ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-wimbledon.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, Wimbledon ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
-| `aya-nakamura-montreal-hero.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-montreal-hero.jpg` | Mathis.aclr | CC0 1.0 (public domain) | Wide hero composed from a live performance photo, Aulnay-sous-Bois 2026 ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Aya_Nakamura_IMG_4756_(cropped).jpg)) |
 | `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-stage.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
