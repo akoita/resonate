@@ -979,6 +979,7 @@ const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
 // Wide hero composed from her "After Rain" cover (locally committed, demo use only).
 const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.jpg";
 const FELICIA_STUDIO_IMAGE = "/shows/felicia-farerre-studio.jpg";
+const FELICIA_ANGELS_IMAGE = "/shows/felicia-angels-cover.jpg";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
@@ -1040,7 +1041,8 @@ const CAMPAIGNS: Campaign[] = [
     visuals: [
       { id: "sample-felicia-farerre-dublin-portrait", role: "gallery", url: FELICIA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Felicia Farerre.", credit: "© Felicia Farerre — \"After Rain\" cover art, demo use only" },
       { id: "sample-felicia-farerre-dublin-studio", role: "gallery", url: FELICIA_STUDIO_IMAGE, sortOrder: 11, caption: "Felicia Farerre at the microphone.", credit: "© Felicia Farerre — press photo, demo use only" },
-      { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 12, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
+      { id: "sample-felicia-farerre-dublin-angels", role: "gallery", url: FELICIA_ANGELS_IMAGE, sortOrder: 12, caption: "Felicia Farerre — “In the Company of Angels” cover.", credit: "© Felicia Farerre — album cover art, demo use only" },
+      { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 13, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
     ],
     tagline: "From trailer-scale power to a pin-drop vocal, this fan-created Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre.",
     tiers: sampleTiers("felicia-farerre-dublin", "EUR"),
