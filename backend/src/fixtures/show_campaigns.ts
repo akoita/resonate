@@ -122,6 +122,12 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         credit: OFFICIAL_DEMO_CREDIT("SennaRin / staff", "official photo via @senna_rin on X"),
       },
       {
+        key: "band",
+        file: "sennarin-band.jpg",
+        caption: "SennaRin (centre) with her band.",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / staff", "official photo via @senna_rin on X"),
+      },
+      {
         key: "venue",
         file: "sennarin-paris-venue.jpg",
         caption: "Le Trianon, Paris — the proposed setting for this fictional campaign.",
