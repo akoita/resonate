@@ -243,6 +243,12 @@ npm run fixtures:shows -- --dry-run
 npm run fixtures:shows
 ```
 
+On a **deployed** environment the seeded hero/gallery images are served from
+storage and only refresh when the seed re-runs — deploying backend code alone
+does not update them. Re-run the seed after any backend deploy that changes Show
+fixtures: see [seeding the sample Show campaigns](../deployment/seed-sample-shows.md)
+(`make seed-shows`, or `make seed-shows-remote` for a one-off Cloud Run Job).
+
 The command validates every asset, uploads through the configured
 `STORAGE_PROVIDER`, and upserts stable artists, campaigns, tiers, and visuals.
 Re-running it refreshes future dates and replaces only fixture-owned children.
