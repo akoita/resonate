@@ -37,6 +37,8 @@ export type ShowCampaignFixture = {
     currency: "EUR" | "USD";
     description: string;
     heroAsset: string;
+    /** Credit for the hero/card image; defaults to the generated-art credit. */
+    heroCredit?: string;
   };
   /** Immersive gallery images (venue, city, real artist photos/artwork). */
   gallery: ShowGalleryAsset[];
@@ -269,6 +271,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "USD",
       description: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line. This concept turns that cultural fit into a measurable signal for an electric Aya Nakamura night at MTELUS.",
       heroAsset: "aya-nakamura-montreal-hero.jpg",
+      heroCredit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial concert photo, OVO Arena Wembley 2023"),
     },
     gallery: [
       {
@@ -382,6 +385,7 @@ export async function applyShowCampaignFixtures(
 
     const heroUrl = `/shows/campaigns/${fixture.campaign.id}/visuals/hero`;
     const cardUrl = `/shows/campaigns/${fixture.campaign.id}/visuals/card`;
+    const heroCredit = fixture.campaign.heroCredit ?? "AI-generated campaign concept artwork; not an artist photograph";
     const artistImageUrl = fixture.artist.portraitKey ? visualUrl(fixture.artist.portraitKey) : heroUrl;
 
     const campaignData = {
@@ -475,8 +479,8 @@ export async function applyShowCampaignFixtures(
           storageUri: hero.storageUri,
           mimeType: hero.mimeType,
           sortOrder: 0,
-          caption: `${fixture.campaign.title} — original Resonate sample campaign artwork.`,
-          credit: "AI-generated campaign concept artwork; not an artist photograph",
+          caption: `${fixture.campaign.title} — sample campaign hero.`,
+          credit: heroCredit,
         },
         {
           id: `sample-${fixture.campaign.slug}-card`,
@@ -487,7 +491,7 @@ export async function applyShowCampaignFixtures(
           mimeType: hero.mimeType,
           sortOrder: 1,
           caption: `${fixture.campaign.title} campaign preview.`,
-          credit: "AI-generated campaign concept artwork; not an artist photograph",
+          credit: heroCredit,
         },
         ...gallery.map(({ asset, stored }, index) => ({
           id: `sample-${fixture.campaign.slug}-${asset.key}`,

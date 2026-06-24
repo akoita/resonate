@@ -63,7 +63,7 @@ Each campaign gallery mixes three kinds of image:
 | `leona-lewis-lagos-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Leona Lewis's likeness |
 | `leona-lewis-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
-| `aya-nakamura-montreal-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Aya Nakamura's likeness |
+| `aya-nakamura-montreal-hero.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-montreal-city.jpg` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
 
