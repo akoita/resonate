@@ -115,6 +115,10 @@ export default function Home() {
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => listCampaignsSync());
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
+  // "Upcoming Live Events" shows 2 of N campaigns. With no priority signal, the
+  // window rotates so every campaign gets fair main-page visibility over time.
+  const [eventRowOffset, setEventRowOffset] = useState(0);
+  const [eventRowPaused, setEventRowPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
@@ -177,6 +181,18 @@ export default function Home() {
     };
   }, []);
 
+  // Fairly rotate the 2-card "Upcoming Live Events" window across all campaigns,
+  // so none stay hidden when there is no priority signal. Pauses while hovered
+  // and honors prefers-reduced-motion.
+  useEffect(() => {
+    if (campaigns.length <= 2 || eventRowPaused) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setEventRowOffset((offset) => (offset + 1) % campaigns.length);
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [campaigns.length, eventRowPaused]);
+
   useEffect(() => {
     if (status !== "authenticated" || !token) {
       setSongRecommendations([]);
@@ -233,7 +249,11 @@ export default function Home() {
     () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
     [activeHeroCampaignId, heroCampaigns],
   );
-  const eventRow: Campaign[] = useMemo(() => campaigns.slice(0, 2), [campaigns]);
+  const eventRow: Campaign[] = useMemo(() => {
+    if (campaigns.length <= 2) return campaigns.slice(0, 2);
+    const start = eventRowOffset % campaigns.length;
+    return [campaigns[start], campaigns[(start + 1) % campaigns.length]];
+  }, [campaigns, eventRowOffset]);
   const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
   const catalogStems = useMemo<CatalogStemSummary[]>(
     () => flattenCatalogStems(displayReleases),
@@ -1093,7 +1113,13 @@ export default function Home() {
                 <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
               </Link>
             </header>
-            <div className="ng-grid-2">
+            <div
+              className="ng-grid-2"
+              onMouseEnter={() => setEventRowPaused(true)}
+              onMouseLeave={() => setEventRowPaused(false)}
+              onFocusCapture={() => setEventRowPaused(true)}
+              onBlurCapture={() => setEventRowPaused(false)}
+            >
               {eventRow.map((c, idx) => (
                 <EventCard key={c.id} campaign={c} variant={idx === 0 ? "live" : "upcoming"} />
               ))}
