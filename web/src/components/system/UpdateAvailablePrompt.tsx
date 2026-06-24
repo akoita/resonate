@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useUpdateAvailable } from "../../hooks/useUpdateAvailable";
 
 /**
@@ -11,15 +11,10 @@ import { useUpdateAvailable } from "../../hooks/useUpdateAvailable";
  */
 export default function UpdateAvailablePrompt() {
   const { updateAvailable, deployedVersion, reload } = useUpdateAvailable();
+  // Hidden only while the *current* deployed version is the one the user
+  // dismissed; a newer version differs again and re-surfaces the prompt without
+  // any effect/derived-state syncing.
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
-
-  // A newer version after a dismiss should re-surface the prompt.
-  useEffect(() => {
-    if (deployedVersion && dismissedVersion && deployedVersion !== dismissedVersion) {
-      setDismissedVersion(null);
-    }
-  }, [deployedVersion, dismissedVersion]);
-
   const visible = updateAvailable && deployedVersion !== dismissedVersion;
   if (!visible) return null;
 

@@ -33,9 +33,13 @@ export function useUpdateAvailable(): UpdateAvailableState {
   const [deployedVersion, setDeployedVersion] = useState<string | null>(null);
   const mountedRef = useRef(false);
 
-  const check = useCallback(async (signal?: AbortSignal) => {
-    const version = await fetchDeployedVersion(signal);
-    if (version && mountedRef.current) setDeployedVersion(version);
+  // Resolve + apply in a `.then` callback (not synchronously) so the eventual
+  // setState happens off the render path, matching the codebase's async-fetch
+  // pattern (e.g. `listCampaigns().then(setCampaigns)`).
+  const check = useCallback((signal?: AbortSignal) => {
+    void fetchDeployedVersion(signal).then((version) => {
+      if (version && mountedRef.current) setDeployedVersion(version);
+    });
   }, []);
 
   useEffect(() => {
@@ -45,11 +49,11 @@ export function useUpdateAvailable(): UpdateAvailableState {
 
     mountedRef.current = true;
     const controller = new AbortController();
-    void check(controller.signal);
+    check(controller.signal);
 
-    const interval = window.setInterval(() => void check(controller.signal), POLL_INTERVAL_MS);
+    const interval = window.setInterval(() => check(controller.signal), POLL_INTERVAL_MS);
     const recheck = () => {
-      if (document.visibilityState === "visible") void check(controller.signal);
+      if (document.visibilityState === "visible") check(controller.signal);
     };
     document.addEventListener("visibilitychange", recheck);
     window.addEventListener("online", recheck);
