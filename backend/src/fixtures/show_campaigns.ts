@@ -223,8 +223,8 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       {
         key: "live",
         file: "leona-lewis-live.jpg",
-        caption: "Leona Lewis performing live (2023).",
-        credit: OFFICIAL_DEMO_CREDIT("Leona Lewis / Sony Music", "official photo, 2023"),
+        caption: "Leona Lewis performing live (amfAR Venice, 2023).",
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial photo, amfAR Venice 2023"),
       },
       {
         key: "city",
@@ -275,7 +275,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         key: "portrait",
         file: "aya-nakamura-portrait.jpg",
         caption: "Aya Nakamura (2024).",
-        credit: OFFICIAL_DEMO_CREDIT("Aya Nakamura", "press photo via opinion-internationale.com, 2024"),
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial photo, 2024"),
       },
       {
         key: "city",

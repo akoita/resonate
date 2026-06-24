@@ -39,11 +39,14 @@ Each campaign gallery mixes three kinds of image:
 - **Openly licensed real photos** (Creative Commons from Wikimedia Commons) —
   the venue and city images.
 - **Real artist photos used for demo only** — each artist's portrait/live shot
-  is a recent press or official photo of the artist. These are **© the
-  artist/label/photographer, all rights reserved**, included solely as
-  non-commercial sample content so the demo looks realistic. Replace them with
-  approved press assets (or remove them) before any public or commercial use.
-  Each is a one-file swap; the manifest references them by filename.
+  is a recent press, official, or editorial-stock photo of the artist. These
+  are **© the artist/label/photographer/agency, all rights reserved**, included
+  solely as non-commercial sample content so the demo looks realistic. Some
+  (Aya Nakamura, Leona Lewis) are **Getty Images editorial stock** — using
+  those beyond a local demo requires a Getty license. Replace every artist
+  photo with approved/licensed assets (or remove it) before any public or
+  commercial use. Each is a one-file swap; the manifest references them by
+  filename.
 
 ## Asset provenance
 
@@ -58,10 +61,10 @@ Each campaign gallery mixes three kinds of image:
 | `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
 | `leona-lewis-lagos-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Leona Lewis's likeness |
-| `leona-lewis-live.jpg` | Leona Lewis / Sony Music | All rights reserved — demo use only | Official live photo (2023), Sony Music artist CDN |
+| `leona-lewis-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
 | `aya-nakamura-montreal-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Aya Nakamura's likeness |
-| `aya-nakamura-portrait.jpg` | Aya Nakamura | All rights reserved — demo use only | Press photo (2024) via [opinion-internationale.com](https://www.opinion-internationale.com/) |
+| `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-montreal-city.jpg` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
 
 CC venue/city assets retrieved from Wikimedia Commons; real artist photos
