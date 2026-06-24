@@ -84,7 +84,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       summary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers on YouTube before composer Hiroyuki Sawano produced her 2022 debut EP, Dignified. Her expressive low register quickly became a fixture of cinematic anime — 'dust' and 'melt' soundtracked Legend of the Galactic Heroes: Die Neue These, and her single 'Saihate' served as an ending theme for Bleach: Thousand-Year Blood War. Signed to Sony's Sacra Music, she pairs that voice with her own lyrics and artwork.",
       socialLinks: {
         official: "https://www.sennarin.com/",
-        musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e",
         instagram: "https://www.instagram.com/senna__rin/",
       },
       portraitKey: "portrait",
@@ -137,7 +136,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     tiers: standardTiers("sennarin-paris"),
     sources: [
       { label: "SennaRin official website", url: "https://www.sennarin.com/" },
-      { label: "MusicBrainz artist record", url: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e" },
       { label: "Wikipedia overview", url: "https://en.wikipedia.org/wiki/SennaRin" },
     ],
   },
@@ -148,7 +146,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       summary: "Felicia Farerre is an American vocalist, composer and producer whose four-decade career has made her voice a fixture of film, television and epic trailer music. She is the soaring lead voice on Two Steps from Hell's 'Star Sky' and crowned the Billboard charts as lead vocalist for the classical-crossover Taliesin Orchestra, and her vocals carry trailers for films from Maleficent and 300: Rise of an Empire to Ocean's Twelve. A lyricist, author and vocal coach, she also created the Epic Women project and the Real Singers Don't Sing training program.",
       socialLinks: {
         official: "https://www.feliciafarerre.com/",
-        musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080",
         youtube: "https://www.youtube.com/@FeliciaFarerre",
       },
       portraitKey: "portrait",
@@ -170,7 +167,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "EUR",
       description: "From trailer-scale power to a pin-drop vocal, Felicia Farerre's music invites a theatrical room. This Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre, backed by a fan signal strong enough to begin a real booking conversation.",
       heroAsset: "felicia-farerre-dublin-hero.jpg",
-      heroCredit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "composed from her “After Rain” single cover art"),
+      heroCredit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "composed from her studio press photo"),
     },
     gallery: [
       {
@@ -195,7 +192,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     tiers: standardTiers("felicia-farerre-dublin"),
     sources: [
       { label: "Felicia Farerre official website", url: "https://www.feliciafarerre.com/" },
-      { label: "MusicBrainz artist record", url: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080" },
       { label: "Apple Music artist record", url: "https://music.apple.com/us/artist/felicia-farerre/493578054" },
     ],
   },
@@ -206,7 +202,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       summary: "London-born singer, songwriter and actress Leona Lewis trained at the BRIT School before winning The X Factor in 2006. Her debut album Spirit went 10× platinum in the UK and ranks among the best-selling albums in British chart history, while its single 'Bleeding Love' reached number one in more than thirty countries, including the UK and the US Billboard Hot 100. Three Grammy nominations, a Beijing Olympics closing-ceremony duet with Jimmy Page and over 30 million records sold cemented a pop-soul career defined by range and emotional scale.",
       socialLinks: {
         official: "https://www.leonalewismusic.com/",
-        musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537",
         instagram: "https://www.instagram.com/leonalewis/",
       },
       portraitKey: "live",
@@ -259,7 +254,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     tiers: standardTiers("leona-lewis-lagos"),
     sources: [
       { label: "Leona Lewis official website", url: "https://www.leonalewismusic.com/" },
-      { label: "MusicBrainz artist record", url: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537" },
       { label: "Wikipedia overview", url: "https://en.wikipedia.org/wiki/Leona_Lewis" },
     ],
   },
@@ -269,8 +263,6 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       displayName: "Aya Nakamura",
       summary: "Bamako-born French-Malian singer-songwriter Aya Nakamura is the most-streamed French-language female artist in history. Her 2018 single 'Djadja' topped the French charts, was certified diamond, and became the first video by a female African artist to pass one billion YouTube views — also making her the first French woman to reach number one in the Netherlands since Édith Piaf. Across the diamond-certified Nakamura, the Victoires de la Musique-winning Aya and DNK she has fused R&B, Afrobeats, zouk and pop, and in 2024 she headlined the opening ceremony of the Paris Olympic Games.",
       socialLinks: {
-        official: "https://ayanakamura.com/",
-        musicbrainz: "https://musicbrainz.org/artist/cf580d82-3f3e-4b86-8874-7e0fbe794f01",
         instagram: "https://www.instagram.com/ayanakamura_officiel/",
       },
       portraitKey: "portrait",
@@ -322,8 +314,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     ],
     tiers: standardTiers("aya-nakamura-montreal"),
     sources: [
-      { label: "Aya Nakamura official website", url: "https://ayanakamura.com/" },
-      { label: "MusicBrainz artist record", url: "https://musicbrainz.org/artist/cf580d82-3f3e-4b86-8874-7e0fbe794f01" },
+      { label: "Aya Nakamura on Instagram", url: "https://www.instagram.com/ayanakamura_officiel/" },
       { label: "Wikipedia overview", url: "https://en.wikipedia.org/wiki/Aya_Nakamura" },
     ],
   },
