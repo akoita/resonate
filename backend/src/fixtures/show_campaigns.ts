@@ -106,6 +106,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "EUR",
       description: "A cinematic Paris night for a voice built to fill the room. This fan-created concept pairs SennaRin's atmospheric sound with the ornate intimacy of Le Trianon—turning scattered European demand into one visible, refundable signal.",
       heroAsset: "sennarin-paris-hero.jpg",
+      heroCredit: OFFICIAL_DEMO_CREDIT("SennaRin / staff", "official photo via @senna_rin on X (cropped)"),
     },
     gallery: [
       {

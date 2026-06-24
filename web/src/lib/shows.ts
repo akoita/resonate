@@ -590,7 +590,7 @@ const CAMPAIGNS: Campaign[] = [
     title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
     targetDate: addDays(180), deadline: addDays(21), bookingDeadline: addDays(52),
     goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
-    heroImage: PARIS_VENUE_IMAGE, cardImage: PARIS_VENUE_IMAGE,
+    heroImage: SENNARIN_PORTRAIT_IMAGE, cardImage: SENNARIN_PORTRAIT_IMAGE,
     visuals: [
       { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
       { id: "sample-sennarin-paris-editorial", role: "gallery", url: SENNARIN_EDITORIAL_IMAGE, sortOrder: 11, caption: "SennaRin.", credit: "© SennaRin / staff — official photo (@senna_rin on X), demo use only" },
