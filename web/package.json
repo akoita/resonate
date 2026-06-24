@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev -p 3001 --webpack",
+    "prebuild": "node scripts/write-build-version.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
