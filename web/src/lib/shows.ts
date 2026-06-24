@@ -968,7 +968,8 @@ const LEONA_VEGAS_IMAGE = "https://media.gettyimages.com/id/2244640781/fr/photo/
 const LEONA_WIMBLEDON_IMAGE = "https://media.gettyimages.com/id/2224469193/fr/photo/london-england-leona-lewis-attends-day-eleven-of-the-wimbledon-tennis-championships-at-the.jpg?s=612x612&w=0&k=20&c=Oo7AU7Zq2wPOeH7fNWru720wz2Vd6zBQNXNfO8UeuNg=";
 const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?format=jpg&name=large";
 const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
-const FELICIA_PORTRAIT_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia-1.jpg";
+// "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
+const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
 const FELICIA_STUDIO_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia_Farerre.png";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
@@ -1028,7 +1029,7 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 7_000_000, raisedCents: 2_940_000, currency: "EUR", backerCount: 94, thresholdBackers: 350,
     heroImage: DUBLIN_VENUE_IMAGE, cardImage: DUBLIN_VENUE_IMAGE,
     visuals: [
-      { id: "sample-felicia-farerre-dublin-portrait", role: "gallery", url: FELICIA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Felicia Farerre.", credit: "© Felicia Farerre — press photo, demo use only" },
+      { id: "sample-felicia-farerre-dublin-portrait", role: "gallery", url: FELICIA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Felicia Farerre.", credit: "© Felicia Farerre — \"After Rain\" cover art, demo use only" },
       { id: "sample-felicia-farerre-dublin-studio", role: "gallery", url: FELICIA_STUDIO_IMAGE, sortOrder: 11, caption: "Felicia Farerre at the microphone.", credit: "© Felicia Farerre — press photo, demo use only" },
       { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 12, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
     ],

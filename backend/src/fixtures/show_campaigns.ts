@@ -171,7 +171,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         key: "portrait",
         file: "felicia-farerre-portrait.jpg",
         caption: "Felicia Farerre.",
-        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "press photo via Crossover Music Magazine, 2022"),
+        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "\"After Rain\" single cover art"),
       },
       {
         key: "studio",
