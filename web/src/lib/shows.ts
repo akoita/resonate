@@ -959,7 +959,8 @@ const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Ek
 const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
 // Real, recent artist photos — official/press images, all rights reserved, used for demo only.
 const AYA_PORTRAIT_IMAGE = "https://media.gettyimages.com/id/2048843663/fr/photo/paris-france-aya-nakamura-attends-the-schiaparelli-womenswear-fall-winter-2024-2025-show-as.jpg?s=612x612&w=0&k=20&c=SlTi5a7aSP9-sLL0eFGr5LaGtJyd0xYvxXI7pEAOeFc=";
-const AYA_HERO_IMAGE = "https://media.gettyimages.com/id/1734632925/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=FtDZ6NzbH3QBQtmRLUeBHH_mjsBk3gOH4IZ-E1S_Yj4=";
+// Wide hero composed from a CC0 (public-domain) live performance photo by Mathis.aclr, locally committed.
+const AYA_HERO_IMAGE = "/shows/aya-nakamura-montreal-hero.jpg";
 const AYA_LIVE_IMAGE = "https://media.gettyimages.com/id/1734632892/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=YQ_aO4J_0jiBG_lv5toYELebn5YMH786kujAcJSBkmA=";
 const AYA_STAGE_IMAGE = "https://media.gettyimages.com/id/1734632899/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=yzib0IWmq0rmUfzyKYqXM6UudMeijIaFnXV7XJ7aQLo=";
 const LEONA_LIVE_IMAGE = "https://media.gettyimages.com/id/1657891581/fr/photo/venice-italy-leona-lewis-performs-on-stage-at-the-amfar-gala-venezia-2023-presented-by.jpg?s=612x612&w=0&k=20&c=L3OZpPTE6GCALhaTbEG0jSPIMTBRjRebTj-d1G521ZQ=";
@@ -1066,7 +1067,7 @@ const CAMPAIGNS: Campaign[] = [
     title: "Aya Nakamura in Montréal", city: "Montréal", country: "CA", venue: "MTELUS",
     targetDate: addDays(165), deadline: addDays(18), bookingDeadline: addDays(48),
     goalCents: 9_500_000, raisedCents: 7_410_000, currency: "USD", backerCount: 306, thresholdBackers: 550,
-    heroImage: AYA_HERO_IMAGE, cardImage: AYA_HERO_IMAGE,
+    heroImage: AYA_HERO_IMAGE, cardImage: AYA_PORTRAIT_IMAGE,
     visuals: [
       { id: "sample-aya-nakamura-montreal-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura (2024).", credit: "© Getty Images — editorial, demo use only" },
       { id: "sample-aya-nakamura-montreal-live", role: "gallery", url: AYA_LIVE_IMAGE, sortOrder: 11, caption: "Aya Nakamura performing (Wembley, 2023).", credit: "© Getty Images — editorial, demo use only" },
