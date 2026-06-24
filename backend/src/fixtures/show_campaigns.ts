@@ -220,6 +220,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "USD",
       description: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept brings Leona Lewis's pop-soul catalogue into a city that knows how to turn a great vocal into a communal event—if the demand signal can make the journey viable.",
       heroAsset: "leona-lewis-lagos-hero.jpg",
+      heroCredit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial concert photo, Abu Dhabi"),
     },
     gallery: [
       {
@@ -227,6 +228,18 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         file: "leona-lewis-live.jpg",
         caption: "Leona Lewis performing live (amfAR Venice, 2023).",
         credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial photo, amfAR Venice 2023"),
+      },
+      {
+        key: "vegas",
+        file: "leona-lewis-vegas.jpg",
+        caption: "Leona Lewis on her Las Vegas Christmas show.",
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial concert photo, Las Vegas"),
+      },
+      {
+        key: "wimbledon",
+        file: "leona-lewis-wimbledon.jpg",
+        caption: "Leona Lewis at Wimbledon.",
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial photo, Wimbledon"),
       },
       {
         key: "city",
@@ -279,6 +292,18 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         file: "aya-nakamura-portrait.jpg",
         caption: "Aya Nakamura (2024).",
         credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial photo, 2024"),
+      },
+      {
+        key: "live",
+        file: "aya-nakamura-live.jpg",
+        caption: "Aya Nakamura performing (OVO Arena Wembley, 2023).",
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial concert photo, 2023"),
+      },
+      {
+        key: "stage",
+        file: "aya-nakamura-stage.jpg",
+        caption: "Aya Nakamura on stage (2023).",
+        credit: OFFICIAL_DEMO_CREDIT("Getty Images", "editorial concert photo, 2023"),
       },
       {
         key: "city",

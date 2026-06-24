@@ -60,11 +60,15 @@ Each campaign gallery mixes three kinds of image:
 | `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo (2022) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
-| `leona-lewis-lagos-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Leona Lewis's likeness |
+| `leona-lewis-lagos-hero.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Abu Dhabi ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-vegas.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Las Vegas Christmas show ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-wimbledon.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, Wimbledon ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
 | `aya-nakamura-montreal-hero.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-stage.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-montreal-city.jpg` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
 
 CC venue/city assets retrieved from Wikimedia Commons; real artist photos

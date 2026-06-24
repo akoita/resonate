@@ -543,7 +543,12 @@ const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71
 // Real, recent artist photos — official/press images, all rights reserved, used for demo only.
 const AYA_PORTRAIT_IMAGE = "https://media.gettyimages.com/id/2048843663/fr/photo/paris-france-aya-nakamura-attends-the-schiaparelli-womenswear-fall-winter-2024-2025-show-as.jpg?s=612x612&w=0&k=20&c=SlTi5a7aSP9-sLL0eFGr5LaGtJyd0xYvxXI7pEAOeFc=";
 const AYA_HERO_IMAGE = "https://media.gettyimages.com/id/1734632925/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=FtDZ6NzbH3QBQtmRLUeBHH_mjsBk3gOH4IZ-E1S_Yj4=";
+const AYA_LIVE_IMAGE = "https://media.gettyimages.com/id/1734632892/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=YQ_aO4J_0jiBG_lv5toYELebn5YMH786kujAcJSBkmA=";
+const AYA_STAGE_IMAGE = "https://media.gettyimages.com/id/1734632899/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=yzib0IWmq0rmUfzyKYqXM6UudMeijIaFnXV7XJ7aQLo=";
 const LEONA_LIVE_IMAGE = "https://media.gettyimages.com/id/1657891581/fr/photo/venice-italy-leona-lewis-performs-on-stage-at-the-amfar-gala-venezia-2023-presented-by.jpg?s=612x612&w=0&k=20&c=L3OZpPTE6GCALhaTbEG0jSPIMTBRjRebTj-d1G521ZQ=";
+const LEONA_HERO_IMAGE = "https://media.gettyimages.com/id/2259655440/fr/photo/abu-dhabi-united-arab-emirates-leona-lewis-performs-onstage-during-the-welcome-ceremony-for.jpg?s=612x612&w=0&k=20&c=mF6uo46A9fxMXk6k5_ZGs4KPNvjNA06efKp2BTwEPxA=";
+const LEONA_VEGAS_IMAGE = "https://media.gettyimages.com/id/2244640781/fr/photo/las-vegas-nevada-leona-lewis-performs-during-opening-night-of-her-las-vegas-christmas.jpg?s=612x612&w=0&k=20&c=dZhIaSaK4rzRjksI-TkMuYkg8hbAArg-9o1bKLwdYNA=";
+const LEONA_WIMBLEDON_IMAGE = "https://media.gettyimages.com/id/2224469193/fr/photo/london-england-leona-lewis-attends-day-eleven-of-the-wimbledon-tennis-championships-at-the.jpg?s=612x612&w=0&k=20&c=Oo7AU7Zq2wPOeH7fNWru720wz2Vd6zBQNXNfO8UeuNg=";
 const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?format=jpg&name=large";
 const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
 const FELICIA_PORTRAIT_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia-1.jpg";
@@ -622,10 +627,12 @@ const CAMPAIGNS: Campaign[] = [
     title: "Leona Lewis in Lagos", city: "Lagos", country: "NG", venue: "Eko Convention Centre",
     targetDate: addDays(225), deadline: addDays(35), bookingDeadline: addDays(68),
     goalCents: 12_000_000, raisedCents: 4_560_000, currency: "USD", backerCount: 211, thresholdBackers: 650,
-    heroImage: LEONA_LIVE_IMAGE, cardImage: LEONA_LIVE_IMAGE,
+    heroImage: LEONA_HERO_IMAGE, cardImage: LEONA_HERO_IMAGE,
     visuals: [
       { id: "sample-leona-lewis-lagos-live", role: "gallery", url: LEONA_LIVE_IMAGE, sortOrder: 10, caption: "Leona Lewis performing live (amfAR Venice, 2023).", credit: "© Getty Images — editorial, demo use only" },
-      { id: "sample-leona-lewis-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 11, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
+      { id: "sample-leona-lewis-lagos-vegas", role: "gallery", url: LEONA_VEGAS_IMAGE, sortOrder: 11, caption: "Leona Lewis on her Las Vegas Christmas show.", credit: "© Getty Images — editorial, demo use only" },
+      { id: "sample-leona-lewis-lagos-wimbledon", role: "gallery", url: LEONA_WIMBLEDON_IMAGE, sortOrder: 12, caption: "Leona Lewis at Wimbledon.", credit: "© Getty Images — editorial, demo use only" },
+      { id: "sample-leona-lewis-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 13, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
     ],
     tagline: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept turns local demand into a signal strong enough to make the journey viable.",
     tiers: sampleTiers("leona-lewis-lagos", "USD"),
@@ -642,7 +649,9 @@ const CAMPAIGNS: Campaign[] = [
     heroImage: AYA_HERO_IMAGE, cardImage: AYA_HERO_IMAGE,
     visuals: [
       { id: "sample-aya-nakamura-montreal-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura (2024).", credit: "© Getty Images — editorial, demo use only" },
-      { id: "sample-aya-nakamura-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 11, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
+      { id: "sample-aya-nakamura-montreal-live", role: "gallery", url: AYA_LIVE_IMAGE, sortOrder: 11, caption: "Aya Nakamura performing (Wembley, 2023).", credit: "© Getty Images — editorial, demo use only" },
+      { id: "sample-aya-nakamura-montreal-stage", role: "gallery", url: AYA_STAGE_IMAGE, sortOrder: 12, caption: "Aya Nakamura on stage (2023).", credit: "© Getty Images — editorial, demo use only" },
+      { id: "sample-aya-nakamura-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 13, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
     ],
     tagline: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line.",
     tiers: sampleTiers("aya-nakamura-montreal", "USD"),
