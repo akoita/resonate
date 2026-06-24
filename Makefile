@@ -89,6 +89,22 @@ deploy-demucs:
 
 deploy-all: deploy-backend deploy-frontend deploy-demucs
 
+# Refresh the sample Show campaigns (idempotent). Seeded hero/gallery images
+# live in storage and only change when the seed runs again — run this after a
+# backend deploy whenever the Show fixtures (images/bios) change.
+#
+# Local / any context that already has DB + storage env (DATABASE_URL,
+# STORAGE_PROVIDER, creds). Refuses shared envs unless ALLOW_SAMPLE_SHOW_FIXTURES=true.
+seed-shows:
+	cd backend && ALLOW_SAMPLE_SHOW_FIXTURES=true npm run fixtures:shows
+
+# Refresh the sample Show campaigns on a DEPLOYED env via a one-off Cloud Run Job
+# built from the deployed backend image. Supply GCP_PROJECT, GCP_REGION,
+# BACKEND_IMAGE, SHOWS_SEED_JOB, SHOWS_SEED_SECRETS (see the script header and
+# docs/deployment/seed-sample-shows.md).
+seed-shows-remote:
+	./scripts/deploy/seed-sample-shows.sh
+
 # Start production-like stack (backend + web + postgres + redis)
 docker-up:
 	$(moved_to_resonate_iac)

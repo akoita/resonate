@@ -151,6 +151,12 @@ When adding a new environment variable:
 | `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
 | `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
 | `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |
+
+> Seeded Shows images live in storage and only refresh when `fixtures:shows`
+> re-runs — deploying backend code alone does not update them. Run the seed after
+> each backend deploy that changes Show fixtures: see
+> [`seed-sample-shows.md`](./seed-sample-shows.md) (`make seed-shows` locally,
+> `make seed-shows-remote` for a deployed env via a Cloud Run Job).
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
 | `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |

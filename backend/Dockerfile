@@ -44,6 +44,11 @@ COPY package.json package-lock.json .npmrc ./
 # Copy compiled output
 COPY --from=build /app/dist ./dist
 
+# Sample-data fixture assets (Show campaign artist/hero/gallery images) so the
+# `fixtures:shows:prod` seed can run from this image as a one-off Cloud Run Job.
+# Only used when explicitly invoked with ALLOW_SAMPLE_SHOW_FIXTURES=true.
+COPY fixtures ./fixtures
+
 # Create uploads directory
 RUN mkdir -p /app/uploads/stems && chown -R node:node /app/uploads
 
