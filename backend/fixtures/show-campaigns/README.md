@@ -36,35 +36,34 @@ copy are stored separately.
 Each campaign gallery mixes three kinds of image:
 
 - **Project-owned generated artwork** — the cinematic hero of each campaign.
-- **Openly licensed real photos** (Creative Commons / public domain from
-  Wikimedia Commons) — venues, cities, and real artist photos where a reusable
-  license exists.
-- **Official artist images used for demo only** — for SennaRin and Felicia
-  Farerre no openly-licensed photo exists, so a still/artwork from the artist's
-  own official channels is included. These are **© the artist/label, all rights
-  reserved**, included solely as non-commercial sample content. Replace them
-  with approved press assets (or remove them) before any public or commercial
-  use. Each is a one-file swap; the manifest references them by filename.
+- **Openly licensed real photos** (Creative Commons from Wikimedia Commons) —
+  the venue and city images.
+- **Real artist photos used for demo only** — each artist's portrait/live shot
+  is a recent press or official photo of the artist. These are **© the
+  artist/label/photographer, all rights reserved**, included solely as
+  non-commercial sample content so the demo looks realistic. Replace them with
+  approved press assets (or remove them) before any public or commercial use.
+  Each is a one-file swap; the manifest references them by filename.
 
 ## Asset provenance
 
 | File | Creator/source | License | Source |
 | --- | --- | --- | --- |
 | `sennarin-paris-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as SennaRin's likeness |
-| `sennarin-mv.jpg` | SennaRin / label | All rights reserved — demo use only | Still from an official SennaRin music video linked from [sennarin.com](https://www.sennarin.com/) (via YouTube) |
+| `sennarin-portrait.jpg` | SennaRin / label | All rights reserved — demo use only | Press photo (2023) via [Lisani.jp](https://www.lisani.jp/) |
 | `sennarin-studio.jpg` | SennaRin / label | All rights reserved — demo use only | Still from an official SennaRin video (via YouTube) |
 | `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
 | `felicia-farerre-dublin-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Felicia Farerre's likeness |
-| `felicia-farerre-artwork.jpg` | Felicia Farerre | All rights reserved — demo use only | Official release artwork “The Healing Hour” ([feliciafarerre.com](https://www.feliciafarerre.com/)) |
+| `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo (2022) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
+| `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
 | `leona-lewis-lagos-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Leona Lewis's likeness |
-| `leona-lewis-portrait.jpg` | Mercy For Animals MFA; crop by Lucas Secret | CC BY 2.0 | [Leona Lewis 2014](https://commons.wikimedia.org/wiki/File:Leona_Lewis_2014.jpg) |
-| `leona-lewis-performance.jpg` | Royal Variety Charity | CC BY-SA 3.0 | [Leona Lewis — Royal Variety Performance 2011](https://commons.wikimedia.org/wiki/File:Leona_Lewis_-_Royal_Variety_Performance_2011_-_05.jpg) |
+| `leona-lewis-live.jpg` | Leona Lewis / Sony Music | All rights reserved — demo use only | Official live photo (2023), Sony Music artist CDN |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
 | `aya-nakamura-montreal-hero.jpg` | OpenAI image generation for Resonate | Project-owned generated sample artwork | Generated for issue #1224; performer shown from behind, not represented as Aya Nakamura's likeness |
-| `aya-nakamura-portrait.jpg` | Ayanakamura_officielfan | CC0 | [Aya Nakamura, cropped](https://commons.wikimedia.org/wiki/File:Aya_Nakamura_IMG_4756_(cropped).jpg) |
+| `aya-nakamura-portrait.jpg` | Aya Nakamura | All rights reserved — demo use only | Press photo (2024) via [opinion-internationale.com](https://www.opinion-internationale.com/) |
 | `aya-nakamura-montreal-city.jpg` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
 
-Creative Commons assets retrieved from Wikimedia Commons; official artist images
-retrieved from the artists' own channels on 2026-06-24. Preserve this table
+CC venue/city assets retrieved from Wikimedia Commons; real artist photos
+retrieved from public press/official sources on 2026-06-24. Preserve this table
 whenever an asset is replaced, and keep the rights status accurate.

@@ -85,7 +85,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e",
         instagram: "https://www.instagram.com/senna__rin/",
       },
-      portraitKey: "mv",
+      portraitKey: "portrait",
     },
     campaign: {
       id: "sample-show-sennarin-paris",
@@ -107,10 +107,10 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     },
     gallery: [
       {
-        key: "mv",
-        file: "sennarin-mv.jpg",
-        caption: "SennaRin in a still from one of her official music videos.",
-        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "official music video (via YouTube)"),
+        key: "portrait",
+        file: "sennarin-portrait.jpg",
+        caption: "SennaRin (2023 press photo).",
+        credit: OFFICIAL_DEMO_CREDIT("SennaRin / label", "press photo via Lisani.jp, 2023"),
       },
       {
         key: "studio",
@@ -142,6 +142,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080",
         youtube: "https://www.youtube.com/@FeliciaFarerre",
       },
+      portraitKey: "portrait",
     },
     campaign: {
       id: "sample-show-felicia-farerre-dublin",
@@ -163,10 +164,16 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     },
     gallery: [
       {
-        key: "artwork",
-        file: "felicia-farerre-artwork.jpg",
-        caption: "Felicia Farerre — official release artwork, “The Healing Hour”.",
-        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "official release artwork (feliciafarerre.com)"),
+        key: "portrait",
+        file: "felicia-farerre-portrait.jpg",
+        caption: "Felicia Farerre.",
+        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "press photo via Crossover Music Magazine, 2022"),
+      },
+      {
+        key: "studio",
+        file: "felicia-farerre-studio.jpg",
+        caption: "Felicia Farerre at the microphone.",
+        credit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "press photo via Crossover Music Magazine"),
       },
       {
         key: "venue",
@@ -192,7 +199,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
         musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537",
         instagram: "https://www.instagram.com/leonalewis/",
       },
-      portraitKey: "portrait",
+      portraitKey: "live",
     },
     campaign: {
       id: "sample-show-leona-lewis-lagos",
@@ -214,16 +221,10 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
     },
     gallery: [
       {
-        key: "portrait",
-        file: "leona-lewis-portrait.jpg",
-        caption: "Leona Lewis.",
-        credit: "Mercy For Animals; crop by Lucas Secret, CC BY 2.0 (Wikimedia Commons)",
-      },
-      {
-        key: "performance",
-        file: "leona-lewis-performance.jpg",
-        caption: "Leona Lewis performing (Royal Variety Performance, 2011).",
-        credit: "Royal Variety Charity, CC BY-SA 3.0 (Wikimedia Commons)",
+        key: "live",
+        file: "leona-lewis-live.jpg",
+        caption: "Leona Lewis performing live (2023).",
+        credit: OFFICIAL_DEMO_CREDIT("Leona Lewis / Sony Music", "official photo, 2023"),
       },
       {
         key: "city",
@@ -273,8 +274,8 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       {
         key: "portrait",
         file: "aya-nakamura-portrait.jpg",
-        caption: "Aya Nakamura performing.",
-        credit: "Ayanakamura_officielfan, CC0 (Wikimedia Commons)",
+        caption: "Aya Nakamura (2024).",
+        credit: OFFICIAL_DEMO_CREDIT("Aya Nakamura", "press photo via opinion-internationale.com, 2024"),
       },
       {
         key: "city",

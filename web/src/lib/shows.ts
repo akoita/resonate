@@ -538,15 +538,15 @@ const CAMPAIGNS: Campaign[] = [
 
 const PARIS_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/0/0e/Le_Trianon%2C_80_boulevard_de_Rochechouart%2C_Paris_18e.jpg";
 const DUBLIN_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/a/a1/Dame_Street_-_The_Olympia_Theatre_%283433685951%29.jpg";
-const LEONA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/e/ed/Leona_Lewis_2014.jpg";
 const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Eko_Atlantic_%28Lagos%29_Skyline.jpg";
-const AYA_PORTRAIT_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/b/b1/Aya_Nakamura_IMG_4756_%28cropped%29.jpg";
 const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
-// Real artist images. CC for Leona; SennaRin/Felicia are official artist channels (all rights reserved, demo only).
-const SENNARIN_MV_IMAGE = "https://img.youtube.com/vi/ohFxsyrQQ68/maxresdefault.jpg";
+// Real, recent artist photos — official/press images, all rights reserved, used for demo only.
+const AYA_PORTRAIT_IMAGE = "https://www.opinion-internationale.com/wp-content/uploads/2024/03/aya-nakamura.jpeg";
+const LEONA_LIVE_IMAGE = "https://cdn-p.smehost.net/sites/5cfaf3980b294dd89a79248f35560b2f/wp-content/uploads/2023/12/Leona-Dec9-992x992.jpg";
+const SENNARIN_PORTRAIT_IMAGE = "https://www.lisani.jp/admin/wp-content/uploads/2023/12/2312251930-ak-001-1600x1200.jpg";
 const SENNARIN_STUDIO_IMAGE = "https://img.youtube.com/vi/u8TUrQY7Kls/maxresdefault.jpg";
-const FELICIA_ARTWORK_IMAGE = "https://static.wixstatic.com/media/cdac98_e599aa7517da4be78e946559efe70559~mv2.jpg/v1/fill/w_1024,h_1024,al_c,q_85,enc_auto/the-healing-hour.jpg";
-const LEONA_PERFORMANCE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/d/d3/Leona_Lewis_-_Royal_Variety_Performance_2011_-_05.jpg";
+const FELICIA_PORTRAIT_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia-1.jpg";
+const FELICIA_STUDIO_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia_Farerre.png";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
@@ -578,7 +578,7 @@ const CAMPAIGNS: Campaign[] = [
   {
     ...sampleBase,
     id: "sennarin-paris", backendId: "sennarin-paris",
-    artistName: "SennaRin", artistSlug: "sennarin", artistImage: SENNARIN_MV_IMAGE,
+    artistName: "SennaRin", artistSlug: "sennarin", artistImage: SENNARIN_PORTRAIT_IMAGE,
     artistSummary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers before making her solo debut with the 2022 EP Dignified. Her expressive low register has become closely associated with cinematic anime themes.",
     artistLinks: { official: "https://www.sennarin.com/", musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e" },
     title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
@@ -586,7 +586,7 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 10_000_000, raisedCents: 6_720_000, currency: "EUR", backerCount: 127, thresholdBackers: 500,
     heroImage: PARIS_VENUE_IMAGE, cardImage: PARIS_VENUE_IMAGE,
     visuals: [
-      { id: "sample-sennarin-paris-mv", role: "gallery", url: SENNARIN_MV_IMAGE, sortOrder: 10, caption: "SennaRin in a still from one of her official music videos.", credit: "© SennaRin / label — official video, demo use only" },
+      { id: "sample-sennarin-paris-portrait", role: "gallery", url: SENNARIN_PORTRAIT_IMAGE, sortOrder: 10, caption: "SennaRin (2023 press photo).", credit: "© SennaRin / label — press photo, demo use only" },
       { id: "sample-sennarin-paris-studio", role: "gallery", url: SENNARIN_STUDIO_IMAGE, sortOrder: 11, caption: "SennaRin recording in studio.", credit: "© SennaRin / label — official video, demo use only" },
       { id: "sample-sennarin-paris-venue", role: "gallery", url: PARIS_VENUE_IMAGE, sortOrder: 12, caption: "Le Trianon, the proposed venue target.", credit: "Celette, CC BY-SA 4.0" },
     ],
@@ -597,7 +597,7 @@ const CAMPAIGNS: Campaign[] = [
   {
     ...sampleBase,
     id: "felicia-farerre-dublin", backendId: "felicia-farerre-dublin",
-    artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: FELICIA_ARTWORK_IMAGE,
+    artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: FELICIA_PORTRAIT_IMAGE,
     artistSummary: "Felicia Farerre is an American recording artist, composer, producer and author whose signature vocal style spans television, advertising, films and movie trailers.",
     artistLinks: { official: "https://www.feliciafarerre.com/", musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080" },
     title: "Felicia Farerre in Dublin", city: "Dublin", country: "IE", venue: "3Olympia Theatre",
@@ -605,8 +605,9 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 7_000_000, raisedCents: 2_940_000, currency: "EUR", backerCount: 94, thresholdBackers: 350,
     heroImage: DUBLIN_VENUE_IMAGE, cardImage: DUBLIN_VENUE_IMAGE,
     visuals: [
-      { id: "sample-felicia-farerre-dublin-artwork", role: "gallery", url: FELICIA_ARTWORK_IMAGE, sortOrder: 10, caption: "Felicia Farerre — official release artwork, “The Healing Hour”.", credit: "© Felicia Farerre — official artwork, demo use only" },
-      { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 11, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
+      { id: "sample-felicia-farerre-dublin-portrait", role: "gallery", url: FELICIA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Felicia Farerre.", credit: "© Felicia Farerre — press photo, demo use only" },
+      { id: "sample-felicia-farerre-dublin-studio", role: "gallery", url: FELICIA_STUDIO_IMAGE, sortOrder: 11, caption: "Felicia Farerre at the microphone.", credit: "© Felicia Farerre — press photo, demo use only" },
+      { id: "sample-felicia-farerre-dublin-venue", role: "gallery", url: DUBLIN_VENUE_IMAGE, sortOrder: 12, caption: "3Olympia Theatre, the proposed venue target.", credit: "William Murphy, CC BY-SA 2.0" },
     ],
     tagline: "From trailer-scale power to a pin-drop vocal, this fan-created Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre.",
     tiers: sampleTiers("felicia-farerre-dublin", "EUR"),
@@ -614,17 +615,16 @@ const CAMPAIGNS: Campaign[] = [
   {
     ...sampleBase,
     id: "leona-lewis-lagos", backendId: "leona-lewis-lagos",
-    artistName: "Leona Lewis", artistSlug: "leona-lewis", artistImage: LEONA_PORTRAIT_IMAGE,
+    artistName: "Leona Lewis", artistSlug: "leona-lewis", artistImage: LEONA_LIVE_IMAGE,
     artistSummary: "London-born singer, songwriter and actress Leona Lewis trained at the BRIT School before winning The X Factor in 2006. Spirit and the global reach of Bleeding Love established a pop-soul career defined by range and emotional scale.",
     artistLinks: { official: "https://www.leonalewismusic.com/", musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537" },
     title: "Leona Lewis in Lagos", city: "Lagos", country: "NG", venue: "Eko Convention Centre",
     targetDate: addDays(225), deadline: addDays(35), bookingDeadline: addDays(68),
     goalCents: 12_000_000, raisedCents: 4_560_000, currency: "USD", backerCount: 211, thresholdBackers: 650,
-    heroImage: LEONA_PORTRAIT_IMAGE, cardImage: LEONA_PORTRAIT_IMAGE,
+    heroImage: LEONA_LIVE_IMAGE, cardImage: LEONA_LIVE_IMAGE,
     visuals: [
-      { id: "sample-leona-lewis-lagos-portrait", role: "gallery", url: LEONA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Leona Lewis.", credit: "Mercy For Animals / Lucas Secret, CC BY 2.0" },
-      { id: "sample-leona-lewis-lagos-performance", role: "gallery", url: LEONA_PERFORMANCE_IMAGE, sortOrder: 11, caption: "Leona Lewis performing (Royal Variety, 2011).", credit: "Royal Variety Charity, CC BY-SA 3.0" },
-      { id: "sample-leona-lewis-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 12, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
+      { id: "sample-leona-lewis-lagos-live", role: "gallery", url: LEONA_LIVE_IMAGE, sortOrder: 10, caption: "Leona Lewis performing live (2023).", credit: "© Leona Lewis / Sony Music — official photo, demo use only" },
+      { id: "sample-leona-lewis-lagos-city", role: "gallery", url: LAGOS_CITY_IMAGE, sortOrder: 11, caption: "Lagos skyline.", credit: "SmartAfricanBoy, CC BY-SA 4.0" },
     ],
     tagline: "Lagos deserves the full voice, full band and full-room chorus. This fan-created concept turns local demand into a signal strong enough to make the journey viable.",
     tiers: sampleTiers("leona-lewis-lagos", "USD"),
@@ -640,7 +640,7 @@ const CAMPAIGNS: Campaign[] = [
     goalCents: 9_500_000, raisedCents: 7_410_000, currency: "USD", backerCount: 306, thresholdBackers: 550,
     heroImage: AYA_PORTRAIT_IMAGE, cardImage: AYA_PORTRAIT_IMAGE,
     visuals: [
-      { id: "sample-aya-nakamura-montreal-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura performing.", credit: "Ayanakamura_officielfan, CC0" },
+      { id: "sample-aya-nakamura-montreal-portrait", role: "gallery", url: AYA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Aya Nakamura (2024).", credit: "© Aya Nakamura — press photo, demo use only" },
       { id: "sample-aya-nakamura-montreal-city", role: "gallery", url: MONTREAL_CITY_IMAGE, sortOrder: 11, caption: "Montréal at night.", credit: "Mathieu Landretti, CC BY-SA 4.0" },
     ],
     tagline: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line.",
