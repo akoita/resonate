@@ -47,6 +47,14 @@ campaign names render as a two-part headline, unusually long venue targets are
 clamped with the full text preserved in browser hover text, and long campaign
 pitches are expanded into a dedicated pitch section below the visual story.
 
+The repository also ships four media-rich, repeatable sample concepts:
+SennaRin in Paris, Felicia Farerre in Dublin, Leona Lewis in Lagos, and Aya
+Nakamura in Montréal. Each combines a source-grounded artist biography with
+fictional campaign copy, modest original campaign artwork, and locally stored
+openly licensed media. Real artist photography is included only when its reuse
+license is documented. The UI labels these records as samples and does not
+claim artist endorsement, a venue hold, or a live escrow deployment.
+
 ## Who It Is For
 
 - Listeners who want to bring an artist to their city.
@@ -210,7 +218,7 @@ settlement is a later protocol slice rather than MVP scope.
 | Surface | Status | Notes |
 | --- | --- | --- |
 | Home campaign hero | implemented | Featured campaign card links into the Shows route. |
-| `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to three seeded examples for local/offline demos. Uploaded campaign preview visuals appear on campaign cards when available. |
+| `/shows` | partial | Campaign explorer reads the backend Shows API and falls back to four researched sample concepts for local/offline demos. Uploaded campaign preview visuals appear on campaign cards when available. |
 | `/shows/create` | partial | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, a hero visual, a compact preview visual, and an ordered gallery visual set. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. Creating a campaign already marked `artist_authorized`/`trusted_source_authorized` is operator-only (#946) — a non-operator self-issuing an authorized status is rejected the same way `request-authority` rejects it. |
 | `/shows/:slug/edit` | partial | Draft campaigns can be edited before activation, including public campaign title/copy, hero/preview visuals, gallery add/replace/delete/reorder controls, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. Once artist authority is approved, the critical fan-risk terms are locked (#946): edits that change goal, deadline, beneficiary, deposit-release %, release policy, dispute window, booking deadline, or tier financials are refused until an operator revokes authority; non-risk fields (copy, visuals) stay editable. |
 | `/shows/sennarin-paris` | partial | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, expanded campaign pitch, dense-title treatment, and campaign image metadata for large social previews when available. A trust/terms panel (#949) shows the campaign trust state (demand signal / provisional / artist-authorized escrow / authority-revoked / refund-available / cancelled), an artist-authority + masked-beneficiary summary (no sensitive evidence ids), and the immutable terms a fan reads before signing (goal, deadline, minimum backers, payment asset/network, deposit-release %, dispute window, booking deadline, refund policy), with honest copy that funding never guarantees a ticket. The pledge panel renders the full pledge lifecycle state (`pledgeStateLabel`), and gates the pledge form on `campaignPledgeAvailability` (#949): when the campaign isn't open for pledging it shows an honest empty state instead of a live form — awaiting artist authority, not authorized (revoked/rejected/expired), open demand signal (no escrow), or terminal/refund — while still surfacing the refund action for existing backers. Before the wallet signature, a pre-sign confirmation dialog (#1240, `pledgeConfirmSummary` + the shared `ConfirmDialog`) recaps the selected tier amount and the fan-risk terms (payment asset/network, deposit-on-booking %, refund policy, dispute window) with honest no-guaranteed-ticket copy; cancelling aborts before any intent is created. |
@@ -221,6 +229,24 @@ settlement is a later protocol slice rather than MVP scope.
 | Attendance credentials | planned | [#1098](https://github.com/akoita/resonate/issues/1098) defines the boundary before implementation: no NFT-backed attendance credential yet; start with off-chain opt-in attendance badges backed by confirmed attendance, fulfilled ticket/pledge state, guest-list confirmation, or operator grant. Public display and partner verification must not expose raw location source, ticket price, pledge amount, wallet address, private room membership, city-scene cohort membership, refund/dispute/moderation state, or raw eligibility rules. |
 | Campaign backend | partial | Prisma models exist for campaign, tier, pledge, trust, authority, release, lifecycle-event, and promotional visual state. Public read routes, visual reads, signal creation, draft escrow campaign creation/update, draft visual upload, draft visual replacement/deletion/reordering, authority request/approval/rejection/revocation/expiry, activation, pledge intent, pledge confirmation, "my pledges", cancellation, booking confirmation, and fulfillment confirmation APIs are implemented. Escrow authorization is operator-gated and the artist-approved terms are immutable (#946): authorized authority statuses are rejected from non-operator create/request paths, and on approval the fan-risk terms are snapshotted into `approvedTermsHash` (full snapshot in `metadata.approvedTerms`) so `updateDraftCampaign` refuses silent term changes and `activateCampaign` re-verifies the live terms before activating; revoke/reject/expire clear the snapshot to reopen editing. Public campaign reads (`GET /shows/campaigns`, `GET /shows/campaigns/:slug`) go through a whitelist DTO (#949) that exposes trust state, immutable terms (goal, deadline, min backers, payment asset/network, release policy, deposit-release bps, dispute window, booking deadline), beneficiary summary, and on-chain reconciliation totals, while withholding sensitive authority evidence/credential references, internal storage URIs, ops notes, indexer cursors, and the raw lifecycle-event log. An authenticated operator/admin or the owning artist can additionally read the operator-scoped managed view (`GET /shows/campaigns/:id/manage`, #949), which returns the public fields plus the withheld authority credential/evidence ids and the full dispute list so the operator panel can prefill inputs and act on disputes. Booking and fulfillment confirmation now require an evidence bundle reference (#950), and an off-chain dispute workflow (`POST /shows/campaigns/:id/dispute`, `PATCH .../dispute/:disputeId/resolve`) records `ShowCampaignDispute` rows; an open dispute blocks fulfillment progress toward final release, and the public DTO surfaces a fan-visible `disputeStatus` + `disputeWindowClosesAt` without leaking operator notes, dispute reasons, or initiator identity. |
 | Operator controls | partial | Admin/operator users can manage campaign lifecycle from the campaign detail page: approve artist authority, bind beneficiary data, activate with escrow contract IDs, cancel to refunds, confirm booking, and confirm fulfillment. The panel reads the operator-scoped managed view (#949, `GET /shows/campaigns/:id/manage`) so it can prefill the authority credential/evidence references the public DTO withholds and load the campaign's dispute history. Operators can also raise an off-chain dispute in the booking → release window and resolve it with an audited outcome (#950); resolution is recorded but never itself moves funds (release stays gated by the on-chain time-lock). Amending approved terms is a deliberate revoke → edit → re-approve flow (revocation is also the documented emergency stop), since approved terms are locked (#946). Artist-owned campaign management remains a follow-up UI. |
+
+## Sample Data Workflow
+
+The sample package lives under `backend/fixtures/show-campaigns/`, with typed
+content and creation logic in `backend/src/fixtures/show_campaigns.ts`. Asset
+provenance, licenses, source links, and the non-sensual visual standard are
+recorded beside the media and must be preserved when assets change.
+
+```bash
+cd backend
+npm run fixtures:shows -- --dry-run
+npm run fixtures:shows
+```
+
+The command validates every asset, uploads through the configured
+`STORAGE_PROVIDER`, and upserts stable artists, campaigns, tiers, and visuals.
+Re-running it refreshes future dates and replaces only fixture-owned children.
+Shared environments require `ALLOW_SAMPLE_SHOW_FIXTURES=true` explicitly.
 
 ## Production Beta Requirements
 
@@ -272,6 +298,10 @@ donation. The fan-facing promise is:
   campaign visual set upload/read path, cancellation, booking confirmation,
   fulfillment confirmation, and listing API service behavior against
   Testcontainer Postgres.
+- `backend/src/tests/show_campaign_fixtures.spec.ts` verifies fixture identity,
+  source coverage, and committed media completeness.
+- `backend/src/tests/show_campaign_fixtures.integration.spec.ts` verifies
+  repeatable fixture creation and isolation from unrelated campaigns.
 - `contracts/test/unit/ShowCampaignEscrow.t.sol` verifies campaign creation,
   pledging, funded-without-release behavior, missed-deadline refunds, missed
   booking refunds, booking/fulfillment confirmation, optional deposit release,

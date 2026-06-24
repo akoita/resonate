@@ -7,6 +7,7 @@ export type CampaignGalleryVisual = {
   id: string;
   url: string;
   caption?: string | null;
+  credit?: string | null;
 };
 
 /**
@@ -75,7 +76,12 @@ export function CampaignGallery({ visuals }: { visuals: CampaignGalleryVisual[] 
                 </svg>
               </span>
             </button>
-            {visual.caption ? <figcaption>{visual.caption}</figcaption> : null}
+            {visual.caption || visual.credit ? (
+              <figcaption>
+                {visual.caption}
+                {visual.credit ? <small>{visual.credit}</small> : null}
+              </figcaption>
+            ) : null}
           </figure>
         ))}
       </div>
@@ -128,6 +134,7 @@ export function CampaignGallery({ visuals }: { visuals: CampaignGalleryVisual[] 
                 {openIndex + 1} / {visuals.length}
               </span>
               {active.caption ? <p>{active.caption}</p> : null}
+              {active.credit ? <small>{active.credit}</small> : null}
             </figcaption>
           </figure>
 

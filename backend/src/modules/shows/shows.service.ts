@@ -539,6 +539,18 @@ export function serializePublicShowCampaign(campaign: any) {
       }))
     : undefined;
 
+  // #1224: public artist presentation from the joined `artist` relation
+  // (image / summary / social links). These are the same public fields shown on
+  // the catalog artist page — never authority evidence — so they are safe to
+  // whitelist here for "Meet the artist" surfaces on list + detail.
+  const artist = campaign.artist
+    ? {
+        imageUrl: campaign.artist.imageUrl ?? null,
+        summary: campaign.artist.summary ?? null,
+        socialLinks: campaign.artist.socialLinks ?? null,
+      }
+    : undefined;
+
   // #950: fan-visible dispute state. Derived from the disputes relation when
   // included; never exposes operator notes, reasons, or initiator identity.
   const disputeRows: Array<{ status?: string }> = Array.isArray(campaign.disputes)
@@ -618,6 +630,7 @@ export function serializePublicShowCampaign(campaign: any) {
     updatedAt: campaign.updatedAt,
     ...(tiers !== undefined ? { tiers } : {}),
     ...(visuals !== undefined ? { visuals } : {}),
+    ...(artist !== undefined ? { artist } : {}),
   };
 }
 
@@ -693,6 +706,7 @@ export class ShowsService {
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
       },
       include: {
+        artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         disputes: { select: { status: true } },
@@ -708,6 +722,7 @@ export class ShowsService {
     const campaign = await prisma.showCampaign.findUnique({
       where: { slug },
       include: {
+        artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         disputes: { select: { status: true } },

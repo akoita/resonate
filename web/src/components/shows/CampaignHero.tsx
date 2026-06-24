@@ -50,7 +50,9 @@ export function CampaignHero({ campaign }: Props) {
       style={hasHeroImage ? { "--campaign-visual": `url(${heroVisual})` } as CSSProperties : undefined}
     >
       <div className="campaign-hero__body">
-        <span className="campaign-hero__eyebrow">Featured Show</span>
+        <span className="campaign-hero__eyebrow">
+          {campaign.isSample ? "Sample campaign concept" : "Featured Show"}
+        </span>
         <h1
           className={`campaign-hero__title ${titleParts ? "campaign-hero__title--split" : ""}`}
           aria-label={displayTitle}
@@ -96,9 +98,9 @@ export function CampaignHero({ campaign }: Props) {
         </div>
 
         <p className="campaign-hero__trust">
-          Funds held in a smart contract, not a company bank account. If the
-          threshold isn&apos;t met, every pledge is refunded automatically — enforced
-          by code.
+          {campaign.isSample
+            ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
+            : "Funds held in a smart contract, not a company bank account. If the threshold isn't met, every pledge is refunded automatically — enforced by code."}
         </p>
       </div>
 

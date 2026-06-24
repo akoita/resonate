@@ -148,6 +148,9 @@ When adding a new environment variable:
 | `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
 | `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
 | `SHOWS_VISUAL_MAX_BYTES` | Backend | Optional maximum size in bytes for each uploaded Shows campaign hero/preview visual. Defaults to `8388608` (8 MiB). |
+| `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
+| `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
+| `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_URL` | Backend | Optional Base Sepolia test ETH faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet ETH faucet action |
 | `PAYMENT_BASE_SEPOLIA_ETH_FAUCET_PROVIDER` | Backend | Optional display name for the configured Base Sepolia ETH faucet |
 | `PAYMENT_BASE_SEPOLIA_USDC_FAUCET_URL` | Backend | Optional Base Sepolia Circle USDC faucet URL. When set and no full funding JSON is provided, `/payments/funding-options` exposes a testnet USDC faucet action |
