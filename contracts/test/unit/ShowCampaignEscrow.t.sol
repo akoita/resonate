@@ -224,6 +224,137 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.releaseFunds(campaignId);
     }
 
+    // ── Access control & release/refund edge cases (#904) ──────────────────
+
+    function test_RevertsConfirmBookingByNonConfirmer() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.NotConfirmer.selector, alice));
+        escrow.confirmBooking(campaignId);
+    }
+
+    function test_RevertsConfirmFulfillmentByNonConfirmer() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.NotConfirmer.selector, bob));
+        escrow.confirmFulfillment(campaignId);
+    }
+
+    function test_RevertsReleaseDepositByNonConfirmer() public {
+        uint256 campaignId = _fundCampaign(2_000);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        vm.prank(carol);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.NotConfirmer.selector, carol));
+        escrow.releaseDeposit(campaignId);
+    }
+
+    function test_RevertsReleaseFundsBeforeFulfillment() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        // Status is BookingConfirmed, not Fulfilled — release must be refused
+        // even if a (zero) dispute window would otherwise have elapsed.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.InvalidStatus.selector, campaignId, CampaignStatus.BookingConfirmed
+            )
+        );
+        escrow.releaseFunds(campaignId);
+    }
+
+    function test_PermissionlessReleaseFundsByAnyCaller() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(campaignId);
+        escrow.confirmFulfillment(campaignId);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+
+        // releaseFunds is intentionally permissionless: once the time-lock
+        // elapses, ANY caller can settle, and funds always go to the
+        // beneficiary (never to the caller). carol is not owner nor confirmer.
+        uint256 beforeArtist = usdc.balanceOf(artist);
+        uint256 beforeCarol = usdc.balanceOf(carol);
+        vm.prank(carol);
+        vm.expectEmit(true, true, false, true);
+        emit FundsReleased(campaignId, artist, 1_100e6);
+        escrow.releaseFunds(campaignId);
+
+        assertEq(usdc.balanceOf(artist) - beforeArtist, 1_100e6);
+        assertEq(usdc.balanceOf(carol), beforeCarol);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Released));
+    }
+
+    function test_RevertsDoubleReleaseFunds() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(campaignId);
+        escrow.confirmFulfillment(campaignId);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+        escrow.releaseFunds(campaignId);
+
+        // Second settle is refused: status is now Released, so the status
+        // guard fires before any double transfer can occur.
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, campaignId, CampaignStatus.Released)
+        );
+        escrow.releaseFunds(campaignId);
+    }
+
+    function test_RevertsClaimRefundByNonBacker() public {
+        uint256 campaignId = _createAndActivate(0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, 100e6);
+
+        vm.warp(block.timestamp + 15 days);
+        escrow.markFailed(campaignId);
+
+        // carol never pledged — refund must revert rather than pay out.
+        vm.prank(carol);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.NoPledge.selector, campaignId, carol));
+        escrow.claimRefund(campaignId);
+    }
+
+    function test_RevertsDoubleRefundClaim() public {
+        uint256 campaignId = _createAndActivate(0);
+
+        // Two backers (still under GOAL) so the campaign stays RefundAvailable
+        // after alice's claim — this isolates the per-backer zeroing path
+        // rather than the campaign-level Refunded status transition.
+        vm.prank(alice);
+        escrow.pledge(campaignId, 100e6);
+        vm.prank(bob);
+        escrow.pledge(campaignId, 100e6);
+
+        vm.warp(block.timestamp + 15 days);
+        escrow.markFailed(campaignId);
+
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        // alice's pledge is zeroed after the first claim — a replay must revert.
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.NoPledge.selector, campaignId, alice));
+        escrow.claimRefund(campaignId);
+    }
+
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(

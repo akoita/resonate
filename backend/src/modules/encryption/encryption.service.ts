@@ -21,6 +21,29 @@ export interface EncryptionResult {
 }
 
 /**
+ * Why a render decryption can fail, in caller-safe terms (#1214). The string
+ * codes are deliberately opaque: they carry no key material, metadata, storage
+ * URI, or raw provider message, so a render boundary can map them to a generic
+ * user-facing error without leaking secrets.
+ */
+export type RenderDecryptionFailureReason =
+    | 'encryption_disabled' // provider is 'none' but a row is flagged encrypted (misconfiguration)
+    | 'invalid_metadata' // metadata missing/not AES-decryptable — never treat ciphertext as audio
+    | 'unauthorized' // access check failed at decrypt time (e.g. permissions changed)
+    | 'decryption_failed'; // key unavailable, corrupt ciphertext, or provider fault
+
+/**
+ * Raised by the strict render decryption path (#1214). Never include the
+ * underlying provider error, metadata, URI, or any ciphertext in the message.
+ */
+export class RenderDecryptionError extends Error {
+    constructor(readonly reason: RenderDecryptionFailureReason) {
+        super(`render decryption failed: ${reason}`);
+        this.name = 'RenderDecryptionError';
+    }
+}
+
+/**
  * Encryption Service
  * 
  * Orchestrates encryption/decryption using the configured provider.
@@ -281,6 +304,85 @@ export class EncryptionService {
         }
 
         return this.decryptFromUri(uri, metadata, authSig);
+    }
+
+    /**
+     * Strict, in-memory decryption for server-side rendering (#1214).
+     *
+     * Unlike {@link decryptBuffer} and {@link decryptFromUri}, this method:
+     * - NEVER writes plaintext to the on-disk decrypted cache (plaintext stays
+     *   in memory; the caller keeps it process-local and short-lived);
+     * - NEVER falls back to returning the raw input buffer — a row flagged
+     *   `isEncrypted` must yield real plaintext or fail closed, so ciphertext
+     *   can never reach ffmpeg or a generation provider;
+     * - verifies access explicitly before decrypting and maps every failure to
+     *   a {@link RenderDecryptionError} whose reason leaks no key, metadata,
+     *   URI, or provider internals.
+     *
+     * @param ciphertext Already-loaded encrypted bytes (caller fetches via the
+     *   contained storage boundary, so this method never touches storage).
+     * @param metadata Provider-specific decryption metadata (AES JSON).
+     * @param authSig Internal/owner auth context. For backend-initiated renders
+     *   use the `remix-render-authorized` internal purpose plus INTERNAL_SERVICE_KEY.
+     */
+    async decryptForRender(
+        ciphertext: Buffer,
+        metadata: string,
+        authSig: {
+            address: string;
+            sig: string;
+            signedMessage: string;
+            internalKey?: string;
+        },
+    ): Promise<Buffer> {
+        // Encryption disabled but the row claims to be encrypted: a real
+        // configuration error. Returning the input here would feed ciphertext
+        // straight into a render, so fail closed instead.
+        if (this.provider.providerName === 'none') {
+            throw new RenderDecryptionError('encryption_disabled');
+        }
+
+        // Require well-formed AES metadata. Missing iv/authTag/keyId means we
+        // cannot decrypt; we must NOT silently pass the raw buffer through.
+        if (!metadata || metadata.trim() === '' || metadata === '{}') {
+            throw new RenderDecryptionError('invalid_metadata');
+        }
+        try {
+            const parsed = JSON.parse(metadata);
+            if (!parsed?.iv || !parsed?.authTag || !parsed?.keyId) {
+                throw new RenderDecryptionError('invalid_metadata');
+            }
+        } catch (error) {
+            if (error instanceof RenderDecryptionError) throw error;
+            throw new RenderDecryptionError('invalid_metadata');
+        }
+
+        const context: DecryptionContext = {
+            metadata,
+            authSig,
+            requesterAddress: authSig.address,
+        };
+
+        // Explicit access check so an authorization failure is distinguishable
+        // from a cryptographic failure without parsing provider error strings.
+        let hasAccess: boolean;
+        try {
+            hasAccess = await this.provider.verifyAccess(context);
+        } catch {
+            throw new RenderDecryptionError('decryption_failed');
+        }
+        if (!hasAccess) {
+            throw new RenderDecryptionError('unauthorized');
+        }
+
+        try {
+            return await this.provider.decrypt(ciphertext, context);
+        } catch {
+            // Swallow the provider message: it can name keys, addresses, or
+            // ciphertext sizes. Corrupt data, key rotation, or provider faults
+            // all collapse to one opaque reason.
+            throw new RenderDecryptionError('decryption_failed');
+        }
     }
 
     /**

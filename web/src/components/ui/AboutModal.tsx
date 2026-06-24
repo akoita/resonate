@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import {
   APP_NAME,
   APP_TAGLINE,
@@ -235,6 +236,12 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           </p>
 
           <div style={{ display: "flex", flexDirection: "column" }}>
+            <div className="about-row">
+              <span className="about-label">User guide</span>
+              <Link className="about-link" href="/help" onClick={onClose}>
+                Learn how to use Resonate →
+              </Link>
+            </div>
             <div className="about-row">
               <span className="about-label">Source</span>
               <a

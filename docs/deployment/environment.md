@@ -104,7 +104,7 @@ When adding a new environment variable:
 | `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
 | `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
-| `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address used by pledge execution and event reconciliation once Shows moves beyond backend receipts |
+| `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address (chain-agnostic fallback) used by pledge execution and event reconciliation once Shows moves beyond backend receipts. The backend resolver `configuredShowCampaignEscrowAddress(chainId)` prefers per-chain overrides `SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS` / `BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS` / `ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS`, fails closed on unset/zero/malformed values, and supplies the default `contractAddress` at campaign activation |
 | `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` | Frontend | Public default Shows escrow address promoted from `contracts/deployments/show-campaign-escrow.<network>.remote.env`; individual campaigns still come from backend `contractAddress` / `contractCampaignId` records |
 | `SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS` | Backend | Optional default ERC-20 payment token for artist-created show campaigns; normal artists cannot choose arbitrary payment token addresses |
 | `SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES` | Backend | Optional comma-separated allowlist of ERC-20 payment tokens accepted by Shows campaign drafts and pledge intents |
@@ -186,6 +186,10 @@ When adding a new environment variable:
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
 | `ENABLE_CONTRACT_INDEXER` | Backend | Enables background contract event indexing when set to `true`; deployed environments should only enable it when contract addresses are configured |
 | `INDEXER_POLL_INTERVAL_MS` | Backend | Optional contract indexer poll interval in milliseconds; defaults to `5000` |
+| `ENABLE_SHOWS_ESCROW_INDEXER` | Backend | Enables the `ShowCampaignEscrow` event indexer + on-chain campaign/pledge reconciliation (#948) when `true`; only enable once `SHOW_CAMPAIGN_ESCROW_ADDRESS` (or a per-chain override) is configured. Watches the chain from `INDEXER_CHAIN_ID`/`CHAIN_ID` |
+| `SHOWS_ESCROW_INDEXER_POLL_INTERVAL_MS` | Backend | Optional Shows escrow indexer poll interval in milliseconds; defaults to `5000` |
+| `SHOWS_ESCROW_BLOCKS_PER_BATCH` | Backend | Optional Shows escrow indexer block batch size; defaults to `1000` |
+| `SHOWS_ESCROW_MAX_BATCHES_PER_CYCLE` | Backend | Optional Shows escrow indexer max batches per poll cycle; defaults to `20` |
 | `INDEXER_BLOCKS_PER_BATCH` | Backend | Optional maximum block range fetched per indexer batch; defaults to `1000` |
 | `INDEXER_MAX_BATCHES_PER_CYCLE` | Backend | Optional maximum indexer batches processed per poll cycle; defaults to `20` |
 | `INDEXER_PROGRESS_LOG_LEVEL` | Backend | Optional progress log level for per-batch indexing messages: `silent`, `debug`, or `log`; defaults to `silent` |

@@ -6,6 +6,7 @@ import { CampaignGallery } from "../../../components/shows/CampaignGallery";
 import { CampaignCommunityPanel } from "../../../components/shows/CampaignCommunityPanel";
 import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperatorPanel";
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
+import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel";
 import {
   daysUntil,
   campaignDisplayTitle,
@@ -174,7 +175,10 @@ export default async function CampaignDetailPage({ params }: Props) {
             </div>
           </article>
 
-          <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
+          <div className="show-detail__pledge-column">
+            <CampaignTrustPanel campaign={campaign} />
+            <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
+          </div>
         </section>
 
         <CampaignCommunityPanel campaign={campaign} />

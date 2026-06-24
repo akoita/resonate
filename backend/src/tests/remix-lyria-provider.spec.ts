@@ -60,6 +60,12 @@ function buildProvider(options: {
 
 describe("LyriaRemixGenerationProvider", () => {
   const originalEnabled = process.env.REMIX_GENERATION_ENABLED;
+  // Prompt-only provider ignores the render grant (#1214); pass a stub.
+  const AUTH = {
+    userId: "user-1",
+    remixProjectId: "project-1",
+    authorizedStemIds: new Set<string>(),
+  };
 
   beforeEach(() => {
     process.env.REMIX_GENERATION_ENABLED = "true";
@@ -73,7 +79,7 @@ describe("LyriaRemixGenerationProvider", () => {
   it("stays behind the master gate regardless of provider kind", async () => {
     process.env.REMIX_GENERATION_ENABLED = "false";
     const { provider, generate } = buildProvider();
-    await expect(provider.createRemixDraft(generationInput())).rejects.toMatchObject({
+    await expect(provider.createRemixDraft(generationInput(), AUTH)).rejects.toMatchObject({
       code: "provider_disabled",
       retryable: false,
     });
@@ -83,7 +89,7 @@ describe("LyriaRemixGenerationProvider", () => {
   it("rejects stem_mix mode without calling the vendor", async () => {
     const { provider, generate } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput({ mode: "stem_mix", prompt: undefined })),
+      provider.createRemixDraft(generationInput({ mode: "stem_mix", prompt: undefined }), AUTH),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(generate).not.toHaveBeenCalled();
   });
@@ -91,7 +97,7 @@ describe("LyriaRemixGenerationProvider", () => {
   it("rejects prompted modes without a prompt", async () => {
     const { provider } = buildProvider();
     await expect(
-      provider.createRemixDraft(generationInput({ prompt: "   " })),
+      provider.createRemixDraft(generationInput({ prompt: "   " }), AUTH),
     ).rejects.toMatchObject({ code: "invalid_input" });
   });
 
@@ -99,6 +105,7 @@ describe("LyriaRemixGenerationProvider", () => {
     const { provider, generate, upload } = buildProvider();
     const job = await provider.createRemixDraft(
       generationInput({ constraints: { durationSeconds: 60, bpm: 120, key: "Fm" } }),
+      AUTH,
     );
 
     expect(generate).toHaveBeenCalledWith({
@@ -131,7 +138,7 @@ describe("LyriaRemixGenerationProvider", () => {
     const safety = buildProvider({
       generate: jest.fn().mockRejectedValue(new Error("Blocked by safety filters")),
     });
-    await expect(safety.provider.createRemixDraft(generationInput())).rejects.toMatchObject({
+    await expect(safety.provider.createRemixDraft(generationInput(), AUTH)).rejects.toMatchObject({
       code: "provider_rejected",
       retryable: false,
     });
@@ -139,7 +146,7 @@ describe("LyriaRemixGenerationProvider", () => {
     const quota = buildProvider({
       generate: jest.fn().mockRejectedValue(new Error("RESOURCE_EXHAUSTED: quota")),
     });
-    await expect(quota.provider.createRemixDraft(generationInput())).rejects.toMatchObject({
+    await expect(quota.provider.createRemixDraft(generationInput(), AUTH)).rejects.toMatchObject({
       code: "provider_unavailable",
       retryable: true,
     });
@@ -147,7 +154,7 @@ describe("LyriaRemixGenerationProvider", () => {
     const storage = buildProvider({
       upload: jest.fn().mockRejectedValue(new Error("bucket unavailable")),
     });
-    await expect(storage.provider.createRemixDraft(generationInput())).rejects.toMatchObject({
+    await expect(storage.provider.createRemixDraft(generationInput(), AUTH)).rejects.toMatchObject({
       code: "provider_unavailable",
       retryable: true,
     });

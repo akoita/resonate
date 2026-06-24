@@ -28,6 +28,19 @@ export interface CampaignVisual {
   credit?: string | null;
 }
 
+// #949/#950 operator-scoped managed read: a dispute as the operator sees it
+// (reason / operator note / initiator — withheld from the public DTO).
+export interface ShowCampaignDispute {
+  id: string;
+  status: string;
+  outcome?: string | null;
+  reason?: string | null;
+  operatorNote?: string | null;
+  initiatorRole?: string | null;
+  createdAt?: string | null;
+  resolvedAt?: string | null;
+}
+
 export interface Campaign {
   id: string;
   backendId: string;
@@ -55,6 +68,23 @@ export interface Campaign {
   goalCents: number;
   raisedCents: number;
   currency: "EUR" | "USD";
+  // #949 trust/terms fields from the public DTO.
+  paymentAssetSymbol?: string | null;
+  chainId?: number | null;
+  releasePolicy?: string | null;
+  depositReleaseBps?: number | null;
+  disputeWindowSeconds?: number | null;
+  onChainStatus?: string | null;
+  totalRefundedUnits?: string | null;
+  totalReleasedUnits?: string | null;
+  // #950 fan-visible dispute state (no operator notes / reason / initiator).
+  disputeStatus?: string | null;
+  disputeWindowClosesAt?: string | null;
+  // #949 operator-scoped managed read only (GET /shows/campaigns/:id/manage).
+  // Absent on the public read; populated by getManagedShowCampaign.
+  bookingEvidenceBundleId?: string | null;
+  fulfillmentEvidenceBundleId?: string | null;
+  disputes?: ShowCampaignDispute[];
   backerCount: number;
   thresholdBackers: number;
   heroImage: string;      // optional; empty string → gradient placeholder
@@ -99,6 +129,377 @@ export function campaignVisualEndpoint(
   return campaign.backendId
     ? `${API_BASE}/shows/campaigns/${encodeURIComponent(campaign.backendId)}/visuals/${slot}`
     : "";
+}
+
+// ============ #949 trust / terms / pledge presentation helpers ============
+
+export type CampaignTrustTone = "neutral" | "info" | "positive" | "warning" | "danger";
+
+export type CampaignTrustState = {
+  key:
+    | "demand_signal"
+    | "provisional"
+    | "authorized_escrow"
+    | "authority_revoked"
+    | "refund_available"
+    | "cancelled";
+  label: string;
+  tone: CampaignTrustTone;
+  /** Short, honest description — never implies a guaranteed ticket. */
+  description: string;
+};
+
+/**
+ * Derive the fan-facing trust state from campaign level + backend status +
+ * artist-authority status. Order matters: terminal/refund states win, then
+ * authority problems, then the escrow ladder.
+ */
+export function campaignTrustState(
+  campaign: Pick<
+    Campaign,
+    "campaignLevel" | "rawStatus" | "artistAuthorityStatus"
+  >,
+): CampaignTrustState {
+  const level = campaign.campaignLevel;
+  const status = campaign.rawStatus;
+  const authority = campaign.artistAuthorityStatus;
+
+  if (status === "cancelled") {
+    return {
+      key: "cancelled",
+      label: "Cancelled",
+      tone: "danger",
+      description: "This campaign was cancelled. Pledged funds are refundable.",
+    };
+  }
+  if (status === "refund_available" || status === "refunded") {
+    return {
+      key: "refund_available",
+      label: "Refund available",
+      tone: "warning",
+      description:
+        "Funding conditions were not met. Backers can claim a refund of their pledge.",
+    };
+  }
+  if (authority === "revoked" || authority === "expired" || authority === "rejected") {
+    return {
+      key: "authority_revoked",
+      label: "Authority revoked",
+      tone: "danger",
+      description:
+        "Artist authorization is no longer valid, so this campaign cannot take pledges.",
+    };
+  }
+  if (level === "signal") {
+    return {
+      key: "demand_signal",
+      label: "Demand signal",
+      tone: "neutral",
+      description:
+        "An open, fan-proposed demand signal. No funds are escrowed and no show is booked yet.",
+    };
+  }
+  if (
+    level === "active_escrow_campaign" &&
+    (authority === "artist_authorized" || authority === "trusted_source_authorized")
+  ) {
+    return {
+      key: "authorized_escrow",
+      label: "Artist-authorized escrow",
+      tone: "positive",
+      description:
+        "An artist-authorized campaign with funds held in escrow. Release depends on booking and fulfillment.",
+    };
+  }
+  return {
+    key: "provisional",
+    label: "Provisional campaign",
+    tone: "info",
+    description:
+      "A provisional campaign awaiting verified artist authority before escrow activation.",
+  };
+}
+
+export type CampaignPledgeAvailability = {
+  /** True only when the backend would accept a new pledge. */
+  open: boolean;
+  key:
+    | "open"
+    | "pending_authority"
+    | "not_authorized"
+    | "signal"
+    | "closed_refund"
+    | "cancelled"
+    | "closed";
+  /** Short heading for the empty state (unused when `open`). */
+  title: string;
+  /** Honest one-liner explaining why pledging is/ isn't open. */
+  message: string;
+};
+
+/**
+ * Mirror the backend's `ensurePledgeableCampaign` so the pledge panel shows an
+ * honest empty state instead of a live form that would only error on submit.
+ * Order matches the trust ladder: terminal/refund first, then authority
+ * problems, then the escrow-readiness gate. Deliberately time-independent
+ * (no deadline check) to stay deterministic across SSR/CSR — the server still
+ * rejects expired-deadline pledges.
+ */
+export function campaignPledgeAvailability(
+  campaign: Pick<
+    Campaign,
+    | "campaignLevel"
+    | "rawStatus"
+    | "artistAuthorityStatus"
+    | "beneficiaryAddress"
+    | "beneficiaryType"
+  >,
+): CampaignPledgeAvailability {
+  const status = campaign.rawStatus;
+  const level = campaign.campaignLevel;
+  const authority = campaign.artistAuthorityStatus;
+  const authorized =
+    authority === "artist_authorized" || authority === "trusted_source_authorized";
+
+  if (status === "cancelled") {
+    return {
+      open: false,
+      key: "cancelled",
+      title: "Pledging closed",
+      message: "This campaign was cancelled. If you backed it, you can claim a refund below.",
+    };
+  }
+  if (status === "refund_available" || status === "refunded") {
+    return {
+      open: false,
+      key: "closed_refund",
+      title: "Pledging closed",
+      message:
+        "Funding conditions weren't met. Backers can claim any refund still available below.",
+    };
+  }
+  if (authority === "revoked" || authority === "expired" || authority === "rejected") {
+    return {
+      open: false,
+      key: "not_authorized",
+      title: "Not open for pledging",
+      message:
+        "Artist authorization isn't valid for this campaign, so it can't take escrow pledges.",
+    };
+  }
+  if (level === "signal") {
+    return {
+      open: false,
+      key: "signal",
+      title: "Open demand signal",
+      message:
+        "This is a fan-proposed demand signal — no funds are escrowed yet. Backing opens only if it's authorized as an escrow campaign.",
+    };
+  }
+  if (
+    level !== "active_escrow_campaign" ||
+    !authorized ||
+    !campaign.beneficiaryAddress ||
+    !campaign.beneficiaryType
+  ) {
+    return {
+      open: false,
+      key: "pending_authority",
+      title: "Awaiting artist authority",
+      message:
+        "This campaign is provisional. Pledging opens once an operator verifies the artist's authority and the escrow terms are locked.",
+    };
+  }
+  if (status !== "active") {
+    return {
+      open: false,
+      key: "closed",
+      title: "Pledging closed",
+      message: "This campaign isn't accepting new pledges right now.",
+    };
+  }
+  return { open: true, key: "open", title: "", message: "" };
+}
+
+export function chainName(chainId?: number | null): string {
+  switch (chainId) {
+    case 1:
+      return "Ethereum";
+    case 11155111:
+      return "Sepolia";
+    case 84532:
+      return "Base Sepolia";
+    case 421614:
+      return "Arbitrum Sepolia";
+    case 31337:
+    case 1337:
+      return "Local";
+    default:
+      return chainId ? `Chain ${chainId}` : "—";
+  }
+}
+
+export function releasePolicyLabel(policy?: string | null): string {
+  switch (policy) {
+    case "refund_only_until_booking":
+      return "Refund-only until booking is confirmed";
+    case "staged_release":
+      return "Staged release (deposit on booking, remainder on fulfillment)";
+    case "manual_ops_release":
+      return "Manual operator release";
+    default:
+      return "Refund-first";
+  }
+}
+
+export function maskAddress(address?: string | null): string {
+  if (!address) return "—";
+  const value = address.trim();
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function formatDisputeWindow(seconds?: number | null): string {
+  if (!seconds || seconds <= 0) return "—";
+  const days = Math.floor(seconds / 86_400);
+  if (days >= 1) return `${days} day${days === 1 ? "" : "s"}`;
+  const hours = Math.max(1, Math.floor(seconds / 3_600));
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+}
+
+export type CampaignTerm = { label: string; value: string };
+
+/**
+ * The immutable terms a fan must be able to read before signing a pledge.
+ * Values are formatted for display; pure so it is unit-testable.
+ */
+export function campaignTerms(campaign: Campaign): CampaignTerm[] {
+  // Guard against malformed dates: new Date("bad").toISOString() throws, which
+  // would 500 the server-rendered detail page. Fall back to the raw value.
+  const fmtDate = (iso?: string | null) => {
+    if (!iso) return "—";
+    const date = new Date(iso);
+    return Number.isNaN(date.getTime()) ? iso : date.toISOString().slice(0, 10);
+  };
+  const depositPct =
+    campaign.depositReleaseBps != null
+      ? `${(campaign.depositReleaseBps / 100).toFixed(campaign.depositReleaseBps % 100 === 0 ? 0 : 2)}%`
+      : "—";
+  return [
+    { label: "Funding goal", value: formatMoney(campaign.goalCents, campaign.currency) },
+    { label: "Funding deadline", value: fmtDate(campaign.deadline) },
+    {
+      label: "Minimum backers",
+      value: campaign.thresholdBackers > 0 ? String(campaign.thresholdBackers) : "—",
+    },
+    {
+      label: "Payment",
+      value: `${campaign.paymentAssetSymbol ?? "USDC"} on ${chainName(campaign.chainId)}`,
+    },
+    { label: "Booking deadline", value: fmtDate(campaign.bookingDeadline) },
+    { label: "Deposit released on booking", value: depositPct },
+    { label: "Dispute window", value: formatDisputeWindow(campaign.disputeWindowSeconds) },
+    { label: "Refund policy", value: releasePolicyLabel(campaign.releasePolicy) },
+  ];
+}
+
+/**
+ * #1240: pre-sign confirmation summary shown before the wallet signature, so a
+ * fan confirms the fan-risk terms at the moment of commitment (not just on the
+ * page). Composed from {@link campaignTerms} + {@link formatMoney} so it can't
+ * drift from the on-page terms panel. Returned as a `\n`-joined string for the
+ * shared `ConfirmDialog` (which renders `message` with `white-space: pre-line`).
+ */
+export function pledgeConfirmSummary(
+  campaign: Campaign,
+  tier: Pick<CampaignTier, "title" | "amountCents" | "currency">,
+): string {
+  const terms = campaignTerms(campaign);
+  const pick = (label: string) => terms.find((term) => term.label === label)?.value;
+  const lines = [`You're pledging ${formatMoney(tier.amountCents, tier.currency)} — ${tier.title}.`, ""];
+  for (const label of ["Payment", "Deposit released on booking", "Refund policy", "Dispute window"]) {
+    const value = pick(label);
+    if (value && value !== "—") {
+      lines.push(`${label}: ${value}`);
+    }
+  }
+  lines.push("");
+  lines.push(
+    "Funds are held in escrow. Funding never guarantees a ticket — your pledge is refunded automatically if the show isn't confirmed.",
+  );
+  return lines.join("\n");
+}
+
+export type CampaignDisputeView = {
+  /** "active" | "resolved" | "none" — fan-visible status from the public DTO. */
+  status: string;
+  label: string;
+  tone: CampaignTrustTone;
+  /** Dispute-window close time (post-fulfillment), formatted, or null. */
+  windowClosesAt: string | null;
+  windowOpen: boolean;
+};
+
+/**
+ * #950: fan-visible dispute summary for the detail page. Derives only from the
+ * public DTO fields (`disputeStatus`, `disputeWindowClosesAt`) — never operator
+ * notes, reasons, or initiator identity (the backend withholds those).
+ */
+export function campaignDisputeView(
+  campaign: Pick<Campaign, "disputeStatus" | "disputeWindowClosesAt">,
+): CampaignDisputeView {
+  const status = campaign.disputeStatus ?? "none";
+  const closesAtIso = campaign.disputeWindowClosesAt ?? null;
+  const windowOpen = closesAtIso ? new Date(closesAtIso).getTime() > Date.now() : false;
+  const windowClosesAt = (() => {
+    if (!closesAtIso) return null;
+    const date = new Date(closesAtIso);
+    return Number.isNaN(date.getTime()) ? closesAtIso : date.toISOString().slice(0, 10);
+  })();
+  const label =
+    status === "active"
+      ? "Dispute under review"
+      : status === "resolved"
+        ? "Dispute resolved"
+        : windowOpen
+          ? "Dispute window open"
+          : "No active dispute";
+  const tone: CampaignTrustTone =
+    status === "active" ? "warning" : status === "resolved" ? "info" : windowOpen ? "info" : "neutral";
+  return { status, label, tone, windowClosesAt, windowOpen };
+}
+
+/** Human-readable pledge state covering every backend status. */
+export function pledgeStateLabel(
+  status: string,
+  confirmationStatus?: string | null,
+): string {
+  switch (status) {
+    case "intent_created":
+      return "Pledge started";
+    case "submitted":
+      return confirmationStatus === "pending"
+        ? "Submitted — awaiting on-chain confirmation"
+        : "Submitted";
+    case "confirmed":
+      return "Confirmed on-chain";
+    case "refund_available":
+      return "Refund available";
+    case "refunded":
+      return "Refunded";
+    case "deposit_released":
+      return "Deposit released to artist";
+    case "fulfilled":
+      return "Show fulfilled";
+    case "released":
+      return "Funds released to artist";
+    case "failed":
+      return "Failed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return status.replaceAll("_", " ");
+  }
 }
 
 export type CatalogArtistCandidate = {
@@ -365,6 +766,22 @@ type BackendShowCampaign = {
   beneficiaryAddress?: string | null;
   beneficiaryType?: string | null;
   bookingDeadline?: string | null;
+  chainId?: number | null;
+  releasePolicy?: string | null;
+  depositReleaseBps?: number | null;
+  disputeWindowSeconds?: number | null;
+  onChainStatus?: string | null;
+  totalRefundedUnits?: string | null;
+  totalReleasedUnits?: string | null;
+  disputeStatus?: string | null;
+  disputeWindowClosesAt?: string | null;
+  // #949 managed-read-only fields (operator/owner scoped). The managed DTO's
+  // dispute shape is intentionally structurally identical to the UI-facing
+  // ShowCampaignDispute, so we reuse it directly here; if the backend dispute
+  // payload ever diverges, give this its own raw type.
+  bookingEvidenceBundleId?: string | null;
+  fulfillmentEvidenceBundleId?: string | null;
+  disputes?: ShowCampaignDispute[];
   contractAddress?: string | null;
   contractCampaignId?: string | null;
   description?: string | null;
@@ -1046,6 +1463,89 @@ export async function confirmShowCampaignFulfillment(input: {
   });
 }
 
+/**
+ * #949 operator-scoped managed read. Returns the campaign with the fields the
+ * public DTO withholds (authority credential/evidence ids, the dispute list)
+ * so the operator panel can prefill inputs and act on open disputes. Requires
+ * an operator/admin or the owning artist's token (403 otherwise → null).
+ */
+export async function getManagedShowCampaign(input: {
+  campaignId: string;
+  token: string;
+}): Promise<Campaign | null> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaignId)}/manage`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+    },
+  );
+  if (!response.ok) {
+    return null;
+  }
+  return mapBackendCampaign(await response.json() as BackendShowCampaign);
+}
+
+/**
+ * #950 operator-only: raise a dispute against a campaign in the booking →
+ * release window. Returns the created dispute; refetch the managed campaign to
+ * refresh the panel's dispute list.
+ */
+export async function initiateShowCampaignDispute(input: {
+  campaign: Campaign;
+  token: string;
+  reason?: string | null;
+}): Promise<ShowCampaignDispute> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/dispute`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({ reason: input.reason }),
+    },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Raising the dispute failed with status ${response.status}`);
+  }
+  return await response.json() as ShowCampaignDispute;
+}
+
+/**
+ * #950 operator-only: resolve an open dispute. Resolution is audited and does
+ * NOT itself release funds — release stays gated by the contract time-lock.
+ */
+export async function resolveShowCampaignDispute(input: {
+  campaign: Campaign;
+  token: string;
+  disputeId: string;
+  outcome: "upheld" | "rejected" | "inconclusive";
+  operatorNote?: string | null;
+}): Promise<ShowCampaignDispute> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/dispute/${encodeURIComponent(input.disputeId)}/resolve`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({ outcome: input.outcome, operatorNote: input.operatorNote }),
+    },
+  );
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `Resolving the dispute failed with status ${response.status}`);
+  }
+  return await response.json() as ShowCampaignDispute;
+}
+
 // Re-exported as a sync getter for synchronous render paths (e.g. initial
 // Sennarin hero render before client-side fetch resolves). Keep the async
 // API above as the canonical one — delete this when a real API hooks in.
@@ -1135,6 +1635,21 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     goalCents: unitsToCents(campaign.goalAmountUnits, decimals),
     raisedCents: unitsToCents(campaign.raisedAmountUnits, decimals),
     currency: campaign.currency === "EUR" ? "EUR" : "USD",
+    paymentAssetSymbol: campaign.paymentAssetSymbol ?? "USDC",
+    chainId: campaign.chainId ?? null,
+    releasePolicy: campaign.releasePolicy ?? null,
+    depositReleaseBps: campaign.depositReleaseBps ?? null,
+    disputeWindowSeconds: campaign.disputeWindowSeconds ?? null,
+    onChainStatus: campaign.onChainStatus ?? null,
+    totalRefundedUnits: campaign.totalRefundedUnits ?? null,
+    totalReleasedUnits: campaign.totalReleasedUnits ?? null,
+    disputeStatus: campaign.disputeStatus ?? null,
+    disputeWindowClosesAt: campaign.disputeWindowClosesAt ?? null,
+    // Managed-read-only; undefined on the public read. The mapper passes them
+    // through so getManagedShowCampaign surfaces them in the operator panel.
+    bookingEvidenceBundleId: campaign.bookingEvidenceBundleId ?? null,
+    fulfillmentEvidenceBundleId: campaign.fulfillmentEvidenceBundleId ?? null,
+    disputes: Array.isArray(campaign.disputes) ? campaign.disputes : [],
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
     heroImage: mediaUrl(campaign.heroImageUrl),

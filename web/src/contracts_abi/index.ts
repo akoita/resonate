@@ -719,32 +719,1136 @@ export const CurationRewardsABI = [
 // ============ ShowCampaignEscrow ============
 export const ShowCampaignEscrowABI = [
   {
-    type: "function",
-    name: "pledge",
-    stateMutability: "nonpayable",
-    inputs: [
-      { name: "campaignId", type: "uint256" },
-      { name: "amount", type: "uint256" },
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "_owner",
+        "type": "address"
+      }
     ],
-    outputs: [],
+    "stateMutability": "nonpayable"
   },
   {
-    type: "function",
-    name: "claimRefund",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "campaignId", type: "uint256" }],
-    outputs: [],
+    "type": "function",
+    "name": "BPS_DENOMINATOR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
-    type: "function",
-    name: "refundable",
-    stateMutability: "view",
-    inputs: [
-      { name: "campaignId", type: "uint256" },
-      { name: "backer", type: "address" },
+    "type": "function",
+    "name": "MAX_DEPOSIT_RELEASE_BPS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
     ],
-    outputs: [{ name: "", type: "uint256" }],
+    "stateMutability": "view"
   },
+  {
+    "type": "function",
+    "name": "activateCampaign",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "campaignAccounting",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "totalPledged",
+        "type": "uint256"
+      },
+      {
+        "name": "totalRefunded",
+        "type": "uint256"
+      },
+      {
+        "name": "totalReleased",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "campaignAuthority",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "authorityHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "campaignStatus",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "campaigns",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "artistIdHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address"
+      },
+      {
+        "name": "paymentToken",
+        "type": "address"
+      },
+      {
+        "name": "goalAmount",
+        "type": "uint256"
+      },
+      {
+        "name": "minimumBackers",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256"
+      },
+      {
+        "name": "depositReleaseBps",
+        "type": "uint256"
+      },
+      {
+        "name": "disputeWindowSeconds",
+        "type": "uint256"
+      },
+      {
+        "name": "totalPledged",
+        "type": "uint256"
+      },
+      {
+        "name": "totalRefunded",
+        "type": "uint256"
+      },
+      {
+        "name": "totalReleased",
+        "type": "uint256"
+      },
+      {
+        "name": "uniqueBackers",
+        "type": "uint256"
+      },
+      {
+        "name": "fulfilledAt",
+        "type": "uint256"
+      },
+      {
+        "name": "status",
+        "type": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "cancelCampaign",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimRefund",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "confirmBooking",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "confirmFulfillment",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "confirmers",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createCampaign",
+    "inputs": [
+      {
+        "name": "artistIdHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address"
+      },
+      {
+        "name": "paymentToken",
+        "type": "address"
+      },
+      {
+        "name": "goalAmount",
+        "type": "uint256"
+      },
+      {
+        "name": "minimumBackers",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256"
+      },
+      {
+        "name": "depositReleaseBps",
+        "type": "uint256"
+      },
+      {
+        "name": "disputeWindowSeconds",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "markFailed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "nextCampaignId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "openRefundsAfterMissedBooking",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "owner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "paused",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pledge",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pledgedByBacker",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "refundable",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "backer",
+        "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "releasable",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "releaseDeposit",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "releaseFunds",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renounceOwnership",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setConfirmer",
+    "inputs": [
+      {
+        "name": "confirmer",
+        "type": "address"
+      },
+      {
+        "name": "allowed",
+        "type": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setPaused",
+    "inputs": [
+      {
+        "name": "isPaused",
+        "type": "bool"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
+      {
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "updateAuthority",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "beneficiary",
+        "type": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AuthorityUpdated",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BookingConfirmed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "confirmer",
+        "type": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignActivated",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignCancelled",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignCreated",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "artistIdHash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32",
+        "indexed": true
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "paymentToken",
+        "type": "address",
+        "indexed": false
+      },
+      {
+        "name": "goalAmount",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "minimumBackers",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "deadline",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignFailed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignFunded",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "totalPledged",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "uniqueBackers",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "CampaignPaused",
+    "inputs": [
+      {
+        "name": "paused",
+        "type": "bool",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ConfirmerUpdated",
+    "inputs": [
+      {
+        "name": "confirmer",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "allowed",
+        "type": "bool",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DepositReleased",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FulfillmentConfirmed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "confirmer",
+        "type": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "FundsReleased",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "beneficiary",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OwnershipTransferred",
+    "inputs": [
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Pledged",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "backer",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false
+      },
+      {
+        "name": "totalPledged",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RefundAvailable",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RefundClaimed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256",
+        "indexed": true
+      },
+      {
+        "name": "backer",
+        "type": "address",
+        "indexed": true
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "BookingDeadlineNotPassed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "DeadlineNotPassed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "DeadlinePassed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "DepositReleaseTooHigh",
+    "inputs": [
+      {
+        "name": "requestedBps",
+        "type": "uint256"
+      },
+      {
+        "name": "maxBps",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "DepositUnavailable",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "depositReleaseBps",
+        "type": "uint256"
+      },
+      {
+        "name": "computedAmount",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "DisputeWindowActive",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "unlockTime",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "FundingThresholdAlreadyMet",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "totalPledged",
+        "type": "uint256"
+      },
+      {
+        "name": "goalAmount",
+        "type": "uint256"
+      },
+      {
+        "name": "uniqueBackers",
+        "type": "uint256"
+      },
+      {
+        "name": "minimumBackers",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidAuthority",
+    "inputs": [
+      {
+        "name": "artistIdHash",
+        "type": "bytes32"
+      },
+      {
+        "name": "authorityHash",
+        "type": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidCampaign",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidDeadline",
+    "inputs": [
+      {
+        "name": "deadline",
+        "type": "uint256"
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidStatus",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "current",
+        "type": "uint8"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NoPledge",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "backer",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NotConfirmer",
+    "inputs": [
+      {
+        "name": "caller",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "NothingToRelease",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "OwnableInvalidOwner",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "OwnableUnauthorizedAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "Paused",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReentrancyGuardReentrantCall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RefundUnavailable",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "current",
+        "type": "uint8"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "SafeERC20FailedOperation",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAmount",
+    "inputs": []
+  }
 ] as const;
 
 // ============ Contract Addresses (per network) ============

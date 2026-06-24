@@ -46,6 +46,14 @@ export class ShowsController {
     return this.showsService.getCampaign(slug);
   }
 
+  // #949: operator/owner-scoped read (sensitive authority evidence + disputes).
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin", "operator", "artist")
+  @Get("campaigns/:id/manage")
+  getManagedCampaign(@Param("id") id: string, @Request() req: any) {
+    return this.showsService.getManagedCampaign(this.actorFromRequest(req), id);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Get("campaigns/:id/community")
   getCampaignCommunity(@Param("id") id: string, @Request() req: any) {
@@ -318,6 +326,30 @@ export class ShowsController {
     @Body() body: any,
   ) {
     return this.showsService.confirmFulfillment(this.actorFromRequest(req), id, body);
+  }
+
+  // #950: off-chain dispute workflow (operator-driven MVP).
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin", "operator")
+  @Post("campaigns/:id/dispute")
+  initiateDispute(
+    @Param("id") id: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.initiateDispute(this.actorFromRequest(req), id, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Roles("admin", "operator")
+  @Patch("campaigns/:id/dispute/:disputeId/resolve")
+  resolveDispute(
+    @Param("id") id: string,
+    @Param("disputeId") disputeId: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.resolveDispute(this.actorFromRequest(req), id, disputeId, body);
   }
 
   private actorFromRequest(req: any) {

@@ -1,7 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { StorageProvider } from "../storage/storage_provider";
-import { type RemixGenerationJob } from "./remix-generation.provider";
+import {
+  type RemixGenerationJob,
+  type StemRenderAuthorization,
+} from "./remix-generation.provider";
 import {
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
@@ -17,6 +20,8 @@ export const REMIX_STEM_MIX_RENDERER = "REMIX_STEM_MIX_RENDERER";
 export type StemMixRenderInput = {
   remixProjectId: string;
   stems: StemArrangementEntry[];
+  /** Worker-time render grant (#1214) — gates encrypted source decryption. */
+  authorization: StemRenderAuthorization;
 };
 
 /**
@@ -43,7 +48,7 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
     const jobId = randomUUID();
     const mixed = await this.mixer.mixUnmutedStems(
       input.stems,
-      input.remixProjectId,
+      input.authorization,
     );
 
     // Flat object name (#1162 review precedent): the local storage provider

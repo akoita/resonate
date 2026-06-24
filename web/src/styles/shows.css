@@ -419,6 +419,23 @@
   outline: none;
 }
 
+.shows-create__panel input:disabled,
+.shows-create__panel select:disabled,
+.shows-create__panel textarea:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* #946: approved-terms lock banner on the campaign editor. */
+.shows-create__locked-note {
+  border-color: rgba(245, 196, 92, 0.35);
+  background: rgba(245, 196, 92, 0.08);
+}
+
+.shows-create__locked-note h2 {
+  color: #f5c45c;
+}
+
 .shows-create__artist-context {
   min-height: 48px;
   display: flex;
@@ -2039,6 +2056,61 @@
   background: rgba(127, 29, 29, 0.18);
 }
 
+/* ─── Operator disputes (#950) ────────────────────────────────────── */
+
+.show-detail__operator-hint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.62);
+}
+
+.show-detail__operator-dispute {
+  display: grid;
+  gap: 10px;
+}
+
+.show-detail__operator-dispute-head {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(254, 215, 170, 0.92);
+}
+
+.show-detail__operator-dispute-reason {
+  margin: 0;
+  border-left: 2px solid rgba(248, 113, 113, 0.4);
+  padding-left: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(226, 232, 240, 0.82);
+}
+
+.show-detail__operator-dispute-history {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid rgba(148, 163, 184, 0.12);
+  padding-top: 10px;
+}
+
+.show-detail__operator-dispute-history li {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.show-detail__operator-dispute-history span {
+  text-transform: capitalize;
+}
+
+.show-detail__operator-dispute-history em {
+  font-style: normal;
+  color: rgba(148, 163, 184, 0.85);
+}
+
 /* ─── Brief + Pledge Panel Grid ───────────────────────────────────── */
 
 .show-detail__brief-grid {
@@ -2358,6 +2430,41 @@
 .show-detail__pledge-action:disabled {
   cursor: wait;
   opacity: 0.72;
+}
+
+/* Empty state shown when the campaign can't take pledges yet (#949):
+   awaiting authority, rejected/revoked, demand signal, or terminal. */
+.show-detail__pledge-empty {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  border: 1px dashed rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.show-detail__pledge-empty strong {
+  color: rgba(241, 245, 249, 0.95);
+  font-size: 14px;
+}
+
+.show-detail__pledge-empty p {
+  margin: 0;
+  color: rgba(203, 213, 225, 0.72);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* Authority problems read as a warning; terminal/refund stay neutral. */
+.show-detail__pledge-empty[data-state="not_authorized"] {
+  border-color: rgba(248, 113, 113, 0.32);
+  background: rgba(127, 29, 29, 0.12);
+}
+
+.show-detail__pledge-empty[data-state="pending_authority"] {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(30, 58, 138, 0.12);
 }
 
 .show-detail__pledge-result,
@@ -3277,4 +3384,110 @@
   .gallery-lightbox__nav { width: 44px; height: 44px; }
   .gallery-lightbox__stage img { max-height: 64vh; }
   .gallery-lightbox__close { top: 14px; right: 14px; }
+}
+
+/* ============ #949 Campaign trust / terms panel ============ */
+.show-detail__pledge-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.campaign-trust {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.campaign-trust__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.campaign-trust-badge {
+  align-self: flex-start;
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.campaign-trust-badge--positive { color: #4ade80; }
+.campaign-trust-badge--info { color: #60a5fa; }
+.campaign-trust-badge--neutral { color: #cbd5e1; }
+.campaign-trust-badge--warning { color: #fbbf24; }
+.campaign-trust-badge--danger { color: #f87171; }
+/* Card placement: a compact pill above the title. */
+.campaign-card__trust {
+  margin-bottom: 8px;
+  font-size: 0.66rem;
+  padding: 3px 8px;
+}
+.campaign-trust__description {
+  margin: 0;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+.campaign-trust__authority {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  font-size: 0.85rem;
+}
+.campaign-trust__authority-label {
+  color: rgba(255, 255, 255, 0.55);
+}
+.campaign-trust__authority-value {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+.campaign-trust__terms-title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.campaign-trust__terms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  margin: 0;
+}
+.campaign-trust__term dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: rgba(255, 255, 255, 0.5);
+}
+.campaign-trust__term dd {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+}
+.campaign-trust__terms-note {
+  margin: 14px 0 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+@media (max-width: 560px) {
+  .campaign-trust__terms-grid { grid-template-columns: 1fr; }
+}
+
+/* #950: fan-visible dispute row in the trust panel */
+.campaign-trust__dispute {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.campaign-trust__dispute-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.66);
 }

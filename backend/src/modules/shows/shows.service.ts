@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type {
   Artist,
   ShowArtistAuthorityStatus,
@@ -178,6 +178,148 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "revoked",
   "expired",
 ];
+
+// #946: the fan-risk terms that the artist signs and an operator approves.
+// Once authority is approved these become immutable (see approvedTermsHash):
+// changing any of them requires revoking authority and re-approving, so a
+// campaign can never silently swap the beneficiary wallet, goal, deadline, or
+// refund/release terms out from under fans who already read them.
+type CriticalTermsSource = {
+  goalAmountUnits: string;
+  deadline: Date | string;
+  bookingDeadline?: Date | string | null;
+  minimumBackers?: number | null;
+  currency: string;
+  paymentAssetSymbol: string;
+  paymentAssetDecimals: number;
+  paymentTokenAddress?: string | null;
+  chainId: number;
+  beneficiaryAddress?: string | null;
+  beneficiaryType?: ShowCampaignBeneficiaryType | null;
+  depositReleaseBps: number;
+  releasePolicy: ShowCampaignReleasePolicy;
+  disputeWindowSeconds: number;
+  tiers: Array<{
+    title: string;
+    amountUnits: string;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    maxBackers?: number | null;
+    benefits?: unknown;
+  }>;
+};
+
+function isoOrNull(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+// Canonical, presentation-independent view of the fan-risk terms. Tier order
+// and sortOrder are deliberately excluded — reordering tiers is not a change to
+// what a backer receives, so it must not break the lock.
+function buildCriticalTermsSnapshot(source: CriticalTermsSource) {
+  const tiers = (source.tiers ?? [])
+    .map((tier) => ({
+      title: tier.title,
+      amountUnits: tier.amountUnits,
+      currency: tier.currency,
+      paymentAssetSymbol: tier.paymentAssetSymbol,
+      paymentAssetDecimals: tier.paymentAssetDecimals,
+      maxBackers: tier.maxBackers ?? null,
+      benefits: tier.benefits ?? null,
+    }))
+    .sort((a, b) => a.amountUnits.localeCompare(b.amountUnits) || a.title.localeCompare(b.title));
+
+  return {
+    goalAmountUnits: source.goalAmountUnits,
+    deadline: isoOrNull(source.deadline),
+    bookingDeadline: isoOrNull(source.bookingDeadline),
+    minimumBackers: source.minimumBackers ?? null,
+    currency: source.currency,
+    paymentAssetSymbol: source.paymentAssetSymbol,
+    paymentAssetDecimals: source.paymentAssetDecimals,
+    paymentTokenAddress: source.paymentTokenAddress ?? null,
+    chainId: source.chainId,
+    beneficiaryAddress: source.beneficiaryAddress ?? null,
+    beneficiaryType: source.beneficiaryType ?? null,
+    depositReleaseBps: source.depositReleaseBps,
+    releasePolicy: source.releasePolicy,
+    disputeWindowSeconds: source.disputeWindowSeconds,
+    tiers,
+  };
+}
+
+// Deterministic JSON: object keys sorted recursively so the hash is stable
+// regardless of property insertion order.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  const entries = Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`);
+  return `{${entries.join(",")}}`;
+}
+
+function hashCriticalTerms(source: CriticalTermsSource): string {
+  return createHash("sha256").update(stableStringify(buildCriticalTermsSnapshot(source))).digest("hex");
+}
+
+// Build the critical-terms source from a persisted campaign row plus its tiers.
+// `overrides` lets the approval path fold in a freshly-bound beneficiary before
+// snapshotting.
+function campaignCriticalTerms(
+  campaign: {
+    goalAmountUnits: string;
+    deadline: Date;
+    bookingDeadline: Date | null;
+    minimumBackers: number | null;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    paymentTokenAddress: string | null;
+    chainId: number;
+    beneficiaryAddress: string | null;
+    beneficiaryType: ShowCampaignBeneficiaryType | null;
+    depositReleaseBps: number;
+    releasePolicy: ShowCampaignReleasePolicy;
+    disputeWindowSeconds: number;
+  },
+  tiers: Array<{
+    title: string;
+    amountUnits: string;
+    currency: string;
+    paymentAssetSymbol: string;
+    paymentAssetDecimals: number;
+    maxBackers: number | null;
+    benefits: unknown;
+  }>,
+  overrides: { beneficiaryAddress?: string | null; beneficiaryType?: ShowCampaignBeneficiaryType | null } = {},
+): CriticalTermsSource {
+  return {
+    goalAmountUnits: campaign.goalAmountUnits,
+    deadline: campaign.deadline,
+    bookingDeadline: campaign.bookingDeadline,
+    minimumBackers: campaign.minimumBackers,
+    currency: campaign.currency,
+    paymentAssetSymbol: campaign.paymentAssetSymbol,
+    paymentAssetDecimals: campaign.paymentAssetDecimals,
+    paymentTokenAddress: campaign.paymentTokenAddress,
+    chainId: campaign.chainId,
+    beneficiaryAddress: overrides.beneficiaryAddress ?? campaign.beneficiaryAddress,
+    beneficiaryType: overrides.beneficiaryType ?? campaign.beneficiaryType,
+    depositReleaseBps: campaign.depositReleaseBps,
+    releasePolicy: campaign.releasePolicy,
+    disputeWindowSeconds: campaign.disputeWindowSeconds,
+    tiers,
+  };
+}
+
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
@@ -331,8 +473,194 @@ function defaultChainId() {
   return configuredNumber(["SHOWS_DEFAULT_CHAIN_ID", "PAYMENT_CHAIN_ID", "AA_CHAIN_ID", "CHAIN_ID"], 84532);
 }
 
+/**
+ * Resolve the deployed `ShowCampaignEscrow` address for a chain from
+ * deployment-handoff config (#947). Mirrors the per-chain env pattern used for
+ * the marketplace/content-protection contracts, with a chain-agnostic
+ * `SHOW_CAMPAIGN_ESCROW_ADDRESS` fallback. Returns null for unset, malformed,
+ * or zero addresses so callers fail closed rather than binding to 0x0.
+ */
+const SHOW_CAMPAIGN_ESCROW_ADDRESS_ENVS: Record<number, string[]> = {
+  31337: ["SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  11155111: ["SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  84532: ["BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+  421614: ["ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS", "SHOW_CAMPAIGN_ESCROW_ADDRESS"],
+};
+
+export function configuredShowCampaignEscrowAddress(chainId: number): string | null {
+  const candidates = SHOW_CAMPAIGN_ESCROW_ADDRESS_ENVS[chainId] ?? ["SHOW_CAMPAIGN_ESCROW_ADDRESS"];
+  for (const key of candidates) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(raw)) continue;
+    if (/^0x0{40}$/i.test(raw)) continue;
+    return raw;
+  }
+  return null;
+}
+
 function defaultPaymentAssetSymbol() {
   return process.env.SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL?.trim() || "USDC";
+}
+
+/**
+ * Public campaign DTO (#949). Explicit whitelist for unauthenticated reads:
+ * exposes the trust state, immutable terms, and on-chain reconciliation fields
+ * the fan-facing UI needs, while NEVER leaking sensitive authority evidence /
+ * credential references, internal storage URIs, ops notes, indexer cursors, or
+ * the raw lifecycle-event log (which carries actor ids and metadata).
+ */
+export function serializePublicShowCampaign(campaign: any) {
+  const tiers = Array.isArray(campaign.tiers)
+    ? campaign.tiers.map((tier: any) => ({
+        id: tier.id,
+        title: tier.title,
+        description: tier.description ?? null,
+        amountUnits: tier.amountUnits,
+        currency: tier.currency,
+        paymentAssetId: tier.paymentAssetId ?? null,
+        paymentAssetSymbol: tier.paymentAssetSymbol,
+        paymentAssetDecimals: tier.paymentAssetDecimals,
+        maxBackers: tier.maxBackers ?? null,
+        sortOrder: tier.sortOrder,
+        benefits: tier.benefits ?? null,
+        isActive: tier.isActive,
+      }))
+    : undefined;
+  const visuals = Array.isArray(campaign.visuals)
+    ? campaign.visuals.map((visual: any) => ({
+        id: visual.id,
+        role: visual.role,
+        publicUrl: visual.publicUrl,
+        mimeType: visual.mimeType,
+        sortOrder: visual.sortOrder,
+        caption: visual.caption ?? null,
+        credit: visual.credit ?? null,
+      }))
+    : undefined;
+
+  // #1224: public artist presentation from the joined `artist` relation
+  // (image / summary / social links). These are the same public fields shown on
+  // the catalog artist page — never authority evidence — so they are safe to
+  // whitelist here for "Meet the artist" surfaces on list + detail.
+  const artist = campaign.artist
+    ? {
+        imageUrl: campaign.artist.imageUrl ?? null,
+        summary: campaign.artist.summary ?? null,
+        socialLinks: campaign.artist.socialLinks ?? null,
+      }
+    : undefined;
+
+  // #950: fan-visible dispute state. Derived from the disputes relation when
+  // included; never exposes operator notes, reasons, or initiator identity.
+  const disputeRows: Array<{ status?: string }> = Array.isArray(campaign.disputes)
+    ? campaign.disputes
+    : [];
+  const disputeStatus = disputeRows.some((d) => d.status === "open")
+    ? "active"
+    : disputeRows.some((d) => d.status === "resolved")
+      ? "resolved"
+      : "none";
+  const disputeWindowClosesAt =
+    campaign.status === "fulfilled" && campaign.fulfilledAt
+      ? new Date(
+          new Date(campaign.fulfilledAt).getTime() +
+            (campaign.disputeWindowSeconds ?? 0) * 1000,
+        ).toISOString()
+      : null;
+
+  return {
+    id: campaign.id,
+    slug: campaign.slug,
+    artistId: campaign.artistId ?? null,
+    artistDisplayName: campaign.artistDisplayName,
+    artistImageUrl: campaign.artistImageUrl ?? null,
+    heroImageUrl: campaign.heroImageUrl ?? null,
+    cardImageUrl: campaign.cardImageUrl ?? null,
+    title: campaign.title,
+    description: campaign.description ?? null,
+    city: campaign.city,
+    country: campaign.country,
+    venueTarget: campaign.venueTarget ?? null,
+    targetDate: campaign.targetDate ?? null,
+    deadline: campaign.deadline,
+    bookingDeadline: campaign.bookingDeadline ?? null,
+    goalAmountUnits: campaign.goalAmountUnits,
+    minimumBackers: campaign.minimumBackers ?? null,
+    currency: campaign.currency,
+    paymentAssetId: campaign.paymentAssetId ?? null,
+    paymentAssetSymbol: campaign.paymentAssetSymbol,
+    paymentAssetDecimals: campaign.paymentAssetDecimals,
+    paymentTokenAddress: campaign.paymentTokenAddress ?? null,
+    chainId: campaign.chainId,
+    contractAddress: campaign.contractAddress ?? null,
+    contractCampaignId: campaign.contractCampaignId ?? null,
+    status: campaign.status,
+    campaignLevel: campaign.campaignLevel,
+    // Authority/beneficiary SUMMARY only — status + beneficiary (public on-chain
+    // data), never the evidence-bundle / credential identifiers.
+    artistAuthorityStatus: campaign.artistAuthorityStatus,
+    beneficiaryAddress: campaign.beneficiaryAddress ?? null,
+    beneficiaryType: campaign.beneficiaryType ?? null,
+    // Immutable terms + release policy.
+    releasePolicy: campaign.releasePolicy,
+    depositReleaseBps: campaign.depositReleaseBps,
+    disputeWindowSeconds: campaign.disputeWindowSeconds,
+    // #950: fan-visible dispute summary (no operator notes / initiator identity).
+    disputeStatus,
+    disputeWindowClosesAt,
+    // On-chain reconciliation (driven by the #948 indexer).
+    onChainStatus: campaign.onChainStatus ?? null,
+    raisedAmountUnits: campaign.raisedAmountUnits,
+    totalRefundedUnits: campaign.totalRefundedUnits,
+    totalReleasedUnits: campaign.totalReleasedUnits,
+    confirmedPledgeCount: campaign.confirmedPledgeCount,
+    uniqueBackerCount: campaign.uniqueBackerCount,
+    // Lifecycle timestamps (public state transitions).
+    activatedAt: campaign.activatedAt ?? null,
+    fundedAt: campaign.fundedAt ?? null,
+    bookingConfirmedAt: campaign.bookingConfirmedAt ?? null,
+    depositReleasedAt: campaign.depositReleasedAt ?? null,
+    fulfilledAt: campaign.fulfilledAt ?? null,
+    releasedAt: campaign.releasedAt ?? null,
+    cancelledAt: campaign.cancelledAt ?? null,
+    refundAvailableAt: campaign.refundAvailableAt ?? null,
+    refundedAt: campaign.refundedAt ?? null,
+    createdAt: campaign.createdAt,
+    updatedAt: campaign.updatedAt,
+    ...(tiers !== undefined ? { tiers } : {}),
+    ...(visuals !== undefined ? { visuals } : {}),
+    ...(artist !== undefined ? { artist } : {}),
+  };
+}
+
+/**
+ * Operator/owner view of a campaign (#949 operator-scoped read). Extends the
+ * public DTO with the fields the public read withholds — authority evidence /
+ * credential ids and the full dispute list (id, reason, outcome, operator note)
+ * — so the operator console can prefill review inputs and resolve a specific
+ * dispute by id. Only reachable behind owner/operator authorization.
+ */
+export function serializeManagedShowCampaign(campaign: any) {
+  return {
+    ...serializePublicShowCampaign(campaign),
+    authorityCredentialId: campaign.authorityCredentialId ?? null,
+    authorityEvidenceBundleId: campaign.authorityEvidenceBundleId ?? null,
+    bookingEvidenceBundleId: campaign.bookingEvidenceBundleId ?? null,
+    fulfillmentEvidenceBundleId: campaign.fulfillmentEvidenceBundleId ?? null,
+    disputes: Array.isArray(campaign.disputes)
+      ? campaign.disputes.map((d: any) => ({
+          id: d.id,
+          status: d.status,
+          outcome: d.outcome ?? null,
+          reason: d.reason ?? null,
+          operatorNote: d.operatorNote ?? null,
+          initiatorRole: d.initiatorRole ?? null,
+          createdAt: d.createdAt,
+          resolvedAt: d.resolvedAt ?? null,
+        }))
+      : [],
+  };
 }
 
 function configuredDefaultPaymentTokenAddress() {
@@ -372,7 +700,7 @@ export class ShowsService {
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
     const includeSignals = query.includeSignals === true;
-    return prisma.showCampaign.findMany({
+    const campaigns = await prisma.showCampaign.findMany({
       where: {
         ...(query.status ? { status: query.status as any } : {}),
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
@@ -381,10 +709,13 @@ export class ShowsService {
         artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        disputes: { select: { status: true } },
       },
       orderBy: [{ createdAt: "desc" }],
       take: 100,
     });
+    // #949: whitelist DTO — never leak sensitive authority/internal fields.
+    return campaigns.map((campaign) => serializePublicShowCampaign(campaign));
   }
 
   async getCampaign(slug: string) {
@@ -394,13 +725,35 @@ export class ShowsService {
         artist: { select: { imageUrl: true, summary: true, socialLinks: true } },
         tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
         visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
-        events: { orderBy: { occurredAt: "desc" }, take: 50 },
+        disputes: { select: { status: true } },
       },
     });
     if (!campaign) {
       throw new NotFoundException("Show campaign not found");
     }
-    return campaign;
+    // #949: public reads go through a whitelist DTO so sensitive authority
+    // evidence / credential references and internal fields are never exposed.
+    return serializePublicShowCampaign(campaign);
+  }
+
+  /**
+   * #949: operator/owner-scoped campaign read. Reuses getCampaignForMutation's
+   * authorization (operator/admin OR the campaign's managing artist), then
+   * returns the managed DTO including the withheld authority evidence ids and
+   * the full dispute list (so the operator console can prefill review inputs
+   * and resolve a dispute by id, unblocking the #950 operator controls).
+   */
+  async getManagedCampaign(actor: Actor, campaignId: string) {
+    const base = await this.getCampaignForMutation(actor, campaignId);
+    const campaign = await prisma.showCampaign.findUnique({
+      where: { id: base.id },
+      include: {
+        tiers: { where: { isActive: true }, orderBy: { sortOrder: "asc" } },
+        visuals: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        disputes: { orderBy: { createdAt: "desc" } },
+      },
+    });
+    return serializeManagedShowCampaign(campaign!);
   }
 
   async createSignal(actor: Actor, input: CreateSignalInput) {
@@ -468,13 +821,53 @@ export class ShowsService {
     const authorityStatus = input.artistAuthorityStatus
       ? assertShowArtistAuthorityStatus(input.artistAuthorityStatus)
       : "none";
+    if (TERMINAL_AUTHORITY_STATUSES.includes(authorityStatus)) {
+      throw new BadRequestException("Use the authority review endpoints for terminal authority states");
+    }
+    // #946: escrow authorization is an operator decision. Without this guard a
+    // self-serve artist could POST artistAuthorityStatus:"artist_authorized"
+    // and then self-activate an escrow campaign with their own payout wallet,
+    // bypassing operator review entirely (mirrors the guard in requestAuthority).
+    if (AUTHORIZED_STATUSES.includes(authorityStatus) && !isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Authority approval must be performed by an operator");
+    }
     const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
+    const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
+    const disputeWindowSeconds = input.disputeWindowSeconds ?? DEFAULT_DISPUTE_WINDOW_SECONDS;
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
     const slug = await this.uniqueSlug(title, normalized.country);
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
+
+    // #946: if an operator stands a campaign up already authorized, the approved
+    // terms must be snapshotted now so the same immutability lock applies as when
+    // authority is granted through the review flow.
+    const authorizedAtCreate = AUTHORIZED_STATUSES.includes(authorityStatus);
+    if (authorizedAtCreate && (!beneficiary.address || !beneficiary.type)) {
+      throw new BadRequestException("beneficiaryAddress and beneficiaryType are required to create an authorized campaign");
+    }
+    const approvedTermsSource: CriticalTermsSource | null = authorizedAtCreate
+      ? {
+          goalAmountUnits: normalized.goalAmountUnits,
+          deadline: normalized.deadline,
+          bookingDeadline,
+          minimumBackers: normalized.minimumBackers ?? null,
+          currency: normalized.currency,
+          paymentAssetSymbol: normalized.paymentAssetSymbol,
+          paymentAssetDecimals: normalized.paymentAssetDecimals,
+          paymentTokenAddress: normalized.paymentTokenAddress ?? null,
+          chainId: normalized.chainId,
+          beneficiaryAddress: beneficiary.address,
+          beneficiaryType: beneficiary.type,
+          depositReleaseBps,
+          releasePolicy,
+          disputeWindowSeconds,
+          tiers,
+        }
+      : null;
+    const approvedTermsHash = approvedTermsSource ? hashCriticalTerms(approvedTermsSource) : null;
 
     const campaign = await prisma.showCampaign.create({
       data: {
@@ -486,12 +879,16 @@ export class ShowsService {
         artistAuthorityStatus: authorityStatus,
         authorityCredentialId: optionalText(input.authorityCredentialId),
         authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
+        approvedTermsHash,
         beneficiaryAddress: beneficiary.address,
         beneficiaryType: beneficiary.type,
-        bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
+        bookingDeadline,
         releasePolicy,
         depositReleaseBps,
-        disputeWindowSeconds: input.disputeWindowSeconds ?? DEFAULT_DISPUTE_WINDOW_SECONDS,
+        disputeWindowSeconds,
+        ...(approvedTermsSource
+          ? { metadata: mergeMetadata(normalized.metadata as Prisma.JsonValue | undefined, { approvedTerms: buildCriticalTermsSnapshot(approvedTermsSource) }) }
+          : {}),
         ...(tiers.length > 0 ? { tiers: { create: tiers } } : {}),
         events: {
           create: {
@@ -501,6 +898,7 @@ export class ShowsService {
             metadata: {
               campaignLevel,
               artistAuthorityStatus: authorityStatus,
+              ...(approvedTermsHash ? { approvedTermsHash } : {}),
               source: "shows-api",
             },
           },
@@ -550,6 +948,43 @@ export class ShowsService {
       : campaign.releasePolicy;
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
+    const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
+    const disputeWindowSeconds = input.disputeWindowSeconds ?? campaign.disputeWindowSeconds;
+
+    // #946: once artist authority is approved the critical fan-risk terms are
+    // locked. We refuse any edit that would change them (the update endpoint is
+    // a full replace, so an unchanged edit re-sends identical terms and hashes
+    // the same). To change terms, an operator must revoke authority — which
+    // clears the snapshot — then request re-approval.
+    if (AUTHORIZED_STATUSES.includes(campaign.artistAuthorityStatus)) {
+      const nextTermsHash = hashCriticalTerms({
+        goalAmountUnits: normalized.goalAmountUnits,
+        deadline: normalized.deadline,
+        bookingDeadline,
+        minimumBackers: normalized.minimumBackers ?? null,
+        currency: normalized.currency,
+        paymentAssetSymbol: normalized.paymentAssetSymbol,
+        paymentAssetDecimals: normalized.paymentAssetDecimals,
+        paymentTokenAddress: normalized.paymentTokenAddress ?? null,
+        chainId: normalized.chainId,
+        beneficiaryAddress: beneficiary.address,
+        beneficiaryType: beneficiary.type,
+        depositReleaseBps,
+        releasePolicy,
+        disputeWindowSeconds,
+        tiers,
+      });
+      let approvedHash = campaign.approvedTermsHash;
+      if (!approvedHash) {
+        const existingTiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+        approvedHash = hashCriticalTerms(campaignCriticalTerms(campaign, existingTiers));
+      }
+      if (nextTermsHash !== approvedHash) {
+        throw new BadRequestException(
+          "Critical campaign terms are locked after artist authority approval; revoke authority before changing terms, then request re-approval",
+        );
+      }
+    }
 
     return prisma.$transaction(async (tx) => {
       await tx.showCampaignTier.deleteMany({ where: { campaignId: campaign.id } });
@@ -561,10 +996,10 @@ export class ShowsService {
           beneficiaryAddress: beneficiary.address,
           beneficiaryType: beneficiary.type,
           authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId),
-          bookingDeadline: parseOptionalDate(input.bookingDeadline, "bookingDeadline"),
+          bookingDeadline,
           releasePolicy,
           depositReleaseBps,
-          disputeWindowSeconds: input.disputeWindowSeconds ?? campaign.disputeWindowSeconds,
+          disputeWindowSeconds,
           tiers: tiers.length > 0 ? { create: tiers } : undefined,
           events: {
             create: {
@@ -990,6 +1425,13 @@ export class ShowsService {
       throw new BadRequestException("beneficiaryAddress and beneficiaryType are required for authority approval");
     }
 
+    // #946: snapshot exactly the fan-risk terms being approved (with the freshly
+    // bound beneficiary). approvedTermsHash then locks those terms until
+    // authority is revoked, and activation re-verifies the live terms match.
+    const tiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+    const approvedTermsSource = campaignCriticalTerms(campaign, tiers, { beneficiaryAddress, beneficiaryType });
+    const approvedTermsHash = hashCriticalTerms(approvedTermsSource);
+
     return prisma.showCampaign.update({
       where: { id: campaign.id },
       data: {
@@ -998,6 +1440,8 @@ export class ShowsService {
         authorityEvidenceBundleId: optionalText(input.authorityEvidenceBundleId) ?? campaign.authorityEvidenceBundleId,
         beneficiaryAddress,
         beneficiaryType,
+        approvedTermsHash,
+        metadata: mergeMetadata(campaign.metadata, { approvedTerms: buildCriticalTermsSnapshot(approvedTermsSource) }),
         artistAcceptedAt: new Date(),
         events: {
           create: {
@@ -1005,7 +1449,7 @@ export class ShowsService {
             actorUserId: actor.userId,
             previousStatus: campaign.status,
             nextStatus: campaign.status,
-            metadata: { artistAuthorityStatus: authorityStatus },
+            metadata: { artistAuthorityStatus: authorityStatus, approvedTermsHash },
           },
         },
       },
@@ -1030,8 +1474,11 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "rejected",
         authorityCredentialId: null,
+        // #946: clear the approved-terms lock so the campaign can be re-edited.
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityRejectionEvidence: evidence } : {}),
         }),
         events: {
@@ -1068,8 +1515,12 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "revoked",
         authorityCredentialId: null,
+        // #946: clearing the lock is what lets an operator amend terms — revoke,
+        // edit, then request re-approval (which re-snapshots the new terms).
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityRevocationEvidence: evidence } : {}),
         }),
         events: {
@@ -1106,8 +1557,11 @@ export class ShowsService {
       data: {
         artistAuthorityStatus: "expired",
         authorityCredentialId: null,
+        // #946: clear the approved-terms lock so the campaign can be re-edited.
+        approvedTermsHash: null,
         authorityEvidenceBundleId,
         metadata: mergeMetadata(campaign.metadata, {
+          approvedTerms: null,
           ...(evidence !== undefined ? { authorityExpiryEvidence: evidence } : {}),
         }),
         events: {
@@ -1142,13 +1596,31 @@ export class ShowsService {
       throw new BadRequestException("Only draft campaigns can be activated");
     }
 
+    // #946: defense in depth. The update lock should already prevent terms from
+    // drifting after approval, but re-verify here so a direct DB edit or any
+    // future write path that bypasses updateDraftCampaign can never activate a
+    // campaign on terms the artist never approved.
+    if (campaign.approvedTermsHash) {
+      const tiers = await prisma.showCampaignTier.findMany({ where: { campaignId: campaign.id } });
+      const liveTermsHash = hashCriticalTerms(campaignCriticalTerms(campaign, tiers));
+      if (liveTermsHash !== campaign.approvedTermsHash) {
+        throw new BadRequestException(
+          "Campaign terms changed since artist authority approval; re-approval is required before activation",
+        );
+      }
+    }
+
     return prisma.showCampaign.update({
       where: { id: campaign.id },
       data: {
         status: "active",
         activatedAt: new Date(),
+        // #947: an explicit per-campaign address wins; otherwise discover the
+        // deployed escrow for the campaign's chain from deployment-handoff
+        // config so operators don't paste addresses by hand.
         contractAddress: validateOptionalAddress(optionalText(input.contractAddress), "contractAddress")
-          ?? campaign.contractAddress,
+          ?? campaign.contractAddress
+          ?? configuredShowCampaignEscrowAddress(campaign.chainId ?? defaultChainId()),
         contractCampaignId: optionalText(input.contractCampaignId) ?? campaign.contractCampaignId,
         events: {
           create: {
@@ -1181,6 +1653,23 @@ export class ShowsService {
     const walletAddress = validateOptionalAddress(input.walletAddress, "walletAddress");
     if (!walletAddress) {
       throw new BadRequestException("walletAddress is required");
+    }
+
+    // #1221 (from the #948 review): bind the pledge to the caller's own
+    // registered wallet. Without this, a client could attach a victim's public
+    // address to an intent; the on-chain Pledged event from that victim would
+    // then confirm the attacker's intent (escrow indexer matches on backer
+    // wallet), attributing the victim's payment — and any community supporter
+    // credentials keyed on pledge.userId — to the attacker.
+    const callerWallet = await prisma.wallet.findUnique({
+      where: { userId: actor.userId },
+      select: { address: true },
+    });
+    if (!callerWallet?.address) {
+      throw new BadRequestException("Connect a wallet before pledging");
+    }
+    if (callerWallet.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      throw new ForbiddenException("walletAddress must match your connected wallet");
     }
 
     const tierId = optionalText(input.tierId);
@@ -1317,12 +1806,20 @@ export class ShowsService {
       throw new BadRequestException("transactionHash is already attached to another pledge");
     }
 
-    const confirmationStatus = input.confirmationStatus
+    const requestedConfirmationStatus = input.confirmationStatus
       ? assertShowPledgeConfirmationStatus(input.confirmationStatus)
       : "pending";
-    if (confirmationStatus === "not_submitted") {
+    if (requestedConfirmationStatus === "not_submitted") {
       throw new BadRequestException("confirmationStatus cannot return to not_submitted once a transaction is provided");
     }
+    // #948: do not trust a wallet-user's "confirmed" claim. A pledge only
+    // reaches "confirmed" from an indexed on-chain Pledged event
+    // (ShowsEscrowIndexerService). Non-operators recording a tx mark it
+    // "pending"; operators retain a manual confirm/fail override.
+    const confirmationStatus =
+      requestedConfirmationStatus === "confirmed" && !isPrivilegedActor(actor)
+        ? "pending"
+        : requestedConfirmationStatus;
 
     const blockNumber = parseOptionalBlockNumber(input.blockNumber);
     const now = new Date();
@@ -1555,6 +2052,10 @@ export class ShowsService {
 
     const evidence = optionalJsonObject(input.evidence, "evidence");
     const evidenceBundleId = optionalText(input.evidenceBundleId) ?? campaign.bookingEvidenceBundleId;
+    // #950: booking confirmation cannot proceed without an evidence reference.
+    if (!evidenceBundleId) {
+      throw new BadRequestException("Booking confirmation requires a booking evidence bundle reference");
+    }
     const now = new Date();
     return prisma.showCampaign.update({
       where: { id: campaign.id },
@@ -1593,6 +2094,12 @@ export class ShowsService {
 
     const evidence = optionalJsonObject(input.evidence, "evidence");
     const evidenceBundleId = optionalText(input.evidenceBundleId) ?? campaign.fulfillmentEvidenceBundleId;
+    // #950: fulfillment confirmation cannot proceed without an evidence reference.
+    if (!evidenceBundleId) {
+      throw new BadRequestException("Fulfillment confirmation requires a fulfillment evidence bundle reference");
+    }
+    // #950: an open dispute blocks fulfillment progress toward final release.
+    await this.assertNoOpenDispute(campaign.id);
     const now = new Date();
     return prisma.showCampaign.update({
       where: { id: campaign.id },
@@ -1617,6 +2124,127 @@ export class ShowsService {
         },
       },
       include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
+    });
+  }
+
+  /** #950: an open dispute blocks actions that move funds toward final release. */
+  private async assertNoOpenDispute(campaignId: string): Promise<void> {
+    const open = await prisma.showCampaignDispute.findFirst({
+      where: { campaignId, status: "open" },
+      select: { id: true },
+    });
+    if (open) {
+      throw new BadRequestException("An open dispute must be resolved before this action");
+    }
+  }
+
+  /**
+   * #950: open an off-chain dispute on a Shows escrow campaign. MVP is
+   * operator-driven (fan-initiated disputes are a documented follow-up). Only
+   * valid between booking confirmation and final release, and — once fulfilled
+   * — only within the on-chain dispute window. An open dispute is the backend
+   * signal that final release must wait (the contract independently time-locks).
+   */
+  async initiateDispute(
+    actor: Actor,
+    campaignId: string,
+    input: { reason?: string | null } = {},
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can initiate a campaign dispute");
+    }
+    const campaign = await this.findCampaignOrThrow(campaignId);
+    if (!["booking_confirmed", "deposit_released", "fulfilled"].includes(campaign.status)) {
+      throw new BadRequestException(
+        "Disputes can only be raised between booking confirmation and final release",
+      );
+    }
+    if (campaign.status === "fulfilled" && campaign.fulfilledAt) {
+      const windowEnds = campaign.fulfilledAt.getTime() + (campaign.disputeWindowSeconds ?? 0) * 1000;
+      if (Date.now() > windowEnds) {
+        throw new BadRequestException("The dispute window has closed for this campaign");
+      }
+    }
+    const existing = await prisma.showCampaignDispute.findFirst({
+      where: { campaignId: campaign.id, status: "open" },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new BadRequestException("An open dispute already exists for this campaign");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const dispute = await tx.showCampaignDispute.create({
+        data: {
+          campaignId: campaign.id,
+          initiatorUserId: actor.userId,
+          initiatorRole: actor.role ?? "operator",
+          reason: optionalText(input.reason),
+          status: "open",
+        },
+      });
+      await tx.showCampaignEvent.create({
+        data: {
+          campaignId: campaign.id,
+          eventType: "dispute_initiated",
+          actorUserId: actor.userId,
+          previousStatus: campaign.status,
+          nextStatus: campaign.status,
+          metadata: { disputeId: dispute.id, reason: optionalText(input.reason) },
+        },
+      });
+      return dispute;
+    });
+  }
+
+  /**
+   * #950: resolve an open dispute (operator-only). Resolution is audited; it
+   * does NOT itself release funds — release stays gated by the contract's
+   * time-lock and a separate operator release action.
+   */
+  async resolveDispute(
+    actor: Actor,
+    campaignId: string,
+    disputeId: string,
+    input: { outcome: string; operatorNote?: string | null },
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can resolve a campaign dispute");
+    }
+    const outcome = optionalText(input.outcome);
+    if (!outcome || !["upheld", "rejected", "inconclusive"].includes(outcome)) {
+      throw new BadRequestException("outcome must be one of: upheld, rejected, inconclusive");
+    }
+    const dispute = await prisma.showCampaignDispute.findFirst({
+      where: { id: disputeId, campaignId },
+    });
+    if (!dispute) {
+      throw new NotFoundException("Dispute not found for this campaign");
+    }
+    if (dispute.status !== "open") {
+      throw new BadRequestException("Only an open dispute can be resolved");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const resolved = await tx.showCampaignDispute.update({
+        where: { id: dispute.id },
+        data: {
+          status: "resolved",
+          outcome: outcome as "upheld" | "rejected" | "inconclusive",
+          operatorNote: optionalText(input.operatorNote),
+          resolvedByUserId: actor.userId,
+          resolvedAt: new Date(),
+        },
+      });
+      await tx.showCampaignEvent.create({
+        data: {
+          campaignId,
+          eventType: "dispute_resolved",
+          actorUserId: actor.userId,
+          metadata: { disputeId: dispute.id, outcome },
+        },
+      });
+      return resolved;
     });
   }
 

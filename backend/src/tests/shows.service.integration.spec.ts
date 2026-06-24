@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { ShowsService } from "../modules/shows/shows.service";
 
@@ -129,6 +129,10 @@ describe("ShowsService integration", () => {
         { id: otherArtistUserId, email: `${TEST_PREFIX}other_artist@test.resonate` },
       ],
     });
+    // #1221: pledge intents bind to the caller's registered wallet.
+    await prisma.wallet.create({
+      data: { userId: listenerId, address: listenerWallet, chainId: 84532 },
+    });
     await prisma.artist.create({
       data: {
         id: artistId,
@@ -204,6 +208,7 @@ describe("ShowsService integration", () => {
     }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId, creditedArtistId] } } }).catch(() => {});
+    await prisma.wallet.deleteMany({ where: { userId: { in: [listenerId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
     }).catch(() => {});
@@ -739,6 +744,299 @@ describe("ShowsService integration", () => {
     expect(expired.events[0].eventType).toBe("artist_authority_expired");
   });
 
+  it("blocks self-issued artist authority at campaign creation (#946)", async () => {
+    // A self-serve artist must not be able to stand up an already-authorized
+    // escrow campaign and then self-activate it; authorization is operator-only.
+    await expect(service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "1000000",
+        bookingDeadline: futureIso(48),
+        artistAuthorityStatus: "artist_authorized",
+      },
+    )).rejects.toThrow(ForbiddenException);
+
+    // An operator may create an authorized campaign — and its approved terms are
+    // snapshotted immediately, so they are locked from creation onward.
+    const opCampaign = await service.createDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "1000000",
+        bookingDeadline: futureIso(48),
+        artistAuthorityStatus: "artist_authorized",
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+      },
+    );
+    expect(opCampaign.artistAuthorityStatus).toBe("artist_authorized");
+    const storedOp = await prisma.showCampaign.findUniqueOrThrow({ where: { id: opCampaign.id } });
+    expect(storedOp.approvedTermsHash).toBeTruthy();
+
+    await expect(service.updateDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      opCampaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Nice",
+        country: "FR",
+        deadline: futureIso(33),
+        goalAmountUnits: "7777777",
+        bookingDeadline: futureIso(48),
+      },
+    )).rejects.toThrow(BadRequestException);
+  });
+
+  it("locks critical terms after authority approval and refuses silent changes (#946)", async () => {
+    const deadline = futureIso(37);
+    const booking = futureIso(52);
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}grenoble-authority`,
+      },
+    );
+    const approved = await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      {
+        authorityStatus: "artist_authorized",
+        authorityCredentialId: `${TEST_PREFIX}grenoble-credential`,
+      },
+    );
+    expect(approved.approvedTermsHash).toBeTruthy();
+    expect(approved.events[0].metadata).toMatchObject({ approvedTermsHash: approved.approvedTermsHash });
+
+    // Bumping the goal after approval is refused.
+    await expect(service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "9999999",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    // An operator swapping the beneficiary wallet is refused too.
+    await expect(service.updateDraftCampaign(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+        beneficiaryAddress: "0x" + "b".repeat(40),
+        beneficiaryType: "wallet",
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    const stored = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(stored.goalAmountUnits).toBe("1500000");
+    expect(stored.beneficiaryAddress).toBe(artistWallet.toLowerCase());
+
+    // Re-saving with identical critical terms (only changing pitch copy) is allowed.
+    const edited = await service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Grenoble",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "1500000",
+        minimumBackers: 100,
+        bookingDeadline: booking,
+        description: "Refreshed pitch copy after approval",
+      },
+    );
+    expect(edited.description).toBe("Refreshed pitch copy after approval");
+    expect(edited.artistAuthorityStatus).toBe("artist_authorized");
+    expect(edited.goalAmountUnits).toBe("1500000");
+  });
+
+  it("reopens term edits after revocation and requires re-approval before activation (#946)", async () => {
+    const deadline = futureIso(38);
+    const booking = futureIso(53);
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2000000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}rennes-authority`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}rennes-credential` },
+    );
+
+    // Locked while approved.
+    await expect(service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2500000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    )).rejects.toThrow(BadRequestException);
+
+    // Revoking clears the lock so terms can be amended.
+    await service.revokeAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { reason: "artist requested a higher goal" },
+    );
+    const afterRevoke = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(afterRevoke.approvedTermsHash).toBeNull();
+    expect(afterRevoke.artistAuthorityStatus).toBe("revoked");
+
+    const edited = await service.updateDraftCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Rennes",
+        country: "FR",
+        deadline,
+        goalAmountUnits: "2500000",
+        minimumBackers: 80,
+        bookingDeadline: booking,
+      },
+    );
+    expect(edited.goalAmountUnits).toBe("2500000");
+
+    // Activation is blocked until authority is granted again on the new terms.
+    await expect(service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {},
+    )).rejects.toThrow(BadRequestException);
+
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}rennes-authority-2`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}rennes-credential-2` },
+    );
+    const activated = await service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      { contractAddress: "0x" + "6".repeat(40), contractCampaignId: "1" },
+    );
+    expect(activated.status).toBe("active");
+    const finalCampaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(finalCampaign.goalAmountUnits).toBe("2500000");
+  });
+
+  it("refuses activation when terms drift from the approved snapshot (#946)", async () => {
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Dijon",
+        country: "FR",
+        deadline: futureIso(39),
+        goalAmountUnits: "1800000",
+        bookingDeadline: futureIso(54),
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}dijon-authority`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { authorityStatus: "artist_authorized", authorityCredentialId: `${TEST_PREFIX}dijon-credential` },
+    );
+
+    // Simulate an out-of-band write that bypasses the update lock entirely.
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { goalAmountUnits: "9000000" },
+    });
+
+    await expect(service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {},
+    )).rejects.toThrow(BadRequestException);
+  });
+
   it("creates pledge intents, confirms receipts, and keeps progress indexer-owned", async () => {
     const { campaign, tier } = await createActiveCampaignWithTier("Marseille");
 
@@ -765,7 +1063,10 @@ describe("ShowsService integration", () => {
     });
     expect(intent.pledge.events[0].eventType).toBe("pledge_intent_created");
 
-    const confirmed = await service.confirmPledge(
+    // #948: a wallet user recording their tx cannot self-confirm. The pledge
+    // is "submitted"/"pending" until the on-chain Pledged event is indexed; a
+    // client-claimed "confirmed" is intentionally downgraded.
+    const submitted = await service.confirmPledge(
       { userId: listenerId, role: "listener" },
       intent.pledge.id,
       {
@@ -775,11 +1076,11 @@ describe("ShowsService integration", () => {
       },
     );
 
-    expect(confirmed.pledge.status).toBe("confirmed");
-    expect(confirmed.pledge.confirmationStatus).toBe("confirmed");
-    expect(confirmed.pledge.transactionHash).toBe(txHash);
-    expect(confirmed.pledge.blockNumber).toBe("123456");
-    expect(confirmed.pledge.events[0].eventType).toBe("pledge_confirmed");
+    expect(submitted.pledge.status).toBe("submitted");
+    expect(submitted.pledge.confirmationStatus).toBe("pending");
+    expect(submitted.pledge.transactionHash).toBe(txHash);
+    expect(submitted.pledge.blockNumber).toBe("123456");
+    expect(submitted.pledge.events[0].eventType).toBe("pledge_submitted");
 
     const storedCampaign = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(storedCampaign.raisedAmountUnits).toBe("0");
@@ -804,8 +1105,10 @@ describe("ShowsService integration", () => {
         walletAddress: listenerWallet,
       },
     );
+    // Operator manual-confirm (privileged override) establishes a confirmed
+    // pledge precondition; wallet users can no longer self-confirm (#948).
     await service.confirmPledge(
-      { userId: listenerId, role: "listener" },
+      { userId: operatorUserId, role: "operator" },
       intent.pledge.id,
       {
         transactionHash: "0x" + "b".repeat(64),
@@ -845,6 +1148,37 @@ describe("ShowsService integration", () => {
         receipt: { source: "integration-test" },
       },
     });
+  });
+
+  it("rejects pledge intents whose wallet is not the caller's registered wallet (#1221)", async () => {
+    const { campaign, tier } = await createActiveCampaignWithTier("Nantes");
+
+    // A foreign address (not the listener's registered wallet) is rejected
+    // (403 Forbidden), closing the pledge-attribution hijack from the #948 review.
+    const foreign = service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(foreign).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(foreign).rejects.toThrow(/must match your connected wallet/);
+
+    // A caller with no registered wallet cannot pledge at all (400 Bad Request).
+    const noWallet = service.createPledgeIntent(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: "0x" + "9".repeat(40) },
+    );
+    await expect(noWallet).rejects.toBeInstanceOf(BadRequestException);
+    await expect(noWallet).rejects.toThrow(/Connect a wallet/);
+
+    // The caller's own registered wallet succeeds.
+    const ok = await service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      { tierId: tier.id, walletAddress: listenerWallet },
+    );
+    expect(ok.pledge.status).toBe("intent_created");
   });
 
   it("rejects pledge intents that bypass campaign, wallet, or tier rules", async () => {
@@ -898,6 +1232,94 @@ describe("ShowsService integration", () => {
 
     const withSignals = await service.listCampaigns({ includeSignals: true });
     expect(withSignals.some((campaign) => campaign.artistDisplayName === `${TEST_PREFIX}Signal Artist`)).toBe(true);
+  });
+
+  it("public campaign reads expose trust/terms but never sensitive authority evidence (#949)", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Strasbourg");
+    // Populate an internal storage URI + a visual carrying a storage URI so the
+    // withholding assertions below run against actually-present data.
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { heroImageStorageUri: "gs://internal-bucket/hero.webp", heroImageMimeType: "image/webp" },
+    });
+    await prisma.showCampaignVisual.create({
+      data: {
+        campaignId: campaign.id,
+        role: "gallery",
+        publicUrl: "https://cdn.example/g1.webp",
+        storageUri: "gs://internal-bucket/g1.webp",
+        mimeType: "image/webp",
+        sortOrder: 0,
+      },
+    });
+
+    const publicCampaign = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+
+    // Trust + immutable terms the fan UI needs are present.
+    expect(publicCampaign.campaignLevel).toBe("active_escrow_campaign");
+    expect(publicCampaign.artistAuthorityStatus).toBe("artist_authorized");
+    expect(publicCampaign.beneficiaryAddress).toBe(artistWallet);
+    expect(publicCampaign.releasePolicy).toBeDefined();
+    expect(publicCampaign.disputeWindowSeconds).toBeDefined();
+    expect(publicCampaign).toHaveProperty("depositReleaseBps");
+    expect(Array.isArray(publicCampaign.tiers)).toBe(true);
+
+    // Sensitive evidence / internal fields are NOT exposed.
+    expect(publicCampaign).not.toHaveProperty("authorityCredentialId");
+    expect(publicCampaign).not.toHaveProperty("authorityEvidenceBundleId");
+    expect(publicCampaign).not.toHaveProperty("events");
+    expect(publicCampaign).not.toHaveProperty("heroImageStorageUri");
+    expect(publicCampaign).not.toHaveProperty("cardImageStorageUri");
+    expect(publicCampaign).not.toHaveProperty("bookingTerms");
+    expect(publicCampaign).not.toHaveProperty("reconciliationError");
+    expect(publicCampaign).not.toHaveProperty("lastEscrowIndexedBlock");
+    // Visuals expose only public fields — never the internal storage URI.
+    const visuals = (publicCampaign.visuals ?? []) as Array<Record<string, unknown>>;
+    expect(visuals.length).toBeGreaterThan(0);
+    for (const visual of visuals) {
+      expect(visual).not.toHaveProperty("storageUri");
+      expect(visual).toHaveProperty("publicUrl");
+    }
+    // The serialized payload as a whole leaks no evidence ids or storage URIs.
+    expect(JSON.stringify(publicCampaign)).not.toContain("-authority");
+    expect(JSON.stringify(publicCampaign)).not.toContain("-credential");
+    expect(JSON.stringify(publicCampaign)).not.toContain("internal-bucket");
+
+    // listCampaigns goes through the same DTO — assert it withholds too.
+    const listed = (await service.listCampaigns()) as Array<Record<string, unknown>>;
+    const listedCampaign = listed.find((c) => c.id === campaign.id);
+    expect(listedCampaign).toBeDefined();
+    expect(listedCampaign).not.toHaveProperty("authorityEvidenceBundleId");
+    expect(listedCampaign).not.toHaveProperty("heroImageStorageUri");
+  });
+
+  it("operator-scoped read exposes evidence ids + disputes to operator/owner, denies strangers (#949)", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Annecy");
+    await prisma.showCampaignDispute.create({
+      data: { campaignId: campaign.id, initiatorRole: "operator", status: "open", reason: "venue check" },
+    });
+
+    // Operator sees the withheld authority evidence ids + the dispute list.
+    const managed = (await service.getManagedCampaign(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+    )) as Record<string, any>;
+    expect(managed.authorityCredentialId).toBe(`${TEST_PREFIX}Annecy-credential`);
+    expect(managed.authorityEvidenceBundleId).toBe(`${TEST_PREFIX}Annecy-authority`);
+    expect(Array.isArray(managed.disputes)).toBe(true);
+    expect(managed.disputes[0]).toMatchObject({ status: "open", reason: "venue check" });
+
+    // The owning artist can read it too.
+    const owned = (await service.getManagedCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+    )) as Record<string, any>;
+    expect(owned.authorityEvidenceBundleId).toBe(`${TEST_PREFIX}Annecy-authority`);
+
+    // A stranger (non-owner, non-operator) is denied.
+    await expect(
+      service.getManagedCampaign({ userId: listenerId, role: "listener" }, campaign.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it("cancels an active campaign into refund availability with lifecycle events", async () => {
@@ -967,5 +1389,78 @@ describe("ShowsService integration", () => {
       campaign.id,
       { evidenceBundleId: `${TEST_PREFIX}late-booking-evidence` },
     )).rejects.toThrow(BadRequestException);
+  });
+
+  it("requires evidence to confirm booking and fulfillment (#950)", async () => {
+    const { campaign } = await createFundedCampaign("Dijon");
+    // No evidence bundle → booking confirmation is rejected.
+    await expect(
+      service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/evidence/i);
+
+    await service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {
+      evidenceBundleId: `${TEST_PREFIX}dijon-booking`,
+    });
+    // Fulfillment also requires evidence.
+    await expect(
+      service.confirmFulfillment({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/evidence/i);
+  });
+
+  it("runs the off-chain dispute lifecycle and blocks release while open (#950)", async () => {
+    const { campaign } = await createFundedCampaign("Grenoble");
+    await service.confirmBooking({ userId: operatorUserId, role: "operator" }, campaign.id, {
+      evidenceBundleId: `${TEST_PREFIX}grenoble-booking`,
+    });
+
+    // Non-operators cannot initiate.
+    await expect(
+      service.initiateDispute({ userId: listenerId, role: "listener" }, campaign.id, { reason: "no-show risk" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const dispute = await service.initiateDispute(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { reason: "venue hold disputed" },
+    );
+    expect(dispute.status).toBe("open");
+
+    // A second open dispute is rejected.
+    await expect(
+      service.initiateDispute({ userId: operatorUserId, role: "operator" }, campaign.id, {}),
+    ).rejects.toThrow(/already exists/i);
+
+    // An open dispute blocks fulfillment (progress toward final release).
+    await expect(
+      service.confirmFulfillment({ userId: operatorUserId, role: "operator" }, campaign.id, {
+        evidenceBundleId: `${TEST_PREFIX}grenoble-fulfillment`,
+      }),
+    ).rejects.toThrow(/open dispute/i);
+
+    // Public DTO surfaces the active dispute without leaking notes/reason.
+    const active = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+    expect(active.disputeStatus).toBe("active");
+    expect(JSON.stringify(active)).not.toContain("venue hold disputed");
+
+    // Resolve, then fulfillment proceeds.
+    await expect(
+      service.resolveDispute({ userId: operatorUserId, role: "operator" }, campaign.id, dispute.id, {
+        outcome: "rejected",
+        operatorNote: "evidence sufficient",
+      }),
+    ).resolves.toMatchObject({ status: "resolved", outcome: "rejected" });
+
+    const fulfilled = await service.confirmFulfillment(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      { evidenceBundleId: `${TEST_PREFIX}grenoble-fulfillment` },
+    );
+    expect(fulfilled.status).toBe("fulfilled");
+
+    // After fulfillment the DTO exposes the dispute window close time + resolved status.
+    const resolvedView = (await service.getCampaign(campaign.slug)) as Record<string, unknown>;
+    expect(resolvedView.disputeStatus).toBe("resolved");
+    expect(resolvedView.disputeWindowClosesAt).toBeTruthy();
+    expect(JSON.stringify(resolvedView)).not.toContain("evidence sufficient");
   });
 });

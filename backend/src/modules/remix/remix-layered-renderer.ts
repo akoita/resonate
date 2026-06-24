@@ -7,6 +7,7 @@ import {
   type RemixGenerationJob,
   type RemixGenerationOutputMetadata,
   type StemArrangementEntry,
+  type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
 
@@ -15,6 +16,8 @@ export const REMIX_LAYERED_RENDERER = "REMIX_LAYERED_RENDERER";
 export type LayeredRemixRenderInput = {
   remixProjectId: string;
   stems: StemArrangementEntry[];
+  /** Worker-time render grant (#1214) — gates encrypted source decryption. */
+  authorization: StemRenderAuthorization;
   layer: {
     provider: string;
     jobId: string;
@@ -72,7 +75,7 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
           label: "generated-layer",
         },
       ],
-      input.remixProjectId,
+      input.authorization,
     );
 
     const jobId = randomUUID();

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import {
   useShowPledgeExecution,
   useShowRefundExecution,
@@ -11,9 +12,12 @@ import {
 import { getExplorerTxUrl } from "../../lib/explorer";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
+  campaignPledgeAvailability,
   createPledgeIntent,
   formatMoney,
   listMyShowPledges,
+  pledgeConfirmSummary,
+  pledgeStateLabel,
   type Campaign,
   type CampaignTier,
   type ShowPledgeIntent,
@@ -36,6 +40,8 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     error: refundError,
     txHash: refundTxHash,
   } = useShowRefundExecution();
+  const availability = campaignPledgeAvailability(campaign);
+  const pledgingOpen = availability.open;
   const tiers = campaign.tiers.length > 0 ? campaign.tiers : fallbackTiers;
   const [selectedTierId, setSelectedTierId] = useState(tiers[1]?.id ?? tiers[0]?.id ?? "");
   const [intent, setIntent] = useState<ShowPledgeIntent | null>(null);
@@ -45,6 +51,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
   const [myPledgesLoading, setMyPledgesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const selectedTier = useMemo(
     () => tiers.find((tier) => tier.id === selectedTierId) ?? tiers[0],
@@ -151,6 +158,18 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     }
   }
 
+  // #1240: gate the wallet signature behind an explicit terms confirmation.
+  // If the wallet isn't connected yet, connect first (no dialog); otherwise
+  // open the confirm dialog and run the pledge only once the fan confirms.
+  async function handlePledgeClick() {
+    if (!selectedTier) return;
+    if (!token || !walletAddress) {
+      await connect();
+      return;
+    }
+    setConfirmOpen(true);
+  }
+
   async function refund() {
     if (!latestPledge) return;
     if (!token || !walletAddress) {
@@ -176,30 +195,38 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     <article className="show-detail__pledge-panel" aria-label="Pledge tiers">
       <div className="show-detail__pledge-header">
         <span className="shows-home-section__kicker">Signal tiers</span>
-        <span className="show-detail__soon-pill">Receipt-ready</span>
+        <span className="show-detail__soon-pill">{pledgingOpen ? "Receipt-ready" : "Preview"}</span>
       </div>
-      <div className="show-detail__tiers">
-        {tiers.map((tier, index) => {
-          const selected = tier.id === selectedTier?.id;
-          return (
-            <button
-              key={tier.id}
-              type="button"
-              className={`show-detail__tier ${index === 1 ? "show-detail__tier--featured" : ""} ${
-                selected ? "show-detail__tier--selected" : ""
-              }`}
-              onClick={() => setSelectedTierId(tier.id)}
-              aria-pressed={selected}
-            >
-              <strong>{formatMoney(tier.amountCents, tier.currency)}</strong>
-              <span>{tier.title}</span>
-              {tier.description ? (
-                <small>{tier.description}</small>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
+
+      {pledgingOpen ? (
+        <div className="show-detail__tiers" role="group" aria-label="Pledge tiers">
+          {tiers.map((tier, index) => {
+            const selected = tier.id === selectedTier?.id;
+            return (
+              <button
+                key={tier.id}
+                type="button"
+                className={`show-detail__tier ${index === 1 ? "show-detail__tier--featured" : ""} ${
+                  selected ? "show-detail__tier--selected" : ""
+                }`}
+                onClick={() => setSelectedTierId(tier.id)}
+                aria-pressed={selected}
+              >
+                <strong>{formatMoney(tier.amountCents, tier.currency)}</strong>
+                <span>{tier.title}</span>
+                {tier.description ? (
+                  <small>{tier.description}</small>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="show-detail__pledge-empty" role="note" data-state={availability.key}>
+          <strong>{availability.title}</strong>
+          <p>{availability.message}</p>
+        </div>
+      )}
 
       {latestPledge || myPledgesLoading ? (
         <div className="show-detail__my-pledge" aria-live="polite">
@@ -207,11 +234,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
           {latestPledge ? (
             <>
               <strong>{latestPledgeAmount}</strong>
-              <small>
-                {latestPledge.status.replaceAll("_", " ")}
-                {" · "}
-                {latestPledge.confirmationStatus.replaceAll("_", " ")}
-              </small>
+              <small>{pledgeStateLabel(latestPledge.status, latestPledge.confirmationStatus)}</small>
               {latestPledgeTxUrl ? (
                 <a href={latestPledgeTxUrl} target="_blank" rel="noreferrer noopener">
                   View transaction
@@ -234,14 +257,16 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        className="show-detail__pledge-action"
-        onClick={pledge}
-        disabled={loading || pending || refundPending || !selectedTier}
-      >
-        {buttonLabel}
-      </button>
+      {pledgingOpen ? (
+        <button
+          type="button"
+          className="show-detail__pledge-action"
+          onClick={handlePledgeClick}
+          disabled={loading || pending || refundPending || !selectedTier}
+        >
+          {buttonLabel}
+        </button>
+      ) : null}
 
       {intent ? (
         <div className="show-detail__pledge-result" role="status">
@@ -269,6 +294,21 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         <p className="show-detail__pledge-error" role="alert">
           {activeError}
         </p>
+      ) : null}
+
+      {pledgingOpen && selectedTier ? (
+        <ConfirmDialog
+          isOpen={confirmOpen}
+          title="Confirm your pledge"
+          message={pledgeConfirmSummary(campaign, selectedTier)}
+          confirmLabel="Pledge with wallet"
+          cancelLabel="Cancel"
+          onCancel={() => setConfirmOpen(false)}
+          onConfirm={async () => {
+            setConfirmOpen(false);
+            await pledge();
+          }}
+        />
       ) : null}
     </article>
   );

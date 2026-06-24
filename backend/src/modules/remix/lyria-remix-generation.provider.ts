@@ -9,6 +9,7 @@ import {
   type RemixGenerationInput,
   type RemixGenerationJob,
   type RemixGenerationProvider,
+  type StemRenderAuthorization,
 } from "./remix-generation.provider";
 
 /**
@@ -32,6 +33,10 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
 
   async createRemixDraft(
     input: RemixGenerationInput,
+    // Prompt-only: Lyria generates from text, so it never decrypts source
+    // stems. The layered renderer that mixes its output over the arranged
+    // stems receives the render authorization separately (#1214).
+    _authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob> {
     // Master gate, identical semantics to the stub: provider kind selects
     // the implementation, REMIX_GENERATION_ENABLED decides whether any

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
@@ -11,10 +11,22 @@ import {
   cancelShowCampaign,
   confirmShowCampaignBooking,
   confirmShowCampaignFulfillment,
+  getManagedShowCampaign,
+  initiateShowCampaignDispute,
+  resolveShowCampaignDispute,
   type Campaign,
 } from "../../lib/shows";
 
-type ActionKey = "authority" | "activate" | "cancel" | "booking" | "fulfillment";
+type ActionKey =
+  | "authority"
+  | "activate"
+  | "cancel"
+  | "booking"
+  | "fulfillment"
+  | "dispute"
+  | "resolve";
+
+type DisputeOutcome = "upheld" | "rejected" | "inconclusive";
 
 const AUTHORIZED_STATUSES = ["artist_authorized", "trusted_source_authorized"];
 
@@ -38,6 +50,9 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const [contractCampaignId, setContractCampaignId] = useState(campaign.contractCampaignId ?? "");
   const [lifecycleEvidenceBundleId, setLifecycleEvidenceBundleId] = useState("");
   const [reason, setReason] = useState("");
+  const [disputeReason, setDisputeReason] = useState("");
+  const [resolveOutcome, setResolveOutcome] = useState<DisputeOutcome>("upheld");
+  const [resolveNote, setResolveNote] = useState("");
   const [pending, setPending] = useState<ActionKey | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -52,6 +67,12 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const canConfirmBooking = current.rawStatus === "funded";
   const canConfirmFulfillment = ["booking_confirmed", "deposit_released"].includes(current.rawStatus);
 
+  const disputes = current.disputes ?? [];
+  const openDispute = disputes.find((dispute) => dispute.status === "open") ?? null;
+  const canInitiateDispute =
+    !openDispute &&
+    ["booking_confirmed", "deposit_released", "fulfilled"].includes(current.rawStatus);
+
   const busy = pending !== null;
   const statusRows = useMemo(
     () => [
@@ -62,9 +83,33 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
       ["Contract", current.contractCampaignId && current.escrowContractAddress
         ? `${current.contractCampaignId} · ${current.escrowContractAddress}`
         : current.escrowContractAddress ?? "not linked"],
+      ...(current.bookingEvidenceBundleId
+        ? [["Booking evidence", current.bookingEvidenceBundleId] as [string, string]]
+        : []),
+      ...(current.fulfillmentEvidenceBundleId
+        ? [["Fulfillment evidence", current.fulfillmentEvidenceBundleId] as [string, string]]
+        : []),
     ],
     [current],
   );
+
+  // #949: the public read withholds the authority credential/evidence ids, so
+  // pull the operator-scoped managed read to prefill those inputs and load the
+  // dispute list. Runs only for an authenticated operator/admin.
+  useEffect(() => {
+    if (!isOperator || !isAuthenticated || !token) return;
+    let cancelled = false;
+    void (async () => {
+      const managed = await getManagedShowCampaign({ campaignId: campaign.backendId, token });
+      if (cancelled || !managed) return;
+      setCurrent(managed);
+      setAuthorityCredentialId((prev) => prev || managed.authorityCredentialId || "");
+      setAuthorityEvidenceBundleId((prev) => prev || managed.authorityEvidenceBundleId || "");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOperator, isAuthenticated, token, campaign.backendId]);
 
   if (!isOperator) return null;
 
@@ -84,6 +129,29 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Campaign operation failed.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  // Dispute mutations return the dispute (not the campaign), so refetch the
+  // managed read to refresh the panel's dispute list + status rows.
+  async function runDisputeAction(action: "dispute" | "resolve", request: () => Promise<unknown>, success: string) {
+    if (!token) {
+      setError("Connect with an operator account first.");
+      return;
+    }
+    setPending(action);
+    setError(null);
+    setNotice(null);
+    try {
+      await request();
+      const managed = await getManagedShowCampaign({ campaignId: current.backendId, token });
+      if (managed) setCurrent(managed);
+      setNotice(success);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Dispute operation failed.");
     } finally {
       setPending(null);
     }
@@ -242,9 +310,96 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
             </button>
           </div>
         </fieldset>
+
+        <fieldset>
+          <legend>Disputes</legend>
+          {openDispute ? (
+            <div className="show-detail__operator-dispute">
+              <p className="show-detail__operator-dispute-head">
+                <strong>Open dispute</strong>
+                {openDispute.initiatorRole ? ` · raised by ${formatStatus(openDispute.initiatorRole)}` : null}
+              </p>
+              {openDispute.reason ? (
+                <p className="show-detail__operator-dispute-reason">{openDispute.reason}</p>
+              ) : null}
+              <label>
+                Outcome
+                <select
+                  value={resolveOutcome}
+                  onChange={(event) => setResolveOutcome(event.target.value as DisputeOutcome)}
+                >
+                  <option value="upheld">Upheld — backer concern valid</option>
+                  <option value="rejected">Rejected — no issue found</option>
+                  <option value="inconclusive">Inconclusive</option>
+                </select>
+              </label>
+              <label>
+                Operator note
+                <textarea value={resolveNote} onChange={(event) => setResolveNote(event.target.value)} rows={3} />
+              </label>
+              <button
+                type="button"
+                onClick={() => runDisputeAction(
+                  "resolve",
+                  () => resolveShowCampaignDispute({
+                    campaign: current,
+                    token: token ?? "",
+                    disputeId: openDispute.id,
+                    outcome: resolveOutcome,
+                    operatorNote: resolveNote,
+                  }),
+                  "Dispute resolved.",
+                )}
+                disabled={!isAuthenticated || busy}
+              >
+                {pending === "resolve" ? "Resolving..." : "Resolve dispute"}
+              </button>
+            </div>
+          ) : (
+            <>
+              <p className="show-detail__operator-hint">
+                {canInitiateDispute
+                  ? "Flag a problem between booking confirmation and final release. Resolution is audited and does not move funds — release stays gated by the contract time-lock."
+                  : "Disputes can be raised only between booking confirmation and final fund release."}
+              </p>
+              <label>
+                Reason
+                <textarea value={disputeReason} onChange={(event) => setDisputeReason(event.target.value)} rows={3} />
+              </label>
+              <button
+                type="button"
+                onClick={() => runDisputeAction(
+                  "dispute",
+                  () => initiateShowCampaignDispute({
+                    campaign: current,
+                    token: token ?? "",
+                    reason: disputeReason,
+                  }),
+                  "Dispute raised.",
+                )}
+                disabled={!isAuthenticated || busy || !canInitiateDispute}
+              >
+                {pending === "dispute" ? "Raising..." : "Raise dispute"}
+              </button>
+            </>
+          )}
+          {disputes.length > 0 ? (
+            <ul className="show-detail__operator-dispute-history">
+              {disputes.map((dispute) => (
+                <li key={dispute.id}>
+                  <span>
+                    {formatStatus(dispute.status)}
+                    {dispute.outcome ? ` · ${formatStatus(dispute.outcome)}` : ""}
+                  </span>
+                  {dispute.operatorNote ? <em>{dispute.operatorNote}</em> : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </fieldset>
       </div>
 
-      {notice ? <p className="show-detail__operator-notice">{notice}</p> : null}
+      {notice ? <p className="show-detail__operator-notice" role="status">{notice}</p> : null}
       {error ? <p className="show-detail__operator-error" role="alert">{error}</p> : null}
 
       <ConfirmDialog
