@@ -957,25 +957,27 @@ const PARIS_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/0/0e/L
 const DUBLIN_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/a/a1/Dame_Street_-_The_Olympia_Theatre_%283433685951%29.jpg";
 const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Eko_Atlantic_%28Lagos%29_Skyline.jpg";
 const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
-// Real, recent artist photos — official/press images, all rights reserved, used for demo only.
-const AYA_PORTRAIT_IMAGE = "https://media.gettyimages.com/id/2048843663/fr/photo/paris-france-aya-nakamura-attends-the-schiaparelli-womenswear-fall-winter-2024-2025-show-as.jpg?s=612x612&w=0&k=20&c=SlTi5a7aSP9-sLL0eFGr5LaGtJyd0xYvxXI7pEAOeFc=";
+// Real, recent artist photos — Getty editorial, all rights reserved, demo use only.
+// Committed locally (mirrors the backend fixture assets) instead of hot-linking
+// Getty comp URLs, whose signed tokens expire and 404 in the browser.
+const AYA_PORTRAIT_IMAGE = "/shows/aya-nakamura-portrait.jpg";
 // Wide hero composed from a CC0 (public-domain) live performance photo by Mathis.aclr, locally committed.
 const AYA_HERO_IMAGE = "/shows/aya-nakamura-montreal-hero.jpg";
-const AYA_LIVE_IMAGE = "https://media.gettyimages.com/id/1734632892/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=YQ_aO4J_0jiBG_lv5toYELebn5YMH786kujAcJSBkmA=";
-const AYA_STAGE_IMAGE = "https://media.gettyimages.com/id/1734632899/fr/photo/london-england-aya-nakamura-performs-at-ovo-arena-wembley-on-october-13-2023-in-london-england.jpg?s=612x612&w=0&k=20&c=yzib0IWmq0rmUfzyKYqXM6UudMeijIaFnXV7XJ7aQLo=";
-const LEONA_LIVE_IMAGE = "https://media.gettyimages.com/id/1657891581/fr/photo/venice-italy-leona-lewis-performs-on-stage-at-the-amfar-gala-venezia-2023-presented-by.jpg?s=612x612&w=0&k=20&c=L3OZpPTE6GCALhaTbEG0jSPIMTBRjRebTj-d1G521ZQ=";
-const LEONA_HERO_IMAGE = "https://media.gettyimages.com/id/2259655440/fr/photo/abu-dhabi-united-arab-emirates-leona-lewis-performs-onstage-during-the-welcome-ceremony-for.jpg?s=612x612&w=0&k=20&c=mF6uo46A9fxMXk6k5_ZGs4KPNvjNA06efKp2BTwEPxA=";
-const LEONA_VEGAS_IMAGE = "https://media.gettyimages.com/id/2244640781/fr/photo/las-vegas-nevada-leona-lewis-performs-during-opening-night-of-her-las-vegas-christmas.jpg?s=612x612&w=0&k=20&c=dZhIaSaK4rzRjksI-TkMuYkg8hbAArg-9o1bKLwdYNA=";
-const LEONA_WIMBLEDON_IMAGE = "https://media.gettyimages.com/id/2224469193/fr/photo/london-england-leona-lewis-attends-day-eleven-of-the-wimbledon-tennis-championships-at-the.jpg?s=612x612&w=0&k=20&c=Oo7AU7Zq2wPOeH7fNWru720wz2Vd6zBQNXNfO8UeuNg=";
-const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?format=jpg&name=large";
-const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
+const AYA_LIVE_IMAGE = "/shows/aya-nakamura-live.jpg";
+const AYA_STAGE_IMAGE = "/shows/aya-nakamura-stage.jpg";
+const LEONA_LIVE_IMAGE = "/shows/leona-lewis-live.jpg";
+const LEONA_HERO_IMAGE = "/shows/leona-lewis-lagos-hero.jpg";
+const LEONA_VEGAS_IMAGE = "/shows/leona-lewis-vegas.jpg";
+const LEONA_WIMBLEDON_IMAGE = "/shows/leona-lewis-wimbledon.jpg";
+const SENNARIN_PORTRAIT_IMAGE = "/shows/sennarin-portrait.jpg";
+const SENNARIN_EDITORIAL_IMAGE = "/shows/sennarin-editorial.jpg";
 // Wide hero composed from her cinematic @senna_rin editorial portrait, locally committed.
 const SENNARIN_HERO_IMAGE = "/shows/sennarin-paris-hero.jpg";
 // "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
 const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
 // Wide hero composed from her "After Rain" cover (locally committed, demo use only).
 const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.jpg";
-const FELICIA_STUDIO_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia_Farerre.png";
+const FELICIA_STUDIO_IMAGE = "/shows/felicia-farerre-studio.jpg";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
