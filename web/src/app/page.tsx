@@ -119,6 +119,7 @@ export default function Home() {
   // window rotates so every campaign gets fair main-page visibility over time.
   const [eventRowOffset, setEventRowOffset] = useState(0);
   const [eventRowPaused, setEventRowPaused] = useState(false);
+  const [heroPaused, setHeroPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
@@ -249,6 +250,21 @@ export default function Home() {
     () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
     [activeHeroCampaignId, heroCampaigns],
   );
+  // Auto-rotate the featured campaign hero through the ranked campaigns so each
+  // gets time in the main panel. The rail still selects manually; hover/focus
+  // pauses, and prefers-reduced-motion disables it.
+  useEffect(() => {
+    if (heroCampaigns.length <= 1 || heroPaused) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const timer = window.setInterval(() => {
+      setActiveHeroCampaignId((currentId) => {
+        const index = heroCampaigns.findIndex((campaign) => campaign.id === currentId);
+        const next = heroCampaigns[((index < 0 ? 0 : index) + 1) % heroCampaigns.length];
+        return next?.id ?? currentId;
+      });
+    }, 9000);
+    return () => window.clearInterval(timer);
+  }, [heroCampaigns, heroPaused]);
   const eventRow: Campaign[] = useMemo(() => {
     if (campaigns.length <= 2) return campaigns.slice(0, 2);
     const start = eventRowOffset % campaigns.length;
@@ -535,6 +551,10 @@ export default function Home() {
           <div
             className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
             style={activeHeroCampaignImage ? { "--ng-hero-image": `url(${activeHeroCampaignImage})` } as CSSProperties : undefined}
+            onMouseEnter={() => setHeroPaused(true)}
+            onMouseLeave={() => setHeroPaused(false)}
+            onFocusCapture={() => setHeroPaused(true)}
+            onBlurCapture={() => setHeroPaused(false)}
           >
             <svg
               className="ng-hero__motif"
