@@ -970,6 +970,8 @@ const SENNARIN_PORTRAIT_IMAGE = "https://pbs.twimg.com/media/HHysd3Lb0AAQuws?for
 const SENNARIN_EDITORIAL_IMAGE = "https://pbs.twimg.com/media/HLGXmzgbsAAfmWw?format=jpg&name=large";
 // "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
 const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
+// Wide hero composed from her "After Rain" cover (locally committed, demo use only).
+const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.jpg";
 const FELICIA_STUDIO_IMAGE = "https://crossovermusicmagazine.com//wp-content/uploads/2022/03/Felicia_Farerre.png";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
@@ -1003,7 +1005,7 @@ const CAMPAIGNS: Campaign[] = [
     ...sampleBase,
     id: "sennarin-paris", backendId: "sennarin-paris",
     artistName: "SennaRin", artistSlug: "sennarin", artistImage: SENNARIN_PORTRAIT_IMAGE,
-    artistSummary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers before making her solo debut with the 2022 EP Dignified. Her expressive low register has become closely associated with cinematic anime themes.",
+    artistSummary: "Japanese singer, lyricist and illustrator SennaRin emerged through J-pop and anime-song covers on YouTube before composer Hiroyuki Sawano produced her 2022 debut EP, Dignified. Her expressive low register quickly became a fixture of cinematic anime — 'dust' and 'melt' soundtracked Legend of the Galactic Heroes: Die Neue These, and her single 'Saihate' served as an ending theme for Bleach: Thousand-Year Blood War. Signed to Sony's Sacra Music, she pairs that voice with her own lyrics and artwork.",
     artistLinks: { official: "https://www.sennarin.com/", musicbrainz: "https://musicbrainz.org/artist/26b8ea1c-fb9e-4378-84a0-d0eace285f7e" },
     title: "SennaRin in Paris", city: "Paris", country: "FR", venue: "Le Trianon",
     targetDate: addDays(180), deadline: addDays(21), bookingDeadline: addDays(52),
@@ -1022,12 +1024,12 @@ const CAMPAIGNS: Campaign[] = [
     ...sampleBase,
     id: "felicia-farerre-dublin", backendId: "felicia-farerre-dublin",
     artistName: "Felicia Farerre", artistSlug: "felicia-farerre", artistImage: FELICIA_PORTRAIT_IMAGE,
-    artistSummary: "Felicia Farerre is an American recording artist, composer, producer and author whose signature vocal style spans television, advertising, films and movie trailers.",
+    artistSummary: "Felicia Farerre is an American vocalist, composer and producer whose four-decade career has made her voice a fixture of film, television and epic trailer music. She is the soaring lead voice on Two Steps from Hell's 'Star Sky' and crowned the Billboard charts as lead vocalist for the classical-crossover Taliesin Orchestra, and her vocals carry trailers for films from Maleficent and 300: Rise of an Empire to Ocean's Twelve. A lyricist, author and vocal coach, she also created the Epic Women project and the Real Singers Don't Sing training program.",
     artistLinks: { official: "https://www.feliciafarerre.com/", musicbrainz: "https://musicbrainz.org/artist/b86942c6-be26-4498-ad50-76fa74a15080" },
     title: "Felicia Farerre in Dublin", city: "Dublin", country: "IE", venue: "3Olympia Theatre",
     targetDate: addDays(205), deadline: addDays(28), bookingDeadline: addDays(60),
     goalCents: 7_000_000, raisedCents: 2_940_000, currency: "EUR", backerCount: 94, thresholdBackers: 350,
-    heroImage: DUBLIN_VENUE_IMAGE, cardImage: DUBLIN_VENUE_IMAGE,
+    heroImage: FELICIA_HERO_IMAGE, cardImage: FELICIA_PORTRAIT_IMAGE,
     visuals: [
       { id: "sample-felicia-farerre-dublin-portrait", role: "gallery", url: FELICIA_PORTRAIT_IMAGE, sortOrder: 10, caption: "Felicia Farerre.", credit: "© Felicia Farerre — \"After Rain\" cover art, demo use only" },
       { id: "sample-felicia-farerre-dublin-studio", role: "gallery", url: FELICIA_STUDIO_IMAGE, sortOrder: 11, caption: "Felicia Farerre at the microphone.", credit: "© Felicia Farerre — press photo, demo use only" },
@@ -1040,7 +1042,7 @@ const CAMPAIGNS: Campaign[] = [
     ...sampleBase,
     id: "leona-lewis-lagos", backendId: "leona-lewis-lagos",
     artistName: "Leona Lewis", artistSlug: "leona-lewis", artistImage: LEONA_LIVE_IMAGE,
-    artistSummary: "London-born singer, songwriter and actress Leona Lewis trained at the BRIT School before winning The X Factor in 2006. Spirit and the global reach of Bleeding Love established a pop-soul career defined by range and emotional scale.",
+    artistSummary: "London-born singer, songwriter and actress Leona Lewis trained at the BRIT School before winning The X Factor in 2006. Her debut album Spirit went 10× platinum in the UK and ranks among the best-selling albums in British chart history, while its single 'Bleeding Love' reached number one in more than thirty countries, including the UK and the US Billboard Hot 100. Three Grammy nominations, a Beijing Olympics closing-ceremony duet with Jimmy Page and over 30 million records sold cemented a pop-soul career defined by range and emotional scale.",
     artistLinks: { official: "https://www.leonalewismusic.com/", musicbrainz: "https://musicbrainz.org/artist/8d552dfc-648f-401f-90de-e925013ca537" },
     title: "Leona Lewis in Lagos", city: "Lagos", country: "NG", venue: "Eko Convention Centre",
     targetDate: addDays(225), deadline: addDays(35), bookingDeadline: addDays(68),
@@ -1059,7 +1061,7 @@ const CAMPAIGNS: Campaign[] = [
     ...sampleBase,
     id: "aya-nakamura-montreal", backendId: "aya-nakamura-montreal",
     artistName: "Aya Nakamura", artistSlug: "aya-nakamura", artistImage: AYA_PORTRAIT_IMAGE,
-    artistSummary: "Bamako-born French-Malian singer-songwriter Aya Nakamura grew from publishing music online in 2014 into one of francophone pop's defining international voices, blending R&B, Afrobeats and pop.",
+    artistSummary: "Bamako-born French-Malian singer-songwriter Aya Nakamura is the most-streamed French-language female artist in history. Her 2018 single 'Djadja' topped the French charts, was certified diamond, and became the first video by a female African artist to pass one billion YouTube views — also making her the first French woman to reach number one in the Netherlands since Édith Piaf. Across the diamond-certified Nakamura, the Victoires de la Musique-winning Aya and DNK she has fused R&B, Afrobeats, zouk and pop, and in 2024 she headlined the opening ceremony of the Paris Olympic Games.",
     artistLinks: { official: "https://ayanakamura.com/", musicbrainz: "https://musicbrainz.org/artist/cf580d82-3f3e-4b86-8874-7e0fbe794f01" },
     title: "Aya Nakamura in Montréal", city: "Montréal", country: "CA", venue: "MTELUS",
     targetDate: addDays(165), deadline: addDays(18), bookingDeadline: addDays(48),

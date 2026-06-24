@@ -56,7 +56,7 @@ Each campaign gallery mixes three kinds of image:
 | `sennarin-portrait.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-editorial.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
 | `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
-| `felicia-farerre-dublin-hero.jpg` | Felicia Farerre | All rights reserved — demo use only | Official release artwork “Unspoken” (cropped to remove title text) via [her YouTube](https://www.youtube.com/@FeliciaFarerre) |
+| `felicia-farerre-dublin-hero.jpg` | Felicia Farerre | All rights reserved — demo use only | Wide hero composed from her “After Rain” single cover art (blurred-fill background + portrait) via [her official site](https://www.feliciafarerre.com/) |
 | `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | “After Rain” single cover art via [her official site](https://www.feliciafarerre.com/) |
 | `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
