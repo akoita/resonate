@@ -163,6 +163,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "EUR",
       description: "From trailer-scale power to a pin-drop vocal, Felicia Farerre's music invites a theatrical room. This Dublin concept imagines an intimate, story-led evening at 3Olympia Theatre, backed by a fan signal strong enough to begin a real booking conversation.",
       heroAsset: "felicia-farerre-dublin-hero.jpg",
+      heroCredit: OFFICIAL_DEMO_CREDIT("Felicia Farerre", "official release artwork “Unspoken” (YouTube)"),
     },
     gallery: [
       {
