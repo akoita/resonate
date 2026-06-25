@@ -61,13 +61,14 @@ contract RevenueEscrowFuzzTest is Test {
         uint256 amountA = bound(uint256(a), 1, 1e27);
         uint256 amountB = bound(uint256(b), 1, 1e27);
 
+        uint256 startTs = block.timestamp; // captured before the first deposit
         _depositNative(tokenId, amountA);
         _depositNative(tokenId, amountB);
 
         (address benef, uint256 balance, uint256 endTime, bool frozen) = escrow.getEscrow(tokenId);
         assertEq(benef, beneficiary, "beneficiary set on first deposit");
         assertEq(balance, amountA + amountB, "balance accumulates");
-        assertEq(endTime, ESCROW_PERIOD + 1, "escrowEndTime fixed at first deposit"); // setUp ts = 1
+        assertEq(endTime, startTs + ESCROW_PERIOD, "escrowEndTime fixed at first deposit");
         assertFalse(frozen, "not frozen by default");
         assertEq(address(escrow).balance, amountA + amountB, "contract holds the funds");
     }
