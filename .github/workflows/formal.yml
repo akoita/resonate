@@ -5,11 +5,14 @@ name: Formal Verification
 # the main `Smart Contract Tests` job (which excludes `test/formal/*`).
 #
 # NOTE: this job is currently NON-BLOCKING (the Halmos step is
-# `continue-on-error`). Several formal `check_*` functions use `vm.expectRevert`,
-# which Halmos does not support and reports as ERROR. The job still runs Halmos
-# and surfaces the symbolic results (conservation/safety properties pass), but it
-# does not gate merges until the formal suite is refactored to drop
-# `vm.expectRevert`. Promotion to a required check is tracked as follow-up.
+# `continue-on-error`). Some formal `check_*` functions report ERROR under
+# Halmos for two reasons: (a) `vm.expectRevert`, which Halmos does not support;
+# and (b) checks whose `setUp()`/body fully revert under symbolic execution
+# (so they verify nothing). There are no genuine counterexamples — the
+# conservation/safety properties pass. The job runs Halmos and surfaces the
+# results, but does not gate merges until the formal suite is refactored to
+# remove `vm.expectRevert` AND fix the reverted-setup checks. Promotion to a
+# required check is tracked as follow-up.
 
 on:
   push:
@@ -52,7 +55,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Halmos
-        run: pip install halmos
+        # Pinned for reproducibility — a new release could change discovery /
+        # cheatcode handling and silently flip results on an unrelated PR.
+        run: pip install halmos==0.3.3
 
       # Non-blocking until the formal suite drops the unsupported vm.expectRevert
       # cheat code. `--function check_` limits symbolic execution to the formal
