@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatUnits } from "viem";
 import { useAuth } from "../auth/AuthProvider";
 import { useZeroDev } from "../auth/ZeroDevProviderClient";
 import { useReportContent } from "../../hooks/useContracts";
-import { formatEth } from "../../lib/stakeConstants";
 import {
   getCuratorReportingPolicy,
   submitRightsEvidenceBundle,
@@ -190,7 +190,7 @@ export default function ReportContentModal({
 }: ReportContentModalProps) {
   const { address, token } = useAuth();
   const { chainId } = useZeroDev();
-  const { report, getRequiredCounterStake, pending } = useReportContent();
+  const { report, getRequiredCounterStake, resolveCounterStake, pending } = useReportContent();
   const [primaryEvidenceKind, setPrimaryEvidenceKind] = useState<RightsEvidenceKind>("prior_publication");
   const [primaryEvidenceTitle, setPrimaryEvidenceTitle] = useState("");
   const [evidenceURL, setEvidenceURL] = useState("");
@@ -201,6 +201,8 @@ export default function ReportContentModal({
   const [error, setError] = useState<string | null>(null);
   const [protection, setProtection] = useState<ReleaseContentProtectionData | null>(null);
   const [counterStake, setCounterStake] = useState<bigint | null>(null);
+  const [counterStakeSymbol, setCounterStakeSymbol] = useState<string>("ETH");
+  const [counterStakeDecimals, setCounterStakeDecimals] = useState<number>(18);
   const [reportingPolicy, setReportingPolicy] = useState<CuratorReportingPolicy | null>(null);
   const [alreadyReported, setAlreadyReported] = useState(false);
   const [loadingProtection, setLoadingProtection] = useState(true);
@@ -226,9 +228,8 @@ export default function ReportContentModal({
       try {
         setLoadingProtection(true);
         setAlreadyReported(false);
-        const [protectionRes, counterStakeWei, policy, reporterDisputes] = await Promise.all([
+        const [protectionRes, policy, reporterDisputes] = await Promise.all([
           fetch(`/api/metadata/content-protection/release/${releaseId}`),
-          getRequiredCounterStake(),
           address ? getCuratorReportingPolicy(address) : Promise.resolve(null),
           address
             ? fetch(`/api/metadata/disputes/reporter/${address.toLowerCase()}`)
@@ -247,9 +248,17 @@ export default function ReportContentModal({
           reporterDisputes.some((dispute) => dispute.tokenId === protectionData.tokenId)
         );
 
+        // Resolve the counter-stake in the creator's stake currency (USDC, ETH, …);
+        // the contract requires the report to match that currency.
+        const stake = protectionData.tokenId
+          ? await resolveCounterStake(BigInt(protectionData.tokenId))
+          : { amount: await getRequiredCounterStake(), decimals: 18, symbol: "ETH" };
+
         if (!cancelled) {
           setProtection(protectionData);
-          setCounterStake(counterStakeWei);
+          setCounterStake(stake.amount);
+          setCounterStakeDecimals(stake.decimals);
+          setCounterStakeSymbol(stake.symbol);
           setReportingPolicy(policy);
           setAlreadyReported(hasExistingReport);
         }
@@ -269,7 +278,7 @@ export default function ReportContentModal({
     return () => {
       cancelled = true;
     };
-  }, [releaseId, getRequiredCounterStake, address]);
+  }, [releaseId, getRequiredCounterStake, resolveCounterStake, address]);
 
   const handleSubmit = async () => {
     if (!address) return;
@@ -337,7 +346,7 @@ export default function ReportContentModal({
         disputeId: result.disputeId?.toString(),
         txHash: result.hash,
         tokenId: result.tokenId?.toString(),
-        counterStakeEth: formatEth(result.counterStake),
+        counterStakeEth: `${formatUnits(result.counterStake, counterStakeDecimals)} ${counterStakeSymbol}`,
       });
       onClose();
     } catch (err) {
@@ -471,18 +480,19 @@ export default function ReportContentModal({
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={infoLabelStyle}>Native ETH Counter-Stake</div>
+              <div style={infoLabelStyle}>{counterStakeSymbol} Counter-Stake</div>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px", justifyContent: "flex-end" }}>
                 <span style={{ color: "#f59e0b" }}><IconDiamond size={14} /></span>
                 <span style={{ fontSize: "16px", fontWeight: 700, color: "#f59e0b" }}>
-                  {counterStake != null ? formatEth(counterStake) : "..."}
+                  {counterStake != null ? `${formatUnits(counterStake, counterStakeDecimals)} ${counterStakeSymbol}` : "..."}
                 </span>
               </div>
             </div>
           </div>
           <p style={{ margin: "0 0 10px", fontSize: "11px", lineHeight: 1.5, color: "rgba(255,255,255,0.45)" }}>
-            Report and appeal staking still uses the native ETH contract path in this web flow. The
-            backend quote system supports stablecoin pricing so the next UI slice can offer asset selection here too.
+            Your counter-stake is held in the same currency the creator staked
+            ({counterStakeSymbol}) and is returned if your report is upheld. It is forfeited if the
+            report is rejected.
           </p>
           {reportingPolicy && (
             <div style={{

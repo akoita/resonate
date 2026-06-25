@@ -1105,11 +1105,11 @@ export default function DisputeDashboard() {
                   <div style={appealSectionStyle}>
                     <button
                       style={appealBtnStyle}
-                      onClick={() => window.alert("Appeal requires submitting a 2x counter-stake via the smart contract. Use the Contract UI or CLI.")}
+                      onClick={() => window.alert("Appeal requires submitting a 2x counter-stake (in the creator's stake currency) via the smart contract. Use the Contract UI or CLI.")}
                     >
                       Appeal Decision
                     </button>
-                    <span style={{ fontSize: "11px", opacity: 0.4 }}>Requires 2x native ETH stake</span>
+                    <span style={{ fontSize: "11px", opacity: 0.4 }}>Requires a 2x counter-stake in the creator&apos;s stake currency</span>
                   </div>
                 )}
               </div>
