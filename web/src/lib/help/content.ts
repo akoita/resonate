@@ -862,7 +862,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Turn 'I'd go to that' into a real concert: signal demand and pledge funds into escrow that's refunded automatically if the show doesn't happen.",
     category: "shows",
     audiences: ["listener"],
-    status: "available",
+    status: "partial",
     keywords: ["shows", "campaign", "pledge", "back", "fund", "escrow", "refund", "concert", "demand", "signal", "tickets"],
     sections: [
       {
@@ -946,7 +946,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Launch a fan-funding campaign for a city, set transparent terms, and confirm booking and fulfillment as demand turns into a real show.",
     category: "shows",
     audiences: ["artist", "operator"],
-    status: "available",
+    status: "partial",
     keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist"],
     sections: [
       {
