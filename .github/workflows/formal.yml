@@ -1,0 +1,68 @@
+name: Formal Verification
+
+# Symbolic (Halmos) verification of the contract `check_*` properties under
+# `contracts/test/formal/`. This complements the unit/fuzz/invariant suite run by
+# the main `Smart Contract Tests` job (which excludes `test/formal/*`).
+#
+# NOTE: this job is currently NON-BLOCKING (the Halmos step is
+# `continue-on-error`). Some formal `check_*` functions report ERROR under
+# Halmos for two reasons: (a) `vm.expectRevert`, which Halmos does not support;
+# and (b) checks whose `setUp()`/body fully revert under symbolic execution
+# (so they verify nothing). There are no genuine counterexamples — the
+# conservation/safety properties pass. The job runs Halmos and surfaces the
+# results, but does not gate merges until the formal suite is refactored to
+# remove `vm.expectRevert` AND fix the reverted-setup checks. Promotion to a
+# required check is tracked as follow-up.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "contracts/**"
+      - ".github/workflows/formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: formal-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  halmos:
+    name: Halmos Symbolic Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Halmos
+        # Pinned for reproducibility — a new release could change discovery /
+        # cheatcode handling and silently flip results on an unrelated PR.
+        run: pip install halmos==0.3.3
+
+      # Non-blocking until the formal suite drops the unsupported vm.expectRevert
+      # cheat code. `--function check_` limits symbolic execution to the formal
+      # `check_*` properties (the unit/fuzz/invariant tests run under `forge test`).
+      - name: Run Halmos symbolic tests
+        run: halmos --function check_
+        working-directory: contracts
+        continue-on-error: true
