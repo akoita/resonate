@@ -270,8 +270,9 @@ Shared environments require `ALLOW_SAMPLE_SHOW_FIXTURES=true` explicitly.
 
 ## Production Beta Requirements
 
-These production surfaces are now live (see [Status](#status) for the remaining
-deploy-time operational follow-ups before production go-live):
+These production surfaces are built and validated on test/staging (see
+[Status](#status) for the remaining deploy-time operational follow-ups before
+production go-live):
 
 - campaign data loads from backend APIs rather than seeded client data;
 - fan-proposed demand signals can be created through the backend API without
