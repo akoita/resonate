@@ -178,16 +178,19 @@ forge test --match-path 'test/invariant/*' --invariant-runs 256
 halmos --contract StemNFTFormalTest
 halmos --contract ShowCampaignEscrowFormalTest
 halmos --contract RevenueEscrowFormalTest
+halmos --contract ContentProtectionFormalTest
 
 # Certora Prover specs
 certoraRun certora/conf/show_campaign_escrow.conf
 certoraRun certora/conf/revenue_escrow.conf
+certoraRun certora/conf/content_protection.conf
 
 # Mutation testing for high-value contract suites/specs
 # Configure Gambit per target contract/spec before running it in CI.
-gambit mutate --json gambit.json                  # StemNFT
-gambit mutate --json gambit-marketplace.json      # StemMarketplaceV2
-gambit mutate --json gambit-revenue-escrow.json   # RevenueEscrow
+gambit mutate --json gambit.json                     # StemNFT
+gambit mutate --json gambit-marketplace.json         # StemMarketplaceV2
+gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow
+gambit mutate --json gambit-content-protection.json  # ContentProtection
 
 # Gas report
 forge test --gas-report
