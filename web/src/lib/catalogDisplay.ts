@@ -1,4 +1,4 @@
-import type { Release, Track } from "./api";
+import type { PublicPlaylistSummary, Release, Track } from "./api";
 
 const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
 
@@ -95,6 +95,19 @@ export function flattenCatalogStems(releases: Release[]): CatalogStemSummary[] {
         artworkUrl: stem.artworkUrl || release.artworkUrl,
         createdAt: track.createdAt || release.createdAt,
       })),
+    ),
+  );
+}
+
+/** Filter public playlists for catalog search (by name and owner display name). */
+export function filterPublicPlaylists(
+  playlists: PublicPlaylistSummary[],
+  search: string,
+): PublicPlaylistSummary[] {
+  if (!search) return playlists;
+  return playlists.filter((playlist) =>
+    [playlist.name, playlist.ownerDisplayName].some((value) =>
+      value?.toLowerCase().includes(search),
     ),
   );
 }

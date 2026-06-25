@@ -178,7 +178,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks once you start listening.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["discover", "home", "browse", "catalog", "trending", "mood", "vibe", "search", "recommended", "explore", "genre"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "mood", "vibe", "search", "recommended", "explore", "genre", "playlists"],
     sections: [
       {
         id: "home",
@@ -217,14 +217,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Open Catalog to browse the latest public releases and their stems. Switch between Releases, Artists, and Stems, and search by title, artist, or stem.",
+            text: "Open Catalog to browse the latest public releases, their stems, and public playlists curated by other listeners. Switch between Releases, Artists, Stems, and Playlists, and search by title, artist, stem, or playlist name. Opening a playlist card lets you press Play or add the whole playlist to your library.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/catalog.png`,
               alt: "The catalog page titled 'Browse recent catalog' with counts of releases, artists, and stems, tabs for Releases/Artists/Stems, and a grid of release cards.",
-              caption: "Catalog: search and filter recent releases, artists, and stems.",
+              caption: "Catalog: search and filter recent releases, artists, stems, and public playlists.",
               width: 1440,
               height: 900,
               source: STAGING,
@@ -235,7 +235,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Discover", href: "/", description: "Featured, trending, and recommended music." },
-      { label: "Browse the catalog", href: "/catalog", description: "Recent releases, artists, and stems." },
+      { label: "Browse the catalog", href: "/catalog", description: "Recent releases, artists, stems, and public playlists." },
     ],
     related: ["playing-music", "ai-dj", "library-playlists"],
   },
@@ -373,10 +373,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "library-playlists",
     title: "Your library & playlists",
     summary:
-      "Save tracks to your library, organize them into playlists, and share a playlist publicly by link.",
+      "Save tracks to your library, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
     audiences: ["listener"],
-    keywords: ["library", "playlist", "save", "collection", "share", "public playlist", "folders", "favorites"],
+    keywords: ["library", "playlist", "save", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog"],
     sections: [
       {
         id: "library",
@@ -422,10 +422,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Playlists are private by default. Flip a playlist to public and anyone with the link can listen and save it to their own library as a live reference — when you edit the playlist, their copy updates too.",
           },
           {
+            kind: "paragraph",
+            text: "Public playlists are also discoverable: once a public playlist has at least one track that's available in the catalog, it appears in the Playlists tab of the global catalog so other listeners can find it without a link. Flip it back to private and it leaves the catalog again.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: "Private stays private",
-            text: "Making one playlist public never exposes your other playlists or how you've organized your library. Device-only files in a shared playlist show as unavailable to others.",
+            text: "Making one playlist public never exposes your other playlists or how you've organized your library. Device-only files in a shared playlist show as unavailable to others and don't make a playlist eligible for the catalog on their own.",
           },
         ],
       },
@@ -433,6 +437,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Your library", href: "/library", description: "Saved tracks and folders." },
       { label: "Playlists", href: "/library?tab=playlists", description: "Create, manage, and share playlists." },
+      { label: "Browse the catalog", href: "/catalog", description: "Find public playlists from other listeners." },
     ],
     related: ["playing-music", "discover-music"],
   },

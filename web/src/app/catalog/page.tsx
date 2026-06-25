@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import Link from "next/link";
 import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
 import {
+  filterPublicPlaylists,
   flattenCatalogStems,
   getArtistName,
   getCatalogSortTime,
@@ -11,15 +12,23 @@ import {
   type CatalogArtistSummary,
   type CatalogStemSummary,
 } from "../../lib/catalogDisplay";
-import { listPublishedReleases, type Release } from "../../lib/api";
+import {
+  listPublicPlaylists,
+  listPublishedReleases,
+  type PublicPlaylistSummary,
+  type Release,
+} from "../../lib/api";
+import { CatalogPlaylistCard } from "../../components/catalog/CatalogPlaylistCard";
 
-type CatalogView = "releases" | "artists" | "stems";
+type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
-const CATALOG_VIEWS: CatalogView[] = ["releases", "artists", "stems"];
+const CATALOG_VIEWS: CatalogView[] = ["releases", "artists", "stems", "playlists"];
 const RECENT_CATALOG_LIMIT = 200;
+const PLAYLIST_DISCOVERY_LIMIT = 60;
 
 export default function GlobalCatalogPage() {
   const [releases, setReleases] = useState<Release[]>([]);
+  const [playlists, setPlaylists] = useState<PublicPlaylistSummary[]>([]);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<CatalogView>("releases");
   const [loading, setLoading] = useState(true);
@@ -29,15 +38,20 @@ export default function GlobalCatalogPage() {
   useEffect(() => {
     let cancelled = false;
 
-    listPublishedReleases(RECENT_CATALOG_LIMIT)
-      .then((items) => {
-        if (!cancelled) setReleases(sortCatalogReleases(items));
-      })
-      .catch(() => {
-        if (!cancelled) {
+    Promise.allSettled([
+      listPublishedReleases(RECENT_CATALOG_LIMIT),
+      listPublicPlaylists(PLAYLIST_DISCOVERY_LIMIT),
+    ])
+      .then(([releaseResult, playlistResult]) => {
+        if (cancelled) return;
+        if (releaseResult.status === "fulfilled") {
+          setReleases(sortCatalogReleases(releaseResult.value));
+        } else {
           setReleases([]);
+          // Releases are the catalog's core content; only their failure is fatal.
           setError("Unable to load the catalog.");
         }
+        setPlaylists(playlistResult.status === "fulfilled" ? playlistResult.value : []);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,16 +77,22 @@ export default function GlobalCatalogPage() {
     () => filterStems(stems, normalizedQuery),
     [stems, normalizedQuery],
   );
+  const filteredPlaylists = useMemo(
+    () => filterPublicPlaylists(playlists, normalizedQuery),
+    [playlists, normalizedQuery],
+  );
 
   const tabCounts: Record<CatalogView, number> = {
     releases: filteredReleases.length,
     artists: filteredArtists.length,
     stems: filteredStems.length,
+    playlists: filteredPlaylists.length,
   };
   const totalCounts: Record<CatalogView, number> = {
     releases: releases.length,
     artists: artists.length,
     stems: stems.length,
+    playlists: playlists.length,
   };
   const currentCount = tabCounts[view];
   const isSearching = normalizedQuery.length > 0;
@@ -99,7 +119,8 @@ export default function GlobalCatalogPage() {
             <h1 className="ng-section-title">Browse recent catalog</h1>
             <p className="ng-catalog-hero__subtitle">
               Search the latest {RECENT_CATALOG_LIMIT} public releases on
-              Resonate, including their credited artists and stems.
+              Resonate, their credited artists and stems, and public playlists
+              curated by the community.
             </p>
           </div>
           <label className="ng-catalog-search ng-catalog-search--hero">
@@ -107,7 +128,7 @@ export default function GlobalCatalogPage() {
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search releases, artists, stems"
+              placeholder="Search releases, artists, stems, playlists"
               aria-label="Search recent catalog"
             />
             {query && (
@@ -137,6 +158,10 @@ export default function GlobalCatalogPage() {
               <div>
                 <strong>{stems.length}</strong>
                 <span>Stems</span>
+              </div>
+              <div>
+                <strong>{playlists.length}</strong>
+                <span>Playlists</span>
               </div>
             </div>
 
@@ -238,7 +263,7 @@ export default function GlobalCatalogPage() {
                       <CatalogEmptyState label="artists" isSearching={isSearching} onClear={() => setQuery("")} />
                     )}
                   </div>
-                ) : (
+                ) : view === "stems" ? (
                   <div className="ng-stem-browser ng-catalog-results">
                     {filteredStems.length > 0 ? (
                       filteredStems.map((stem) => (
@@ -255,6 +280,16 @@ export default function GlobalCatalogPage() {
                       ))
                     ) : (
                       <CatalogEmptyState label="stems" isSearching={isSearching} onClear={() => setQuery("")} />
+                    )}
+                  </div>
+                ) : (
+                  <div className="ng-resource-grid ng-resource-grid--catalog">
+                    {filteredPlaylists.length > 0 ? (
+                      filteredPlaylists.map((playlist) => (
+                        <CatalogPlaylistCard key={playlist.id} playlist={playlist} />
+                      ))
+                    ) : (
+                      <CatalogEmptyState label="playlists" isSearching={isSearching} onClear={() => setQuery("")} />
                     )}
                   </div>
                 )}
@@ -281,7 +316,7 @@ function ReleaseThumb({ release }: { release: Release }) {
 }
 
 function CatalogSkeleton({ view }: { view: CatalogView }) {
-  if (view === "releases") {
+  if (view === "releases" || view === "playlists") {
     return (
       <div className="ng-resource-grid ng-resource-grid--catalog" aria-hidden>
         {Array.from({ length: 6 }).map((_, index) => (
@@ -334,7 +369,13 @@ function CatalogEmptyState({
 }
 
 function singularize(view: CatalogView) {
-  return view === "releases" ? "release" : view === "artists" ? "artist" : "stem";
+  return view === "releases"
+    ? "release"
+    : view === "artists"
+      ? "artist"
+      : view === "stems"
+        ? "stem"
+        : "playlist";
 }
 
 function sortCatalogReleases(releases: Release[]) {

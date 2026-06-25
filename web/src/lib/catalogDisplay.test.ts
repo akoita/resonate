@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { Release } from "./api";
+import type { PublicPlaylistSummary, Release } from "./api";
 import {
+  filterPublicPlaylists,
   getArtistName,
   getCatalogSortTime,
   summarizeCreditedArtists,
@@ -74,5 +75,56 @@ describe("catalog display helpers", () => {
         latestAt: new Date("2026-06-05T14:11:17.092Z").getTime(),
       }),
     ]);
+  });
+});
+
+describe("filterPublicPlaylists", () => {
+  const playlists: PublicPlaylistSummary[] = [
+    {
+      id: "p1",
+      name: "Late Night Drive",
+      ownerUserId: "u1",
+      ownerDisplayName: "Nova",
+      trackCount: 8,
+      playableTrackCount: 8,
+      coverArtworkUrls: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-02T00:00:00.000Z",
+    },
+    {
+      id: "p2",
+      name: "Morning Focus",
+      ownerUserId: "u2",
+      ownerDisplayName: "Atlas",
+      trackCount: 5,
+      playableTrackCount: 5,
+      coverArtworkUrls: [],
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-03T00:00:00.000Z",
+    },
+  ];
+
+  it("returns everything when the query is empty", () => {
+    expect(filterPublicPlaylists(playlists, "")).toHaveLength(2);
+  });
+
+  it("matches on the playlist name (case-insensitive)", () => {
+    const result = filterPublicPlaylists(playlists, "drive");
+    expect(result.map((p) => p.id)).toEqual(["p1"]);
+  });
+
+  it("matches on the owner display name", () => {
+    const result = filterPublicPlaylists(playlists, "atlas");
+    expect(result.map((p) => p.id)).toEqual(["p2"]);
+  });
+
+  it("returns nothing for a non-matching query", () => {
+    expect(filterPublicPlaylists(playlists, "techno")).toHaveLength(0);
+  });
+
+  it("does not throw when the owner name is null", () => {
+    const anon: PublicPlaylistSummary[] = [{ ...playlists[0], ownerDisplayName: null }];
+    expect(filterPublicPlaylists(anon, "nova")).toHaveLength(0);
+    expect(filterPublicPlaylists(anon, "late")).toHaveLength(1);
   });
 });

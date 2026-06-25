@@ -20,10 +20,14 @@ import { AuthGuard } from "@nestjs/passport";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
+import { PlaylistService } from "../playlist/playlist.service";
 
 @Controller("catalog")
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) { }
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly playlistService: PlaylistService,
+  ) { }
 
   private sendAudioResponse(
     stem: { data: Buffer; mimeType?: string | null; range?: { start: number; end: number; total: number } },
@@ -237,6 +241,17 @@ export class CatalogController {
       Number.isNaN(parsedLimit) ? 20 : parsedLimit,
       primaryArtist,
     );
+  }
+
+  // Public playlists as a first-class catalog content type. Public (no auth) and
+  // rooted under /catalog to avoid colliding with the JWT-guarded /playlists/:id
+  // route. Only playable public playlists are surfaced (see PlaylistService).
+  @Get("playlists")
+  listPublicPlaylists(@Query("limit") limit?: string) {
+    const parsedLimit = limit ? Number(limit) : undefined;
+    return this.playlistService.listPublicPlaylists({
+      limit: parsedLimit !== undefined && Number.isNaN(parsedLimit) ? undefined : parsedLimit,
+    });
   }
 
   @Get("releases/:releaseId")

@@ -50,6 +50,31 @@ export interface SavedPlaylistView extends PublicPlaylistView {
     available: boolean;
 }
 
+/**
+ * A compact public-playlist entry for discovery surfaces (global catalog, home
+ * snapshot). Deliberately lighter than {@link PublicPlaylistView}: no per-track
+ * payload, just enough to render a card and link through to the full viewer.
+ */
+export interface PublicPlaylistSummary {
+    id: string;
+    name: string;
+    ownerUserId: string;
+    ownerDisplayName: string | null;
+    /** Tracks still resolvable in the owner's library. */
+    trackCount: number;
+    /** Subset of trackCount that any listener can actually stream. */
+    playableTrackCount: number;
+    /** Up to 4 public catalog artwork paths, drawn from playable tracks, for a cover mosaic. */
+    coverArtworkPaths: string[];
+    createdAt: Date;
+    updatedAt: Date;
+}
+
+/** How many candidate playlists we resolve covers/counts for, per discovery request. */
+const PUBLIC_PLAYLIST_DISCOVERY_MAX = 100;
+/** Cover images surfaced per playlist card (a 2×2 mosaic at most). */
+const PUBLIC_PLAYLIST_COVER_LIMIT = 4;
+
 @Injectable()
 export class PlaylistService {
     constructor(private readonly eventBus?: EventBus) {}
@@ -313,13 +338,7 @@ export class PlaylistService {
             const record = byId.get(trackId);
             if (!record) continue; // track removed from owner's library; skip silently
             const refs = extractCatalogRefs(record);
-            const streamPath =
-                refs.releaseId && refs.trackId
-                    ? `/catalog/releases/${encodeURIComponent(refs.releaseId)}/tracks/${encodeURIComponent(refs.trackId)}/stream`
-                    : null;
-            const artworkPath = refs.releaseId
-                ? `/catalog/releases/${encodeURIComponent(refs.releaseId)}/artwork`
-                : null;
+            const { streamPath, artworkPath } = catalogPathsFor(refs);
             resolved.push({
                 id: record.id,
                 title: record.title,
@@ -334,6 +353,76 @@ export class PlaylistService {
             });
         }
         return resolved;
+    }
+
+    /**
+     * List public playlists for discovery surfaces (global catalog, home snapshot).
+     *
+     * Only playlists that are `public` AND have at least one playable
+     * (catalog-backed) track are surfaced — a global discovery surface should
+     * never present an empty playlist or one made entirely of owner-device files
+     * nobody else can stream. Results are ordered most-recently-updated first.
+     *
+     * Covers and counts for every candidate are resolved with a single batched
+     * LibraryTrack query (no per-playlist round trips).
+     */
+    async listPublicPlaylists(options?: { limit?: number }): Promise<PublicPlaylistSummary[]> {
+        const limit = clampLimit(options?.limit, 50);
+        // Over-fetch candidates because some will be dropped for having no
+        // playable track; cap the work regardless of the requested limit.
+        const candidateTake = Math.min(limit * 4, PUBLIC_PLAYLIST_DISCOVERY_MAX);
+        const candidates = await prisma.playlist.findMany({
+            where: { visibility: "public" },
+            orderBy: { updatedAt: "desc" },
+            take: candidateTake,
+            include: { user: { select: { artist: { select: { displayName: true } } } } },
+        });
+        if (candidates.length === 0) return [];
+
+        // Single batched lookup over every referenced track id. LibraryTrack.id
+        // is a globally-unique uuid, so an id always maps back to its owner's row.
+        const allTrackIds = Array.from(new Set(candidates.flatMap((p) => p.trackIds)));
+        const records = allTrackIds.length
+            ? await prisma.libraryTrack.findMany({ where: { id: { in: allTrackIds } } })
+            : [];
+        const byId = new Map(records.map((r) => [r.id, r]));
+
+        const summaries: PublicPlaylistSummary[] = [];
+        for (const playlist of candidates) {
+            let trackCount = 0;
+            let playableTrackCount = 0;
+            const coverArtworkPaths: string[] = [];
+            for (const trackId of playlist.trackIds) {
+                const record = byId.get(trackId);
+                if (!record) continue; // removed from owner's library since
+                trackCount += 1;
+                const { streamPath, artworkPath } = catalogPathsFor(extractCatalogRefs(record));
+                if (!streamPath) continue; // local-only file: visible to owner, not streamable here
+                playableTrackCount += 1;
+                if (
+                    artworkPath &&
+                    coverArtworkPaths.length < PUBLIC_PLAYLIST_COVER_LIMIT &&
+                    !coverArtworkPaths.includes(artworkPath)
+                ) {
+                    coverArtworkPaths.push(artworkPath);
+                }
+            }
+            if (playableTrackCount === 0) continue; // never surface dead-end playlists
+
+            summaries.push({
+                id: playlist.id,
+                name: playlist.name,
+                ownerUserId: playlist.userId,
+                ownerDisplayName: playlist.user?.artist?.displayName ?? null,
+                trackCount,
+                playableTrackCount,
+                coverArtworkPaths,
+                createdAt: playlist.createdAt,
+                updatedAt: playlist.updatedAt,
+            });
+            if (summaries.length >= limit) break;
+        }
+        return summaries;
     }
 
     // ============================================
@@ -456,6 +545,26 @@ function sameStringArray(left: string[], right: string[]) {
 
 function limitTrackIds(trackIds: string[]) {
     return trackIds.slice(0, 100);
+}
+
+function clampLimit(value: number | undefined, fallback: number): number {
+    if (value === undefined || !Number.isFinite(value)) return fallback;
+    return Math.max(1, Math.min(PUBLIC_PLAYLIST_DISCOVERY_MAX, Math.floor(value)));
+}
+
+/** Build public, unauthenticated catalog stream/artwork paths from extracted refs. */
+function catalogPathsFor(refs: { releaseId: string | null; trackId: string | null }): {
+    streamPath: string | null;
+    artworkPath: string | null;
+} {
+    const streamPath =
+        refs.releaseId && refs.trackId
+            ? `/catalog/releases/${encodeURIComponent(refs.releaseId)}/tracks/${encodeURIComponent(refs.trackId)}/stream`
+            : null;
+    const artworkPath = refs.releaseId
+        ? `/catalog/releases/${encodeURIComponent(refs.releaseId)}/artwork`
+        : null;
+    return { streamPath, artworkPath };
 }
 
 /**

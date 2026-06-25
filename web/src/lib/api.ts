@@ -481,6 +481,20 @@ export type SavedPlaylistView = PublicPlaylistView & {
   available: boolean;
 };
 
+/** A public playlist as it appears in catalog/discovery surfaces (cover mosaic + counts). */
+export type PublicPlaylistSummary = {
+  id: string;
+  name: string;
+  ownerUserId: string;
+  ownerDisplayName: string | null;
+  trackCount: number;
+  playableTrackCount: number;
+  /** Absolute artwork URLs (already prefixed with API_BASE), up to 4, for a cover mosaic. */
+  coverArtworkUrls: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type APIFolder = {
   id: string;
   userId: string;
@@ -1981,6 +1995,28 @@ export async function listPublishedReleases(limit = 20, primaryArtist?: string) 
     ...r,
     artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
   }));
+}
+
+type PublicPlaylistSummaryResponse = Omit<PublicPlaylistSummary, "coverArtworkUrls"> & {
+  coverArtworkPaths?: string[];
+};
+
+/** Resolve the backend's relative catalog artwork paths into absolute, renderable URLs. */
+export function mapPublicPlaylistSummary(item: PublicPlaylistSummaryResponse): PublicPlaylistSummary {
+  const { coverArtworkPaths, ...rest } = item;
+  return {
+    ...rest,
+    coverArtworkUrls: (coverArtworkPaths ?? []).map((path) => `${API_BASE}${path}`),
+  };
+}
+
+/** Public playlists for the global catalog / home discovery surfaces (no auth required). */
+export async function listPublicPlaylists(limit = 50): Promise<PublicPlaylistSummary[]> {
+  const items = await apiRequest<PublicPlaylistSummaryResponse[]>(
+    `/catalog/playlists?limit=${encodeURIComponent(String(limit))}`,
+    {},
+  );
+  return items.map(mapPublicPlaylistSummary);
 }
 
 export type SongRecommendationItem = {

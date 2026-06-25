@@ -12,16 +12,19 @@ import {
   getStemPreviewUrl,
   getSongRecommendations,
   listMyReleases,
+  listPublicPlaylists,
   listPublishedReleases,
   recordAgentSignal,
   Release,
   startAgentSession,
   updateAgentConfig,
+  type PublicPlaylistSummary,
   type SongRecommendationItem,
   type Track,
 } from "../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
 import {
+  filterPublicPlaylists,
   flattenCatalogStems,
   getArtistName,
   getCatalogSortTime,
@@ -31,6 +34,7 @@ import {
   type CatalogArtistSummary,
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
+import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -73,7 +77,9 @@ type FilterOption = {
   value?: string;
   energy?: "low" | "medium" | "high";
 };
-type CatalogView = "releases" | "artists" | "stems";
+type CatalogView = "releases" | "artists" | "stems" | "playlists";
+
+const HOME_PLAYLIST_SNAPSHOT_LIMIT = 12;
 
 type HomeRecommendation = {
   key: string;
@@ -104,6 +110,7 @@ const FILTERS: FilterOption[] = [
 export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
+  const [publicPlaylists, setPublicPlaylists] = useState<PublicPlaylistSummary[]>([]);
   const [myReleases, setMyReleases] = useState<Release[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
@@ -168,6 +175,20 @@ export default function Home() {
     listPublishedReleases(48)
       .then(setReleases)
       .catch(() => setReleases([]));
+  }, [status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listPublicPlaylists(HOME_PLAYLIST_SNAPSHOT_LIMIT)
+      .then((items) => {
+        if (!cancelled) setPublicPlaylists(items);
+      })
+      .catch(() => {
+        if (!cancelled) setPublicPlaylists([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [status]);
 
   useEffect(() => {
@@ -292,13 +313,33 @@ export default function Home() {
     () => filterStems(catalogStems, normalizedSearch),
     [catalogStems, normalizedSearch],
   );
+  const catalogFilteredPlaylists = useMemo(
+    () => filterPublicPlaylists(publicPlaylists, normalizedSearch),
+    [publicPlaylists, normalizedSearch],
+  );
   const browseReleases = useMemo(() => catalogFilteredReleases.slice(0, 18), [catalogFilteredReleases]);
   const browseArtists = useMemo(() => catalogFilteredArtists.slice(0, 12), [catalogFilteredArtists]);
   const browseStems = useMemo(() => catalogFilteredStems.slice(0, 12), [catalogFilteredStems]);
+  const browsePlaylists = useMemo(
+    () => catalogFilteredPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
+    [catalogFilteredPlaylists],
+  );
   const catalogVisibleCount =
-    catalogView === "releases" ? browseReleases.length : catalogView === "artists" ? browseArtists.length : browseStems.length;
+    catalogView === "releases"
+      ? browseReleases.length
+      : catalogView === "artists"
+        ? browseArtists.length
+        : catalogView === "stems"
+          ? browseStems.length
+          : browsePlaylists.length;
   const catalogTotalCount =
-    catalogView === "releases" ? catalogFilteredReleases.length : catalogView === "artists" ? catalogFilteredArtists.length : catalogFilteredStems.length;
+    catalogView === "releases"
+      ? catalogFilteredReleases.length
+      : catalogView === "artists"
+        ? catalogFilteredArtists.length
+        : catalogView === "stems"
+          ? catalogFilteredStems.length
+          : catalogFilteredPlaylists.length;
   const recommendedForYou = useMemo(
     () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
     [songRecommendations, displayReleases],
@@ -345,14 +386,15 @@ export default function Home() {
           releaseResultCount: browseReleases.length,
           artistResultCount: browseArtists.length,
           stemResultCount: browseStems.length,
+          playlistResultCount: browsePlaylists.length,
         },
       });
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [activeFilter, browseArtists.length, browseReleases.length, browseStems.length, catalogSearch, catalogView, token]);
+  }, [activeFilter, browseArtists.length, browsePlaylists.length, browseReleases.length, browseStems.length, catalogSearch, catalogView, token]);
 
   const recordCatalogSearchResultClick = (
-    resultType: "release" | "artist" | "stem",
+    resultType: "release" | "artist" | "stem" | "playlist",
     subjectId: string,
     resultRank: number,
   ) => {
@@ -787,10 +829,14 @@ export default function Home() {
                 <strong>{catalogStems.length}</strong>
                 <span>Stems</span>
               </div>
+              <div>
+                <strong>{publicPlaylists.length}</strong>
+                <span>Playlists</span>
+              </div>
             </div>
 
             <div className="ng-segmented" role="tablist" aria-label="Catalog view">
-              {(["releases", "artists", "stems"] as const).map((view) => (
+              {(["releases", "artists", "stems", "playlists"] as const).map((view) => (
                 <button
                   key={view}
                   type="button"
@@ -938,6 +984,25 @@ export default function Home() {
                   <div className="ng-empty-state">
                     <span className="ms-icon" aria-hidden>graphic_eq</span>
                     <p>No stems are exposed in this catalog slice yet.</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {catalogView === "playlists" && (
+              <div className="ng-resource-grid ng-resource-grid--releases">
+                {browsePlaylists.length > 0 ? (
+                  browsePlaylists.map((playlist, index) => (
+                    <CatalogPlaylistCard
+                      key={playlist.id}
+                      playlist={playlist}
+                      onSelect={() => recordCatalogSearchResultClick("playlist", playlist.id, index + 1)}
+                    />
+                  ))
+                ) : (
+                  <div className="ng-empty-state">
+                    <span className="ms-icon" aria-hidden>queue_music</span>
+                    <p>No public playlists in the global catalog yet.</p>
                   </div>
                 )}
               </div>

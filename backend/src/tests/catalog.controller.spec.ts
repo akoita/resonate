@@ -33,8 +33,12 @@ const mockCatalogService = {
   search: jest.fn().mockResolvedValue([]),
 };
 
+const mockPlaylistService = {
+  listPublicPlaylists: jest.fn().mockResolvedValue([]),
+};
+
 function makeController() {
-  return new CatalogController(mockCatalogService as any);
+  return new CatalogController(mockCatalogService as any, mockPlaylistService as any);
 }
 
 /** Minimal Express Response mock with chainable .status().set() */
@@ -219,6 +223,28 @@ describe('CatalogController', () => {
       const ctrl = makeController();
       await ctrl.listPublished('abc');
       expect(mockCatalogService.listPublished).toHaveBeenCalledWith(20, undefined);
+    });
+  });
+
+  // ===== listPublicPlaylists — limit coercion =====
+
+  describe('listPublicPlaylists — limit parsing', () => {
+    it('passes undefined limit through (service applies its own default)', async () => {
+      const ctrl = makeController();
+      await ctrl.listPublicPlaylists(undefined);
+      expect(mockPlaylistService.listPublicPlaylists).toHaveBeenCalledWith({ limit: undefined });
+    });
+
+    it('parses a valid limit string to a number', async () => {
+      const ctrl = makeController();
+      await ctrl.listPublicPlaylists('12');
+      expect(mockPlaylistService.listPublicPlaylists).toHaveBeenCalledWith({ limit: 12 });
+    });
+
+    it('falls back to undefined for a NaN limit', async () => {
+      const ctrl = makeController();
+      await ctrl.listPublicPlaylists('abc');
+      expect(mockPlaylistService.listPublicPlaylists).toHaveBeenCalledWith({ limit: undefined });
     });
   });
 
