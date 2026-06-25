@@ -601,7 +601,7 @@
 
 .home-ng .ng-catalog-stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }
@@ -806,6 +806,76 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Public-playlist cover (catalog/discovery). Same footprint as a release thumb,
+   with a 2×2 mosaic, single cover, or name monogram, plus a small badge. */
+.home-ng .ng-playlist-thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0d0c1b 0%, #08080f 100%);
+}
+
+.home-ng .ng-playlist-thumb__single,
+.home-ng .ng-playlist-thumb__mosaic,
+.home-ng .ng-playlist-thumb__monogram {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.home-ng .ng-playlist-thumb__single {
+  background-image: var(--cover);
+  background-size: cover;
+  background-position: center;
+}
+
+.home-ng .ng-playlist-thumb__mosaic {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 1px;
+}
+
+.home-ng .ng-playlist-thumb__cell {
+  background-image: var(--cover);
+  background-size: cover;
+  background-position: center;
+  background-color: #08080f;
+}
+
+.home-ng .ng-playlist-thumb__monogram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: var(--ds-font-display);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.home-ng .ng-playlist-thumb__badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(8, 8, 15, 0.72);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+}
+
+.home-ng .ng-playlist-thumb__badge .ms-icon {
+  font-size: 13px;
 }
 
 .home-ng .ng-resource-card__body,
@@ -2182,7 +2252,7 @@
   .home-ng .ng-catalog-footer { justify-content: stretch; }
   .home-ng .ng-catalog-footer .ng-btn,
   .home-ng .ng-catalog-actions .ng-section-link { justify-content: center; }
-  .home-ng .ng-catalog-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .home-ng .ng-catalog-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-ng .ng-catalog-stats > div { padding: 12px 8px; }
   .home-ng .ng-catalog-stats strong { font-size: 20px; }
   .home-ng .ng-segmented { display: flex; width: 100%; }
@@ -2198,6 +2268,8 @@
   }
   .home-ng .ng-release-thumb { width: 56px; height: 56px; font-size: 20px; }
   .home-ng .ng-release-thumb--small { width: 46px; height: 46px; }
+  .home-ng .ng-playlist-thumb { width: 56px; height: 56px; }
+  .home-ng .ng-playlist-thumb__monogram { font-size: 20px; }
   .home-ng .ng-artist-row {
     grid-template-columns: 42px minmax(0, 1fr) auto;
   }

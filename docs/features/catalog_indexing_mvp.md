@@ -14,14 +14,19 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 ## Current User Surfaces
 
 - The home page catalog browser (`/`) presents a compact recent-catalog
-  snapshot of published releases, artists, and stems from
-  `GET /catalog/published`. It shows visible-vs-total counts and links to a
-  larger recent-catalog browser so the preview is not mistaken for an
-  exhaustive list.
+  snapshot of published releases, artists, stems, and public playlists from
+  `GET /catalog/published` and `GET /catalog/playlists`. It shows
+  visible-vs-total counts and links to a larger recent-catalog browser so the
+  preview is not mistaken for an exhaustive list.
 - The global catalog page (`/catalog`) provides a larger public browse surface
-  for recent releases, artists, and stems with shared search and tabbed views.
-  It currently searches the latest 200 public releases returned by
-  `GET /catalog/published?limit=200`, not the complete database history.
+  for recent releases, artists, stems, and public playlists with shared search
+  and tabbed views. It searches the latest 200 public releases returned by
+  `GET /catalog/published?limit=200` and the most recent public playlists from
+  `GET /catalog/playlists`, not the complete database history.
+- The **Playlists** tab surfaces public, listener-curated playlists as a
+  first-class catalog content type (see
+  [public_playlists.md](public_playlists.md)). Only playlists with at least one
+  playable catalog track are listed, ordered most-recently-updated first.
 - Catalog discovery sorts recent surfaces by catalog addition time
   (`Release.createdAt`) rather than the musical release date, so legacy albums
   uploaded today still appear in recent artist/release discovery.
