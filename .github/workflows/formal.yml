@@ -1,0 +1,63 @@
+name: Formal Verification
+
+# Symbolic (Halmos) verification of the contract `check_*` properties under
+# `contracts/test/formal/`. This complements the unit/fuzz/invariant suite run by
+# the main `Smart Contract Tests` job (which excludes `test/formal/*`).
+#
+# NOTE: this job is currently NON-BLOCKING (the Halmos step is
+# `continue-on-error`). Several formal `check_*` functions use `vm.expectRevert`,
+# which Halmos does not support and reports as ERROR. The job still runs Halmos
+# and surfaces the symbolic results (conservation/safety properties pass), but it
+# does not gate merges until the formal suite is refactored to drop
+# `vm.expectRevert`. Promotion to a required check is tracked as follow-up.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "contracts/**"
+      - ".github/workflows/formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: formal-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  halmos:
+    name: Halmos Symbolic Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Halmos
+        run: pip install halmos
+
+      # Non-blocking until the formal suite drops the unsupported vm.expectRevert
+      # cheat code. `--function check_` limits symbolic execution to the formal
+      # `check_*` properties (the unit/fuzz/invariant tests run under `forge test`).
+      - name: Run Halmos symbolic tests
+        run: halmos --function check_
+        working-directory: contracts
+        continue-on-error: true
