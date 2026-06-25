@@ -290,7 +290,7 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       currency: "USD",
       description: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line. This concept turns that cultural fit into a measurable signal for an electric Aya Nakamura night at MTELUS.",
       heroAsset: "aya-nakamura-montreal-hero.jpg",
-      heroCredit: "Composed from a live photo by Mathis.aclr — CC0 / public domain (Wikimedia Commons)",
+      heroCredit: "Editorial press photo — Aya Nakamura at Vogue World: Paris, June 2024 (via RTL.fr); all rights reserved, demo use only",
     },
     gallery: [
       {
