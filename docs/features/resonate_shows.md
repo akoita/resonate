@@ -1,6 +1,6 @@
 ---
 title: "Resonate Shows"
-status: implemented
+status: partial
 owner: "@akoita"
 ---
 
@@ -8,11 +8,13 @@ owner: "@akoita"
 
 ## Status
 
-`implemented`
+`partial`
 
-The fan-funded campaign loop is implemented end to end and verified on `main`
-(CI green across lint, contracts unit/fuzz/invariant, backend unit +
-integration, e2e, and build). A fan can discover a campaign, read its
+The fan-funded campaign loop is implemented end to end and validated on
+**test/staging** (CI green on `main` across lint, contracts
+unit/fuzz/invariant, backend unit + integration, e2e, and build). It is **not
+yet in production for real users** — production (real-user) launch is a later
+phase, pending the go-live follow-ups below. A fan can discover a campaign, read its
 artist-approved immutable terms, pledge on-chain into the campaign-specific
 `ShowCampaignEscrow` through their smart account, receive a durable receipt
 reconciled from the indexed `Pledged` event, and claim an automatic refund when
@@ -33,7 +35,7 @@ show attendance credential boundaries are defined in
 (off-chain, opt-in, event-scoped badges, while city-scene membership and private
 attendance history stay off-chain).
 
-**Operational follow-ups before production go-live (not feature gaps):**
+**Before production (real-user) go-live (not feature gaps):**
 
 - promote the deployed `ShowCampaignEscrow` address into production config and
   wire each campaign's `contractCampaignId` (a deploy-time step);
@@ -268,8 +270,9 @@ Shared environments require `ALLOW_SAMPLE_SHOW_FIXTURES=true` explicitly.
 
 ## Production Beta Requirements
 
-These production surfaces are now live (see [Status](#status) for the remaining
-deploy-time operational follow-ups before production go-live):
+These production surfaces are built and validated on test/staging (see
+[Status](#status) for the remaining deploy-time operational follow-ups before
+production go-live):
 
 - campaign data loads from backend APIs rather than seeded client data;
 - fan-proposed demand signals can be created through the backend API without
