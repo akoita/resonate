@@ -1482,15 +1482,16 @@ export function useReportContent() {
           );
         }
 
-        const [{ token: stakeToken, amount: counterStake }, activeDispute] = await Promise.all([
-          resolveCounterStake(params.tokenId),
-          publicClient.readContract({
-            address: addresses.disputeResolution as Address,
-            abi: DisputeResolutionABI,
-            functionName: "getActiveDispute",
-            args: [params.tokenId],
-          }) as Promise<bigint>,
-        ]);
+        const [{ token: stakeToken, amount: counterStake, decimals: stakeDecimals, symbol: stakeSymbol }, activeDispute] =
+          await Promise.all([
+            resolveCounterStake(params.tokenId),
+            publicClient.readContract({
+              address: addresses.disputeResolution as Address,
+              abi: DisputeResolutionABI,
+              functionName: "getActiveDispute",
+              args: [params.tokenId],
+            }) as Promise<bigint>,
+          ]);
 
         if (activeDispute !== 0n) {
           throw new Error("An active dispute already exists for this content record.");
@@ -1501,49 +1502,89 @@ export function useReportContent() {
           (smartAccountAddress as Address | undefined) ||
           (address as Address);
 
+        const curationRewardsAddress = addresses.curationRewards as Address;
+
         // The counter-stake currency must match the creator's stake currency: when
         // they staked an ERC-20 (e.g. USDC) the native reportContent path reverts,
         // so approve + reportContentWithAsset is batched into one UserOperation.
         const isNativeStake = stakeToken.toLowerCase() === ZERO_ADDRESS;
 
-        const hash = isNativeStake
-          ? await sendContractTransaction(
-              publicClient,
-              chainId,
-              addresses.curationRewards as Address,
-              encodeFunctionData({
-                abi: CurationRewardsABI,
-                functionName: "reportContent",
-                args: [params.tokenId, params.evidenceURI],
-              }),
-              counterStake,
-              signingAccount,
-              kernelAccount
-            )
-          : await sendBatchContractTransactions(
-              publicClient,
-              chainId,
-              [
-                {
-                  to: stakeToken,
-                  data: encodeFunctionData({
-                    abi: ERC20_STAKE_ABI,
-                    functionName: "approve",
-                    args: [addresses.curationRewards as Address, counterStake],
-                  }),
-                },
-                {
-                  to: addresses.curationRewards as Address,
-                  data: encodeFunctionData({
-                    abi: CurationRewardsABI,
-                    functionName: "reportContentWithAsset",
-                    args: [params.tokenId, params.evidenceURI, counterStake],
-                  }),
-                },
-              ],
-              signingAccount,
-              kernelAccount
+        let hash: string;
+        if (isNativeStake) {
+          hash = await sendContractTransaction(
+            publicClient,
+            chainId,
+            curationRewardsAddress,
+            encodeFunctionData({
+              abi: CurationRewardsABI,
+              functionName: "reportContent",
+              args: [params.tokenId, params.evidenceURI],
+            }),
+            counterStake,
+            signingAccount,
+            kernelAccount
+          );
+        } else {
+          // Pre-check balance + allowance so an under-funded reporter gets a clear
+          // message instead of an opaque on-chain revert (mirrors the staking flow).
+          const [assetBalance, assetAllowance] = await Promise.all([
+            publicClient.readContract({
+              address: stakeToken,
+              abi: ERC20_STAKE_ABI,
+              functionName: "balanceOf",
+              args: [signingAccount],
+            }) as Promise<bigint>,
+            publicClient.readContract({
+              address: stakeToken,
+              abi: ERC20_STAKE_ABI,
+              functionName: "allowance",
+              args: [signingAccount, curationRewardsAddress],
+            }) as Promise<bigint>,
+          ]);
+
+          if (assetBalance < counterStake) {
+            const required = formatUnits(counterStake, stakeDecimals);
+            const current = formatUnits(assetBalance, stakeDecimals);
+            const missing = formatUnits(counterStake - assetBalance, stakeDecimals);
+            throw new Error(
+              `Your smart account needs ${required} ${stakeSymbol} to stake this report. Current balance: ${current} ${stakeSymbol}. Add at least ${missing} ${stakeSymbol} to ${signingAccount} and try again.`
             );
+          }
+
+          const calls: { to: Address; data: Hex }[] = [];
+          if (assetAllowance < counterStake) {
+            // Reset a stale non-zero allowance first (guards non-standard ERC-20s
+            // that reject non-zero -> non-zero approvals).
+            if (assetAllowance > 0n) {
+              calls.push({
+                to: stakeToken,
+                data: encodeFunctionData({
+                  abi: ERC20_STAKE_ABI,
+                  functionName: "approve",
+                  args: [curationRewardsAddress, 0n],
+                }),
+              });
+            }
+            calls.push({
+              to: stakeToken,
+              data: encodeFunctionData({
+                abi: ERC20_STAKE_ABI,
+                functionName: "approve",
+                args: [curationRewardsAddress, counterStake],
+              }),
+            });
+          }
+          calls.push({
+            to: curationRewardsAddress,
+            data: encodeFunctionData({
+              abi: CurationRewardsABI,
+              functionName: "reportContentWithAsset",
+              args: [params.tokenId, params.evidenceURI, counterStake],
+            }),
+          });
+
+          hash = await sendBatchContractTransactions(publicClient, chainId, calls, signingAccount, kernelAccount);
+        }
 
         setTxHash(hash);
         const receiptInfo = await getReportedDisputeForTransaction(publicClient, hash);
