@@ -67,7 +67,7 @@ Each campaign gallery mixes three kinds of image:
 | `leona-lewis-vegas.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Las Vegas Christmas show ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-wimbledon.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, Wimbledon ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
-| `aya-nakamura-montreal-hero.jpg` | Mathis.aclr | CC0 1.0 (public domain) | Wide hero composed from a live performance photo, Aulnay-sous-Bois 2026 ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Aya_Nakamura_IMG_4756_(cropped).jpg)) |
+| `aya-nakamura-montreal-hero.jpg` | Editorial press photo (via RTL.fr) | All rights reserved — demo use only | Aya Nakamura performing at Vogue World: Paris, June 2024 ([RTL.fr](https://images.rtl.fr/~c/1200v800/rtl/www/1762247-la-chanteuse-aya-nakamura-a-paris-en-juin-2024.jpg)) |
 | `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-stage.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |

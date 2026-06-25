@@ -961,7 +961,8 @@ const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71
 // Committed locally (mirrors the backend fixture assets) instead of hot-linking
 // Getty comp URLs, whose signed tokens expire and 404 in the browser.
 const AYA_PORTRAIT_IMAGE = "/shows/aya-nakamura-portrait.jpg";
-// Wide hero composed from a CC0 (public-domain) live performance photo by Mathis.aclr, locally committed.
+// Aya performing at Vogue World: Paris (June 2024) — editorial press photo via RTL.fr,
+// all rights reserved, demo use only; locally committed.
 const AYA_HERO_IMAGE = "/shows/aya-nakamura-montreal-hero.jpg";
 const AYA_LIVE_IMAGE = "/shows/aya-nakamura-live.jpg";
 const AYA_STAGE_IMAGE = "/shows/aya-nakamura-stage.jpg";
