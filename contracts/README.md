@@ -177,13 +177,17 @@ forge test --match-path 'test/invariant/*' --invariant-runs 256
 # Formal/symbolic tests currently written in Foundry style for Halmos
 halmos --contract StemNFTFormalTest
 halmos --contract ShowCampaignEscrowFormalTest
+halmos --contract RevenueEscrowFormalTest
 
 # Certora Prover specs
 certoraRun certora/conf/show_campaign_escrow.conf
+certoraRun certora/conf/revenue_escrow.conf
 
 # Mutation testing for high-value contract suites/specs
 # Configure Gambit per target contract/spec before running it in CI.
-gambit --help
+gambit mutate --json gambit.json                  # StemNFT
+gambit mutate --json gambit-marketplace.json      # StemMarketplaceV2
+gambit mutate --json gambit-revenue-escrow.json   # RevenueEscrow
 
 # Gas report
 forge test --gas-report
