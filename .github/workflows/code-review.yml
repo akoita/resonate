@@ -1,0 +1,37 @@
+name: Code Review
+
+# Runs the official Claude code-review skill on every pull request, replacing the
+# manual local `/code-review`. Findings are posted as inline PR comments with a
+# `Claude Code Review` check run. The check never blocks merging.
+#
+# Requires repo secret ANTHROPIC_API_KEY (Settings -> Secrets and variables ->
+# Actions). Reviews are billed per-run against that API key's usage.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# One review per PR branch; cancel superseded runs when new commits land.
+concurrency:
+  group: code-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+  id-token: write # required: action exchanges an OIDC token for GitHub auth
+
+jobs:
+  review:
+    # Skip drafts to avoid reviewing (and billing) work in progress.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
+          plugins: "code-review@claude-code-plugins"
+          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
