@@ -690,11 +690,39 @@ export const CurationRewardsABI = [
     outputs: [{ name: "disputeId", type: "uint256" }],
   },
   {
+    // Used when the creator staked an ERC-20 (e.g. USDC); the counter-stake must
+    // match the creator's stake currency, so native reportContent reverts there.
+    name: "reportContentWithAsset",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "evidenceURI", type: "string" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "disputeId", type: "uint256" }],
+  },
+  {
     name: "getRequiredCounterStake",
     type: "function",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    // Resolves the counter-stake currency (token == address(0) means native ETH)
+    // and required amount for a specific content token.
+    name: "getRequiredCounterStakeForToken",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "tokenId", type: "uint256" },
+      { name: "curator", type: "address" },
+    ],
+    outputs: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
   },
   {
     name: "getRequiredCounterStakeFor",

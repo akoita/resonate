@@ -86,6 +86,20 @@ const ERC20_STAKE_ABI = [
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    type: "function",
+    name: "decimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "symbol",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "string" }],
+  },
 ] as const;
 
 type StemMintedTransactionEvent = {
@@ -1334,6 +1348,8 @@ export interface ReportContentResult {
   disputeId?: bigint;
   tokenId?: bigint;
   counterStake: bigint;
+  /** Counter-stake currency; ZERO_ADDRESS means native ETH, otherwise an ERC-20 (e.g. USDC). */
+  counterStakeToken?: Address;
 }
 
 /**
@@ -1379,6 +1395,68 @@ export function useReportContent() {
     }
   }, [address, chainId, publicClient]);
 
+  /**
+   * Resolve the counter-stake currency and required amount for a specific content
+   * token. The counter-stake must match the creator's stake currency, so this
+   * returns the ERC-20 token (e.g. USDC) when the creator staked an asset, or
+   * ZERO_ADDRESS for native ETH. Falls back to the native amount on older
+   * deployments that lack the per-token getter.
+   */
+  const resolveCounterStake = useCallback(
+    async (
+      tokenId: bigint
+    ): Promise<{ token: Address; amount: bigint; decimals: number; symbol: string }> => {
+      const addresses = getContractAddresses(chainId);
+      if (addresses.curationRewards === ZERO_ADDRESS) {
+        throw new Error("CurationRewards is not deployed on this chain.");
+      }
+      const curator = (address as Address | undefined) ?? (ZERO_ADDRESS as Address);
+
+      let token = ZERO_ADDRESS as Address;
+      let amount: bigint;
+      try {
+        [token, amount] = (await publicClient.readContract({
+          address: addresses.curationRewards as Address,
+          abi: CurationRewardsABI,
+          functionName: "getRequiredCounterStakeForToken",
+          args: [tokenId, curator],
+        })) as [Address, bigint];
+      } catch {
+        // Older deployments without the per-token getter are native-only.
+        amount = await readRequiredCounterStake();
+        return { token: ZERO_ADDRESS as Address, amount, decimals: 18, symbol: "ETH" };
+      }
+
+      if (token.toLowerCase() === ZERO_ADDRESS) {
+        return { token: ZERO_ADDRESS as Address, amount, decimals: 18, symbol: "ETH" };
+      }
+
+      // ERC-20 stake currency (e.g. USDC): read metadata for display.
+      let decimals = 18;
+      let symbol = "tokens";
+      try {
+        const [dec, sym] = await Promise.all([
+          publicClient.readContract({
+            address: token,
+            abi: ERC20_STAKE_ABI,
+            functionName: "decimals",
+          }) as Promise<number>,
+          publicClient.readContract({
+            address: token,
+            abi: ERC20_STAKE_ABI,
+            functionName: "symbol",
+          }) as Promise<string>,
+        ]);
+        decimals = Number(dec);
+        symbol = sym;
+      } catch {
+        // keep safe fallbacks
+      }
+      return { token, amount, decimals, symbol };
+    },
+    [address, chainId, publicClient, readRequiredCounterStake]
+  );
+
   const report = useCallback(
     async (params: { tokenId: bigint; evidenceURI: string }) => {
       if (status !== "authenticated" || !address) {
@@ -1404,8 +1482,8 @@ export function useReportContent() {
           );
         }
 
-        const [counterStake, activeDispute] = await Promise.all([
-          readRequiredCounterStake(),
+        const [{ token: stakeToken, amount: counterStake }, activeDispute] = await Promise.all([
+          resolveCounterStake(params.tokenId),
           publicClient.readContract({
             address: addresses.disputeResolution as Address,
             abi: DisputeResolutionABI,
@@ -1418,21 +1496,54 @@ export function useReportContent() {
           throw new Error("An active dispute already exists for this content record.");
         }
 
-        const hash = await sendContractTransaction(
-          publicClient,
-          chainId,
-          addresses.curationRewards as Address,
-          encodeFunctionData({
-            abi: CurationRewardsABI,
-            functionName: "reportContent",
-            args: [params.tokenId, params.evidenceURI],
-          }),
-          counterStake,
-          ((kernelAccount?.address as Address | undefined) ||
-            (smartAccountAddress as Address | undefined) ||
-            (address as Address)),
-          kernelAccount
-        );
+        const signingAccount =
+          (kernelAccount?.address as Address | undefined) ||
+          (smartAccountAddress as Address | undefined) ||
+          (address as Address);
+
+        // The counter-stake currency must match the creator's stake currency: when
+        // they staked an ERC-20 (e.g. USDC) the native reportContent path reverts,
+        // so approve + reportContentWithAsset is batched into one UserOperation.
+        const isNativeStake = stakeToken.toLowerCase() === ZERO_ADDRESS;
+
+        const hash = isNativeStake
+          ? await sendContractTransaction(
+              publicClient,
+              chainId,
+              addresses.curationRewards as Address,
+              encodeFunctionData({
+                abi: CurationRewardsABI,
+                functionName: "reportContent",
+                args: [params.tokenId, params.evidenceURI],
+              }),
+              counterStake,
+              signingAccount,
+              kernelAccount
+            )
+          : await sendBatchContractTransactions(
+              publicClient,
+              chainId,
+              [
+                {
+                  to: stakeToken,
+                  data: encodeFunctionData({
+                    abi: ERC20_STAKE_ABI,
+                    functionName: "approve",
+                    args: [addresses.curationRewards as Address, counterStake],
+                  }),
+                },
+                {
+                  to: addresses.curationRewards as Address,
+                  data: encodeFunctionData({
+                    abi: CurationRewardsABI,
+                    functionName: "reportContentWithAsset",
+                    args: [params.tokenId, params.evidenceURI, counterStake],
+                  }),
+                },
+              ],
+              signingAccount,
+              kernelAccount
+            );
 
         setTxHash(hash);
         const receiptInfo = await getReportedDisputeForTransaction(publicClient, hash);
@@ -1442,6 +1553,7 @@ export function useReportContent() {
           disputeId: receiptInfo.disputeId,
           tokenId: receiptInfo.tokenId ?? params.tokenId,
           counterStake: receiptInfo.counterStake ?? counterStake,
+          counterStakeToken: stakeToken,
         } satisfies ReportContentResult;
       } catch (err) {
         const normalized = normalizeContractWriteError(err);
@@ -1451,14 +1563,14 @@ export function useReportContent() {
         setPending(false);
       }
     },
-    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress, readRequiredCounterStake]
+    [publicClient, chainId, address, status, kernelAccount, smartAccountAddress, resolveCounterStake]
   );
 
   const getRequiredCounterStake = useCallback(async () => {
     return readRequiredCounterStake();
   }, [readRequiredCounterStake]);
 
-  return { report, getRequiredCounterStake, pending, error, txHash };
+  return { report, getRequiredCounterStake, resolveCounterStake, pending, error, txHash };
 }
 
 /**
