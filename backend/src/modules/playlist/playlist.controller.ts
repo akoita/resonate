@@ -89,3 +89,23 @@ export class PublicPlaylistController {
         return this.playlistService.getPublicPlaylist(id, (req as any).user?.userId);
     }
 }
+
+/**
+ * Public, unauthenticated discovery feed for public playlists, exposed under the
+ * catalog surface (`GET /catalog/playlists`) so it sits beside catalog releases,
+ * artists, and stems. It lives in PlaylistModule (which owns playlist data)
+ * rather than CatalogModule so the catalog module does not import the playlist
+ * module — that import would close a NestJS module cycle via SharedModule.
+ */
+@Controller("catalog/playlists")
+export class PublicPlaylistDiscoveryController {
+    constructor(private readonly playlistService: PlaylistService) { }
+
+    @Get()
+    listPublicPlaylists(@Query("limit") limit?: string) {
+        const parsedLimit = limit ? Number(limit) : undefined;
+        return this.playlistService.listPublicPlaylists({
+            limit: parsedLimit !== undefined && Number.isNaN(parsedLimit) ? undefined : parsedLimit,
+        });
+    }
+}

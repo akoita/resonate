@@ -91,7 +91,7 @@ before it can be shared (the Share toggle is disabled until then).
 | UI (saved playlists + badges) | `web/src/components/library/PlaylistTab.tsx` |
 | API client | `getPublicPlaylistAPI`, `listPublicPlaylists`, `setPlaylistVisibilityAPI`, `savePlaylistAPI`, `listSavedPlaylistsAPI`, `removeSavedPlaylistAPI` (`web/src/lib/api.ts`) |
 | Backend service | `PlaylistService.getPublicPlaylist` / `listPublicPlaylists` / `savePlaylist` / `listSavedPlaylists` / `removeSavedPlaylist` (`backend/src/modules/playlist/playlist.service.ts`) |
-| Public controllers | `PublicPlaylistController` + `OptionalJwtAuthGuard`; discovery on `CatalogController` (`GET /catalog/playlists`) |
+| Public controllers | `PublicPlaylistController` + `OptionalJwtAuthGuard`; `PublicPlaylistDiscoveryController` (`GET /catalog/playlists`). Both live in `PlaylistModule` — the discovery controller is mounted under the `catalog/playlists` path but kept in `PlaylistModule` so `CatalogModule` does not import `PlaylistModule` (which would close a NestJS module cycle via `SharedModule`). |
 | Data model | `Playlist.visibility`, `SavedPlaylist` (`backend/prisma/schema.prisma`) |
 | Domain events | `playlist.visibility_changed`, `playlist.saved_to_library`, `playlist.removed_from_library` |
 | Product analytics | `playlist.visibility_changed`, `playlist.shared`, `playlist.saved`, `playlist.removed_from_library`; `search.result_clicked` (`resultType: "playlist"`) from home catalog |

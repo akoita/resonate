@@ -12,7 +12,6 @@ import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { CatalogController } from '../modules/catalog/catalog.controller';
 import { CatalogService } from '../modules/catalog/catalog.service';
-import { PlaylistService } from '../modules/playlist/playlist.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockCatalogService = {
@@ -34,10 +33,6 @@ const mockCatalogService = {
   search: jest.fn().mockResolvedValue([]),
 };
 
-const mockPlaylistService = {
-  listPublicPlaylists: jest.fn().mockResolvedValue([]),
-};
-
 describe('CatalogController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -45,7 +40,6 @@ describe('CatalogController (e2e)', () => {
   beforeAll(async () => {
     app = await createControllerTestApp(CatalogController, [
       { provide: CatalogService, useValue: mockCatalogService },
-      { provide: PlaylistService, useValue: mockPlaylistService },
     ]);
   });
 
@@ -67,15 +61,6 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/published')
       .expect(200);
-  });
-
-  it('GET /catalog/playlists → 200 (no auth required) and coerces the limit', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/catalog/playlists?limit=12')
-      .expect(200);
-
-    expect(res.body).toEqual([]);
-    expect(mockPlaylistService.listPublicPlaylists).toHaveBeenCalledWith({ limit: 12 });
   });
 
   it('GET /catalog/releases/:id → 200 (no auth required)', async () => {

@@ -15,8 +15,10 @@ endpoints.
 ## Scope reviewed
 
 Backend:
-- `backend/src/modules/catalog/catalog.controller.ts` — new `@Get("playlists")`
-- `backend/src/modules/catalog/catalog.module.ts` — imports `PlaylistModule`
+- `backend/src/modules/playlist/playlist.controller.ts` — new
+  `PublicPlaylistDiscoveryController` serving `GET /catalog/playlists` (public).
+  Mounted in `PlaylistModule` so `CatalogModule` does not import `PlaylistModule`
+  (avoids a NestJS module cycle via `SharedModule`).
 - `backend/src/modules/playlist/playlist.service.ts` — `listPublicPlaylists`
 
 Frontend:
