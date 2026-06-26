@@ -328,14 +328,20 @@ export class PlaylistService {
     /** Build streamable public track entries from the owner's LibraryTrack records, preserving order. */
     private async resolvePublicTracks(ownerUserId: string, trackIds: string[]): Promise<PublicPlaylistTrack[]> {
         if (trackIds.length === 0) return [];
+        // A playlist stores the frontend track id, which for catalog tracks is the
+        // catalog track id, not the per-user LibraryTrack uuid. Resolve the owner's
+        // rows by either, scoped to the owner so another user's row never matches.
         const records = await prisma.libraryTrack.findMany({
-            where: { userId: ownerUserId, id: { in: trackIds } },
+            where: {
+                userId: ownerUserId,
+                OR: [{ id: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
+            },
         });
-        const byId = new Map(records.map((r) => [r.id, r]));
+        const byKey = indexLibraryTracksByPlaylistKey(records);
 
         const resolved: PublicPlaylistTrack[] = [];
         for (const trackId of trackIds) {
-            const record = byId.get(trackId);
+            const record = byKey.get(trackId);
             if (!record) continue; // track removed from owner's library; skip silently
             const refs = extractCatalogRefs(record);
             const { streamPath, artworkPath } = catalogPathsFor(refs);
@@ -379,22 +385,39 @@ export class PlaylistService {
         });
         if (candidates.length === 0) return [];
 
-        // Single batched lookup over every referenced track id. LibraryTrack.id
-        // is a globally-unique uuid, so an id always maps back to its owner's row.
+        // Single batched lookup over every referenced track id. A playlist stores
+        // the frontend track id, which for catalog tracks is the catalog track id
+        // (not the per-user LibraryTrack uuid), so match on either. Rows are then
+        // keyed by (ownerUserId + id|catalogTrackId) so a playlist only resolves
+        // ITS OWN owner's rows — never another user's row that shares a catalog id.
         const allTrackIds = Array.from(new Set(candidates.flatMap((p) => p.trackIds)));
         const records = allTrackIds.length
-            ? await prisma.libraryTrack.findMany({ where: { id: { in: allTrackIds } } })
+            ? await prisma.libraryTrack.findMany({
+                where: { OR: [{ id: { in: allTrackIds } }, { catalogTrackId: { in: allTrackIds } }] },
+            })
             : [];
-        const byId = new Map(records.map((r) => [r.id, r]));
+        // ownerUserId -> (id | catalogTrackId) -> row, so a playlist only resolves
+        // ITS OWN owner's rows — never another user's row that shares a catalog id.
+        const byOwner = new Map<string, Map<string, (typeof records)[number]>>();
+        for (const r of records) {
+            let owned = byOwner.get(r.userId);
+            if (!owned) {
+                owned = new Map();
+                byOwner.set(r.userId, owned);
+            }
+            owned.set(r.id, r);
+            if (r.catalogTrackId) owned.set(r.catalogTrackId, r);
+        }
 
         const summaries: PublicPlaylistSummary[] = [];
         for (const playlist of candidates) {
+            const ownerTracks = byOwner.get(playlist.userId);
             let trackCount = 0;
             let playableTrackCount = 0;
             const coverArtworkPaths: string[] = [];
             for (const trackId of playlist.trackIds) {
-                const record = byId.get(trackId);
-                if (!record) continue; // removed from owner's library since
+                const record = ownerTracks?.get(trackId);
+                if (!record) continue; // not the owner's track (removed, or hijacked elsewhere)
                 trackCount += 1;
                 const { streamPath, artworkPath } = catalogPathsFor(extractCatalogRefs(record));
                 if (!streamPath) continue; // local-only file: visible to owner, not streamable here
@@ -550,6 +573,22 @@ function limitTrackIds(trackIds: string[]) {
 function clampLimit(value: number | undefined, fallback: number): number {
     if (value === undefined || !Number.isFinite(value)) return fallback;
     return Math.max(1, Math.min(PUBLIC_PLAYLIST_DISCOVERY_MAX, Math.floor(value)));
+}
+
+/**
+ * Index an owner's LibraryTrack rows by BOTH id and catalogTrackId, so a playlist
+ * entry resolves whether it stored the per-user LibraryTrack uuid or the shared
+ * catalog track id (catalog tracks are added to playlists by their catalog id).
+ */
+function indexLibraryTracksByPlaylistKey<T extends { id: string; catalogTrackId: string | null }>(
+    records: T[],
+): Map<string, T> {
+    const byKey = new Map<string, T>();
+    for (const record of records) {
+        byKey.set(record.id, record);
+        if (record.catalogTrackId) byKey.set(record.catalogTrackId, record);
+    }
+    return byKey;
 }
 
 /** Build public, unauthenticated catalog stream/artwork paths from extracted refs. */

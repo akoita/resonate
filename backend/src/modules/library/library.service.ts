@@ -106,16 +106,11 @@ export class LibraryService {
             previewUrl: data.previewUrl,
         };
 
-        // If an ID is provided, upsert by ID
-        if (data.id) {
-            return prisma.libraryTrack.upsert({
-                where: { id: data.id },
-                update: trackData,
-                create: { id: data.id, ...trackData },
-            });
-        }
-
-        // For remote tracks, dedup by catalogTrackId
+        // Remote catalog tracks: ALWAYS dedup per-user by (userId, catalogTrackId)
+        // and let the row id be a generated per-user uuid. The client-provided
+        // `id` for a catalog track is the SHARED catalog track id, so honoring it
+        // as the primary key would let one user's save overwrite another user's
+        // row (hijacking its `userId`). Keep this branch ahead of the id branch.
         if (source === "remote" && data.catalogTrackId) {
             return prisma.libraryTrack.upsert({
                 where: {
@@ -126,6 +121,15 @@ export class LibraryService {
                 },
                 update: trackData,
                 create: trackData,
+            });
+        }
+
+        // If an ID is provided (local files, owned stems, etc.), upsert by ID.
+        if (data.id) {
+            return prisma.libraryTrack.upsert({
+                where: { id: data.id },
+                update: trackData,
+                create: { id: data.id, ...trackData },
             });
         }
 
