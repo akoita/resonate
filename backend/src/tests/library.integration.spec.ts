@@ -116,4 +116,40 @@ describe('LibraryService (integration)', () => {
     const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
     expect(updatedPlaylist?.trackIds).toEqual([localTrackId]);
   });
+
+  it('keeps per-user rows when two users save the same catalog track (no ownership hijack)', async () => {
+    // The frontend saves catalog tracks with `id` = the SHARED catalog track id.
+    // A naive upsert-by-id would let the second saver overwrite the first user's
+    // row and steal its userId; remote catalog tracks must dedup per-user instead.
+    const userId2 = `${TEST_PREFIX}user2`;
+    await prisma.user.create({ data: { id: userId2, email: `${userId2}@test.resonate` } });
+    const sharedCatalogId = `${TEST_PREFIX}shared_catalog_track`;
+    const save = (uid: string, title: string) =>
+      service.saveTrack(uid, { id: sharedCatalogId, source: 'remote', title, catalogTrackId: sharedCatalogId });
+
+    try {
+      const a = await save(userId, 'Shared Track');
+      const b = await save(userId2, 'Shared Track');
+
+      // Distinct per-user rows; neither uses the shared catalog id as its PK.
+      expect(a.userId).toBe(userId);
+      expect(b.userId).toBe(userId2);
+      expect(a.id).not.toBe(b.id);
+      expect(a.id).not.toBe(sharedCatalogId);
+
+      // The first user's row is intact and still theirs — not hijacked by user2.
+      const aRows = await prisma.libraryTrack.findMany({ where: { userId, catalogTrackId: sharedCatalogId } });
+      expect(aRows).toHaveLength(1);
+      expect(aRows[0].userId).toBe(userId);
+
+      // Re-saving by the same user updates in place (no duplicate row).
+      await save(userId, 'Shared Track v2');
+      const aRowsAfter = await prisma.libraryTrack.findMany({ where: { userId, catalogTrackId: sharedCatalogId } });
+      expect(aRowsAfter).toHaveLength(1);
+      expect(aRowsAfter[0].title).toBe('Shared Track v2');
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { userId: userId2 } });
+      await prisma.user.deleteMany({ where: { id: userId2 } });
+    }
+  });
 });

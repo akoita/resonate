@@ -173,4 +173,49 @@ describe('PlaylistService — public playlist discovery (integration)', () => {
       expect(p.playableTrackCount).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it('matches catalog-id trackIds and scopes resolution to the playlist owner', async () => {
+    const cid = `${TEST_PREFIX}disc_cat`;
+    const rid = `${TEST_PREFIX}disc_rel`;
+    const owner2 = `${TEST_PREFIX}owner2`;
+    const artist2 = `${TEST_PREFIX}artist2`;
+    await prisma.user.create({ data: { id: owner2, email: `${owner2}@test.resonate` } });
+    await prisma.artist.create({
+      data: { id: artist2, userId: owner2, displayName: 'Other Curator', payoutAddress: '0x' + 'E'.repeat(40) },
+    });
+    try {
+      // `owner` has the catalog track in their library (per-user uuid id, carries catalogTrackId).
+      await prisma.libraryTrack.create({
+        data: {
+          userId: owner,
+          source: 'remote',
+          title: 'Disc Catalog',
+          artist: 'Disco Curator',
+          catalogTrackId: cid,
+          remoteUrl: `/catalog/releases/${rid}/tracks/${cid}/stream`,
+          remoteArtworkUrl: `/catalog/releases/${rid}/artwork`,
+        },
+      });
+
+      // owner's public playlist references the CATALOG id → resolves & surfaces.
+      const ownerPl = await makePublic({ name: 'Owner By Catalog Id', trackIds: [cid] });
+      // owner2's public playlist references the SAME catalog id, but owner2 has no
+      // library row for it → must NOT surface (owner-scoped, not another user's row).
+      const owner2Pl = await service.createPlaylist(owner2, { name: 'Other By Catalog Id', trackIds: [cid] });
+      await service.updatePlaylist(owner2, owner2Pl.id, { visibility: 'public' });
+
+      const all = await service.listPublicPlaylists({ limit: 100 });
+      const ownerEntry = all.find((p) => p.id === ownerPl.id);
+
+      expect(ownerEntry).toBeDefined();
+      expect(ownerEntry!.playableTrackCount).toBe(1);
+      expect(ownerEntry!.coverArtworkPaths[0]).toContain(`/catalog/releases/${rid}/artwork`);
+      expect(all.map((p) => p.id)).not.toContain(owner2Pl.id);
+    } finally {
+      await prisma.playlist.deleteMany({ where: { userId: owner2 } });
+      await prisma.libraryTrack.deleteMany({ where: { userId: owner2 } });
+      await prisma.artist.deleteMany({ where: { id: artist2 } });
+      await prisma.user.deleteMany({ where: { id: owner2 } });
+    }
+  });
 });

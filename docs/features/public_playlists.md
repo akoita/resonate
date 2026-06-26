@@ -31,6 +31,17 @@ resolves those ids into a **denormalized, streamable track list**:
 - Owner-device-only files (no catalog reference) are returned but marked
   `playable: false` — other listeners can see them but cannot stream them.
 
+Resolution matches the owner's rows by **`LibraryTrack.id` _or_ `catalogTrackId`**,
+scoped to the owner. Catalog tracks are added to playlists by their catalog track
+id (not the per-user library uuid), so matching on `catalogTrackId` is what makes
+them resolve — and the owner scope guarantees one user's library can never satisfy
+another user's playlist. This is enforced identically in the single public view
+(`resolvePublicTracks`) and the discovery feed (`listPublicPlaylists`). The
+library save path stores catalog tracks **per user** (deduped by
+`(userId, catalogTrackId)`, not by the shared catalog id) so a second listener
+saving the same track cannot reassign the first owner's row
+([#1267](https://github.com/akoita/resonate/issues/1267)).
+
 **Add to library** is a **live reference** (`SavedPlaylist`), not a copy. Saved
 playlists are re-resolved through the public endpoint on every read, so owner
 edits propagate and a source that goes private or is deleted surfaces as
