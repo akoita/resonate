@@ -13,13 +13,19 @@ The home **"Upcoming Live Events"** cards and the Shows detail pages render the
 storage (via `…/shows/campaigns/<id>/visuals/<slot>`), and **those stored images
 only change when the seed runs again.**
 
-Deploying new backend *code* does **not** re-upload them. So when a Show fixture
-changes — a new hero photo, a swapped portrait, an added gallery image, an edited
-bio — the new bytes live in the repo and the static `web/public/shows/*` fallback,
-but the live cards keep showing the previously-seeded images until you re-seed.
+Deploying new backend *code* does **not** by itself re-upload them. So when a Show
+fixture changes — a new hero photo, a swapped portrait, an added gallery image, an
+edited bio — the new bytes live in the repo and the static `web/public/shows/*`
+fallback, but the stored images only refresh when the seed runs.
 
-> Symptom: you merged an image change, staging redeployed, hard-refresh shows no
-> change. That means the seed has not been re-run, not that the deploy failed.
+The `resonate-iac` deploy pipeline now runs that seed automatically after each
+non-prod backend rollout (see [Wiring it into the deploy pipeline](#wiring-it-into-the-deploy-pipeline)),
+so in practice a fixture change goes live on the next backend deploy. The manual
+steps below still apply when running outside that pipeline.
+
+> Symptom (if the seed step was skipped or failed): you merged an image change,
+> staging redeployed, hard-refresh shows no change. That means the seed has not
+> been re-run, not that the deploy failed — re-run it as below.
 
 ## The seed is safe to re-run
 
@@ -69,16 +75,23 @@ This works because the backend production image now includes the compiled seed
 
 ## Wiring it into the deploy pipeline
 
-App deployment lives in **`resonate-iac`** (`make deploy-backend` here delegates
-there). Add a **post-deploy step** that calls the seed after the backend rollout
-for `dev`/`staging`, e.g. right after `deploy-backend`:
+**Done — this runs automatically.** App deployment lives in **`resonate-iac`**,
+whose `deploy-services.yml` workflow now re-seeds after every backend rollout:
 
 ```
-deploy-backend  →  scripts/deploy/seed-sample-shows.sh   (with that env's vars)
+Terraform apply (backend rollout)  →  re-seed resonate-shows-seed-<env>  →  validate
 ```
 
-Because the seed is idempotent, running it on every deploy is safe; it only does
-real work when an asset or record actually changed.
+The post-apply step points the env's `resonate-shows-seed-<env>` Cloud Run Job at
+the just-deployed backend image and runs it with `--wait`. It only runs on
+**non-prod** envs, only when **backend** is in the deployed services, and skips
+cleanly when no seed job exists. Because the seed is idempotent, running it on
+every deploy is safe; it only does real work when an asset or record actually
+changed.
+
+So a fixture/image change now goes live on the next backend deploy — no manual
+seed needed. The manual commands above remain useful for ad-hoc refreshes,
+provisioning the job on a brand-new env, or running outside a deploy.
 
 ## Verifying
 
