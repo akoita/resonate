@@ -180,26 +180,29 @@ halmos --contract ShowCampaignEscrowFormalTest
 halmos --contract RevenueEscrowFormalTest
 halmos --contract ContentProtectionFormalTest
 
-# Certora Prover specs
+# Certora Prover specs (needs a CERTORAKEY + a standalone solc 0.8.28 on PATH).
 certoraRun certora/conf/show_campaign_escrow.conf
 certoraRun certora/conf/revenue_escrow.conf
 certoraRun certora/conf/content_protection.conf
 certoraRun certora/conf/stem_nft.conf
 certoraRun certora/conf/stem_marketplace.conf
+# In CI these run nightly via .github/workflows/certora.yml (gated on the CERTORAKEY
+# secret — skipped on forks/PRs without it), not on the per-PR path.
 
 # Mutation testing for high-value contracts (Certora Gambit).
 # Setup: a standalone solc on PATH + the Gambit binary, e.g.
 #   solc 0.8.28: https://github.com/ethereum/solidity/releases (solc-static-linux)
 #   gambit v1.0.6: https://github.com/Certora/gambit/releases (gambit-linux-*)
-# Then generate mutants (counts shown were observed with gambit v1.0.6):
+# Generate mutants (counts observed with gambit v1.0.6):
 gambit mutate --json gambit.json                     # StemNFT          (~80 mutants)
 gambit mutate --json gambit-marketplace.json         # StemMarketplaceV2
-gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow    (~133 mutants)
+gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow    (~171 mutants)
 gambit mutate --json gambit-content-protection.json  # ContentProtection
-# Scoring (kill rate): compile each mutant + run `forge test`; a mutant that
-# leaves the suite green is a survivor and becomes a follow-up test/spec rule.
-# This full kill campaign is compute-heavy and runs in the scheduled CI workflow
-# (tracked in #1260), not per-PR.
+# Kill-score against the suite (a mutant that leaves the suite green is a survivor —
+# a gap to turn into a new test or CVL spec rule). MAX_MUTANTS limits a quick run:
+MAX_MUTANTS=10 scripts/mutation-score.sh gambit-revenue-escrow.json RevenueEscrow
+# The full kill campaign is compute-heavy and runs weekly via
+# .github/workflows/mutation.yml (one matrix job per contract), not on the per-PR path.
 
 # Gas report
 forge test --gas-report
