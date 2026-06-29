@@ -8,15 +8,14 @@ import {SymTest} from "halmos-cheatcodes/SymTest.sol";
 
 /**
  * @title RevenueEscrow Formal Verification Tests
- * @notice Halmos-style symbolic checks for the core custody safety properties (issue #944).
+ * @notice Halmos symbolic checks for the custody conservation properties (issue #944).
  * @dev Run with: halmos --contract RevenueEscrowFormalTest
- *      Also runs under `forge test` as bounded property tests.
  *
- * Checks the hardest-to-exhaust properties on the ERC20 escrow path:
- *   1. Release after expiry pays the beneficiary exactly the deposit (conservation).
- *   2. Frozen escrows cannot be released, only redirected.
- *   3. Release before expiry always reverts.
- *   4. Redirect requires a frozen escrow and pays the recipient exactly.
+ * The formal layer holds only the positive conservation properties that Halmos
+ * verifies cleanly. The revert-path properties (frozen-blocks-release,
+ * release-before-expiry, redirect-requires-frozen) use `vm.expectRevert`, which
+ * Halmos does not support; they are covered by the fuzz/unit suites and the
+ * Certora spec's with-revert rules.
  */
 contract RevenueEscrowFormalTest is Test, SymTest {
     RevenueEscrow public escrow;
@@ -54,40 +53,6 @@ contract RevenueEscrowFormalTest is Test, SymTest {
         (, uint256 bal,,) = escrow.getEscrowAsset(tokenId, address(usdc));
         assert(bal == 0);
         assert(usdc.balanceOf(address(escrow)) == 0);
-    }
-
-    /// A frozen escrow cannot be released even after the period expires.
-    function check_frozenAssetCannotRelease(uint256 tokenId, uint256 amount) public {
-        vm.assume(amount > 0 && amount <= 1e30);
-        _deposit(tokenId, amount);
-
-        vm.prank(owner);
-        escrow.freezeAsset(tokenId, address(usdc));
-        vm.warp(block.timestamp + PERIOD + 1);
-
-        vm.expectRevert(RevenueEscrow.EscrowIsFrozen.selector);
-        escrow.releaseAsset(tokenId, address(usdc));
-    }
-
-    /// Release before the escrow period expires always reverts.
-    function check_releaseBeforeExpiryReverts(uint256 tokenId, uint256 amount, uint256 wait) public {
-        vm.assume(amount > 0 && amount <= 1e30);
-        vm.assume(wait < PERIOD);
-        _deposit(tokenId, amount);
-
-        vm.warp(block.timestamp + wait);
-        vm.expectRevert(RevenueEscrow.EscrowNotExpired.selector);
-        escrow.releaseAsset(tokenId, address(usdc));
-    }
-
-    /// Redirect requires a frozen escrow.
-    function check_redirectAssetRequiresFrozen(uint256 tokenId, uint256 amount) public {
-        vm.assume(amount > 0 && amount <= 1e30);
-        _deposit(tokenId, amount);
-
-        vm.prank(owner);
-        vm.expectRevert(RevenueEscrow.EscrowNotFrozen.selector);
-        escrow.redirectAsset(tokenId, address(usdc), recipient);
     }
 
     /// Redirecting a frozen escrow pays the recipient exactly and clears the balance.

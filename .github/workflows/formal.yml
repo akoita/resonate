@@ -4,15 +4,12 @@ name: Formal Verification
 # `contracts/test/formal/`. This complements the unit/fuzz/invariant suite run by
 # the main `Smart Contract Tests` job (which excludes `test/formal/*`).
 #
-# NOTE: this job is currently NON-BLOCKING (the Halmos step is
-# `continue-on-error`). Some formal `check_*` functions report ERROR under
-# Halmos for two reasons: (a) `vm.expectRevert`, which Halmos does not support;
-# and (b) checks whose `setUp()`/body fully revert under symbolic execution
-# (so they verify nothing). There are no genuine counterexamples — the
-# conservation/safety properties pass. The job runs Halmos and surfaces the
-# results, but does not gate merges until the formal suite is refactored to
-# remove `vm.expectRevert` AND fix the reverted-setup checks. Promotion to a
-# required check is tracked as follow-up.
+# This is a REQUIRED, blocking gate. The formal suite holds only the positive
+# conservation/safety properties Halmos verifies cleanly (every `check_*` passes
+# — 12 checks across the five custody/marketplace contracts). Revert-path
+# properties need `vm.expectRevert` (unsupported by Halmos) and live in the
+# fuzz/unit suites + the Certora with-revert rules instead, so they are not
+# duplicated here. A genuine counterexample fails this job.
 
 on:
   push:
@@ -59,10 +56,9 @@ jobs:
         # cheatcode handling and silently flip results on an unrelated PR.
         run: pip install halmos==0.3.3
 
-      # Non-blocking until the formal suite drops the unsupported vm.expectRevert
-      # cheat code. `--function check_` limits symbolic execution to the formal
-      # `check_*` properties (the unit/fuzz/invariant tests run under `forge test`).
+      # `--function check_` scopes symbolic execution to the formal `check_*`
+      # properties (the unit/fuzz/invariant tests run under `forge test`).
+      # Blocking: a non-zero exit (counterexample or error) fails the job.
       - name: Run Halmos symbolic tests
         run: halmos --function check_
         working-directory: contracts
-        continue-on-error: true
