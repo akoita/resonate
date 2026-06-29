@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -185,6 +186,20 @@ contract RevenueEscrowTest is Test {
         escrow.deposit{value: 0.5 ether}(1, alice);
         (address beneficiary,,,) = escrow.getEscrow(1);
         assertEq(beneficiary, alice);
+    }
+
+    /// @notice #1285 — depositing a fee-on-transfer token reverts instead of crediting
+    /// the full amount while the escrow receives less.
+    function test_DepositWithAsset_RevertFeeOnTransferToken() public {
+        MockFeeOnTransferToken feeToken = new MockFeeOnTransferToken(100); // 1% fee
+        feeToken.mint(address(this), USDC_AMOUNT);
+        feeToken.approve(address(escrow), USDC_AMOUNT);
+
+        uint256 received = USDC_AMOUNT - (USDC_AMOUNT * 100) / 10_000;
+        vm.expectRevert(
+            abi.encodeWithSelector(RevenueEscrow.FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
+        );
+        escrow.depositWithAsset(1, alice, address(feeToken), USDC_AMOUNT);
     }
 
     // ============ Freeze / Unfreeze ============

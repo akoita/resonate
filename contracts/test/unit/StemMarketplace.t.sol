@@ -9,6 +9,7 @@ import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol"
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {WrappedNativeMock} from "../../src/payments/WrappedNativeMock.sol";
 import {ERC20Mock} from "../mocks/ERC20Mock.sol";
+import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
@@ -139,6 +140,30 @@ contract StemMarketplaceTest is Test {
         assertEq(address(marketplace.paymentAssetRegistry()), address(paymentAssetRegistry));
         assertEq(marketplace.protocolFeeRecipient(), feeRecipient);
         assertEq(marketplace.protocolFeeBps(), PROTOCOL_FEE_BPS);
+    }
+
+    /// @notice #1285 — buying with a fee-on-transfer payment token reverts instead of
+    /// the marketplace receiving less than it distributes.
+    function test_Buy_RevertFeeOnTransferToken() public {
+        MockFeeOnTransferToken feeToken = new MockFeeOnTransferToken(100); // 1% fee
+        vm.prank(admin);
+        paymentAssetRegistry.configureAsset(keccak256("local:fee"), address(feeToken), "FEE", 18, true, false);
+
+        // Seller lists tokenId 1 (minted in setUp) priced in the fee token.
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 10, 1 ether, address(feeToken), LISTING_DURATION);
+
+        feeToken.mint(buyer, 100 ether);
+        vm.prank(buyer);
+        feeToken.approve(address(marketplace), type(uint256).max);
+
+        uint256 totalPrice = 1 ether; // buy 1 unit
+        uint256 received = totalPrice - (totalPrice * 100) / 10_000;
+        vm.prank(buyer);
+        vm.expectRevert(
+            abi.encodeWithSelector(StemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
+        );
+        marketplace.buy(listingId, 1);
     }
 
     function test_Constructor_RevertZeroContentProtection() public {

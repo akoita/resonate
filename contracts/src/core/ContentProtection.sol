@@ -156,6 +156,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error UnsupportedStakeAsset();
     error UnexpectedETH();
     error InvalidStakeAmount();
+    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
 
     // ============ Modifiers ============
 
@@ -291,7 +292,13 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         // max-willing amount and must cover the requirement, but staking more must
         // not inflate the slashable stake.
         _recordStake(tokenId, token, requiredAmount);
+
+        // Reject fee-on-transfer / deflationary tokens: the stake is recorded as
+        // `requiredAmount`, so the contract must actually receive exactly that.
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), requiredAmount);
+        uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
+        if (received != requiredAmount) revert FeeOnTransferNotSupported(requiredAmount, received);
     }
 
     function _recordStake(uint256 tokenId, address token, uint256 amount) internal {

@@ -125,7 +125,14 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
 
         pledgedByBacker[campaignId][msg.sender] += amount;
         campaign.totalPledged += amount;
-        IERC20(campaign.paymentToken).safeTransferFrom(msg.sender, address(this), amount);
+
+        // Reject fee-on-transfer / deflationary tokens: the accounting above credits
+        // the full `amount`, so the escrow must actually receive exactly `amount`.
+        IERC20 token = IERC20(campaign.paymentToken);
+        uint256 balanceBefore = token.balanceOf(address(this));
+        token.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = token.balanceOf(address(this)) - balanceBefore;
+        if (received != amount) revert FeeOnTransferNotSupported(amount, received);
 
         emit Pledged(campaignId, msg.sender, amount, campaign.totalPledged);
 

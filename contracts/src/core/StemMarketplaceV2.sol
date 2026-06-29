@@ -101,6 +101,7 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error ZeroAddress();
     error UnsupportedPaymentAsset();
     error ListingExpiryOverflow();
+    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
 
     // ============ Constructor ============
 
@@ -365,7 +366,13 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
             if (msg.value != amount) revert InsufficientPayment();
         } else {
             if (msg.value != 0) revert UnexpectedETH();
+            // Reject fee-on-transfer / deflationary tokens: the buyer's payment is
+            // distributed in full (royalty + fee + seller == amount), so the
+            // marketplace must actually receive exactly `amount`.
+            uint256 balanceBefore = IERC20(token).balanceOf(address(this));
             IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+            uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
+            if (received != amount) revert FeeOnTransferNotSupported(amount, received);
         }
     }
 

@@ -80,4 +80,5 @@ interface IShowCampaignEscrow {
     error DepositUnavailable(uint256 campaignId, uint256 depositReleaseBps, uint256 computedAmount);
     error DisputeWindowActive(uint256 campaignId, uint256 unlockTime, uint256 currentTime);
     error NothingToRelease(uint256 campaignId);
+    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
 }
