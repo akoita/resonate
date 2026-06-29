@@ -69,6 +69,12 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     mapping(uint256 => uint256) public trackToParentRelease;
     mapping(bytes32 => TierPolicy) private _tierPolicies;
 
+    /// @notice token (address(0) = native) => recipient => amount escrowed after a
+    /// failed slash payout. A reverting reporter/treasury cannot brick a slash: the
+    /// funds are escrowed here and reclaimed via `claimFailedPayment`.
+    /// @dev Appended after existing storage to preserve the UUPS storage layout.
+    mapping(address => mapping(address => uint256)) public failedPayments;
+
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
     uint256 public constant SLASH_TREASURY_BPS = 3000; // 30%
@@ -135,6 +141,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
+    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
 
     // ============ Errors ============
 
@@ -157,6 +165,8 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     error UnexpectedETH();
     error InvalidStakeAmount();
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
+    error NothingToClaim();
+    error OnlySelf();
 
     // ============ Modifiers ============
 
@@ -642,13 +652,48 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         }
     }
 
+    /// @dev Push-then-escrow: attempt the payout, but if the recipient reverts (a
+    /// contract that rejects ETH, or a token that blocklists the address) escrow the
+    /// funds for the recipient to reclaim instead of bricking the slash.
     function _pay(address token, address to, uint256 amount) internal {
+        if (amount == 0) return;
         if (token == address(0)) {
             (bool ok,) = payable(to).call{value: amount}("");
+            if (!ok) _escrowFailedPayment(token, to, amount);
+        } else {
+            try this.safeTransferSelf(token, to, amount) {
+                // delivered
+            } catch {
+                _escrowFailedPayment(token, to, amount);
+            }
+        }
+    }
+
+    function _escrowFailedPayment(address token, address to, uint256 amount) private {
+        failedPayments[token][to] += amount;
+        emit PaymentEscrowed(token, to, amount);
+    }
+
+    /// @dev External self-call wrapper so a reverting SafeERC20 transfer can be caught
+    /// with try/catch. Restricted to self.
+    function safeTransferSelf(address token, address to, uint256 amount) external {
+        if (msg.sender != address(this)) revert OnlySelf();
+        IERC20(token).safeTransfer(to, amount);
+    }
+
+    /// @notice Reclaim funds escrowed for `msg.sender` after a failed slash payout.
+    /// @param token The asset to claim (address(0) for native ETH).
+    function claimFailedPayment(address token) external nonReentrant {
+        uint256 amount = failedPayments[token][msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        failedPayments[token][msg.sender] = 0;
+        if (token == address(0)) {
+            (bool ok,) = payable(msg.sender).call{value: amount}("");
             if (!ok) revert TransferFailed();
         } else {
-            IERC20(token).safeTransfer(to, amount);
+            IERC20(token).safeTransfer(msg.sender, amount);
         }
+        emit FailedPaymentClaimed(token, msg.sender, amount);
     }
 
     function _isTrackVerified(uint256 trackId) internal view returns (bool) {

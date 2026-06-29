@@ -59,6 +59,11 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     /// front-running the first deposit to capture a token's beneficiary.
     mapping(address => bool) public authorizedDepositors;
 
+    /// @notice token (address(0) = native) => recipient => amount escrowed after a
+    /// failed payout. A reverting recipient cannot brick release/redirect: the funds
+    /// are escrowed here and the recipient reclaims them via `claimFailedPayment`.
+    mapping(address => mapping(address => uint256)) public failedPayments;
+
     // ============ Events ============
 
     event RevenueDeposited(uint256 indexed tokenId, address indexed depositor, uint256 amount, uint256 newBalance);
@@ -89,6 +94,9 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
 
     event DepositorUpdated(address indexed depositor, bool allowed);
 
+    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
+    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
+
     // ============ Errors ============
 
     error NoEscrow();
@@ -104,6 +112,8 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     error UnauthorizedDepositor(address caller);
     error BeneficiaryMismatch(uint256 tokenId, address expected, address provided);
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
+    error NothingToClaim();
+    error OnlySelf();
 
     // ============ Constructor ============
 
@@ -419,12 +429,47 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         _escrowAssets[tokenId].push(token);
     }
 
+    /// @dev Push-then-escrow: attempt the payout, but if the recipient reverts (a
+    /// contract that rejects ETH, or a token that blocklists the address) escrow the
+    /// funds for the recipient to reclaim later instead of bricking the operation.
     function _pay(address token, address to, uint256 amount) internal {
+        if (amount == 0) return;
         if (token == address(0)) {
             (bool ok,) = payable(to).call{value: amount}("");
+            if (!ok) _escrowFailedPayment(token, to, amount);
+        } else {
+            try this.safeTransferSelf(token, to, amount) {
+                // delivered
+            } catch {
+                _escrowFailedPayment(token, to, amount);
+            }
+        }
+    }
+
+    function _escrowFailedPayment(address token, address to, uint256 amount) private {
+        failedPayments[token][to] += amount;
+        emit PaymentEscrowed(token, to, amount);
+    }
+
+    /// @dev External self-call wrapper so a reverting SafeERC20 transfer can be caught
+    /// with try/catch (try/catch requires an external call). Restricted to self.
+    function safeTransferSelf(address token, address to, uint256 amount) external {
+        if (msg.sender != address(this)) revert OnlySelf();
+        IERC20(token).safeTransfer(to, amount);
+    }
+
+    /// @notice Reclaim funds escrowed for `msg.sender` after a failed payout.
+    /// @param token The asset to claim (address(0) for native ETH).
+    function claimFailedPayment(address token) external nonReentrant {
+        uint256 amount = failedPayments[token][msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        failedPayments[token][msg.sender] = 0;
+        if (token == address(0)) {
+            (bool ok,) = payable(msg.sender).call{value: amount}("");
             if (!ok) revert TransferFailed();
         } else {
-            IERC20(token).safeTransfer(to, amount);
+            IERC20(token).safeTransfer(msg.sender, amount);
         }
+        emit FailedPaymentClaimed(token, msg.sender, amount);
     }
 }
