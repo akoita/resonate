@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 
 contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     ShowCampaignEscrow public escrow;
@@ -457,6 +458,38 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
             abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, campaignId, CampaignStatus.Released)
         );
         escrow.cancelCampaign(campaignId);
+    }
+
+    /// @notice #1285 — pledging a fee-on-transfer token reverts instead of crediting
+    /// the full pledge while the escrow receives less.
+    function test_Pledge_RevertFeeOnTransferToken() public {
+        MockFeeOnTransferToken feeToken = new MockFeeOnTransferToken(100); // 1% fee
+        vm.startPrank(owner);
+        uint256 campaignId = escrow.createCampaign(
+            ARTIST_ID_HASH,
+            AUTHORITY_HASH,
+            artist,
+            address(feeToken),
+            GOAL,
+            MIN_BACKERS,
+            block.timestamp + 14 days,
+            block.timestamp + 30 days,
+            0,
+            DISPUTE_WINDOW
+        );
+        escrow.activateCampaign(campaignId);
+        vm.stopPrank();
+
+        feeToken.mint(alice, 1_000e6);
+        vm.startPrank(alice);
+        feeToken.approve(address(escrow), 1_000e6);
+        uint256 amount = 600e6;
+        uint256 received = amount - (amount * 100) / 10_000;
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.FeeOnTransferNotSupported.selector, amount, received)
+        );
+        escrow.pledge(campaignId, amount);
+        vm.stopPrank();
     }
 
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {

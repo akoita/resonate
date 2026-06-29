@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -273,6 +274,32 @@ contract ContentProtectionTest is Test {
         cp.slash(1, reporter);
         assertEq(reporter.balance, (STAKE_AMOUNT * 6000) / 10000, "reporter gets 60% of required");
         assertEq(treasury.balance, (STAKE_AMOUNT * 3000) / 10000, "treasury gets 30% of required");
+    }
+
+    /// @notice #1285 — staking a fee-on-transfer token reverts instead of recording a
+    /// stake the contract never fully received.
+    function test_StakeWithAsset_RevertFeeOnTransferToken() public {
+        MockFeeOnTransferToken feeToken = new MockFeeOnTransferToken(100); // 1% fee
+        PaymentAssetRegistry registry = new PaymentAssetRegistry(admin);
+        vm.startPrank(admin);
+        registry.configureAsset(LOCAL_ETH, address(0), "ETH", 18, true, false);
+        registry.configureAsset(keccak256("local:fee"), address(feeToken), "FEE", 18, true, true);
+        cp.setPaymentAssetRegistry(address(registry));
+        cp.setStakeAmountForAsset(address(feeToken), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+
+        feeToken.mint(alice, USDC_STAKE_AMOUNT * 2);
+        vm.startPrank(alice);
+        feeToken.approve(address(cp), type(uint256).max);
+        uint256 received = USDC_STAKE_AMOUNT - (USDC_STAKE_AMOUNT * 100) / 10_000;
+        vm.expectRevert(
+            abi.encodeWithSelector(ContentProtection.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received)
+        );
+        cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
+        vm.stopPrank();
     }
 
     function test_Stake_RevertNotAttested() public {

@@ -103,6 +103,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     error UnsupportedAsset();
     error UnauthorizedDepositor(address caller);
     error BeneficiaryMismatch(uint256 tokenId, address expected, address provided);
+    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
 
     // ============ Constructor ============
 
@@ -145,7 +146,13 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         if (amount == 0) revert ZeroAmount();
 
         _deposit(tokenId, beneficiary, token, amount);
+
+        // Reject fee-on-transfer / deflationary tokens: _deposit credited the full
+        // `amount`, so the escrow must actually receive exactly `amount`.
+        uint256 balanceBefore = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = IERC20(token).balanceOf(address(this)) - balanceBefore;
+        if (received != amount) revert FeeOnTransferNotSupported(amount, received);
     }
 
     function _deposit(uint256 tokenId, address beneficiary, address token, uint256 amount) internal {

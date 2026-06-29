@@ -417,3 +417,4 @@ evaluate whether those specs or the Solidity tests kill meaningful mutants.
 8. **Blacklist propagation** - TransferValidator checks ContentProtection blacklist on every transfer
 9. **Stake-to-price cap** - `PriceExceedsStakeCap` revert prevents listings with price > `stake × maxPriceMultiplier`
 10. **Upgrade continuity** - `reinitializeV2()` seeds `maxPriceMultiplier = 10` on existing deployments via UUPS upgrade
+11. **Fee-on-transfer rejection** - Every ERC-20 intake (pledge, deposit, stake, marketplace payment) measures the received `balanceOf` delta and reverts `FeeOnTransferNotSupported` if it differs from the requested amount, so fee-on-transfer / rebasing tokens cannot corrupt per-token accounting (#1285). Custody contracts assume standard, non-fee, non-rebasing ERC-20s.
