@@ -146,6 +146,72 @@ describe('PlaylistService — public playlists (integration)', () => {
     expect(localTrack.streamPath).toBeNull();
   });
 
+  it('resolves a catalog track added to a playlist by its catalog id, scoped to the owner', async () => {
+    const ctid = `${TEST_PREFIX}cat_byid`;
+    const rid = `${TEST_PREFIX}rel_byid`;
+    // Owner's library row has a per-user uuid id but carries the catalog track id.
+    await prisma.libraryTrack.create({
+      data: {
+        userId: owner,
+        source: 'remote',
+        title: 'Added By Catalog Id',
+        artist: 'The Owner',
+        catalogTrackId: ctid,
+        remoteUrl: `/catalog/releases/${rid}/tracks/${ctid}/stream`,
+        remoteArtworkUrl: `/catalog/releases/${rid}/artwork`,
+      },
+    });
+    // A different user also saved the same catalog track (their own row).
+    await prisma.libraryTrack.create({
+      data: { userId: viewer, source: 'remote', title: 'Viewer Copy', catalogTrackId: ctid },
+    });
+
+    // The playlist stores the CATALOG id (what the frontend uses for catalog tracks),
+    // not the owner's LibraryTrack uuid.
+    const pl = await service.createPlaylist(owner, { name: 'By Catalog Id', trackIds: [ctid] });
+    await service.updatePlaylist(owner, pl.id, { visibility: 'public' });
+
+    const view = await service.getPublicPlaylist(pl.id);
+    expect(view.trackCount).toBe(1); // resolves owner's row only — no cross-user duplicate
+    expect(view.playableTrackCount).toBe(1);
+    expect(view.tracks[0].streamPath).toContain(`/catalog/releases/${rid}/tracks/${ctid}/stream`);
+  });
+
+  it('emits a track only once when a playlist references both its per-user uuid and catalog id', async () => {
+    const ctid = `${TEST_PREFIX}dup_cat`;
+    const rid = `${TEST_PREFIX}dup_rel`;
+    const row = await prisma.libraryTrack.create({
+      data: {
+        userId: owner,
+        source: 'remote',
+        title: 'Dup-Keyed Track',
+        artist: 'The Owner',
+        catalogTrackId: ctid,
+        remoteUrl: `/catalog/releases/${rid}/tracks/${ctid}/stream`,
+        remoteArtworkUrl: `/catalog/releases/${rid}/artwork`,
+      },
+    });
+    // Playlist references the SAME track twice — once by its LibraryTrack uuid,
+    // once by its catalog id. Both keys resolve to the same row; the public view
+    // must not double-count or double-emit.
+    const pl = await service.createPlaylist(owner, {
+      name: 'Dup Keyed',
+      trackIds: [row.id, ctid],
+    });
+    await service.updatePlaylist(owner, pl.id, { visibility: 'public' });
+
+    const view = await service.getPublicPlaylist(pl.id);
+    expect(view.tracks).toHaveLength(1);
+    expect(view.trackCount).toBe(1);
+    expect(view.playableTrackCount).toBe(1);
+
+    const discovery = await service.listPublicPlaylists({ limit: 100 });
+    const entry = discovery.find((p) => p.id === pl.id);
+    expect(entry).toBeDefined();
+    expect(entry!.trackCount).toBe(1);
+    expect(entry!.playableTrackCount).toBe(1);
+  });
+
   it('does not leak the private folderId on the public view', async () => {
     const folder = await service.createFolder(owner, 'Private Folder');
     const pl = await service.createPlaylist(owner, { name: 'Foldered', folderId: folder.id });

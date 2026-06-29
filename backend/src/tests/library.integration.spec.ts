@@ -116,4 +116,99 @@ describe('LibraryService (integration)', () => {
     const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
     expect(updatedPlaylist?.trackIds).toEqual([localTrackId]);
   });
+
+  it('keeps per-user rows when two users save the same catalog track (no ownership hijack)', async () => {
+    // The frontend saves catalog tracks with `id` = the SHARED catalog track id.
+    // A naive upsert-by-id would let the second saver overwrite the first user's
+    // row and steal its userId; remote catalog tracks must dedup per-user instead.
+    const userId2 = `${TEST_PREFIX}user2`;
+    await prisma.user.create({ data: { id: userId2, email: `${userId2}@test.resonate` } });
+    const sharedCatalogId = `${TEST_PREFIX}shared_catalog_track`;
+    const save = (uid: string, title: string) =>
+      service.saveTrack(uid, { id: sharedCatalogId, source: 'remote', title, catalogTrackId: sharedCatalogId });
+
+    try {
+      const a = await save(userId, 'Shared Track');
+      const b = await save(userId2, 'Shared Track');
+
+      // Distinct per-user rows; neither uses the shared catalog id as its PK.
+      expect(a.userId).toBe(userId);
+      expect(b.userId).toBe(userId2);
+      expect(a.id).not.toBe(b.id);
+      expect(a.id).not.toBe(sharedCatalogId);
+
+      // The first user's row is intact and still theirs — not hijacked by user2.
+      const aRows = await prisma.libraryTrack.findMany({ where: { userId, catalogTrackId: sharedCatalogId } });
+      expect(aRows).toHaveLength(1);
+      expect(aRows[0].userId).toBe(userId);
+
+      // Re-saving by the same user updates in place (no duplicate row).
+      await save(userId, 'Shared Track v2');
+      const aRowsAfter = await prisma.libraryTrack.findMany({ where: { userId, catalogTrackId: sharedCatalogId } });
+      expect(aRowsAfter).toHaveLength(1);
+      expect(aRowsAfter[0].title).toBe('Shared Track v2');
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { userId: userId2 } });
+      await prisma.user.deleteMany({ where: { id: userId2 } });
+    }
+  });
+
+  it('purges catalog-id playlist references when a remote track is stale', async () => {
+    // Post per-user-row fix, LibraryTrack.id is a generated uuid but the frontend
+    // adds catalog tracks to playlists by their SHARED catalog id. Stale cleanup
+    // must remove both keys from playlist.trackIds, not just the per-user id.
+    const missingCatalogId = `${TEST_PREFIX}stale_catalog_for_cleanup`;
+    const staleRow = await prisma.libraryTrack.create({
+      data: {
+        userId,
+        source: 'remote',
+        title: 'Catalog Track Pending Stale',
+        catalogTrackId: missingCatalogId,
+      },
+    });
+    const playlist = await prisma.playlist.create({
+      data: {
+        userId,
+        name: 'Catalog-Id Stale Playlist',
+        // Playlist references the SHARED catalog id, not the per-user uuid.
+        trackIds: [missingCatalogId],
+      },
+    });
+
+    try {
+      await service.listTracks(userId);
+
+      expect(await prisma.libraryTrack.findUnique({ where: { id: staleRow.id } })).toBeNull();
+      const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
+      expect(updatedPlaylist?.trackIds).toEqual([]);
+    } finally {
+      await prisma.playlist.deleteMany({ where: { id: playlist.id } });
+      await prisma.libraryTrack.deleteMany({ where: { id: staleRow.id } });
+    }
+  });
+
+  it('resolves and deletes a catalog track via its catalog id (frontend back-compat)', async () => {
+    // Some frontend code paths still pass the catalog id when calling
+    // getTrack/deleteTrack. After the per-user-row fix, the row's primary key is
+    // a generated uuid; lookups must accept catalogTrackId as an alias.
+    const aliasCatalogId = `${TEST_PREFIX}alias_catalog_track`;
+    const row = await prisma.libraryTrack.create({
+      data: {
+        userId,
+        source: 'remote',
+        title: 'Aliased Catalog Track',
+        catalogTrackId: aliasCatalogId,
+      },
+    });
+
+    try {
+      const fetched = await service.getTrack(userId, aliasCatalogId);
+      expect(fetched.id).toBe(row.id);
+
+      await service.deleteTrack(userId, aliasCatalogId);
+      expect(await prisma.libraryTrack.findUnique({ where: { id: row.id } })).toBeNull();
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { id: row.id } });
+    }
+  });
 });

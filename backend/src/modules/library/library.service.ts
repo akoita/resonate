@@ -106,16 +106,11 @@ export class LibraryService {
             previewUrl: data.previewUrl,
         };
 
-        // If an ID is provided, upsert by ID
-        if (data.id) {
-            return prisma.libraryTrack.upsert({
-                where: { id: data.id },
-                update: trackData,
-                create: { id: data.id, ...trackData },
-            });
-        }
-
-        // For remote tracks, dedup by catalogTrackId
+        // Remote catalog tracks: ALWAYS dedup per-user by (userId, catalogTrackId)
+        // and let the row id be a generated per-user uuid. The client-provided
+        // `id` for a catalog track is the SHARED catalog track id, so honoring it
+        // as the primary key would let one user's save overwrite another user's
+        // row (hijacking its `userId`). Keep this branch ahead of the id branch.
         if (source === "remote" && data.catalogTrackId) {
             return prisma.libraryTrack.upsert({
                 where: {
@@ -126,6 +121,15 @@ export class LibraryService {
                 },
                 update: trackData,
                 create: trackData,
+            });
+        }
+
+        // If an ID is provided (local files, owned stems, etc.), upsert by ID.
+        if (data.id) {
+            return prisma.libraryTrack.upsert({
+                where: { id: data.id },
+                update: trackData,
+                create: { id: data.id, ...trackData },
             });
         }
 
@@ -203,16 +207,15 @@ export class LibraryService {
         const existingCatalogTrackIds = new Set(existingCatalogTracks.map((track) => track.id));
         const existingCatalogReleaseIds = new Set(existingCatalogReleases.map((release) => release.id));
         const existingCatalogStemIds = new Set(existingCatalogStems.map((stem) => stem.id));
-        const staleTrackIds = remoteTracks
-            .filter((track) => {
-                const references = collectCatalogReferences(track);
-                return (
-                    Array.from(references.trackIds).some((id) => !existingCatalogTrackIds.has(id)) ||
-                    Array.from(references.releaseIds).some((id) => !existingCatalogReleaseIds.has(id)) ||
-                    Array.from(references.stemIds).some((id) => !existingCatalogStemIds.has(id))
-                );
-            })
-            .map((track) => track.id);
+        const staleTracks = remoteTracks.filter((track) => {
+            const references = collectCatalogReferences(track);
+            return (
+                Array.from(references.trackIds).some((id) => !existingCatalogTrackIds.has(id)) ||
+                Array.from(references.releaseIds).some((id) => !existingCatalogReleaseIds.has(id)) ||
+                Array.from(references.stemIds).some((id) => !existingCatalogStemIds.has(id))
+            );
+        });
+        const staleTrackIds = staleTracks.map((track) => track.id);
 
         if (staleTrackIds.length === 0) {
             return tracks;
@@ -221,15 +224,23 @@ export class LibraryService {
         await prisma.libraryTrack.deleteMany({
             where: { userId, id: { in: staleTrackIds } },
         });
+        // Playlists may reference these tracks by per-user LibraryTrack.id OR by
+        // the shared catalogTrackId (the frontend stores catalog ids for catalog
+        // tracks), so purge both sets of keys.
+        const stalePlaylistKeys = new Set<string>(staleTrackIds);
+        for (const track of staleTracks) {
+            if (track.catalogTrackId) stalePlaylistKeys.add(track.catalogTrackId);
+        }
+        const stalePlaylistKeyList = Array.from(stalePlaylistKeys);
         const playlists = await prisma.playlist.findMany({
-            where: { userId, trackIds: { hasSome: staleTrackIds } },
+            where: { userId, trackIds: { hasSome: stalePlaylistKeyList } },
             select: { id: true, trackIds: true },
         });
         for (const playlist of playlists) {
             await prisma.playlist.update({
                 where: { id: playlist.id },
                 data: {
-                    trackIds: playlist.trackIds.filter((id) => !staleTrackIds.includes(id)),
+                    trackIds: playlist.trackIds.filter((id) => !stalePlaylistKeys.has(id)),
                 },
             });
         }
@@ -238,19 +249,19 @@ export class LibraryService {
     }
 
     async getTrack(userId: string, id: string) {
-        const track = await prisma.libraryTrack.findUnique({ where: { id } });
-        if (!track || track.userId !== userId) {
+        const track = await findOwnedLibraryTrack(userId, id);
+        if (!track) {
             throw new NotFoundException("Library track not found");
         }
         return track;
     }
 
     async deleteTrack(userId: string, id: string) {
-        const track = await prisma.libraryTrack.findUnique({ where: { id } });
-        if (!track || track.userId !== userId) {
+        const track = await findOwnedLibraryTrack(userId, id);
+        if (!track) {
             throw new NotFoundException("Library track not found");
         }
-        return prisma.libraryTrack.delete({ where: { id } });
+        return prisma.libraryTrack.delete({ where: { id: track.id } });
     }
 
     async deleteTracks(userId: string, ids: string[]) {
@@ -264,4 +275,16 @@ export class LibraryService {
             where: { userId, source: "local" },
         });
     }
+}
+
+/**
+ * Resolve a LibraryTrack owned by `userId` from either its per-user `id` or its
+ * shared `catalogTrackId`. Frontend callers may still pass a catalog id for
+ * tracks added before the per-user-row fix, so accept both.
+ */
+async function findOwnedLibraryTrack(userId: string, id: string) {
+    const track = await prisma.libraryTrack.findFirst({
+        where: { userId, OR: [{ id }, { catalogTrackId: id }] },
+    });
+    return track;
 }
