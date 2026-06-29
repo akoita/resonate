@@ -9,8 +9,13 @@ import {SymTest} from "halmos-cheatcodes/SymTest.sol";
 
 /**
  * @title ShowCampaignEscrow Formal Verification Tests
- * @notice Halmos-style symbolic checks for the core escrow safety properties.
+ * @notice Halmos symbolic checks for the core escrow safety properties (issue #944).
  * @dev Run with: halmos --contract ShowCampaignEscrowFormalTest
+ *
+ * The formal layer holds only the positive conservation properties Halmos
+ * verifies cleanly. The deposit-bps-cap revert check uses `vm.expectRevert`
+ * (unsupported by Halmos); it is covered by the fuzz/unit suites and the
+ * Certora spec's `depositReleaseBpsCapped` rule.
  */
 contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
     ShowCampaignEscrow public escrow;
@@ -35,33 +40,6 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
 
         _mintAndApprove(alice, 1_000_000e6);
         _mintAndApprove(bob, 1_000_000e6);
-    }
-
-    function check_depositReleaseBpsBounded(uint256 depositReleaseBps) public {
-        uint256 deadline = block.timestamp + 14 days;
-        uint256 bookingDeadline = block.timestamp + 30 days;
-
-        vm.prank(owner);
-        if (depositReleaseBps > escrow.MAX_DEPOSIT_RELEASE_BPS()) {
-            vm.expectRevert(IShowCampaignEscrow.DepositReleaseTooHigh.selector);
-        }
-
-        uint256 campaignId = escrow.createCampaign(
-            ARTIST_ID_HASH,
-            AUTHORITY_HASH,
-            artist,
-            address(usdc),
-            1_000e6,
-            2,
-            deadline,
-            bookingDeadline,
-            depositReleaseBps,
-            DISPUTE_WINDOW
-        );
-
-        if (depositReleaseBps <= escrow.MAX_DEPOSIT_RELEASE_BPS()) {
-            assert(escrow.campaignStatus(campaignId) == CampaignStatus.Draft);
-        }
     }
 
     function check_fundingDoesNotReleaseBeforeBooking(uint256 aliceAmount, uint256 bobAmount) public {
