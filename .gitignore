@@ -6,6 +6,9 @@ contracts/cache/
 contracts/lib/
 contracts/broadcast/
 
+# Gambit mutation-testing output
+contracts/gambit_out*/
+
 # Backend
 backend/dist/
 backend/.env
