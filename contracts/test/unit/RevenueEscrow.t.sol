@@ -227,6 +227,32 @@ contract RevenueEscrowTest is Test {
         assertEq(escrow.failedPayments(address(0), address(receiver)), 0);
     }
 
+    /// @notice #1279 — the per-token asset list is capped so the whole-token freeze
+    /// loop stays bounded; a deposit past the cap reverts.
+    function test_TrackEscrowAsset_CapEnforced() public {
+        uint256 cap = escrow.MAX_ESCROW_ASSETS();
+
+        // Asset #1: native.
+        vm.deal(address(this), 1 ether);
+        escrow.deposit{value: 1}(1, alice);
+
+        // Fill the rest of the cap with distinct ERC20s.
+        for (uint256 i = 0; i < cap - 1; i++) {
+            MockUSDC t = new MockUSDC();
+            t.mint(address(this), 1);
+            t.approve(address(escrow), 1);
+            escrow.depositWithAsset(1, alice, address(t), 1);
+        }
+        assertEq(escrow.getEscrowAssets(1).length, cap);
+
+        // The next distinct asset exceeds the cap.
+        MockUSDC extra = new MockUSDC();
+        extra.mint(address(this), 1);
+        extra.approve(address(escrow), 1);
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.TooManyEscrowAssets.selector, uint256(1)));
+        escrow.depositWithAsset(1, alice, address(extra), 1);
+    }
+
     // ============ Freeze / Unfreeze ============
 
     function test_Freeze() public {

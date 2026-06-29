@@ -35,6 +35,10 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
 
     // ============ State ============
 
+    /// @notice Max distinct assets tracked per tokenId, bounding the whole-token
+    /// freeze/unfreeze loop so it cannot exceed the block gas limit.
+    uint256 public constant MAX_ESCROW_ASSETS = 64;
+
     /// @notice Default escrow period (adjustable by owner)
     uint256 public defaultEscrowPeriod;
 
@@ -112,6 +116,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     error UnauthorizedDepositor(address caller);
     error BeneficiaryMismatch(uint256 tokenId, address expected, address provided);
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
+    error TooManyEscrowAssets(uint256 tokenId);
     error NothingToClaim();
     error OnlySelf();
 
@@ -142,7 +147,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
      * @param tokenId The token ID to deposit revenue for
      * @param beneficiary The address that will receive funds on release
      */
-    function deposit(uint256 tokenId, address beneficiary) external payable onlyDepositor {
+    function deposit(uint256 tokenId, address beneficiary) external payable nonReentrant onlyDepositor {
         if (msg.value == 0) revert ZeroAmount();
         _deposit(tokenId, beneficiary, address(0), msg.value);
     }
@@ -425,6 +430,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
 
     function _trackEscrowAsset(uint256 tokenId, address token) internal {
         if (_escrowAssetTracked[tokenId][token]) return;
+        if (_escrowAssets[tokenId].length >= MAX_ESCROW_ASSETS) revert TooManyEscrowAssets(tokenId);
         _escrowAssetTracked[tokenId][token] = true;
         _escrowAssets[tokenId].push(token);
     }
