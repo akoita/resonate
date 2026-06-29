@@ -1,0 +1,84 @@
+name: Certora Formal Verification
+
+# Runs the Certora Prover CVL specs (contracts/certora/conf/*.conf) against the
+# Certora cloud. Slow and cloud-bound, so this is scheduled / manual only — never on
+# the per-PR path. Gated on the CERTORAKEY repo secret so forks and PRs without it are
+# skipped rather than hard-failing. Tracked in #1260.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # nightly 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: certora-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  certora:
+    name: Certora Prover
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      CERTORAKEY: ${{ secrets.CERTORAKEY }}
+      SOLC_VERSION: "0.8.28"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Check CERTORAKEY secret
+        id: key
+        run: |
+          if [ -z "${CERTORAKEY:-}" ]; then
+            echo "::warning::CERTORAKEY secret not set — skipping the Certora Prover run."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Foundry
+        if: steps.key.outputs.present == 'true'
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        if: steps.key.outputs.present == 'true'
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Set up Python
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install solc + Certora CLI
+        if: steps.key.outputs.present == 'true'
+        # certora-cli is intentionally left unpinned until a first successful cloud run
+        # validates a version against these specs; pin it then for reproducibility.
+        run: |
+          pip install solc-select certora-cli
+          solc-select install "${SOLC_VERSION}"
+          solc-select use "${SOLC_VERSION}"
+          certoraRun --version || true
+
+      - name: Run Certora specs
+        if: steps.key.outputs.present == 'true'
+        working-directory: contracts
+        # certoraRun --wait_for_results all blocks on the cloud run and returns a
+        # non-zero exit when a rule fails, so the job status reflects the spec results.
+        run: |
+          set +e
+          status=0
+          for conf in certora/conf/*.conf; do
+            echo "::group::certoraRun $conf"
+            certoraRun "$conf" --wait_for_results all
+            [ "$?" -ne 0 ] && status=1
+            echo "::endgroup::"
+          done
+          exit "$status"

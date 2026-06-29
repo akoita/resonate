@@ -1,0 +1,91 @@
+name: Mutation Testing (Gambit)
+
+# Generates Certora Gambit mutants for the high-value contracts and scores them
+# against the Foundry suite (kill rate). Long-running and compute-heavy, so this is
+# scheduled / manual only — never on the per-PR path. Surviving mutants are gaps to
+# turn into new tests or CVL spec rules. Tracked in #1260.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1" # Mondays 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      max_mutants:
+        description: "Score at most N mutants per contract (0 = all)"
+        default: "0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GAMBIT_VERSION: v1.0.6
+  SOLC_VERSION: "0.8.28"
+
+jobs:
+  mutation:
+    name: Gambit · ${{ matrix.contract }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { contract: StemNFT, config: gambit.json, match: StemNFT }
+          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace }
+          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection }
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install solc ${{ env.SOLC_VERSION }}
+        run: |
+          pip install solc-select
+          solc-select install "${SOLC_VERSION}"
+          solc-select use "${SOLC_VERSION}"
+          solc --version
+
+      - name: Install Gambit ${{ env.GAMBIT_VERSION }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSL -o "$HOME/.local/bin/gambit" \
+            "https://github.com/Certora/gambit/releases/download/${GAMBIT_VERSION}/gambit-linux-${GAMBIT_VERSION}"
+          chmod +x "$HOME/.local/bin/gambit"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Score mutants for ${{ matrix.contract }}
+        working-directory: contracts
+        env:
+          MAX_MUTANTS: ${{ github.event.inputs.max_mutants || '0' }}
+        run: |
+          set +e
+          scripts/mutation-score.sh "${{ matrix.config }}" "${{ matrix.match }}" | tee mutation-score.log
+          code=${PIPESTATUS[0]}
+          {
+            echo "### Mutation score — ${{ matrix.contract }}"
+            echo '```'
+            grep -E "mutants generated|Mutation score|Surviving mutant" mutation-score.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # exit 2 = baseline suite not green (a real failure); exit 1 = mutants survived
+          # (expected, reported as a gap, not a job failure).
+          [ "$code" = "2" ] && exit 1 || exit 0
