@@ -22,6 +22,12 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     uint256 public constant MAX_DEPOSIT_RELEASE_BPS = 3000;
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
+    /// @notice Bounds for `disputeWindowSeconds`: a non-zero floor guarantees backers
+    /// a real contest period, and the ceiling avoids a `fulfilledAt + window` overflow
+    /// that would brick `releaseFunds`.
+    uint256 public constant MIN_DISPUTE_WINDOW = 1 hours;
+    uint256 public constant MAX_DISPUTE_WINDOW = 90 days;
+
     uint256 public nextCampaignId = 1;
     bool public paused;
 
@@ -69,6 +75,10 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         }
         if (depositReleaseBps > MAX_DEPOSIT_RELEASE_BPS) {
             revert DepositReleaseTooHigh(depositReleaseBps, MAX_DEPOSIT_RELEASE_BPS);
+        }
+        if (minimumBackers == 0) revert InvalidMinimumBackers();
+        if (disputeWindowSeconds < MIN_DISPUTE_WINDOW || disputeWindowSeconds > MAX_DISPUTE_WINDOW) {
+            revert InvalidDisputeWindow(disputeWindowSeconds, MIN_DISPUTE_WINDOW, MAX_DISPUTE_WINDOW);
         }
 
         campaignId = nextCampaignId++;
@@ -169,7 +179,9 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     function openRefundsAfterMissedBooking(uint256 campaignId) external {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Funded) revert InvalidStatus(campaignId, campaign.status);
-        if (block.timestamp < campaign.bookingDeadline) {
+        // Exclusive boundary: the deadline second belongs to confirmBooking, so refunds
+        // only open strictly after it — removing the both-callable overlap at `==`.
+        if (block.timestamp <= campaign.bookingDeadline) {
             revert BookingDeadlineNotPassed(campaignId, campaign.bookingDeadline, block.timestamp);
         }
         campaign.status = CampaignStatus.RefundAvailable;
@@ -180,7 +192,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Funded) revert InvalidStatus(campaignId, campaign.status);
         if (block.timestamp > campaign.bookingDeadline) {
-            revert BookingDeadlineNotPassed(campaignId, campaign.bookingDeadline, block.timestamp);
+            revert BookingDeadlinePassed(campaignId, campaign.bookingDeadline, block.timestamp);
         }
         campaign.status = CampaignStatus.BookingConfirmed;
         emit BookingConfirmed(campaignId, msg.sender);

@@ -233,7 +233,10 @@ Core behavior:
 
 - owner creates a campaign with an artist authority hash, beneficiary,
   stablecoin payment token, goal, minimum backers, deadline, booking deadline,
-  optional deposit release bps, and dispute window;
+  optional deposit release bps, and dispute window. Creation validates
+  `minimumBackers >= 1` and `MIN_DISPUTE_WINDOW (1h) <= disputeWindow <=
+  MAX_DISPUTE_WINDOW (90d)` — a zero window would remove the backer contest
+  period and a near-`uint256` window would overflow-brick `releaseFunds` (#1277);
 - owner activates draft campaigns after backend artist-authority review;
 - fans pledge ERC-20 funds while the campaign is active;
 - reaching the goal and minimum backer threshold marks the campaign `Funded`

@@ -81,4 +81,7 @@ interface IShowCampaignEscrow {
     error DisputeWindowActive(uint256 campaignId, uint256 unlockTime, uint256 currentTime);
     error NothingToRelease(uint256 campaignId);
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
+    error BookingDeadlinePassed(uint256 campaignId, uint256 bookingDeadline, uint256 currentTime);
+    error InvalidDisputeWindow(uint256 provided, uint256 min, uint256 max);
+    error InvalidMinimumBackers();
 }
