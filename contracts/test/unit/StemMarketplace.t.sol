@@ -10,6 +10,7 @@ import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {WrappedNativeMock} from "../../src/payments/WrappedNativeMock.sol";
 import {ERC20Mock} from "../mocks/ERC20Mock.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
+import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
 
 /**
@@ -164,6 +165,34 @@ contract StemMarketplaceTest is Test {
             abi.encodeWithSelector(StemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
         );
         marketplace.buy(listingId, 1);
+    }
+
+    /// @notice #1287 — a reverting (creator-controlled) royalty receiver cannot brick
+    /// an ETH sale; the royalty leg is escrowed and reclaimed via claimFailedPayment.
+    function test_Buy_EscrowsRoyaltyOnRevertingReceiver() public {
+        RevertingReceiver receiver = new RevertingReceiver();
+
+        // Seller mints a stem whose royalty receiver rejects ETH.
+        uint256[] memory parentIds = new uint256[](0);
+        vm.prank(seller);
+        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://r", address(receiver), uint96(ROYALTY_BPS), true, parentIds);
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(tokenId, 10, 1 ether, address(0), LISTING_DURATION);
+
+        uint256 royalty = (1 ether * ROYALTY_BPS) / 10000; // 5% of 1 ether
+        vm.prank(buyer);
+        marketplace.buy{value: 1 ether}(listingId, 1); // does NOT revert
+
+        // Royalty leg escrowed; NFT delivered to the buyer.
+        assertEq(marketplace.failedPayments(address(0), address(receiver)), royalty, "royalty escrowed");
+        assertEq(stemNFT.balanceOf(buyer, tokenId), 1, "NFT delivered");
+
+        // Royalty receiver reclaims once it can accept ETH.
+        receiver.setReject(false);
+        uint256 before = address(receiver).balance;
+        vm.prank(address(receiver));
+        marketplace.claimFailedPayment(address(0));
+        assertEq(address(receiver).balance - before, royalty, "claimed");
     }
 
     function test_Constructor_RevertZeroContentProtection() public {

@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
+import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -300,6 +301,31 @@ contract ContentProtectionTest is Test {
         );
         cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
         vm.stopPrank();
+    }
+
+    /// @notice #1287 — a reverting reporter cannot brick a slash; the reporter's share
+    /// is escrowed and reclaimed via claimFailedPayment (treasury is paid normally).
+    function test_Slash_EscrowsOnRevertingReporter() public {
+        RevertingReceiver receiver = new RevertingReceiver();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT}(1);
+
+        vm.prank(admin);
+        cp.slash(1, address(receiver)); // reporter rejects ETH → escrowed, no revert
+
+        uint256 reporterShare = (STAKE_AMOUNT * 6000) / 10000;
+        assertEq(cp.failedPayments(address(0), address(receiver)), reporterShare, "reporter share escrowed");
+        assertEq(treasury.balance, (STAKE_AMOUNT * 3000) / 10000, "treasury paid normally");
+
+        receiver.setReject(false);
+        uint256 before = address(receiver).balance;
+        vm.prank(address(receiver));
+        cp.claimFailedPayment(address(0));
+        assertEq(address(receiver).balance - before, reporterShare, "claimed");
     }
 
     function test_Stake_RevertNotAttested() public {

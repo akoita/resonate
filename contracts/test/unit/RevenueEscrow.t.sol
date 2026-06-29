@@ -6,6 +6,7 @@ import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
+import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -200,6 +201,30 @@ contract RevenueEscrowTest is Test {
             abi.encodeWithSelector(RevenueEscrow.FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
         );
         escrow.depositWithAsset(1, alice, address(feeToken), USDC_AMOUNT);
+    }
+
+    /// @notice #1287 — a reverting beneficiary cannot brick release; the payout is
+    /// escrowed and the beneficiary reclaims it via claimFailedPayment.
+    function test_Release_EscrowsOnRevertingBeneficiary() public {
+        RevertingReceiver receiver = new RevertingReceiver();
+        vm.deal(address(this), 1 ether);
+        escrow.deposit{value: 0.5 ether}(1, address(receiver));
+
+        vm.warp(block.timestamp + ESCROW_PERIOD + 1);
+        escrow.release(1); // does NOT revert — payout escrowed
+
+        assertEq(escrow.failedPayments(address(0), address(receiver)), 0.5 ether, "payout escrowed");
+        (, uint256 balance,,) = escrow.getEscrow(1);
+        assertEq(balance, 0, "escrow drained");
+        assertEq(address(escrow).balance, 0.5 ether, "funds held for claim");
+
+        // Beneficiary reclaims once it can accept ETH.
+        receiver.setReject(false);
+        uint256 before = address(receiver).balance;
+        vm.prank(address(receiver));
+        escrow.claimFailedPayment(address(0));
+        assertEq(address(receiver).balance - before, 0.5 ether, "claimed");
+        assertEq(escrow.failedPayments(address(0), address(receiver)), 0);
     }
 
     // ============ Freeze / Unfreeze ============

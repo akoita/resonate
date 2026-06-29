@@ -63,6 +63,11 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     uint256 private _listingId;
     mapping(uint256 => Listing) public listings;
 
+    /// @notice token (address(0) = native) => recipient => amount escrowed after a
+    /// failed payout. A reverting royalty receiver / fee recipient / seller cannot
+    /// brick a sale: the leg is escrowed here and reclaimed via `claimFailedPayment`.
+    mapping(address => mapping(address => uint256)) public failedPayments;
+
     // ============ Events ============
     event Listed(
         uint256 indexed listingId,
@@ -83,6 +88,8 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         address indexed recipient,
         uint256 amount
     );
+    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
+    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
 
     // ============ Errors ============
     error NotSeller();
@@ -102,6 +109,8 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     error UnsupportedPaymentAsset();
     error ListingExpiryOverflow();
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
+    error NothingToClaim();
+    error OnlySelf();
 
     // ============ Constructor ============
 
@@ -376,13 +385,49 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         }
     }
 
+    /// @dev Push-then-escrow: attempt the payout, but if the recipient reverts (a
+    /// contract that rejects ETH — e.g. a creator-controlled royalty receiver — or a
+    /// token that blocklists the address) escrow the leg for the recipient to reclaim
+    /// instead of bricking the sale.
     function _pay(address token, address to, uint256 amount) internal {
+        if (amount == 0) return;
         if (token == address(0)) {
             (bool ok, ) = payable(to).call{value: amount}("");
+            if (!ok) _escrowFailedPayment(token, to, amount);
+        } else {
+            try this.safeTransferSelf(token, to, amount) {
+                // delivered
+            } catch {
+                _escrowFailedPayment(token, to, amount);
+            }
+        }
+    }
+
+    function _escrowFailedPayment(address token, address to, uint256 amount) private {
+        failedPayments[token][to] += amount;
+        emit PaymentEscrowed(token, to, amount);
+    }
+
+    /// @dev External self-call wrapper so a reverting SafeERC20 transfer can be caught
+    /// with try/catch. Restricted to self.
+    function safeTransferSelf(address token, address to, uint256 amount) external {
+        if (msg.sender != address(this)) revert OnlySelf();
+        IERC20(token).safeTransfer(to, amount);
+    }
+
+    /// @notice Reclaim funds escrowed for `msg.sender` after a failed payout leg.
+    /// @param token The asset to claim (address(0) for native ETH).
+    function claimFailedPayment(address token) external nonReentrant {
+        uint256 amount = failedPayments[token][msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        failedPayments[token][msg.sender] = 0;
+        if (token == address(0)) {
+            (bool ok, ) = payable(msg.sender).call{value: amount}("");
             if (!ok) revert TransferFailed();
         } else {
-            IERC20(token).safeTransfer(to, amount);
+            IERC20(token).safeTransfer(msg.sender, amount);
         }
+        emit FailedPaymentClaimed(token, msg.sender, amount);
     }
 
     receive() external payable {}
