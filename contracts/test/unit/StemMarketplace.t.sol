@@ -816,6 +816,47 @@ contract StemMarketplaceTest is Test {
         marketplace.buy{value: 100 ether}(listingId, 100); // Only 50 available
     }
 
+    // ── #1284: zero-amount buy is rejected ──────────────────────────────────
+
+    function test_Buy_RevertZeroAmount() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 10, 1 ether, address(0), LISTING_DURATION);
+
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
+        marketplace.buy(listingId, 0);
+    }
+
+    // ── #1283: stale listings fail early on re-validation ───────────────────
+
+    function test_Buy_RevertStaleListingSellerExited() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 10, 1 ether, address(0), LISTING_DURATION);
+
+        // Seller transfers all units away after listing → stale listing.
+        vm.prank(seller);
+        stemNFT.safeTransferFrom(seller, recipient, 1, 100, "");
+
+        vm.deal(buyer, 1 ether);
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+    }
+
+    function test_Buy_RevertListingNotApproved() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 10, 1 ether, address(0), LISTING_DURATION);
+
+        // Seller revokes marketplace approval after listing.
+        vm.prank(seller);
+        stemNFT.setApprovalForAll(address(marketplace), false);
+
+        vm.deal(buyer, 1 ether);
+        vm.prank(buyer);
+        vm.expectRevert(StemMarketplaceV2.MarketplaceNotApproved.selector);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+    }
+
     function test_Buy_RevertInsufficientPayment() public {
         vm.prank(seller);
         uint256 listingId = marketplace.list(
