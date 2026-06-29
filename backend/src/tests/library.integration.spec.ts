@@ -152,4 +152,63 @@ describe('LibraryService (integration)', () => {
       await prisma.user.deleteMany({ where: { id: userId2 } });
     }
   });
+
+  it('purges catalog-id playlist references when a remote track is stale', async () => {
+    // Post per-user-row fix, LibraryTrack.id is a generated uuid but the frontend
+    // adds catalog tracks to playlists by their SHARED catalog id. Stale cleanup
+    // must remove both keys from playlist.trackIds, not just the per-user id.
+    const missingCatalogId = `${TEST_PREFIX}stale_catalog_for_cleanup`;
+    const staleRow = await prisma.libraryTrack.create({
+      data: {
+        userId,
+        source: 'remote',
+        title: 'Catalog Track Pending Stale',
+        catalogTrackId: missingCatalogId,
+      },
+    });
+    const playlist = await prisma.playlist.create({
+      data: {
+        userId,
+        name: 'Catalog-Id Stale Playlist',
+        // Playlist references the SHARED catalog id, not the per-user uuid.
+        trackIds: [missingCatalogId],
+      },
+    });
+
+    try {
+      await service.listTracks(userId);
+
+      expect(await prisma.libraryTrack.findUnique({ where: { id: staleRow.id } })).toBeNull();
+      const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });
+      expect(updatedPlaylist?.trackIds).toEqual([]);
+    } finally {
+      await prisma.playlist.deleteMany({ where: { id: playlist.id } });
+      await prisma.libraryTrack.deleteMany({ where: { id: staleRow.id } });
+    }
+  });
+
+  it('resolves and deletes a catalog track via its catalog id (frontend back-compat)', async () => {
+    // Some frontend code paths still pass the catalog id when calling
+    // getTrack/deleteTrack. After the per-user-row fix, the row's primary key is
+    // a generated uuid; lookups must accept catalogTrackId as an alias.
+    const aliasCatalogId = `${TEST_PREFIX}alias_catalog_track`;
+    const row = await prisma.libraryTrack.create({
+      data: {
+        userId,
+        source: 'remote',
+        title: 'Aliased Catalog Track',
+        catalogTrackId: aliasCatalogId,
+      },
+    });
+
+    try {
+      const fetched = await service.getTrack(userId, aliasCatalogId);
+      expect(fetched.id).toBe(row.id);
+
+      await service.deleteTrack(userId, aliasCatalogId);
+      expect(await prisma.libraryTrack.findUnique({ where: { id: row.id } })).toBeNull();
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { id: row.id } });
+    }
+  });
 });

@@ -340,9 +340,12 @@ export class PlaylistService {
         const byKey = indexLibraryTracksByPlaylistKey(records);
 
         const resolved: PublicPlaylistTrack[] = [];
+        const seenRecordIds = new Set<string>();
         for (const trackId of trackIds) {
             const record = byKey.get(trackId);
             if (!record) continue; // track removed from owner's library; skip silently
+            if (seenRecordIds.has(record.id)) continue; // already emitted via its other key
+            seenRecordIds.add(record.id);
             const refs = extractCatalogRefs(record);
             const { streamPath, artworkPath } = catalogPathsFor(refs);
             resolved.push({
@@ -415,9 +418,12 @@ export class PlaylistService {
             let trackCount = 0;
             let playableTrackCount = 0;
             const coverArtworkPaths: string[] = [];
+            const seenRecordIds = new Set<string>();
             for (const trackId of playlist.trackIds) {
                 const record = ownerTracks?.get(trackId);
-                if (!record) continue; // not the owner's track (removed, or hijacked elsewhere)
+                if (!record) continue; // not in the owner's library (removed, or never theirs)
+                if (seenRecordIds.has(record.id)) continue; // already counted via its other key
+                seenRecordIds.add(record.id);
                 trackCount += 1;
                 const { streamPath, artworkPath } = catalogPathsFor(extractCatalogRefs(record));
                 if (!streamPath) continue; // local-only file: visible to owner, not streamable here
