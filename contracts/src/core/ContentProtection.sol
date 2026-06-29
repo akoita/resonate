@@ -75,6 +75,16 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     /// @dev Appended after existing storage to preserve the UUPS storage layout.
     mapping(address => mapping(address => uint256)) public failedPayments;
 
+    /// @notice token (address(0) = native) => accumulated slash remainder (the "burn")
+    /// retained in the contract, sweepable to the treasury via `sweepBurned`. Tracked
+    /// separately so a sweep never touches active stakes or escrowed failedPayments.
+    mapping(address => uint256) public totalBurned;
+
+    /// @dev Reserved storage slots so future upgrades can add state without shifting
+    /// the existing layout. Must remain the last storage variable; shrink it by the
+    /// number of slots any newly-added state occupies.
+    uint256[50] private __gap;
+
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
     uint256 public constant SLASH_TREASURY_BPS = 3000; // 30%
@@ -143,6 +153,7 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
     event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
     event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
+    event BurnedSwept(address indexed token, address indexed treasury, uint256 amount);
 
     // ============ Errors ============
 
@@ -347,11 +358,14 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         uint256 treasuryAmount = (total * SLASH_TREASURY_BPS) / BPS;
         uint256 burnedAmount = total - reporterAmount - treasuryAmount;
 
+        // Retain the 10% remainder (it is retained, not destroyed) and track it so the
+        // owner can sweep it to the treasury via sweepBurned. Effect before the
+        // interactions below (CEI).
+        totalBurned[token] += burnedAmount;
+
         // Transfer (Interactions last — CEI pattern)
         _pay(token, reporter, reporterAmount);
         _pay(token, treasury, treasuryAmount);
-
-        // Burned amount stays in contract (can be swept to treasury later)
 
         // Auto-blacklist the attester
         if (!_blacklisted[attester]) {
@@ -380,6 +394,18 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
 
         emit StakeRefunded(tokenId, attester, amount);
         emit StakeRefundedWithAsset(tokenId, attester, token, amount);
+    }
+
+    /// @notice Sweep the accumulated slash remainder (the retained "burn") for an asset
+    /// to the treasury. The remainder is retained — not destroyed — so this gives it a
+    /// defined exit instead of leaving it permanently locked in the contract.
+    /// @param token The asset to sweep (address(0) for native ETH).
+    function sweepBurned(address token) external onlyOwner nonReentrant {
+        uint256 amount = totalBurned[token];
+        if (amount == 0) revert NothingToClaim();
+        totalBurned[token] = 0;
+        _pay(token, treasury, amount);
+        emit BurnedSwept(token, treasury, amount);
     }
 
     // ============ Blacklist ============
