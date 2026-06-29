@@ -193,13 +193,23 @@ Hierarchy model:
 
 Holds sale revenue per tokenId until escrow period expires:
 
-- **Deposit** — Accumulates revenue per token
+- **Deposit** — Accumulates revenue per token. **Permissioned**: only the owner or
+  an allowlisted depositor (`setDepositor`) may deposit, because the first deposit
+  binds the escrow's beneficiary — leaving it open would let an attacker front-run
+  it to capture a token's payouts (#1278). A deposit whose `beneficiary` mismatches
+  an existing escrow's reverts rather than silently routing to the stored one.
 - **Freeze/Unfreeze** — Admin freezes during disputes
 - **Release** — Permissionless after escrow period (anyone can call)
 - **Redirect** — Admin sends frozen funds to rightful owner on confirmed theft
 
+> **Deploy/ops:** after deploying `RevenueEscrow`, allowlist the revenue-routing
+> address with `setDepositor(router, true)` (the owner is implicitly authorized).
+
 ```solidity
-// Deposit revenue
+// Authorize the revenue router once (owner only)
+escrow.setDepositor(revenueRouter, true);
+
+// Deposit revenue (owner or an authorized depositor)
 escrow.deposit{value: salePrice}(tokenId, artistAddress);
 
 // Freeze during dispute

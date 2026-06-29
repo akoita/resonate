@@ -33,6 +33,8 @@ contract RevenueEscrowFuzzTest is Test {
     function setUp() public {
         escrow = new RevenueEscrow(owner, ESCROW_PERIOD);
         usdc = new MockUSDC();
+        vm.prank(owner);
+        escrow.setDepositor(depositor, true);
     }
 
     // ----------------------------------------------------------------------

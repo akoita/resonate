@@ -31,6 +31,8 @@ contract RevenueEscrowFormalTest is Test, SymTest {
     function setUp() public {
         escrow = new RevenueEscrow(owner, PERIOD);
         usdc = new MockUSDC();
+        vm.prank(owner);
+        escrow.setDepositor(depositor, true);
     }
 
     function _deposit(uint256 tokenId, uint256 amount) internal {
