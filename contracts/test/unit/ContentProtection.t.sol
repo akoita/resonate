@@ -218,6 +218,63 @@ contract ContentProtectionTest is Test {
         assertEq(amount, USDC_STAKE_AMOUNT);
     }
 
+    // ── #1280: stake records the canonical required amount, not the overpayment ──
+
+    function test_Stake_RecordsRequiredAndRefundsNativeSurplus() public {
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+
+        uint256 overpay = STAKE_AMOUNT + 0.05 ether;
+        vm.deal(alice, overpay);
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit StakeDeposited(1, alice, STAKE_AMOUNT); // records required, not msg.value
+        cp.stake{value: overpay}(1);
+
+        (uint256 amount,, bool active) = cp.stakes(1);
+        assertTrue(active);
+        assertEq(amount, STAKE_AMOUNT, "records required, not msg.value");
+        assertEq(alice.balance, 0.05 ether, "surplus refunded to staker");
+        assertEq(address(cp).balance, STAKE_AMOUNT, "contract holds only the required stake");
+    }
+
+    function test_StakeWithAsset_RecordsRequiredNotExcess() public {
+        MockUSDC usdc = _configureUsdcStakeAsset();
+
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+
+        uint256 overpay = USDC_STAKE_AMOUNT * 3;
+        usdc.mint(alice, overpay);
+        vm.startPrank(alice);
+        usdc.approve(address(cp), overpay);
+        vm.expectEmit(true, true, true, true);
+        emit StakeDepositedWithAsset(1, alice, address(usdc), USDC_STAKE_AMOUNT);
+        cp.stakeWithAsset(1, address(usdc), overpay);
+        vm.stopPrank();
+
+        (, uint256 amount, bool active) = cp.getStakeAsset(1);
+        assertTrue(active);
+        assertEq(amount, USDC_STAKE_AMOUNT, "records required, not the passed amount");
+        assertEq(usdc.balanceOf(address(cp)), USDC_STAKE_AMOUNT, "pulls only the required stake");
+        assertEq(usdc.balanceOf(alice), overpay - USDC_STAKE_AMOUNT, "excess stays with the staker");
+    }
+
+    function test_Slash_OnOverpaidStakeUsesRequiredNotOverpayment() public {
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT + 0.5 ether}(1); // large overpayment, refunded
+
+        // Slash distributes 60/30/10 of the *required* stake only — overpayment
+        // can no longer inflate the punishment.
+        vm.prank(admin);
+        cp.slash(1, reporter);
+        assertEq(reporter.balance, (STAKE_AMOUNT * 6000) / 10000, "reporter gets 60% of required");
+        assertEq(treasury.balance, (STAKE_AMOUNT * 3000) / 10000, "treasury gets 30% of required");
+    }
+
     function test_Stake_RevertNotAttested() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);

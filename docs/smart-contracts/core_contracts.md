@@ -138,8 +138,13 @@ validator.setContentProtection(address(contentProtection));
 UUPS-upgradeable contract for anti-piracy enforcement:
 
 - **Attestation** — Creators register release / content provenance on-chain
-- **Staking** — ETH deposit required per tokenId (anti-spam deterrent)
+- **Staking** — fixed ETH or ERC-20 deposit required per tokenId (anti-spam
+  deterrent). The contract records and holds only the configured required stake:
+  a native overpayment is refunded at stake time, and the ERC-20 path pulls only
+  the required amount — overpayment can never inflate the slashable stake or the
+  stake-backed price cap (#1280).
 - **Slashing** — On confirmed infringement: 60% reporter, 30% treasury, 10% burned
+  (of the recorded required stake)
 - **Blacklisting** — Repeat offenders blocked from all protocol operations
 - **Hierarchy** — Releases and tracks are directly protected; stems inherit verification from a canonical parent track
 - **Stake-to-price proportionality** — `maxPriceMultiplier` (default 10×) caps listing price relative to staked amount, preventing high-price listings with minimal stakes

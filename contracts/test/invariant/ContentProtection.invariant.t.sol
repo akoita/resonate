@@ -57,7 +57,9 @@ contract ContentProtectionHandler is Test {
         vm.deal(attesters[i], amount);
         vm.prank(attesters[i]);
         try cp.stake{value: amount}(tokens[i]) {
-            gDeposited += amount;
+            // The contract retains only the required stake — any overpayment is
+            // refunded at stake time (#1280), so conservation tracks STAKE_AMOUNT.
+            gDeposited += STAKE_AMOUNT;
         } catch {}
     }
 

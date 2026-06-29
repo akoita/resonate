@@ -73,6 +73,23 @@ contract ContentProtectionFuzzTest is Test {
         cp.stake{value: amount}(tokenId);
     }
 
+    /// @notice Overpaying records only the required stake and refunds the surplus (#1280).
+    function testFuzz_StakeRecordsRequiredAndRefundsSurplus(uint256 tokenId, uint256 surplus) public {
+        surplus = bound(surplus, 0, 1000 ether);
+        _attest(tokenId);
+
+        uint256 sent = STAKE_AMOUNT + surplus;
+        vm.deal(attester, sent);
+        vm.prank(attester);
+        cp.stake{value: sent}(tokenId);
+
+        (uint256 recorded,, bool active) = cp.stakes(tokenId);
+        assertTrue(active);
+        assertEq(recorded, STAKE_AMOUNT, "records required regardless of overpayment");
+        assertEq(attester.balance, surplus, "surplus refunded to staker");
+        assertEq(address(cp).balance, STAKE_AMOUNT, "contract holds only the required stake");
+    }
+
     // ----------------------------------------------------------------------
     // Slash distribution
     // ----------------------------------------------------------------------
@@ -81,9 +98,12 @@ contract ContentProtectionFuzzTest is Test {
         amount = bound(amount, STAKE_AMOUNT, 1000 ether);
         _attestAndStake(tokenId, amount);
 
-        uint256 expReporter = (amount * REPORTER_BPS) / BPS;
-        uint256 expTreasury = (amount * TREASURY_BPS) / BPS;
-        uint256 expBurned = amount - expReporter - expTreasury;
+        // The recorded (slashable) stake is always the required STAKE_AMOUNT — any
+        // overpayment was refunded at stake time (#1280).
+        uint256 staked = STAKE_AMOUNT;
+        uint256 expReporter = (staked * REPORTER_BPS) / BPS;
+        uint256 expTreasury = (staked * TREASURY_BPS) / BPS;
+        uint256 expBurned = staked - expReporter - expTreasury;
 
         uint256 rBefore = reporter.balance;
         uint256 tBefore = treasury.balance;
@@ -93,7 +113,7 @@ contract ContentProtectionFuzzTest is Test {
 
         assertEq(reporter.balance - rBefore, expReporter, "reporter gets 60%");
         assertEq(treasury.balance - tBefore, expTreasury, "treasury gets 30%");
-        assertEq(expReporter + expTreasury + expBurned, amount, "splits sum to stake");
+        assertEq(expReporter + expTreasury + expBurned, staked, "splits sum to stake");
         // 10% burned stays in the contract
         assertEq(address(cp).balance, expBurned, "burned remainder retained in contract");
 
@@ -117,7 +137,8 @@ contract ContentProtectionFuzzTest is Test {
         vm.prank(owner);
         cp.refundStake(tokenId);
 
-        assertEq(attester.balance - before, amount, "attester refunded the exact stake");
+        // Only the required stake was held — overpayment was already refunded at stake time (#1280).
+        assertEq(attester.balance - before, STAKE_AMOUNT, "attester refunded the exact required stake");
         assertEq(address(cp).balance, 0, "contract fully drained on refund");
         (, , bool active) = cp.stakes(tokenId);
         assertFalse(active, "stake deactivated by refund");
@@ -145,8 +166,9 @@ contract ContentProtectionFuzzTest is Test {
             paidOut = attester.balance - before;
         }
 
-        // staked == paid out + retained in contract (burned remainder, or 0 after refund)
-        assertEq(amount, paidOut + address(cp).balance, "staked == paidOut + retained");
+        // The required stake == paid out + retained in contract (burned remainder, or
+        // 0 after refund); overpayment was refunded at stake time, so `amount` is moot (#1280).
+        assertEq(STAKE_AMOUNT, paidOut + address(cp).balance, "required stake == paidOut + retained");
     }
 
     // ----------------------------------------------------------------------
