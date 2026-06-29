@@ -268,13 +268,23 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
         if (listing.seller == msg.sender) revert CannotBuyOwnListing();
         if (listing.seller == recipient) revert CannotBuyOwnListing();
         if (block.timestamp > listing.expiry) revert Expired();
-        if (amount > listing.amount) revert InsufficientAmount();
+        // #1284: reject zero-amount buys (no-op that would still emit Sold and poke
+        // onERC1155Received). #1283: cap at the listed amount.
+        if (amount == 0 || amount > listing.amount) revert InsufficientAmount();
 
         // Cache values before potential deletion
         address seller = listing.seller;
         uint256 tokenId = listing.tokenId;
         address paymentToken = listing.paymentToken;
         uint256 totalPrice = amount * listing.pricePerUnit;
+
+        // #1283: re-validate the seller still holds and has approved the units. A stale
+        // listing (the seller transferred the tokens away after listing) fails here with
+        // a clear error before any payment work, instead of relying on the final NFT
+        // transfer to revert. Note: listings persist across balance changes — a seller
+        // who exits a position should cancel the listing.
+        if (stemNFT.balanceOf(seller, tokenId) < amount) revert InsufficientAmount();
+        if (!stemNFT.isApprovedForAll(seller, address(this))) revert MarketplaceNotApproved();
 
         // Calculate fees
         (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(
