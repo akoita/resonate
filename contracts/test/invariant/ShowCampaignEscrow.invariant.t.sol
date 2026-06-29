@@ -44,10 +44,10 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
         escrow.activateCampaign(campaignId);
         vm.stopPrank();
 
-        handler = new ShowCampaignEscrowHandler(escrow, usdc, campaignId, confirmer);
+        handler = new ShowCampaignEscrowHandler(escrow, usdc, campaignId, confirmer, owner);
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](8);
+        bytes4[] memory selectors = new bytes4[](10);
         selectors[0] = ShowCampaignEscrowHandler.advanceTime.selector;
         selectors[1] = ShowCampaignEscrowHandler.pledge.selector;
         selectors[2] = ShowCampaignEscrowHandler.markFailed.selector;
@@ -56,6 +56,8 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
         selectors[5] = ShowCampaignEscrowHandler.releaseDeposit.selector;
         selectors[6] = ShowCampaignEscrowHandler.confirmFulfillment.selector;
         selectors[7] = ShowCampaignEscrowHandler.releaseFunds.selector;
+        selectors[8] = ShowCampaignEscrowHandler.cancelCampaign.selector;
+        selectors[9] = ShowCampaignEscrowHandler.claimRefund.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -92,17 +94,19 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
     MockUSDC public immutable usdc;
     uint256 public immutable campaignId;
     address public immutable confirmer;
+    address public immutable campaignOwner;
 
     address[] public actors;
     uint256 public pledgeCalls;
     uint256 public bookingCalls;
     uint256 public fulfillmentCalls;
 
-    constructor(ShowCampaignEscrow _escrow, MockUSDC _usdc, uint256 _campaignId, address _confirmer) {
+    constructor(ShowCampaignEscrow _escrow, MockUSDC _usdc, uint256 _campaignId, address _confirmer, address _owner) {
         escrow = _escrow;
         usdc = _usdc;
         campaignId = _campaignId;
         confirmer = _confirmer;
+        campaignOwner = _owner;
 
         for (uint256 i = 0; i < 5; i++) {
             address actor = makeAddr(string(abi.encodePacked("showBacker", i)));
@@ -172,5 +176,18 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
         if (escrow.campaignStatus(campaignId) != CampaignStatus.Fulfilled) return;
 
         try escrow.releaseFunds(campaignId) {} catch {}
+    }
+
+    function cancelCampaign() external {
+        vm.prank(campaignOwner);
+        try escrow.cancelCampaign(campaignId) {} catch {}
+    }
+
+    function claimRefund(uint256 actorSeed) external {
+        if (escrow.campaignStatus(campaignId) != CampaignStatus.RefundAvailable) return;
+        address actor = actors[actorSeed % actors.length];
+
+        vm.prank(actor);
+        try escrow.claimRefund(campaignId) {} catch {}
     }
 }

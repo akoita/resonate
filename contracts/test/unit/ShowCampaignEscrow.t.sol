@@ -355,6 +355,110 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.claimRefund(campaignId);
     }
 
+    // ── #1276: refunds recoverable after an early deposit release ───────────
+
+    /// @notice After a deposit is released, a stalled campaign can be cancelled and
+    /// backers recover their pro-rata share of the *remaining* balance — the funds
+    /// are no longer permanently locked in `DepositReleased`.
+    function test_CancelAfterDepositReleaseRefundsRemainingProRata() public {
+        uint256 campaignId = _fundCampaign(2_000); // 20% deposit, 1_100e6 pledged
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        vm.prank(confirmer);
+        escrow.releaseDeposit(campaignId); // 220e6 to artist → DepositReleased
+
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.DepositReleased));
+        assertEq(usdc.balanceOf(artist), 220e6);
+
+        // The show falls through: owner opens refunds on the stalled campaign.
+        vm.prank(owner);
+        vm.expectEmit(true, false, false, false);
+        emit RefundAvailable(campaignId);
+        escrow.cancelCampaign(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        // Backers recover pro-rata of the remaining 880e6 (1_100 - 220 deposit).
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        emit RefundClaimed(campaignId, alice, 480e6); // 600/1100 * 880
+        escrow.claimRefund(campaignId);
+        assertEq(usdc.balanceOf(alice) - aliceBefore, 480e6);
+
+        uint256 bobBefore = usdc.balanceOf(bob);
+        vm.prank(bob);
+        escrow.claimRefund(campaignId); // 500/1100 * 880 = 400e6
+        assertEq(usdc.balanceOf(bob) - bobBefore, 400e6);
+
+        // Conservation: artist 220 + alice 480 + bob 400 == 1_100 pledged; escrow drained.
+        assertEq(usdc.balanceOf(artist) + (usdc.balanceOf(alice) - aliceBefore) + (usdc.balanceOf(bob) - bobBefore), 1_100e6);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Refunded));
+    }
+
+    /// @notice A Fulfilled campaign can be cancelled within the dispute window; with
+    /// no deposit released, backers recover their full pledges.
+    function test_CancelFromFulfilledDuringDisputeWindowRefunds() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(campaignId);
+        escrow.confirmFulfillment(campaignId);
+        vm.stopPrank();
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Fulfilled));
+
+        // Dispute upheld during the window: owner cancels → refunds open.
+        vm.prank(owner);
+        escrow.cancelCampaign(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        vm.prank(alice);
+        escrow.claimRefund(campaignId); // full 600e6 (no deposit released)
+        vm.prank(bob);
+        escrow.claimRefund(campaignId); // full 500e6
+
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+        assertEq(usdc.balanceOf(artist), 0);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Refunded));
+    }
+
+    /// @notice Refund finalizes to Refunded once every distinct backer has claimed
+    /// (claim-counter based, independent of pledge sizes / pro-rata dust).
+    function test_RefundFinalizesWhenAllBackersClaim() public {
+        uint256 campaignId = _fundCampaign(0); // alice 600, bob 500 → 2 backers
+
+        vm.warp(block.timestamp + 31 days);
+        escrow.openRefundsAfterMissedBooking(campaignId);
+
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        vm.prank(bob);
+        escrow.claimRefund(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Refunded));
+        assertEq(escrow.refundedBackers(campaignId), 2);
+    }
+
+    /// @notice Terminal states cannot be re-opened for refunds.
+    function test_RevertsCancelFromReleasedState() public {
+        uint256 campaignId = _fundCampaign(0);
+
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(campaignId);
+        escrow.confirmFulfillment(campaignId);
+        vm.stopPrank();
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+        escrow.releaseFunds(campaignId); // → Released (terminal)
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, campaignId, CampaignStatus.Released)
+        );
+        escrow.cancelCampaign(campaignId);
+    }
+
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(
