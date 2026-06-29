@@ -492,6 +492,70 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         vm.stopPrank();
     }
 
+    // ── #1277: creation-param validation + bookingDeadline boundary ─────────
+
+    function test_RevertsCreateWithZeroMinimumBackers() public {
+        vm.prank(owner);
+        vm.expectRevert(IShowCampaignEscrow.InvalidMinimumBackers.selector);
+        escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL,
+            0, // minimumBackers
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, DISPUTE_WINDOW
+        );
+    }
+
+    function test_RevertsCreateWithDisputeWindowOutOfRange() public {
+        uint256 minW = escrow.MIN_DISPUTE_WINDOW();
+        uint256 maxW = escrow.MAX_DISPUTE_WINDOW();
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidDisputeWindow.selector, 0, minW, maxW));
+        escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS,
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, 0
+        );
+
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidDisputeWindow.selector, maxW + 1, minW, maxW));
+        escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS,
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, maxW + 1
+        );
+    }
+
+    /// @notice At exactly bookingDeadline the second belongs to the confirmer: refunds
+    /// cannot be opened, and confirmBooking succeeds (no both-callable overlap).
+    function test_BookingDeadlineBoundaryBelongsToConfirmer() public {
+        uint256 campaignId = _fundCampaign(0);
+        uint256 bookingDeadline = block.timestamp + 30 days; // == the campaign's deadline (no warp since creation)
+        vm.warp(bookingDeadline);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.BookingDeadlineNotPassed.selector, campaignId, bookingDeadline, bookingDeadline
+            )
+        );
+        escrow.openRefundsAfterMissedBooking(campaignId);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.BookingConfirmed));
+    }
+
+    function test_ConfirmBookingAfterDeadlineRevertsPassed() public {
+        uint256 campaignId = _fundCampaign(0);
+        uint256 bookingDeadline = block.timestamp + 30 days;
+        vm.warp(bookingDeadline + 1); // strictly after
+
+        vm.prank(confirmer);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.BookingDeadlinePassed.selector, campaignId, bookingDeadline, bookingDeadline + 1
+            )
+        );
+        escrow.confirmBooking(campaignId);
+    }
+
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(
