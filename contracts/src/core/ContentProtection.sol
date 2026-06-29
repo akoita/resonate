@@ -264,7 +264,18 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
     function _stakeNative(uint256 tokenId) internal {
         if (msg.value < stakeAmount) revert InsufficientStake();
         _validateStakeAsset(address(0));
-        _recordStake(tokenId, address(0), msg.value);
+
+        // Record the canonical stake, not msg.value: overpayment must not inflate
+        // the slashable stake or the stake-backed price cap (getMaxListingPrice).
+        // Effects before the surplus refund (CEI); reentry is blocked by the
+        // nonReentrant entrypoint.
+        uint256 required = stakeAmount;
+        _recordStake(tokenId, address(0), required);
+
+        uint256 surplus = msg.value - required;
+        if (surplus != 0) {
+            _pay(address(0), msg.sender, surplus);
+        }
     }
 
     function _stakeErc20(uint256 tokenId, address token, uint256 amount) internal {
@@ -276,8 +287,11 @@ contract ContentProtection is Initializable, UUPSUpgradeable, ReentrancyGuard {
         if (requiredAmount == 0) revert InvalidStakeAmount();
         if (amount < requiredAmount) revert InsufficientStake();
 
-        _recordStake(tokenId, token, amount);
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        // Record and pull exactly the required stake. `amount` is the caller's
+        // max-willing amount and must cover the requirement, but staking more must
+        // not inflate the slashable stake.
+        _recordStake(tokenId, token, requiredAmount);
+        IERC20(token).safeTransferFrom(msg.sender, address(this), requiredAmount);
     }
 
     function _recordStake(uint256 tokenId, address token, uint256 amount) internal {

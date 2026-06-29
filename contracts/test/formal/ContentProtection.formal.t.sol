@@ -61,22 +61,27 @@ contract ContentProtectionFormalTest is Test, SymTest {
         vm.stopPrank();
     }
 
-    /// Slash distributes 60/30 and retains the 10% remainder; the parts sum to the stake.
+    /// Slash distributes 60/30 and retains the 10% remainder; the parts sum to the
+    /// recorded stake. Staking any `amount >= MIN_STAKE` records only MIN_STAKE — the
+    /// overpayment is never pulled (#1280) — so the slash conserves exactly MIN_STAKE
+    /// regardless of how much the attester over-funded.
     function check_slashAssetConservesStake(uint256 tokenId, uint256 amount) public {
         vm.assume(amount >= MIN_STAKE && amount <= 1e24);
         _attestAndStakeAsset(tokenId, amount);
 
+        uint256 staked = MIN_STAKE; // recorded stake, not the (possibly larger) sent amount
+
         vm.prank(owner);
         cp.slash(tokenId, reporter);
 
-        uint256 expReporter = (amount * REPORTER_BPS) / BPS;
-        uint256 expTreasury = (amount * TREASURY_BPS) / BPS;
-        uint256 expBurned = amount - expReporter - expTreasury;
+        uint256 expReporter = (staked * REPORTER_BPS) / BPS;
+        uint256 expTreasury = (staked * TREASURY_BPS) / BPS;
+        uint256 expBurned = staked - expReporter - expTreasury;
 
         assert(usdc.balanceOf(reporter) == expReporter);
         assert(usdc.balanceOf(treasury) == expTreasury);
         assert(usdc.balanceOf(address(cp)) == expBurned);
-        assert(expReporter + expTreasury + expBurned == amount);
+        assert(expReporter + expTreasury + expBurned == staked);
     }
 
     /// Refund returns the exact staked amount to the attester.
