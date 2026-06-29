@@ -187,12 +187,19 @@ certoraRun certora/conf/content_protection.conf
 certoraRun certora/conf/stem_nft.conf
 certoraRun certora/conf/stem_marketplace.conf
 
-# Mutation testing for high-value contract suites/specs
-# Configure Gambit per target contract/spec before running it in CI.
-gambit mutate --json gambit.json                     # StemNFT
+# Mutation testing for high-value contracts (Certora Gambit).
+# Setup: a standalone solc on PATH + the Gambit binary, e.g.
+#   solc 0.8.28: https://github.com/ethereum/solidity/releases (solc-static-linux)
+#   gambit v1.0.6: https://github.com/Certora/gambit/releases (gambit-linux-*)
+# Then generate mutants (counts shown were observed with gambit v1.0.6):
+gambit mutate --json gambit.json                     # StemNFT          (~80 mutants)
 gambit mutate --json gambit-marketplace.json         # StemMarketplaceV2
-gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow
+gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow    (~133 mutants)
 gambit mutate --json gambit-content-protection.json  # ContentProtection
+# Scoring (kill rate): compile each mutant + run `forge test`; a mutant that
+# leaves the suite green is a survivor and becomes a follow-up test/spec rule.
+# This full kill campaign is compute-heavy and runs in the scheduled CI workflow
+# (tracked in #1260), not per-PR.
 
 # Gas report
 forge test --gas-report
