@@ -408,6 +408,42 @@ contract ContentProtectionTest is Test {
         assertTrue(cp.isBlacklisted(alice));
     }
 
+    // ── #1282: the retained slash remainder is sweepable to the treasury ────
+
+    function test_Slash_AccumulatesAndSweepsBurned() public {
+        vm.prank(alice);
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT}(1);
+
+        vm.prank(admin);
+        cp.slash(1, reporter);
+
+        uint256 burned = STAKE_AMOUNT - (STAKE_AMOUNT * 6000) / 10000 - (STAKE_AMOUNT * 3000) / 10000; // 10%
+        assertEq(cp.totalBurned(address(0)), burned, "burn remainder tracked");
+        assertEq(address(cp).balance, burned, "remainder retained in contract");
+
+        uint256 treasuryBefore = treasury.balance;
+        vm.prank(admin);
+        cp.sweepBurned(address(0));
+        assertEq(treasury.balance - treasuryBefore, burned, "swept to treasury");
+        assertEq(cp.totalBurned(address(0)), 0, "cleared");
+        assertEq(address(cp).balance, 0, "contract drained of the remainder");
+    }
+
+    function test_SweepBurned_RevertNothingToSweep() public {
+        vm.prank(admin);
+        vm.expectRevert(ContentProtection.NothingToClaim.selector);
+        cp.sweepBurned(address(0));
+    }
+
+    function test_SweepBurned_RevertNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(ContentProtection.NotOwner.selector);
+        cp.sweepBurned(address(0));
+    }
+
     function test_Slash_RevertNotOwner() public {
         vm.prank(alice);
         cp.attest(1, keccak256("a"), keccak256("b"), "uri");
