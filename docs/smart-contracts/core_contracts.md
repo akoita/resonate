@@ -228,7 +228,12 @@ Core behavior:
 - owner or authorized confirmers can confirm booking and fulfillment;
 - optional deposit release is capped at 30% and only available after booking
   confirmation when disclosed in campaign terms;
-- final release is permissionless after fulfillment and the dispute window.
+- final release is permissionless after fulfillment and the dispute window;
+- the owner can cancel a campaign that stalls after an early deposit release or
+  during the dispute window; backers then claim their **pro-rata share of the
+  remaining (outstanding) balance** — `pledge × (totalPledged − totalReleased) /
+  totalPledged` — so an early deposit payout can never strand the rest of the
+  funds (#1276). With no deposit released this equals each backer's full pledge.
 
 ```solidity
 uint256 campaignId = showEscrow.createCampaign(

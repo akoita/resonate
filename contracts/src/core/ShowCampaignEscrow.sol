@@ -29,6 +29,12 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     mapping(uint256 => mapping(address => uint256)) public pledgedByBacker;
     mapping(address => bool) public confirmers;
 
+    /// @notice campaignId => number of distinct backers who have claimed a refund.
+    /// @dev Used to finalize a campaign to `Refunded` once every backer has claimed,
+    ///      without relying on an exact-balance equality (pro-rata refunds after a
+    ///      partial deposit release can leave a few wei of dust).
+    mapping(uint256 => uint256) public refundedBackers;
+
     modifier whenNotPaused() {
         if (paused) revert Paused();
         _;
@@ -217,17 +223,35 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.RefundAvailable) revert RefundUnavailable(campaignId, campaign.status);
 
-        uint256 amount = pledgedByBacker[campaignId][msg.sender];
-        if (amount == 0) revert NoPledge(campaignId, msg.sender);
+        uint256 pledge = pledgedByBacker[campaignId][msg.sender];
+        if (pledge == 0) revert NoPledge(campaignId, msg.sender);
 
+        // Refund the backer's pro-rata share of the *outstanding* balance. With no
+        // deposit released (totalReleased == 0) this equals the full pledge, so the
+        // common refund path is unchanged. After an early deposit release, backers
+        // share only what remains (totalPledged - totalReleased), so refunds plus the
+        // already-released deposit can never exceed the escrowed balance. totalPledged
+        // is non-zero here because this backer's pledge is non-zero.
+        uint256 outstanding = campaign.totalPledged - campaign.totalReleased;
+        uint256 amount = (pledge * outstanding) / campaign.totalPledged;
+
+        // Effects (CEI): clear the pledge and book the refund before transferring.
         pledgedByBacker[campaignId][msg.sender] = 0;
         campaign.totalRefunded += amount;
-        IERC20(campaign.paymentToken).safeTransfer(msg.sender, amount);
-        emit RefundClaimed(campaignId, msg.sender, amount);
 
-        if (campaign.totalRefunded + campaign.totalReleased == campaign.totalPledged) {
+        // Finalize once every distinct backer has claimed. A claim counter is used
+        // instead of an exact-balance equality because pro-rata truncation can leave
+        // a few wei of dust that would otherwise keep the status from settling.
+        uint256 claimed = ++refundedBackers[campaignId];
+        if (claimed == campaign.uniqueBackers) {
             campaign.status = CampaignStatus.Refunded;
         }
+
+        // Interactions
+        if (amount != 0) {
+            IERC20(campaign.paymentToken).safeTransfer(msg.sender, amount);
+        }
+        emit RefundClaimed(campaignId, msg.sender, amount);
     }
 
     function updateAuthority(uint256 campaignId, bytes32 authorityHash, address beneficiary) external onlyOwner {
@@ -292,7 +316,13 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     }
 
     function _canCancel(CampaignStatus status) internal pure returns (bool) {
+        // DepositReleased and Fulfilled are cancellable so the owner can open
+        // refunds on a campaign that stalls after an early deposit release or
+        // during the dispute window; claimRefund then distributes the remaining
+        // (outstanding) balance pro-rata. Released/RefundAvailable/Refunded are
+        // terminal and must not be re-opened.
         return status == CampaignStatus.Draft || status == CampaignStatus.Active || status == CampaignStatus.Funded
-            || status == CampaignStatus.BookingConfirmed;
+            || status == CampaignStatus.BookingConfirmed || status == CampaignStatus.DepositReleased
+            || status == CampaignStatus.Fulfilled;
     }
 }
