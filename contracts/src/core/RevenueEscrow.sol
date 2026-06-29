@@ -53,6 +53,12 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     /// @notice Optional content protection module for dispute cascades
     IContentProtection public contentProtection;
 
+    /// @notice Addresses allowed to route revenue into escrow. Deposits create the
+    /// escrow and bind its beneficiary, so only trusted revenue routers (e.g. the
+    /// backend settlement signer) may deposit — this prevents an attacker from
+    /// front-running the first deposit to capture a token's beneficiary.
+    mapping(address => bool) public authorizedDepositors;
+
     // ============ Events ============
 
     event RevenueDeposited(uint256 indexed tokenId, address indexed depositor, uint256 amount, uint256 newBalance);
@@ -81,6 +87,8 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
 
     event EscrowPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
 
+    event DepositorUpdated(address indexed depositor, bool allowed);
+
     // ============ Errors ============
 
     error NoEscrow();
@@ -93,6 +101,8 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     error TransferFailed();
     error UnexpectedETH();
     error UnsupportedAsset();
+    error UnauthorizedDepositor(address caller);
+    error BeneficiaryMismatch(uint256 tokenId, address expected, address provided);
 
     // ============ Constructor ============
 
@@ -104,6 +114,16 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         defaultEscrowPeriod = _defaultEscrowPeriod;
     }
 
+    /// @dev Only the owner or an allowlisted revenue router may deposit. Deposits
+    /// create the escrow and bind its beneficiary, so leaving them open would let an
+    /// attacker front-run the first deposit and capture a token's beneficiary.
+    modifier onlyDepositor() {
+        if (msg.sender != owner() && !authorizedDepositors[msg.sender]) {
+            revert UnauthorizedDepositor(msg.sender);
+        }
+        _;
+    }
+
     // ============ Deposit ============
 
     /**
@@ -111,7 +131,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
      * @param tokenId The token ID to deposit revenue for
      * @param beneficiary The address that will receive funds on release
      */
-    function deposit(uint256 tokenId, address beneficiary) external payable {
+    function deposit(uint256 tokenId, address beneficiary) external payable onlyDepositor {
         if (msg.value == 0) revert ZeroAmount();
         _deposit(tokenId, beneficiary, address(0), msg.value);
     }
@@ -119,6 +139,7 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     function depositWithAsset(uint256 tokenId, address beneficiary, address token, uint256 amount)
         external
         nonReentrant
+        onlyDepositor
     {
         if (token == address(0)) revert UnsupportedAsset();
         if (amount == 0) revert ZeroAmount();
@@ -134,9 +155,14 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
         _trackEscrowAsset(tokenId, token);
 
         if (info.beneficiary == address(0)) {
-            // First deposit — create escrow
+            // First deposit — create escrow and bind the beneficiary.
             info.beneficiary = beneficiary;
             info.escrowEndTime = block.timestamp + defaultEscrowPeriod;
+        } else if (info.beneficiary != beneficiary) {
+            // The beneficiary is fixed once set (and after an admin redirect).
+            // Reject a mismatched value rather than silently crediting a different
+            // beneficiary than the caller passed.
+            revert BeneficiaryMismatch(tokenId, info.beneficiary, beneficiary);
         }
 
         info.balance += amount;
@@ -228,6 +254,14 @@ contract RevenueEscrow is Ownable, ReentrancyGuard {
     function setContentProtection(address cp) external onlyOwner {
         if (cp == address(0)) revert ZeroAddress();
         contentProtection = IContentProtection(cp);
+    }
+
+    /// @notice Allow or revoke an address as a revenue-routing depositor. Only the
+    /// owner and allowlisted depositors may create escrows / route revenue.
+    function setDepositor(address depositor, bool allowed) external onlyOwner {
+        if (depositor == address(0)) revert ZeroAddress();
+        authorizedDepositors[depositor] = allowed;
+        emit DepositorUpdated(depositor, allowed);
     }
 
     function setDefaultEscrowPeriod(uint256 newPeriod) external onlyOwner {

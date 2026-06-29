@@ -51,8 +51,11 @@ contract RevenueEscrowTest is Test {
         vm.prank(admin);
         escrow = new RevenueEscrow(admin, ESCROW_PERIOD);
 
-        vm.prank(admin);
+        vm.startPrank(admin);
         escrow.setContentProtection(address(cp));
+        // The test contract is the revenue router in these unit tests.
+        escrow.setDepositor(address(this), true);
+        vm.stopPrank();
     }
 
     // ============ Deposit ============
@@ -109,6 +112,79 @@ contract RevenueEscrowTest is Test {
         vm.deal(address(this), 1 ether);
         vm.expectRevert(RevenueEscrow.ZeroAddress.selector);
         escrow.deposit{value: 0.5 ether}(1, address(0));
+    }
+
+    // ── #1278: deposits are gated to authorized revenue routers ─────────────
+
+    function test_Deposit_RevertUnauthorizedDepositor() public {
+        vm.deal(alice, 1 ether);
+        vm.prank(alice); // not owner, not an authorized depositor
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, alice));
+        escrow.deposit{value: 0.5 ether}(1, alice);
+    }
+
+    function test_DepositWithAsset_RevertUnauthorizedDepositor() public {
+        usdc.mint(alice, USDC_AMOUNT);
+        vm.startPrank(alice);
+        usdc.approve(address(escrow), USDC_AMOUNT);
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, alice));
+        escrow.depositWithAsset(1, alice, address(usdc), USDC_AMOUNT);
+        vm.stopPrank();
+    }
+
+    function test_SetDepositor_AuthorizesAndRevokes() public {
+        // bob is not authorized initially.
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        escrow.deposit{value: 0.5 ether}(1, alice);
+
+        // Owner authorizes bob → he can deposit.
+        vm.prank(admin);
+        escrow.setDepositor(bob, true);
+        vm.prank(bob);
+        escrow.deposit{value: 0.5 ether}(1, alice);
+        (, uint256 balance,,) = escrow.getEscrow(1);
+        assertEq(balance, 0.5 ether);
+
+        // Owner revokes bob → he can no longer deposit.
+        vm.prank(admin);
+        escrow.setDepositor(bob, false);
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        escrow.deposit{value: 0.5 ether}(2, alice);
+    }
+
+    function test_SetDepositor_RevertNotOwner() public {
+        vm.prank(alice);
+        vm.expectRevert(); // Ownable: caller is not the owner
+        escrow.setDepositor(bob, true);
+    }
+
+    function test_Deposit_RevertBeneficiaryMismatch() public {
+        vm.deal(address(this), 2 ether);
+        escrow.deposit{value: 0.5 ether}(1, alice); // escrow bound to alice
+
+        // A second deposit naming a different beneficiary is rejected, not silently
+        // credited to the stored beneficiary.
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.BeneficiaryMismatch.selector, uint256(1), alice, bob));
+        escrow.deposit{value: 0.5 ether}(1, bob);
+    }
+
+    function test_Deposit_FrontRunCapturePrevented() public {
+        // An attacker cannot pre-create the escrow to capture the beneficiary —
+        // deposits are gated to authorized routers.
+        vm.deal(bob, 1 ether);
+        vm.prank(bob); // attacker, unauthorized
+        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        escrow.deposit{value: 1}(1, bob);
+
+        // The legitimate router then binds the intended beneficiary.
+        vm.deal(address(this), 1 ether);
+        escrow.deposit{value: 0.5 ether}(1, alice);
+        (address beneficiary,,,) = escrow.getEscrow(1);
+        assertEq(beneficiary, alice);
     }
 
     // ============ Freeze / Unfreeze ============
