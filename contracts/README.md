@@ -185,6 +185,7 @@ certoraRun certora/conf/show_campaign_escrow.conf
 certoraRun certora/conf/revenue_escrow.conf
 certoraRun certora/conf/content_protection.conf
 certoraRun certora/conf/stem_nft.conf
+certoraRun certora/conf/stem_marketplace.conf
 
 # Mutation testing for high-value contract suites/specs
 # Configure Gambit per target contract/spec before running it in CI.
