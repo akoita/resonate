@@ -338,7 +338,7 @@ jobs:
         # baseline (catches layout-breaking changes before they reach a proxy). After
         # an intentional, upgrade-safe change, run
         # `scripts/check-storage-layout.sh --update` and commit the baseline (#1297).
-        run: scripts/check-storage-layout.sh
+        run: bash scripts/check-storage-layout.sh
         working-directory: contracts
 
   backend-unit-tests:
