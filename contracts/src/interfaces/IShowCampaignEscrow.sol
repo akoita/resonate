@@ -79,6 +79,7 @@ interface IShowCampaignEscrow {
     error NoPledge(uint256 campaignId, address backer);
     error DepositUnavailable(uint256 campaignId, uint256 depositReleaseBps, uint256 computedAmount);
     error DisputeWindowActive(uint256 campaignId, uint256 unlockTime, uint256 currentTime);
+    error DisputeWindowClosed(uint256 campaignId, uint256 closedTime, uint256 currentTime);
     error NothingToRelease(uint256 campaignId);
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error BookingDeadlinePassed(uint256 campaignId, uint256 bookingDeadline, uint256 currentTime);

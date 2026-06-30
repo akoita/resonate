@@ -250,11 +250,17 @@ Core behavior:
 - optional deposit release is capped at 30% and only available after booking
   confirmation when disclosed in campaign terms;
 - final release is permissionless after fulfillment and the dispute window;
-- the owner can cancel a campaign that stalls after an early deposit release or
-  during the dispute window; backers then claim their **pro-rata share of the
-  remaining (outstanding) balance** — `pledge × (totalPledged − totalReleased) /
-  totalPledged` — so an early deposit payout can never strand the rest of the
-  funds (#1276). With no deposit released this equals each backer's full pledge.
+- the owner can cancel a campaign that stalls after an early deposit release, or a
+  fulfilled one **only while its dispute window is still open** — once the window
+  closes the payout has matured and `releaseFunds` is permissionless, so the owner
+  can no longer divert an already-claimable artist payout back to refunds
+  (`cancelCampaign` reverts `DisputeWindowClosed`);
+- backers then claim their **pro-rata share of the remaining (outstanding)
+  balance** — `pledge × (totalPledged − totalReleased) / totalPledged` — so an
+  early deposit payout can never strand the rest of the funds (#1276). With no
+  deposit released this equals each backer's full pledge. The `refundable(id,
+  backer)` view returns this same claimable amount, so it never overstates what a
+  backer will actually receive.
 
 ```solidity
 uint256 campaignId = showEscrow.createCampaign(

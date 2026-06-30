@@ -34,6 +34,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow }
           - { contract: StemNFT, config: gambit.json, match: StemNFT }
           - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace }
           - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow }

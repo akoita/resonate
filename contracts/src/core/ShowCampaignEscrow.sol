@@ -171,6 +171,20 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     function cancelCampaign(uint256 campaignId) external onlyOwner {
         Campaign storage campaign = _campaign(campaignId);
         if (!_canCancel(campaign.status)) revert InvalidStatus(campaignId, campaign.status);
+        // A Fulfilled campaign is only cancellable (for dispute resolution) while its
+        // dispute window is open. Once the window closes the payout has matured and
+        // releaseFunds is permissionless, so the owner must not be able to divert an
+        // already-claimable artist payout back to refunds. The boundary mirrors
+        // releaseFunds: at `fulfilledAt + disputeWindowSeconds` the funds become
+        // releasable and cancellation is no longer permitted.
+        if (
+            campaign.status == CampaignStatus.Fulfilled
+                && block.timestamp >= campaign.fulfilledAt + campaign.disputeWindowSeconds
+        ) {
+            revert DisputeWindowClosed(
+                campaignId, campaign.fulfilledAt + campaign.disputeWindowSeconds, block.timestamp
+            );
+        }
         campaign.status = CampaignStatus.RefundAvailable;
         emit CampaignCancelled(campaignId);
         emit RefundAvailable(campaignId);
@@ -294,10 +308,16 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit CampaignPaused(isPaused);
     }
 
+    /// @notice The amount `backer` can actually withdraw via {claimRefund}. Mirrors
+    /// claimRefund's pro-rata math so the view never overstates the claimable amount
+    /// after an early deposit release (when only the outstanding balance is shared).
     function refundable(uint256 campaignId, address backer) external view returns (uint256) {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.RefundAvailable) return 0;
-        return pledgedByBacker[campaignId][backer];
+        uint256 pledge = pledgedByBacker[campaignId][backer];
+        if (pledge == 0) return 0; // totalPledged is non-zero whenever a pledge is
+        uint256 outstanding = campaign.totalPledged - campaign.totalReleased;
+        return (pledge * outstanding) / campaign.totalPledged;
     }
 
     function campaignStatus(uint256 campaignId) external view returns (CampaignStatus) {
@@ -338,8 +358,10 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         // DepositReleased and Fulfilled are cancellable so the owner can open
         // refunds on a campaign that stalls after an early deposit release or
         // during the dispute window; claimRefund then distributes the remaining
-        // (outstanding) balance pro-rata. Released/RefundAvailable/Refunded are
-        // terminal and must not be re-opened.
+        // (outstanding) balance pro-rata. Cancelling a Fulfilled campaign is
+        // additionally time-bounded in cancelCampaign — only allowed while the
+        // dispute window is open. Released/RefundAvailable/Refunded are terminal
+        // and must not be re-opened.
         return status == CampaignStatus.Draft || status == CampaignStatus.Active || status == CampaignStatus.Funded
             || status == CampaignStatus.BookingConfirmed || status == CampaignStatus.DepositReleased
             || status == CampaignStatus.Fulfilled;

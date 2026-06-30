@@ -782,6 +782,30 @@ export const ShowCampaignEscrowABI = [
   },
   {
     "type": "function",
+    "name": "MAX_DISPUTE_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_DISPUTE_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "activateCampaign",
     "inputs": [
       {
@@ -1158,6 +1182,23 @@ export const ShowCampaignEscrowABI = [
       {
         "name": "backer",
         "type": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "refundedBackers",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256"
       }
     ],
     "outputs": [
@@ -1613,6 +1654,24 @@ export const ShowCampaignEscrowABI = [
   },
   {
     "type": "error",
+    "name": "BookingDeadlinePassed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "bookingDeadline",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "DeadlineNotPassed",
     "inputs": [
       {
@@ -1699,6 +1758,38 @@ export const ShowCampaignEscrowABI = [
   },
   {
     "type": "error",
+    "name": "DisputeWindowClosed",
+    "inputs": [
+      {
+        "name": "campaignId",
+        "type": "uint256"
+      },
+      {
+        "name": "closedTime",
+        "type": "uint256"
+      },
+      {
+        "name": "currentTime",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "FeeOnTransferNotSupported",
+    "inputs": [
+      {
+        "name": "expected",
+        "type": "uint256"
+      },
+      {
+        "name": "received",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
     "name": "FundingThresholdAlreadyMet",
     "inputs": [
       {
@@ -1764,6 +1855,29 @@ export const ShowCampaignEscrowABI = [
         "type": "uint256"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidDisputeWindow",
+    "inputs": [
+      {
+        "name": "provided",
+        "type": "uint256"
+      },
+      {
+        "name": "min",
+        "type": "uint256"
+      },
+      {
+        "name": "max",
+        "type": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidMinimumBackers",
+    "inputs": []
   },
   {
     "type": "error",
