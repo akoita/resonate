@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IPaymentAssetRegistry} from "../interfaces/IPaymentAssetRegistry.sol";
+
 /**
  * @title PaymentAssetRegistry
  * @notice Chain-local registry of assets enabled for Resonate payment surfaces.
@@ -8,26 +10,12 @@ pragma solidity ^0.8.28;
  *      protocol contracts can share the same asset identity without committing
  *      to the full marketplace V3 router yet.
  */
-contract PaymentAssetRegistry {
+contract PaymentAssetRegistry is IPaymentAssetRegistry {
     address public owner;
-
-    struct PaymentAsset {
-        bytes32 assetId;
-        address token;
-        uint8 decimals;
-        bool enabled;
-        bool isStablecoin;
-        string symbol;
-    }
 
     mapping(bytes32 => PaymentAsset) private assetsById;
     mapping(address => bytes32) private assetIdByToken;
     bytes32[] private assetIds;
-
-    event AssetConfigured(
-        bytes32 indexed assetId, address indexed token, string symbol, uint8 decimals, bool enabled, bool isStablecoin
-    );
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     modifier onlyOwner() {
         require(msg.sender == owner, "PaymentAssetRegistry: not owner");

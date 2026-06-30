@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
+import {IPaymentAssetRegistry} from "../../src/interfaces/IPaymentAssetRegistry.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {WrappedNativeMock} from "../../src/payments/WrappedNativeMock.sol";
 
@@ -26,14 +27,14 @@ contract PaymentAssetRegistryTest is Test {
         registry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
         vm.stopPrank();
 
-        PaymentAssetRegistry.PaymentAsset memory ethAsset = registry.getAsset(LOCAL_ETH);
+        IPaymentAssetRegistry.PaymentAsset memory ethAsset = registry.getAsset(LOCAL_ETH);
         assertEq(ethAsset.symbol, "ETH");
         assertEq(ethAsset.token, address(0));
         assertEq(ethAsset.decimals, 18);
         assertTrue(ethAsset.enabled);
         assertFalse(ethAsset.isStablecoin);
 
-        PaymentAssetRegistry.PaymentAsset memory usdcAsset = registry.getAsset(LOCAL_USDC);
+        IPaymentAssetRegistry.PaymentAsset memory usdcAsset = registry.getAsset(LOCAL_USDC);
         assertEq(usdcAsset.symbol, "USDC");
         assertEq(usdcAsset.token, address(usdc));
         assertEq(usdcAsset.decimals, 6);
@@ -63,7 +64,7 @@ contract PaymentAssetRegistryTest is Test {
         assertTrue(registry.isTokenEnabled(address(0)));
         assertTrue(registry.isTokenEnabled(address(usdc)));
 
-        PaymentAssetRegistry.PaymentAsset memory usdcAsset = registry.getAssetByToken(address(usdc));
+        IPaymentAssetRegistry.PaymentAsset memory usdcAsset = registry.getAssetByToken(address(usdc));
         assertEq(usdcAsset.assetId, LOCAL_USDC);
     }
 

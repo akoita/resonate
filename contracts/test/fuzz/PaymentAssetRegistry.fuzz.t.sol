@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
+import {IPaymentAssetRegistry} from "../../src/interfaces/IPaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {MockPriceOracle} from "../../src/payments/MockPriceOracle.sol";
 
@@ -32,7 +33,7 @@ contract PaymentAssetRegistryFuzzTest is Test {
         vm.prank(owner);
         registry.configureAsset(assetId, token, "TKN", decimals, enabled, stable);
 
-        PaymentAssetRegistry.PaymentAsset memory a = registry.getAssetByToken(token);
+        IPaymentAssetRegistry.PaymentAsset memory a = registry.getAssetByToken(token);
         assertEq(a.assetId, assetId, "assetId round-trips");
         assertEq(a.token, token, "token round-trips");
         assertEq(a.decimals, decimals, "decimals round-trip");
