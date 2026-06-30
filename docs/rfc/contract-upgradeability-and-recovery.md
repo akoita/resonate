@@ -60,19 +60,26 @@ deliberately deferred to child issues under the umbrella (#1300).
 
 ## Background: current state
 
-| Contract | Custodies value? | Mutability today | Existing recovery levers |
-| --- | --- | --- | --- |
-| `ContentProtection` | yes (stakes) | **UUPS upgradeable** | upgrade; blacklist; `sweepBurned`; (no timelock) |
-| `RevenueEscrow` | yes (per-token revenue) | immutable `Ownable` | `freeze` / `unfreeze` / `redirect`; `claimFailedPayment` |
-| `ShowCampaignEscrow` | yes (fan pledges) | immutable `Ownable` | `setPaused`; `cancelCampaign` → pro-rata refunds |
-| `StemMarketplaceV2` | flow-through (per-tx) | immutable `Ownable` | `setProtocolFee`/recipient; `claimFailedPayment` |
-| `StemNFT` | yes (the assets) | immutable | `setTransferValidator` (swap the hook) |
-| `TransferValidator` | no (a hook) | immutable, but **swap-able** via `StemNFT.setTransferValidator` | replace the address |
+Recovery-lever inventory below reflects `main` after the custody-hardening work
+(#1287 push-then-escrow, #1295 sweep, #1276/#1278/#1281–#1284); a checkout behind
+those merges will not show `sweepBurned`/`claimFailedPayment`.
 
-Two things stand out: (1) the immutable contracts are **not defenceless** — they
-already hold pause/freeze/redirect/refund/swap levers — and (2) the project has
-already built the exact verification harness that makes safe upgradeability
-*possible*. These two facts shape the recommendation.
+| Contract | Custodies value? | Mutability today | Existing recovery levers (admin) | Can a depositor self-exit? |
+| --- | --- | --- | --- | --- |
+| `ContentProtection` | yes (stakes) | **UUPS upgradeable** | upgrade; `blacklist`; `sweepBurned`; **`refundStake` is `onlyOwner`** | **No** — refund is owner-only |
+| `RevenueEscrow` | yes (per-token revenue) | immutable `Ownable` | `freeze`/`unfreeze`/`redirect`; `claimFailedPayment` | **Only** once unfrozen **and** past `escrowEndTime` (`release` reverts otherwise) |
+| `ShowCampaignEscrow` | yes (fan pledges) | immutable `Ownable` | `setPaused`; `cancelCampaign` → pro-rata refunds | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
+| `StemMarketplaceV2` | flow-through (per-tx) | immutable `Ownable`; `paymentAssetRegistry` is `immutable` (no setter) | `setProtocolFee`/`setFeeRecipient`; `claimFailedPayment`; `withdrawTrappedETH` | n/a (no standing deposits) |
+| `StemNFT` | yes (the assets) | immutable | `setTransferValidator` / `setContentProtection` (swap the hooks) | holders own their tokens directly |
+| `TransferValidator` | no (a hook) | immutable, but **swap-able** via `StemNFT.setTransferValidator` | replace the address | n/a |
+
+Three things stand out: (1) the immutable contracts are **not defenceless** — they
+hold pause/freeze/redirect/refund/swap levers; (2) the project has already built
+the verification harness that makes safe upgradeability *possible*; and (3) — the
+load-bearing caveat for the design below — **a depositor cannot freely withdraw on
+demand from the custody contracts** (refunds are status- or owner-gated, releases
+are time-locked). That last fact is what disqualifies "the timelock gives users an
+exit window" as stated, and is reflected in the guardrails.
 
 ## The core trade-off
 
@@ -138,13 +145,15 @@ a circuit breaker *and* a guarded upgrade path.
   `ShowCampaignEscrow` refunds). Worth generalising.
 
 ### 4. Swappable modules (point to a new address)
-- **Mechanism:** keep the contract immutable but make its *dependencies* replaceable
-  (`StemNFT.setTransferValidator`, `setContentProtection`, the marketplace's
-  `PaymentAssetRegistry`).
+- **Mechanism:** keep the contract immutable but make its *dependencies* replaceable.
+  The seams that exist today: `StemNFT.setTransferValidator`,
+  `StemNFT.setContentProtection`, and `ContentProtection.setPaymentAssetRegistry`.
 - **Pros:** upgrades behaviour at the seams without a proxy or storage-layout risk;
   the swapped-in module is itself fresh, verifiable code.
 - **Cons:** only covers logic that lives behind a seam; the core contract's own
-  bug is still unpatchable.
+  bug is still unpatchable. **Note:** `StemMarketplaceV2.paymentAssetRegistry` is
+  `immutable` with no setter — the marketplace *cannot* swap that dependency today,
+  which is one concrete reason it leans toward UUPS (option 5) rather than this one.
 - **Fit:** already the pattern for `TransferValidator`. Prefer this over full
   upgradeability wherever a clean seam exists.
 
@@ -157,14 +166,20 @@ entirely determined by **who** may call it and **how**:
 - **5b. Owner = multisig.** Removes the single point of compromise; still *instant*,
   so a compromised quorum (or insider) can upgrade-and-drain in one transaction
   with no warning.
-- **5c. Owner = multisig + `TimelockController`, plus a fast pause.** **Recommended
-  baseline.** Upgrades are *proposed* and execute only after a public delay
-  (e.g. 24–72h), during which: the change is visible on-chain, the new
-  implementation can be re-verified by the gates below, and users can exit. A
-  *separate, fast* `pause()` (not behind the timelock) remains the emergency stop,
-  so the protocol can respond in a block while the *fix* respects the delay. This
-  is the configuration that makes upgradeability a net security gain rather than a
-  bigger rug surface.
+- **5c. Owner = multisig + `TimelockController`, plus a fast pause and a guardian
+  veto.** **Recommended baseline.** Upgrades are *proposed* and execute only after a
+  public delay (e.g. 24–72h), during which the change is visible on-chain and the
+  new implementation is re-verified by the gates below. **Important correction to a
+  common framing:** in *this* protocol the delay is **not** a user "exit window" —
+  depositors cannot freely withdraw from the custody contracts (refunds are
+  status-/owner-gated, releases are time-locked; see the current-state table). So
+  the delay buys **observation + reaction by governance, not self-exit by holders**.
+  To make the delay actually *protective*, it must be paired with **a guardian/quorum
+  veto that can cancel a queued upgrade** (and a *separate, fast* `pause()` outside
+  the timelock for an in-progress exploit). Without a veto, the timelock only
+  *announces* a malicious upgrade to users who cannot act on the announcement. This
+  bundle — timelock + veto + fast pause — is what makes upgradeability a net security
+  gain rather than a bigger rug surface.
 
 ### 6. Diamond (EIP-2535) / beacon proxies
 - **Mechanism:** modular facets / shared-beacon implementations.
@@ -177,9 +192,15 @@ entirely determined by **who** may call it and **how**:
 Upgradeability (option 5) is only defensible bundled with **all** of:
 
 1. **Timelock** on every upgrade and on the powerful admin/rescue actions, with a
-   carve-out for a *fast pause*. Telegraphs intent; gives users an exit window.
-2. **Multisig / governance authority**, never an EOA. No single key is god-mode.
-3. **Mandatory re-verification of each new implementation.** The proofs only cover
+   carve-out for a *fast pause*. Telegraphs intent and gives governance time to
+   react. (It does **not** give depositors an exit window here — see below.)
+2. **A guardian / quorum veto** that can cancel a queued upgrade during the delay.
+   This is what makes the timelock *protective* rather than merely *informational*:
+   because holders cannot self-exit the custody contracts, someone must be able to
+   *stop* a malicious queued upgrade on their behalf. (`TimelockController` supports
+   a `CANCELLER_ROLE`; assign it to an independent guardian/multisig.)
+3. **Multisig / governance authority**, never an EOA. No single key is god-mode.
+4. **Mandatory re-verification of each new implementation.** The proofs only cover
    the *current* bytecode, so every upgrade candidate must pass the existing gates
    before it can be proposed:
    - the blocking **Halmos** symbolic gate (#1275),
@@ -188,10 +209,11 @@ Upgradeability (option 5) is only defensible bundled with **all** of:
      contract (not just `ContentProtection`).
    This is the linchpin: it is what converts "we can change the code" into "we can
    change the code *and still hold the same safety properties*."
-4. **Transparency:** upgrade proposals announced; implementations verified on the
+5. **Transparency:** upgrade proposals announced; implementations verified on the
    block explorer; an emergency-response runbook (pause first, fix on the timelock).
 
-Without (1)–(3), broad upgradeability lowers security. With them, it raises it.
+Without (1)–(4) — and the veto in particular, given depositors cannot self-exit —
+broad upgradeability lowers security. With them, it raises it.
 
 ## Proposed per-contract stance
 
@@ -215,10 +237,12 @@ gates, with pause as the universal fast lever.**
 1. Ratify this stance (per-contract posture + guardrails).
 2. Land the universal **fast pause** on the value contracts (small, low-risk; can
    precede the proxy work).
-3. Stand up the **`TimelockController` + multisig** as the upgrade/admin authority.
+3. Stand up the **`TimelockController` + multisig** as the upgrade/admin authority,
+   with an independent **guardian holding `CANCELLER_ROLE`** (the veto).
 4. Convert the escrows + marketplace to **UUPS** — *one contract per PR*, each with
    initializer + storage `__gap`, the storage-layout gate extended to it, and the
-   full formal suite re-run and required.
+   full formal suite re-run and required. (For the marketplace, this also restores
+   the ability to change `paymentAssetRegistry`, which is `immutable` today.)
 5. Make the **Halmos/Certora/storage-layout gates required on every implementation
    bump** (CI policy).
 6. Publish the **emergency-response runbook**.
@@ -226,10 +250,17 @@ gates, with pause as the universal fast lever.**
 ## Risks & open questions
 
 - **Residual trust.** Even 5c leaves a timelocked party that *could* act
-  maliciously over the delay window; the mitigation is the public delay + user
-  exit, not its removal. Acceptable, but it must be stated plainly to users.
-- **Timelock vs. speed.** A long delay protects users but slows legitimate
-  fixes; the fast `pause` is what reconciles them. Pick the delay deliberately.
+  maliciously over the delay window. Because depositors **cannot self-exit** the
+  custody contracts, the mitigation is the **guardian veto + fast pause**, not a
+  user exit — this must be stated plainly to users, and the guardian's
+  independence from the upgrade multisig is itself a trust assumption to design for.
+- **Should custody contracts also gain a real escape hatch?** An alternative/
+  complement to the veto is a guaranteed, upgrade-immutable user-withdraw path
+  (e.g. a "drain to depositor after a grace period" that no implementation can
+  remove). Heavier to design; flagged for #1300.
+- **Timelock vs. speed.** A long delay protects via the veto window but slows
+  legitimate fixes; the fast `pause` is what reconciles them. Pick the delay
+  deliberately.
 - **Verification cost per upgrade.** Making the gates *required* on every bump adds
   process weight; that is the intended trade — it is the price of safe upgradeability.
 - **StemNFT immutability vs. a future need to patch transfer/royalty logic** — left
