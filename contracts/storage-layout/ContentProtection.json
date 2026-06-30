@@ -1,354 +1,170 @@
-{
-  "storage": [
-    {
-      "label": "owner",
-      "offset": 0,
-      "slot": "0",
-      "type": "t_address"
-    },
-    {
-      "label": "treasury",
-      "offset": 0,
-      "slot": "1",
-      "type": "t_address"
-    },
-    {
-      "label": "stakeAmount",
-      "offset": 0,
-      "slot": "2",
-      "type": "t_uint256"
-    },
-    {
-      "label": "maxPriceMultiplier",
-      "offset": 0,
-      "slot": "3",
-      "type": "t_uint256"
-    },
-    {
-      "label": "nextTokenId",
-      "offset": 0,
-      "slot": "4",
-      "type": "t_uint256"
-    },
-    {
-      "label": "paymentAssetRegistry",
-      "offset": 0,
-      "slot": "5",
-      "type": "t_contract(PaymentAssetRegistry)5169"
-    },
-    {
-      "label": "attestations",
-      "offset": 0,
-      "slot": "6",
-      "type": "t_mapping(t_uint256,t_struct(Attestation)2249_storage)"
-    },
-    {
-      "label": "stakes",
-      "offset": 0,
-      "slot": "7",
-      "type": "t_mapping(t_uint256,t_struct(StakeInfo)2256_storage)"
-    },
-    {
-      "label": "stakeTokens",
-      "offset": 0,
-      "slot": "8",
-      "type": "t_mapping(t_uint256,t_address)"
-    },
-    {
-      "label": "stakeAmountsByToken",
-      "offset": 0,
-      "slot": "9",
-      "type": "t_mapping(t_address,t_uint256)"
-    },
-    {
-      "label": "_blacklisted",
-      "offset": 0,
-      "slot": "10",
-      "type": "t_mapping(t_address,t_bool)"
-    },
-    {
-      "label": "registrars",
-      "offset": 0,
-      "slot": "11",
-      "type": "t_mapping(t_address,t_bool)"
-    },
-    {
-      "label": "_releaseToTracks",
-      "offset": 0,
-      "slot": "12",
-      "type": "t_mapping(t_uint256,t_array(t_uint256)dyn_storage)"
-    },
-    {
-      "label": "_trackToStems",
-      "offset": 0,
-      "slot": "13",
-      "type": "t_mapping(t_uint256,t_array(t_uint256)dyn_storage)"
-    },
-    {
-      "label": "stemToCanonicalTrack",
-      "offset": 0,
-      "slot": "14",
-      "type": "t_mapping(t_uint256,t_uint256)"
-    },
-    {
-      "label": "stemToProtectionRoot",
-      "offset": 0,
-      "slot": "15",
-      "type": "t_mapping(t_uint256,t_uint256)"
-    },
-    {
-      "label": "trackToParentRelease",
-      "offset": 0,
-      "slot": "16",
-      "type": "t_mapping(t_uint256,t_uint256)"
-    },
-    {
-      "label": "_tierPolicies",
-      "offset": 0,
-      "slot": "17",
-      "type": "t_mapping(t_bytes32,t_struct(TierPolicy)2263_storage)"
-    },
-    {
-      "label": "failedPayments",
-      "offset": 0,
-      "slot": "18",
-      "type": "t_mapping(t_address,t_mapping(t_address,t_uint256))"
-    },
-    {
-      "label": "totalBurned",
-      "offset": 0,
-      "slot": "19",
-      "type": "t_mapping(t_address,t_uint256)"
-    },
-    {
-      "label": "__gap",
-      "offset": 0,
-      "slot": "20",
-      "type": "t_array(t_uint256)50_storage"
-    }
-  ],
-  "types": {
-    "t_address": {
-      "encoding": "inplace",
-      "label": "address",
-      "numberOfBytes": "20"
-    },
-    "t_array(t_uint256)50_storage": {
-      "base": "t_uint256",
-      "encoding": "inplace",
-      "label": "uint256[50]",
-      "numberOfBytes": "1600"
-    },
-    "t_array(t_uint256)dyn_storage": {
-      "base": "t_uint256",
-      "encoding": "dynamic_array",
-      "label": "uint256[]",
-      "numberOfBytes": "32"
-    },
-    "t_bool": {
-      "encoding": "inplace",
-      "label": "bool",
-      "numberOfBytes": "1"
-    },
-    "t_bytes32": {
-      "encoding": "inplace",
-      "label": "bytes32",
-      "numberOfBytes": "32"
-    },
-    "t_contract(PaymentAssetRegistry)5169": {
-      "encoding": "inplace",
-      "label": "contract PaymentAssetRegistry",
-      "numberOfBytes": "20"
-    },
-    "t_mapping(t_address,t_bool)": {
-      "encoding": "mapping",
-      "key": "t_address",
-      "label": "mapping(address => bool)",
-      "numberOfBytes": "32",
-      "value": "t_bool"
-    },
-    "t_mapping(t_address,t_mapping(t_address,t_uint256))": {
-      "encoding": "mapping",
-      "key": "t_address",
-      "label": "mapping(address => mapping(address => uint256))",
-      "numberOfBytes": "32",
-      "value": "t_mapping(t_address,t_uint256)"
-    },
-    "t_mapping(t_address,t_uint256)": {
-      "encoding": "mapping",
-      "key": "t_address",
-      "label": "mapping(address => uint256)",
-      "numberOfBytes": "32",
-      "value": "t_uint256"
-    },
-    "t_mapping(t_bytes32,t_struct(TierPolicy)2263_storage)": {
-      "encoding": "mapping",
-      "key": "t_bytes32",
-      "label": "mapping(bytes32 => struct ContentProtection.TierPolicy)",
-      "numberOfBytes": "32",
-      "value": "t_struct(TierPolicy)2263_storage"
-    },
-    "t_mapping(t_uint256,t_address)": {
-      "encoding": "mapping",
-      "key": "t_uint256",
-      "label": "mapping(uint256 => address)",
-      "numberOfBytes": "32",
-      "value": "t_address"
-    },
-    "t_mapping(t_uint256,t_array(t_uint256)dyn_storage)": {
-      "encoding": "mapping",
-      "key": "t_uint256",
-      "label": "mapping(uint256 => uint256[])",
-      "numberOfBytes": "32",
-      "value": "t_array(t_uint256)dyn_storage"
-    },
-    "t_mapping(t_uint256,t_struct(Attestation)2249_storage)": {
-      "encoding": "mapping",
-      "key": "t_uint256",
-      "label": "mapping(uint256 => struct ContentProtection.Attestation)",
-      "numberOfBytes": "32",
-      "value": "t_struct(Attestation)2249_storage"
-    },
-    "t_mapping(t_uint256,t_struct(StakeInfo)2256_storage)": {
-      "encoding": "mapping",
-      "key": "t_uint256",
-      "label": "mapping(uint256 => struct ContentProtection.StakeInfo)",
-      "numberOfBytes": "32",
-      "value": "t_struct(StakeInfo)2256_storage"
-    },
-    "t_mapping(t_uint256,t_uint256)": {
-      "encoding": "mapping",
-      "key": "t_uint256",
-      "label": "mapping(uint256 => uint256)",
-      "numberOfBytes": "32",
-      "value": "t_uint256"
-    },
-    "t_string_storage": {
-      "encoding": "bytes",
-      "label": "string",
-      "numberOfBytes": "32"
-    },
-    "t_struct(Attestation)2249_storage": {
-      "encoding": "inplace",
-      "label": "struct ContentProtection.Attestation",
-      "members": [
-        {
-          "astId": 2238,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "contentHash",
-          "offset": 0,
-          "slot": "0",
-          "type": "t_bytes32"
-        },
-        {
-          "astId": 2240,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "fingerprintHash",
-          "offset": 0,
-          "slot": "1",
-          "type": "t_bytes32"
-        },
-        {
-          "astId": 2242,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "metadataURI",
-          "offset": 0,
-          "slot": "2",
-          "type": "t_string_storage"
-        },
-        {
-          "astId": 2244,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "attester",
-          "offset": 0,
-          "slot": "3",
-          "type": "t_address"
-        },
-        {
-          "astId": 2246,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "timestamp",
-          "offset": 0,
-          "slot": "4",
-          "type": "t_uint256"
-        },
-        {
-          "astId": 2248,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "valid",
-          "offset": 0,
-          "slot": "5",
-          "type": "t_bool"
-        }
-      ],
-      "numberOfBytes": "192"
-    },
-    "t_struct(StakeInfo)2256_storage": {
-      "encoding": "inplace",
-      "label": "struct ContentProtection.StakeInfo",
-      "members": [
-        {
-          "astId": 2251,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "amount",
-          "offset": 0,
-          "slot": "0",
-          "type": "t_uint256"
-        },
-        {
-          "astId": 2253,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "depositedAt",
-          "offset": 0,
-          "slot": "1",
-          "type": "t_uint256"
-        },
-        {
-          "astId": 2255,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "active",
-          "offset": 0,
-          "slot": "2",
-          "type": "t_bool"
-        }
-      ],
-      "numberOfBytes": "96"
-    },
-    "t_struct(TierPolicy)2263_storage": {
-      "encoding": "inplace",
-      "label": "struct ContentProtection.TierPolicy",
-      "members": [
-        {
-          "astId": 2258,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "stakeAmountWei",
-          "offset": 0,
-          "slot": "0",
-          "type": "t_uint256"
-        },
-        {
-          "astId": 2260,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "escrowDays",
-          "offset": 0,
-          "slot": "1",
-          "type": "t_uint256"
-        },
-        {
-          "astId": 2262,
-          "contract": "src/core/ContentProtection.sol:ContentProtection",
-          "label": "configured",
-          "offset": 0,
-          "slot": "2",
-          "type": "t_bool"
-        }
-      ],
-      "numberOfBytes": "96"
-    },
-    "t_uint256": {
-      "encoding": "inplace",
-      "label": "uint256",
-      "numberOfBytes": "32"
-    }
+[
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "owner",
+    "offset": 0,
+    "slot": "0",
+    "type": "address"
+  },
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "treasury",
+    "offset": 0,
+    "slot": "1",
+    "type": "address"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "stakeAmount",
+    "offset": 0,
+    "slot": "2",
+    "type": "uint256"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "maxPriceMultiplier",
+    "offset": 0,
+    "slot": "3",
+    "type": "uint256"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "nextTokenId",
+    "offset": 0,
+    "slot": "4",
+    "type": "uint256"
+  },
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "paymentAssetRegistry",
+    "offset": 0,
+    "slot": "5",
+    "type": "contract PaymentAssetRegistry"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "attestations",
+    "offset": 0,
+    "slot": "6",
+    "type": "mapping(uint256 => struct ContentProtection.Attestation)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakes",
+    "offset": 0,
+    "slot": "7",
+    "type": "mapping(uint256 => struct ContentProtection.StakeInfo)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeTokens",
+    "offset": 0,
+    "slot": "8",
+    "type": "mapping(uint256 => address)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeAmountsByToken",
+    "offset": 0,
+    "slot": "9",
+    "type": "mapping(address => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_blacklisted",
+    "offset": 0,
+    "slot": "10",
+    "type": "mapping(address => bool)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "registrars",
+    "offset": 0,
+    "slot": "11",
+    "type": "mapping(address => bool)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_releaseToTracks",
+    "offset": 0,
+    "slot": "12",
+    "type": "mapping(uint256 => uint256[])"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_trackToStems",
+    "offset": 0,
+    "slot": "13",
+    "type": "mapping(uint256 => uint256[])"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stemToCanonicalTrack",
+    "offset": 0,
+    "slot": "14",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stemToProtectionRoot",
+    "offset": 0,
+    "slot": "15",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "trackToParentRelease",
+    "offset": 0,
+    "slot": "16",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_tierPolicies",
+    "offset": 0,
+    "slot": "17",
+    "type": "mapping(bytes32 => struct ContentProtection.TierPolicy)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "failedPayments",
+    "offset": 0,
+    "slot": "18",
+    "type": "mapping(address => mapping(address => uint256))"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "totalBurned",
+    "offset": 0,
+    "slot": "19",
+    "type": "mapping(address => uint256)"
+  },
+  {
+    "bytes": "1600",
+    "encoding": "inplace",
+    "label": "__gap",
+    "offset": 0,
+    "slot": "20",
+    "type": "uint256[50]"
   }
-}
+]

@@ -18,16 +18,24 @@ CONTRACTS=(ContentProtection)
 DIR="storage-layout"
 mkdir -p "$DIR"
 
-# Drop astId/contract (which change on unrelated edits) and keep only the
-# layout-relevant fields + the type definitions, sorted for a stable diff.
+# Produce an astId-free, environment-independent layout snapshot. forge's raw type
+# identifiers embed compiler astIds (e.g. `t_struct(Attestation)1234_storage`) that
+# differ between machines/compilations, so instead of snapshotting those we resolve
+# each storage slot to its human type label + encoding + byte size — the
+# layout-relevant facts, stable across solc 0.8.x builds.
 normalize() {
   python3 -c "
 import json, sys
 d = json.load(sys.stdin)
-print(json.dumps({
-    'storage': [{k: s[k] for k in ('label', 'slot', 'offset', 'type')} for s in d.get('storage', [])],
-    'types': d.get('types', {}),
-}, indent=2, sort_keys=True))
+types = d.get('types', {})
+def tinfo(tk):
+    t = types.get(tk, {})
+    return {'type': t.get('label'), 'encoding': t.get('encoding'), 'bytes': t.get('numberOfBytes')}
+out = [
+    {'label': s['label'], 'slot': s['slot'], 'offset': s['offset'], **tinfo(s['type'])}
+    for s in d.get('storage', [])
+]
+print(json.dumps(out, indent=2, sort_keys=True))
 "
 }
 
