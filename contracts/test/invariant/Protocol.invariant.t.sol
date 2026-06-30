@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
+import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
@@ -260,7 +261,7 @@ contract Handler is Test {
         if (activeListings.length == 0) return;
 
         uint256 listingId = activeListings[listingSeed % activeListings.length];
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
 

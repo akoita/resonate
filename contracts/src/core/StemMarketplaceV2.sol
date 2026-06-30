@@ -12,6 +12,7 @@ import {
     ReentrancyGuard
 } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
+import {IStemMarketplaceV2} from "../interfaces/IStemMarketplaceV2.sol";
 import {PaymentAssetRegistry} from "../payments/PaymentAssetRegistry.sol";
 
 interface IStemNFTWithMintTracking is IERC1155 {
@@ -34,19 +35,8 @@ interface IStemNFTWithMintTracking is IERC1155 {
  *
  * @custom:version 2.0.0
  */
-contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
+contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
-
-    // ============ Structs ============
-
-    struct Listing {
-        address seller;
-        uint256 tokenId;
-        uint256 amount;
-        uint256 pricePerUnit;
-        address paymentToken; // address(0) = ETH
-        uint40 expiry;
-    }
 
     // ============ Constants ============
     uint256 public constant BPS = 10000;
@@ -67,50 +57,6 @@ contract StemMarketplaceV2 is Ownable, ReentrancyGuard {
     /// failed payout. A reverting royalty receiver / fee recipient / seller cannot
     /// brick a sale: the leg is escrowed here and reclaimed via `claimFailedPayment`.
     mapping(address => mapping(address => uint256)) public failedPayments;
-
-    // ============ Events ============
-    event Listed(
-        uint256 indexed listingId,
-        address indexed seller,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 price
-    );
-    event Cancelled(uint256 indexed listingId);
-    event Sold(
-        uint256 indexed listingId,
-        address indexed buyer,
-        uint256 amount,
-        uint256 totalPaid
-    );
-    event RoyaltyPaid(
-        uint256 indexed tokenId,
-        address indexed recipient,
-        uint256 amount
-    );
-    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
-    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
-
-    // ============ Errors ============
-    error NotSeller();
-    error InvalidListing();
-    error Expired();
-    error InsufficientPayment();
-    error InsufficientAmount();
-    error TransferFailed();
-    error InvalidFee();
-    error InvalidRecipient();
-    error MarketplaceNotApproved();
-    error CannotBuyOwnListing();
-    error UnexpectedETH();
-    error NoRecentMint();
-    error PriceExceedsStakeCap();
-    error ZeroAddress();
-    error UnsupportedPaymentAsset();
-    error ListingExpiryOverflow();
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
-    error NothingToClaim();
-    error OnlySelf();
 
     // ============ Constructor ============
 

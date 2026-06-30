@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
+import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
@@ -17,7 +18,7 @@ import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMa
  * @title StemMarketplaceV2 Unit Tests
  * @notice Comprehensive unit tests for the marketplace contract
  */
-contract StemMarketplaceTest is Test {
+contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     StemNFT public stemNFT;
     StemMarketplaceV2 public marketplace;
     TransferValidator public validator;
@@ -43,26 +44,6 @@ contract StemMarketplaceTest is Test {
     bytes32 constant LOCAL_TEST = keccak256("local:test");
     bytes32 constant LOCAL_USDC = keccak256("local:usdc");
     bytes32 constant LOCAL_WETH = keccak256("local:weth");
-
-    event Listed(
-        uint256 indexed listingId,
-        address indexed seller,
-        uint256 tokenId,
-        uint256 amount,
-        uint256 price
-    );
-    event Cancelled(uint256 indexed listingId);
-    event Sold(
-        uint256 indexed listingId,
-        address indexed buyer,
-        uint256 amount,
-        uint256 totalPaid
-    );
-    event RoyaltyPaid(
-        uint256 indexed tokenId,
-        address indexed recipient,
-        uint256 amount
-    );
 
     function setUp() public {
         authorizer = vm.addr(authorizerKey);
@@ -162,7 +143,7 @@ contract StemMarketplaceTest is Test {
         uint256 received = totalPrice - (totalPrice * 100) / 10_000;
         vm.prank(buyer);
         vm.expectRevert(
-            abi.encodeWithSelector(StemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
+            abi.encodeWithSelector(IStemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
         );
         marketplace.buy(listingId, 1);
     }
@@ -197,7 +178,7 @@ contract StemMarketplaceTest is Test {
 
     function test_Constructor_RevertZeroContentProtection() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.ZeroAddress.selector);
+        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
         new StemMarketplaceV2(
             address(stemNFT),
             address(0),
@@ -209,7 +190,7 @@ contract StemMarketplaceTest is Test {
 
     function test_Constructor_RevertZeroPaymentAssetRegistry() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.ZeroAddress.selector);
+        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
         new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
@@ -221,7 +202,7 @@ contract StemMarketplaceTest is Test {
 
     function test_Constructor_RevertInvalidFee() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidFee.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
         new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
@@ -234,7 +215,7 @@ contract StemMarketplaceTest is Test {
     // V-003: Zero fee recipient with non-zero fee must revert
     function test_Constructor_RevertZeroFeeRecipientWithFee() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         new StemMarketplaceV2(
             address(stemNFT),
             address(contentProtection),
@@ -268,7 +249,7 @@ contract StemMarketplaceTest is Test {
             0
         );
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         m.setProtocolFee(250);
     }
 
@@ -284,7 +265,7 @@ contract StemMarketplaceTest is Test {
             LISTING_DURATION
         );
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.seller, seller);
@@ -305,7 +286,7 @@ contract StemMarketplaceTest is Test {
             LISTING_DURATION
         );
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.paymentToken, address(paymentToken));
@@ -323,7 +304,7 @@ contract StemMarketplaceTest is Test {
             LISTING_DURATION
         );
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.expiry, type(uint40).max);
@@ -333,7 +314,7 @@ contract StemMarketplaceTest is Test {
         vm.warp(type(uint40).max - LISTING_DURATION + 1);
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.ListingExpiryOverflow.selector);
+        vm.expectRevert(IStemMarketplaceV2.ListingExpiryOverflow.selector);
         marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
     }
 
@@ -341,7 +322,7 @@ contract StemMarketplaceTest is Test {
         ERC20Mock unsupported = new ERC20Mock("Unsupported", "NOPE");
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.UnsupportedPaymentAsset.selector);
+        vm.expectRevert(IStemMarketplaceV2.UnsupportedPaymentAsset.selector);
         marketplace.list(1, 50, 100e18, address(unsupported), LISTING_DURATION);
     }
 
@@ -377,7 +358,7 @@ contract StemMarketplaceTest is Test {
         );
         vm.stopPrank();
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.tokenId, 2);
@@ -391,7 +372,7 @@ contract StemMarketplaceTest is Test {
         vm.roll(block.number + 1);
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.NoRecentMint.selector);
+        vm.expectRevert(IStemMarketplaceV2.NoRecentMint.selector);
         marketplace.listLastMint(1, 1 ether, address(0), LISTING_DURATION, 1);
     }
 
@@ -400,7 +381,7 @@ contract StemMarketplaceTest is Test {
         contentProtection.registerStemProtectionRoot(1, 1);
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.PriceExceedsStakeCap.selector);
+        vm.expectRevert(IStemMarketplaceV2.PriceExceedsStakeCap.selector);
         marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
     }
 
@@ -412,7 +393,7 @@ contract StemMarketplaceTest is Test {
         uint256 listingId =
             marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.pricePerUnit, 1 ether);
@@ -463,7 +444,7 @@ contract StemMarketplaceTest is Test {
         assertEq(contentProtection.stemToReleaseRoot(tokenId), releaseId);
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.PriceExceedsStakeCap.selector);
+        vm.expectRevert(IStemMarketplaceV2.PriceExceedsStakeCap.selector);
         marketplace.list(tokenId, 1, 2 ether, address(0), LISTING_DURATION);
     }
 
@@ -489,7 +470,7 @@ contract StemMarketplaceTest is Test {
         vm.prank(seller);
         marketplace.cancel(listingId);
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.seller, address(0));
@@ -522,7 +503,7 @@ contract StemMarketplaceTest is Test {
         );
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.NotSeller.selector);
+        vm.expectRevert(IStemMarketplaceV2.NotSeller.selector);
         marketplace.cancel(listingId);
     }
 
@@ -606,7 +587,7 @@ contract StemMarketplaceTest is Test {
         vm.prank(buyer);
         marketplace.buy{value: 10 ether}(listingId, 10);
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.amount, 40);
@@ -626,7 +607,7 @@ contract StemMarketplaceTest is Test {
         vm.prank(buyer);
         marketplace.buy{value: 50 ether}(listingId, 50);
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.seller, address(0));
@@ -643,7 +624,7 @@ contract StemMarketplaceTest is Test {
         );
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientPayment.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
         marketplace.buy{value: 15 ether}(listingId, 10); // Overpay by 5 ETH — should revert
     }
 
@@ -718,7 +699,7 @@ contract StemMarketplaceTest is Test {
         );
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         marketplace.buyFor(listingId, 1, address(0));
     }
 
@@ -733,7 +714,7 @@ contract StemMarketplaceTest is Test {
         );
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.CannotBuyOwnListing.selector);
+        vm.expectRevert(IStemMarketplaceV2.CannotBuyOwnListing.selector);
         marketplace.buyFor(listingId, 1, seller);
     }
 
@@ -779,7 +760,7 @@ contract StemMarketplaceTest is Test {
 
     function test_Buy_RevertInvalidListing() public {
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InvalidListing.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidListing.selector);
         marketplace.buy{value: 1 ether}(999, 1);
     }
 
@@ -796,7 +777,7 @@ contract StemMarketplaceTest is Test {
         vm.warp(block.timestamp + LISTING_DURATION + 1);
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.Expired.selector);
+        vm.expectRevert(IStemMarketplaceV2.Expired.selector);
         marketplace.buy{value: 1 ether}(listingId, 1);
     }
 
@@ -812,7 +793,7 @@ contract StemMarketplaceTest is Test {
 
         vm.deal(buyer, 100 ether);
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientAmount.selector);
         marketplace.buy{value: 100 ether}(listingId, 100); // Only 50 available
     }
 
@@ -823,7 +804,7 @@ contract StemMarketplaceTest is Test {
         uint256 listingId = marketplace.list(1, 10, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientAmount.selector);
         marketplace.buy(listingId, 0);
     }
 
@@ -839,7 +820,7 @@ contract StemMarketplaceTest is Test {
 
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientAmount.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientAmount.selector);
         marketplace.buy{value: 1 ether}(listingId, 1);
     }
 
@@ -853,7 +834,7 @@ contract StemMarketplaceTest is Test {
 
         vm.deal(buyer, 1 ether);
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.MarketplaceNotApproved.selector);
+        vm.expectRevert(IStemMarketplaceV2.MarketplaceNotApproved.selector);
         marketplace.buy{value: 1 ether}(listingId, 1);
     }
 
@@ -868,7 +849,7 @@ contract StemMarketplaceTest is Test {
         );
 
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientPayment.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
         marketplace.buy{value: 0.5 ether}(listingId, 1); // Need 1 ETH
     }
 
@@ -908,7 +889,7 @@ contract StemMarketplaceTest is Test {
 
     function test_SetProtocolFee_RevertInvalidFee() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidFee.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
         marketplace.setProtocolFee(501);
     }
 
@@ -1009,7 +990,7 @@ contract StemMarketplaceTest is Test {
         stemNFT.setApprovalForAll(address(marketplace), false);
 
         vm.prank(seller);
-        vm.expectRevert(StemMarketplaceV2.MarketplaceNotApproved.selector);
+        vm.expectRevert(IStemMarketplaceV2.MarketplaceNotApproved.selector);
         marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
     }
 
@@ -1017,7 +998,7 @@ contract StemMarketplaceTest is Test {
 
     function test_SetFeeRecipient_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         marketplace.setFeeRecipient(address(0));
     }
 
@@ -1049,7 +1030,7 @@ contract StemMarketplaceTest is Test {
         vm.deal(address(marketplace), 5 ether);
 
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidRecipient.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         marketplace.withdrawTrappedETH(address(0));
     }
 
@@ -1068,7 +1049,7 @@ contract StemMarketplaceTest is Test {
 
         // Attempt to send ETH alongside an ERC20 purchase — must revert
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.UnexpectedETH.selector);
+        vm.expectRevert(IStemMarketplaceV2.UnexpectedETH.selector);
         marketplace.buy{value: 1 ether}(listingId, 10);
 
         // Verify no ETH was trapped

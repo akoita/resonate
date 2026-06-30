@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
+import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
@@ -84,7 +85,7 @@ contract StemMarketplaceFuzzTest is Test {
         );
         vm.stopPrank();
 
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
             listingId
         );
         assertEq(listing.seller, seller);
@@ -200,7 +201,7 @@ contract StemMarketplaceFuzzTest is Test {
 
         // Excess ETH should revert
         vm.prank(buyer);
-        vm.expectRevert(StemMarketplaceV2.InsufficientPayment.selector);
+        vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
         marketplace.buy{value: totalSent}(listingId, 1);
     }
 
@@ -274,7 +275,7 @@ contract StemMarketplaceFuzzTest is Test {
         vm.assume(feeBps > 500);
 
         vm.prank(admin);
-        vm.expectRevert(StemMarketplaceV2.InvalidFee.selector);
+        vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
         marketplace.setProtocolFee(feeBps);
     }
 
@@ -323,7 +324,7 @@ contract StemMarketplaceFuzzTest is Test {
 
         // Make partial purchases
         for (uint256 i = 0; i < 3; i++) {
-            StemMarketplaceV2.Listing memory listing = marketplace.getListing(
+            IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
                 listingId
             );
             if (listing.amount == 0) break;
