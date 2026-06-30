@@ -253,7 +253,15 @@ from the JWT, never the request body.
 - Remix access surface (#1145): `/stem/[tokenId]` is the polished asset page
   — type-themed hero with artwork, attribution, audio preview, an action
   rail with Buy/Remix/List, and a license-tiers panel; reachable from
-  marketplace card titles and release-page minted-stem chips. Catalog
+  marketplace card titles and release-page minted-stem chips.
+- Per-tier purchase (#1304): each **listed** tier in the license-tiers panel
+  carries a **Buy** button that opens the buy modal pre-set to that tier's
+  listing, so a non-owner can buy the **Remix** (or Commercial) license
+  directly — the remix-tier purchase then flips eligibility and unlocks the
+  studio. Buy buttons are hidden for a seller viewing their own listing. The
+  artist already chooses the tier when listing (`ListStemModal` →
+  `LicenseTypeSelector`); the backend listing/purchase/eligibility wiring was
+  already complete, so this was the final frontend gap. Catalog
   metadata fetches use the canonical `API_BASE` (a prior undocumented
   `NEXT_PUBLIC_BACKEND_URL` dependency silently removed the Remix card on
   deployed environments).

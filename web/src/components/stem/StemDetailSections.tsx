@@ -266,9 +266,13 @@ export function buildTierRows(input: {
 export function LicenseTiersPanel({
   rows,
   stemType,
+  onBuyTier,
 }: {
   rows: TierAvailability[];
   stemType?: string | null;
+  /** When provided, listed tiers render a Buy button. Omit for sellers viewing
+   *  their own listing (they manage instead of buying). */
+  onBuyTier?: (tier: "personal" | "remix" | "commercial") => void;
 }) {
   const theme = stemTypeTheme(stemType);
   return (
@@ -296,7 +300,7 @@ export function LicenseTiersPanel({
               </div>
               <div className="text-xs text-zinc-500">{row.description}</div>
             </div>
-            <div className="text-right shrink-0">
+            <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
               {/* A listed tier shows what a buyer actually pays (the live
                   listing price); the catalog default is only meaningful
                   while the tier is unlisted. */}
@@ -313,6 +317,17 @@ export function LicenseTiersPanel({
               <div className={`text-xs ${row.listed ? "text-emerald-400" : "text-zinc-500"}`}>
                 {row.listed ? "Listed" : "Not listed"}
               </div>
+              {row.listed && onBuyTier && (
+                <button
+                  type="button"
+                  onClick={() => onBuyTier(row.tier)}
+                  className="mt-0.5 px-3 py-1 rounded-md text-xs font-semibold text-white transition-transform hover:scale-[1.03] license-tiers-panel__buy"
+                  style={{ background: `rgb(${theme.accentRgb})` }}
+                  aria-label={`Buy ${row.label} license`}
+                >
+                  Buy {row.label.toLowerCase()}
+                </button>
+              )}
             </div>
           </li>
         ))}
