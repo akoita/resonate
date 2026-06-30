@@ -609,32 +609,62 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     }
 
     function test_ReleasableAndRefundableReturnValues() public {
-        uint256 id = _fundCampaign(2_000); // 20% deposit, 1_100e6 pledged
-
-        // Funded (not Fulfilled): releasable is 0.
-        assertEq(escrow.releasable(id), 0);
+        // releasable: a Fulfilled campaign reports its outstanding balance once the
+        // dispute window closes (previously only the ==0 cases were asserted, so the
+        // return-value arithmetic mutations survived).
+        uint256 a = _fundCampaign(2_000); // 20% deposit, 1_100e6 pledged
+        assertEq(escrow.releasable(a), 0); // Funded, not Fulfilled
 
         vm.startPrank(confirmer);
-        escrow.confirmBooking(id);
-        escrow.releaseDeposit(id); // totalReleased = 220e6
-        escrow.confirmFulfillment(id); // Fulfilled
+        escrow.confirmBooking(a);
+        escrow.releaseDeposit(a); // totalReleased = 220e6
+        escrow.confirmFulfillment(a); // Fulfilled
         vm.stopPrank();
 
-        // Fulfilled but within the dispute window: still 0.
-        assertEq(escrow.releasable(id), 0);
-
-        // Past the window: releasable equals the outstanding balance (1_100 - 220 = 880e6).
+        assertEq(escrow.releasable(a), 0); // within the dispute window
         vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
-        assertEq(escrow.releasable(id), 880e6);
+        assertEq(escrow.releasable(a), 880e6); // outstanding = 1_100 - 220
 
-        // refundable is 0 unless the campaign is RefundAvailable.
-        assertEq(escrow.refundable(id, alice), 0);
+        // refundable: after an early deposit release, the view reports each backer's
+        // pro-rata share of the *outstanding* balance — exactly what claimRefund pays.
+        uint256 b = _fundCampaign(2_000); // fresh: alice 600 / bob 500
+        assertEq(escrow.refundable(b, alice), 0); // not RefundAvailable yet
 
-        // Cancel → RefundAvailable. `refundable` reports the backer's raw recorded
-        // pledge (the pro-rata of the outstanding balance is applied at claim time).
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(b);
+        escrow.releaseDeposit(b); // totalReleased = 220e6
+        escrow.confirmFulfillment(b);
+        vm.stopPrank();
+
         vm.prank(owner);
+        escrow.cancelCampaign(b); // allowed: still within the dispute window
+
+        // outstanding 880e6: alice 600/1_100 → 480e6, bob 500/1_100 → 400e6.
+        assertEq(escrow.refundable(b, alice), (600e6 * 880e6) / 1_100e6);
+        assertEq(escrow.refundable(b, bob), (500e6 * 880e6) / 1_100e6);
+    }
+
+    function test_RevertsCancelFulfilledAfterDisputeWindow() public {
+        uint256 id = _fundCampaign(0); // no deposit release; 1_100e6 pledged
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(id);
+        escrow.confirmFulfillment(id); // Fulfilled; fulfilledAt == block.timestamp
+        vm.stopPrank();
+        uint256 closeAt = block.timestamp + DISPUTE_WINDOW;
+
+        // Once the dispute window closes the payout has matured: cancellation is barred…
+        vm.warp(closeAt + 1);
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.DisputeWindowClosed.selector, id, closeAt, block.timestamp)
+        );
         escrow.cancelCampaign(id);
-        assertEq(escrow.refundable(id, alice), 600e6);
+
+        // …and the matured funds go to the artist via permissionless releaseFunds.
+        uint256 beforeBal = usdc.balanceOf(artist);
+        escrow.releaseFunds(id);
+        assertEq(usdc.balanceOf(artist), beforeBal + 1_100e6);
+        assertEq(uint8(escrow.campaignStatus(id)), uint8(CampaignStatus.Released));
     }
 
     function test_RevertsOnInvalidCampaignId() public {
