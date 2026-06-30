@@ -333,6 +333,16 @@ export default function StemDetailPage() {
         if (target) setBuyListing(target);
     }, [primaryListing, remixListingRow]);
 
+    // Per-tier purchase from the License tiers panel: buy a specific tier's
+    // listing directly (the Remix tier is what unlocks Remix Studio).
+    const openTierPurchase = useCallback(
+        (tier: "personal" | "remix" | "commercial") => {
+            const target = listings.find((l) => (l.licenseType ?? "personal") === tier) ?? null;
+            if (target) setBuyListing(target);
+        },
+        [listings],
+    );
+
     const stemType = attr("Type") ?? primaryListing?.stem?.type ?? null;
     const theme = stemTypeTheme(stemType);
     const displayTitle = meta?.name ?? primaryListing?.stem?.title ?? null;
@@ -535,6 +545,7 @@ export default function StemDetailPage() {
                         <LicenseTiersPanel
                             rows={buildTierRows({ listedTiers, pricing, listedPriceLabels: tierPriceLabels })}
                             stemType={stemType}
+                            onBuyTier={isOwnListing ? undefined : openTierPurchase}
                         />
 
                         {/* On-Chain Metadata */}

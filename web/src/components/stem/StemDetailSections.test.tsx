@@ -140,4 +140,28 @@ describe("buildTierRows + LicenseTiersPanel", () => {
     expect(html).toContain("$5.00");
     expect((html.match(/>Listed</g) ?? []).length).toBe(1);
   });
+
+  it("renders a Buy button only on listed tiers when onBuyTier is provided", () => {
+    const rows = buildTierRows({
+      listedTiers: { remix: true },
+      pricing: { remixLicenseUsd: 5, commercialLicenseUsd: 25 },
+    });
+    const html = renderToStaticMarkup(
+      <LicenseTiersPanel rows={rows} onBuyTier={() => {}} />,
+    );
+    // Listed remix tier offers a Buy action; unlisted tiers do not.
+    expect(html).toContain("Buy remix");
+    expect(html).toContain('aria-label="Buy Remix license"');
+    expect(html).not.toContain("Buy commercial");
+    expect(html).not.toContain("Buy personal");
+  });
+
+  it("omits Buy buttons for a seller viewing their own listing (no onBuyTier)", () => {
+    const rows = buildTierRows({
+      listedTiers: { personal: true, remix: true },
+      pricing: { basePlayPriceUsd: 0.05, remixLicenseUsd: 5 },
+    });
+    const html = renderToStaticMarkup(<LicenseTiersPanel rows={rows} />);
+    expect(html).not.toContain("license-tiers-panel__buy");
+  });
 });
