@@ -12,6 +12,7 @@ import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {ITransferValidator} from "../interfaces/ITransferValidator.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
+import {IStemNFT} from "../interfaces/IStemNFT.sol";
 
 /**
  * @title StemNFT
@@ -25,7 +26,7 @@ import {IContentProtection} from "../interfaces/IContentProtection.sol";
  *
  * @custom:version 2.0.0
  */
-contract StemNFT is ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
+contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
     // ============ Roles ============
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant MINT_AUTHORIZER_ROLE =
@@ -93,28 +94,6 @@ contract StemNFT is ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
     /// @notice Optional content protection module for blacklist / future policy checks
     IContentProtection public contentProtection;
 
-    // ============ Events ============
-    event StemMinted(
-        uint256 indexed tokenId,
-        address indexed creator,
-        uint256[] parentIds,
-        string tokenURI
-    );
-
-    event TransferValidatorSet(address indexed validator);
-    event ContentProtectionSet(address indexed protection);
-    event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
-
-    // ============ Errors ============
-    error StemNotFound(uint256 tokenId);
-    error NotStemCreator(uint256 tokenId);
-    error InvalidRoyalty(uint96 bps);
-    error TransferNotAllowed();
-    error ParentNotRemixable(uint256 parentId);
-    error NotAttested(uint256 tokenId);
-    error MintAuthorizationExpired(uint256 deadline);
-    error MintAuthorizationAlreadyUsed(address minter, bytes32 nonce);
-    error InvalidMintAuthorization();
     // ============ Constructor ============
     constructor(string memory baseUri)
         ERC1155(baseUri)

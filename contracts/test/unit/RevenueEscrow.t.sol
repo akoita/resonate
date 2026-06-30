@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
+import {IRevenueEscrow} from "../../src/interfaces/IRevenueEscrow.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
@@ -13,7 +14,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  * @title RevenueEscrow Unit Tests
  * @notice Tests deposit, freeze, release, redirect, and admin functions
  */
-contract RevenueEscrowTest is Test {
+contract RevenueEscrowTest is Test, IRevenueEscrow {
     RevenueEscrow public escrow;
     ContentProtection public cp;
     MockUSDC public usdc;
@@ -27,21 +28,6 @@ contract RevenueEscrowTest is Test {
     uint256 constant ESCROW_PERIOD = 30 days;
     uint256 constant STAKE_AMOUNT = 0.01 ether;
     uint256 constant USDC_AMOUNT = 25_000000;
-
-    event RevenueDeposited(uint256 indexed tokenId, address indexed depositor, uint256 amount, uint256 newBalance);
-    event RevenueDepositedWithAsset(
-        uint256 indexed tokenId, address indexed depositor, address indexed token, uint256 amount, uint256 newBalance
-    );
-    event EscrowFrozen(uint256 indexed tokenId);
-    event EscrowUnfrozen(uint256 indexed tokenId);
-    event EscrowReleased(uint256 indexed tokenId, address indexed beneficiary, uint256 amount);
-    event EscrowReleasedWithAsset(
-        uint256 indexed tokenId, address indexed beneficiary, address indexed token, uint256 amount
-    );
-    event EscrowRedirected(uint256 indexed tokenId, address indexed newRecipient, uint256 amount);
-    event EscrowRedirectedWithAsset(
-        uint256 indexed tokenId, address indexed newRecipient, address indexed token, uint256 amount
-    );
 
     function setUp() public {
         ContentProtection impl = new ContentProtection();
@@ -106,13 +92,13 @@ contract RevenueEscrowTest is Test {
     }
 
     function test_Deposit_RevertZeroAmount() public {
-        vm.expectRevert(RevenueEscrow.ZeroAmount.selector);
+        vm.expectRevert(IRevenueEscrow.ZeroAmount.selector);
         escrow.deposit{value: 0}(1, alice);
     }
 
     function test_Deposit_RevertZeroAddress() public {
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(RevenueEscrow.ZeroAddress.selector);
+        vm.expectRevert(IRevenueEscrow.ZeroAddress.selector);
         escrow.deposit{value: 0.5 ether}(1, address(0));
     }
 
@@ -121,7 +107,7 @@ contract RevenueEscrowTest is Test {
     function test_Deposit_RevertUnauthorizedDepositor() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice); // not owner, not an authorized depositor
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedDepositor.selector, alice));
         escrow.deposit{value: 0.5 ether}(1, alice);
     }
 
@@ -129,7 +115,7 @@ contract RevenueEscrowTest is Test {
         usdc.mint(alice, USDC_AMOUNT);
         vm.startPrank(alice);
         usdc.approve(address(escrow), USDC_AMOUNT);
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedDepositor.selector, alice));
         escrow.depositWithAsset(1, alice, address(usdc), USDC_AMOUNT);
         vm.stopPrank();
     }
@@ -138,7 +124,7 @@ contract RevenueEscrowTest is Test {
         // bob is not authorized initially.
         vm.deal(bob, 1 ether);
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedDepositor.selector, bob));
         escrow.deposit{value: 0.5 ether}(1, alice);
 
         // Owner authorizes bob → he can deposit.
@@ -154,7 +140,7 @@ contract RevenueEscrowTest is Test {
         escrow.setDepositor(bob, false);
         vm.deal(bob, 1 ether);
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedDepositor.selector, bob));
         escrow.deposit{value: 0.5 ether}(2, alice);
     }
 
@@ -170,7 +156,7 @@ contract RevenueEscrowTest is Test {
 
         // A second deposit naming a different beneficiary is rejected, not silently
         // credited to the stored beneficiary.
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.BeneficiaryMismatch.selector, uint256(1), alice, bob));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.BeneficiaryMismatch.selector, uint256(1), alice, bob));
         escrow.deposit{value: 0.5 ether}(1, bob);
     }
 
@@ -179,7 +165,7 @@ contract RevenueEscrowTest is Test {
         // deposits are gated to authorized routers.
         vm.deal(bob, 1 ether);
         vm.prank(bob); // attacker, unauthorized
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.UnauthorizedDepositor.selector, bob));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedDepositor.selector, bob));
         escrow.deposit{value: 1}(1, bob);
 
         // The legitimate router then binds the intended beneficiary.
@@ -198,7 +184,7 @@ contract RevenueEscrowTest is Test {
 
         uint256 received = USDC_AMOUNT - (USDC_AMOUNT * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(RevenueEscrow.FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
+            abi.encodeWithSelector(IRevenueEscrow.FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
         );
         escrow.depositWithAsset(1, alice, address(feeToken), USDC_AMOUNT);
     }
@@ -249,7 +235,7 @@ contract RevenueEscrowTest is Test {
         MockUSDC extra = new MockUSDC();
         extra.mint(address(this), 1);
         extra.approve(address(escrow), 1);
-        vm.expectRevert(abi.encodeWithSelector(RevenueEscrow.TooManyEscrowAssets.selector, uint256(1)));
+        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.TooManyEscrowAssets.selector, uint256(1)));
         escrow.depositWithAsset(1, alice, address(extra), 1);
     }
 
@@ -270,7 +256,7 @@ contract RevenueEscrowTest is Test {
 
     function test_Freeze_RevertNoEscrow() public {
         vm.prank(admin);
-        vm.expectRevert(RevenueEscrow.NoEscrow.selector);
+        vm.expectRevert(IRevenueEscrow.NoEscrow.selector);
         escrow.freeze(999);
     }
 
@@ -316,7 +302,7 @@ contract RevenueEscrowTest is Test {
         escrow.deposit{value: 0.5 ether}(1, alice);
 
         vm.prank(admin);
-        vm.expectRevert(RevenueEscrow.EscrowNotFrozen.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowNotFrozen.selector);
         escrow.unfreeze(1);
     }
 
@@ -377,7 +363,7 @@ contract RevenueEscrowTest is Test {
 
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
-        vm.expectRevert(RevenueEscrow.EscrowIsFrozen.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowIsFrozen.selector);
         escrow.release(1);
     }
 
@@ -385,7 +371,7 @@ contract RevenueEscrowTest is Test {
         vm.deal(address(this), 1 ether);
         escrow.deposit{value: 0.5 ether}(1, alice);
 
-        vm.expectRevert(RevenueEscrow.EscrowNotExpired.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowNotExpired.selector);
         escrow.release(1);
     }
 
@@ -444,7 +430,7 @@ contract RevenueEscrowTest is Test {
         escrow.deposit{value: 0.5 ether}(1, alice);
 
         vm.prank(admin);
-        vm.expectRevert(RevenueEscrow.EscrowNotFrozen.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowNotFrozen.selector);
         escrow.redirect(1, rightfulOwner);
     }
 

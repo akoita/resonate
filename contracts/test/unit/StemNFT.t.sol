@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
+import {IStemNFT} from "../../src/interfaces/IStemNFT.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 
 contract MockContentProtection {
@@ -37,7 +38,7 @@ contract MockContentProtection {
  * @title StemNFT Unit Tests
  * @notice Comprehensive unit tests for the StemNFT contract
  */
-contract StemNFTTest is Test {
+contract StemNFTTest is Test, IStemNFT {
     StemNFT public stemNFT;
     TransferValidator public validator;
 
@@ -51,15 +52,6 @@ contract StemNFTTest is Test {
 
     string constant BASE_URI = "https://api.resonate.fm/metadata/";
     string constant TOKEN_URI = "ipfs://QmTest123";
-
-    event StemMinted(
-        uint256 indexed tokenId,
-        address indexed creator,
-        uint256[] parentIds,
-        string tokenURI
-    );
-    event TransferValidatorSet(address indexed validator);
-    event RoyaltyUpdated(uint256 indexed tokenId, address receiver, uint96 bps);
 
     function setUp() public {
         authorizer = vm.addr(authorizerKey);
@@ -174,7 +166,7 @@ contract StemNFTTest is Test {
 
         vm.prank(minter);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001)
+            abi.encodeWithSelector(IStemNFT.InvalidRoyalty.selector, 1001)
         );
         stemNFT.mint(
             alice,
@@ -208,7 +200,7 @@ contract StemNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                StemNFT.ParentNotRemixable.selector,
+                IStemNFT.ParentNotRemixable.selector,
                 originalId
             )
         );
@@ -221,7 +213,7 @@ contract StemNFTTest is Test {
 
         vm.prank(minter);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999)
+            abi.encodeWithSelector(IStemNFT.StemNotFound.selector, 999)
         );
         stemNFT.mint(
             alice,
@@ -353,7 +345,7 @@ contract StemNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                StemNFT.MintAuthorizationAlreadyUsed.selector,
+                IStemNFT.MintAuthorizationAlreadyUsed.selector,
                 alice,
                 nonce
             )
@@ -395,7 +387,7 @@ contract StemNFTTest is Test {
         vm.prank(alice);
         vm.expectRevert(
             abi.encodeWithSelector(
-                StemNFT.MintAuthorizationExpired.selector,
+                IStemNFT.MintAuthorizationExpired.selector,
                 deadline
             )
         );
@@ -436,7 +428,7 @@ contract StemNFTTest is Test {
         bytes memory signature = abi.encodePacked(r, s, v);
 
         vm.prank(alice);
-        vm.expectRevert(StemNFT.InvalidMintAuthorization.selector);
+        vm.expectRevert(IStemNFT.InvalidMintAuthorization.selector);
         stemNFT.mintAuthorized(
             alice,
             1,
@@ -523,7 +515,7 @@ contract StemNFTTest is Test {
 
         vm.prank(alice);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.NotAttested.selector, protectionId)
+            abi.encodeWithSelector(IStemNFT.NotAttested.selector, protectionId)
         );
         stemNFT.mintAuthorized(
             alice,
@@ -607,7 +599,7 @@ contract StemNFTTest is Test {
 
         vm.prank(bob);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.NotStemCreator.selector, tokenId)
+            abi.encodeWithSelector(IStemNFT.NotStemCreator.selector, tokenId)
         );
         stemNFT.mintMore(bob, tokenId, 50);
     }
@@ -670,7 +662,7 @@ contract StemNFTTest is Test {
 
         vm.prank(minter);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 1001)
+            abi.encodeWithSelector(IStemNFT.InvalidRoyalty.selector, 1001)
         );
         stemNFT.setRoyaltyBps(tokenId, 1001);
     }
@@ -710,7 +702,7 @@ contract StemNFTTest is Test {
 
         // Try transfer - should fail
         vm.prank(alice);
-        vm.expectRevert(StemNFT.TransferNotAllowed.selector);
+        vm.expectRevert(IStemNFT.TransferNotAllowed.selector);
         stemNFT.safeTransferFrom(alice, bob, tokenId, 10, "");
     }
 
@@ -787,7 +779,7 @@ contract StemNFTTest is Test {
 
     function test_Uri_RevertNotFound() public {
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.StemNotFound.selector, 999)
+            abi.encodeWithSelector(IStemNFT.StemNotFound.selector, 999)
         );
         stemNFT.uri(999);
     }
@@ -908,7 +900,7 @@ contract StemNFTTest is Test {
 
         vm.prank(minter);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, 0)
+            abi.encodeWithSelector(IStemNFT.InvalidRoyalty.selector, 0)
         );
         stemNFT.setRoyaltyReceiver(tokenId, address(0));
     }

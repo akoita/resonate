@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
+import {IStemNFT} from "../../src/interfaces/IStemNFT.sol";
 
 /**
  * @title StemNFT Fuzz Tests
@@ -62,7 +63,7 @@ contract StemNFTFuzzTest is Test {
 
         vm.prank(admin);
         vm.expectRevert(
-            abi.encodeWithSelector(StemNFT.InvalidRoyalty.selector, royaltyBps)
+            abi.encodeWithSelector(IStemNFT.InvalidRoyalty.selector, royaltyBps)
         );
         stemNFT.mint(
             makeAddr("recipient"),
