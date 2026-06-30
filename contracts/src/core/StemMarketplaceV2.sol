@@ -4,21 +4,15 @@ pragma solidity ^0.8.28;
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {
-    SafeERC20
-} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
 import {IStemMarketplaceV2} from "../interfaces/IStemMarketplaceV2.sol";
 import {PaymentAssetRegistry} from "../payments/PaymentAssetRegistry.sol";
 
 interface IStemNFTWithMintTracking is IERC1155 {
-    function lastMintedTokenIdByOwner(
-        address owner
-    ) external view returns (uint256);
+    function lastMintedTokenIdByOwner(address owner) external view returns (uint256);
 
     function lastMintedBlockByOwner(address owner) external view returns (uint64);
 }
@@ -73,8 +67,9 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         contentProtection = IContentProtection(_contentProtection);
         paymentAssetRegistry = PaymentAssetRegistry(_paymentAssetRegistry);
         // V-003: Reject zero fee recipient when fees are enabled
-        if (_feeBps > 0 && _feeRecipient == address(0))
+        if (_feeBps > 0 && _feeRecipient == address(0)) {
             revert InvalidRecipient();
+        }
         if (_feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
         protocolFeeRecipient = _feeRecipient;
         protocolFeeBps = _feeBps;
@@ -82,21 +77,11 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ Listing ============
 
-    function list(
-        uint256 tokenId,
-        uint256 amount,
-        uint256 pricePerUnit,
-        address paymentToken,
-        uint256 duration
-    ) external returns (uint256 listingId) {
-        listingId = _createListing(
-            msg.sender,
-            tokenId,
-            amount,
-            pricePerUnit,
-            paymentToken,
-            duration
-        );
+    function list(uint256 tokenId, uint256 amount, uint256 pricePerUnit, address paymentToken, uint256 duration)
+        external
+        returns (uint256 listingId)
+    {
+        listingId = _createListing(msg.sender, tokenId, amount, pricePerUnit, paymentToken, duration);
     }
 
     function listLastMint(
@@ -106,9 +91,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         uint256 duration,
         uint256 releaseId
     ) external returns (uint256 listingId) {
-        IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(
-            address(stemNFT)
-        );
+        IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(address(stemNFT));
         if (trackedStemNFT.lastMintedBlockByOwner(msg.sender) != block.number) {
             revert NoRecentMint();
         }
@@ -120,14 +103,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
             contentProtection.registerStemProtectionRoot(releaseId, tokenId);
         }
 
-        listingId = _createListing(
-            msg.sender,
-            tokenId,
-            amount,
-            pricePerUnit,
-            paymentToken,
-            duration
-        );
+        listingId = _createListing(msg.sender, tokenId, amount, pricePerUnit, paymentToken, duration);
     }
 
     function _createListing(
@@ -139,10 +115,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         uint256 duration
     ) internal returns (uint256 listingId) {
         // Verify ownership
-        require(
-            stemNFT.balanceOf(seller, tokenId) >= amount,
-            "Insufficient balance"
-        );
+        require(stemNFT.balanceOf(seller, tokenId) >= amount, "Insufficient balance");
         // Verify marketplace approval
         if (!stemNFT.isApprovedForAll(seller, address(this))) {
             revert MarketplaceNotApproved();
@@ -169,9 +142,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         emit Listed(listingId, seller, tokenId, amount, pricePerUnit);
     }
 
-    function _checkedListingExpiry(
-        uint256 duration
-    ) internal view returns (uint40) {
+    function _checkedListingExpiry(uint256 duration) internal view returns (uint40) {
         uint256 expiry = block.timestamp + duration;
         if (expiry > type(uint40).max) revert ListingExpiryOverflow();
         return uint40(expiry);
@@ -186,27 +157,16 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ Buying (Enforced Royalties) ============
 
-    function buy(
-        uint256 listingId,
-        uint256 amount
-    ) external payable nonReentrant {
+    function buy(uint256 listingId, uint256 amount) external payable nonReentrant {
         _buy(listingId, amount, msg.sender);
     }
 
-    function buyFor(
-        uint256 listingId,
-        uint256 amount,
-        address recipient
-    ) external payable nonReentrant {
+    function buyFor(uint256 listingId, uint256 amount, address recipient) external payable nonReentrant {
         if (recipient == address(0)) revert InvalidRecipient();
         _buy(listingId, amount, recipient);
     }
 
-    function _buy(
-        uint256 listingId,
-        uint256 amount,
-        address recipient
-    ) internal {
+    function _buy(uint256 listingId, uint256 amount, address recipient) internal {
         Listing storage listing = listings[listingId];
 
         // Validate (Checks)
@@ -233,10 +193,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         if (!stemNFT.isApprovedForAll(seller, address(this))) revert MarketplaceNotApproved();
 
         // Calculate fees
-        (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(
-            tokenId,
-            totalPrice
-        );
+        (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(tokenId, totalPrice);
         uint256 protocolFee = (totalPrice * protocolFeeBps) / BPS;
         uint256 sellerAmount = totalPrice - royaltyAmount - protocolFee;
 
@@ -270,8 +227,9 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
     function setProtocolFee(uint256 feeBps) external onlyOwner {
         if (feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
         // V-003: Prevent setting non-zero fee when recipient is still address(0)
-        if (feeBps > 0 && protocolFeeRecipient == address(0))
+        if (feeBps > 0 && protocolFeeRecipient == address(0)) {
             revert InvalidRecipient();
+        }
         protocolFeeBps = feeBps;
     }
 
@@ -282,24 +240,14 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ View ============
 
-    function getListing(
-        uint256 listingId
-    ) external view returns (Listing memory) {
+    function getListing(uint256 listingId) external view returns (Listing memory) {
         return listings[listingId];
     }
 
-    function quoteBuy(
-        uint256 listingId,
-        uint256 amount
-    )
+    function quoteBuy(uint256 listingId, uint256 amount)
         external
         view
-        returns (
-            uint256 totalPrice,
-            uint256 royaltyAmount,
-            uint256 protocolFee,
-            uint256 sellerAmount
-        )
+        returns (uint256 totalPrice, uint256 royaltyAmount, uint256 protocolFee, uint256 sellerAmount)
     {
         Listing storage listing = listings[listingId];
         totalPrice = amount * listing.pricePerUnit;
@@ -310,14 +258,8 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ Internal ============
 
-    function _getRoyalty(
-        uint256 tokenId,
-        uint256 salePrice
-    ) internal view returns (address, uint256) {
-        try IERC2981(address(stemNFT)).royaltyInfo(tokenId, salePrice) returns (
-            address r,
-            uint256 a
-        ) {
+    function _getRoyalty(uint256 tokenId, uint256 salePrice) internal view returns (address, uint256) {
+        try IERC2981(address(stemNFT)).royaltyInfo(tokenId, salePrice) returns (address r, uint256 a) {
             // Cap royalty
             uint256 maxRoyalty = (salePrice * MAX_ROYALTY) / BPS;
             return (r, a > maxRoyalty ? maxRoyalty : a);
@@ -348,12 +290,13 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
     function _pay(address token, address to, uint256 amount) internal {
         if (amount == 0) return;
         if (token == address(0)) {
-            (bool ok, ) = payable(to).call{value: amount}("");
+            (bool ok,) = payable(to).call{value: amount}("");
             if (!ok) _escrowFailedPayment(token, to, amount);
         } else {
             try this.safeTransferSelf(token, to, amount) {
-                // delivered
-            } catch {
+            // delivered
+            }
+            catch {
                 _escrowFailedPayment(token, to, amount);
             }
         }
@@ -378,7 +321,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         if (amount == 0) revert NothingToClaim();
         failedPayments[token][msg.sender] = 0;
         if (token == address(0)) {
-            (bool ok, ) = payable(msg.sender).call{value: amount}("");
+            (bool ok,) = payable(msg.sender).call{value: amount}("");
             if (!ok) revert TransferFailed();
         } else {
             IERC20(token).safeTransfer(msg.sender, amount);
@@ -393,7 +336,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         if (to == address(0)) revert InvalidRecipient();
         uint256 balance = address(this).balance;
         if (balance == 0) return;
-        (bool ok, ) = payable(to).call{value: balance}("");
+        (bool ok,) = payable(to).call{value: balance}("");
         if (!ok) revert TransferFailed();
     }
 }

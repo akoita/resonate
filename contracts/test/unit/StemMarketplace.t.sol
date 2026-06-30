@@ -62,11 +62,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         paymentAssetRegistry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
         paymentAssetRegistry.configureAsset(LOCAL_WETH, address(weth), "WETH", 18, true, false);
         marketplace = new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            feeRecipient,
-            PROTOCOL_FEE_BPS
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, PROTOCOL_FEE_BPS
         );
 
         // Setup validator
@@ -83,15 +79,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Mint NFTs for seller
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        stemNFT.mint(
-            seller,
-            100,
-            "ipfs://test",
-            royaltyReceiver,
-            uint96(ROYALTY_BPS),
-            true,
-            parentIds
-        );
+        stemNFT.mint(seller, 100, "ipfs://test", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
 
         // Approve marketplace
         vm.prank(seller);
@@ -115,10 +103,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Constructor_SetsImmutables() public view {
         assertEq(address(marketplace.stemNFT()), address(stemNFT));
-        assertEq(
-            address(marketplace.contentProtection()),
-            address(contentProtection)
-        );
+        assertEq(address(marketplace.contentProtection()), address(contentProtection));
         assertEq(address(marketplace.paymentAssetRegistry()), address(paymentAssetRegistry));
         assertEq(marketplace.protocolFeeRecipient(), feeRecipient);
         assertEq(marketplace.protocolFeeBps(), PROTOCOL_FEE_BPS);
@@ -180,35 +165,21 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
         new StemMarketplaceV2(
-            address(stemNFT),
-            address(0),
-            address(paymentAssetRegistry),
-            feeRecipient,
-            PROTOCOL_FEE_BPS
+            address(stemNFT), address(0), address(paymentAssetRegistry), feeRecipient, PROTOCOL_FEE_BPS
         );
     }
 
     function test_Constructor_RevertZeroPaymentAssetRegistry() public {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
-        new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(0),
-            feeRecipient,
-            PROTOCOL_FEE_BPS
-        );
+        new StemMarketplaceV2(address(stemNFT), address(contentProtection), address(0), feeRecipient, PROTOCOL_FEE_BPS);
     }
 
     function test_Constructor_RevertInvalidFee() public {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
         new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            feeRecipient,
-            501
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 501
         ); // > 5%
     }
 
@@ -217,11 +188,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            address(0),
-            250
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 250
         );
     }
 
@@ -229,11 +196,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     function test_Constructor_AllowsZeroRecipientWithZeroFee() public {
         vm.prank(admin);
         StemMarketplaceV2 m = new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            address(0),
-            0
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 0
         );
         assertEq(m.protocolFeeBps(), 0);
     }
@@ -242,11 +205,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     function test_SetProtocolFee_RevertWhenRecipientZero() public {
         vm.prank(admin);
         StemMarketplaceV2 m = new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            address(0),
-            0
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 0
         );
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
@@ -257,17 +216,9 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_List_CreatesListing() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.seller, seller);
         assertEq(listing.tokenId, 1);
         assertEq(listing.amount, 50);
@@ -278,17 +229,9 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_List_WithERC20() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.paymentToken, address(paymentToken));
     }
 
@@ -296,17 +239,9 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         vm.warp(type(uint40).max - LISTING_DURATION);
 
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.expiry, type(uint40).max);
     }
 
@@ -339,28 +274,12 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         contentProtection.setMaxListingPrice(releaseId, 1 ether);
 
         vm.startPrank(seller);
-        stemNFT.mint(
-            seller,
-            1,
-            "ipfs://latest",
-            royaltyReceiver,
-            uint96(ROYALTY_BPS),
-            true,
-            parentIds
-        );
+        stemNFT.mint(seller, 1, "ipfs://latest", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
 
-        uint256 listingId = marketplace.listLastMint(
-            1,
-            0.25 ether,
-            address(0),
-            LISTING_DURATION,
-            releaseId
-        );
+        uint256 listingId = marketplace.listLastMint(1, 0.25 ether, address(0), LISTING_DURATION, releaseId);
         vm.stopPrank();
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.tokenId, 2);
         assertEq(listing.seller, seller);
         assertEq(listing.amount, 1);
@@ -390,18 +309,13 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         contentProtection.registerStemProtectionRoot(1, 1);
 
         vm.prank(seller);
-        uint256 listingId =
-            marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.pricePerUnit, 1 ether);
     }
 
-    function test_List_ProtectedMint_RevertPriceExceedsStakeCapWithoutManualRootRegistration()
-        public
-    {
+    function test_List_ProtectedMint_RevertPriceExceedsStakeCapWithoutManualRootRegistration() public {
         uint256[] memory parentIds = new uint256[](0);
         uint256 releaseId = 77;
         uint256 deadline = block.timestamp + 1 hours;
@@ -459,32 +373,18 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Cancel_RemovesListing() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(seller);
         marketplace.cancel(listingId);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.seller, address(0));
     }
 
     function test_Cancel_EmitsEvent() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(seller);
         vm.expectEmit(true, false, false, false);
@@ -494,13 +394,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Cancel_RevertNotSeller() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.NotSeller.selector);
@@ -511,13 +405,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_TransfersNFT() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
         marketplace.buy{value: 10 ether}(listingId, 10);
@@ -528,13 +416,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_DistributesPayments() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         uint256 totalPrice = 10 ether;
         uint256 expectedRoyalty = (totalPrice * ROYALTY_BPS) / 10000; // 0.5 ether
@@ -555,13 +437,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_EmitsEvents() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         uint256 totalPrice = 10 ether;
         uint256 expectedRoyalty = (totalPrice * ROYALTY_BPS) / 10000;
@@ -576,52 +452,30 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_UpdatesListingAmount() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
         marketplace.buy{value: 10 ether}(listingId, 10);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.amount, 40);
     }
 
     function test_Buy_DeletesListingWhenEmpty() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.deal(buyer, 100 ether); // Ensure buyer has enough ETH
         vm.prank(buyer);
         marketplace.buy{value: 50 ether}(listingId, 50);
 
-        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
         assertEq(listing.seller, address(0));
     }
 
     function test_Buy_RevertExcessPayment() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
@@ -630,13 +484,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_WithERC20() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         uint256 buyerBefore = paymentToken.balanceOf(buyer);
         uint256 sellerBefore = paymentToken.balanceOf(seller);
@@ -650,13 +498,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_BuyFor_WithERC20_TransfersStemToRecipient() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         uint256 buyerBefore = paymentToken.balanceOf(buyer);
         uint256 sellerBefore = paymentToken.balanceOf(seller);
@@ -673,13 +515,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_BuyFor_EmitsRecipientAsBuyer() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100_000000,
-            address(usdc),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100_000000, address(usdc), LISTING_DURATION);
 
         vm.expectEmit(true, true, false, true);
         emit Sold(listingId, recipient, 1, 100_000000);
@@ -690,13 +526,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_BuyFor_RevertZeroRecipient() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
@@ -705,13 +535,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_BuyFor_RevertSellerRecipient() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.CannotBuyOwnListing.selector);
@@ -720,13 +544,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_WithUSDC() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100_000000,
-            address(usdc),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100_000000, address(usdc), LISTING_DURATION);
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
         uint256 sellerBefore = usdc.balanceOf(seller);
@@ -740,13 +558,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_WithWETH() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(weth),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(weth), LISTING_DURATION);
 
         uint256 buyerBefore = weth.balanceOf(buyer);
         uint256 sellerBefore = weth.balanceOf(seller);
@@ -766,13 +578,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_RevertExpired() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.warp(block.timestamp + LISTING_DURATION + 1);
 
@@ -783,13 +589,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_RevertInsufficientAmount() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.deal(buyer, 100 ether);
         vm.prank(buyer);
@@ -840,13 +640,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Buy_RevertInsufficientPayment() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
@@ -857,20 +651,10 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_QuoteBuy() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 1 ether, address(0), LISTING_DURATION);
 
-        (
-            uint256 totalPrice,
-            uint256 royaltyAmount,
-            uint256 protocolFee,
-            uint256 sellerAmount
-        ) = marketplace.quoteBuy(listingId, 10);
+        (uint256 totalPrice, uint256 royaltyAmount, uint256 protocolFee, uint256 sellerAmount) =
+            marketplace.quoteBuy(listingId, 10);
 
         assertEq(totalPrice, 10 ether);
         assertEq(royaltyAmount, 0.5 ether); // 5%
@@ -914,27 +698,13 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Create listing for token with max royalty
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(
-            seller,
-            100,
-            "ipfs://test2",
-            royaltyReceiver,
-            1000,
-            true,
-            parentIds
-        );
+        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://test2", royaltyReceiver, 1000, true, parentIds);
 
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            tokenId,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(tokenId, 50, 1 ether, address(0), LISTING_DURATION);
 
         // Royalty is capped at 25% by marketplace (but token only has 10%)
-        (, uint256 royaltyAmount, , ) = marketplace.quoteBuy(listingId, 10);
+        (, uint256 royaltyAmount,,) = marketplace.quoteBuy(listingId, 10);
         assertEq(royaltyAmount, 1 ether); // 10% of 10 ETH
     }
 
@@ -944,27 +714,13 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Create listing for token with zero royalty
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(
-            seller,
-            100,
-            "ipfs://test2",
-            royaltyReceiver,
-            1,
-            true,
-            parentIds
-        );
+        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://test2", royaltyReceiver, 1, true, parentIds);
 
         vm.prank(seller);
         stemNFT.setRoyaltyBps(tokenId, 0);
 
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            tokenId,
-            50,
-            1 ether,
-            address(0),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(tokenId, 50, 1 ether, address(0), LISTING_DURATION);
 
         uint256 sellerBefore = seller.balance;
         uint256 feeBefore = feeRecipient.balance;
@@ -978,7 +734,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     }
 
     function test_Receive_AcceptsETH() public {
-        (bool success, ) = address(marketplace).call{value: 1 ether}("");
+        (bool success,) = address(marketplace).call{value: 1 ether}("");
         assertTrue(success);
     }
 
@@ -1039,13 +795,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     /// @notice evmbench V-001: buy() must reject msg.value when listing uses ERC20 payment token
     function test_Buy_RevertETHWithERC20Listing() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         // Attempt to send ETH alongside an ERC20 purchase — must revert
         vm.prank(buyer);
@@ -1059,13 +809,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     /// @notice Ensure normal ERC20 buy (no ETH) still works after the fix
     function test_Buy_ERC20WithoutETH_StillWorks() public {
         vm.prank(seller);
-        uint256 listingId = marketplace.list(
-            1,
-            50,
-            100e18,
-            address(paymentToken),
-            LISTING_DURATION
-        );
+        uint256 listingId = marketplace.list(1, 50, 100e18, address(paymentToken), LISTING_DURATION);
 
         vm.prank(buyer);
         marketplace.buy(listingId, 10);

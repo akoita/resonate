@@ -2,9 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {
-    ReentrancyGuard
-} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
 
 /**
@@ -73,84 +71,6 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         uint256 timestamp;
     }
 
-    // ============ Events ============
-
-    event DisputeFiled(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        address creator,
-        string evidenceURI,
-        uint256 counterStake
-    );
-
-    event EvidenceSubmitted(
-        uint256 indexed disputeId,
-        address indexed submitter,
-        string evidenceURI,
-        uint256 evidenceIndex
-    );
-
-    event DisputeStatusChanged(
-        uint256 indexed disputeId,
-        DisputeStatus oldStatus,
-        DisputeStatus newStatus
-    );
-
-    event DisputeResolved(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        Outcome outcome,
-        address resolver
-    );
-
-    event DisputeAppealed(
-        uint256 indexed disputeId,
-        address indexed appealer,
-        uint8 appealNumber
-    );
-
-    event JurorRegistered(address indexed juror);
-    event JurorRemoved(address indexed juror);
-    event DisputeEscalatedToJury(
-        uint256 indexed disputeId,
-        uint8 jurySize,
-        uint256 juryDeadlineAt
-    );
-    event JuryVoteCast(
-        uint256 indexed disputeId,
-        address indexed juror,
-        JuryVote vote
-    );
-    event JuryResolved(
-        uint256 indexed disputeId,
-        Outcome outcome,
-        uint8 votesForReporter,
-        uint8 votesForCreator
-    );
-
-    // ============ Errors ============
-
-    error DisputeNotFound();
-    error NotDisputeParty();
-    error MaxEvidenceReached();
-    error DisputeAlreadyResolved();
-    error InvalidOutcome();
-    error DisputeNotUnderReview();
-    error ActiveDisputeExists();
-    error AlreadyReported();
-    error DisputeNotResolved();
-    error MaxAppealsReached();
-    error NotLosingParty();
-    error InvalidDisputeStatus();
-    error ZeroAddress();
-    error JurorAlreadyRegistered();
-    error JurorNotRegistered();
-    error InsufficientJurors();
-    error NotAssignedJuror();
-    error AlreadyVoted();
-    error JuryVotePending();
-
     // ============ Constructor ============
 
     constructor(address _owner) Ownable(_owner) {}
@@ -165,12 +85,11 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
      * @param evidenceURI IPFS URI to evidence
      * @return disputeId The new dispute's ID
      */
-    function fileDispute(
-        uint256 tokenId,
-        address reporter,
-        address creator,
-        string calldata evidenceURI
-    ) external payable returns (uint256 disputeId) {
+    function fileDispute(uint256 tokenId, address reporter, address creator, string calldata evidenceURI)
+        external
+        payable
+        returns (uint256 disputeId)
+    {
         if (activeDisputeByToken[tokenId] != 0) revert ActiveDisputeExists();
         if (hasReportedByToken[tokenId][reporter]) revert AlreadyReported();
 
@@ -198,14 +117,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         activeDisputeByToken[tokenId] = disputeId;
         hasReportedByToken[tokenId][reporter] = true;
 
-        emit DisputeFiled(
-            disputeId,
-            tokenId,
-            reporter,
-            creator,
-            evidenceURI,
-            msg.value
-        );
+        emit DisputeFiled(disputeId, tokenId, reporter, creator, evidenceURI, msg.value);
     }
 
     // ============ Evidence ============
@@ -216,44 +128,32 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
      * @param disputeId The dispute to add evidence to
      * @param evidenceURI IPFS URI to the evidence document
      */
-    function submitEvidence(
-        uint256 disputeId,
-        string calldata evidenceURI
-    ) external {
+    function submitEvidence(uint256 disputeId, string calldata evidenceURI) external {
         Dispute storage d = disputes[disputeId];
         if (d.filedAt == 0) revert DisputeNotFound();
         if (d.status == DisputeStatus.Resolved) revert DisputeAlreadyResolved();
-        if (msg.sender != d.reporter && msg.sender != d.creator)
+        if (msg.sender != d.reporter && msg.sender != d.creator) {
             revert NotDisputeParty();
-        if (evidenceCounts[disputeId][msg.sender] >= MAX_EVIDENCE_PER_PARTY)
+        }
+        if (evidenceCounts[disputeId][msg.sender] >= MAX_EVIDENCE_PER_PARTY) {
             revert MaxEvidenceReached();
+        }
 
         // Transition to Evidence status if still Filed or Appealed
-        if (
-            d.status == DisputeStatus.Filed ||
-            d.status == DisputeStatus.Appealed
-        ) {
+        if (d.status == DisputeStatus.Filed || d.status == DisputeStatus.Appealed) {
             DisputeStatus old = d.status;
             d.status = DisputeStatus.Evidence;
             emit DisputeStatusChanged(disputeId, old, d.status);
         }
 
         uint256 evidenceIndex = totalEvidenceCounts[disputeId];
-        evidences[disputeId][evidenceIndex] = Evidence({
-            submitter: msg.sender,
-            evidenceURI: evidenceURI,
-            timestamp: block.timestamp
-        });
+        evidences[disputeId][evidenceIndex] =
+            Evidence({submitter: msg.sender, evidenceURI: evidenceURI, timestamp: block.timestamp});
 
         totalEvidenceCounts[disputeId]++;
         evidenceCounts[disputeId][msg.sender]++;
 
-        emit EvidenceSubmitted(
-            disputeId,
-            msg.sender,
-            evidenceURI,
-            evidenceIndex
-        );
+        emit EvidenceSubmitted(disputeId, msg.sender, evidenceURI, evidenceIndex);
     }
 
     // ============ Resolution ============
@@ -282,10 +182,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         Dispute storage d = disputes[disputeId];
         if (d.filedAt == 0) revert DisputeNotFound();
         if (d.status == DisputeStatus.Resolved) revert DisputeAlreadyResolved();
-        if (
-            d.status == DisputeStatus.Escalated ||
-            d.status == DisputeStatus.JuryVoting
-        ) revert InvalidDisputeStatus();
+        if (d.status == DisputeStatus.Escalated || d.status == DisputeStatus.JuryVoting) revert InvalidDisputeStatus();
         if (outcome == Outcome.Pending) revert InvalidOutcome();
 
         d.status = DisputeStatus.Resolved;
@@ -331,10 +228,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
     function escalateToJury(uint256 disputeId) external onlyOwner {
         Dispute storage d = disputes[disputeId];
         if (d.filedAt == 0) revert DisputeNotFound();
-        if (
-            d.status != DisputeStatus.UnderReview &&
-            d.status != DisputeStatus.Appealed
-        ) revert InvalidDisputeStatus();
+        if (d.status != DisputeStatus.UnderReview && d.status != DisputeStatus.Appealed) revert InvalidDisputeStatus();
         if (jurorPool.length < DEFAULT_JURY_SIZE) revert InsufficientJurors();
 
         delete _assignedJurors[disputeId];
@@ -350,19 +244,12 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
         _assignJurors(disputeId, DEFAULT_JURY_SIZE);
 
-        emit DisputeEscalatedToJury(
-            disputeId,
-            DEFAULT_JURY_SIZE,
-            d.juryDeadlineAt
-        );
+        emit DisputeEscalatedToJury(disputeId, DEFAULT_JURY_SIZE, d.juryDeadlineAt);
     }
 
     function castJuryVote(uint256 disputeId, JuryVote vote) external {
         Dispute storage d = disputes[disputeId];
-        if (
-            d.status != DisputeStatus.Escalated &&
-            d.status != DisputeStatus.JuryVoting
-        ) revert InvalidDisputeStatus();
+        if (d.status != DisputeStatus.Escalated && d.status != DisputeStatus.JuryVoting) revert InvalidDisputeStatus();
         if (!isAssignedJuror[disputeId][msg.sender]) revert NotAssignedJuror();
         if (vote != JuryVote.Reporter && vote != JuryVote.Creator) {
             revert InvalidOutcome();
@@ -388,10 +275,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     function finalizeJuryDecision(uint256 disputeId) external {
         Dispute storage d = disputes[disputeId];
-        if (
-            d.status != DisputeStatus.Escalated &&
-            d.status != DisputeStatus.JuryVoting
-        ) revert InvalidDisputeStatus();
+        if (d.status != DisputeStatus.Escalated && d.status != DisputeStatus.JuryVoting) revert InvalidDisputeStatus();
 
         uint8 majority = (d.jurorCount / 2) + 1;
         bool reporterWon = d.votesForReporter >= majority;
@@ -414,12 +298,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         d.resolvedAt = block.timestamp;
         activeDisputeByToken[d.tokenId] = 0;
 
-        emit JuryResolved(
-            disputeId,
-            d.outcome,
-            d.votesForReporter,
-            d.votesForCreator
-        );
+        emit JuryResolved(disputeId, d.outcome, d.votesForReporter, d.votesForCreator);
         emit DisputeResolved(disputeId, d.tokenId, d.outcome, msg.sender);
     }
 
@@ -441,7 +320,7 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
         // Only the losing party can appeal
         address loser = d.outcome == Outcome.Upheld
-            ? d.creator // dispute upheld = creator lost
+            ? d.creator  // dispute upheld = creator lost
             : d.reporter; // dispute rejected = reporter lost
         if (d.outcome == Outcome.Inconclusive) revert InvalidOutcome();
         if (appealer != loser) revert NotLosingParty();
@@ -465,22 +344,15 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
 
     // ============ Views ============
 
-    function getDispute(
-        uint256 disputeId
-    ) external view returns (Dispute memory) {
+    function getDispute(uint256 disputeId) external view returns (Dispute memory) {
         return disputes[disputeId];
     }
 
-    function getAssignedJurors(
-        uint256 disputeId
-    ) external view returns (address[] memory) {
+    function getAssignedJurors(uint256 disputeId) external view returns (address[] memory) {
         return _assignedJurors[disputeId];
     }
 
-    function getEvidence(
-        uint256 disputeId,
-        uint256 index
-    ) external view returns (Evidence memory) {
+    function getEvidence(uint256 disputeId, uint256 index) external view returns (Evidence memory) {
         return evidences[disputeId][index];
     }
 
@@ -497,23 +369,14 @@ contract DisputeResolution is Ownable, ReentrancyGuard, IDisputeResolution {
         uint256 nonce = 0;
 
         while (_assignedJurors[disputeId].length < count) {
-            uint256 index = uint256(
-                keccak256(
-                    abi.encodePacked(
-                        block.prevrandao,
-                        block.timestamp,
-                        disputeId,
-                        nonce
-                    )
-                )
-            ) % poolSize;
+            uint256 index =
+                uint256(keccak256(abi.encodePacked(block.prevrandao, block.timestamp, disputeId, nonce))) % poolSize;
             address juror = jurorPool[index];
             nonce++;
 
             if (
-                juror == disputes[disputeId].reporter ||
-                juror == disputes[disputeId].creator ||
-                isAssignedJuror[disputeId][juror]
+                juror == disputes[disputeId].reporter || juror == disputes[disputeId].creator
+                    || isAssignedJuror[disputeId][juror]
             ) {
                 continue;
             }

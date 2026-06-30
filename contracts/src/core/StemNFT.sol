@@ -2,9 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
-import {
-    ERC1155Supply
-} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
+import {ERC1155Supply} from "@openzeppelin/contracts/token/ERC1155/extensions/ERC1155Supply.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
@@ -29,8 +27,7 @@ import {IStemNFT} from "../interfaces/IStemNFT.sol";
 contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IERC2981 {
     // ============ Roles ============
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    bytes32 public constant MINT_AUTHORIZER_ROLE =
-        keccak256("MINT_AUTHORIZER_ROLE");
+    bytes32 public constant MINT_AUTHORIZER_ROLE = keccak256("MINT_AUTHORIZER_ROLE");
 
     // ============ Structs ============
 
@@ -66,10 +63,9 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
     // ============ Constants ============
     uint96 public constant MAX_ROYALTY_BPS = 1000; // 10%
     uint96 public constant DEFAULT_ROYALTY_BPS = 500; // 5%
-    bytes32 private constant _MINT_AUTHORIZATION_TYPEHASH =
-        keccak256(
-            "MintAuthorization(address minter,address to,uint256 amount,bytes32 tokenURIHash,uint256 protectionId,address royaltyReceiver,uint96 royaltyBps,bool remixable,bytes32 parentIdsHash,uint256 deadline,bytes32 nonce)"
-        );
+    bytes32 private constant _MINT_AUTHORIZATION_TYPEHASH = keccak256(
+        "MintAuthorization(address minter,address to,uint256 amount,bytes32 tokenURIHash,uint256 protectionId,address royaltyReceiver,uint96 royaltyBps,bool remixable,bytes32 parentIdsHash,uint256 deadline,bytes32 nonce)"
+    );
 
     // ============ State ============
     uint256 private _tokenIdCounter;
@@ -95,10 +91,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
     IContentProtection public contentProtection;
 
     // ============ Constructor ============
-    constructor(string memory baseUri)
-        ERC1155(baseUri)
-        EIP712("Resonate StemNFT", "1")
-    {
+    constructor(string memory baseUri) ERC1155(baseUri) EIP712("Resonate StemNFT", "1") {
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
         _grantRole(MINT_AUTHORIZER_ROLE, msg.sender);
@@ -125,19 +118,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
         bool remixable,
         uint256[] calldata parentIds
     ) external onlyRole(MINTER_ROLE) returns (uint256 tokenId) {
-        return
-            _mintStem(
-                msg.sender,
-                to,
-                amount,
-                tokenURI_,
-                0,
-                royaltyReceiver,
-                royaltyBps,
-                remixable,
-                parentIds,
-                false
-            );
+        return _mintStem(msg.sender, to, amount, tokenURI_, 0, royaltyReceiver, royaltyBps, remixable, parentIds, false);
     }
 
     function mintAuthorized(
@@ -182,19 +163,9 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
 
         usedMintAuthorizationNonces[msg.sender][nonce] = true;
 
-        return
-            _mintStem(
-                msg.sender,
-                to,
-                amount,
-                tokenURI_,
-                protectionId,
-                royaltyReceiver,
-                royaltyBps,
-                remixable,
-                parentIds,
-                true
-            );
+        return _mintStem(
+            msg.sender, to, amount, tokenURI_, protectionId, royaltyReceiver, royaltyBps, remixable, parentIds, true
+        );
     }
 
     /**
@@ -202,10 +173,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
      */
     function mintMore(address to, uint256 tokenId, uint256 amount) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (
-            stems[tokenId].creator != msg.sender &&
-            !hasRole(MINTER_ROLE, msg.sender)
-        ) {
+        if (stems[tokenId].creator != msg.sender && !hasRole(MINTER_ROLE, msg.sender)) {
             revert NotStemCreator(tokenId);
         }
         _mint(to, tokenId, amount, "");
@@ -218,10 +186,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
      */
     function setRoyaltyReceiver(uint256 tokenId, address receiver) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (
-            stems[tokenId].creator != msg.sender &&
-            !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)
-        ) {
+        if (stems[tokenId].creator != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert NotStemCreator(tokenId);
         }
         if (receiver == address(0)) revert InvalidRoyalty(0);
@@ -234,10 +199,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
      */
     function setRoyaltyBps(uint256 tokenId, uint96 bps) external {
         if (!stems[tokenId].exists) revert StemNotFound(tokenId);
-        if (
-            stems[tokenId].creator != msg.sender &&
-            !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)
-        ) {
+        if (stems[tokenId].creator != msg.sender && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert NotStemCreator(tokenId);
         }
         if (bps > MAX_ROYALTY_BPS) revert InvalidRoyalty(bps);
@@ -251,9 +213,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
      * @notice Set transfer validator module (for royalty enforcement)
      * @param validator Address of validator (address(0) to disable)
      */
-    function setTransferValidator(
-        address validator
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setTransferValidator(address validator) external onlyRole(DEFAULT_ADMIN_ROLE) {
         transferValidator = ITransferValidator(validator);
         emit TransferValidatorSet(validator);
     }
@@ -262,9 +222,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
      * @notice Set content protection module for blacklist / future policy checks
      * @param protection Address of ContentProtection contract (address(0) to disable)
      */
-    function setContentProtection(
-        address protection
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function setContentProtection(address protection) external onlyRole(DEFAULT_ADMIN_ROLE) {
         contentProtection = IContentProtection(protection);
         emit ContentProtectionSet(protection);
     }
@@ -292,9 +250,7 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
         return remixes[tokenId].parentIds.length > 0;
     }
 
-    function getParentIds(
-        uint256 tokenId
-    ) external view returns (uint256[] memory) {
+    function getParentIds(uint256 tokenId) external view returns (uint256[] memory) {
         return remixes[tokenId].parentIds;
     }
 
@@ -315,30 +271,26 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
         uint256 deadline,
         bytes32 nonce
     ) external view returns (bytes32) {
-        return
-            _hashMintAuthorization(
-                MintAuthorization({
-                    minter: minter,
-                    to: to,
-                    amount: amount,
-                    tokenURIHash: keccak256(bytes(tokenURI_)),
-                    protectionId: protectionId,
-                    royaltyReceiver: royaltyReceiver,
-                    royaltyBps: royaltyBps,
-                    remixable: remixable,
-                    parentIdsHash: keccak256(abi.encode(parentIds)),
-                    deadline: deadline,
-                    nonce: nonce
-                })
-            );
+        return _hashMintAuthorization(
+            MintAuthorization({
+                minter: minter,
+                to: to,
+                amount: amount,
+                tokenURIHash: keccak256(bytes(tokenURI_)),
+                protectionId: protectionId,
+                royaltyReceiver: royaltyReceiver,
+                royaltyBps: royaltyBps,
+                remixable: remixable,
+                parentIdsHash: keccak256(abi.encode(parentIds)),
+                deadline: deadline,
+                nonce: nonce
+            })
+        );
     }
 
     // ============ EIP-2981 ============
 
-    function royaltyInfo(
-        uint256 tokenId,
-        uint256 salePrice
-    ) external view override returns (address, uint256) {
+    function royaltyInfo(uint256 tokenId, uint256 salePrice) external view override returns (address, uint256) {
         StemData storage stem = stems[tokenId];
         if (!stem.exists) return (address(0), 0);
 
@@ -348,18 +300,12 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
 
     // ============ Transfer Hook (Validator Integration) ============
 
-    function _update(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values
-    ) internal override(ERC1155, ERC1155Supply) {
+    function _update(address from, address to, uint256[] memory ids, uint256[] memory values)
+        internal
+        override(ERC1155, ERC1155Supply)
+    {
         // Check transfer validator if set (skip for mints/burns)
-        if (
-            address(transferValidator) != address(0) &&
-            from != address(0) &&
-            to != address(0)
-        ) {
+        if (address(transferValidator) != address(0) && from != address(0) && to != address(0)) {
             if (!transferValidator.validateTransfer(msg.sender, from, to)) {
                 revert TransferNotAllowed();
             }
@@ -369,12 +315,13 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
 
     // ============ Interface Support ============
 
-    function supportsInterface(
-        bytes4 interfaceId
-    ) public view override(ERC1155, AccessControl, IERC165) returns (bool) {
-        return
-            interfaceId == type(IERC2981).interfaceId ||
-            super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC1155, AccessControl, IERC165)
+        returns (bool)
+    {
+        return interfaceId == type(IERC2981).interfaceId || super.supportsInterface(interfaceId);
     }
 
     function _mintStem(
@@ -389,43 +336,37 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
         uint256[] memory parentIds,
         bool enforceProtection
     ) internal returns (uint256 tokenId) {
-        uint96 effectiveRoyalty = royaltyBps == 0
-            ? DEFAULT_ROYALTY_BPS
-            : royaltyBps;
-        if (effectiveRoyalty > MAX_ROYALTY_BPS)
+        uint96 effectiveRoyalty = royaltyBps == 0 ? DEFAULT_ROYALTY_BPS : royaltyBps;
+        if (effectiveRoyalty > MAX_ROYALTY_BPS) {
             revert InvalidRoyalty(royaltyBps);
+        }
 
         if (
-            enforceProtection &&
-            address(contentProtection) != address(0) &&
-            !contentProtection.isReleaseVerified(protectionId)
+            enforceProtection && address(contentProtection) != address(0)
+                && !contentProtection.isReleaseVerified(protectionId)
         ) {
             revert NotAttested(protectionId);
         }
 
         for (uint256 i; i < parentIds.length; ++i) {
             if (!stems[parentIds[i]].exists) revert StemNotFound(parentIds[i]);
-            if (!stems[parentIds[i]].remixable)
+            if (!stems[parentIds[i]].remixable) {
                 revert ParentNotRemixable(parentIds[i]);
+            }
         }
 
         tokenId = ++_tokenIdCounter;
 
         stems[tokenId] = StemData({
             creator: creator,
-            royaltyReceiver: royaltyReceiver == address(0)
-                ? creator
-                : royaltyReceiver,
+            royaltyReceiver: royaltyReceiver == address(0) ? creator : royaltyReceiver,
             royaltyBps: effectiveRoyalty,
             remixable: remixable,
             exists: true
         });
 
         if (parentIds.length > 0) {
-            remixes[tokenId] = RemixInfo({
-                parentIds: parentIds,
-                createdAt: uint40(block.timestamp)
-            });
+            remixes[tokenId] = RemixInfo({parentIds: parentIds, createdAt: uint40(block.timestamp)});
         }
 
         _tokenURIs[tokenId] = tokenURI_;
@@ -434,38 +375,31 @@ contract StemNFT is IStemNFT, ERC1155, ERC1155Supply, AccessControl, EIP712, IER
         lastMintedTokenIdByOwner[to] = tokenId;
         lastMintedBlockByOwner[to] = uint64(block.number);
 
-        if (
-            enforceProtection &&
-            protectionId != 0 &&
-            address(contentProtection) != address(0)
-        ) {
+        if (enforceProtection && protectionId != 0 && address(contentProtection) != address(0)) {
             contentProtection.registerStemProtectionRoot(protectionId, tokenId);
         }
 
         emit StemMinted(tokenId, creator, parentIds, tokenURI_);
     }
 
-    function _hashMintAuthorization(
-        MintAuthorization memory authorization
-    ) internal view returns (bytes32) {
-        return
-            _hashTypedDataV4(
-                keccak256(
-                    abi.encode(
-                        _MINT_AUTHORIZATION_TYPEHASH,
-                        authorization.minter,
-                        authorization.to,
-                        authorization.amount,
-                        authorization.tokenURIHash,
-                        authorization.protectionId,
-                        authorization.royaltyReceiver,
-                        authorization.royaltyBps,
-                        authorization.remixable,
-                        authorization.parentIdsHash,
-                        authorization.deadline,
-                        authorization.nonce
-                    )
+    function _hashMintAuthorization(MintAuthorization memory authorization) internal view returns (bytes32) {
+        return _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    _MINT_AUTHORIZATION_TYPEHASH,
+                    authorization.minter,
+                    authorization.to,
+                    authorization.amount,
+                    authorization.tokenURIHash,
+                    authorization.protectionId,
+                    authorization.royaltyReceiver,
+                    authorization.royaltyBps,
+                    authorization.remixable,
+                    authorization.parentIdsHash,
+                    authorization.deadline,
+                    authorization.nonce
                 )
-            );
+            )
+        );
     }
 }

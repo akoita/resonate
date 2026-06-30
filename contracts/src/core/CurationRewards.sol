@@ -7,6 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
 import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
+import {IDisputeResolutionEvents} from "../interfaces/IDisputeResolutionEvents.sol";
 import {ICurationRewards} from "../interfaces/ICurationRewards.sol";
 
 /**
@@ -165,10 +166,10 @@ contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
         if (reporters[disputeId] != msg.sender) revert NotUpheld();
 
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Upheld) revert NotUpheld();
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Upheld) revert NotUpheld();
 
         bountyClaimed[disputeId] = true;
 
@@ -198,10 +199,10 @@ contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
      */
     function processRejection(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Rejected) {
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Rejected) {
             revert NotUpheld();
         }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
@@ -233,10 +234,10 @@ contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
      */
     function processInconclusive(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Inconclusive) {
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Inconclusive) {
             revert NotUpheld();
         }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
@@ -310,7 +311,7 @@ contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
      */
     function processAppealOutcome(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
 
@@ -327,11 +328,11 @@ contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
         bool appealerWon;
         if (appealer == d.creator) {
             // Creator appealed → they won if the dispute was rejected this time
-            appealerWon = d.outcome == IDisputeResolution.Outcome.Rejected
-                || d.outcome == IDisputeResolution.Outcome.Inconclusive;
+            appealerWon = d.outcome == IDisputeResolutionEvents.Outcome.Rejected
+                || d.outcome == IDisputeResolutionEvents.Outcome.Inconclusive;
         } else {
             // Reporter appealed → they won if the dispute was upheld this time
-            appealerWon = d.outcome == IDisputeResolution.Outcome.Upheld;
+            appealerWon = d.outcome == IDisputeResolutionEvents.Outcome.Upheld;
         }
 
         if (appealerWon) {

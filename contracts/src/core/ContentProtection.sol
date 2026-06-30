@@ -601,8 +601,9 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
             if (!ok) _escrowFailedPayment(token, to, amount);
         } else {
             try this.safeTransferSelf(token, to, amount) {
-                // delivered
-            } catch {
+            // delivered
+            }
+            catch {
                 _escrowFailedPayment(token, to, amount);
             }
         }

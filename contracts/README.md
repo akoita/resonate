@@ -15,6 +15,44 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
+## Shared Interfaces
+
+Each contract's **shared surface** — events, custom errors, and any enums/structs
+consumed outside the contract (tests, indexers, the backend, the frontend) — lives
+in a canonical interface under `src/interfaces/`. Production contracts inherit the
+interface and tests import it, so the event/error contract has exactly one
+definition and cannot silently drift.
+
+| Interface | Owns | Inherited by |
+| --- | --- | --- |
+| `IShowCampaignEscrow` | `CampaignStatus`, `Campaign`, events, errors | `ShowCampaignEscrow` + tests |
+| `IRevenueEscrow` | `EscrowInfo`, events, errors | `RevenueEscrow` + tests |
+| `IStemNFT` | events, errors | `StemNFT` + tests |
+| `IStemMarketplaceV2` | `Listing`, events, errors | `StemMarketplaceV2` + tests |
+| `ICurationRewards` | events, errors | `CurationRewards` + tests |
+| `IPaymentAssetRegistry` | `PaymentAsset`, events | `PaymentAssetRegistry` + tests |
+| `IContentProtectionEvents` | events, errors | `ContentProtection` + tests; extended by `IContentProtection` |
+| `IDisputeResolutionEvents` | enums, events, errors | `DisputeResolution` + tests; extended by `IDisputeResolution` |
+
+`IContentProtection` and `IDisputeResolution` are **consumer** interfaces (function
+signatures + the `Attestation` / `Dispute` structs that other contracts call). They
+carry function signatures, so a test can't inherit them directly — the events/errors
+(and DisputeResolution's enums, which its events reference) live in the separate
+`I…Events` interfaces that both the contract and its tests inherit. Reference the
+DisputeResolution enums via `IDisputeResolutionEvents.Outcome` (an inherited enum is
+not reachable through the derived `IDisputeResolution` name).
+
+**Intentionally kept local** (not extracted — not consumed elsewhere as named types,
+or extracting would change behavior):
+
+- `StemNFT.MintAuthorization` / `StemData` / `RemixInfo` — internal storage and
+  EIP-712 signing structs, accessed only through getters.
+- `DisputeResolution.Evidence` — contract-local struct returned by `getEvidence`.
+- `StemMarketplaceV2.IStemNFTWithMintTracking` — a narrow adapter the marketplace
+  uses to read StemNFT, not part of the marketplace's own surface.
+- `PaymentAssetRegistry` admin guards use `require`-strings rather than custom
+  errors; converting them would change revert data, so they stay as-is.
+
 ## Deployment
 
 ### Prerequisites

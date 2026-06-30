@@ -20,9 +20,7 @@ interface IStemMarketplaceV2 {
 
     // ============ Events ============
 
-    event Listed(
-        uint256 indexed listingId, address indexed seller, uint256 tokenId, uint256 amount, uint256 price
-    );
+    event Listed(uint256 indexed listingId, address indexed seller, uint256 tokenId, uint256 amount, uint256 price);
     event Cancelled(uint256 indexed listingId);
     event Sold(uint256 indexed listingId, address indexed buyer, uint256 amount, uint256 totalPaid);
     event RoyaltyPaid(uint256 indexed tokenId, address indexed recipient, uint256 amount);

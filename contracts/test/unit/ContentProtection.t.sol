@@ -259,7 +259,9 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         feeToken.approve(address(cp), type(uint256).max);
         uint256 received = USDC_STAKE_AMOUNT - (USDC_STAKE_AMOUNT * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(IContentProtectionEvents.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received)
+            abi.encodeWithSelector(
+                IContentProtectionEvents.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received
+            )
         );
         cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
         vm.stopPrank();
