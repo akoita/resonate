@@ -23,6 +23,7 @@ jobs:
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       demucs: ${{ steps.detect.outputs.demucs }}
+      stable_audio: ${{ steps.detect.outputs.stable_audio }}
       analytics_dataflow: ${{ steps.detect.outputs.analytics_dataflow }}
       backend_identity: ${{ steps.detect.outputs.backend_identity }}
       backend_ingestion: ${{ steps.detect.outputs.backend_ingestion }}
@@ -51,6 +52,7 @@ jobs:
 
           backend=false
           demucs=false
+          stable_audio=false
           analytics_dataflow=false
           backend_identity=false
           backend_ingestion=false
@@ -141,6 +143,9 @@ jobs:
                   workers/demucs/*)
                     demucs=true
                     ;;
+                  workers/stable-audio/*)
+                    stable_audio=true
+                    ;;
                   workers/analytics-dataflow/*)
                     analytics_dataflow=true
                     ;;
@@ -173,7 +178,7 @@ jobs:
           docs_only=false
           # Infra-only and docs-only changes can skip module-specific jobs, but
           # anything that doesn't classify cleanly falls back to a full run.
-          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${analytics_dataflow}" == "false" && "${desktop}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
+          if [[ "${run_all}" == "false" && "${backend}" == "false" && "${demucs}" == "false" && "${stable_audio}" == "false" && "${analytics_dataflow}" == "false" && "${desktop}" == "false" && "${web}" == "false" && "${contracts}" == "false" && "${shared}" == "false" ]]; then
             if [[ "${docs}" == "true" || "${infra}" == "true" ]]; then
               docs_only=true
             else
@@ -184,6 +189,7 @@ jobs:
 
           echo "backend=${backend}" >> "${GITHUB_OUTPUT}"
           echo "demucs=${demucs}" >> "${GITHUB_OUTPUT}"
+          echo "stable_audio=${stable_audio}" >> "${GITHUB_OUTPUT}"
           echo "analytics_dataflow=${analytics_dataflow}" >> "${GITHUB_OUTPUT}"
           echo "backend_identity=${backend_identity}" >> "${GITHUB_OUTPUT}"
           echo "backend_ingestion=${backend_ingestion}" >> "${GITHUB_OUTPUT}"
@@ -204,6 +210,7 @@ jobs:
             echo ""
             echo "- backend: ${backend}"
             echo "- demucs: ${demucs}"
+            echo "- stable_audio: ${stable_audio}"
             echo "- analytics_dataflow: ${analytics_dataflow}"
             echo "- backend_identity: ${backend_identity}"
             echo "- backend_ingestion: ${backend_ingestion}"
@@ -791,9 +798,11 @@ jobs:
       release_sha: ${{ steps.plan.outputs.release_sha }}
       release_id: ${{ steps.plan.outputs.release_id }}
       demucs_dockerfile: ${{ steps.plan.outputs.demucs_dockerfile }}
+      stable_audio_dockerfile: ${{ steps.plan.outputs.stable_audio_dockerfile }}
       backend_image: ${{ steps.plan.outputs.backend_image }}
       frontend_image: ${{ steps.plan.outputs.frontend_image }}
       demucs_image: ${{ steps.plan.outputs.demucs_image }}
+      stable_audio_image: ${{ steps.plan.outputs.stable_audio_image }}
     permissions:
       contents: read
     steps:
@@ -831,11 +840,12 @@ jobs:
           # Upload regressions can otherwise persist in staging when only backend
           # ingestion code changes on later commits and the worker image stays stale.
           if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared }}" == "true" ]]; then
-            services+=(backend frontend demucs)
+            services+=(backend frontend demucs stable-audio)
           else
             [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && services+=(backend)
             [[ "${{ needs.changes.outputs.web }}" == "true" ]] && services+=(frontend)
             [[ "${{ needs.changes.outputs.demucs }}" == "true" ]] && services+=(demucs)
+            [[ "${{ needs.changes.outputs.stable_audio }}" == "true" ]] && services+=(stable-audio)
             if [[ "${{ needs.changes.outputs.backend_ingestion }}" == "true" && " ${services[*]} " != *" demucs "* ]]; then
               services+=(demucs)
             fi
@@ -862,9 +872,11 @@ jobs:
             echo "release_sha=${GITHUB_SHA}"
             echo "release_id=ci-${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}"
             echo "demucs_dockerfile=${demucs_dockerfile}"
+            echo "stable_audio_dockerfile=Dockerfile"
             echo "backend_image=${registry}/backend:${GITHUB_SHA}"
             echo "frontend_image=${registry}/frontend:${GITHUB_SHA}"
             echo "demucs_image=${registry}/demucs-worker:${GITHUB_SHA}"
+            echo "stable_audio_image=${registry}/stable-audio-worker:${GITHUB_SHA}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Verify prerequisite jobs
@@ -1065,10 +1077,49 @@ jobs:
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
             --image "${{ needs.publish-plan.outputs.demucs_image }}"
 
+  publish-stable-audio-image:
+    name: Publish Stable Audio Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: always() && needs.publish-plan.result == 'success' && needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',stable-audio,')
+    environment: ${{ needs.publish-plan.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push Stable Audio image
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context workers/stable-audio \
+            --dockerfile "${{ needs.publish-plan.outputs.stable_audio_dockerfile }}" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${{ needs.publish-plan.outputs.stable_audio_image }}"
+
   publish-deploy-images:
     name: Publish Deployable Images
     runs-on: ubuntu-latest
-    needs: [publish-plan, publish-backend-image, publish-frontend-image, publish-demucs-image]
+    needs: [publish-plan, publish-backend-image, publish-frontend-image, publish-demucs-image, publish-stable-audio-image]
     if: always() && needs.publish-plan.result == 'success'
     permissions:
       contents: read
@@ -1080,6 +1131,7 @@ jobs:
           BACKEND_RESULT: ${{ needs.publish-backend-image.result }}
           FRONTEND_RESULT: ${{ needs.publish-frontend-image.result }}
           DEMUCS_RESULT: ${{ needs.publish-demucs-image.result }}
+          STABLE_AUDIO_RESULT: ${{ needs.publish-stable-audio-image.result }}
         run: |
           set -euo pipefail
 
@@ -1105,6 +1157,11 @@ jobs:
             exit 1
           fi
 
+          if [[ "${services}" == *",stable-audio,"* && "${STABLE_AUDIO_RESULT}" != "success" ]]; then
+            echo "Stable Audio image publication did not succeed." >&2
+            exit 1
+          fi
+
       - name: Write deploy manifest
         env:
           SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
@@ -1115,6 +1172,7 @@ jobs:
           ALL_BACKEND_IMAGE: ${{ needs.publish-plan.outputs.backend_image }}
           ALL_FRONTEND_IMAGE: ${{ needs.publish-plan.outputs.frontend_image }}
           ALL_DEMUCS_IMAGE: ${{ needs.publish-plan.outputs.demucs_image }}
+          ALL_STABLE_AUDIO_IMAGE: ${{ needs.publish-plan.outputs.stable_audio_image }}
         run: |
           python3 - <<'PY' > "${RUNNER_TEMP}/deploy-manifest.json"
           import json
@@ -1133,6 +1191,7 @@ jobs:
               "backend_image": os.environ["ALL_BACKEND_IMAGE"] if "backend" in services else "",
               "frontend_image": os.environ["ALL_FRONTEND_IMAGE"] if "frontend" in services else "",
               "demucs_image": os.environ["ALL_DEMUCS_IMAGE"] if "demucs" in services else "",
+              "stable_audio_image": os.environ["ALL_STABLE_AUDIO_IMAGE"] if "stable-audio" in services else "",
           }
           print(json.dumps(payload, indent=2, sort_keys=True))
           PY
