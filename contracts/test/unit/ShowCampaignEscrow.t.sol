@@ -556,6 +556,107 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.confirmBooking(campaignId);
     }
 
+    // ── #944: mutation-campaign survivors → killing tests ───────────────────
+
+    function test_RevertsCreateCampaignInvalidParams() public {
+        uint256 dl = block.timestamp + 14 days;
+        uint256 bdl = block.timestamp + 30 days;
+
+        vm.prank(owner); // zero beneficiary
+        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        escrow.createCampaign(ARTIST_ID_HASH, AUTHORITY_HASH, address(0), address(usdc), GOAL, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW);
+
+        vm.prank(owner); // zero goal
+        vm.expectRevert(IShowCampaignEscrow.ZeroAmount.selector);
+        escrow.createCampaign(ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), 0, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW);
+
+        vm.prank(owner); // deadline not in the future
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidDeadline.selector, block.timestamp, bdl, block.timestamp)
+        );
+        escrow.createCampaign(ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS, block.timestamp, bdl, 0, DISPUTE_WINDOW);
+    }
+
+    function test_UpdateAuthority() public {
+        vm.prank(owner);
+        uint256 id = escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS,
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, DISPUTE_WINDOW
+        );
+
+        // Happy path: authority + beneficiary are actually updated.
+        bytes32 newAuth = keccak256("new-authority");
+        vm.prank(owner);
+        escrow.updateAuthority(id, newAuth, bob);
+        (bytes32 auth, address benef) = escrow.campaignAuthority(id);
+        assertEq(auth, newAuth);
+        assertEq(benef, bob);
+
+        // Reverts: zero authority, zero beneficiary, and non-Draft status.
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidAuthority.selector, ARTIST_ID_HASH, bytes32(0)));
+        escrow.updateAuthority(id, bytes32(0), bob);
+
+        vm.prank(owner);
+        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        escrow.updateAuthority(id, newAuth, address(0));
+
+        vm.prank(owner);
+        escrow.activateCampaign(id); // now Active, not Draft
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, id, CampaignStatus.Active));
+        escrow.updateAuthority(id, newAuth, bob);
+    }
+
+    function test_ReleasableAndRefundableReturnValues() public {
+        uint256 id = _fundCampaign(2_000); // 20% deposit, 1_100e6 pledged
+
+        // Funded (not Fulfilled): releasable is 0.
+        assertEq(escrow.releasable(id), 0);
+
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(id);
+        escrow.releaseDeposit(id); // totalReleased = 220e6
+        escrow.confirmFulfillment(id); // Fulfilled
+        vm.stopPrank();
+
+        // Fulfilled but within the dispute window: still 0.
+        assertEq(escrow.releasable(id), 0);
+
+        // Past the window: releasable equals the outstanding balance (1_100 - 220 = 880e6).
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+        assertEq(escrow.releasable(id), 880e6);
+
+        // refundable is 0 unless the campaign is RefundAvailable.
+        assertEq(escrow.refundable(id, alice), 0);
+
+        // Cancel → RefundAvailable. `refundable` reports the backer's raw recorded
+        // pledge (the pro-rata of the outstanding balance is applied at claim time).
+        vm.prank(owner);
+        escrow.cancelCampaign(id);
+        assertEq(escrow.refundable(id, alice), 600e6);
+    }
+
+    function test_RevertsOnInvalidCampaignId() public {
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidCampaign.selector, uint256(999)));
+        escrow.campaignStatus(999);
+    }
+
+    function test_CampaignIdsAreSequential() public {
+        vm.startPrank(owner);
+        uint256 id1 = escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS,
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, DISPUTE_WINDOW
+        );
+        uint256 id2 = escrow.createCampaign(
+            ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), GOAL, MIN_BACKERS,
+            block.timestamp + 14 days, block.timestamp + 30 days, 0, DISPUTE_WINDOW
+        );
+        vm.stopPrank();
+        assertEq(id1, 1);
+        assertEq(id2, 2);
+    }
+
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(

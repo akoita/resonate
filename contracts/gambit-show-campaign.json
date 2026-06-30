@@ -1,0 +1,11 @@
+{
+  "filename": "src/core/ShowCampaignEscrow.sol",
+  "contract": "ShowCampaignEscrow",
+  "outdir": "gambit_out_show_campaign",
+  "solc": "solc",
+  "solc_remappings": [
+    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
+    "forge-std/=lib/forge-std/src/"
+  ],
+  "solc_optimize": true
+}
