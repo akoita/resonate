@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IContentProtectionEvents} from "./IContentProtectionEvents.sol";
+
 /**
  * @title IContentProtection
- * @notice Interface for the ContentProtection contract — used by StemNFT and TransferValidator.
+ * @notice Consumer interface for the ContentProtection contract — used by StemNFT,
+ * TransferValidator, RevenueEscrow, and CurationRewards. Extends
+ * IContentProtectionEvents so callers can also reference its events and errors.
  */
-interface IContentProtection {
+interface IContentProtection is IContentProtectionEvents {
     struct Attestation {
         bytes32 contentHash;
         bytes32 fingerprintHash;
