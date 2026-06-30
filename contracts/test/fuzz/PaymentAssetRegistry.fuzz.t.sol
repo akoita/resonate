@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {IPaymentAssetRegistry} from "../../src/interfaces/IPaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../../src/payments/ChainlinkPriceOracleAdapter.sol";
+import {IChainlinkPriceOracleAdapter} from "../../src/interfaces/IChainlinkPriceOracleAdapter.sol";
 import {MockPriceOracle} from "../../src/payments/MockPriceOracle.sol";
 
 /**
@@ -118,7 +119,7 @@ contract PaymentAssetRegistryFuzzTest is Test {
         // Move past the staleness window since the feed's updatedAt was set at construction.
         vm.warp(block.timestamp + maxStaleness + over);
 
-        vm.expectRevert(ChainlinkPriceOracleAdapter.StaleAnswer.selector);
+        vm.expectRevert(IChainlinkPriceOracleAdapter.StaleAnswer.selector);
         adapter.latestPrice();
     }
 
@@ -129,7 +130,7 @@ contract PaymentAssetRegistryFuzzTest is Test {
 
         feed.setAnsweredInRound(0); // < roundId (1)
 
-        vm.expectRevert(ChainlinkPriceOracleAdapter.IncompleteRound.selector);
+        vm.expectRevert(IChainlinkPriceOracleAdapter.IncompleteRound.selector);
         adapter.latestPrice();
     }
 
@@ -138,7 +139,7 @@ contract PaymentAssetRegistryFuzzTest is Test {
         MockPriceOracle feed = new MockPriceOracle("X / USD", 8, answer);
         ChainlinkPriceOracleAdapter adapter = new ChainlinkPriceOracleAdapter(address(feed), 1 hours);
 
-        vm.expectRevert(ChainlinkPriceOracleAdapter.InvalidAnswer.selector);
+        vm.expectRevert(IChainlinkPriceOracleAdapter.InvalidAnswer.selector);
         adapter.latestPrice();
     }
 
@@ -146,11 +147,11 @@ contract PaymentAssetRegistryFuzzTest is Test {
         MockPriceOracle feed = new MockPriceOracle("X / USD", 8, 1e8);
 
         // zero feed address
-        vm.expectRevert(ChainlinkPriceOracleAdapter.InvalidFeed.selector);
+        vm.expectRevert(IChainlinkPriceOracleAdapter.InvalidFeed.selector);
         new ChainlinkPriceOracleAdapter(address(0), bound(staleness, 1, 365 days));
 
         // zero staleness
-        vm.expectRevert(ChainlinkPriceOracleAdapter.InvalidFeed.selector);
+        vm.expectRevert(IChainlinkPriceOracleAdapter.InvalidFeed.selector);
         new ChainlinkPriceOracleAdapter(address(feed), 0);
     }
 }

@@ -33,6 +33,7 @@ definition and cannot silently drift.
 | `IPaymentAssetRegistry` | `PaymentAsset`, events | `PaymentAssetRegistry` + tests |
 | `IContentProtectionEvents` | events, errors | `ContentProtection` + tests; extended by `IContentProtection` |
 | `IDisputeResolutionEvents` | enums, events, errors | `DisputeResolution` + tests; extended by `IDisputeResolution` |
+| `IChainlinkPriceOracleAdapter` | errors | `ChainlinkPriceOracleAdapter` + tests |
 
 `IContentProtection` and `IDisputeResolution` are **consumer** interfaces (function
 signatures + the `Attestation` / `Dispute` structs that other contracts call). They
@@ -52,6 +53,8 @@ or extracting would change behavior):
   uses to read StemNFT, not part of the marketplace's own surface.
 - `PaymentAssetRegistry` admin guards use `require`-strings rather than custom
   errors; converting them would change revert data, so they stay as-is.
+- `ChainlinkPriceOracleAdapter.AggregatorV3Interface` — the external Chainlink feed
+  read interface, an upstream standard rather than Resonate's own surface.
 
 ## Deployment
 
