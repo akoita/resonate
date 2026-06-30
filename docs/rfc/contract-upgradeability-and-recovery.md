@@ -68,7 +68,7 @@ those merges will not show `sweepBurned`/`claimFailedPayment`.
 | --- | --- | --- | --- | --- |
 | `ContentProtection` | yes (stakes) | **UUPS upgradeable** | upgrade; `blacklist`; `sweepBurned`; **`refundStake` is `onlyOwner`** | **No** — refund is owner-only |
 | `RevenueEscrow` | yes (per-token revenue) | immutable `Ownable` | `freeze`/`unfreeze`/`redirect`; `claimFailedPayment` | **Only** once unfrozen **and** past `escrowEndTime` (`release` reverts otherwise) |
-| `ShowCampaignEscrow` | yes (fan pledges) | immutable `Ownable` | `setPaused`; `cancelCampaign` → pro-rata refunds | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
+| `ShowCampaignEscrow` | yes (fan pledges) | immutable `Ownable` | `setPaused` (gates `pledge` **only** — releases still run); `cancelCampaign` → pro-rata refunds | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
 | `StemMarketplaceV2` | flow-through (per-tx) | immutable `Ownable`; `paymentAssetRegistry` is `immutable` (no setter) | `setProtocolFee`/`setFeeRecipient`; `claimFailedPayment`; `withdrawTrappedETH` | n/a (no standing deposits) |
 | `StemNFT` | yes (the assets) | immutable | `setTransferValidator` / `setContentProtection` (swap the hooks) | holders own their tokens directly |
 | `TransferValidator` | no (a hook) | immutable, but **swap-able** via `StemNFT.setTransferValidator` | replace the address | n/a |
@@ -129,10 +129,15 @@ a circuit breaker *and* a guarded upgrade path.
 - **Pros:** stops the bleeding within one block; logic is untouched so it cannot
   *introduce* a vulnerability; cheap to add.
 - **Cons:** does not *fix* the bug; an over-broad pause can also freeze honest
-  users' funds; needs a clear un-pause / resolution path.
-- **Fit:** every value contract. `ShowCampaignEscrow.setPaused` and
-  `RevenueEscrow.freeze` already provide a partial version. **This should be the
-  universal fast lever regardless of the upgrade decision.**
+  users' funds; needs a clear un-pause / resolution path. **And a too-narrow pause
+  is a false sense of safety** (see below).
+- **Fit:** every value contract — but it must cover the **payout/release outflow**,
+  not just inflows. The existing levers are only *partial*: `ShowCampaignEscrow.setPaused`
+  gates only `pledge`, so `releaseDeposit`/`releaseFunds` still execute while paused;
+  `RevenueEscrow.freeze` covers releases but is per-escrow, not a global stop. A
+  circuit breaker that does not halt the main custody outflow is not an emergency
+  stop. **A real fast lever — covering the release/payout transitions — should be the
+  universal control regardless of the upgrade decision.**
 
 ### 3. Fund rescue / migration hooks
 - **Mechanism:** admin can move at-risk funds to a safe address or a new contract
@@ -220,7 +225,7 @@ broad upgradeability lowers security. With them, it raises it.
 | Contract | Proposed posture |
 | --- | --- |
 | `RevenueEscrow` | **UUPS + timelock + multisig + re-verify**, keep `freeze`/`redirect` and add a fast `pause`. Strongest custody case. |
-| `ShowCampaignEscrow` | **UUPS + timelock + multisig + re-verify**, keep `setPaused` as the fast lever. |
+| `ShowCampaignEscrow` | **UUPS + timelock + multisig + re-verify**; **extend the fast pause to the payout/release path.** `setPaused` today gates only `pledge`, so `releaseDeposit`/`releaseFunds` still run while paused — the main custody outflow is *not* stopped. Add `whenNotPaused` (or an equivalent gate) to the release/confirm transitions. |
 | `StemMarketplaceV2` | **UUPS + timelock + multisig + re-verify**, plus a fast `pause` on `buy`/`list`. |
 | `ContentProtection` | Already UUPS — **add the timelock + multisig + a fast pause**; bring it under the same re-verification gate. |
 | `StemNFT` | **Default: stay immutable** (collector/asset trust), rely on the swappable `TransferValidator`/`ContentProtection` seams + a marketplace-level pause. Revisit only if a core-logic patch need is identified. |
@@ -236,7 +241,11 @@ gates, with pause as the universal fast lever.**
 
 1. Ratify this stance (per-contract posture + guardrails).
 2. Land the universal **fast pause** on the value contracts (small, low-risk; can
-   precede the proxy work).
+   precede the proxy work) — and ensure it covers the **payout/release outflow**, not
+   just inflows. For `ShowCampaignEscrow` this means extending `whenNotPaused` to
+   `releaseDeposit`, `releaseFunds`, and the confirm transitions that lead to release
+   (today it gates only `pledge`); for `RevenueEscrow`, add a global pause alongside
+   the per-escrow `freeze`.
 3. Stand up the **`TimelockController` + multisig** as the upgrade/admin authority,
    with an independent **guardian holding `CANCELLER_ROLE`** (the veto).
 4. Convert the escrows + marketplace to **UUPS** — *one contract per PR*, each with
