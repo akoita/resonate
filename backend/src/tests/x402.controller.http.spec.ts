@@ -130,6 +130,7 @@ describe('X402Controller HTTP contract', () => {
       .expect(402);
 
     expect(res.headers['payment-required']).toBeDefined();
+    expect(res.headers['cache-control']).toBe('no-store');
     expect(res.body).toEqual(
       expect.objectContaining({
         x402Version: 2,
