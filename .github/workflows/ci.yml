@@ -326,11 +326,19 @@ jobs:
         working-directory: contracts
 
       - name: Run Forge build
-        run: forge build
+        run: forge build --extra-output storageLayout
         working-directory: contracts
 
       - name: Run Forge tests
         run: forge test -vvv --no-match-path "test/formal/*"
+        working-directory: contracts
+
+      - name: Check UUPS storage layout
+        # Fails if an upgradeable contract's storage layout drifts from its committed
+        # baseline (catches layout-breaking changes before they reach a proxy). After
+        # an intentional, upgrade-safe change, run
+        # `scripts/check-storage-layout.sh --update` and commit the baseline (#1297).
+        run: bash scripts/check-storage-layout.sh
         working-directory: contracts
 
   backend-unit-tests:

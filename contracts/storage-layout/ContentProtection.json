@@ -1,0 +1,170 @@
+[
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "owner",
+    "offset": 0,
+    "slot": "0",
+    "type": "address"
+  },
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "treasury",
+    "offset": 0,
+    "slot": "1",
+    "type": "address"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "stakeAmount",
+    "offset": 0,
+    "slot": "2",
+    "type": "uint256"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "maxPriceMultiplier",
+    "offset": 0,
+    "slot": "3",
+    "type": "uint256"
+  },
+  {
+    "bytes": "32",
+    "encoding": "inplace",
+    "label": "nextTokenId",
+    "offset": 0,
+    "slot": "4",
+    "type": "uint256"
+  },
+  {
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "paymentAssetRegistry",
+    "offset": 0,
+    "slot": "5",
+    "type": "contract PaymentAssetRegistry"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "attestations",
+    "offset": 0,
+    "slot": "6",
+    "type": "mapping(uint256 => struct ContentProtection.Attestation)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakes",
+    "offset": 0,
+    "slot": "7",
+    "type": "mapping(uint256 => struct ContentProtection.StakeInfo)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeTokens",
+    "offset": 0,
+    "slot": "8",
+    "type": "mapping(uint256 => address)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stakeAmountsByToken",
+    "offset": 0,
+    "slot": "9",
+    "type": "mapping(address => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_blacklisted",
+    "offset": 0,
+    "slot": "10",
+    "type": "mapping(address => bool)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "registrars",
+    "offset": 0,
+    "slot": "11",
+    "type": "mapping(address => bool)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_releaseToTracks",
+    "offset": 0,
+    "slot": "12",
+    "type": "mapping(uint256 => uint256[])"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_trackToStems",
+    "offset": 0,
+    "slot": "13",
+    "type": "mapping(uint256 => uint256[])"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stemToCanonicalTrack",
+    "offset": 0,
+    "slot": "14",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "stemToProtectionRoot",
+    "offset": 0,
+    "slot": "15",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "trackToParentRelease",
+    "offset": 0,
+    "slot": "16",
+    "type": "mapping(uint256 => uint256)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "_tierPolicies",
+    "offset": 0,
+    "slot": "17",
+    "type": "mapping(bytes32 => struct ContentProtection.TierPolicy)"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "failedPayments",
+    "offset": 0,
+    "slot": "18",
+    "type": "mapping(address => mapping(address => uint256))"
+  },
+  {
+    "bytes": "32",
+    "encoding": "mapping",
+    "label": "totalBurned",
+    "offset": 0,
+    "slot": "19",
+    "type": "mapping(address => uint256)"
+  },
+  {
+    "bytes": "1600",
+    "encoding": "inplace",
+    "label": "__gap",
+    "offset": 0,
+    "slot": "20",
+    "type": "uint256[50]"
+  }
+]

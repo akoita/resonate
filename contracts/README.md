@@ -253,3 +253,18 @@ cast send $REVENUE_ESCROW "release(uint256)" 1 --rpc-url $RPC_URL
 ContentProtection newImpl = new ContentProtection();
 contentProtection.upgradeToAndCall(address(newImpl), "");
 ```
+
+### Storage-layout safety
+
+The contract reserves a trailing `__gap` and follows append-only storage
+discipline. A CI gate (`scripts/check-storage-layout.sh`, run in the
+`Smart Contract Tests` job) diffs each upgradeable contract's layout against a
+committed baseline under `contracts/storage-layout/` and **fails on any drift**,
+so a layout-breaking change can't reach a proxy unnoticed. After an intentional,
+upgrade-safe change (append a variable, shrink `__gap`), regenerate and commit the
+baseline:
+
+```bash
+forge build --extra-output storageLayout
+scripts/check-storage-layout.sh --update   # review the diff, then commit
+```
