@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test, console} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
+import {IContentProtectionEvents} from "../../src/interfaces/IContentProtectionEvents.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
@@ -13,7 +14,7 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  * @title ContentProtection Unit Tests
  * @notice Tests attestation, staking, slashing, blacklisting, and UUPS upgradability
  */
-contract ContentProtectionTest is Test {
+contract ContentProtectionTest is Test, IContentProtectionEvents {
     ContentProtection public cp;
 
     address public admin = makeAddr("admin");
@@ -27,45 +28,6 @@ contract ContentProtectionTest is Test {
     uint256 constant USDC_STAKE_AMOUNT = 10_000000;
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_USDC = keccak256("local:usdc");
-
-    event ContentAttested(
-        uint256 indexed tokenId,
-        address indexed attester,
-        bytes32 contentHash,
-        bytes32 fingerprintHash,
-        string metadataURI
-    );
-    event StakeDeposited(uint256 indexed tokenId, address indexed staker, uint256 amount);
-    event StakeDepositedWithAsset(
-        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
-    );
-    event StakeSlashed(
-        uint256 indexed tokenId,
-        address indexed reporter,
-        uint256 reporterAmount,
-        uint256 treasuryAmount,
-        uint256 burnedAmount
-    );
-    event StakeRefunded(uint256 indexed tokenId, address indexed staker, uint256 amount);
-    event StakeRefundedWithAsset(
-        uint256 indexed tokenId, address indexed staker, address indexed token, uint256 amount
-    );
-    event Blacklisted(address indexed account);
-    event BlacklistRemoved(address indexed account);
-    event RegistrarUpdated(address indexed registrar, bool allowed);
-    event MaxPriceMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
-    event TierPolicyUpdated(
-        string tierName,
-        uint256 oldStakeAmountWei,
-        uint256 oldEscrowDays,
-        uint256 newStakeAmountWei,
-        uint256 newEscrowDays
-    );
-    event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
-    event StemRegistered(uint256 indexed trackId, uint256 indexed stemTokenId);
-    event StemProtectionRootRegistered(uint256 indexed releaseId, uint256 indexed stemTokenId);
-    event TrackRevoked(uint256 indexed trackId);
-    event ReleaseRevoked(uint256 indexed releaseId);
 
     function setUp() public {
         // Deploy implementation + proxy
@@ -137,7 +99,7 @@ contract ContentProtectionTest is Test {
         cp.attest(1, keccak256("a"), keccak256("b"), "uri");
 
         vm.prank(bob);
-        vm.expectRevert(ContentProtection.AlreadyAttested.selector);
+        vm.expectRevert(IContentProtectionEvents.AlreadyAttested.selector);
         cp.attest(1, keccak256("c"), keccak256("d"), "uri2");
     }
 
@@ -146,7 +108,7 @@ contract ContentProtectionTest is Test {
         cp.blacklist(alice);
 
         vm.prank(alice);
-        vm.expectRevert(ContentProtection.IsBlacklisted.selector);
+        vm.expectRevert(IContentProtectionEvents.IsBlacklisted.selector);
         cp.attest(1, keccak256("a"), keccak256("b"), "uri");
     }
 
@@ -297,7 +259,9 @@ contract ContentProtectionTest is Test {
         feeToken.approve(address(cp), type(uint256).max);
         uint256 received = USDC_STAKE_AMOUNT - (USDC_STAKE_AMOUNT * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(ContentProtection.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received)
+            abi.encodeWithSelector(
+                IContentProtectionEvents.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received
+            )
         );
         cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
         vm.stopPrank();
@@ -331,7 +295,7 @@ contract ContentProtectionTest is Test {
     function test_Stake_RevertNotAttested() public {
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(ContentProtection.NotAttested.selector);
+        vm.expectRevert(IContentProtectionEvents.NotAttested.selector);
         cp.stake{value: STAKE_AMOUNT}(1);
     }
 
@@ -341,7 +305,7 @@ contract ContentProtectionTest is Test {
 
         vm.deal(alice, 1 ether);
         vm.prank(alice);
-        vm.expectRevert(ContentProtection.InsufficientStake.selector);
+        vm.expectRevert(IContentProtectionEvents.InsufficientStake.selector);
         cp.stake{value: STAKE_AMOUNT - 1}(1);
     }
 
@@ -351,7 +315,7 @@ contract ContentProtectionTest is Test {
 
         vm.deal(bob, 1 ether);
         vm.prank(bob);
-        vm.expectRevert(ContentProtection.NotOwner.selector);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
         cp.stake{value: STAKE_AMOUNT}(1);
     }
 
@@ -434,13 +398,13 @@ contract ContentProtectionTest is Test {
 
     function test_SweepBurned_RevertNothingToSweep() public {
         vm.prank(admin);
-        vm.expectRevert(ContentProtection.NothingToClaim.selector);
+        vm.expectRevert(IContentProtectionEvents.NothingToClaim.selector);
         cp.sweepBurned(address(0));
     }
 
     function test_SweepBurned_RevertNotOwner() public {
         vm.prank(alice);
-        vm.expectRevert(ContentProtection.NotOwner.selector);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
         cp.sweepBurned(address(0));
     }
 
@@ -452,7 +416,7 @@ contract ContentProtectionTest is Test {
         cp.stake{value: STAKE_AMOUNT}(1);
 
         vm.prank(bob); // Not admin
-        vm.expectRevert(ContentProtection.NotOwner.selector);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
         cp.slash(1, reporter);
     }
 
@@ -519,7 +483,7 @@ contract ContentProtectionTest is Test {
 
     function test_Blacklist_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(ContentProtection.ZeroAddress.selector);
+        vm.expectRevert(IContentProtectionEvents.ZeroAddress.selector);
         cp.blacklist(address(0));
     }
 
@@ -567,7 +531,7 @@ contract ContentProtectionTest is Test {
 
     function test_SetTierPolicy_RevertInvalidTier() public {
         vm.prank(admin);
-        vm.expectRevert(ContentProtection.InvalidTier.selector);
+        vm.expectRevert(IContentProtectionEvents.InvalidTier.selector);
         cp.setTierPolicy("unknown", 1, 1);
     }
 
@@ -582,7 +546,7 @@ contract ContentProtectionTest is Test {
 
     function test_SetMaxPriceMultiplier_RevertZero() public {
         vm.prank(admin);
-        vm.expectRevert(ContentProtection.InvalidMultiplier.selector);
+        vm.expectRevert(IContentProtectionEvents.InvalidMultiplier.selector);
         cp.setMaxPriceMultiplier(0);
     }
 
@@ -648,7 +612,7 @@ contract ContentProtectionTest is Test {
         cp.registerTrack(100, 200);
 
         vm.prank(admin);
-        vm.expectRevert(ContentProtection.RegistrationConflict.selector);
+        vm.expectRevert(IContentProtectionEvents.RegistrationConflict.selector);
         cp.registerTrack(101, 200);
     }
 
@@ -656,7 +620,7 @@ contract ContentProtectionTest is Test {
         _attestReleaseAndTrack(100, 200);
 
         vm.prank(bob);
-        vm.expectRevert(ContentProtection.NotRegistrar.selector);
+        vm.expectRevert(IContentProtectionEvents.NotRegistrar.selector);
         cp.registerTrack(100, 200);
     }
 

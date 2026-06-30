@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IChainlinkPriceOracleAdapter} from "../interfaces/IChainlinkPriceOracleAdapter.sol";
+
 interface AggregatorV3Interface {
     function decimals() external view returns (uint8);
 
@@ -16,15 +18,10 @@ interface AggregatorV3Interface {
  * @title ChainlinkPriceOracleAdapter
  * @notice Normalizes Chainlink-style price feeds to 18 decimals with basic safety checks.
  */
-contract ChainlinkPriceOracleAdapter {
+contract ChainlinkPriceOracleAdapter is IChainlinkPriceOracleAdapter {
     AggregatorV3Interface public immutable feed;
     uint256 public immutable maxStaleness;
     uint8 public immutable feedDecimals;
-
-    error InvalidFeed();
-    error InvalidAnswer();
-    error StaleAnswer();
-    error IncompleteRound();
 
     constructor(address feed_, uint256 maxStaleness_) {
         if (feed_ == address(0) || maxStaleness_ == 0) revert InvalidFeed();

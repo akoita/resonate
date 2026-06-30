@@ -3,7 +3,9 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {CurationRewards} from "../../src/core/CurationRewards.sol";
+import {ICurationRewards} from "../../src/interfaces/ICurationRewards.sol";
 import {DisputeResolution} from "../../src/core/DisputeResolution.sol";
+import {IDisputeResolutionEvents} from "../../src/interfaces/IDisputeResolutionEvents.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
@@ -14,7 +16,7 @@ import {IDisputeResolution} from "../../src/interfaces/IDisputeResolution.sol";
  * @title CurationRewards Unit Tests
  * @notice Tests report → dispute lifecycle, bounty claims, counter-stake slashing
  */
-contract CurationRewardsTest is Test {
+contract CurationRewardsTest is Test, ICurationRewards {
     CurationRewards public cr;
     DisputeResolution public dr;
     ContentProtection public cp;
@@ -30,31 +32,6 @@ contract CurationRewardsTest is Test {
     uint256 constant USDC_COUNTER_STAKE = 2_000000;
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_USDC = keccak256("local:usdc");
-
-    event ContentReported(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        uint256 counterStake,
-        string evidenceURI
-    );
-
-    event ContentReportedWithAsset(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        address token,
-        uint256 counterStake,
-        string evidenceURI
-    );
-
-    event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount);
-
-    event CounterStakeSlashed(
-        uint256 indexed disputeId, address indexed reporter, address indexed creator, uint256 amount
-    );
-
-    event CounterStakeRefunded(uint256 indexed disputeId, address indexed reporter, uint256 amount);
 
     function setUp() public {
         // Deploy ContentProtection (UUPS proxy)
@@ -113,21 +90,21 @@ contract CurationRewardsTest is Test {
 
         vm.deal(reporter, 1 ether);
         vm.prank(reporter);
-        vm.expectRevert(CurationRewards.UnsupportedStakeAsset.selector);
+        vm.expectRevert(ICurationRewards.UnsupportedStakeAsset.selector);
         cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://wrong-asset");
     }
 
     function test_ReportContent_RevertSelfReport() public {
         vm.deal(creator, 1 ether);
         vm.prank(creator);
-        vm.expectRevert(CurationRewards.SelfReport.selector);
+        vm.expectRevert(ICurationRewards.SelfReport.selector);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://self-flag");
     }
 
     function test_ReportContent_RevertInsufficientStake() public {
         vm.deal(reporter, 1 ether);
         vm.prank(reporter);
-        vm.expectRevert(CurationRewards.InsufficientCounterStake.selector);
+        vm.expectRevert(ICurationRewards.InsufficientCounterStake.selector);
         cr.reportContent{value: COUNTER_STAKE - 1}(1, "ipfs://e");
     }
 
@@ -148,14 +125,14 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence-1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
         vm.prank(reporter);
         cr.claimBounty(1);
 
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://evidence-2");
         vm.prank(admin);
-        dr.resolve(2, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(2, IDisputeResolutionEvents.Outcome.Upheld);
         vm.prank(reporter);
         cr.claimBounty(2);
 
@@ -168,7 +145,7 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
         cr.processRejection(1);
 
         uint256 increasedStake = cr.getRequiredCounterStakeFor(reporter);
@@ -206,10 +183,10 @@ contract CurationRewardsTest is Test {
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         vm.prank(reporter);
-        vm.expectRevert(DisputeResolution.AlreadyReported.selector);
+        vm.expectRevert(IDisputeResolutionEvents.AlreadyReported.selector);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence-2");
     }
 
@@ -223,7 +200,7 @@ contract CurationRewardsTest is Test {
 
         // Admin resolves as upheld
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         // Claim bounty
         uint256 balBefore = reporter.balance;
@@ -246,7 +223,7 @@ contract CurationRewardsTest is Test {
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
 
         vm.prank(reporter);
-        vm.expectRevert(CurationRewards.DisputeNotResolved.selector);
+        vm.expectRevert(ICurationRewards.DisputeNotResolved.selector);
         cr.claimBounty(1);
     }
 
@@ -255,13 +232,13 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         vm.prank(reporter);
         cr.claimBounty(1);
 
         vm.prank(reporter);
-        vm.expectRevert(CurationRewards.AlreadyClaimed.selector);
+        vm.expectRevert(ICurationRewards.AlreadyClaimed.selector);
         cr.claimBounty(1);
     }
 
@@ -270,10 +247,10 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         vm.prank(reporter);
-        vm.expectRevert(CurationRewards.NotUpheld.selector);
+        vm.expectRevert(ICurationRewards.NotUpheld.selector);
         cr.claimBounty(1);
     }
 
@@ -284,7 +261,7 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         uint256 creatorBalBefore = creator.balance;
 
@@ -305,7 +282,7 @@ contract CurationRewardsTest is Test {
         _reportUsdc(2, usdc);
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         cr.processRejection(1);
 
@@ -320,9 +297,9 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
-        vm.expectRevert(CurationRewards.NotUpheld.selector);
+        vm.expectRevert(ICurationRewards.NotUpheld.selector);
         cr.processRejection(1);
     }
 
@@ -333,7 +310,7 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Inconclusive);
 
         uint256 reporterBalBefore = reporter.balance;
 
@@ -353,7 +330,7 @@ contract CurationRewardsTest is Test {
         _reportUsdc(2, usdc);
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Inconclusive);
 
         cr.processInconclusive(1);
 
@@ -367,7 +344,7 @@ contract CurationRewardsTest is Test {
         _reportUsdc(2, usdc);
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         uint256 appealStake = USDC_COUNTER_STAKE * 2;
         usdc.mint(creator, appealStake);
@@ -377,7 +354,7 @@ contract CurationRewardsTest is Test {
         vm.stopPrank();
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         uint256 creatorBefore = usdc.balanceOf(creator);
         cr.processAppealOutcome(1);
@@ -407,7 +384,7 @@ contract CurationRewardsTest is Test {
 
     function test_SetTreasury_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(CurationRewards.ZeroAddress.selector);
+        vm.expectRevert(ICurationRewards.ZeroAddress.selector);
         cr.setTreasury(address(0));
     }
 
@@ -426,7 +403,7 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://e1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
         vm.prank(reporter);
         cr.claimBounty(1);
 
@@ -434,7 +411,7 @@ contract CurationRewardsTest is Test {
         vm.prank(reporter);
         cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://e2");
         vm.prank(admin);
-        dr.resolve(2, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(2, IDisputeResolutionEvents.Outcome.Rejected);
         cr.processRejection(2);
 
         // Net reputation: +10 - 15 = -5

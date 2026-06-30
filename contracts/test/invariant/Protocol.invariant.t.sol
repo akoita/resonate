@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
+import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
@@ -35,11 +36,7 @@ contract ProtocolInvariantTest is Test {
         paymentAssetRegistry = new PaymentAssetRegistry(address(this));
         paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
         marketplace = new StemMarketplaceV2(
-            address(stemNFT),
-            address(contentProtection),
-            address(paymentAssetRegistry),
-            address(this),
-            250
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(this), 250
         );
 
         stemNFT.setTransferValidator(address(validator));
@@ -63,9 +60,7 @@ contract ProtocolInvariantTest is Test {
         selectors[1] = Handler.listStem.selector;
         selectors[2] = Handler.buyStem.selector;
 
-        targetSelector(
-            FuzzSelector({addr: address(handler), selectors: selectors})
-        );
+        targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
     // ============ NFT Invariants ============
@@ -79,7 +74,7 @@ contract ProtocolInvariantTest is Test {
     function invariant_royaltyBpsWithinBounds() public view {
         uint256[] memory tokenIds = handler.getTokenIds();
         for (uint256 i = 0; i < tokenIds.length; i++) {
-            (, , uint96 royaltyBps, , bool exists) = stemNFT.stems(tokenIds[i]);
+            (,, uint96 royaltyBps,, bool exists) = stemNFT.stems(tokenIds[i]);
             if (exists) {
                 assertLe(royaltyBps, stemNFT.MAX_ROYALTY_BPS());
             }
@@ -107,9 +102,7 @@ contract ProtocolInvariantTest is Test {
     function invariant_paymentsAddUp() public view {
         // Check handler's recorded payments
         uint256 totalPaid = handler.totalPaid();
-        uint256 totalReceived = handler.sellerReceived() +
-            handler.royaltyReceived() +
-            handler.feeReceived();
+        uint256 totalReceived = handler.sellerReceived() + handler.royaltyReceived() + handler.feeReceived();
         assertEq(totalPaid, totalReceived);
     }
 
@@ -193,26 +186,17 @@ contract Handler is Test {
         vm.stopPrank();
     }
 
-    function mintStem(
-        uint256 actorSeed,
-        uint256 amount,
-        uint96 royaltyBps,
-        bool remixable
-    ) external useActor(actorSeed) {
+    function mintStem(uint256 actorSeed, uint256 amount, uint96 royaltyBps, bool remixable)
+        external
+        useActor(actorSeed)
+    {
         amount = bound(amount, 1, 1000);
         royaltyBps = uint96(bound(royaltyBps, 1, 1000));
 
         uint256[] memory parentIds = new uint256[](0);
 
-        uint256 tokenId = stemNFT.mint(
-            currentActor,
-            amount,
-            "ipfs://test",
-            currentActor,
-            royaltyBps,
-            remixable,
-            parentIds
-        );
+        uint256 tokenId =
+            stemNFT.mint(currentActor, amount, "ipfs://test", currentActor, royaltyBps, remixable, parentIds);
 
         // Track state
         tokenIds.push(tokenId);
@@ -224,12 +208,10 @@ contract Handler is Test {
         mintCount++;
     }
 
-    function listStem(
-        uint256 actorSeed,
-        uint256 tokenIdSeed,
-        uint256 amount,
-        uint256 price
-    ) external useActor(actorSeed) {
+    function listStem(uint256 actorSeed, uint256 tokenIdSeed, uint256 amount, uint256 price)
+        external
+        useActor(actorSeed)
+    {
         if (tokenIds.length == 0) return;
 
         uint256 tokenId = tokenIds[tokenIdSeed % tokenIds.length];
@@ -240,29 +222,17 @@ contract Handler is Test {
         price = bound(price, 0.01 ether, 10 ether);
 
         stemNFT.setApprovalForAll(address(marketplace), true);
-        uint256 listingId = marketplace.list(
-            tokenId,
-            amount,
-            price,
-            address(0),
-            7 days
-        );
+        uint256 listingId = marketplace.list(tokenId, amount, price, address(0), 7 days);
 
         activeListings.push(listingId);
         listCount++;
     }
 
-    function buyStem(
-        uint256 actorSeed,
-        uint256 listingSeed,
-        uint256 amount
-    ) external useActor(actorSeed) {
+    function buyStem(uint256 actorSeed, uint256 listingSeed, uint256 amount) external useActor(actorSeed) {
         if (activeListings.length == 0) return;
 
         uint256 listingId = activeListings[listingSeed % activeListings.length];
-        StemMarketplaceV2.Listing memory listing = marketplace.getListing(
-            listingId
-        );
+        IStemMarketplaceV2.Listing memory listing = marketplace.getListing(listingId);
 
         if (listing.seller == address(0) || listing.amount == 0) return;
         if (block.timestamp > listing.expiry) return;
@@ -271,8 +241,7 @@ contract Handler is Test {
         uint256 totalPrice = amount * listing.pricePerUnit;
 
         // Get quote
-        (, uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace
-            .quoteBuy(listingId, amount);
+        (, uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace.quoteBuy(listingId, amount);
 
         // Record balances before
         uint256 sellerBefore = listing.seller.balance;
@@ -316,9 +285,7 @@ contract Handler is Test {
         return totalMinted[tokenId];
     }
 
-    function getHolders(
-        uint256 tokenId
-    ) external view returns (address[] memory) {
+    function getHolders(uint256 tokenId) external view returns (address[] memory) {
         return holders[tokenId];
     }
 

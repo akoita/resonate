@@ -4,12 +4,13 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {DisputeResolution} from "../../src/core/DisputeResolution.sol";
 import {IDisputeResolution} from "../../src/interfaces/IDisputeResolution.sol";
+import {IDisputeResolutionEvents} from "../../src/interfaces/IDisputeResolutionEvents.sol";
 
 /**
  * @title DisputeResolution Unit Tests
  * @notice Tests dispute lifecycle: file → evidence → review → resolve
  */
-contract DisputeResolutionTest is Test {
+contract DisputeResolutionTest is Test, IDisputeResolutionEvents {
     DisputeResolution public dr;
 
     address public admin = makeAddr("admin");
@@ -19,29 +20,6 @@ contract DisputeResolutionTest is Test {
     address public juror2 = makeAddr("juror2");
     address public juror3 = makeAddr("juror3");
     address public juror4 = makeAddr("juror4");
-
-    event DisputeFiled(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        address creator,
-        string evidenceURI,
-        uint256 counterStake
-    );
-
-    event EvidenceSubmitted(
-        uint256 indexed disputeId,
-        address indexed submitter,
-        string evidenceURI,
-        uint256 evidenceIndex
-    );
-
-    event DisputeResolved(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        IDisputeResolution.Outcome outcome,
-        address resolver
-    );
 
     function setUp() public {
         dr = new DisputeResolution(admin);
@@ -68,20 +46,14 @@ contract DisputeResolutionTest is Test {
         assertEq(d.tokenId, 42);
         assertEq(d.reporter, reporter);
         assertEq(d.creator, creator);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Filed)
-        );
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Pending)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Filed));
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Pending));
     }
 
     function test_FileDispute_RevertActiveExists() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
-        vm.expectRevert(DisputeResolution.ActiveDisputeExists.selector);
+        vm.expectRevert(IDisputeResolutionEvents.ActiveDisputeExists.selector);
         dr.fileDispute(42, reporter, creator, "ipfs://e2");
     }
 
@@ -97,9 +69,9 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
-        vm.expectRevert(DisputeResolution.AlreadyReported.selector);
+        vm.expectRevert(IDisputeResolutionEvents.AlreadyReported.selector);
         dr.fileDispute(42, reporter, creator, "ipfs://e2");
     }
 
@@ -109,7 +81,7 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         uint256 id2 = dr.fileDispute(42, anotherReporter, creator, "ipfs://e2");
         assertEq(id2, 2);
@@ -138,10 +110,7 @@ contract DisputeResolutionTest is Test {
         dr.submitEvidence(1, "ipfs://counter-proof");
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Evidence)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Evidence));
     }
 
     function test_SubmitEvidence_RevertNotParty() public {
@@ -149,7 +118,7 @@ contract DisputeResolutionTest is Test {
 
         address outsider = makeAddr("outsider");
         vm.prank(outsider);
-        vm.expectRevert(DisputeResolution.NotDisputeParty.selector);
+        vm.expectRevert(IDisputeResolutionEvents.NotDisputeParty.selector);
         dr.submitEvidence(1, "ipfs://spam");
     }
 
@@ -162,7 +131,7 @@ contract DisputeResolutionTest is Test {
         }
 
         vm.prank(reporter);
-        vm.expectRevert(DisputeResolution.MaxEvidenceReached.selector);
+        vm.expectRevert(IDisputeResolutionEvents.MaxEvidenceReached.selector);
         dr.submitEvidence(1, "ipfs://one-too-many");
     }
 
@@ -182,10 +151,10 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         vm.prank(reporter);
-        vm.expectRevert(DisputeResolution.DisputeAlreadyResolved.selector);
+        vm.expectRevert(IDisputeResolutionEvents.DisputeAlreadyResolved.selector);
         dr.submitEvidence(1, "ipfs://too-late");
     }
 
@@ -196,18 +165,12 @@ contract DisputeResolutionTest is Test {
 
         vm.prank(admin);
         vm.expectEmit(true, true, false, true);
-        emit DisputeResolved(1, 42, IDisputeResolution.Outcome.Upheld, admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        emit DisputeResolved(1, 42, IDisputeResolutionEvents.Outcome.Upheld, admin);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Resolved)
-        );
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Upheld)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Resolved));
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Upheld));
         assertTrue(d.resolvedAt > 0);
 
         // Active dispute cleared
@@ -218,26 +181,20 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Rejected)
-        );
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Rejected));
     }
 
     function test_Resolve_Inconclusive() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Inconclusive);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Inconclusive)
-        );
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Inconclusive));
     }
 
     function test_Resolve_RevertNotOwner() public {
@@ -245,26 +202,26 @@ contract DisputeResolutionTest is Test {
 
         vm.prank(reporter);
         vm.expectRevert();
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
     }
 
     function test_Resolve_RevertPendingOutcome() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        vm.expectRevert(DisputeResolution.InvalidOutcome.selector);
-        dr.resolve(1, IDisputeResolution.Outcome.Pending);
+        vm.expectRevert(IDisputeResolutionEvents.InvalidOutcome.selector);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Pending);
     }
 
     function test_Resolve_RevertAlreadyResolved() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         vm.prank(admin);
-        vm.expectRevert(DisputeResolution.DisputeAlreadyResolved.selector);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        vm.expectRevert(IDisputeResolutionEvents.DisputeAlreadyResolved.selector);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
     }
 
     // ============ Mark Under Review ============
@@ -276,10 +233,7 @@ contract DisputeResolutionTest is Test {
         dr.markUnderReview(1);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.UnderReview)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.UnderReview));
     }
 
     function test_MarkUnderReview_RevertNotOwner() public {
@@ -302,10 +256,7 @@ contract DisputeResolutionTest is Test {
         dr.escalateToJury(1);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Escalated)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Escalated));
         assertEq(d.jurorCount, 3);
         assertTrue(d.escalatedAt > 0);
         assertTrue(d.juryDeadlineAt > d.escalatedAt);
@@ -318,7 +269,7 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        vm.expectRevert(DisputeResolution.InvalidDisputeStatus.selector);
+        vm.expectRevert(IDisputeResolutionEvents.InvalidDisputeStatus.selector);
         dr.escalateToJury(1);
     }
 
@@ -333,21 +284,15 @@ contract DisputeResolutionTest is Test {
         address[] memory assigned = dr.getAssignedJurors(1);
 
         vm.prank(assigned[0]);
-        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+        dr.castJuryVote(1, IDisputeResolutionEvents.JuryVote.Reporter);
         vm.prank(assigned[1]);
-        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+        dr.castJuryVote(1, IDisputeResolutionEvents.JuryVote.Reporter);
 
         dr.finalizeJuryDecision(1);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Resolved)
-        );
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Upheld)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Resolved));
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Upheld));
         assertEq(d.votesForReporter, 2);
         assertEq(dr.getActiveDispute(42), 0);
     }
@@ -363,9 +308,9 @@ contract DisputeResolutionTest is Test {
         address[] memory assigned = dr.getAssignedJurors(1);
 
         vm.prank(assigned[0]);
-        dr.castJuryVote(1, IDisputeResolution.JuryVote.Reporter);
+        dr.castJuryVote(1, IDisputeResolutionEvents.JuryVote.Reporter);
 
-        vm.expectRevert(DisputeResolution.JuryVotePending.selector);
+        vm.expectRevert(IDisputeResolutionEvents.JuryVotePending.selector);
         dr.finalizeJuryDecision(1);
     }
 
@@ -381,10 +326,7 @@ contract DisputeResolutionTest is Test {
         dr.finalizeJuryDecision(1);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Inconclusive)
-        );
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Inconclusive));
     }
 
     // ============ Appeals ============
@@ -392,20 +334,14 @@ contract DisputeResolutionTest is Test {
     function test_Appeal_CreatorAppealsUpheld() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         // Creator is the loser when dispute is upheld
         dr.appeal(1, creator);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Appealed)
-        );
-        assertEq(
-            uint256(d.outcome),
-            uint256(IDisputeResolution.Outcome.Pending)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Appealed));
+        assertEq(uint256(d.outcome), uint256(IDisputeResolutionEvents.Outcome.Pending));
         assertEq(d.appealCount, 1);
         assertEq(d.resolvedAt, 0);
         // Active dispute should be restored
@@ -415,17 +351,14 @@ contract DisputeResolutionTest is Test {
     function test_Appeal_ReporterAppealsRejected() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Rejected);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Rejected);
 
         // Reporter is the loser when dispute is rejected
         dr.appeal(1, reporter);
 
         IDisputeResolution.Dispute memory d = dr.getDispute(1);
         assertEq(d.appealCount, 1);
-        assertEq(
-            uint256(d.status),
-            uint256(IDisputeResolution.DisputeStatus.Appealed)
-        );
+        assertEq(uint256(d.status), uint256(IDisputeResolutionEvents.DisputeStatus.Appealed));
     }
 
     function test_Appeal_MaxTwoAppeals() public {
@@ -433,38 +366,38 @@ contract DisputeResolutionTest is Test {
 
         // First resolve + appeal
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
         dr.appeal(1, creator);
 
         // Re-resolve + second appeal
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
         dr.appeal(1, creator);
 
         // Third appeal should revert
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
-        vm.expectRevert(DisputeResolution.MaxAppealsReached.selector);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
+        vm.expectRevert(IDisputeResolutionEvents.MaxAppealsReached.selector);
         dr.appeal(1, creator);
     }
 
     function test_Appeal_RevertNotLosingParty() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         // Reporter (winner) tries to appeal
-        vm.expectRevert(DisputeResolution.NotLosingParty.selector);
+        vm.expectRevert(IDisputeResolutionEvents.NotLosingParty.selector);
         dr.appeal(1, reporter);
     }
 
     function test_Appeal_RevertInconclusive() public {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Inconclusive);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Inconclusive);
 
         // Inconclusive disputes cannot be appealed
-        vm.expectRevert(DisputeResolution.InvalidOutcome.selector);
+        vm.expectRevert(IDisputeResolutionEvents.InvalidOutcome.selector);
         dr.appeal(1, creator);
     }
 
@@ -472,7 +405,7 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         // Can't appeal a dispute that hasn't been resolved
-        vm.expectRevert(DisputeResolution.DisputeNotResolved.selector);
+        vm.expectRevert(IDisputeResolutionEvents.DisputeNotResolved.selector);
         dr.appeal(1, creator);
     }
 
@@ -480,7 +413,7 @@ contract DisputeResolutionTest is Test {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         vm.prank(admin);
-        dr.resolve(1, IDisputeResolution.Outcome.Upheld);
+        dr.resolve(1, IDisputeResolutionEvents.Outcome.Upheld);
 
         // Appeal
         dr.appeal(1, creator);

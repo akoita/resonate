@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
+import {IRevenueEscrow} from "../../src/interfaces/IRevenueEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 
 /**
@@ -116,7 +117,7 @@ contract RevenueEscrowFuzzTest is Test {
         _depositNative(tokenId, amt);
         vm.warp(block.timestamp + waitFor);
 
-        vm.expectRevert(RevenueEscrow.EscrowNotExpired.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowNotExpired.selector);
         escrow.release(tokenId);
     }
 
@@ -128,7 +129,7 @@ contract RevenueEscrowFuzzTest is Test {
         escrow.freeze(tokenId);
         vm.warp(block.timestamp + ESCROW_PERIOD + 1);
 
-        vm.expectRevert(RevenueEscrow.EscrowIsFrozen.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowIsFrozen.selector);
         escrow.release(tokenId);
 
         // funds remain fully escrowed
@@ -146,7 +147,7 @@ contract RevenueEscrowFuzzTest is Test {
         _depositNative(tokenId, amt);
 
         vm.prank(owner);
-        vm.expectRevert(RevenueEscrow.EscrowNotFrozen.selector);
+        vm.expectRevert(IRevenueEscrow.EscrowNotFrozen.selector);
         escrow.redirect(tokenId, recipient);
     }
 
@@ -242,13 +243,13 @@ contract RevenueEscrowFuzzTest is Test {
     function testFuzz_DepositZeroAmountReverts(uint256 tokenId) public {
         vm.deal(depositor, 1 ether);
         vm.prank(depositor);
-        vm.expectRevert(RevenueEscrow.ZeroAmount.selector);
+        vm.expectRevert(IRevenueEscrow.ZeroAmount.selector);
         escrow.deposit{value: 0}(tokenId, beneficiary);
     }
 
     function testFuzz_DepositAssetZeroAddressTokenReverts(uint256 tokenId, uint96 amount) public {
         vm.prank(depositor);
-        vm.expectRevert(RevenueEscrow.UnsupportedAsset.selector);
+        vm.expectRevert(IRevenueEscrow.UnsupportedAsset.selector);
         escrow.depositWithAsset(tokenId, beneficiary, address(0), bound(uint256(amount), 1, 1e15));
     }
 }

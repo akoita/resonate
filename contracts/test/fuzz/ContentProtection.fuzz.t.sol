@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
+import {IContentProtectionEvents} from "../../src/interfaces/IContentProtectionEvents.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
@@ -59,7 +60,7 @@ contract ContentProtectionFuzzTest is Test {
         _attest(tokenId);
         vm.deal(attester, amount);
         vm.prank(attester);
-        vm.expectRevert(ContentProtection.InsufficientStake.selector);
+        vm.expectRevert(IContentProtectionEvents.InsufficientStake.selector);
         cp.stake{value: amount}(tokenId);
     }
 
@@ -69,7 +70,7 @@ contract ContentProtectionFuzzTest is Test {
 
         vm.deal(attester, amount);
         vm.prank(attester);
-        vm.expectRevert(ContentProtection.AlreadyStaked.selector);
+        vm.expectRevert(IContentProtectionEvents.AlreadyStaked.selector);
         cp.stake{value: amount}(tokenId);
     }
 
@@ -118,9 +119,9 @@ contract ContentProtectionFuzzTest is Test {
         assertEq(address(cp).balance, expBurned, "burned remainder retained in contract");
 
         // slash invalidates the attestation, deactivates the stake, blacklists the attester
-        (,,,, , bool valid) = cp.attestations(tokenId);
+        (,,,,, bool valid) = cp.attestations(tokenId);
         assertFalse(valid, "attestation invalidated by slash");
-        (, , bool active) = cp.stakes(tokenId);
+        (,, bool active) = cp.stakes(tokenId);
         assertFalse(active, "stake deactivated by slash");
         assertTrue(cp.isBlacklisted(attester), "attester blacklisted by slash");
     }
@@ -140,7 +141,7 @@ contract ContentProtectionFuzzTest is Test {
         // Only the required stake was held — overpayment was already refunded at stake time (#1280).
         assertEq(attester.balance - before, STAKE_AMOUNT, "attester refunded the exact required stake");
         assertEq(address(cp).balance, 0, "contract fully drained on refund");
-        (, , bool active) = cp.stakes(tokenId);
+        (,, bool active) = cp.stakes(tokenId);
         assertFalse(active, "stake deactivated by refund");
     }
 
@@ -181,7 +182,7 @@ contract ContentProtectionFuzzTest is Test {
         _attestAndStake(tokenId, amount);
 
         vm.prank(caller);
-        vm.expectRevert(ContentProtection.NotOwner.selector);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
         cp.slash(tokenId, reporter);
     }
 
@@ -191,14 +192,14 @@ contract ContentProtectionFuzzTest is Test {
         _attestAndStake(tokenId, amount);
 
         vm.prank(caller);
-        vm.expectRevert(ContentProtection.NotOwner.selector);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
         cp.refundStake(tokenId);
     }
 
     function testFuzz_SlashRequiresActiveStake(uint256 tokenId) public {
         _attest(tokenId); // attested but never staked
         vm.prank(owner);
-        vm.expectRevert(ContentProtection.NotStaked.selector);
+        vm.expectRevert(IContentProtectionEvents.NotStaked.selector);
         cp.slash(tokenId, reporter);
     }
 }

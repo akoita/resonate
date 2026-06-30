@@ -7,6 +7,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
 import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
+import {IDisputeResolutionEvents} from "../interfaces/IDisputeResolutionEvents.sol";
+import {ICurationRewards} from "../interfaces/ICurationRewards.sol";
 
 /**
  * @title CurationRewards
@@ -23,7 +25,7 @@ import {IDisputeResolution} from "../interfaces/IDisputeResolution.sol";
  *
  * @custom:version 2.0.0
  */
-contract CurationRewards is Ownable, ReentrancyGuard {
+contract CurationRewards is ICurationRewards, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ State ============
@@ -67,82 +69,6 @@ contract CurationRewards is Ownable, ReentrancyGuard {
 
     /// @notice reporter → total bounties earned (wei)
     mapping(address => uint256) public totalBounties;
-
-    // ============ Events ============
-
-    event ContentReported(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        uint256 counterStake,
-        string evidenceURI
-    );
-
-    event ContentReportedWithAsset(
-        uint256 indexed disputeId,
-        uint256 indexed tokenId,
-        address indexed reporter,
-        address token,
-        uint256 counterStake,
-        string evidenceURI
-    );
-
-    event BountyClaimed(uint256 indexed disputeId, address indexed reporter, uint256 amount);
-
-    event BountyClaimedWithAsset(
-        uint256 indexed disputeId, address indexed reporter, address indexed token, uint256 amount
-    );
-
-    event CounterStakeSlashed(
-        uint256 indexed disputeId, address indexed reporter, address indexed creator, uint256 amount
-    );
-
-    event CounterStakeSlashedWithAsset(
-        uint256 indexed disputeId, address indexed reporter, address indexed creator, address token, uint256 amount
-    );
-
-    event CounterStakeRefunded(uint256 indexed disputeId, address indexed reporter, uint256 amount);
-
-    event CounterStakeRefundedWithAsset(
-        uint256 indexed disputeId, address indexed reporter, address indexed token, uint256 amount
-    );
-
-    event AppealStakeDeposited(uint256 indexed disputeId, address indexed appealer, uint256 amount);
-
-    event AppealStakeDepositedWithAsset(
-        uint256 indexed disputeId, address indexed appealer, address indexed token, uint256 amount
-    );
-
-    event AppealStakeSlashed(
-        uint256 indexed disputeId, address indexed appealer, address indexed winner, uint256 amount
-    );
-
-    event AppealStakeSlashedWithAsset(
-        uint256 indexed disputeId, address indexed appealer, address indexed winner, address token, uint256 amount
-    );
-
-    event AppealStakeRefunded(uint256 indexed disputeId, address indexed appealer, uint256 amount);
-
-    event AppealStakeRefundedWithAsset(
-        uint256 indexed disputeId, address indexed appealer, address indexed token, uint256 amount
-    );
-
-    event ReputationUpdated(address indexed curator, int256 oldScore, int256 newScore);
-
-    // ============ Errors ============
-
-    error SelfReport();
-    error InsufficientCounterStake();
-    error NotStaked();
-    error DisputeNotResolved();
-    error AlreadyClaimed();
-    error NotUpheld();
-    error TransferFailed();
-    error ZeroAddress();
-    error InsufficientAppealStake();
-    error NotDisputeParty();
-    error UnexpectedETH();
-    error UnsupportedStakeAsset();
 
     // ============ Constructor ============
 
@@ -240,10 +166,10 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         if (reporters[disputeId] != msg.sender) revert NotUpheld();
 
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Upheld) revert NotUpheld();
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Upheld) revert NotUpheld();
 
         bountyClaimed[disputeId] = true;
 
@@ -273,10 +199,10 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      */
     function processRejection(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Rejected) {
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Rejected) {
             revert NotUpheld();
         }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
@@ -308,10 +234,10 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      */
     function processInconclusive(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
-        if (d.outcome != IDisputeResolution.Outcome.Inconclusive) {
+        if (d.outcome != IDisputeResolutionEvents.Outcome.Inconclusive) {
             revert NotUpheld();
         }
         if (bountyClaimed[disputeId]) revert AlreadyClaimed();
@@ -385,7 +311,7 @@ contract CurationRewards is Ownable, ReentrancyGuard {
      */
     function processAppealOutcome(uint256 disputeId) external nonReentrant {
         IDisputeResolution.Dispute memory d = disputeResolution.getDispute(disputeId);
-        if (d.status != IDisputeResolution.DisputeStatus.Resolved) {
+        if (d.status != IDisputeResolutionEvents.DisputeStatus.Resolved) {
             revert DisputeNotResolved();
         }
 
@@ -402,11 +328,11 @@ contract CurationRewards is Ownable, ReentrancyGuard {
         bool appealerWon;
         if (appealer == d.creator) {
             // Creator appealed → they won if the dispute was rejected this time
-            appealerWon = d.outcome == IDisputeResolution.Outcome.Rejected
-                || d.outcome == IDisputeResolution.Outcome.Inconclusive;
+            appealerWon = d.outcome == IDisputeResolutionEvents.Outcome.Rejected
+                || d.outcome == IDisputeResolutionEvents.Outcome.Inconclusive;
         } else {
             // Reporter appealed → they won if the dispute was upheld this time
-            appealerWon = d.outcome == IDisputeResolution.Outcome.Upheld;
+            appealerWon = d.outcome == IDisputeResolutionEvents.Outcome.Upheld;
         }
 
         if (appealerWon) {
