@@ -746,14 +746,31 @@ describe("describeAvailableStemAction (#1312)", () => {
   });
 });
 
-describe("stemFeatureChips (#1312)", () => {
-  it("renders measured tempo and key as compact chips", () => {
+describe("stemFeatureChips (#1312/#1318)", () => {
+  it("renders confident tempo and key as compact chips", () => {
     expect(
       stemFeatureChips({
         tempoBpm: 92.5,
+        tempoConfidence: 0.8,
         key: { tonic: "G", mode: "minor", confidence: 0.7 },
       }),
     ).toEqual(["93 BPM", "G minor"]);
+  });
+
+  it("hides low-confidence tempo artifacts unless they agree with the grid (#1318)", () => {
+    const sparseBass = {
+      tempoBpm: 185,
+      tempoConfidence: 0.3,
+      key: { tonic: "E", mode: "minor" as const, confidence: 0.6 },
+    };
+    // Librosa harmonic artifact on a 98 BPM song: BPM hidden, key kept.
+    expect(stemFeatureChips(sparseBass, 98)).toEqual(["E minor"]);
+    // No grid reference either: still hidden.
+    expect(stemFeatureChips(sparseBass)).toEqual(["E minor"]);
+    // Low confidence but matching the grid tempo: trustworthy, shown.
+    expect(
+      stemFeatureChips({ tempoBpm: 97.6, tempoConfidence: 0.3 }, 98),
+    ).toEqual(["98 BPM"]);
   });
 
   it("makes no musical claims for missing or invalid measurements", () => {
@@ -817,6 +834,7 @@ describe("Also on this track panel (#1312)", () => {
     const withFeatures = project();
     withFeatures.stems[0].audioFeatures = {
       tempoBpm: 120,
+      tempoConfidence: 0.9,
       key: { tonic: "A", mode: "major", confidence: 0.9 },
     };
     const html = renderToStaticMarkup(
@@ -988,5 +1006,20 @@ describe("per-stem AI transforms (#1316)", () => {
       />,
     );
     expect(html).toContain("AI drums replacement");
+  });
+});
+
+describe("muted hydrated stems hint (#1318)", () => {
+  it("explains muted stems when the session has any", () => {
+    // Fixture stem-2 is muted → the hint shows.
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain("start muted");
+  });
+
+  it("stays quiet when every stem is audible", () => {
+    const allOn = project();
+    allOn.stems = allOn.stems.map((stem) => ({ ...stem, muted: false }));
+    const html = renderToStaticMarkup(<RemixStudioEditor project={allOn} />);
+    expect(html).not.toContain("start muted");
   });
 });
