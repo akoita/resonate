@@ -160,6 +160,74 @@ function groundingAiGenerated(grounding: RemixDraftGrounding): boolean {
   return grounding !== "stem_audio";
 }
 
+/** Archived draft versions kept when a project regenerates (#1320). */
+export const REMIX_PREVIOUS_DRAFTS_MAX = 3;
+
+export type RemixPreviousDraft = {
+  /** The archived generation's queue job id — the draft-audio version key. */
+  jobId: string;
+  provider: string | null;
+  mode: string | null;
+  grounding: string | null;
+  stemTransform: unknown;
+  estimatedCostUsd: number | null;
+  completedAt: string | null;
+  output: { outputUri: string; mimeType: string | null };
+};
+
+/** Read the archived versions list from generation metadata (#1320). */
+export function previousDraftsFromMetadata(
+  metadata: unknown,
+): RemixPreviousDraft[] {
+  if (!metadata || typeof metadata !== "object") return [];
+  const list = (metadata as { previousDrafts?: unknown }).previousDrafts;
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (entry): entry is RemixPreviousDraft =>
+      !!entry &&
+      typeof entry === "object" &&
+      typeof (entry as RemixPreviousDraft).jobId === "string" &&
+      typeof (entry as RemixPreviousDraft).output?.outputUri === "string",
+  );
+}
+
+/**
+ * Build the archive entry for the project's CURRENT completed draft before a
+ * regeneration overwrites its metadata (#1320). Returns null when there is
+ * nothing playable to archive (no completed output).
+ */
+export function archiveEntryFromProject(project: {
+  generationJobId: string | null;
+  generationProvider: string | null;
+  generationMetadata: unknown;
+}): RemixPreviousDraft | null {
+  if (!project.generationJobId) return null;
+  const metadata = normalizeMetadataObject(project.generationMetadata);
+  if (metadata.status !== "completed") return null;
+  const outputUri = draftOutputUriFromMetadata(metadata);
+  if (!outputUri) return null;
+  return {
+    jobId: project.generationJobId,
+    provider: project.generationProvider,
+    mode: typeof metadata.mode === "string" ? metadata.mode : null,
+    grounding: draftGroundingFromMetadata(metadata),
+    stemTransform:
+      metadata.stemTransform && typeof metadata.stemTransform === "object"
+        ? metadata.stemTransform
+        : null,
+    estimatedCostUsd:
+      typeof metadata.estimatedCostUsd === "number"
+        ? metadata.estimatedCostUsd
+        : null,
+    completedAt:
+      typeof metadata.completedAt === "string" ? metadata.completedAt : null,
+    output: {
+      outputUri,
+      mimeType: draftMimeTypeFromMetadata(metadata),
+    },
+  };
+}
+
 function selectRemixDraftGrounding(input: {
   mode: RemixProjectMode;
   sourceFeatureHints?: unknown;
@@ -753,6 +821,15 @@ export class RemixProjectService {
       providerKind: process.env.REMIX_GENERATION_PROVIDER_KIND,
     });
     const aiGenerated = groundingAiGenerated(grounding);
+    // Draft versions (#1320): a regeneration must not orphan the previous
+    // completed output. Archive it (capped) so the studio can A/B versions;
+    // stored outputs are never deleted, so archived URIs stay streamable.
+    const archiveEntry = retryRequested ? archiveEntryFromProject(project) : null;
+    const previousDrafts = [
+      ...(archiveEntry ? [archiveEntry] : []),
+      ...previousDraftsFromMetadata(project.generationMetadata),
+    ].slice(0, REMIX_PREVIOUS_DRAFTS_MAX);
+
     const pendingMetadata = {
       status: "pending",
       mode: generationInput.mode,
@@ -778,6 +855,7 @@ export class RemixProjectService {
       },
       requestedAt,
       retryOfJobId: retryRequested ? project.generationJobId : null,
+      ...(previousDrafts.length > 0 ? { previousDrafts } : {}),
     };
 
     await this.claimGenerationJob({
@@ -1440,8 +1518,33 @@ export class RemixProjectService {
   async getDraftAudio(
     userId: string,
     projectId: string,
+    jobId?: string,
   ): Promise<RemixDraftAudio> {
     const project = await this.loadOwnedProject(userId, projectId);
+
+    // Archived version playback (#1320): a jobId that is not the current
+    // generation resolves through the owner's archived drafts only.
+    if (jobId && jobId !== project.generationJobId) {
+      const archived = previousDraftsFromMetadata(
+        project.generationMetadata,
+      ).find((entry) => entry.jobId === jobId);
+      if (!archived) {
+        throw new NotFoundException("Remix draft audio not found");
+      }
+      const data = await this.storageProvider.download(
+        archived.output.outputUri,
+      );
+      if (!data) {
+        throw new NotFoundException("Remix draft audio not found");
+      }
+      return {
+        data,
+        mimeType:
+          archived.output.mimeType ??
+          draftMimeTypeFromUri(archived.output.outputUri),
+      };
+    }
+
     const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
     if (!outputUri) {
       throw new NotFoundException("Remix draft audio not found");

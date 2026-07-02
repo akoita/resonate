@@ -17,6 +17,7 @@ import {
   type RemixProject,
   type RemixProjectAvailableStem,
   type RemixProjectPatch,
+  type RemixPreviousDraft,
   type RemixProjectSource,
   type RemixProjectStem,
   type RemixStemTransform,
@@ -359,6 +360,39 @@ export function describeStemTransform(
   return "New AI layer — generated to sit on top of your arranged stems.";
 }
 
+/**
+ * Recorded generation cost for display (#1320). Only positive recorded
+ * values render — $0 renders (stem mix) stay unlabelled rather than noisy.
+ */
+export function formatDraftCost(value: number | null | undefined): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return `~$${value.toFixed(2)}`;
+}
+
+/** One-line label for an archived draft version (#1320). */
+export function previousDraftLabel(entry: RemixPreviousDraft): string {
+  const what =
+    entry.stemTransform?.kind === "replace_stem"
+      ? `AI ${entry.stemTransform.stemLabel?.trim() || "stem"} replacement`
+      : entry.stemTransform?.kind === "add_layer"
+        ? "AI layer added"
+        : entry.grounding === "stem_audio"
+          ? "Stem mix render"
+          : "AI draft";
+  const when = entry.completedAt
+    ? new Date(entry.completedAt).toLocaleString(undefined, {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const cost = formatDraftCost(entry.estimatedCostUsd);
+  return [what, when, cost].filter(Boolean).join(" · ");
+}
+
 /** Toast copy per normalized provider error code (#1162). */
 export function generationErrorMessage(code: string, message: string): string {
   switch (code) {
@@ -603,6 +637,10 @@ export function RemixStudioEditor({
   const [draftPlaybackStatus, setDraftPlaybackStatus] = useState<
     "idle" | "loading" | "playing"
   >("idle");
+  // Which version the draft transport is playing (#1320): null = current draft.
+  const [playingDraftJobId, setPlayingDraftJobId] = useState<string | null>(
+    null,
+  );
   const stemPreviewRef = useRef<StemArrangementPreviewHandle | null>(null);
   const draftAudioRef = useRef<HTMLAudioElement | null>(null);
   const draftObjectUrlRef = useRef<string | null>(null);
@@ -662,6 +700,7 @@ export function RemixStudioEditor({
       draftObjectUrlRef.current = null;
     }
     setDraftPlaybackStatus("idle");
+    setPlayingDraftJobId(null);
   };
 
   useEffect(() => {
@@ -874,15 +913,23 @@ export function RemixStudioEditor({
     }
   };
 
-  const handleDraftPlayback = async () => {
+  const handleDraftPlayback = async (jobId: string | null = null) => {
+    const alreadyOnThisVersion = playingDraftJobId === jobId;
     if (draftPlaybackStatus !== "idle") {
       stopDraftPlayback();
-      return;
+      // Same version → plain stop; another version → A/B switch, keep going.
+      if (alreadyOnThisVersion) return;
     }
-    if (!token || !draftOutputUri) return;
+    if (!token) return;
+    if (jobId === null && !draftOutputUri) return;
     setDraftPlaybackStatus("loading");
+    setPlayingDraftJobId(jobId);
     try {
-      const blob = await getRemixDraftAudioBlob(token, project.id);
+      const blob = await getRemixDraftAudioBlob(
+        token,
+        project.id,
+        jobId ?? undefined,
+      );
       const objectUrl = URL.createObjectURL(blob);
       const audio = new Audio(objectUrl);
       draftObjectUrlRef.current = objectUrl;
@@ -1136,8 +1183,10 @@ export function RemixStudioEditor({
             </div>
           </div>
           <p className="text-zinc-500 text-xs mb-4">
-            Preview uses streaming-quality source stems. Mute and gain are
-            saved with your draft; solo changes playback only and is not saved.
+            Preview uses streaming-quality source stems and is unmastered —
+            final renders are loudness-normalized, so they sound louder and
+            more even than this preview. Mute and gain are saved with your
+            draft; solo changes playback only and is not saved.
             {Object.values(edits.stems).some((edit) => edit.muted) && (
               <>
                 {" "}
@@ -1525,7 +1574,13 @@ export function RemixStudioEditor({
                     : generationStatus === "failed" && project.generationJobId
                       ? `AI generation failed — job ${project.generationJobId}.`
                       : project.generationJobId
-                        ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"}).`
+                        ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"})${
+                            formatDraftCost(
+                              project.generationMetadata?.estimatedCostUsd,
+                            )
+                              ? ` · ${formatDraftCost(project.generationMetadata?.estimatedCostUsd)}`
+                              : ""
+                          }.`
                         : edits.mode === "stem_mix"
                           ? "No draft yet. Render your arranged stems into a mix, or switch to a prompted mode for AI generation."
                           : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
@@ -1625,18 +1680,67 @@ export function RemixStudioEditor({
                       {availability.reason}
                     </p>
                   )}
+                  {formatDraftCost(
+                    project.generationMetadata?.estimatedCostUsd,
+                  ) &&
+                    !generationActive && (
+                      <p className="text-xs text-zinc-500 mt-2 max-w-[16rem] remix-generation-cost">
+                        Last run{" "}
+                        {formatDraftCost(
+                          project.generationMetadata?.estimatedCostUsd,
+                        )}
+                        .
+                      </p>
+                    )}
                   {draftOutputUri && (
                     <button
                       type="button"
                       className="ui-btn ui-btn-ghost remix-draft-playback-btn mt-3"
-                      onClick={() => void handleDraftPlayback()}
+                      onClick={() => void handleDraftPlayback(null)}
                     >
-                      {draftPlaybackStatus === "loading"
+                      {playingDraftJobId === null &&
+                      draftPlaybackStatus === "loading"
                         ? "Loading draft..."
-                        : draftPlaybackStatus === "playing"
+                        : playingDraftJobId === null &&
+                            draftPlaybackStatus === "playing"
                           ? "Stop draft"
                           : "Play AI draft"}
                     </button>
+                  )}
+                  {(project.generationMetadata?.previousDrafts?.length ?? 0) >
+                    0 && (
+                    <div className="mt-4 text-left remix-draft-versions">
+                      <div className="text-xs text-zinc-500 mb-1">
+                        Previous versions
+                      </div>
+                      <ul className="space-y-1">
+                        {project.generationMetadata!.previousDrafts!.map(
+                          (entry) => (
+                            <li
+                              key={entry.jobId}
+                              className="flex items-center gap-2 text-xs text-zinc-400"
+                            >
+                              <button
+                                type="button"
+                                className="ui-btn ui-btn-ghost remix-draft-version-btn"
+                                onClick={() =>
+                                  void handleDraftPlayback(entry.jobId)
+                                }
+                              >
+                                {playingDraftJobId === entry.jobId &&
+                                draftPlaybackStatus === "loading"
+                                  ? "Loading..."
+                                  : playingDraftJobId === entry.jobId &&
+                                      draftPlaybackStatus === "playing"
+                                    ? "Stop"
+                                    : "Play"}
+                              </button>
+                              <span>{previousDraftLabel(entry)}</span>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
                   )}
                   {project.generationJobId &&
                     !draftOutputUri &&
