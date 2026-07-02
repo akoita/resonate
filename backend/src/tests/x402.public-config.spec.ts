@@ -116,4 +116,61 @@ describe('X402PublicController', () => {
       decimals: 6,
     });
   });
+
+  it('uses the canonical EIP-712 domain name when shared metadata carries a display name (#1309)', () => {
+    // Same token address as the canonical Base Sepolia USDC deployment, but a
+    // display name in the registry — the challenge must still advertise the
+    // contract's on-chain EIP-712 domain name or no payer can settle.
+    const paymentsService = createPaymentsService(JSON.stringify([
+      {
+        assetId: 'base-sepolia:usdc',
+        chainId: 84532,
+        symbol: 'USDC',
+        name: 'Circle USDC',
+        kind: 'stablecoin',
+        tokenAddress: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+        decimals: 6,
+        enabled: true,
+        settlement: ['x402'],
+        pricingStrategy: 'usd_pegged',
+      },
+    ]));
+    const controller = createController({
+      X402_ENABLED: 'true',
+      X402_FACILITATOR_URL: 'https://example.test/facilitator',
+    }, paymentsService);
+
+    const cfg = controller.getPublicConfig();
+    expect(cfg.enabled).toBe(true);
+    if (!cfg.enabled) return;
+    expect(cfg.asset.address).toBe('0x036CbD53842c5426634e7929541eC2318f3dCF7e');
+    expect(cfg.asset.name).toBe('USDC');
+  });
+
+  it('honors an explicit eip712Name for non-canonical tokens (#1309)', () => {
+    const paymentsService = createPaymentsService(JSON.stringify([
+      {
+        assetId: 'base-sepolia:usdc',
+        chainId: 84532,
+        symbol: 'USDC',
+        name: 'Circle USDC',
+        eip712Name: 'MockUSDC',
+        kind: 'stablecoin',
+        tokenAddress: '0x1111111111111111111111111111111111111111',
+        decimals: 6,
+        enabled: true,
+        settlement: ['x402'],
+        pricingStrategy: 'usd_pegged',
+      },
+    ]));
+    const controller = createController({
+      X402_ENABLED: 'true',
+      X402_FACILITATOR_URL: 'https://example.test/facilitator',
+    }, paymentsService);
+
+    const cfg = controller.getPublicConfig();
+    expect(cfg.enabled).toBe(true);
+    if (!cfg.enabled) return;
+    expect(cfg.asset.name).toBe('MockUSDC');
+  });
 });
