@@ -824,3 +824,92 @@ describe("Also on this track panel (#1312)", () => {
     expect(html).toContain("A major");
   });
 });
+
+describe("section-grid arrangement (#1314)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [
+      { startSec: 0, endSec: 16 },
+      { startSec: 16, endSec: 32 },
+      { startSec: 32, endSec: 48 },
+      { startSec: 48, endSec: 64 },
+    ],
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const mask = (sections: boolean[]) => ({
+    schemaVersion: "remix-stem-arrangement/v1",
+    sections,
+  });
+
+  function gridProject(overrides: Partial<RemixProject> = {}): RemixProject {
+    const base = project({ sectionGrid });
+    base.stems[1].arrangement = mask([true, true, false, true]);
+    return { ...base, ...overrides };
+  }
+
+  it("initialEdits parses persisted masks against the served grid", () => {
+    const edits = initialEdits(gridProject());
+    expect(edits.stems["stem-1"].sections).toBeNull(); // no mask → default
+    expect(edits.stems["stem-2"].sections).toEqual([true, true, false, true]);
+    // Without a grid, masks are ignored entirely.
+    const noGrid = initialEdits(project());
+    expect(noGrid.stems["stem-1"].sections).toBeNull();
+  });
+
+  it("buildProjectPatch diffs masks and clears back to default with null", () => {
+    const proj = gridProject();
+    const edits = initialEdits(proj);
+    expect(buildProjectPatch(proj, edits)).toEqual({}); // round-trip clean
+
+    edits.stems["stem-1"] = {
+      ...edits.stems["stem-1"],
+      sections: [false, true, true, true],
+    };
+    expect(buildProjectPatch(proj, edits).stems).toEqual([
+      {
+        stemId: "stem-1",
+        arrangement: mask([false, true, true, true]),
+      },
+    ]);
+
+    // Restoring all-on sends an explicit null (server clears the column).
+    const clearing = initialEdits(proj);
+    clearing.stems["stem-2"] = { ...clearing.stems["stem-2"], sections: null };
+    expect(buildProjectPatch(proj, clearing).stems).toEqual([
+      { stemId: "stem-2", arrangement: null },
+    ]);
+  });
+
+  it("stemPreviewStates gates the preview at the saved/edited spans", () => {
+    const proj = gridProject();
+    const states = stemPreviewStates(proj, initialEdits(proj));
+    const vocal = states.find((state) => state.stemId === "stem-1")!;
+    const drums = states.find((state) => state.stemId === "stem-2")!;
+    expect(vocal.activeIntervals).toBeNull(); // fully active
+    expect(drums.activeIntervals).toEqual([
+      { startSec: 0, endSec: 32 },
+      { startSec: 48, endSec: 64 },
+    ]);
+    // No grid → no gating key at all.
+    const ungated = stemPreviewStates(project(), initialEdits(project()));
+    expect("activeIntervals" in ungated[0]).toBe(false);
+  });
+
+  it("renders the arrangement grid with honest labels and pressed cells", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={gridProject()} />,
+    );
+    expect(html).toContain("Arrangement");
+    expect(html).toContain("8-bar sections · measured 120 BPM");
+    expect(html).toContain("0:16"); // section start column label
+    expect(html).toContain('aria-label="Drums: section 3 off"');
+    expect(html).toContain('aria-label="Lead Vocal: section 3 on"');
+  });
+
+  it("hides the grid when the source has none", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).not.toContain("Arrangement");
+  });
+});

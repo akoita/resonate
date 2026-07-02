@@ -207,6 +207,14 @@ export type StemArrangementEntry = {
   stemId: string;
   gainDb: number | null;
   muted: boolean;
+  /**
+   * Section-grid play intervals (#1314), derived by the worker from the
+   * stem's persisted mask and the project's section grid. Semantics:
+   * undefined/null = fully active (no gating, pre-#1314 behavior);
+   * [] = every section off (treated as muted); otherwise the stem is gated
+   * to these spans with short edge fades.
+   */
+  activeIntervals?: Array<{ startSec: number; endSec: number }> | null;
 };
 
 /**

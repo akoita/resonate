@@ -37,6 +37,12 @@ import {
 } from "./remix-layered-renderer";
 import { UPLOAD_RIGHTS_POLICY_VERSION } from "../rights/upload-rights-policy";
 import {
+  activeIntervalsForArrangement,
+  deriveSectionGrid,
+  parseStemArrangement,
+  validateStemArrangementInput,
+} from "./remix-arrangement";
+import {
   isValidRemixStemGainDb,
   REMIX_STEM_GAIN_DB_MAX,
   REMIX_STEM_GAIN_DB_MIN,
@@ -499,6 +505,26 @@ export class RemixProjectService {
       );
     }
 
+    // Section-grid arrangement masks (#1314) must match the grid the studio
+    // derived for this source; a null payload restores the always-on default.
+    if (stemUpdates.some((stem) => stem.arrangement !== undefined)) {
+      const sectionGrid = deriveSectionGrid(
+        project.stems.map((stem) => ({
+          audioFeatures: stem.stem.audioFeatures,
+        })),
+      );
+      for (const stem of stemUpdates) {
+        if (stem.arrangement === undefined) continue;
+        const problem = validateStemArrangementInput(
+          stem.arrangement,
+          sectionGrid,
+        );
+        if (problem) {
+          throw new BadRequestException(`Stem ${stem.stemId}: ${problem}`);
+        }
+      }
+    }
+
     const addStemIds = Array.from(new Set(patch.addStemIds ?? []));
     if (addStemIds.some((stemId) => typeof stemId !== "string" || !stemId)) {
       throw new BadRequestException("addStemIds must be non-empty stem ids");
@@ -547,7 +573,14 @@ export class RemixProjectService {
             ...(stem.gainDb !== undefined ? { gainDb: stem.gainDb } : {}),
             ...(stem.muted !== undefined ? { muted: stem.muted } : {}),
             ...(stem.arrangement !== undefined
-              ? { arrangement: stem.arrangement as object }
+              ? {
+                  // null restores the always-on default (#1314); Prisma Json?
+                  // columns need the DbNull sentinel, not JS null.
+                  arrangement:
+                    stem.arrangement === null
+                      ? Prisma.DbNull
+                      : (stem.arrangement as Prisma.JsonObject),
+                }
               : {}),
           },
         });
@@ -793,11 +826,28 @@ export class RemixProjectService {
     }
 
     try {
-      const liveStemArrangement = project.stems.map((stem) => ({
-        stemId: stem.stemId,
-        gainDb: stem.gainDb,
-        muted: stem.muted,
-      }));
+      // Section grid (#1314): derived deterministically from measured features
+      // at process time, exactly like the studio derives it, so the persisted
+      // per-stem masks gate the render at the same boundaries the user saw.
+      const sectionGrid = deriveSectionGrid(
+        project.stems.map((stem) => ({
+          audioFeatures: stem.stem.audioFeatures,
+        })),
+      );
+      const liveStemArrangement = project.stems.map((stem) => {
+        const mask = sectionGrid
+          ? activeIntervalsForArrangement(
+              sectionGrid,
+              parseStemArrangement(stem.arrangement),
+            )
+          : null;
+        return {
+          stemId: stem.stemId,
+          gainDb: stem.gainDb,
+          muted: stem.muted,
+          ...(mask !== null ? { activeIntervals: mask } : {}),
+        };
+      });
       const activeStemIds = liveStemArrangement
         .filter((stem) => !stem.muted)
         .map((stem) => stem.stemId);
@@ -1547,6 +1597,14 @@ export class RemixProjectService {
         muted: stem.muted,
         arrangement: stem.arrangement,
       })),
+      // Section grid (#1314): served with the project so the studio, PATCH
+      // validation, and the render worker all agree on one derivation —
+      // clients never re-derive boundaries themselves.
+      sectionGrid: deriveSectionGrid(
+        project.stems.map((stem) => ({
+          audioFeatures: stem.stem.audioFeatures,
+        })),
+      ),
       ...(eligibility ? { eligibility } : {}),
     };
   }

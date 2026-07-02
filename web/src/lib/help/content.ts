@@ -667,6 +667,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Your session opens with every stem of the track you're licensed for — the one you started from plays, and the rest wait muted until you bring them in.",
               "Mute, solo, and set the level of each stem; measured tempo and key show on stems that have them.",
+              "Use the Arrangement grid to switch stems on or off per section of the song \u2014 drop the drums out for a verse, bring them back for the chorus.",
               "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "Write a prompt describing the direction you want.",
               "Generate a draft that keeps your licensed stems and layers new AI-generated parts on top, clearly labelled as AI-assisted.",
