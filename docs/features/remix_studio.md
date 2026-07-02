@@ -314,6 +314,26 @@ from the JWT, never the request body.
   Tests: `backend/src/tests/remix-arrangement.spec.ts`,
   `backend/src/tests/remix-arrangement.integration.spec.ts`,
   `web/src/lib/remixArrangement.test.ts`.
+- Per-stem AI transforms (#1316, P2 of epic #1311): variation-mode generation
+  gains an **AI target** — *whole track* (unchanged default), *add a layer*
+  (one new additive part conditioned on the full arrangement), or *replace a
+  stem* (an isolated role-scoped part conditioned on the **bed** — every stem
+  except the target — so the generated layer takes the target's place instead
+  of doubling it). `POST /remix/projects/:id/generate` accepts
+  `stemTransform { kind: replace_stem | add_layer, stemId? }`, strictly
+  validated (variation only; target must be a project stem; replacing the only
+  unmuted stem is rejected — the bed cannot be empty). The transform's honest
+  lead instruction replaces the generic variation framing in the Lyria and
+  audio-conditioned prompts while measured tempo/key hints still apply; the
+  bed drives provider conditioning, the layered render, and the decrypt
+  authorization set; arrangement gating (#1314) applies to the bed unchanged.
+  Grounding is untouched (`stem_plus_ai` for the layered path,
+  `audio_conditioned` for conditioned regeneration); `generationMetadata` and
+  publish lineage record the transform (kind + stem id/label), and the studio
+  Draft panel describes it plainly ("AI drums replacement…", "New AI layer…").
+  Tests: `backend/src/tests/remix-stem-transform.spec.ts`,
+  `backend/src/tests/remix-stem-transform.integration.spec.ts`,
+  `web/src/components/remix/RemixStudioEditor.test.tsx`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

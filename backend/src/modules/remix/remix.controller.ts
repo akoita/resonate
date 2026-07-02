@@ -142,6 +142,8 @@ export class RemixController {
       constraints?: RemixGenerationConstraints;
       retry?: boolean;
       force?: boolean;
+      /** Targeted per-stem operation (#1316); validated in the service. */
+      stemTransform?: { kind: "replace_stem" | "add_layer"; stemId?: string };
     } = {},
   ) {
     // Bounds before any project/provider work (#1162): out-of-range
@@ -160,6 +162,18 @@ export class RemixController {
         constraints: body?.constraints,
         retry: body?.retry,
         force: body?.force,
+        // Only the documented fields pass through; the service validates
+        // kind/stemId against the live project.
+        ...(body?.stemTransform
+          ? {
+              stemTransform: {
+                kind: body.stemTransform.kind,
+                ...(body.stemTransform.stemId
+                  ? { stemId: body.stemTransform.stemId }
+                  : {}),
+              },
+            }
+          : {}),
       });
     } catch (error) {
       if (error instanceof RemixGenerationProviderError) {

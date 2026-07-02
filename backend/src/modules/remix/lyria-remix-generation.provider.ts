@@ -10,6 +10,8 @@ import {
   type RemixGenerationJob,
   type RemixGenerationProvider,
   type StemRenderAuthorization,
+  stemTransformPromptLead,
+  type RemixStemTransform,
 } from "./remix-generation.provider";
 
 /**
@@ -74,6 +76,7 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
     const prompt = buildLyriaRemixPrompt({
       mode: input.mode,
       userPrompt,
+      transform: input.stemTransform,
       bpm: input.constraints.bpm ?? hints.bpm,
       key: input.constraints.key ?? hints.key,
       sourceMatched: {
@@ -143,15 +146,19 @@ export class LyriaRemixGenerationProvider implements RemixGenerationProvider {
 export function buildLyriaRemixPrompt(input: {
   mode: "variation" | "extension";
   userPrompt: string;
+  /** Targeted per-stem operation (#1316) — replaces the mode framing. */
+  transform?: RemixStemTransform;
   bpm?: number;
   key?: string;
   /** Which hints were measured from the source stems (#1182 slice 3). */
   sourceMatched?: { bpm?: boolean; key?: boolean };
 }): string {
   const parts = [
-    input.mode === "variation"
-      ? `Create a reinterpreted variation of the source arrangement: ${input.userPrompt}`
-      : `Extend the source arrangement with a continuation that develops it further: ${input.userPrompt}`,
+    input.transform
+      ? stemTransformPromptLead(input.transform, input.userPrompt)
+      : input.mode === "variation"
+        ? `Create a reinterpreted variation of the source arrangement: ${input.userPrompt}`
+        : `Extend the source arrangement with a continuation that develops it further: ${input.userPrompt}`,
   ];
   if (input.bpm) parts.push(`Tempo around ${input.bpm} BPM.`);
   if (input.key) parts.push(`In the key of ${input.key}.`);

@@ -25,6 +25,8 @@ import {
   type RemixGenerationConstraints,
   type RemixGenerationProvider,
   type StemRenderAuthorization,
+  validateStemTransform,
+  type RemixStemTransform,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
 import {
@@ -613,6 +615,8 @@ export class RemixProjectService {
       constraints?: RemixGenerationConstraints;
       retry?: boolean;
       force?: boolean;
+      /** Targeted per-stem operation (#1316); variation mode only. */
+      stemTransform?: RemixStemTransform;
     } = {},
   ) {
     this.enforceRateLimit("generate", userId, this.maxGenerationsPerHour);
@@ -662,6 +666,37 @@ export class RemixProjectService {
       );
     }
 
+    // Per-stem transform (#1316): validated against the live project before
+    // any provider work, then labelled with the catalog stem type so prompt
+    // framing and metadata speak the user's language ("drums", not an id).
+    const transformProblem = validateStemTransform(options.stemTransform, {
+      mode: project.mode,
+      stems: project.stems.map((stem) => ({
+        stemId: stem.stemId,
+        muted: stem.muted,
+      })),
+    });
+    if (transformProblem) {
+      throw new BadRequestException(transformProblem);
+    }
+    const stemTransform: RemixStemTransform | undefined = options.stemTransform
+      ? {
+          kind: options.stemTransform.kind,
+          ...(options.stemTransform.stemId
+            ? { stemId: options.stemTransform.stemId }
+            : {}),
+          ...(options.stemTransform.kind === "replace_stem"
+            ? {
+                stemLabel: stemTransformLabel(
+                  project.stems.find(
+                    (stem) => stem.stemId === options.stemTransform?.stemId,
+                  ),
+                ),
+              }
+            : {}),
+        }
+      : undefined;
+
     const eligibility = await this.eligibilityService.checkEligibility({
       userId,
       trackId: project.sourceTrackId,
@@ -704,6 +739,7 @@ export class RemixProjectService {
         })),
       },
       options.constraints,
+      stemTransform,
     );
     const jobId = `rmxgen_${project.id}_${randomUUID()}`;
     const requestedAt = new Date().toISOString();
@@ -726,6 +762,9 @@ export class RemixProjectService {
         ? { sourceFeatureHints: generationInput.sourceFeatureHints }
         : {}),
       stemIds: generationInput.stemIds,
+      ...(generationInput.stemTransform
+        ? { stemTransform: generationInput.stemTransform }
+        : {}),
       constraints: generationInput.constraints as object,
       estimatedCostUsd: null,
       policyVersion: eligibility.policyVersion,
@@ -848,7 +887,17 @@ export class RemixProjectService {
           ...(mask !== null ? { activeIntervals: mask } : {}),
         };
       });
-      const activeStemIds = liveStemArrangement
+      // Per-stem transform (#1316): replace_stem conditions and renders on the
+      // BED — every stem except the target — so the generated layer takes the
+      // target's place instead of doubling it. add_layer keeps the full bed.
+      const transform = data.generationInput.stemTransform;
+      const bedStemArrangement =
+        transform?.kind === "replace_stem" && transform.stemId
+          ? liveStemArrangement.filter(
+              (stem) => stem.stemId !== transform.stemId,
+            )
+          : liveStemArrangement;
+      const activeStemIds = bedStemArrangement
         .filter((stem) => !stem.muted)
         .map((stem) => stem.stemId);
 
@@ -915,13 +964,13 @@ export class RemixProjectService {
         data.generationInput.mode === "stem_mix"
           ? await this.stemMixRenderer.render({
               remixProjectId: project.id,
-              stems: liveStemArrangement,
+              stems: bedStemArrangement,
               authorization: renderAuthorization,
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
               generationInput: data.generationInput,
-              stems: liveStemArrangement,
+              stems: bedStemArrangement,
               authorization: renderAuthorization,
             });
       const completedAt = new Date().toISOString();
@@ -1267,6 +1316,9 @@ export class RemixProjectService {
       ...(Array.isArray(metadata.generatedLayers)
         ? { generatedLayers: metadata.generatedLayers }
         : {}),
+      ...(metadata.stemTransform && typeof metadata.stemTransform === "object"
+        ? { stemTransform: metadata.stemTransform }
+        : {}),
       synthIdPresent:
         typeof output.synthIdPresent === "boolean"
           ? output.synthIdPresent
@@ -1608,6 +1660,14 @@ export class RemixProjectService {
       ...(eligibility ? { eligibility } : {}),
     };
   }
+}
+
+/** Human label for prompt framing/metadata: stem title, else its type. */
+function stemTransformLabel(
+  stem?: { stem: { type: string; title: string | null } },
+): string {
+  const label = stem?.stem.title?.trim() || stem?.stem.type?.trim();
+  return label || "target stem";
 }
 
 function audioExtensionForMimeType(mimeType: string): string {
