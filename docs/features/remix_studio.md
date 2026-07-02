@@ -642,6 +642,10 @@ Code & tests:
 - RFC: [Remix Studio](../rfc/remix-studio.md)
 - RFC: [AI Derivative Rights Policy](../rfc/ai-derivative-rights-policy.md)
 - RFC: [Remix And Contributor Credential Boundaries](../rfc/remix-contributor-credential-boundaries.md)
+- RFC: [Derived-Stem Separation Rights](../rfc/derived-stem-separation-rights.md)
+  — policy gate for the on-demand separation slice of
+  [#1311](https://github.com/akoita/resonate/issues/1311) (status: draft,
+  awaiting owner sign-off; no separation code ships before acceptance)
 - Backlog: [Remix Studio Backlog](remix_studio_backlog.md)
 - Licensing: [Licensing Architecture](../rfc/licensing-architecture.md)
 - Rights: [Rights Verification Strategy](../rfc/rights-verification-strategy.md)
