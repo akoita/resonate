@@ -32,6 +32,13 @@ import {
   type PreviewStemState,
   type StemArrangementPreviewHandle,
 } from "../../lib/remixAudioPreview";
+import {
+  activeIntervalsFromSections,
+  arrangementPayload,
+  parseArrangementSections,
+  sectionGridSummaryLabel,
+  sectionStartLabel,
+} from "../../lib/remixArrangement";
 
 export const GAIN_DB_MIN = -24;
 export const GAIN_DB_MAX = 6;
@@ -59,6 +66,8 @@ export function clampGainDb(value: number): number {
 export type StemEdit = {
   gainDb: number | null;
   muted: boolean;
+  /** Section mask (#1314): null = every section on (the default). */
+  sections: boolean[] | null;
 };
 
 export type ProjectEdits = {
@@ -69,9 +78,17 @@ export type ProjectEdits = {
 };
 
 export function initialEdits(project: RemixProject): ProjectEdits {
+  const sectionCount = project.sectionGrid?.sections.length ?? 0;
   const stems: Record<string, StemEdit> = {};
   for (const stem of project.stems) {
-    stems[stem.stemId] = { gainDb: stem.gainDb, muted: stem.muted };
+    stems[stem.stemId] = {
+      gainDb: stem.gainDb,
+      muted: stem.muted,
+      sections:
+        sectionCount > 0
+          ? parseArrangementSections(stem.arrangement, sectionCount)
+          : null,
+    };
   }
   return {
     title: project.title,
@@ -102,11 +119,17 @@ export function buildProjectPatch(
   if (edits.mode !== project.mode) {
     patch.mode = edits.mode;
   }
+  const sectionCount = project.sectionGrid?.sections.length ?? 0;
   const stemPatches: NonNullable<RemixProjectPatch["stems"]> = [];
   for (const stem of project.stems) {
     const edit = edits.stems[stem.stemId];
     if (!edit) continue;
-    const stemPatch: { stemId: string; gainDb?: number | null; muted?: boolean } = {
+    const stemPatch: {
+      stemId: string;
+      gainDb?: number | null;
+      muted?: boolean;
+      arrangement?: unknown;
+    } = {
       stemId: stem.stemId,
     };
     if (edit.gainDb !== stem.gainDb) {
@@ -115,7 +138,19 @@ export function buildProjectPatch(
     if (edit.muted !== stem.muted) {
       stemPatch.muted = edit.muted;
     }
-    if (stemPatch.gainDb !== undefined || stemPatch.muted !== undefined) {
+    if (sectionCount > 0) {
+      const persisted = parseArrangementSections(stem.arrangement, sectionCount);
+      if (!sameSections(edit.sections, persisted)) {
+        // null clears back to the always-on default server-side (#1314).
+        stemPatch.arrangement =
+          edit.sections === null ? null : arrangementPayload(edit.sections);
+      }
+    }
+    if (
+      stemPatch.gainDb !== undefined ||
+      stemPatch.muted !== undefined ||
+      "arrangement" in stemPatch
+    ) {
       stemPatches.push(stemPatch);
     }
   }
@@ -123,6 +158,17 @@ export function buildProjectPatch(
     patch.stems = stemPatches;
   }
   return patch;
+}
+
+function sameSections(
+  left: boolean[] | null,
+  right: boolean[] | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return (
+    left.length === right.length &&
+    left.every((flag, index) => flag === right[index])
+  );
 }
 
 export function describeSourceRights(source: RemixProjectSource): {
@@ -343,11 +389,25 @@ export function stemPreviewStates(
   project: RemixProject,
   edits: ProjectEdits,
 ): PreviewStemState[] {
-  return project.stems.map((stem) => ({
-    stemId: stem.stemId,
-    gainDb: edits.stems[stem.stemId]?.gainDb ?? stem.gainDb,
-    muted: edits.stems[stem.stemId]?.muted ?? stem.muted,
-  }));
+  const grid = project.sectionGrid ?? null;
+  return project.stems.map((stem) => {
+    const edit = edits.stems[stem.stemId];
+    const sections =
+      edit?.sections !== undefined
+        ? edit.sections
+        : grid
+          ? parseArrangementSections(stem.arrangement, grid.sections.length)
+          : null;
+    return {
+      stemId: stem.stemId,
+      gainDb: edit?.gainDb ?? stem.gainDb,
+      muted: edit?.muted ?? stem.muted,
+      // Preview gates at the same spans the server render will use (#1314).
+      ...(grid
+        ? { activeIntervals: activeIntervalsFromSections(grid, sections) }
+        : {}),
+    };
+  });
 }
 
 // Publishing inside Resonate is live (#1196); export stays honestly locked
@@ -505,6 +565,10 @@ export function RemixStudioEditor({
   const dirty = Object.keys(patch).length > 0;
   const availableStems =
     project.status === "draft" ? project.availableStems ?? [] : [];
+  const sectionGrid =
+    project.sectionGrid && project.sectionGrid.sections.length >= 2
+      ? project.sectionGrid
+      : null;
   const rights = describeSourceRights(project.source);
   // Switching back to stem_mix keeps any stored prompt; generation (#896)
   // must ignore prompts when mode is stem_mix.
@@ -621,6 +685,28 @@ export function RemixStudioEditor({
         [stemId]: { ...prev.stems[stemId], ...update },
       },
     }));
+  };
+
+  const toggleStemSection = (stemId: string, index: number) => {
+    if (!sectionGrid) return;
+    setEdits((prev) => {
+      const current = prev.stems[stemId];
+      const base =
+        current?.sections ?? sectionGrid.sections.map(() => true);
+      const next = base.map((flag, i) => (i === index ? !flag : flag));
+      return {
+        ...prev,
+        stems: {
+          ...prev.stems,
+          [stemId]: {
+            ...current,
+            // All-on normalizes back to the null default so untouched
+            // arrangements never persist a no-op mask (#1314).
+            sections: next.every(Boolean) ? null : next,
+          },
+        },
+      };
+    });
   };
 
   const handleGenerate = async () => {
@@ -1126,6 +1212,77 @@ export function RemixStudioEditor({
             </div>
           )}
         </section>
+
+        {/* Arrangement section grid (#1314) */}
+        {sectionGrid && (
+          <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+            <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+              <h2 className="text-lg font-semibold text-white">Arrangement</h2>
+              <span className="text-xs text-zinc-500">
+                {sectionGridSummaryLabel(sectionGrid)}
+              </span>
+            </div>
+            <p className="text-zinc-500 text-xs mb-4">
+              Switch stems on or off per section — this is what makes the mix
+              change over time. Renders fade at section edges; the preview picks
+              up section changes the next time you press Play preview.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="remix-arrangement-grid text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left text-zinc-500 font-normal pr-3 pb-2">
+                      Stem
+                    </th>
+                    {sectionGrid.sections.map((interval, index) => (
+                      <th
+                        key={index}
+                        className="text-zinc-500 font-normal px-1 pb-2 text-center"
+                        title={`Section ${index + 1} starts at ${sectionStartLabel(interval)}`}
+                      >
+                        {sectionStartLabel(interval)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {project.stems.map((stem) => {
+                    const sections = edits.stems[stem.stemId]?.sections ?? null;
+                    return (
+                      <tr key={stem.stemId}>
+                        <td className="text-zinc-300 pr-3 py-1 whitespace-nowrap">
+                          {stemDisplayName(stem)}
+                        </td>
+                        {sectionGrid.sections.map((_, index) => {
+                          const active =
+                            sections === null ? true : sections[index];
+                          return (
+                            <td key={index} className="px-1 py-1 text-center">
+                              <button
+                                type="button"
+                                aria-pressed={active}
+                                aria-label={`${stemDisplayName(stem)}: section ${index + 1} ${active ? "on" : "off"}`}
+                                disabled={saving}
+                                className={`w-7 h-6 rounded border ${
+                                  active
+                                    ? "bg-purple-500/30 border-purple-500/50"
+                                    : "bg-zinc-800 border-zinc-700"
+                                }`}
+                                onClick={() =>
+                                  toggleStemSection(stem.stemId, index)
+                                }
+                              />
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         {/* Mode + prompt */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">

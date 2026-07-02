@@ -4099,6 +4099,21 @@ export type RemixProjectSource = {
   contentStatus: string;
 };
 
+export type RemixSectionInterval = { startSec: number; endSec: number };
+
+/**
+ * The project's section grid (#1314), derived server-side from measured stem
+ * features so the studio, PATCH validation, and the render worker share one
+ * derivation. Null when nothing is measured or the track is too short.
+ */
+export type RemixSectionGrid = {
+  kind: "bars" | "time";
+  sections: RemixSectionInterval[];
+  sectionSeconds: number;
+  durationSeconds: number;
+  bpm: number | null;
+};
+
 export type RemixProjectMode = "stem_mix" | "variation" | "extension";
 
 export type RemixGenerationStatus =
@@ -4219,6 +4234,8 @@ export type RemixProject = {
   stems: RemixProjectStem[];
   /** Present on draft-project reads only (#1312). */
   availableStems?: RemixProjectAvailableStem[];
+  /** Derived section grid (#1314); null when the source has no measured duration. */
+  sectionGrid?: RemixSectionGrid | null;
   eligibility?: RemixEligibilityResponse;
 };
 

@@ -17,6 +17,10 @@ import {
   type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { normalizeRemixStemGainDb } from "./remix-gain";
+import {
+  buildSectionGateVolumeExpression,
+  type SectionInterval,
+} from "./remix-arrangement";
 
 const execFileAsync = promisify(execFile);
 
@@ -99,7 +103,12 @@ export interface StemAudioMixer {
  * matching the studio's preview gain model.
  */
 export function buildStemMixFfmpegArgs(
-  inputs: Array<{ path: string; gainDb: number }>,
+  inputs: Array<{
+    path: string;
+    gainDb: number;
+    /** Section-grid gating (#1314); undefined/null = play the whole stem. */
+    activeIntervals?: SectionInterval[] | null;
+  }>,
   outputPath: string,
 ): string[] {
   if (inputs.length === 0) {
@@ -116,7 +125,16 @@ export function buildStemMixFfmpegArgs(
   }
   const labelled = inputs.map((input, index) => {
     const gain = normalizeRemixStemGainDb(input.gainDb);
-    return `[${index}:a]volume=${gain}dB[a${index}]`;
+    // Section gating (#1314) applies after the user's static gain: a generated
+    // per-frame volume envelope with short edge fades. The expression contains
+    // only validated numeric spans (commas escaped for the filtergraph
+    // parser), never user strings. Fully-active stems skip the filter so
+    // untouched arrangements render byte-identically to pre-#1314.
+    const gate =
+      input.activeIntervals && input.activeIntervals.length > 0
+        ? `,volume=volume=${buildSectionGateVolumeExpression(input.activeIntervals)}:eval=frame`
+        : "";
+    return `[${index}:a]volume=${gain}dB${gate}[a${index}]`;
   });
   const mixInputs = inputs.map((_, index) => `[a${index}]`).join("");
   const policy = REMIX_RENDER_AUDIO_POLICY;
@@ -193,7 +211,13 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stemOnly: boolean,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
-    const activeStems = stems.filter((stem) => !stem.muted);
+    // A stem whose section mask disables every section ([]) is effectively
+    // muted (#1314); undefined/null intervals mean fully active.
+    const activeStems = stems.filter(
+      (stem) =>
+        !stem.muted &&
+        !(stem.activeIntervals && stem.activeIntervals.length === 0),
+    );
     if (activeStems.length === 0) {
       throw new RemixGenerationProviderError(
         "invalid_input",
@@ -224,7 +248,11 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
 
     const workDir = await mkdtemp(join(tmpdir(), "remix-mix-"));
     try {
-      const ffmpegInputs: Array<{ path: string; gainDb: number }> = [];
+      const ffmpegInputs: Array<{
+        path: string;
+        gainDb: number;
+        activeIntervals?: SectionInterval[] | null;
+      }> = [];
       for (const stem of activeStems) {
         const row = rowsById.get(stem.stemId)!;
         const audio = await this.loadStemAudio(row, authorization);
@@ -237,7 +265,11 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         }
         const inputPath = join(workDir, `stem-${ffmpegInputs.length}.audio`);
         await writeFile(inputPath, audio);
-        ffmpegInputs.push({ path: inputPath, gainDb: stem.gainDb ?? 0 });
+        ffmpegInputs.push({
+          path: inputPath,
+          gainDb: stem.gainDb ?? 0,
+          activeIntervals: stem.activeIntervals ?? null,
+        });
       }
       for (const input of additionalInputs) {
         const inputPath = join(

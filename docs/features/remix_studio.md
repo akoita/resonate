@@ -294,6 +294,26 @@ from the JWT, never the request body.
   `remix.project_created` event still carries the explicit selection only.
   Tests: `backend/src/tests/remix-session-hydration.integration.spec.ts`,
   `web/src/components/remix/RemixStudioEditor.test.tsx`.
+- Section-grid arrangement (#1314, P1 of epic #1311): the studio gains an
+  **Arrangement** grid — stems switch on/off per section, which is what makes
+  the mix change over time. Sections are **8 bars**, derived deterministically
+  from the stems' measured features (#1184): highest-confidence tempo +
+  first-beat anchor; tracks without a measured tempo fall back to honest
+  **16-second time sections**; nothing gridworthy → no grid. The derivation is
+  served on project reads (`sectionGrid`) so the studio, PATCH validation, and
+  the render worker share one source of truth. Per-stem masks persist in the
+  existing `RemixProjectStem.arrangement` JSON (`remix-stem-arrangement/v1`;
+  `null` = always on, no migration). Renders gate each stem with a generated
+  ffmpeg volume envelope (~50 ms edge fades) inside the same graph — uniform
+  across `stem_mix`, the `stem_plus_ai` stem bed, and the audio-conditioned
+  conditioning mix; a fully-active stem renders byte-identically to before,
+  and an all-off mask counts as muted. The WebAudio preview schedules the same
+  spans on a dedicated per-stem section gain node (cell edits apply on the
+  next preview start). Masks authored against a stale grid fail open to
+  fully-active rather than gating at wrong boundaries.
+  Tests: `backend/src/tests/remix-arrangement.spec.ts`,
+  `backend/src/tests/remix-arrangement.integration.spec.ts`,
+  `web/src/lib/remixArrangement.test.ts`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
