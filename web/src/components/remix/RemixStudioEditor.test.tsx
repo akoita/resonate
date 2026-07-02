@@ -5,6 +5,8 @@ import {
   describeAvailableStemAction,
   describeGenerateAvailability,
   describeStemTransform,
+  formatDraftCost,
+  previousDraftLabel,
   stemTransformForGenerate,
   describePublishAvailability,
   generationErrorMessage,
@@ -1021,5 +1023,81 @@ describe("muted hydrated stems hint (#1318)", () => {
     allOn.stems = allOn.stems.map((stem) => ({ ...stem, muted: false }));
     const html = renderToStaticMarkup(<RemixStudioEditor project={allOn} />);
     expect(html).not.toContain("start muted");
+  });
+});
+
+describe("draft versions + honest cost (#1320)", () => {
+  const previousDrafts = [
+    {
+      jobId: "rmxgen_old",
+      provider: "stem-plus-ai-layered-render",
+      mode: "variation",
+      grounding: "stem_plus_ai",
+      stemTransform: {
+        kind: "replace_stem" as const,
+        stemId: "stem-2",
+        stemLabel: "drums",
+      },
+      estimatedCostUsd: 0.12,
+      completedAt: "2026-07-01T10:00:00.000Z",
+      output: { outputUri: "local://old.mp3", mimeType: "audio/mpeg" },
+    },
+  ];
+
+  it("formatDraftCost shows only positive recorded costs", () => {
+    expect(formatDraftCost(0.12)).toBe("~$0.12");
+    expect(formatDraftCost(0)).toBeNull(); // stem-mix renders stay unlabelled
+    expect(formatDraftCost(null)).toBeNull();
+    expect(formatDraftCost(undefined)).toBeNull();
+    expect(formatDraftCost(Number.NaN)).toBeNull();
+  });
+
+  it("previousDraftLabel describes what, when, and cost", () => {
+    const label = previousDraftLabel(previousDrafts[0]);
+    expect(label).toContain("AI drums replacement");
+    expect(label).toContain("~$0.12");
+    expect(
+      previousDraftLabel({
+        ...previousDrafts[0],
+        stemTransform: null,
+        grounding: "stem_audio",
+        estimatedCostUsd: 0,
+        completedAt: null,
+      }),
+    ).toBe("Stem mix render");
+  });
+
+  it("renders the versions list and the recorded cost on completed drafts", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          mode: "variation",
+          generationJobId: "rmxgen_new",
+          generationProvider: "stem-plus-ai-layered-render",
+          generationMetadata: {
+            status: "completed",
+            grounding: "stem_plus_ai",
+            estimatedCostUsd: 0.24,
+            previousDrafts,
+            output: { outputUri: "local://new.mp3" },
+          },
+        })}
+      />,
+    );
+    expect(html).toContain("Previous versions");
+    expect(html).toContain("AI drums replacement");
+    expect(html).toContain("~$0.24"); // current draft's recorded cost
+    expect(html).toContain("~$0.12"); // archived version's cost
+  });
+
+  it("shows no versions block when there is no history", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).not.toContain("Previous versions");
+  });
+
+  it("states the preview-vs-render loudness gap honestly", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain("unmastered");
+    expect(html).toContain("loudness-normalized");
   });
 });

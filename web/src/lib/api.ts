@@ -4167,6 +4167,19 @@ export type RemixStemTransform = {
   stemLabel?: string;
 };
 
+/** An archived draft version kept when a project regenerates (#1320). */
+export type RemixPreviousDraft = {
+  /** The archived generation's job id — the draft-audio version key. */
+  jobId: string;
+  provider: string | null;
+  mode: string | null;
+  grounding: string | null;
+  stemTransform: RemixStemTransform | null;
+  estimatedCostUsd: number | null;
+  completedAt: string | null;
+  output: { outputUri: string; mimeType: string | null };
+};
+
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
@@ -4182,6 +4195,8 @@ export type RemixGenerationMetadata = {
   sourceFeatureHints?: { bpm?: number; key?: string };
   /** Targeted per-stem operation this draft was generated with (#1316). */
   stemTransform?: RemixStemTransform;
+  /** Archived versions from earlier generations, newest first (#1320). */
+  previousDrafts?: RemixPreviousDraft[];
   stemIds?: string[];
   constraints?: Record<string, unknown>;
   estimatedCostUsd?: number | null;
@@ -4313,9 +4328,13 @@ export async function generateRemixDraft(
 export async function getRemixDraftAudioBlob(
   token: string,
   projectId: string,
+  /** Archived version key (#1320); absent = the current draft. */
+  jobId?: string,
 ) {
   const response = await fetch(
-    `${API_BASE}/remix/projects/${projectId}/draft-audio`,
+    `${API_BASE}/remix/projects/${projectId}/draft-audio${
+      jobId ? `?jobId=${encodeURIComponent(jobId)}` : ""
+    }`,
     {
       headers: {
         Authorization: `Bearer ${token}`,

@@ -672,7 +672,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Write a prompt describing the direction you want.",
               "In Variation mode, pick an AI target: reshape the whole track, add one new layer on top, or replace a single stem with an AI-generated part while the rest of your mix stays untouched.",
               "Generate a draft that keeps your licensed stems and layers new AI-generated parts on top, clearly labelled as AI-assisted.",
-              "Preview drafts and keep refining; your work saves as a private draft.",
+              "Preview drafts and keep refining; your work saves as a private draft. Regenerating keeps your previous drafts \u2014 play any version to compare before you publish.",
             ],
           },
         ],

@@ -338,6 +338,23 @@ from the JWT, never the request body.
   Tests: `backend/src/tests/remix-stem-transform.spec.ts`,
   `backend/src/tests/remix-stem-transform.integration.spec.ts`,
   `web/src/components/remix/RemixStudioEditor.test.tsx`.
+- Draft versions, honest cost, preview honesty (#1320, P3 of epic #1311):
+  regenerating no longer orphans the previous draft — the completed output is
+  archived into `generationMetadata.previousDrafts` (newest first, capped at
+  3, no schema change; stored outputs are never deleted so archived URIs stay
+  streamable, and the history survives failed regenerations).
+  `GET /remix/projects/:id/draft-audio?jobId=` streams an archived version
+  (owner-scoped, 404 for unknown ids); the studio Draft panel lists versions
+  with play controls for A/B listening (switching versions mid-play swaps the
+  transport). Recorded `estimatedCostUsd` now renders on the completed status
+  line, next to Regenerate ("Last run ~$0.12"), and on each archived version —
+  recorded numbers only, no pre-spend guesses; $0 stem-mix renders stay
+  unlabelled. The stems panel states the preview-vs-render loudness gap
+  ("unmastered … final renders are loudness-normalized"). Publish still uses
+  the current draft only; archived versions never publish.
+  Tests: `backend/src/tests/remix-draft-versions.spec.ts`,
+  `backend/src/tests/remix-draft-versions.integration.spec.ts`,
+  `web/src/components/remix/RemixStudioEditor.test.tsx`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

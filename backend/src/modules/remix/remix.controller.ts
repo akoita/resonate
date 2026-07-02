@@ -102,8 +102,14 @@ export class RemixController {
     @Param("id") id: string,
     @Headers("range") range: string,
     @Res() res: Response,
+    /** Archived version key (#1320); absent = the current draft. */
+    @Query("jobId") jobId?: string,
   ) {
-    const audio = await this.projectService.getDraftAudio(req.user.userId, id);
+    const audio = await this.projectService.getDraftAudio(
+      req.user.userId,
+      id,
+      jobId,
+    );
     this.sendAudioResponse(audio, range, res);
   }
 

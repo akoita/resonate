@@ -206,10 +206,24 @@ describe('RemixController (e2e)', () => {
     expect(mockProjectService.getDraftAudio).toHaveBeenCalledWith(
       'user-1',
       'proj-1',
+      undefined,
     );
     expect(res.headers['content-type']).toContain('audio/mpeg');
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.body.toString()).toBe('draft-audio');
+  });
+
+  it('GET /remix/projects/:id/draft-audio?jobId= → forwards the version key (#1320)', async () => {
+    await request(app.getHttpServer())
+      .get('/remix/projects/proj-1/draft-audio?jobId=rmxgen_old')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockProjectService.getDraftAudio).toHaveBeenCalledWith(
+      'user-1',
+      'proj-1',
+      'rmxgen_old',
+    );
   });
 
   it('GET /remix/projects/:id/draft-audio → 404 when no draft exists', async () => {
