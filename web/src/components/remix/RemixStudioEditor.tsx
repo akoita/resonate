@@ -223,12 +223,27 @@ export function describeAvailableStemAction(
  */
 export function stemFeatureChips(
   features: RemixProjectStem["audioFeatures"],
+  referenceBpm: number | null = null,
 ): string[] {
   if (!features) return [];
   const chips: string[] = [];
   const bpm = features.tempoBpm;
   if (typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0) {
-    chips.push(`${Math.round(bpm)} BPM`);
+    // Sparse stems (bass, guitar) produce librosa double/harmonic tempo
+    // artifacts (#1318). Show the BPM chip only when the measurement is
+    // trustworthy: confidence >= 0.5 — the natural midpoint of the worker's
+    // ratio/(1+ratio) heuristic, i.e. beats at least as strong as the average
+    // onset field — or agreement with the project's grid tempo.
+    const confidence =
+      typeof features.tempoConfidence === "number" &&
+      Number.isFinite(features.tempoConfidence)
+        ? features.tempoConfidence
+        : 0;
+    const agreesWithGrid =
+      typeof referenceBpm === "number" && Math.abs(bpm - referenceBpm) <= 3;
+    if (confidence >= 0.5 || agreesWithGrid) {
+      chips.push(`${Math.round(bpm)} BPM`);
+    }
   }
   const key = features.key;
   if (key?.tonic && key.mode) {
@@ -1123,6 +1138,13 @@ export function RemixStudioEditor({
           <p className="text-zinc-500 text-xs mb-4">
             Preview uses streaming-quality source stems. Mute and gain are
             saved with your draft; solo changes playback only and is not saved.
+            {Object.values(edits.stems).some((edit) => edit.muted) && (
+              <>
+                {" "}
+                Stems added from this track start muted — unmute a row to bring
+                it into your remix.
+              </>
+            )}
           </p>
           <ul className="space-y-3">
             {project.stems.map((stem) => {
@@ -1145,7 +1167,10 @@ export function RemixStudioEditor({
                         {stem.type}
                         {soloedOut ? " · muted by solo (preview)" : ""}
                       </span>
-                      {stemFeatureChips(stem.audioFeatures).map((chip) => (
+                      {stemFeatureChips(
+                        stem.audioFeatures,
+                        project.sectionGrid?.bpm ?? null,
+                      ).map((chip) => (
                         <span
                           key={chip}
                           className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 text-[10px]"
