@@ -177,6 +177,20 @@ export function remixGenerationStatusFromMetadata(
 }
 
 /**
+ * Full-mix stem types are the complete mixdown, not a layer: auto-adding one
+ * next to separated stems would double the audio (the stems already sum to
+ * it). Mirrors the player's isMixerStem() exclusion. Tracks whose ONLY stem
+ * is a full mix keep it via the explicit selection; hydration just never
+ * volunteers one.
+ */
+const FULL_MIX_STEM_TYPES = new Set(["original", "master"]);
+
+function isFullMixStemType(type: string | null | undefined): boolean {
+  const normalized = type?.trim().toLowerCase();
+  return !!normalized && FULL_MIX_STEM_TYPES.has(normalized);
+}
+
+/**
  * Shared read shape: stem catalog labels and the public source-track summary
  * (titles, artist credit, rights route, content status) that studio surfaces
  * render without extra round-trips.
@@ -333,6 +347,17 @@ export class RemixProjectService {
     }
 
     const stemIds = Array.from(new Set(input.stemIds));
+    // Full-session hydration (#1312): a stem-scoped entry (stem page, library
+    // chip) used to create a one-channel session even when the source track had
+    // more individually eligible stems. Auto-add every eligible sibling, muted,
+    // so the studio opens as a full desk. Each hydrated stem satisfies the
+    // strict per-stem rule (licensed + not minted non-remixable), so the
+    // generation/publish re-checks over the full project still pass.
+    const hydratedStemIds = await this.resolveEligibleSiblingStemIds(
+      input.userId,
+      input.sourceTrackId,
+      stemIds,
+    );
     const project = await prisma.remixProject.create({
       data: {
         creatorUserId: input.userId,
@@ -341,7 +366,12 @@ export class RemixProjectService {
         mode,
         prompt: input.prompt ?? null,
         policyVersion: eligibility.policyVersion,
-        stems: { create: stemIds.map((stemId) => ({ stemId })) },
+        stems: {
+          create: [
+            ...stemIds.map((stemId) => ({ stemId })),
+            ...hydratedStemIds.map((stemId) => ({ stemId, muted: true })),
+          ],
+        },
       },
       include: PROJECT_INCLUDE,
     });
@@ -373,7 +403,18 @@ export class RemixProjectService {
 
   async getProject(userId: string, projectId: string) {
     const project = await this.loadOwnedProject(userId, projectId);
-    return this.toResponse(project);
+    const response = this.toResponse(project);
+    // Sibling availability (#1312): draft studios render an "Also on this
+    // track" panel from this — licensed siblings are one click from active,
+    // unlicensed ones route to the remix-tier purchase. Published projects are
+    // locked, so the panel (and the extra eligibility work) is skipped.
+    if (project.status !== "draft") {
+      return response;
+    }
+    return {
+      ...response,
+      availableStems: await this.resolveAvailableStems(userId, project),
+    };
   }
 
   async listProjects(userId: string) {
@@ -394,6 +435,13 @@ export class RemixProjectService {
       status?: string;
       mode?: string;
       stems?: RemixProjectStemUpdate[];
+      /**
+       * Stems to add to the session (#1312) — e.g. a sibling stem whose remix
+       * license was bought after the project was created, or healing an older
+       * one-channel project. Every added stem is re-checked against the strict
+       * eligibility rule before it joins the project.
+       */
+      addStemIds?: string[];
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -451,7 +499,46 @@ export class RemixProjectService {
       );
     }
 
+    const addStemIds = Array.from(new Set(patch.addStemIds ?? []));
+    if (addStemIds.some((stemId) => typeof stemId !== "string" || !stemId)) {
+      throw new BadRequestException("addStemIds must be non-empty stem ids");
+    }
+    const alreadyInProject = addStemIds.filter((stemId) =>
+      projectStemIds.has(stemId),
+    );
+    if (alreadyInProject.length > 0) {
+      throw new BadRequestException(
+        `Stems are already part of this project: ${alreadyInProject.join(", ")}`,
+      );
+    }
+    if (addStemIds.length > 0) {
+      // Adding a stem is a rights-relevant action: the strict explicit-selection
+      // rule applies (every added stem licensed + not minted non-remixable), so
+      // the generation/publish re-checks over the grown project still pass.
+      const addEligibility = await this.eligibilityService.checkEligibility({
+        userId,
+        trackId: project.sourceTrackId,
+        stemIds: addStemIds,
+      });
+      if (!addEligibility.allowed) {
+        throw new ForbiddenException({
+          message: "Adding these stems to the remix project is not allowed",
+          eligibility: addEligibility,
+        });
+      }
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
+      if (addStemIds.length > 0) {
+        // Added on explicit user intent, so they arrive unmuted (unlike
+        // creation hydration, which parks auto-added siblings muted).
+        await tx.remixProjectStem.createMany({
+          data: addStemIds.map((stemId) => ({
+            remixProjectId: project.id,
+            stemId,
+          })),
+        });
+      }
       for (const stem of stemUpdates) {
         await tx.remixProjectStem.updateMany({
           where: { remixProjectId: project.id, stemId: stem.stemId },
@@ -1314,6 +1401,102 @@ export class RemixProjectService {
       reasonCodes: eligibility.reasons.map((reason) => reason.code),
       policyVersion: eligibility.policyVersion,
     });
+  }
+
+  /**
+   * Sibling stems of the source track that satisfy the strict per-stem rule
+   * (licensed + not minted non-remixable) and are not full mixdowns. Used by
+   * creation hydration (#1312) so a stem-scoped entry still opens a full
+   * session. Best-effort: any failure returns [] rather than blocking the
+   * already-validated explicit selection.
+   */
+  private async resolveEligibleSiblingStemIds(
+    userId: string,
+    trackId: string,
+    excludeStemIds: string[],
+  ): Promise<string[]> {
+    try {
+      // Track-default eligibility enumerates every stem of the track with its
+      // per-stem {licensed, remixable} state in one evaluation.
+      const trackEligibility = await this.eligibilityService.checkEligibility({
+        userId,
+        trackId,
+      });
+      if (!trackEligibility.allowed) return [];
+      const excluded = new Set(excludeStemIds);
+      const stems = await prisma.stem.findMany({
+        where: { trackId },
+        select: { id: true, type: true },
+      });
+      const typeById = new Map(stems.map((stem) => [stem.id, stem.type]));
+      return trackEligibility.stems
+        .filter(
+          (stem) =>
+            !excluded.has(stem.stemId) &&
+            stem.licensed &&
+            stem.remixable !== false &&
+            !isFullMixStemType(typeById.get(stem.stemId)),
+        )
+        .map((stem) => stem.stemId);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Source-track stems NOT in the project, with the state the studio needs to
+   * render the "Also on this track" panel: addable (licensed + remixable),
+   * license-required (routes to /stem/[tokenId] for the remix-tier purchase),
+   * or honestly blocked. Advisory only — a failing lookup returns [] instead
+   * of breaking the studio read.
+   */
+  private async resolveAvailableStems(
+    userId: string,
+    project: { sourceTrackId: string; stems: Array<{ stemId: string }> },
+  ) {
+    try {
+      const trackEligibility = await this.eligibilityService.checkEligibility({
+        userId,
+        trackId: project.sourceTrackId,
+      });
+      const eligibleByStem = new Map(
+        trackEligibility.stems.map((stem) => [stem.stemId, stem]),
+      );
+      const inProject = new Set(project.stems.map((stem) => stem.stemId));
+      const stems = await prisma.stem.findMany({
+        where: { trackId: project.sourceTrackId },
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          nftMint: { select: { tokenId: true, remixable: true } },
+        },
+        orderBy: { id: "asc" },
+      });
+      return stems
+        .filter(
+          (stem) => !inProject.has(stem.id) && !isFullMixStemType(stem.type),
+        )
+        .map((stem) => {
+          const eligibility = eligibleByStem.get(stem.id);
+          const remixable =
+            eligibility?.remixable ?? stem.nftMint?.remixable ?? null;
+          const licensed = eligibility?.licensed ?? false;
+          return {
+            stemId: stem.id,
+            type: stem.type,
+            title: stem.title,
+            // BigInt → string so the studio can link to /stem/[tokenId].
+            tokenId: stem.nftMint ? stem.nftMint.tokenId.toString() : null,
+            remixable,
+            licensed,
+            addable:
+              trackEligibility.allowed && licensed && remixable !== false,
+          };
+        });
+    } catch {
+      return [];
+    }
   }
 
   private toResponse(

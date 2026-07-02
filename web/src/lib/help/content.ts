@@ -665,7 +665,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "list",
             items: [
-              "Mute, solo, and set the level of each licensed source stem.",
+              "Your session opens with every stem of the track you're licensed for — the one you started from plays, and the rest wait muted until you bring them in.",
+              "Mute, solo, and set the level of each stem; measured tempo and key show on stems that have them.",
+              "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "Write a prompt describing the direction you want.",
               "Generate a draft that keeps your licensed stems and layers new AI-generated parts on top, clearly labelled as AI-assisted.",
               "Preview drafts and keep refining; your work saves as a private draft.",

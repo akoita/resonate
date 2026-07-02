@@ -125,6 +125,8 @@ export class RemixController {
       status?: string;
       mode?: string;
       stems?: RemixProjectStemUpdate[];
+      /** Eligibility-checked stem additions to the session (#1312). */
+      addStemIds?: string[];
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);
