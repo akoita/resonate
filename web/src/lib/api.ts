@@ -4179,6 +4179,22 @@ export type RemixGenerationMetadata = {
   retryable?: boolean | null;
 };
 
+/**
+ * A source-track stem NOT yet in the remix session (#1312), with the state the
+ * studio needs to render the "Also on this track" panel: addable, license
+ * required (routes to /stem/[tokenId]), or honestly blocked.
+ */
+export type RemixProjectAvailableStem = {
+  stemId: string;
+  type: string;
+  title: string | null;
+  /** Minted token id (stringified BigInt) for the /stem/[tokenId] license page; null when unminted. */
+  tokenId: string | null;
+  remixable: boolean | null;
+  licensed: boolean;
+  addable: boolean;
+};
+
 export type RemixProject = {
   id: string;
   creatorUserId: string;
@@ -4201,6 +4217,8 @@ export type RemixProject = {
   updatedAt: string;
   source: RemixProjectSource;
   stems: RemixProjectStem[];
+  /** Present on draft-project reads only (#1312). */
+  availableStems?: RemixProjectAvailableStem[];
   eligibility?: RemixEligibilityResponse;
 };
 
@@ -4221,6 +4239,8 @@ export type RemixProjectPatch = {
     muted?: boolean;
     arrangement?: unknown;
   }>;
+  /** Eligibility-checked stem additions to the session (#1312). */
+  addStemIds?: string[];
 };
 
 export async function updateRemixProject(

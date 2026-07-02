@@ -100,8 +100,10 @@ export function remixCtaClickOutcome(
 
 /**
  * Picks the most recent existing draft for the same source instead of
- * creating a duplicate. When the CTA is stem-scoped, the draft must cover
- * exactly the same stem set.
+ * creating a duplicate. When the CTA is stem-scoped, the draft must contain
+ * every requested stem. Containment (not exact-set) matching: full-session
+ * hydration (#1312) means projects hold MORE stems than the entry selection,
+ * so exact matching would mint a duplicate project on every stem-page click.
  */
 export function findReusableDraft(
   projects: RemixProject[],
@@ -117,7 +119,6 @@ export function findReusableDraft(
       if (project.sourceTrackId !== trackId) return false;
       if (!requestedSet) return true;
       const projectSet = new Set(project.stems.map((stem) => stem.stemId));
-      if (projectSet.size !== requestedSet.size) return false;
       for (const stemId of requestedSet) {
         if (!projectSet.has(stemId)) return false;
       }

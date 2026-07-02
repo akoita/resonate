@@ -373,7 +373,7 @@ describe("findReusableDraft", () => {
     expect(findReusableDraft([archived, otherTrack], "track-1")).toBeNull();
   });
 
-  it("requires an exact stem set when the CTA is stem-scoped", () => {
+  it("reuses drafts that contain the requested stems (hydrated supersets, #1312)", () => {
     const single = draft({ id: "single" });
     const double = draft({
       id: "double",
@@ -390,9 +390,13 @@ describe("findReusableDraft", () => {
         },
       ],
     });
-    expect(findReusableDraft([single, double], "track-1", ["stem-1"])?.id).toBe(
-      "single",
+    // Full-session hydration grows projects beyond the entry selection, so a
+    // stem-scoped click must reuse a superset draft instead of minting a
+    // duplicate project.
+    expect(findReusableDraft([double], "track-1", ["stem-1"])?.id).toBe(
+      "double",
     );
+    // A draft missing a requested stem is never reused.
     expect(
       findReusableDraft([single], "track-1", ["stem-1", "stem-2"]),
     ).toBeNull();

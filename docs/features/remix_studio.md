@@ -277,6 +277,23 @@ from the JWT, never the request body.
   titles, artist credit, rights route, content status) and per-stem catalog
   `type`/`title`; `PATCH /remix/projects/:id` accepts validated `mode`
   updates.
+- Full-session hydration (#1312, P0 of epic #1311): project creation
+  auto-adds every **individually eligible** sibling stem of the source track —
+  explicit selection unmuted, hydrated siblings muted; non-remixable mints,
+  unlicensed stems, and full-mix `original`/`master` types are never
+  volunteered — so a stem-page entry opens a full desk instead of a
+  one-channel session. Draft reads include `availableStems` (the source
+  track's remaining stems with per-stem license/remixable state and minted
+  `tokenId`), rendered as the studio's "Also on this track" panel: licensed
+  siblings join via `PATCH /remix/projects/:id` `addStemIds` (strict per-stem
+  eligibility re-check; published projects stay locked), unlicensed ones link
+  to `/stem/[tokenId]` for the remix-tier purchase (#1141/#1306). Stem rows
+  show measured tempo/key chips from `audioFeatures` (#1184). The stem-scoped
+  Remix CTA reuses any draft **containing** the requested stems (containment,
+  not exact-set, so hydrated supersets don't mint duplicate projects). The
+  `remix.project_created` event still carries the explicit selection only.
+  Tests: `backend/src/tests/remix-session-hydration.integration.spec.ts`,
+  `web/src/components/remix/RemixStudioEditor.test.tsx`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

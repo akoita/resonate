@@ -15,8 +15,10 @@ import {
   type RemixEligibilityResponse,
   type RemixGenerationMetadata,
   type RemixProject,
+  type RemixProjectAvailableStem,
   type RemixProjectPatch,
   type RemixProjectSource,
+  type RemixProjectStem,
 } from "../../lib/api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
@@ -137,6 +139,55 @@ export function describeSourceRights(source: RemixProjectSource): {
     return { label: "Rights verified · standard", tone: "ok" };
   }
   return { label: "Rights state restricted", tone: "warning" };
+}
+
+/** The studio action for a sibling stem that isn't in the session yet (#1312). */
+export type AvailableStemAction =
+  | { kind: "add"; label: string }
+  | { kind: "license"; label: string; href: string | null }
+  | { kind: "blocked"; label: string };
+
+export function describeAvailableStemAction(
+  stem: RemixProjectAvailableStem,
+): AvailableStemAction {
+  if (stem.addable) {
+    return { kind: "add", label: "Add to session" };
+  }
+  if (stem.remixable === false) {
+    return { kind: "blocked", label: "Minted without remix rights" };
+  }
+  if (!stem.licensed) {
+    return {
+      kind: "license",
+      label: "Get remix license",
+      // The stem page is the remix-tier buy surface (#1141/#1306).
+      href: stem.tokenId ? `/stem/${stem.tokenId}` : null,
+    };
+  }
+  // Licensed and remixable but the source itself is blocked right now
+  // (consent flip, quarantine) — the same state that gates generation.
+  return { kind: "blocked", label: "Source is not remixable right now" };
+}
+
+/**
+ * Compact musical chips ("104 BPM", "A minor") from the stem's measured audio
+ * features (#1184). No chip is shown for missing measurements — no guessed
+ * musical claims.
+ */
+export function stemFeatureChips(
+  features: RemixProjectStem["audioFeatures"],
+): string[] {
+  if (!features) return [];
+  const chips: string[] = [];
+  const bpm = features.tempoBpm;
+  if (typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0) {
+    chips.push(`${Math.round(bpm)} BPM`);
+  }
+  const key = features.key;
+  if (key?.tonic && key.mode) {
+    chips.push(`${key.tonic} ${key.mode}`);
+  }
+  return chips;
 }
 
 export function stemDisplayName(stem: {
@@ -414,6 +465,7 @@ export function RemixStudioEditor({
     initialEdits(persistedProject),
   );
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
+  const [addingStemId, setAddingStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -451,6 +503,8 @@ export function RemixStudioEditor({
 
   const patch = buildProjectPatch(project, edits);
   const dirty = Object.keys(patch).length > 0;
+  const availableStems =
+    project.status === "draft" ? project.availableStems ?? [] : [];
   const rights = describeSourceRights(project.source);
   // Switching back to stem_mix keeps any stored prompt; generation (#896)
   // must ignore prompts when mode is stem_mix.
@@ -691,12 +745,40 @@ export function RemixStudioEditor({
     }
   };
 
+  const handleAddStem = async (stemId: string) => {
+    if (!token || addingStemId) return;
+    setAddingStemId(stemId);
+    try {
+      await updateRemixProject(token, project.id, { addStemIds: [stemId] });
+      // Re-read the project: the fresh response carries both the grown stem
+      // list and the server-recomputed availableStems for the panel.
+      const fresh = await getRemixProject(token, project.id);
+      setProject(fresh);
+      setEdits(initialEdits(fresh));
+      addToast({
+        type: "success",
+        title: "Stem added",
+        message: "It joined your session unmuted.",
+      });
+    } catch {
+      addToast({
+        type: "error",
+        title: "Couldn't add stem",
+        message: "The stem could not be added. Please try again.",
+      });
+    } finally {
+      setAddingStemId(null);
+    }
+  };
+
   const handleSave = async () => {
     if (!token || !dirty || saving) return;
     setSaving(true);
     try {
       const updated = await updateRemixProject(token, project.id, patch);
-      setProject(updated);
+      // The PATCH response omits availableStems (a GET-only computation);
+      // keep the panel's current list instead of dropping it (#1312).
+      setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
       setEdits(initialEdits(updated));
       void recordProductAnalytics(token, "remix.studio_saved", {
         source: "remix_studio",
@@ -910,9 +992,20 @@ export function RemixStudioEditor({
                     <div className="text-sm text-zinc-200">
                       {stemDisplayName(stem)}
                     </div>
-                    <div className="text-xs text-zinc-500">
-                      {stem.type}
-                      {soloedOut ? " · muted by solo (preview)" : ""}
+                    <div className="text-xs text-zinc-500 flex items-center gap-2 flex-wrap">
+                      <span>
+                        {stem.type}
+                        {soloedOut ? " · muted by solo (preview)" : ""}
+                      </span>
+                      {stemFeatureChips(stem.audioFeatures).map((chip) => (
+                        <span
+                          key={chip}
+                          className="px-1.5 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 text-[10px]"
+                          title="Measured from the stem audio"
+                        >
+                          {chip}
+                        </span>
+                      ))}
                     </div>
                   </div>
                   <button
@@ -970,6 +1063,68 @@ export function RemixStudioEditor({
               );
             })}
           </ul>
+
+          {/* Sibling stems not in the session yet (#1312) */}
+          {availableStems.length > 0 && (
+            <div className="mt-5 border-t border-zinc-800 pt-4">
+              <h3 className="text-sm font-semibold text-zinc-200 mb-1">
+                Also on this track
+              </h3>
+              <p className="text-zinc-500 text-xs mb-3">
+                Licensed stems join your session instantly; the others link to
+                their license page.
+              </p>
+              <ul className="space-y-2">
+                {availableStems.map((stem) => {
+                  const action = describeAvailableStemAction(stem);
+                  return (
+                    <li
+                      key={stem.stemId}
+                      className="border border-zinc-800 rounded-md px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2"
+                    >
+                      <div className="min-w-[8rem] flex-1">
+                        <div className="text-sm text-zinc-300">
+                          {stemDisplayName(stem)}
+                        </div>
+                        <div className="text-xs text-zinc-500">{stem.type}</div>
+                      </div>
+                      {action.kind === "add" ? (
+                        <button
+                          type="button"
+                          className="ui-btn ui-btn-ghost remix-add-stem-btn"
+                          disabled={saving || dirty || addingStemId !== null}
+                          title={
+                            dirty
+                              ? "Save your changes first"
+                              : `Add ${stemDisplayName(stem)} to this session`
+                          }
+                          onClick={() => void handleAddStem(stem.stemId)}
+                        >
+                          {addingStemId === stem.stemId
+                            ? "Adding..."
+                            : action.label}
+                        </button>
+                      ) : action.kind === "license" && action.href ? (
+                        <Link
+                          href={action.href}
+                          className="ui-btn ui-btn-ghost remix-license-stem-link"
+                        >
+                          {action.label}
+                        </Link>
+                      ) : (
+                        <span
+                          className="text-xs text-zinc-500"
+                          aria-disabled="true"
+                        >
+                          {action.label}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </section>
 
         {/* Mode + prompt */}

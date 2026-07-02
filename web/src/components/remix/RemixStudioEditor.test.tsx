@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixProject } from "../../lib/api";
 import {
+  describeAvailableStemAction,
   describeGenerateAvailability,
   describePublishAvailability,
   generationErrorMessage,
@@ -20,6 +21,7 @@ import {
   saveStatusLabel,
   stemPreviewStates,
   stemDisplayName,
+  stemFeatureChips,
 } from "./RemixStudioEditor";
 import type { RemixEligibilityResponse } from "../../lib/api";
 import {
@@ -686,5 +688,139 @@ describe("prompt preset chips (#1177)", () => {
       />,
     );
     expect(html).toContain('aria-pressed="true"');
+  });
+});
+
+describe("describeAvailableStemAction (#1312)", () => {
+  const base = {
+    stemId: "stem-9",
+    type: "drums",
+    title: null,
+    tokenId: "9102",
+    remixable: true as boolean | null,
+    licensed: true,
+    addable: true,
+  };
+
+  it("offers Add to session for addable stems", () => {
+    expect(describeAvailableStemAction(base)).toEqual({
+      kind: "add",
+      label: "Add to session",
+    });
+  });
+
+  it("routes unlicensed stems to the minted stem's license page", () => {
+    expect(
+      describeAvailableStemAction({ ...base, licensed: false, addable: false }),
+    ).toEqual({
+      kind: "license",
+      label: "Get remix license",
+      href: "/stem/9102",
+    });
+  });
+
+  it("has no license link for unminted stems", () => {
+    expect(
+      describeAvailableStemAction({
+        ...base,
+        licensed: false,
+        addable: false,
+        tokenId: null,
+        remixable: null,
+      }),
+    ).toMatchObject({ kind: "license", href: null });
+  });
+
+  it("blocks non-remixable mints with an honest reason", () => {
+    expect(
+      describeAvailableStemAction({ ...base, remixable: false, addable: false }),
+    ).toEqual({ kind: "blocked", label: "Minted without remix rights" });
+  });
+
+  it("blocks licensed stems when the source itself is not remixable", () => {
+    expect(
+      describeAvailableStemAction({ ...base, addable: false }),
+    ).toMatchObject({ kind: "blocked" });
+  });
+});
+
+describe("stemFeatureChips (#1312)", () => {
+  it("renders measured tempo and key as compact chips", () => {
+    expect(
+      stemFeatureChips({
+        tempoBpm: 92.5,
+        key: { tonic: "G", mode: "minor", confidence: 0.7 },
+      }),
+    ).toEqual(["93 BPM", "G minor"]);
+  });
+
+  it("makes no musical claims for missing or invalid measurements", () => {
+    expect(stemFeatureChips(null)).toEqual([]);
+    expect(stemFeatureChips(undefined)).toEqual([]);
+    expect(stemFeatureChips({ tempoBpm: 0, key: null })).toEqual([]);
+    expect(stemFeatureChips({ tempoBpm: Number.NaN })).toEqual([]);
+  });
+});
+
+describe("Also on this track panel (#1312)", () => {
+  const availableStems = [
+    {
+      stemId: "stem-add",
+      type: "piano",
+      title: "Keys",
+      tokenId: "9106",
+      remixable: true,
+      licensed: true,
+      addable: true,
+    },
+    {
+      stemId: "stem-license",
+      type: "guitar",
+      title: null,
+      tokenId: "9107",
+      remixable: true,
+      licensed: false,
+      addable: false,
+    },
+    {
+      stemId: "stem-locked",
+      type: "bass",
+      title: null,
+      tokenId: "9108",
+      remixable: false,
+      licensed: false,
+      addable: false,
+    },
+  ];
+
+  it("renders add, license, and blocked rows for a draft project", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ availableStems })} />,
+    );
+    expect(html).toContain("Also on this track");
+    expect(html).toContain("Add to session");
+    expect(html).toContain('href="/stem/9107"');
+    expect(html).toContain("Get remix license");
+    expect(html).toContain("Minted without remix rights");
+  });
+
+  it("hides the panel when every source stem is already in the session", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ availableStems: [] })} />,
+    );
+    expect(html).not.toContain("Also on this track");
+  });
+
+  it("shows measured tempo/key chips on session stem rows", () => {
+    const withFeatures = project();
+    withFeatures.stems[0].audioFeatures = {
+      tempoBpm: 120,
+      key: { tonic: "A", mode: "major", confidence: 0.9 },
+    };
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={withFeatures} />,
+    );
+    expect(html).toContain("120 BPM");
+    expect(html).toContain("A major");
   });
 });

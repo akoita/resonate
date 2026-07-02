@@ -618,8 +618,13 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(created.status).toBe("draft");
       expect(created.mode).toBe("stem_mix");
       expect(created.policyVersion).toBeTruthy();
+      // Full-session hydration (#1312): the explicit selection is unmuted and
+      // the creator's other licensed remixable sibling (the x402-settled stem)
+      // is auto-added muted. Unlicensed, non-remixable, and failed-settlement
+      // stems are not volunteered.
       expect(created.stems).toEqual([
         expect.objectContaining({ stemId: LICENSED_STEM_ID, muted: false }),
+        expect.objectContaining({ stemId: X402_STEM_ID, muted: true }),
       ]);
       expect(publishSpy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1135,8 +1140,11 @@ describe("Remix eligibility and projects (integration)", () => {
           expect.objectContaining({
             prompt: "add piano",
             sourceFeatureHints: { bpm: 93, key: "G minor" },
+            // Hydration (#1312) parks the creator's other licensed sibling in
+            // the arrangement muted; only unmuted stems shape the render.
             stemArrangement: [
               { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+              { stemId: X402_STEM_ID, gainDb: null, muted: true },
             ],
           }),
           // Worker-time render grant (#1214) is forwarded as the 2nd arg.
@@ -1148,7 +1156,10 @@ describe("Remix eligibility and projects (integration)", () => {
         expect(layeredRenderer.render).toHaveBeenCalledWith(
           expect.objectContaining({
             remixProjectId: created.id,
-            stems: [{ stemId: LICENSED_STEM_ID, gainDb: null, muted: false }],
+            stems: [
+              { stemId: LICENSED_STEM_ID, gainDb: null, muted: false },
+              { stemId: X402_STEM_ID, gainDb: null, muted: true },
+            ],
             layer: expect.objectContaining({
               provider: "lyria-3-pro-preview",
               jobId: "layer-job",
@@ -1255,10 +1266,16 @@ describe("Remix eligibility and projects (integration)", () => {
           expect(stemMixRenderer.render).toHaveBeenCalledWith(
             expect.objectContaining({
               remixProjectId: created.id,
+              // Hydration (#1312): the licensed x402 sibling rides along muted;
+              // the renderer mixes unmuted stems only.
               stems: [
                 expect.objectContaining({
                   stemId: LICENSED_STEM_ID,
                   muted: false,
+                }),
+                expect.objectContaining({
+                  stemId: X402_STEM_ID,
+                  muted: true,
                 }),
               ],
             }),
