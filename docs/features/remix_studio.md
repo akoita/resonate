@@ -288,7 +288,11 @@ from the JWT, never the request body.
   siblings join via `PATCH /remix/projects/:id` `addStemIds` (strict per-stem
   eligibility re-check; published projects stay locked), unlicensed ones link
   to `/stem/[tokenId]` for the remix-tier purchase (#1141/#1306). Stem rows
-  show measured tempo/key chips from `audioFeatures` (#1184). The stem-scoped
+  show measured tempo/key chips from `audioFeatures` (#1184); the BPM chip is
+  confidence-gated (#1318: shown when `tempoConfidence >= 0.5` or the value
+  agrees with the section-grid tempo) so librosa double/harmonic artifacts on
+  sparse stems never mislead, and the stems panel explains that hydrated
+  siblings start muted. The stem-scoped
   Remix CTA reuses any draft **containing** the requested stems (containment,
   not exact-set, so hydrated supersets don't mint duplicate projects). The
   `remix.project_created` event still carries the explicit selection only.
