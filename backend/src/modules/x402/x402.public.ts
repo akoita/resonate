@@ -59,10 +59,28 @@ export function resolveX402AssetInfo(
     assetId: sharedAsset.assetId,
     address: sharedAsset.tokenAddress,
     symbol: sharedAsset.symbol,
-    name: sharedAsset.name,
+    name: resolveEip712DomainName(sharedAsset, defaultAsset),
     version: defaultAsset?.version ?? '2',
     decimals: sharedAsset.decimals,
   };
+}
+
+// The x402 challenge's extra.name/version feed the EIP-712 domain that payers
+// sign EIP-3009 TransferWithAuthorization against — verification requires it
+// to equal the token contract's on-chain domain name, NOT a display label
+// (#1309). Shared payment metadata carries display names ("Circle USDC"), so
+// prefer an explicit eip712Name, then the known on-chain name when the token
+// address is one of the canonical USDC deployments.
+function resolveEip712DomainName(
+  sharedAsset: PaymentAsset,
+  defaultAsset: X402AssetInfo | undefined,
+): string {
+  if (sharedAsset.eip712Name) {
+    return sharedAsset.eip712Name;
+  }
+  const isCanonicalToken = defaultAsset &&
+    sharedAsset.tokenAddress.toLowerCase() === defaultAsset.address.toLowerCase();
+  return isCanonicalToken ? defaultAsset.name : sharedAsset.name;
 }
 
 export function getX402ChainId(network: string): number {

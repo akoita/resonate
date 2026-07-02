@@ -35,6 +35,9 @@ export interface PaymentAsset {
   chainId: number;
   symbol: string;
   name: string;
+  /** EIP-712 domain name of the token contract (for x402/EIP-3009 signing)
+   *  when it differs from the display name — see x402.public.ts (#1309). */
+  eip712Name?: string;
   kind: PaymentAssetKind;
   tokenAddress: string;
   decimals: number;
