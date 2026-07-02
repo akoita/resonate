@@ -9,6 +9,7 @@ import {
   type RemixGenerationJob,
   type RemixGenerationProvider,
   type StemRenderAuthorization,
+  stemTransformPromptLead,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
 
@@ -89,7 +90,11 @@ export class AudioConditionedRemixGenerationProvider
       config,
       audio: mixed.buffer,
       audioMimeType: mixed.mimeType,
-      prompt: userPrompt,
+      // Targeted transforms (#1316) lead with the role-scoped instruction so
+      // the conditioned model is asked for exactly one operation.
+      prompt: input.stemTransform
+        ? stemTransformPromptLead(input.stemTransform, userPrompt)
+        : userPrompt,
       durationSeconds,
       projectId: input.provenance.remixProjectId,
     });

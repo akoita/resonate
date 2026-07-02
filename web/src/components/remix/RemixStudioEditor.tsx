@@ -19,6 +19,7 @@ import {
   type RemixProjectPatch,
   type RemixProjectSource,
   type RemixProjectStem,
+  type RemixStemTransform,
 } from "../../lib/api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
@@ -296,6 +297,53 @@ export function describeGenerateAvailability(input: {
   return { enabled: true, reason: null };
 }
 
+/** Studio AI-target selection (#1316): whole track, new layer, or replace. */
+export type AiTargetKind = "whole" | "add_layer" | "replace_stem";
+
+/**
+ * Client-side transform resolution for Generate. Returns the request payload
+ * or the honest reason the button is not actionable yet; the server re-runs
+ * its own validation regardless.
+ */
+export function stemTransformForGenerate(
+  kind: AiTargetKind,
+  stemId: string | null,
+  stems: Array<{ stemId: string }>,
+  edits: ProjectEdits,
+): {
+  transform?: { kind: "replace_stem" | "add_layer"; stemId?: string };
+  problem?: string;
+} {
+  if (kind === "whole") return {};
+  if (kind === "add_layer") return { transform: { kind: "add_layer" } };
+  if (!stemId || !stems.some((stem) => stem.stemId === stemId)) {
+    return { problem: "Pick the stem to replace first." };
+  }
+  const bedHasAudio = stems.some(
+    (stem) =>
+      stem.stemId !== stemId && !(edits.stems[stem.stemId]?.muted ?? false),
+  );
+  if (!bedHasAudio) {
+    return {
+      problem:
+        "Replacing this stem would leave nothing to condition on — unmute another stem first.",
+    };
+  }
+  return { transform: { kind: "replace_stem", stemId } };
+}
+
+/** Honest description of a completed transform for the draft panel (#1316). */
+export function describeStemTransform(
+  transform: RemixStemTransform | undefined,
+): string | null {
+  if (!transform) return null;
+  if (transform.kind === "replace_stem") {
+    const label = transform.stemLabel?.trim() || "stem";
+    return `AI ${label} replacement — generated to take the ${label}'s place over your other stems.`;
+  }
+  return "New AI layer — generated to sit on top of your arranged stems.";
+}
+
 /** Toast copy per normalized provider error code (#1162). */
 export function generationErrorMessage(code: string, message: string): string {
   switch (code) {
@@ -526,6 +574,8 @@ export function RemixStudioEditor({
   );
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [addingStemId, setAddingStemId] = useState<string | null>(null);
+  const [aiTargetKind, setAiTargetKind] = useState<AiTargetKind>("whole");
+  const [aiTargetStemId, setAiTargetStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -714,8 +764,20 @@ export function RemixStudioEditor({
     setGenerating(true);
     try {
       const retry = !!project.generationJobId && !generationActive;
+      // Targeted transform (#1316): variation mode only; the server
+      // re-validates against the live project.
+      const target =
+        edits.mode === "variation"
+          ? stemTransformForGenerate(
+              aiTargetKind,
+              aiTargetStemId,
+              project.stems,
+              edits,
+            )
+          : {};
       const updated = await generateRemixDraft(token, project.id, {
         retry,
+        ...(target.transform ? { stemTransform: target.transform } : {}),
       });
       setProject(updated);
       setEdits(initialEdits(updated));
@@ -1356,6 +1418,62 @@ export function RemixStudioEditor({
                 setEdits((prev) => ({ ...prev, prompt: e.target.value }))
               }
             />
+            {edits.mode === "variation" && (
+              <div className="mt-4 remix-ai-target">
+                <div className="text-xs text-zinc-500 mb-2">AI target</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
+                    {(
+                      [
+                        { value: "whole", label: "Whole track" },
+                        { value: "add_layer", label: "New layer" },
+                        { value: "replace_stem", label: "Replace stem" },
+                      ] as const
+                    ).map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={aiTargetKind === option.value}
+                        disabled={saving}
+                        className={`px-3 py-1.5 text-xs ${
+                          aiTargetKind === option.value
+                            ? "bg-purple-500/20 text-purple-200"
+                            : "bg-zinc-900 text-zinc-400"
+                        }`}
+                        onClick={() => setAiTargetKind(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  {aiTargetKind === "replace_stem" && (
+                    <select
+                      aria-label="Stem to replace"
+                      className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-xs text-zinc-200"
+                      value={aiTargetStemId ?? ""}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setAiTargetStemId(event.target.value || null)
+                      }
+                    >
+                      <option value="">Choose stem…</option>
+                      {project.stems.map((stem) => (
+                        <option key={stem.stemId} value={stem.stemId}>
+                          {stemDisplayName(stem)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  {aiTargetKind === "replace_stem"
+                    ? "The AI generates an isolated part to take that stem's place; your other stems stay untouched."
+                    : aiTargetKind === "add_layer"
+                      ? "The AI generates one new part that sits on top of your arranged stems."
+                      : "The AI reinterprets the whole arrangement as one generated layer over your stems."}
+                </p>
+              </div>
+            )}
             {!promptEnabled && (
               <p className="text-xs text-zinc-500 mt-1">
                 Prompts apply to variation and extension modes. Stem mix uses
@@ -1400,6 +1518,19 @@ export function RemixStudioEditor({
                     )
                   );
                 })()}
+                {(() => {
+                  const transformNote = describeStemTransform(
+                    project.generationMetadata?.stemTransform,
+                  );
+                  return (
+                    project.generationJobId &&
+                    transformNote && (
+                      <p className="text-zinc-500 text-xs remix-generation-transform">
+                        {transformNote}
+                      </p>
+                    )
+                  );
+                })()}
                 {generationFailure && (
                   <p className="text-red-300 remix-generation-error">
                     {generationFailure}
@@ -1408,7 +1539,7 @@ export function RemixStudioEditor({
               </div>
             </div>
             {(() => {
-              const availability = describeGenerateAvailability({
+              const baseAvailability = describeGenerateAvailability({
                 mode: edits.mode,
                 prompt: edits.prompt,
                 saving,
@@ -1416,6 +1547,21 @@ export function RemixStudioEditor({
                 generating,
                 generationActive,
               });
+              // Targeted transform gating (#1316): an incomplete replace
+              // selection blocks Generate with the concrete reason.
+              const transformCheck =
+                edits.mode === "variation"
+                  ? stemTransformForGenerate(
+                      aiTargetKind,
+                      aiTargetStemId,
+                      project.stems,
+                      edits,
+                    )
+                  : {};
+              const availability =
+                baseAvailability.enabled && transformCheck.problem
+                  ? { enabled: false, reason: transformCheck.problem }
+                  : baseAvailability;
               return (
                 <div className="text-right">
                   <button

@@ -198,6 +198,79 @@ export type RemixGenerationProvenance = {
 };
 
 /**
+ * Per-stem AI transform (#1316, P2 of epic #1311): scopes prompted generation
+ * to one targeted operation instead of a whole-track reinterpretation.
+ * `replace_stem` conditions on the OTHER stems (the bed) and asks for an
+ * isolated replacement of the target role; `add_layer` conditions on the full
+ * arrangement and asks for one new additive layer. Variation mode only.
+ */
+export type RemixStemTransform = {
+  kind: "replace_stem" | "add_layer";
+  /** Required for replace_stem: the project stem being replaced. */
+  stemId?: string;
+  /** Catalog label ("drums") for honest prompt framing and metadata. */
+  stemLabel?: string;
+};
+
+/**
+ * Pure validation shared by the enqueue path and tests. Returns a user-facing
+ * problem string or null when the transform is acceptable for this project.
+ */
+export function validateStemTransform(
+  transform: RemixStemTransform | undefined,
+  project: {
+    mode: string;
+    stems: Array<{ stemId: string; muted: boolean }>;
+  },
+): string | null {
+  if (!transform) return null;
+  if (transform.kind !== "replace_stem" && transform.kind !== "add_layer") {
+    return "stemTransform.kind must be replace_stem or add_layer";
+  }
+  if (project.mode !== "variation") {
+    return "Per-stem AI transforms apply to variation mode only";
+  }
+  if (transform.kind === "add_layer") {
+    if (transform.stemId) {
+      return "stemTransform.stemId does not apply to add_layer";
+    }
+    return null;
+  }
+  if (!transform.stemId) {
+    return "stemTransform.stemId is required for replace_stem";
+  }
+  const target = project.stems.find(
+    (stem) => stem.stemId === transform.stemId,
+  );
+  if (!target) {
+    return "stemTransform.stemId is not part of this project";
+  }
+  const bedHasAudio = project.stems.some(
+    (stem) => stem.stemId !== transform.stemId && !stem.muted,
+  );
+  if (!bedHasAudio) {
+    return "Replacing this stem would leave no unmuted stems to condition on; unmute another stem first";
+  }
+  return null;
+}
+
+/**
+ * The transform's lead instruction — replaces the generic variation framing so
+ * the model is asked for exactly one targeted output. Pure for testability;
+ * used by the Lyria and audio-conditioned providers.
+ */
+export function stemTransformPromptLead(
+  transform: RemixStemTransform,
+  userPrompt: string,
+): string {
+  if (transform.kind === "replace_stem") {
+    const label = transform.stemLabel?.trim() || "target stem";
+    return `Generate an isolated ${label} track to replace the source ${label}: ${userPrompt}. Produce only the ${label} part — no other instruments.`;
+  }
+  return `Generate one new additive layer for the source arrangement: ${userPrompt}. Produce only that single layer so it can sit on top of the existing mix.`;
+}
+
+/**
  * A project's stem arrangement entry — the per-stem gain/mute the studio
  * preview models. Owned here (the provider boundary) so the shared
  * StemAudioMixer and RemixGenerationInput reference one definition without a
@@ -291,6 +364,8 @@ export type RemixGenerationInput = {
    * mixed unmuted stems; prompt-only providers (Lyria, stub) ignore it.
    */
   stemArrangement?: StemArrangementEntry[];
+  /** Targeted per-stem operation (#1316); absent = whole-track behavior. */
+  stemTransform?: RemixStemTransform;
   provenance: RemixGenerationProvenance;
 };
 
@@ -338,6 +413,7 @@ type ProjectForGeneration = {
 export function buildRemixGenerationInput(
   project: ProjectForGeneration,
   constraints: RemixGenerationConstraints = {},
+  stemTransform?: RemixStemTransform,
 ): RemixGenerationInput {
   // Defensive (#1162 review prereq): the DB column is a plain string; an
   // unknown mode must fail the boundary contract, not flow to a provider.
@@ -362,6 +438,7 @@ export function buildRemixGenerationInput(
     mode,
     ...(prompt ? { prompt } : {}),
     ...(hasHints ? { sourceFeatureHints: hints } : {}),
+    ...(stemTransform ? { stemTransform } : {}),
     constraints,
     provenance: {
       remixProjectId: project.id,

@@ -4,6 +4,8 @@ import type { RemixProject } from "../../lib/api";
 import {
   describeAvailableStemAction,
   describeGenerateAvailability,
+  describeStemTransform,
+  stemTransformForGenerate,
   describePublishAvailability,
   generationErrorMessage,
   groundingDescription,
@@ -911,5 +913,80 @@ describe("section-grid arrangement (#1314)", () => {
   it("hides the grid when the source has none", () => {
     const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
     expect(html).not.toContain("Arrangement");
+  });
+});
+
+describe("per-stem AI transforms (#1316)", () => {
+  it("stemTransformForGenerate resolves payloads and honest problems", () => {
+    const stems = [{ stemId: "stem-1" }, { stemId: "stem-2" }];
+    const edits = initialEdits(project());
+
+    expect(stemTransformForGenerate("whole", null, stems, edits)).toEqual({});
+    expect(
+      stemTransformForGenerate("add_layer", null, stems, edits),
+    ).toEqual({ transform: { kind: "add_layer" } });
+    expect(
+      stemTransformForGenerate("replace_stem", "stem-2", stems, edits),
+    ).toEqual({ transform: { kind: "replace_stem", stemId: "stem-2" } });
+    expect(
+      stemTransformForGenerate("replace_stem", null, stems, edits).problem,
+    ).toMatch(/Pick the stem/);
+    // Replacing the only unmuted stem (stem-2 is muted in the fixture).
+    expect(
+      stemTransformForGenerate("replace_stem", "stem-1", stems, edits).problem,
+    ).toMatch(/unmute another stem/);
+  });
+
+  it("describeStemTransform speaks the user's language", () => {
+    expect(describeStemTransform(undefined)).toBeNull();
+    expect(
+      describeStemTransform({
+        kind: "replace_stem",
+        stemId: "s",
+        stemLabel: "drums",
+      }),
+    ).toBe(
+      "AI drums replacement — generated to take the drums's place over your other stems.",
+    );
+    expect(describeStemTransform({ kind: "add_layer" })).toBe(
+      "New AI layer — generated to sit on top of your arranged stems.",
+    );
+  });
+
+  it("renders the AI target selector in variation mode only", () => {
+    const variation = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ mode: "variation" })} />,
+    );
+    expect(variation).toContain("AI target");
+    expect(variation).toContain("Whole track");
+    expect(variation).toContain("Replace stem");
+
+    const stemMix = renderToStaticMarkup(
+      <RemixStudioEditor project={project()} />,
+    );
+    expect(stemMix).not.toContain("AI target");
+  });
+
+  it("shows the transform note on completed drafts", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          mode: "variation",
+          generationJobId: "job-1",
+          generationProvider: "stem-plus-ai-layered-render",
+          generationMetadata: {
+            status: "completed",
+            grounding: "stem_plus_ai",
+            stemTransform: {
+              kind: "replace_stem",
+              stemId: "stem-2",
+              stemLabel: "drums",
+            },
+            output: { outputUri: "local://draft.mp3" },
+          },
+        })}
+      />,
+    );
+    expect(html).toContain("AI drums replacement");
   });
 });

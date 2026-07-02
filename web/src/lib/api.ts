@@ -4158,6 +4158,15 @@ export type RemixRenderMetadata = {
   activeStemCount: number;
 };
 
+/** Targeted per-stem AI operation (#1316); variation mode only. */
+export type RemixStemTransform = {
+  kind: "replace_stem" | "add_layer";
+  /** Required for replace_stem: the project stem being replaced. */
+  stemId?: string;
+  /** Catalog label ("drums") recorded by the backend for honest display. */
+  stemLabel?: string;
+};
+
 export type RemixGenerationMetadata = {
   status?: RemixGenerationStatus;
   mode?: RemixProjectMode | string;
@@ -4171,6 +4180,8 @@ export type RemixGenerationMetadata = {
   renderMetadata?: RemixRenderMetadata;
   /** Measured tempo/key hints applied to the prompt (#1182 slice 3). */
   sourceFeatureHints?: { bpm?: number; key?: string };
+  /** Targeted per-stem operation this draft was generated with (#1316). */
+  stemTransform?: RemixStemTransform;
   stemIds?: string[];
   constraints?: Record<string, unknown>;
   estimatedCostUsd?: number | null;
@@ -4285,7 +4296,12 @@ export type RemixGenerationError = {
 export async function generateRemixDraft(
   token: string,
   projectId: string,
-  options: { force?: boolean; retry?: boolean } = {}
+  options: {
+    force?: boolean;
+    retry?: boolean;
+    /** Targeted per-stem operation (#1316); validated server-side. */
+    stemTransform?: { kind: "replace_stem" | "add_layer"; stemId?: string };
+  } = {}
 ) {
   return apiRequest<RemixProject>(
     `/remix/projects/${projectId}/generate`,
