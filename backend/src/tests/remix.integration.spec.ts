@@ -388,9 +388,15 @@ describe("Remix eligibility and projects (integration)", () => {
         stemIds: [LICENSED_STEM_ID],
       });
       expect(result.allowed).toBe(true);
+      // Remix-licensed only (no commercial purchase) → no export action (#1323).
       expect(result.allowedActions).toEqual(["private_draft", "publish_resonate"]);
       expect(result.stems).toEqual([
-        { stemId: LICENSED_STEM_ID, remixable: true, licensed: true },
+        {
+          stemId: LICENSED_STEM_ID,
+          remixable: true,
+          licensed: true,
+          exportLicensed: false,
+        },
       ]);
       expect(result.source.rightsRoute).toBe("STANDARD_ESCROW");
     });
@@ -432,8 +438,20 @@ describe("Remix eligibility and projects (integration)", () => {
       expect(result.allowed).toBe(true);
       expect(result.creatorOwner).toBe(true);
       expect(result.requiredLicense).toBeNull();
+      // Ownership satisfies both the remix and the commercial/export license
+      // on the artist's own material (#1174/#1323).
+      expect(result.allowedActions).toEqual([
+        "private_draft",
+        "publish_resonate",
+        "export",
+      ]);
       expect(result.stems).toEqual([
-        { stemId: UNLICENSED_STEM_ID, remixable: null, licensed: true },
+        {
+          stemId: UNLICENSED_STEM_ID,
+          remixable: null,
+          licensed: true,
+          exportLicensed: true,
+        },
       ]);
     });
 

@@ -158,11 +158,87 @@ describe("remix eligibility policy", () => {
     ]);
   });
 
-  // v5 (#1196): publishing inside Resonate is granted; export stays closed
-  // until exportable license terms exist (backlog E).
-  it("grants publish_resonate but not export in v5", () => {
+  // v6 (#1323): export is granted to holders of a COMMERCIAL license on the
+  // selected stems; a remix-only license grants publish but not export.
+  it("grants publish_resonate but not export for a remix-only license", () => {
     const decision = evaluateRemixEligibility(input());
     expect(decision.allowedActions).toContain("publish_resonate");
+    expect(decision.allowedActions).not.toContain("export");
+  });
+
+  it("grants export when the selected stem is export-licensed (commercial)", () => {
+    const decision = evaluateRemixEligibility(
+      input({
+        stems: [
+          {
+            stemId: "stem-1",
+            mintRemixable: null,
+            licensed: true,
+            exportLicensed: true,
+          },
+        ],
+      }),
+    );
+    expect(decision.allowed).toBe(true);
+    expect(decision.allowedActions).toEqual([
+      "private_draft",
+      "publish_resonate",
+      "export",
+    ]);
+  });
+
+  it("withholds export when an explicit selection is only partly export-licensed", () => {
+    const decision = evaluateRemixEligibility(
+      input({
+        stems: [
+          {
+            stemId: "stem-1",
+            mintRemixable: null,
+            licensed: true,
+            exportLicensed: true,
+          },
+          {
+            stemId: "stem-2",
+            mintRemixable: null,
+            licensed: true,
+            exportLicensed: false,
+          },
+        ],
+      }),
+    );
+    // Still remixable/publishable (both remix-licensed), but export needs ALL
+    // candidate stems export-licensed on an explicit selection.
+    expect(decision.allowed).toBe(true);
+    expect(decision.allowedActions).toContain("publish_resonate");
+    expect(decision.allowedActions).not.toContain("export");
+  });
+
+  it("grants export on a track-default request when at least one stem is export-licensed", () => {
+    const decision = evaluateRemixEligibility(
+      input({
+        explicitStemSelection: false,
+        stems: [
+          {
+            stemId: "stem-1",
+            mintRemixable: true,
+            licensed: true,
+            exportLicensed: true,
+          },
+          {
+            stemId: "stem-2",
+            mintRemixable: null,
+            licensed: false,
+            exportLicensed: false,
+          },
+        ],
+      }),
+    );
+    expect(decision.allowed).toBe(true);
+    expect(decision.allowedActions).toContain("export");
+  });
+
+  it("does not grant export when exportLicensed is absent (legacy inputs)", () => {
+    const decision = evaluateRemixEligibility(input());
     expect(decision.allowedActions).not.toContain("export");
   });
 

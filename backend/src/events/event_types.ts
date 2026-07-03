@@ -240,6 +240,19 @@ export interface RemixPublishedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+export interface RemixExportedEvent extends BaseEvent {
+  eventName: "remix.exported";
+  remixProjectId: string;
+  creatorId: string;
+  sourceTrackId: string;
+  mode: string;
+  /** stem_audio | stem_plus_ai | audio_conditioned | feature_conditioned | prompt_only. */
+  grounding: string;
+  /** AI integrity (#1164): true when grounding !== "stem_audio". */
+  aiGenerated: boolean;
+  policyVersion: string;
+}
+
 export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   eventName: "artist.remix_consent_updated";
   artistId: string;
@@ -1273,6 +1286,7 @@ export type ResonateEvent =
   | RemixEncryptedRenderDeniedEvent
   | ShowCampaignReconciliationMismatchEvent
   | RemixPublishedEvent
+  | RemixExportedEvent
   | ArtistRemixConsentUpdatedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent

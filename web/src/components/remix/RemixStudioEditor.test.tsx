@@ -9,6 +9,8 @@ import {
   previousDraftLabel,
   stemTransformForGenerate,
   describePublishAvailability,
+  describeExportAvailability,
+  EXPORT_RIGHTS_REQUIRED_REASON,
   generationErrorMessage,
   groundingDescription,
   publishConfirmMessage,
@@ -280,10 +282,14 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("remix-action-publish");
     expect(html).toContain("Publish on Resonate");
     expect(html).toMatch(/remix-action-publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-publish/);
+    // Export is honestly locked with no completed draft: it renders the
+    // unavailable state, not the enabled download button (#1323).
     expect(html).toContain("remix-action-unavailable--export");
-    expect(html).toContain("Export requires a license that explicitly grants export rights");
-    // No completed draft yet, so the gated reason is shown.
+    expect(html).toContain("Export audio");
+    expect(html).not.toContain("remix-action-export\"");
+    // No completed draft yet, so the gated reasons are shown.
     expect(html).toContain("wait for it to finish before publishing");
+    expect(html).toContain("wait for it to finish before exporting");
     // stem_mix placeholder invites a render (#1189), not an AI prompt.
     expect(html).toContain("No draft yet. Render your arranged stems");
     expect(html).toContain("Render mix");
@@ -601,6 +607,141 @@ describe("describePublishAvailability (#1196)", () => {
     expect(
       describePublishAvailability({ ...base, status: "published" }).reasonCode,
     ).toBe("publish_already_published");
+  });
+});
+
+describe("describeExportAvailability (#1323)", () => {
+  const commercial: RemixEligibilityResponse = {
+    allowed: true,
+    requiredLicense: null,
+    allowedActions: ["private_draft", "publish_resonate", "export"],
+    reasons: [],
+    policyVersion: "2026-07-03.v6",
+    source: { trackId: "t1", rightsRoute: "STANDARD_ESCROW", contentStatus: "clean" },
+    stems: [],
+  };
+  const remixOnly: RemixEligibilityResponse = {
+    ...commercial,
+    allowedActions: ["private_draft", "publish_resonate"],
+  };
+  const base = {
+    status: "draft",
+    generationStatus: "completed" as const,
+    hasDraftOutput: true,
+    dirty: false,
+    exporting: false,
+    eligibility: commercial,
+  };
+
+  it("enables export for a completed, saved draft on a commercial-licensed source", () => {
+    expect(describeExportAvailability(base)).toEqual({
+      enabled: true,
+      reason: null,
+      reasonCode: "export_available",
+    });
+  });
+
+  it("keeps the honest export_rights_required state for a remix-only license", () => {
+    const result = describeExportAvailability({
+      ...base,
+      eligibility: remixOnly,
+    });
+    expect(result.enabled).toBe(false);
+    expect(result.reasonCode).toBe("export_rights_required");
+    expect(result.reason).toBe(EXPORT_RIGHTS_REQUIRED_REASON);
+  });
+
+  it("blocks until a completed draft exists", () => {
+    expect(
+      describeExportAvailability({ ...base, generationStatus: "processing" })
+        .reasonCode,
+    ).toBe("export_needs_completed_draft");
+    expect(
+      describeExportAvailability({ ...base, hasDraftOutput: false }).reasonCode,
+    ).toBe("export_needs_completed_draft");
+  });
+
+  it("asks to save unsaved changes first", () => {
+    expect(describeExportAvailability({ ...base, dirty: true }).reasonCode).toBe(
+      "export_dirty",
+    );
+  });
+
+  it("stays disabled while eligibility is still loading", () => {
+    expect(
+      describeExportAvailability({ ...base, eligibility: null }).reasonCode,
+    ).toBe("export_eligibility_loading");
+  });
+
+  it("treats non-draft projects as not exportable", () => {
+    expect(
+      describeExportAvailability({ ...base, status: "published" }).reasonCode,
+    ).toBe("export_not_draft");
+  });
+});
+
+describe("Export audio button (#1323)", () => {
+  const completedDraft = {
+    status: "completed" as const,
+    grounding: "stem_audio",
+    output: { outputUri: "local://draft.mp3" },
+  };
+
+  it("renders the locked unavailable state for a remix-only license", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "job-1",
+          generationProvider: "stem-mix-render",
+          generationMetadata: completedDraft,
+          eligibility: {
+            allowed: true,
+            requiredLicense: null,
+            allowedActions: ["private_draft", "publish_resonate"],
+            reasons: [],
+            policyVersion: "2026-07-03.v6",
+            source: {
+              trackId: "track-1",
+              rightsRoute: "STANDARD_ESCROW",
+              contentStatus: "clean",
+            },
+            stems: [],
+          },
+        })}
+      />,
+    );
+    // Server-side render has no useEffect eligibility fetch, so the button
+    // stays in its honest disabled state regardless of the passed eligibility.
+    expect(html).toContain("remix-action-unavailable--export");
+    expect(html).toContain("Export audio");
+    expect(html).not.toContain("remix-action-export\"");
+  });
+
+  it("renders the enabled download button when eligibility grants export", () => {
+    // describeExportAvailability drives the button; assert the enabled branch
+    // directly since SSR does not run the eligibility-fetch effect.
+    const result = describeExportAvailability({
+      status: "draft",
+      generationStatus: "completed",
+      hasDraftOutput: true,
+      dirty: false,
+      exporting: false,
+      eligibility: {
+        allowed: true,
+        requiredLicense: null,
+        allowedActions: ["private_draft", "publish_resonate", "export"],
+        reasons: [],
+        policyVersion: "2026-07-03.v6",
+        source: {
+          trackId: "track-1",
+          rightsRoute: "STANDARD_ESCROW",
+          contentStatus: "clean",
+        },
+        stems: [],
+      },
+    });
+    expect(result.enabled).toBe(true);
+    expect(result.reasonCode).toBe("export_available");
   });
 });
 

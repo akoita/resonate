@@ -27,6 +27,7 @@ export type RemixEligibilityResult = RemixEligibilityDecision & {
     stemId: string;
     remixable: boolean | null;
     licensed: boolean;
+    exportLicensed: boolean;
   }>;
 };
 
@@ -85,14 +86,23 @@ export class RemixEligibilityService {
     const creatorOwner =
       !!sourceArtistUserId && sourceArtistUserId === input.userId;
 
+    // Owning the source artist profile (#1174) satisfies the license
+    // requirement on the artist's own material — for both the remix license
+    // and the export/commercial license (owners hold full rights to their own
+    // work). Non-owners must prove a purchased remix (and, for export, a
+    // commercial) license per stem.
     const licensedStemIds = creatorOwner
       ? new Set(requestedStemIds)
       : await this.findLicensedStemIds(input.userId, requestedStemIds);
+    const exportLicensedStemIds = creatorOwner
+      ? new Set(requestedStemIds)
+      : await this.findExportLicensedStemIds(input.userId, requestedStemIds);
 
     const stems: RemixStemPolicyInput[] = requestedStemIds.map((stemId) => ({
       stemId,
       mintRemixable: trackStemsById.get(stemId)?.nftMint?.remixable ?? null,
       licensed: licensedStemIds.has(stemId),
+      exportLicensed: exportLicensedStemIds.has(stemId),
     }));
 
     const decision = evaluateRemixEligibility({
@@ -119,6 +129,7 @@ export class RemixEligibilityService {
         stemId: stem.stemId,
         remixable: stem.mintRemixable,
         licensed: stem.licensed,
+        exportLicensed: stem.exportLicensed ?? false,
       })),
     };
   }
@@ -169,6 +180,65 @@ export class RemixEligibilityService {
           // Rows persist for failed listing settlements too
           // (status = contract_settlement_failed); only a granted settlement
           // proves the listing-backed remix license.
+          status: "download_granted",
+        },
+        select: { stemId: true },
+      }),
+    ]);
+
+    const licensed = new Set<string>();
+    for (const purchase of purchases) {
+      if (purchase.listing.stemId) {
+        licensed.add(purchase.listing.stemId);
+      }
+    }
+    for (const settlement of settlements) {
+      licensed.add(settlement.stemId);
+    }
+    return licensed;
+  }
+
+  /**
+   * A stem counts as export-licensed for the user when their wallet bought a
+   * marketplace listing with a commercial license, or holds a listing-backed
+   * x402 settlement whose listing carries a commercial license. The commercial
+   * tier grants export/download (off-platform/monetized use) on top of the
+   * remix tier's private drafts + in-Resonate publish. Server-side records
+   * only; client claims are never trusted. Mirrors findLicensedStemIds with
+   * licenseType: "commercial".
+   */
+  private async findExportLicensedStemIds(
+    userId: string,
+    stemIds: string[],
+  ): Promise<Set<string>> {
+    if (stemIds.length === 0) {
+      return new Set();
+    }
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId },
+      select: { address: true },
+    });
+    if (!wallet?.address) {
+      return new Set();
+    }
+
+    const [purchases, settlements] = await Promise.all([
+      prisma.stemPurchase.findMany({
+        where: {
+          licenseType: "commercial",
+          buyerAddress: { equals: wallet.address, mode: "insensitive" },
+          listing: { stemId: { in: stemIds } },
+        },
+        select: { listing: { select: { stemId: true } } },
+      }),
+      prisma.x402Settlement.findMany({
+        where: {
+          stemId: { in: stemIds },
+          payerAddress: { equals: wallet.address, mode: "insensitive" },
+          listing: { licenseType: "commercial" },
+          // Rows persist for failed listing settlements too
+          // (status = contract_settlement_failed); only a granted settlement
+          // proves the listing-backed commercial license.
           status: "download_granted",
         },
         select: { stemId: true },

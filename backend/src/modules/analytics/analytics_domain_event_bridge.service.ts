@@ -1147,6 +1147,25 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId", "releaseId"],
   },
   {
+    eventName: "remix.exported",
+    producer: "remix-service",
+    subjectType: "remix_project",
+    subjectIdKeys: ["remixProjectId"],
+    actorIdKeys: ["creatorId"],
+    payloadKeys: [
+      "remixProjectId",
+      "creatorId",
+      "sourceTrackId",
+      "mode",
+      // Provenance (#1192/#1194) and AI disclosure (#1164) of the exported
+      // audio.
+      "grounding",
+      "aiGenerated",
+      "policyVersion",
+    ],
+    sourceRefKeys: ["remixProjectId", "creatorId", "sourceTrackId"],
+  },
+  {
     eventName: "artist.remix_consent_updated",
     producer: "artist-service",
     subjectType: "artist",

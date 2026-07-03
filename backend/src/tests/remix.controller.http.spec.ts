@@ -50,6 +50,11 @@ const mockProjectService = {
   getDraftAudio: jest
     .fn()
     .mockResolvedValue({ data: Buffer.from('draft-audio'), mimeType: 'audio/mpeg' }),
+  exportDraft: jest.fn().mockResolvedValue({
+    data: Buffer.from('export-audio'),
+    mimeType: 'audio/mpeg',
+    filename: 'my-remix.mp3',
+  }),
   publishProject: jest.fn().mockResolvedValue({
     id: 'proj-1',
     status: 'published',
@@ -351,6 +356,69 @@ describe('RemixController (e2e)', () => {
     );
     const res = await request(app.getHttpServer())
       .post('/remix/projects/proj-1/publish')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(409);
+    expect(res.body.code).toBe('draft_not_completed');
+  });
+
+  // ----- Export (#1323) -----
+
+  it('POST /remix/projects/:id/export → 401 without JWT', async () => {
+    await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .send({})
+      .expect(401);
+  });
+
+  it('POST /remix/projects/:id/export → 200 streams an attachment download from the JWT owner', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'attacker' })
+      .buffer(true)
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => callback(null, Buffer.concat(chunks)));
+      })
+      .expect(201);
+
+    expect(mockProjectService.exportDraft).toHaveBeenCalledWith('user-1', 'proj-1');
+    expect(res.headers['content-type']).toContain('audio/mpeg');
+    expect(res.headers['content-disposition']).toBe(
+      'attachment; filename="my-remix.mp3"',
+    );
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.body.toString()).toBe('export-audio');
+  });
+
+  it('POST /remix/projects/:id/export → 403 with eligibility payload when export is not allowed', async () => {
+    mockProjectService.exportDraft.mockRejectedValueOnce(
+      new ForbiddenException({
+        code: 'export_not_allowed',
+        message: 'commercial license required',
+        eligibility: { allowed: true, allowedActions: ['private_draft', 'publish_resonate'] },
+      }),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
+      .set('Authorization', `Bearer ${token}`)
+      .send({})
+      .expect(403);
+    expect(res.body.code).toBe('export_not_allowed');
+  });
+
+  it('POST /remix/projects/:id/export → 409 for an incomplete draft', async () => {
+    mockProjectService.exportDraft.mockRejectedValueOnce(
+      new ConflictException({
+        code: 'draft_not_completed',
+        message: 'Only a completed draft can be exported.',
+        generationStatus: 'processing',
+      }),
+    );
+    const res = await request(app.getHttpServer())
+      .post('/remix/projects/proj-1/export')
       .set('Authorization', `Bearer ${token}`)
       .send({})
       .expect(409);

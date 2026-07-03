@@ -88,6 +88,11 @@ export type RemixDraftAudio = {
   mimeType: string;
 };
 
+export type RemixDraftExport = RemixDraftAudio & {
+  /** Sanitized, extension-suffixed download filename (#1323). */
+  filename: string;
+};
+
 export type RemixGenerationJobData = {
   jobId: string;
   userId: string;
@@ -1504,6 +1509,85 @@ export class RemixProjectService {
   }
 
   /**
+   * Exports a completed draft's final render as a downloadable file (#1323).
+   * Owner-only. Eligibility is re-checked server-side — the creation-time
+   * decision is explicitly not trusted (consent flips, quarantines, and
+   * license expiry must block export) — and `export` is enforced on top of
+   * `allowed`, exactly as publish enforces `publish_resonate`. Export requires
+   * a COMMERCIAL license on the source stems (the tier that grants
+   * off-platform/monetized use). Only a completed draft can be exported, and
+   * the render bytes are read through the shared draft-audio path.
+   */
+  async exportDraft(
+    userId: string,
+    projectId: string,
+  ): Promise<RemixDraftExport> {
+    const project = await this.loadOwnedProject(userId, projectId);
+
+    const generationStatus = remixGenerationStatusFromMetadata(
+      project.generationMetadata,
+    );
+    const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
+    if (generationStatus !== "completed" || !outputUri) {
+      throw new ConflictException({
+        code: "draft_not_completed",
+        message:
+          "Only a completed draft can be exported. Generate a draft and wait for it to finish first.",
+        generationStatus: generationStatus ?? "none",
+      });
+    }
+
+    const stemIds = project.stems.map((stem) => stem.stemId);
+    const eligibility = await this.eligibilityService.checkEligibility({
+      userId,
+      trackId: project.sourceTrackId,
+      stemIds,
+    });
+    if (!eligibility.allowed) {
+      this.publishDenialEvents(
+        { userId, sourceTrackId: project.sourceTrackId, stemIds },
+        eligibility,
+      );
+      throw new ForbiddenException({
+        message: "Exporting this remix is not allowed for its source",
+        eligibility,
+      });
+    }
+    if (!eligibility.allowedActions.includes("export")) {
+      throw new ForbiddenException({
+        code: "export_not_allowed",
+        message:
+          "Exporting this remix requires a commercial license on the source stems.",
+        eligibility,
+      });
+    }
+
+    const audio = await this.readCurrentDraftAudio(project);
+    const grounding =
+      draftGroundingFromMetadata(project.generationMetadata) ?? "prompt_only";
+
+    this.eventBus.publish({
+      eventName: "remix.exported",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      remixProjectId: project.id,
+      creatorId: userId,
+      sourceTrackId: project.sourceTrackId,
+      mode: project.mode,
+      grounding,
+      aiGenerated: groundingAiGenerated(grounding),
+      policyVersion: eligibility.policyVersion,
+    });
+
+    return {
+      ...audio,
+      filename: `${sanitizeDownloadFilename(project.title)}${audioExtensionForMimeType(
+        audio.mimeType,
+      )}`,
+    };
+  }
+
+  /**
    * The catalog release needs an Artist row; remix creators without one get
    * a profile on first publish (same pattern as the AI-generation flow).
    */
@@ -1545,6 +1629,18 @@ export class RemixProjectService {
       };
     }
 
+    return this.readCurrentDraftAudio(project);
+  }
+
+  /**
+   * Reads the project's CURRENT draft render (bytes + mime) through the storage
+   * provider. Shared by getDraftAudio (archived-version branch aside) and
+   * exportDraft so the decrypt/read path is written once. 404s when no playable
+   * draft output exists.
+   */
+  private async readCurrentDraftAudio(project: {
+    generationMetadata: unknown;
+  }): Promise<RemixDraftAudio> {
     const outputUri = draftOutputUriFromMetadata(project.generationMetadata);
     if (!outputUri) {
       throw new NotFoundException("Remix draft audio not found");
@@ -1778,6 +1874,22 @@ function audioExtensionForMimeType(mimeType: string): string {
   if (mimeType === "audio/mpeg") return ".mp3";
   if (mimeType === "audio/ogg") return ".ogg";
   return ".bin";
+}
+
+/**
+ * Sanitizes a project title into a safe download filename base (#1323): keeps
+ * word characters, spaces, and hyphens; collapses everything else to a single
+ * hyphen; trims; falls back to "remix" when nothing usable remains. Keeps the
+ * value free of path separators and quotes so the Content-Disposition header
+ * cannot be broken.
+ */
+function sanitizeDownloadFilename(title: string | null | undefined): string {
+  const cleaned = (title ?? "")
+    .replace(/[^\w\s-]+/g, " ")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+  return cleaned || "remix";
 }
 
 function normalizeMetadataObject(metadata: unknown): Record<string, unknown> {

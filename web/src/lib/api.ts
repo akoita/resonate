@@ -4352,6 +4352,39 @@ export async function getRemixDraftAudioBlob(
   return response.blob();
 }
 
+/**
+ * Downloads the remix draft as an exported file (#1323). Commercial-license
+ * gated server-side: 403 when the source stems are not export-licensed. Returns
+ * the blob plus the sanitized download filename from Content-Disposition (with
+ * an honest fallback when the header is absent).
+ */
+export async function exportRemixDraftBlob(
+  token: string,
+  projectId: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetch(
+    `${API_BASE}/remix/projects/${projectId}/export`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      formatApiErrorMessage(response.status, response.statusText, detail),
+    );
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const filename = match?.[1]?.trim() || "remix-export.mp3";
+  return { blob: await response.blob(), filename };
+}
+
 export async function getRemixEligibility(
   token: string,
   trackId: string,
