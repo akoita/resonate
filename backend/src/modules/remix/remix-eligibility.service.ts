@@ -166,7 +166,9 @@ export class RemixEligibilityService {
     const [purchases, settlements] = await Promise.all([
       prisma.stemPurchase.findMany({
         where: {
-          licenseType: "remix",
+          // Commercial ⊃ Remix ⊃ Personal: a commercial license grants remix
+          // rights too, so it satisfies the remix requirement.
+          licenseType: { in: ["remix", "commercial"] },
           buyerAddress: { equals: wallet.address, mode: "insensitive" },
           listing: { stemId: { in: stemIds } },
         },
@@ -176,7 +178,8 @@ export class RemixEligibilityService {
         where: {
           stemId: { in: stemIds },
           payerAddress: { equals: wallet.address, mode: "insensitive" },
-          listing: { licenseType: "remix" },
+          // Commercial ⊃ Remix: a commercial-tier settlement grants remix rights.
+          listing: { licenseType: { in: ["remix", "commercial"] } },
           // Rows persist for failed listing settlements too
           // (status = contract_settlement_failed); only a granted settlement
           // proves the listing-backed remix license.
