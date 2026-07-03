@@ -486,7 +486,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               { term: "Personal", description: "Listen and enjoy the stem for your own private use." },
               { term: "Remix", description: "Use the stem to create a remix — this is the tier that unlocks Remix Studio for that stem." },
-              { term: "Commercial", description: "Broader rights for commercial projects, where the artist offers it." },
+              { term: "Commercial", description: "Broader rights for commercial projects, where the artist offers it — this tier also lets you export and download a remix you build from the stem in Remix Studio." },
             ],
           },
           {
@@ -685,11 +685,27 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "When a draft is ready, publish it as a remix release in your catalog. Resonate re-checks your rights at publish time and attaches the source lineage (which tracks and stems it came from) plus the AI-provenance label to the new release.",
           },
+        ],
+      },
+      {
+        id: "export",
+        heading: "Exporting your remix",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Once a draft is finished and saved, you can download it as an audio file to use off Resonate. Export needs the commercial license tier on the stems you're remixing — a remix license lets you make private drafts and publish inside Resonate, and the commercial tier adds the right to download and use the audio elsewhere.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "If the Export button is locked",
+            text: "It will tell you why — usually that a commercial license is required. Collect the stems at the commercial tier in the Marketplace to unlock downloading.",
+          },
           {
             kind: "callout",
             tone: "note",
             title: "What's still rolling out",
-            text: "In-app remixing and publishing are live. Downloadable exports and on-chain remix credentials are on the way; voice or likeness cloning is intentionally not supported.",
+            text: "In-app remixing, publishing, and commercial-licensed export are live. On-chain remix credentials are on the way; voice or likeness cloning is intentionally not supported.",
           },
         ],
       },

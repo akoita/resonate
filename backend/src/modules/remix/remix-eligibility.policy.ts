@@ -1,11 +1,16 @@
 import type { UploadRightsRoute } from "../rights/upload-rights-policy";
 
+// v6 (#1323): export/download is now granted to holders of a COMMERCIAL
+// license on the selected source stems (the commercial tier grants
+// export/download on top of the remix tier's private drafts + in-Resonate
+// publish). Owning the source artist profile satisfies it too. Computed the
+// same way the remix-license check is, but over exportLicensed.
 // v5 (#1196): eligible sources now grant publish_resonate alongside
 // private_draft — the in-Resonate publish slice consumes it server-side at
-// publish time. Export stays closed until exportable license terms exist.
+// publish time.
 // v4 (#1174): owning the source artist profile satisfies the remix-license
 // requirement on the artist's own material; all other checks unchanged.
-export const REMIX_POLICY_VERSION = "2026-06-13.v5";
+export const REMIX_POLICY_VERSION = "2026-07-03.v6";
 
 export const REMIX_ACTIONS = [
   "private_draft",
@@ -40,6 +45,12 @@ export type RemixStemPolicyInput = {
   mintRemixable: boolean | null;
   /** Whether the user holds a qualifying remix license/purchase for this stem. */
   licensed: boolean;
+  /**
+   * Whether the user holds a qualifying COMMERCIAL license/purchase for this
+   * stem — the tier that grants export/download (#1323). Defaults to false
+   * for inputs that predate export gating.
+   */
+  exportLicensed?: boolean;
 };
 
 export type RemixEligibilityPolicyInput = {
@@ -194,12 +205,27 @@ export function evaluateRemixEligibility(
     };
   }
 
-  // v5 grants private drafts and in-Resonate publishing (#1196). Export
-  // stays closed until exportable license terms exist (backlog E).
+  // v5 grants private drafts and in-Resonate publishing (#1196). v6 (#1323)
+  // additionally grants export when the candidate stems are COMMERCIAL-licensed
+  // — computed the same way licenseSatisfied is, but over exportLicensed:
+  // an explicit selection needs ALL candidate stems export-licensed (they
+  // become the export payload verbatim); a track-default request needs at
+  // least one.
+  const allowedActions: RemixAction[] = ["private_draft", "publish_resonate"];
+  const exportLicensedStems = candidateStems.filter(
+    (stem) => stem.exportLicensed === true,
+  );
+  const exportSatisfied = input.explicitStemSelection
+    ? candidateStems.length > 0 &&
+      exportLicensedStems.length === candidateStems.length
+    : exportLicensedStems.length > 0;
+  if (exportSatisfied) {
+    allowedActions.push("export");
+  }
   return {
     allowed: true,
     requiredLicense: null,
-    allowedActions: ["private_draft", "publish_resonate"],
+    allowedActions,
     reasons: [],
     policyVersion: REMIX_POLICY_VERSION,
   };

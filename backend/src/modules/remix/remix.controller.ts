@@ -209,6 +209,23 @@ export class RemixController {
   }
 
   /**
+   * Exports a completed draft as a downloadable file (#1323). Owner-only;
+   * eligibility is re-checked server-side at export time and the `export`
+   * action (granted by a COMMERCIAL license on the source stems) is enforced
+   * on top of `allowed`. Streams the render bytes as an attachment.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("projects/:id/export")
+  async exportDraft(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Res() res: Response,
+  ) {
+    const download = await this.projectService.exportDraft(req.user.userId, id);
+    this.sendDownloadResponse(download, res);
+  }
+
+  /**
    * Legacy compatibility endpoint. Creates an in-memory remix record for the
    * early event-flow experiment. Durable remix work must use
    * POST /remix/projects; this endpoint is slated for removal with the Remix
@@ -277,5 +294,24 @@ export class RemixController {
       "Cache-Control": "private, no-store",
     });
     res.end(audio.data);
+  }
+
+  /**
+   * Writes the export render as a download (#1323): full body, no range, with
+   * a Content-Disposition attachment header. The filename is already sanitized
+   * by the service; it is wrapped in quotes so a space in the title cannot
+   * split the header value.
+   */
+  private sendDownloadResponse(
+    download: { data: Buffer; mimeType: string; filename: string },
+    res: Response,
+  ) {
+    res.set({
+      "Content-Length": download.data.length,
+      "Content-Type": download.mimeType || "audio/mpeg",
+      "Content-Disposition": `attachment; filename="${download.filename}"`,
+      "Cache-Control": "private, no-store",
+    });
+    res.end(download.data);
   }
 }

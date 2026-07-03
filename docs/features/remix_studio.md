@@ -42,9 +42,14 @@ lineage (source track/release/stem IDs, remix project ID, provider, mode,
 `grounding`, AI-disclosure flag, policy version), records the published release
 on the project, and locks the project against further edits/generation. The
 release page renders the source attribution and the honest AI-provenance label.
-Export/download (license-gated) and License-NFT/ancestry minting (E3) remain
-planned; the MVP epic is
-[#891](https://github.com/akoita/resonate/issues/891).
+Export/download ([#1323](https://github.com/akoita/resonate/issues/1307)) is
+shipped and **commercial-license-gated**: an owner can download a completed
+draft via `POST /remix/projects/:id/export` only when they hold a **commercial**
+license on the selected source stems (the tier that grants off-platform/
+monetized use; Personal ⊂ Remix ⊂ Commercial). Export re-checks eligibility
+server-side and enforces the policy's `allowedActions.export` on top of
+`allowed`, mirroring publish. License-NFT/ancestry minting (E3) remains planned;
+the MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
 
 The legacy in-memory remix module remains only as the deprecated
 `POST /remix/create` compatibility shim and is slated for removal with the
@@ -119,9 +124,10 @@ from the JWT, never the request body.
   attribution, and export-policy placeholders.
 - Events: `remix.project_created` (carries the source release's `artistId`
   for artist-cockpit attribution, #1121), `remix.policy_rejected`,
-  `remix.license_required`, and `artist.remix_consent_updated` (governed
-  analytics bridge mappings included; the artist-consent bridge payload
-  explicitly includes `artistId`).
+  `remix.license_required`, `remix.published`, `remix.exported` (#1323;
+  successful commercial-gated export), and `artist.remix_consent_updated`
+  (governed analytics bridge mappings included; the artist-consent bridge
+  payload explicitly includes `artistId`).
 - Product analytics (#1143), allow-listed in `POST /analytics/product/event`
   and emitted from the web client with compact id/state payloads only (no
   titles, prompts, or free-text reasons):
@@ -139,8 +145,9 @@ from the JWT, never the request body.
   - `remix.studio_action_unavailable` — click on a gated publish control or a
     locked export control; `projectId`, `action`, stable `reasonCode`
     (publish gates: `publish_needs_completed_draft` | `publish_dirty` |
-    `publish_eligibility_loading` | `publish_not_allowed`; export:
-    `export_rights_required`).
+    `publish_eligibility_loading` | `publish_not_allowed`; export gates:
+    `export_needs_completed_draft` | `export_dirty` |
+    `export_eligibility_loading` | `export_rights_required`).
   - Limitation: the product-analytics endpoint is authenticated, so
     `signed_out` CTA states are only recorded once the user has a session
     elsewhere in the app; fully anonymous impressions are not captured.
@@ -258,7 +265,9 @@ from the JWT, never the request body.
   carries a **Buy** button that opens the buy modal pre-set to that tier's
   listing, so a non-owner can buy the **Remix** (or Commercial) license
   directly — the remix-tier purchase then flips eligibility and unlocks the
-  studio. Buy buttons are hidden for a seller viewing their own listing. The
+  studio, and a **commercial**-tier purchase additionally unlocks export/
+  download (#1323). Buy buttons are hidden for a seller viewing their own
+  listing. The
   artist already chooses the tier when listing (`ListStemModal` →
   `LicenseTypeSelector`); the backend listing/purchase/eligibility wiring was
   already complete, so this was the final frontend gap. Catalog
@@ -397,6 +406,22 @@ from the JWT, never the request body.
   bridge-whitelisted in the same change). `GET /remix/releases/...` is served
   by the catalog; `getRelease` returns a focused `remix` provenance summary
   for `type: "remix"` releases.
+- API (#1323, backlog E export slice): `POST /remix/projects/:id/export` —
+  owner-only, downloads a completed draft's final render as an attachment
+  (`Content-Disposition: attachment`, sanitized filename derived from the
+  project title, `.mp3`/`.wav` per the draft mime). Re-runs `checkEligibility`
+  at export time (consent flips and quarantines block it) and enforces
+  `allowedActions.export` on top of `allowed` (`403 export_not_allowed`
+  otherwise); only completed drafts export (`409 draft_not_completed`). Export
+  requires a **commercial** license on the source stems — proven server-side by
+  a `StemPurchase` (`licenseType = commercial`) or listing-backed
+  `X402Settlement` row matched to the caller's wallet, or by owning the source
+  artist profile (#1174). Policy version bumped to `2026-07-03.v6`
+  (`RemixStemPolicyInput.exportLicensed` → `allowedActions.export`). The render
+  bytes reuse the existing draft-audio decrypt/read path (no new raw-URI
+  surface). Emits `remix.exported` (artistId-less; carries projectId, creator,
+  source, mode, grounding, aiGenerated, policy version; bridge-whitelisted for
+  analytics).
 
 - Generation provider (#1162/#1209, backlog D2): `LyriaRemixGenerationProvider`
   reuses the catalog Lyria stack behind the provider boundary, selected via
@@ -438,8 +463,6 @@ from the JWT, never the request body.
   eligibility fan-out).
 - API/UI: manual approval remix consent states remain deferred; the shipped
   A1 slice supports `allowed` and `disabled`.
-- API: `POST /remix/projects/:id/export` (license-gated download; the export
-  button keeps its honest disabled state).
 - Protocol: License-NFT / AncestryTracker minting from published lineage (E3 —
   #1196 persists the lineage data only).
 
@@ -500,9 +523,18 @@ Implemented today:
   (`cd web && npx vitest run src/components/remix`).
 - `web/src/components/remix/RemixStudioEditor.test.tsx` — minimal-patch
   building, gain clamping, rights badge derivation, editor rendering
-  (attribution, stem controls, prompt gating by mode, unavailable
-  publish/export with reasons), honest grounding copy including
-  `audio_conditioned`, and the page shell's signed-out/loading states.
+  (attribution, stem controls, prompt gating by mode, unavailable publish and
+  commercial-gated export with reasons), `describeExportAvailability` gating
+  (#1323), honest grounding copy including `audio_conditioned`, and the page
+  shell's signed-out/loading states.
+- `backend/src/tests/remix-eligibility.policy.spec.ts` — includes v6 export
+  cases (#1323): export granted for a commercial-licensed selection, withheld
+  for a remix-only or partly-licensed explicit selection.
+- `backend/src/tests/remix-export.integration.spec.ts` — Testcontainers
+  Postgres coverage for `exportDraft` (#1323): commercial-license → 200 with a
+  sanitized download filename and render bytes; remix-only → 403
+  `export_not_allowed`; export-time consent-flip re-check; incomplete draft →
+  409; non-owner → 403; `remix.exported` emission.
 
 Remaining for later slices:
 

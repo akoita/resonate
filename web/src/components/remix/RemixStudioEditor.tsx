@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
+  exportRemixDraftBlob,
   generateRemixDraft,
   getRemixEligibility,
   getRemixProject,
@@ -507,19 +508,6 @@ export function stemPreviewStates(
   });
 }
 
-// Publishing inside Resonate is live (#1196); export stays honestly locked
-// until exportable license terms exist (backlog E).
-const UNAVAILABLE_ACTIONS = [
-  {
-    key: "export",
-    label: "Export audio",
-    // reasonCode is the analytics-safe identifier; reason stays human text.
-    reasonCode: "export_rights_required",
-    reason:
-      "Export requires a license that explicitly grants export rights. Your remix license covers in-Resonate publishing only.",
-  },
-] as const;
-
 /**
  * Whether "Publish on Resonate" is actionable, plus the honest reason when it
  * is not (#1196). Publishing re-checks eligibility server-side, but the studio
@@ -587,6 +575,73 @@ export function describePublishAvailability(input: {
   return { enabled: true, reason: null, reasonCode: "publish_available" };
 }
 
+// Export/download (#1323) is commercial-license gated: the studio enables the
+// button only when server eligibility grants the `export` action on top of a
+// completed, saved draft. Otherwise it stays honestly locked with the
+// export_rights_required reason and its demand-signal analytics.
+export const EXPORT_RIGHTS_REQUIRED_REASON =
+  "Export requires a commercial license on the source stems. Your remix license covers private drafts and in-Resonate publishing only.";
+
+/**
+ * Whether "Export audio" is actionable, plus the honest reason and stable
+ * analytics reasonCode when it is not (#1323). Mirrors describePublishAvailability
+ * but gates on the `export` action (granted by a commercial license). The
+ * export_rights_required code is the demand signal for the locked state.
+ */
+export function describeExportAvailability(input: {
+  status: string;
+  generationStatus: RemixGenerationMetadata["status"] | null;
+  hasDraftOutput: boolean;
+  dirty: boolean;
+  exporting: boolean;
+  eligibility: RemixEligibilityResponse | null;
+}): { enabled: boolean; reason: string | null; reasonCode: string } {
+  if (input.status !== "draft") {
+    return {
+      enabled: false,
+      reason: "Only draft projects can be exported.",
+      reasonCode: "export_not_draft",
+    };
+  }
+  if (input.generationStatus !== "completed" || !input.hasDraftOutput) {
+    return {
+      enabled: false,
+      reason:
+        "Render or generate a draft and wait for it to finish before exporting.",
+      reasonCode: "export_needs_completed_draft",
+    };
+  }
+  if (input.dirty) {
+    return {
+      enabled: false,
+      reason: "Save your changes first so you export the saved draft.",
+      reasonCode: "export_dirty",
+    };
+  }
+  if (!input.eligibility) {
+    return {
+      enabled: false,
+      reason: "Checking whether this source can be exported…",
+      reasonCode: "export_eligibility_loading",
+    };
+  }
+  if (
+    !input.eligibility.allowed ||
+    !input.eligibility.allowedActions.includes("export")
+  ) {
+    // The honest locked state: a valid remix (but not commercial) license.
+    return {
+      enabled: false,
+      reason: EXPORT_RIGHTS_REQUIRED_REASON,
+      reasonCode: "export_rights_required",
+    };
+  }
+  if (input.exporting) {
+    return { enabled: false, reason: null, reasonCode: "export_in_progress" };
+  }
+  return { enabled: true, reason: null, reasonCode: "export_available" };
+}
+
 /**
  * Confirm-dialog body stating exactly what becomes public: the title, the
  * source attribution, and the honest AI-provenance label (#1194 copy).
@@ -628,6 +683,7 @@ export function RemixStudioEditor({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
   const [eligibility, setEligibility] =
     useState<RemixEligibilityResponse | null>(null);
@@ -749,10 +805,11 @@ export function RemixStudioEditor({
     };
   }, [dirty, generationActive, project.id, token]);
 
-  // Publish gating (#1196): eligibility is re-checked server-side at publish
-  // time, but the studio fetches it so the button reflects the live source
-  // state (consent flips, quarantines) instead of a stale creation-time
-  // decision. Only relevant once a completed draft exists on a draft project.
+  // Publish + export gating (#1196/#1323): eligibility is re-checked
+  // server-side at publish/export time, but the studio fetches it so the
+  // buttons reflect the live source state (consent flips, quarantines, and the
+  // export/commercial-license grant) instead of a stale creation-time decision.
+  // Only relevant once a completed draft exists on a draft project.
   const draftReadyToPublish =
     project.status === "draft" && generationStatus === "completed";
   useEffect(() => {
@@ -1061,6 +1118,55 @@ export function RemixStudioEditor({
     }
   };
 
+  const handleExport = async () => {
+    if (!token || exporting) return;
+    setExporting(true);
+    try {
+      const { blob, filename } = await exportRemixDraftBlob(token, project.id);
+      // Blob + anchor download: the browser saves the render under the
+      // server-sanitized filename.
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      addToast({
+        type: "success",
+        title: "Export started",
+        message: `Downloading ${filename}.`,
+      });
+    } catch (error) {
+      // Export re-checks eligibility server-side; surface the server's reason
+      // (missing commercial license, consent flip, incomplete draft) rather
+      // than a generic failure.
+      let message =
+        "Your remix could not be exported. Please try again later.";
+      if (error instanceof Error) {
+        const prefixed = error.message.match(/^API \d+: (.+)$/s);
+        if (prefixed?.[1]?.trim()) {
+          const detail = prefixed[1].trim();
+          const jsonStart = detail.indexOf("{");
+          if (jsonStart >= 0) {
+            try {
+              const parsed = JSON.parse(detail.slice(jsonStart));
+              message = parsed.message ?? message;
+            } catch {
+              message = detail;
+            }
+          } else {
+            message = detail;
+          }
+        }
+      }
+      addToast({ type: "error", title: "Export failed", message });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const published = project.status === "published";
   const publishAvailability = describePublishAvailability({
     status: project.status,
@@ -1068,6 +1174,14 @@ export function RemixStudioEditor({
     hasDraftOutput: Boolean(draftOutputUri),
     dirty,
     publishing,
+    eligibility,
+  });
+  const exportAvailability = describeExportAvailability({
+    status: project.status,
+    generationStatus,
+    hasDraftOutput: Boolean(draftOutputUri),
+    dirty,
+    exporting,
     eligibility,
   });
 
@@ -1800,32 +1914,49 @@ export function RemixStudioEditor({
                 {publishing ? "Publishing..." : "Publish on Resonate"}
               </button>
             )}
-            {UNAVAILABLE_ACTIONS.map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                aria-disabled="true"
-                title={action.reason}
-                className={`ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--${action.key}`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  // Demand signal for locked workflows (#1143).
-                  void recordProductAnalytics(token, "remix.studio_action_unavailable", {
-                    source: "remix_studio",
-                    subjectType: "remix_project",
-                    subjectId: project.id,
-                    payload: {
-                      projectId: project.id,
-                      action: action.key,
-                      reasonCode: action.reasonCode,
-                    },
-                  });
-                }}
-              >
-                {action.label}
-                <span className="sr-only"> — {action.reason}</span>
-              </button>
-            ))}
+            {!published &&
+              (exportAvailability.enabled ? (
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-ghost remix-action-export"
+                  onClick={() => void handleExport()}
+                >
+                  {exporting ? "Exporting..." : "Export audio"}
+                </button>
+              ) : (
+                // Honest locked state (#1323): the button records the demand
+                // signal on click but does not attempt the download. The
+                // export_rights_required reason keeps its stable analytics code.
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  title={exportAvailability.reason ?? undefined}
+                  className="ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--export"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    // Demand signal for locked workflows (#1143/#1323).
+                    void recordProductAnalytics(
+                      token,
+                      "remix.studio_action_unavailable",
+                      {
+                        source: "remix_studio",
+                        subjectType: "remix_project",
+                        subjectId: project.id,
+                        payload: {
+                          projectId: project.id,
+                          action: "export",
+                          reasonCode: exportAvailability.reasonCode,
+                        },
+                      },
+                    );
+                  }}
+                >
+                  Export audio
+                  {exportAvailability.reason && (
+                    <span className="sr-only"> — {exportAvailability.reason}</span>
+                  )}
+                </button>
+              ))}
           </div>
           <div className="flex items-center gap-3">
             <span
