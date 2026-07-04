@@ -210,6 +210,18 @@ Implementation rule: mixer playback should use the platform preview path, while 
 > [!TIP]
 > The $9.99/mo subscription partially pre-funds the agent wallet. For example, $5 of the subscription goes into the agent wallet as "streaming credits" (USDC). This means the artist gets paid per-play from actual funds, not from a Spotify-style pool. **Artists earn from YOUR plays, not from a shared pot.** This is a massive differentiation point.
 
+**AI generation credits (canonical — ADR-BM-3, accepted 2026-07-05):** AI
+generation (Lyria, Stable Audio 3 remix drafts, stem-plus-AI rendering) is
+billed via **prepaid generation credits at cost + 30–50% margin** — baseline
+internal cost ~$0.06/30s → sell at ~$0.10/30s equivalent. A small monthly
+credit allowance is bundled into the future Artist Pro tier; overage is
+pay-as-you-go from the wallet. GPU-expensive paths gate on credit balance;
+free allowances only via promo credits, never unmetered access.
+**Prerequisite before billing SA3 generations:** commercial-use registration
+with Stability AI (license review D2). Decision record:
+`docs/strategy/business-model-phase0-decisions.md` §ADR-BM-3; implementation
+[#1334](https://github.com/akoita/resonate/issues/1334).
+
 ### Layer 3 — Stem Licensing Marketplace (the Revenue Core)
 
 This is Resonate's primary revenue engine and its deepest moat.
@@ -302,6 +314,51 @@ The proposed model leverages what's already built:
 
 ---
 
+## 5b. Payout Doctrine & Red Lines (canonical — ADR-BM-4, accepted 2026-07-05)
+
+Platform-wide, non-negotiable rules for every payout-touching feature:
+
+1. **Artist receives 85%+ of every transaction** (after on-chain royalties to
+   other creators), settled in USDC, visible on-chain.
+2. **No recoupment, no pool, no minimum-stream thresholds.**
+3. **Listener-side payouts are pre-funded and user-centric only** — money
+   flows from an identified funded wallet to the artists that wallet's owner
+   actually consumed or bought. **Never subsidize payouts from platform
+   funds** (no free-tier payouts, no listener rewards): with no pro-rata pool
+   to drain, stream fraud is structurally unprofitable — keep it that way.
+4. **No royalty-yield products for fans.** Selling fans a share of future
+   income is a security (Howey). Shows pledges remain conditional purchases
+   with refunds; drops and collectibles carry utility (access, credits,
+   holder benefits), never income rights.
+
+Any feature proposal touching payouts must state compliance with these four
+rules (enforced via CLAUDE.md "Business Model Conformance" and the
+start/finish-issue workflows). Decision record:
+`docs/strategy/business-model-phase0-decisions.md` §ADR-BM-4.
+
+## 5c. Monetization Identity Policy (canonical — ADR-BM-5, accepted 2026-07-05)
+
+1. **Upload stays open** at the trust-ladder friction of the
+   rights-verification RFC; **payout eligibility requires verified-human
+   status** (proof-of-control today; optional proof-of-personhood later) —
+   wire payout gating to the existing `approved_with_limits` /
+   `rights_verified` states.
+2. **AI involvement is declared and labeled end to end**: `ai_generated`
+   release typing, metadata aligned with the DDEX AI-disclosure standard,
+   listener-facing labels.
+3. **Fully-AI content gets a distinct monetization policy** — marketplace
+   allowed with disclosure, excluded from human-artist promotional surfaces
+   (precedents: Deezer recommendation exclusion, Tidal royalty-ineligibility).
+4. **Distributors are never required**; the trusted-source fast path stays
+   optional.
+
+Implementation lives under the AI Music Integrity epic (#1164; payout-gating
+spec [#1336](https://github.com/akoita/resonate/issues/1336); AUP groundwork
+in `docs/compliance/ai_generation_acceptable_use.md`). Decision record:
+`docs/strategy/business-model-phase0-decisions.md` §ADR-BM-5.
+
+---
+
 ## 6. Why This Model Works (Strategic Analysis)
 
 ### For Artists
@@ -388,19 +445,20 @@ graph LR
 
 ---
 
-## 10. What to Build Next
+## 10. What to Build Next (re-sequenced — ADR-BM-6, accepted 2026-07-05)
 
-Given this model, the immediate priorities shift slightly:
+Activation order per ADR-BM-6: **(1) Shows fee → (2) Artist Pro + generation
+credits → (3) marketplace take-rate (same release as 2) → (4) Listener Pro →
+(5) B2B/agent licensing.** Subscription billing v1 is **Stripe** (fiat);
+on-chain subscriptions deferred. Status as of 2026-07-05 (fee custody #1330,
+remix finish #1206, license gate #1193 all shipped):
 
-| Priority | Feature                                             | Purpose                           |
-| -------- | --------------------------------------------------- | --------------------------------- |
-| **P0**   | Tier-based access gating (free vs. pro)             | Foundation for the business model |
-| **P0**   | Subscription billing integration                    | Revenue enablement                |
-| **P0**   | Stem preview toggle in the main player (for Pro)    | Core differentiator UX            |
-| **P0**   | Remix Studio RFC and eligibility policy             | Turn remix rights into a product workflow |
-| **P1**   | License type selector in buy flow (#311)            | Marketplace revenue               |
-| **P1**   | Rights-gated Remix Studio MVP                       | Capture the licensed AI-remix market signal |
-| **P1**   | Agent wallet pre-funding from subscription          | Seamless micro-payment UX         |
-| **P2**   | LicenseRegistry contract deployment                 | On-chain proof of licensing       |
-| **P2**   | Remix lineage and in-platform publish flow          | Attribution, provenance, and future recursive royalties |
-| **P2**   | Artist landing page ("Your stems, your storefront") | Artist onboarding narrative       |
+| Priority | Item | Revenue line / purpose |
+| -------- | --- | --- |
+| **P0**   | Shows production go-live ([#1271](https://github.com/akoita/resonate/issues/1271), gated go-decision) + real campaign cohort | Line 1 live — first collected revenue |
+| **P0**   | Generation-credit billing ([#1334](https://github.com/akoita/resonate/issues/1334); Stability registration first) | Line 2 opener — GPU becomes a margin line |
+| **P1**   | Marketplace take-rate implementation ([#1333](https://github.com/akoita/resonate/issues/1333) via upgrade path #1300) | Line 3 — collect the decided 10% / 15% |
+| **P1**   | Artist Pro subscription (Stripe v1) bundling credits + tools | Line 2 |
+| **P1**   | Remix real-user enablement gates (#1342 attribution, #1343 moderation, terms under #1164) | Lines 2/3 supply |
+| **P2**   | Listener Pro + wallet pre-fund (launch gate: ~500–1,000 genuine WAU in wedge communities) | Line 4 |
+| **P2**   | LicenseRegistry + recursive royalties (licensing roadmap Phases 2–3) | Line 5 / rights moat |

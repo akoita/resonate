@@ -1,6 +1,6 @@
 ---
 title: "Business Model v2 — Phase-0 Decisions (ADR-BM-1…6)"
-status: proposed
+status: accepted
 owner: "@akoita"
 created: "2026-07-04"
 related:
@@ -70,7 +70,13 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-3 — AI generation credits (metered billing)
 
-- **Decision (proposed):** bill AI generation (Lyria, Stable Audio 3 remix
+> **Status: ACCEPTED — 2026-07-05, confirmed by @akoita.** License dependency
+> resolved (#1193: GO; Stability commercial **registration required before
+> billing** — see RFC D2). Implementation tracked in
+> [#1334](https://github.com/akoita/resonate/issues/1334). Canonical pricing
+> reconciled into `docs/rfc/business-model.md`.
+
+- **Decision (accepted):** bill AI generation (Lyria, Stable Audio 3 remix
   drafts, stem-plus-AI rendering) via **prepaid generation credits** at
   cost + 30–50% margin. Baseline: internal cost ~$0.06/30s → sell at
   ~$0.10/30s equivalent. A small monthly credit allowance is bundled into the
@@ -88,7 +94,13 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-4 — Payout doctrine & red lines
 
-- **Decision (proposed):** platform-wide payout doctrine:
+> **Status: ACCEPTED — 2026-07-05, confirmed by @akoita.** Doctrine reconciled
+> into `docs/rfc/business-model.md`; the compliance rule already ships in
+> CLAUDE.md "💰 Business Model Conformance" and the start/finish-issue
+> workflows. Tracking [#1335](https://github.com/akoita/resonate/issues/1335)
+> closes with the reconciliation PR.
+
+- **Decision (accepted):** platform-wide payout doctrine:
   1. Artist receives **85%+ of every transaction** (after on-chain royalties
      to other creators), settled in USDC, visible on-chain.
   2. No recoupment, no pool, no minimum-stream thresholds.
@@ -111,7 +123,12 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-5 — Monetization identity policy (human verification & AI labeling)
 
-- **Decision (proposed):**
+> **Status: ACCEPTED — 2026-07-05, confirmed by @akoita.** Implementation
+> tracked in [#1336](https://github.com/akoita/resonate/issues/1336)
+> (payout-gating spec) under the AI Music Integrity epic #1164; AUP groundwork
+> already shipped (`docs/compliance/ai_generation_acceptable_use.md`).
+
+- **Decision (accepted):**
   1. Upload stays open at current trust-ladder friction; **payout eligibility
      requires verified-human status** (proof-of-control today per
      rights-verification RFC; optional proof-of-personhood integration later).
@@ -133,7 +150,13 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-6 — Revenue-line sequencing & billing stack
 
-- **Decision (proposed):** activation order is **(1) Shows fee → (2) Artist
+> **Status: ACCEPTED — 2026-07-05, confirmed by @akoita.** "What to Build
+> Next" in `docs/rfc/business-model.md` re-sequenced accordingly; issue
+> priorities were already aligned in the 2026-07 triage. Tracking
+> [#1337](https://github.com/akoita/resonate/issues/1337) closes with the
+> reconciliation PR.
+
+- **Decision (accepted):** activation order is **(1) Shows fee → (2) Artist
   Pro + generation credits → (3) marketplace take-rate (same release as 2) →
   (4) Listener Pro ($9.99/mo incl. ~$5 wallet pre-fund) → (5) B2B/agent
   licensing.** Subscription billing v1 is **Stripe** (fiat); on-chain
@@ -157,10 +180,10 @@ All tracking issues are now filed:
 | Epic | [#1332](https://github.com/akoita/resonate/issues/1332) | open |
 | ADR-BM-1 — Shows campaign fee | [#1330](https://github.com/akoita/resonate/issues/1330) | **accepted** (6%, success-only); blocking #1271 |
 | ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | **accepted** (10% / 15% micro); implementation next-sprint candidate |
-| ADR-BM-3 — Generation credits | [#1334](https://github.com/akoita/resonate/issues/1334) | proposed |
-| ADR-BM-4 — Payout doctrine | [#1335](https://github.com/akoita/resonate/issues/1335) | proposed |
-| ADR-BM-5 — Identity policy | [#1336](https://github.com/akoita/resonate/issues/1336) | proposed |
-| ADR-BM-6 — Sequencing & billing | [#1337](https://github.com/akoita/resonate/issues/1337) | proposed |
+| ADR-BM-3 — Generation credits | [#1334](https://github.com/akoita/resonate/issues/1334) | **accepted** (2026-07-05); implementation open — Stability registration precedes billing |
+| ADR-BM-4 — Payout doctrine | [#1335](https://github.com/akoita/resonate/issues/1335) | **accepted** (2026-07-05); closes with reconciliation |
+| ADR-BM-5 — Identity policy | [#1336](https://github.com/akoita/resonate/issues/1336) | **accepted** (2026-07-05); payout-gating implementation open under #1164 |
+| ADR-BM-6 — Sequencing & billing | [#1337](https://github.com/akoita/resonate/issues/1337) | **accepted** (2026-07-05); closes with reconciliation |
 
 ## Original ready-to-file commands (historical)
 
