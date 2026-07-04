@@ -12,6 +12,8 @@ import {
   releasePolicyLabel,
   campaignDisputeView,
   campaignPledgeAvailability,
+  campaignFeeNotice,
+  formatCampaignFeePercent,
   pledgeConfirmSummary,
   type Campaign,
 } from "./shows";
@@ -201,6 +203,7 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
       depositReleaseBps: 1000,
       disputeWindowSeconds: 604800,
       releasePolicy: "staged_release",
+      feeBps: 600,
     } as unknown as Campaign);
     const byLabel = Object.fromEntries(terms.map((t) => [t.label, t.value]));
     expect(byLabel["Minimum backers"]).toBe("100");
@@ -209,6 +212,18 @@ describe("Shows trust / terms / pledge helpers (#949)", () => {
     expect(byLabel["Dispute window"]).toBe("7 days");
     expect(byLabel["Refund policy"]).toContain("Staged release");
     expect(byLabel["Funding deadline"]).toBe("2026-07-01");
+    expect(byLabel["Platform fee"]).toBe("6% success-only; refunds fee-free");
+  });
+
+  it("derives platform fee copy from basis points and omits missing or zero fees", () => {
+    expect(formatCampaignFeePercent(600)).toBe("6%");
+    expect(formatCampaignFeePercent(625)).toBe("6.25%");
+    expect(formatCampaignFeePercent(50)).toBe("0.5%");
+    expect(formatCampaignFeePercent(0)).toBeNull();
+    expect(campaignFeeNotice({ feeBps: null })).toBeNull();
+    expect(campaignFeeNotice({ feeBps: 600 })).toBe(
+      "A 6% platform fee applies only if the campaign is funded — deducted from the artist payout at release. If the campaign fails, you are refunded 100%.",
+    );
   });
 
   it("does not throw on a malformed date (server-render safety)", () => {
@@ -354,6 +369,7 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     depositReleaseBps: 1000,
     disputeWindowSeconds: 604800,
     releasePolicy: "staged_release",
+    feeBps: 600,
   } as unknown as Campaign;
 
   const tier = { title: "Ticket intent", amountCents: 7500, currency: "USD" as const };
@@ -366,6 +382,8 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     expect(summary).toContain("Deposit released on booking: 10%");
     expect(summary).toContain("Dispute window: 7 days");
     expect(summary).toContain("Refund policy: Staged release");
+    expect(summary).toContain("Platform fee: A 6% platform fee applies only if the campaign is funded");
+    expect(summary).toContain("If the campaign fails, you are refunded 100%.");
   });
 
   it("never promises a guaranteed ticket", () => {

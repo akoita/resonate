@@ -28,10 +28,12 @@ const baseCampaign = {
   raisedCents: 120000,
   currency: "USD",
   paymentAssetSymbol: "USDC",
+  paymentAssetDecimals: 6,
   chainId: 84532,
   releasePolicy: "staged_release",
   depositReleaseBps: 1000,
   disputeWindowSeconds: 604800,
+  feeBps: 600,
   backerCount: 4,
   thresholdBackers: 100,
   heroImage: "",
@@ -54,10 +56,18 @@ describe("CampaignTrustPanel (#949)", () => {
     expect(html).toContain("0x1234…5678"); // masked beneficiary
     expect(html).toContain("USDC on Base Sepolia");
     expect(html).toContain("10%"); // deposit release
+    expect(html).toContain("6% success-only");
+    expect(html).toContain("A 6% platform fee applies only if the campaign is funded");
     expect(html).toContain("7 days"); // dispute window
     expect(html).toContain("Minimum backers");
     // Honest copy: never a guaranteed ticket.
     expect(html.toLowerCase()).not.toContain("guaranteed ticket");
+  });
+
+  it("omits fee copy for fee-free campaigns", () => {
+    const html = renderToStaticMarkup(<CampaignTrustPanel campaign={{ ...baseCampaign, feeBps: 0 }} />);
+    expect(html).not.toContain("Platform fee");
+    expect(html).not.toContain("platform fee applies");
   });
 
   it("never leaks sensitive authority evidence/credential ids", () => {

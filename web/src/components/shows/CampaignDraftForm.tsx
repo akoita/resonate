@@ -11,6 +11,7 @@ import {
   listPublishedReleases,
   type ArtistProfile,
 } from "../../lib/api";
+import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   createShowCampaignDraft,
   buildCatalogArtistCandidates,
@@ -107,6 +108,16 @@ function initialTiers(campaign?: Campaign): TierForm[] {
   ];
 }
 
+function campaignNetEstimate(campaign?: Campaign) {
+  const netUnits = campaign?.campaignFeeBreakdown?.estimatedNetToArtistAtGoalUnits;
+  if (!campaign || !netUnits) return null;
+  return formatPaymentAmountWithSymbol(
+    netUnits,
+    campaign.paymentAssetDecimals ?? PAYMENT_DECIMALS,
+    campaign.paymentAssetSymbol ?? campaign.currency,
+  );
+}
+
 export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const router = useRouter();
   const { token, status, role, connect } = useAuth();
@@ -185,6 +196,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   );
   const galleryOrderChanged = currentGalleryOrder.length !== initialGalleryOrder.length
     || currentGalleryOrder.some((id, index) => id !== initialGalleryOrder[index]);
+  const netEstimateAtGoal = campaignNetEstimate(campaign);
 
   useEffect(() => {
     if (!token || status !== "authenticated") {
@@ -737,6 +749,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
           />
         </label>
         <small>Chain {chainId}. Asset defaults to {PAYMENT_SYMBOL} with {PAYMENT_DECIMALS} decimals.</small>
+        {netEstimateAtGoal ? (
+          <div className="shows-create__fee-summary">
+            <span>Estimated artist payout at goal</span>
+            <strong className="tabular">{netEstimateAtGoal}</strong>
+            <small>Platform fees are success-only and deducted at release; failed campaigns refund backers 100%.</small>
+          </div>
+        ) : null}
       </div>
 
       <div className="shows-create__panel">
