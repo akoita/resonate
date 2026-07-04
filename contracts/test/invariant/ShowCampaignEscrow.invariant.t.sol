@@ -121,6 +121,7 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
     address public immutable feeRecipient;
 
     address[] public actors;
+    address public immutable feeRecipientAlt;
     uint256 public pledgeCalls;
     uint256 public bookingCalls;
     uint256 public fulfillmentCalls;
@@ -143,6 +144,7 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
         campaignOwner = _owner;
         beneficiary = _beneficiary;
         feeRecipient = _feeRecipient;
+        feeRecipientAlt = makeAddr("feeRecipientAlt");
 
         for (uint256 i = 0; i < 5; i++) {
             address actor = makeAddr(string(abi.encodePacked("showBacker", i)));
@@ -196,10 +198,12 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
 
         uint256 beneficiaryBefore = usdc.balanceOf(beneficiary);
         uint256 feeBefore = usdc.balanceOf(feeRecipient);
+        uint256 feeAltBefore = usdc.balanceOf(feeRecipientAlt);
         vm.prank(confirmer);
         try escrow.releaseDeposit(campaignId) {
             beneficiaryReceived += usdc.balanceOf(beneficiary) - beneficiaryBefore;
             feeRecipientReceived += usdc.balanceOf(feeRecipient) - feeBefore;
+            feeRecipientReceived += usdc.balanceOf(feeRecipientAlt) - feeAltBefore;
         } catch {}
     }
 
@@ -218,9 +222,11 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
 
         uint256 beneficiaryBefore = usdc.balanceOf(beneficiary);
         uint256 feeBefore = usdc.balanceOf(feeRecipient);
+        uint256 feeAltBefore = usdc.balanceOf(feeRecipientAlt);
         try escrow.releaseFunds(campaignId) {
             beneficiaryReceived += usdc.balanceOf(beneficiary) - beneficiaryBefore;
             feeRecipientReceived += usdc.balanceOf(feeRecipient) - feeBefore;
+            feeRecipientReceived += usdc.balanceOf(feeRecipientAlt) - feeAltBefore;
         } catch {}
     }
 
@@ -239,8 +245,13 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
 
     function setFeeConfig(uint256 feeBps, uint256 recipientSeed) external {
         feeBps = bound(feeBps, 0, escrow.MAX_CAMPAIGN_FEE_BPS());
-        address recipient = recipientSeed % 2 == 0 ? feeRecipient : beneficiary;
-        if (feeBps == 0 && recipientSeed % 3 == 0) recipient = address(0);
+        // Rotate only between dedicated fee wallets — never the beneficiary. If the
+        // fee recipient collided with the beneficiary, balance deltas could no longer
+        // attribute net vs fee, and the balance-based ghost accounting (the whole
+        // point of these invariants) would degenerate. Invalid-recipient attempts
+        // stay in to exercise the revert path.
+        address recipient = recipientSeed % 2 == 0 ? feeRecipient : feeRecipientAlt;
+        if (recipientSeed % 5 == 0) recipient = address(0);
 
         vm.prank(campaignOwner);
         try escrow.setFeeConfig(feeBps, recipient) {} catch {}
