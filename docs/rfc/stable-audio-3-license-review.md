@@ -1,6 +1,6 @@
 ---
 title: "Stable Audio 3 — License & Rights Review (adopt-gate, #1193)"
-status: draft
+status: resolved
 issues:
   - "https://github.com/akoita/resonate/issues/1193"
 related:
@@ -140,6 +140,82 @@ Community License Agreement and capture the exact attribution/notice wording,
 (b) cross-check the Gemma Prohibited Use Policy against Resonate's AI-feature
 AUP, and (c) note the Stability Enterprise contact as a threshold milestone so
 the $1M transition is planned, not scrambled.
+
+## Determinations (2026-07-04) — full license texts read, open items resolved
+
+The full **Stability AI Community License Agreement** (stability.ai, "Last
+Updated: July 5, 2024"), the **Gemma Terms of Use** (ai.google.dev, "Last
+modified: April 1, 2026" — T5Gemma is expressly listed in its Appendix), and
+the **Gemma Prohibited Use Policy** were retrieved and read verbatim. The
+stable-audio-3-medium HF repo physically redistributes the T5Gemma encoder
+(`t5gemma-b-b-ul2/`, `LICENSE_GEMMA.md`, `NOTICE`), and its click-through gate
+binds the downloader to the Gemma Terms including §3.2. Determinations:
+
+### D1 — Attribution applies to the hosted service (broader than assumed)
+
+Community License §IV(a) triggers on distributing the materials **"or a
+product or service that uses any portion of them"** — a hosted remix service
+is captured. Obligations: (i) make the Agreement available to users (link in
+product docs), (ii) keep the required NOTICE text with our copies, and (iii)
+**"prominently display 'Powered by Stability AI' on a related website, user
+interface, blogpost, about page, or product documentation."** → Pre-launch
+task: attribution in the Remix Studio UI + feature docs (tracked below).
+
+### D2 — Commercial use requires registration with Stability (new finding)
+
+§III: *"If You are using or distributing the Stability AI Materials for a
+Commercial Purpose, You must register with Stability AI."* "Commercial
+Purpose" expressly includes hosted services. → **Register with Stability AI
+before enabling the provider in production, and unambiguously before billing
+generations (ADR-BM-3 dependency).** Registration is free below the threshold.
+
+### D3 — The $1M threshold is TOTAL revenue and auto-terminates
+
+§III: crossing **USD $1M annual revenue — "regardless of whether that revenue
+is generated directly or indirectly from the Stability AI Materials"** —
+terminates the license automatically; an Enterprise license is then at
+Stability's discretion. The license is also expressly **revocable** and
+terminates on litigation against Stability. → Keep "Stability Enterprise
+agreement" as a hard revenue-milestone task; treat the provider as a
+replaceable boundary (fallbacks #1190/#1192 already shipped).
+
+### D4 — Gemma flow-down resolved: one real obligation
+
+- Gemma Terms §1.1(b): a **Hosted Service is a Distribution** — serving SA3
+  generations (which use Gemma's text-conditioning functionality) is captured.
+- §1.1(e)+(f): **Outputs are not Model Derivatives**; §3.3: *"Google claims no
+  rights in Outputs"* — our users receive Outputs only, so the
+  copy-of-agreement duty for recipients of "Gemma or Model Derivatives" is not
+  triggered by serving audio.
+- §3.1: the NOTICE-file duty is **expressly carved out for Hosted Services**.
+- The one binding flow-down: §3.1 requires the **§3.2 use restrictions (the
+  Prohibited Use Policy) as an enforceable provision in the terms governing
+  the service**, with notice to users. → Resolved by
+  `docs/compliance/ai_generation_acceptable_use.md` (PUP-mapped AUP), which
+  must be reflected in the user-facing terms when AI generation ships to real
+  users. Google retains remote-restriction and update rights — same
+  replaceable-boundary posture as D3.
+
+### D5 — Output ownership confirmed at both layers
+
+Community License §IV(c)(iii): we own Model outputs. Gemma §3.3: Google claims
+no rights in Outputs. → The marketplace/licensing chain for AI-assisted drafts
+is built on owned outputs. (We remain responsible for outputs — the PUP's
+first category is rights-infringing content, aligning with the
+rights-gated-remix design and #1164.)
+
+### Final go/no-go
+
+**GO — adoption stands** (provider shipped behind `REMIX_GENERATION_PROVIDER_KIND`,
+default off in prod). Pre-launch obligations, all tracked:
+
+| # | Obligation | Owner | When |
+| --- | --- | --- | --- |
+| 1 | "Powered by Stability AI" in Remix Studio UI + docs; link Community License; keep NOTICE | [#1342](https://github.com/akoita/resonate/issues/1342) | before enabling provider for real users |
+| 2 | Register with Stability AI (free, §III) | operator (@akoita), tracked in #1342 | before prod enable; hard-required before billing (ADR-BM-3) |
+| 3 | PUP-mapped AUP enforceable in user-facing terms | `docs/compliance/ai_generation_acceptable_use.md` → ToS task under #1164 | before real-user launch |
+| 4 | Prompt-safety moderation for the self-hosted path (no vendor filter, unlike Lyria) | [#1343](https://github.com/akoita/resonate/issues/1343) (under #1164) | before real-user launch |
+| 5 | Stability Enterprise contact at the $1M revenue milestone | operator | revenue milestone |
 
 ## Sources
 
