@@ -245,6 +245,15 @@ before an artist takes booking risk.
 | Smart-contract escrow | Keeps funds conditional and refund-first. |
 | Public campaign page | Gives artists, promoters, and fans a shared source of truth. |
 
+**Campaign fee (canonical — ADR-BM-1, accepted 2026-07-04):** Resonate charges
+a **6% platform fee, only on successfully funded campaigns**, deducted at
+release time (never at pledge time). Failed or cancelled campaigns refund
+**100%** of pledges — the refund-first promise stays intact. The fee must be
+displayed honestly on campaign pages, and the fee parameter (basis points +
+fee recipient) must be part of `ShowCampaignEscrow` **before** the production
+deploy, with funds-conservation invariants covering the fee sink. Decision
+record: `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-1.
+
 **Why this belongs in the business model:** every successful campaign creates
 ticket/drop conversion opportunities, campaign fees, and stronger artist
 retention. Every failed campaign still teaches the artist where demand is not yet

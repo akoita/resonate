@@ -23,7 +23,12 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-1 — Shows campaign platform fee
 
-- **Decision (proposed):** 6% platform fee, charged **only on successfully
+> **Status: ACCEPTED — 2026-07-04, confirmed by @akoita.** Canonical fee
+> reconciled into `docs/rfc/business-model.md` (Layer 4). Implementation
+> tracked in [#1330](https://github.com/akoita/resonate/issues/1330)
+> (blocking for the #1271 production go-live).
+
+- **Decision (accepted):** 6% platform fee, charged **only on successfully
   funded campaigns**, deducted at release time (not at pledge time). Failed or
   cancelled campaigns refund 100% of pledges — the refund-first promise stays
   intact.
