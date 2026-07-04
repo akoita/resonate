@@ -14,6 +14,9 @@ docs, roadmap issues, and implementation milestones into a product direction.
 
 | Document | Purpose |
 | --- | --- |
+| [Business Model Review 2026-07](business-model-review-2026-07.md) | Full review of the business model against repo state and researched 2024–2026 industry data (streaming economics, distributor/direct-upload landscape, AI-content flood, web3-music track record, stem/beat marketplace comps). Defines the updated positioning, five sequenced revenue lines, payout doctrine, red lines, and phased activation roadmap. |
+| [Business Model Phase-0 Decisions](business-model-phase0-decisions.md) | Six ADR-style monetization decisions (ADR-BM-1…6): Shows campaign fee, marketplace take-rate alignment, AI generation credits, payout doctrine & red lines, monetization identity policy, revenue-line sequencing — with ready-to-file issue commands. |
+| [Unit Economics Model 2026-07](business-model-unit-economics-2026-07.xlsx) | Editable scenario spreadsheet (Conservative/Base/Ambitious): revenue-line assumptions → platform MRR/ARR, $ routed to artists, and an 18-month activation ramp aligned to the roadmap phases. |
 | [Next-Generation Music Platform Analysis](next_generation_music_platform_analysis.md) | Synthesizes the product gap between the current Resonate platform and the stronger music-native product direction across listening, artist economics, creation, rights, Shows, and community. |
 | [Next-Generation Music Platform Execution Plan](next_generation_music_platform_execution_plan.md) | Converts the analysis into phased execution: player action layer, durable taste memory, community identity, artist rooms, campaign rooms, remix bridge, artist action cockpit, cohorts, and Discord bridge. |
 | [External Agent Application UX](agent_ui_ux_relevance.md) | Defines how outside LLM and agentic applications experience Resonate through MCP, x402, OpenAPI, storefront contracts, quotes, errors, receipts, examples, and registry readiness. |
