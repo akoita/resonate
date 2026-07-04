@@ -20,6 +20,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant MAX_DEPOSIT_RELEASE_BPS = 3000;
+    uint256 public constant MAX_CAMPAIGN_FEE_BPS = 1000;
     uint256 public constant BPS_DENOMINATOR = 10_000;
 
     /// @notice Bounds for `disputeWindowSeconds`: a non-zero floor guarantees backers
@@ -30,6 +31,12 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
 
     uint256 public nextCampaignId = 1;
     bool public paused;
+    /// @notice Default fee rate snapshotted into each campaign at creation: the rate is a
+    /// backer-facing term and never changes for an existing campaign. The recipient is
+    /// deliberately NOT snapshotted — it is the platform's own wallet, read at charge
+    /// time, so it stays rotatable (e.g. key compromise) without touching campaign terms.
+    uint256 public campaignFeeBps;
+    address public feeRecipient;
 
     mapping(uint256 => Campaign) public campaigns;
     mapping(uint256 => mapping(address => uint256)) public pledgedByBacker;
@@ -51,7 +58,13 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor(address _owner) Ownable(_owner) {}
+    constructor(address _owner, uint256 _feeBps, address _feeRecipient) Ownable(_owner) {
+        _setFeeConfig(_feeBps, _feeRecipient);
+    }
+
+    function setFeeConfig(uint256 _feeBps, address _feeRecipient) external onlyOwner {
+        _setFeeConfig(_feeBps, _feeRecipient);
+    }
 
     function createCampaign(
         bytes32 artistIdHash,
@@ -98,7 +111,9 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
             totalReleased: 0,
             uniqueBackers: 0,
             fulfilledAt: 0,
-            status: CampaignStatus.Draft
+            status: CampaignStatus.Draft,
+            feeBps: campaignFeeBps,
+            totalFeePaid: 0
         });
 
         emit CampaignCreated(
@@ -217,12 +232,20 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         if (campaign.status != CampaignStatus.BookingConfirmed) revert InvalidStatus(campaignId, campaign.status);
         if (campaign.depositReleaseBps == 0) revert DepositUnavailable(campaignId, campaign.depositReleaseBps, 0);
 
-        uint256 amount = campaign.totalPledged * campaign.depositReleaseBps / BPS_DENOMINATOR;
-        if (amount == 0) revert DepositUnavailable(campaignId, campaign.depositReleaseBps, amount);
-        campaign.totalReleased += amount;
+        uint256 gross = campaign.totalPledged * campaign.depositReleaseBps / BPS_DENOMINATOR;
+        if (gross == 0) revert DepositUnavailable(campaignId, campaign.depositReleaseBps, gross);
+        (uint256 net, uint256 fee) = _netAndFee(gross, campaign.feeBps);
+        campaign.totalReleased += gross;
+        campaign.totalFeePaid += fee;
         campaign.status = CampaignStatus.DepositReleased;
-        IERC20(campaign.paymentToken).safeTransfer(campaign.beneficiary, amount);
-        emit DepositReleased(campaignId, campaign.beneficiary, amount);
+        IERC20 token = IERC20(campaign.paymentToken);
+        address recipient = feeRecipient;
+        token.safeTransfer(campaign.beneficiary, net);
+        if (fee != 0) {
+            token.safeTransfer(recipient, fee);
+            emit FeeCharged(campaignId, recipient, fee);
+        }
+        emit DepositReleased(campaignId, campaign.beneficiary, net);
     }
 
     function confirmFulfillment(uint256 campaignId) external onlyConfirmer {
@@ -244,12 +267,20 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
             );
         }
 
-        uint256 amount = campaign.totalPledged - campaign.totalRefunded - campaign.totalReleased;
-        if (amount == 0) revert NothingToRelease(campaignId);
-        campaign.totalReleased += amount;
+        uint256 gross = campaign.totalPledged - campaign.totalRefunded - campaign.totalReleased;
+        if (gross == 0) revert NothingToRelease(campaignId);
+        (uint256 net, uint256 fee) = _netAndFee(gross, campaign.feeBps);
+        campaign.totalReleased += gross;
+        campaign.totalFeePaid += fee;
         campaign.status = CampaignStatus.Released;
-        IERC20(campaign.paymentToken).safeTransfer(campaign.beneficiary, amount);
-        emit FundsReleased(campaignId, campaign.beneficiary, amount);
+        IERC20 token = IERC20(campaign.paymentToken);
+        address recipient = feeRecipient;
+        token.safeTransfer(campaign.beneficiary, net);
+        if (fee != 0) {
+            token.safeTransfer(recipient, fee);
+            emit FeeCharged(campaignId, recipient, fee);
+        }
+        emit FundsReleased(campaignId, campaign.beneficiary, net);
     }
 
     function claimRefund(uint256 campaignId) external nonReentrant {
@@ -338,6 +369,11 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         return (campaign.totalPledged, campaign.totalRefunded, campaign.totalReleased);
     }
 
+    function campaignFees(uint256 campaignId) external view returns (uint256 feeBps, uint256 totalFeePaid) {
+        Campaign storage campaign = _campaign(campaignId);
+        return (campaign.feeBps, campaign.totalFeePaid);
+    }
+
     function releasable(uint256 campaignId) external view returns (uint256) {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Fulfilled) return 0;
@@ -365,5 +401,22 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         return status == CampaignStatus.Draft || status == CampaignStatus.Active || status == CampaignStatus.Funded
             || status == CampaignStatus.BookingConfirmed || status == CampaignStatus.DepositReleased
             || status == CampaignStatus.Fulfilled;
+    }
+
+    function _setFeeConfig(uint256 _feeBps, address _feeRecipient) internal {
+        if (_feeBps > MAX_CAMPAIGN_FEE_BPS) revert InvalidFeeBps(_feeBps, MAX_CAMPAIGN_FEE_BPS);
+        // The recipient must be valid even at 0 bps: releases read it at charge time,
+        // and an in-flight campaign may carry a non-zero snapshotted rate, so a zero
+        // recipient could otherwise brick releaseDeposit/releaseFunds.
+        if (_feeRecipient == address(0) || _feeRecipient == address(this)) revert ZeroAddress();
+
+        campaignFeeBps = _feeBps;
+        feeRecipient = _feeRecipient;
+        emit FeeConfigUpdated(_feeBps, _feeRecipient);
+    }
+
+    function _netAndFee(uint256 gross, uint256 feeBps) internal pure returns (uint256 net, uint256 fee) {
+        fee = gross * feeBps / BPS_DENOMINATOR;
+        net = gross - fee;
     }
 }

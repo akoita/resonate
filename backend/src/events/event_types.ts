@@ -221,6 +221,27 @@ export interface ShowCampaignReconciliationMismatchEvent extends BaseEvent {
   reason: string;
 }
 
+export interface ShowCampaignSettledEvent extends BaseEvent {
+  eventName: "shows.campaign_settled";
+  campaignId: string;
+  campaignSlug: string;
+  artistId?: string;
+  contractCampaignId: string;
+  settlementStage: "deposit" | "final";
+  grossAmountUnits: string;
+  feeAmountUnits: string;
+  netAmountUnits: string;
+  feeBps?: number;
+  totalFeePaidUnits: string;
+  paymentAssetSymbol: string;
+  paymentAssetDecimals: number;
+  paymentToken?: string;
+  chainId: number;
+  contractAddress: string;
+  transactionHash: string;
+  blockNumber: string;
+}
+
 export interface RemixPublishedEvent extends BaseEvent {
   eventName: "remix.published";
   remixProjectId: string;
@@ -1285,6 +1306,7 @@ export type ResonateEvent =
   | RemixEncryptedRenderAuthorizedEvent
   | RemixEncryptedRenderDeniedEvent
   | ShowCampaignReconciliationMismatchEvent
+  | ShowCampaignSettledEvent
   | RemixPublishedEvent
   | RemixExportedEvent
   | ArtistRemixConsentUpdatedEvent

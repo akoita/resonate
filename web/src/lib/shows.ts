@@ -41,6 +41,17 @@ export interface ShowCampaignDispute {
   resolvedAt?: string | null;
 }
 
+export interface CampaignFeeBreakdown {
+  feeBps: number | null;
+  totalFeePaidUnits: string;
+  grossReleasedUnits: string;
+  netReleasedToArtistUnits: string;
+  estimatedFeeAtGoalUnits: string | null;
+  estimatedNetToArtistAtGoalUnits: string | null;
+  feeChargedOnlyOnSuccessfulRelease: boolean;
+  refundFeeUnits: string;
+}
+
 export interface Campaign {
   id: string;
   backendId: string;
@@ -70,6 +81,7 @@ export interface Campaign {
   currency: "EUR" | "USD";
   // #949 trust/terms fields from the public DTO.
   paymentAssetSymbol?: string | null;
+  paymentAssetDecimals?: number | null;
   chainId?: number | null;
   releasePolicy?: string | null;
   depositReleaseBps?: number | null;
@@ -77,6 +89,9 @@ export interface Campaign {
   onChainStatus?: string | null;
   totalRefundedUnits?: string | null;
   totalReleasedUnits?: string | null;
+  feeBps?: number | null;
+  totalFeePaidUnits?: string | null;
+  campaignFeeBreakdown?: CampaignFeeBreakdown | null;
   // #950 fan-visible dispute state (no operator notes / reason / initiator).
   disputeStatus?: string | null;
   disputeWindowClosesAt?: string | null;
@@ -352,6 +367,21 @@ export function releasePolicyLabel(policy?: string | null): string {
   }
 }
 
+export function formatCampaignFeePercent(feeBps?: number | null): string | null {
+  if (feeBps == null || !Number.isSafeInteger(feeBps) || feeBps <= 0) return null;
+  const percent = feeBps / 100;
+  const display = Number.isInteger(percent)
+    ? percent.toFixed(0)
+    : percent.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${display}%`;
+}
+
+export function campaignFeeNotice(campaign: Pick<Campaign, "feeBps">): string | null {
+  const percent = formatCampaignFeePercent(campaign.feeBps);
+  if (!percent) return null;
+  return `A ${percent} platform fee applies only if the campaign is funded — deducted from the artist payout at release. If the campaign fails, you are refunded 100%.`;
+}
+
 export function maskAddress(address?: string | null): string {
   if (!address) return "—";
   const value = address.trim();
@@ -385,7 +415,7 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
     campaign.depositReleaseBps != null
       ? `${(campaign.depositReleaseBps / 100).toFixed(campaign.depositReleaseBps % 100 === 0 ? 0 : 2)}%`
       : "—";
-  return [
+  const terms: CampaignTerm[] = [
     { label: "Funding goal", value: formatMoney(campaign.goalCents, campaign.currency) },
     { label: "Funding deadline", value: fmtDate(campaign.deadline) },
     {
@@ -401,6 +431,14 @@ export function campaignTerms(campaign: Campaign): CampaignTerm[] {
     { label: "Dispute window", value: formatDisputeWindow(campaign.disputeWindowSeconds) },
     { label: "Refund policy", value: releasePolicyLabel(campaign.releasePolicy) },
   ];
+  const feePercent = formatCampaignFeePercent(campaign.feeBps);
+  if (feePercent) {
+    terms.push({
+      label: "Platform fee",
+      value: `${feePercent} success-only; refunds fee-free`,
+    });
+  }
+  return terms;
 }
 
 /**
@@ -422,6 +460,10 @@ export function pledgeConfirmSummary(
     if (value && value !== "—") {
       lines.push(`${label}: ${value}`);
     }
+  }
+  const feeNotice = campaignFeeNotice(campaign);
+  if (feeNotice) {
+    lines.push(`Platform fee: ${feeNotice}`);
   }
   lines.push("");
   lines.push(
@@ -773,6 +815,10 @@ type BackendShowCampaign = {
   onChainStatus?: string | null;
   totalRefundedUnits?: string | null;
   totalReleasedUnits?: string | null;
+  feeBps?: number | null;
+  totalFeePaid?: string | null;
+  totalFeePaidUnits?: string | null;
+  campaignFeeBreakdown?: CampaignFeeBreakdown | null;
   disputeStatus?: string | null;
   disputeWindowClosesAt?: string | null;
   // #949 managed-read-only fields (operator/owner scoped). The managed DTO's
@@ -1649,6 +1695,7 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     raisedCents: unitsToCents(campaign.raisedAmountUnits, decimals),
     currency: campaign.currency === "EUR" ? "EUR" : "USD",
     paymentAssetSymbol: campaign.paymentAssetSymbol ?? "USDC",
+    paymentAssetDecimals: decimals,
     chainId: campaign.chainId ?? null,
     releasePolicy: campaign.releasePolicy ?? null,
     depositReleaseBps: campaign.depositReleaseBps ?? null,
@@ -1656,6 +1703,9 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     onChainStatus: campaign.onChainStatus ?? null,
     totalRefundedUnits: campaign.totalRefundedUnits ?? null,
     totalReleasedUnits: campaign.totalReleasedUnits ?? null,
+    feeBps: Number.isSafeInteger(campaign.feeBps) ? campaign.feeBps : null,
+    totalFeePaidUnits: campaign.totalFeePaidUnits ?? campaign.totalFeePaid ?? null,
+    campaignFeeBreakdown: campaign.campaignFeeBreakdown ?? null,
     disputeStatus: campaign.disputeStatus ?? null,
     disputeWindowClosesAt: campaign.disputeWindowClosesAt ?? null,
     // Managed-read-only; undefined on the public read. The mapper passes them

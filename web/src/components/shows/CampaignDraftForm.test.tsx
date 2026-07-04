@@ -42,12 +42,24 @@ const baseCampaign = {
   raisedCents: 0,
   currency: "USD",
   paymentAssetSymbol: "USDC",
+  paymentAssetDecimals: 6,
   chainId: 84532,
   releasePolicy: "staged_release",
   depositReleaseBps: 1000,
   disputeWindowSeconds: 604800,
   backerCount: 0,
   thresholdBackers: 100,
+  feeBps: 600,
+  campaignFeeBreakdown: {
+    feeBps: 600,
+    totalFeePaidUnits: "0",
+    grossReleasedUnits: "0",
+    netReleasedToArtistUnits: "0",
+    estimatedFeeAtGoalUnits: "180000000",
+    estimatedNetToArtistAtGoalUnits: "2820000000",
+    feeChargedOnlyOnSuccessfulRelease: true,
+    refundFeeUnits: "0",
+  },
   heroImage: "",
   cardImage: "",
   visuals: [],
@@ -66,6 +78,9 @@ describe("CampaignDraftForm approved-terms lock (#946)", () => {
     const html = renderToStaticMarkup(<CampaignDraftForm campaign={baseCampaign} />);
     expect(html).toContain("Approved terms are locked");
     expect(html).toContain("revoke artist authority");
+    expect(html).toContain("Estimated artist payout at goal");
+    expect(html).toContain("2820 USDC");
+    expect(html).toContain("failed campaigns refund backers 100%");
     // goal, min backers, both deadlines, payment token, beneficiary, plus the
     // tier title/amount inputs and the add-tier control are all disabled.
     expect(countDisabled(html)).toBeGreaterThanOrEqual(8);

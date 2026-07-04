@@ -888,7 +888,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["shows", "campaign", "pledge", "back", "fund", "escrow", "refund", "concert", "demand", "signal", "tickets"],
+    keywords: ["shows", "campaign", "pledge", "back", "fund", "escrow", "refund", "concert", "demand", "signal", "tickets", "fee"],
     sections: [
       {
         id: "how-it-works",
@@ -929,6 +929,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Pledging only opens once a campaign is an artist-authorized escrow campaign. Until then — while it's still a demand signal or awaiting artist authority — the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
           },
           {
+            kind: "paragraph",
+            text: "Some funded campaigns include a platform fee shown on the campaign page before you pledge. That fee is deducted from the artist payout only if the campaign succeeds and funds are released. If the campaign misses its goal or moves to refunds, backers are refunded 100% of their pledge.",
+          },
+          {
             kind: "figure",
             figure: {
               src: `${SHOT}/show-campaign.png`,
@@ -949,6 +953,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "The fan-risk terms are approved by the artist and then locked — they can't be quietly changed after you pledge.",
+              "The campaign page shows any success-only platform fee up front, including that it comes from the artist payout and never from failed-campaign refunds.",
               "You can view the escrow contract that holds the funds.",
               "If the goal isn't met or the show isn't confirmed, your pledge is refunded automatically.",
               "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
@@ -972,7 +977,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["artist", "operator"],
     status: "partial",
-    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist"],
+    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee"],
     sections: [
       {
         id: "create",
@@ -995,6 +1000,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Open demand signals are low-friction and anyone can gather them. Escalating a campaign to authorized, escrow-backed pledging is an operator-reviewed step — and once that authority is granted, the artist-approved terms are locked so backers can trust them.",
+          },
+          {
+            kind: "paragraph",
+            text: "When a campaign has a platform fee, the management view shows the estimated net artist payout at the goal. The fee is charged only on successful release, so failed campaigns still refund backers in full.",
           },
         ],
       },

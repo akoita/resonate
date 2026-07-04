@@ -553,6 +553,35 @@ describe("ShowsService integration", () => {
     )).rejects.toThrow(BadRequestException);
   });
 
+  it("exposes campaign fee accounting and goal payout estimates", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Marseille");
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        feeBps: 600,
+        totalReleasedUnits: "1000000",
+        totalFeePaidUnits: "60000",
+      },
+    });
+
+    const publicCampaign = await service.getCampaign(campaign.slug);
+    expect(publicCampaign).toMatchObject({
+      feeBps: 600,
+      totalFeePaid: "60000",
+      totalFeePaidUnits: "60000",
+      campaignFeeBreakdown: {
+        feeBps: 600,
+        totalFeePaidUnits: "60000",
+        grossReleasedUnits: "1000000",
+        netReleasedToArtistUnits: "940000",
+        estimatedFeeAtGoalUnits: "180000",
+        estimatedNetToArtistAtGoalUnits: "2820000",
+        feeChargedOnlyOnSuccessfulRelease: true,
+        refundFeeUnits: "0",
+      },
+    });
+  });
+
   it("requires approved artist authority before activation", async () => {
     const campaign = await service.createDraftCampaign(
       { userId, role: "artist" },

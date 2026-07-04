@@ -1142,6 +1142,53 @@ describe("AnalyticsDomainEventBridgeService", () => {
 
     await waitForExpect(() => expect(ingest.ingest).toHaveBeenCalledTimes(1));
   });
+
+  it("bridges show campaign settlement fee fields", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    eventBus.publish({
+      eventName: "shows.campaign_settled",
+      eventVersion: 1,
+      occurredAt: "2026-07-04T10:00:00.000Z",
+      campaignId: "campaign_fee_1",
+      campaignSlug: "campaign-fee-1",
+      artistId: "artist_fee_1",
+      contractCampaignId: "7",
+      settlementStage: "final",
+      grossAmountUnits: "1000",
+      feeAmountUnits: "60",
+      netAmountUnits: "940",
+      feeBps: 600,
+      totalFeePaidUnits: "60",
+      paymentAssetSymbol: "USDC",
+      paymentAssetDecimals: 6,
+      paymentToken: "0x1111111111111111111111111111111111111111",
+      chainId: 31337,
+      contractAddress: "0x2222222222222222222222222222222222222222",
+      transactionHash: "0x" + "33".repeat(32),
+      blockNumber: "123",
+    });
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    const [event] = await ingest.listEvents();
+    expect(event).toEqual(expect.objectContaining({
+      eventName: "shows.campaign_settled",
+      producer: "shows-escrow-indexer",
+      subjectType: "show_campaign",
+      subjectId: "campaign_fee_1",
+      actorId: "artist_fee_1",
+      payload: expect.objectContaining({
+        grossAmountUnits: "1000",
+        feeAmountUnits: "60",
+        netAmountUnits: "940",
+        feeBps: 600,
+        totalFeePaidUnits: "60",
+      }),
+    }));
+  });
 });
 
 async function waitForExpect(assertion: () => void | Promise<void>) {

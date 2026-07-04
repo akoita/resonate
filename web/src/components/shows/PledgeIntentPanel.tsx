@@ -13,6 +13,7 @@ import { getExplorerTxUrl } from "../../lib/explorer";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   campaignPledgeAvailability,
+  campaignFeeNotice,
   createPledgeIntent,
   formatMoney,
   listMyShowPledges,
@@ -72,6 +73,7 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     )
     : null;
   const latestPledgeCampaignStatus = latestPledge?.campaign?.status ?? campaign.rawStatus;
+  const feeNotice = campaignFeeNotice(campaign);
   const refundAvailable = Boolean(
     latestPledge &&
     latestPledge.status !== "refunded" &&
@@ -266,6 +268,10 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
         >
           {buttonLabel}
         </button>
+      ) : null}
+
+      {pledgingOpen && feeNotice ? (
+        <p className="show-detail__fee-note">{feeNotice}</p>
       ) : null}
 
       {intent ? (

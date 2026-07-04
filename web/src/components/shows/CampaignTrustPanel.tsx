@@ -1,6 +1,7 @@
 import {
   campaignTrustState,
   campaignTerms,
+  campaignFeeNotice,
   campaignDisputeView,
   maskAddress,
   type Campaign,
@@ -56,6 +57,7 @@ function humanizeBeneficiaryType(type?: string | null): string {
 export function CampaignTrustPanel({ campaign }: Props) {
   const trust = campaignTrustState(campaign);
   const terms = campaignTerms(campaign);
+  const feeNotice = campaignFeeNotice(campaign);
   const dispute = campaignDisputeView(campaign);
   // Only surface the dispute row when there's something to say: an active or
   // resolved dispute, or an open post-fulfillment dispute window.
@@ -97,6 +99,9 @@ export function CampaignTrustPanel({ campaign }: Props) {
           Funding proves demand; it does not guarantee a ticket. Funds release only
           after booking and fulfillment under the campaign&apos;s published policy.
         </p>
+        {feeNotice ? (
+          <p className="campaign-trust__fee-note">{feeNotice}</p>
+        ) : null}
       </div>
 
       {showDispute ? (

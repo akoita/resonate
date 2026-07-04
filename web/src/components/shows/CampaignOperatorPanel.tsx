@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   activateShowCampaign,
   approveShowCampaignAuthority,
   cancelShowCampaign,
+  formatCampaignFeePercent,
   confirmShowCampaignBooking,
   confirmShowCampaignFulfillment,
   getManagedShowCampaign,
@@ -32,6 +34,16 @@ const AUTHORIZED_STATUSES = ["artist_authorized", "trusted_source_authorized"];
 
 function formatStatus(value?: string | null) {
   return value ? value.replaceAll("_", " ") : "not set";
+}
+
+function campaignNetEstimate(campaign: Campaign) {
+  const netUnits = campaign.campaignFeeBreakdown?.estimatedNetToArtistAtGoalUnits;
+  if (!netUnits) return null;
+  return formatPaymentAmountWithSymbol(
+    netUnits,
+    campaign.paymentAssetDecimals ?? 6,
+    campaign.paymentAssetSymbol ?? campaign.currency,
+  );
 }
 
 export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
@@ -72,6 +84,8 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const canInitiateDispute =
     !openDispute &&
     ["booking_confirmed", "deposit_released", "fulfilled"].includes(current.rawStatus);
+  const netEstimateAtGoal = campaignNetEstimate(current);
+  const feePercent = formatCampaignFeePercent(current.feeBps);
 
   const busy = pending !== null;
   const statusRows = useMemo(
@@ -83,6 +97,9 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
       ["Contract", current.contractCampaignId && current.escrowContractAddress
         ? `${current.contractCampaignId} · ${current.escrowContractAddress}`
         : current.escrowContractAddress ?? "not linked"],
+      ...(netEstimateAtGoal
+        ? [["Artist net at goal", feePercent ? `${netEstimateAtGoal} after ${feePercent} fee` : netEstimateAtGoal] as [string, string]]
+        : []),
       ...(current.bookingEvidenceBundleId
         ? [["Booking evidence", current.bookingEvidenceBundleId] as [string, string]]
         : []),
@@ -90,7 +107,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
         ? [["Fulfillment evidence", current.fulfillmentEvidenceBundleId] as [string, string]]
         : []),
     ],
-    [current],
+    [current, feePercent, netEstimateAtGoal],
   );
 
   // #949: the public read withholds the authority credential/evidence ids, so

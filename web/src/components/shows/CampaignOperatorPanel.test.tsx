@@ -40,12 +40,24 @@ const baseCampaign = {
   raisedCents: 120000,
   currency: "USD",
   paymentAssetSymbol: "USDC",
+  paymentAssetDecimals: 6,
   chainId: 84532,
   releasePolicy: "staged_release",
   depositReleaseBps: 1000,
   disputeWindowSeconds: 604800,
   backerCount: 4,
   thresholdBackers: 100,
+  feeBps: 600,
+  campaignFeeBreakdown: {
+    feeBps: 600,
+    totalFeePaidUnits: "0",
+    grossReleasedUnits: "0",
+    netReleasedToArtistUnits: "0",
+    estimatedFeeAtGoalUnits: "180000000",
+    estimatedNetToArtistAtGoalUnits: "2820000000",
+    feeChargedOnlyOnSuccessfulRelease: true,
+    refundFeeUnits: "0",
+  },
   heroImage: "",
   cardImage: "",
   visuals: [],
@@ -71,6 +83,8 @@ describe("CampaignOperatorPanel disputes (#950 operator controls)", () => {
   it("lets an operator raise a dispute in the booking → release window", () => {
     const html = renderToStaticMarkup(<CampaignOperatorPanel campaign={baseCampaign} />);
     expect(html).toContain("Disputes");
+    expect(html).toContain("Artist net at goal");
+    expect(html).toContain("2820 USDC after 6% fee");
     expect(html).toContain("Raise dispute");
     // The active hint (not the disabled-window hint) is shown when eligible.
     expect(html).toContain("Flag a problem between booking confirmation");

@@ -84,6 +84,24 @@ owner="$(
 )"
 owner="${owner:-${SHOW_CAMPAIGN_ESCROW_OWNER:-$deployer}}"
 
+fee_bps="$(
+  jq -r '
+    .transactions[]
+    | select(.transactionType == "CREATE" and .contractName == "ShowCampaignEscrow")
+    | .arguments[1] // empty
+  ' "$broadcast_file" | head -n 1
+)"
+fee_bps="${fee_bps:-${SHOW_CAMPAIGN_FEE_BPS:-600}}"
+
+fee_recipient="$(
+  jq -r '
+    .transactions[]
+    | select(.transactionType == "CREATE" and .contractName == "ShowCampaignEscrow")
+    | .arguments[2] // empty
+  ' "$broadcast_file" | head -n 1
+)"
+fee_recipient="${fee_recipient:-${SHOW_CAMPAIGN_FEE_RECIPIENT:-$owner}}"
+
 block_number="$(
   jq -r --arg tx "$deploy_tx" '
     .receipts[]?
@@ -106,6 +124,8 @@ jq -n \
   --argjson chainId "$chain_id" \
   --arg deployer "$deployer" \
   --arg owner "$owner" \
+  --argjson feeBps "$fee_bps" \
+  --arg feeRecipient "$fee_recipient" \
   --arg deployedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   --arg address "$contract_address" \
   --arg deployTx "$deploy_tx" \
@@ -119,6 +139,10 @@ jq -n \
     chainId: $chainId,
     deployer: $deployer,
     owner: $owner,
+    feeConfig: {
+      feeBps: $feeBps,
+      feeRecipient: $feeRecipient
+    },
     deployedAt: $deployedAt,
     contracts: {
       ShowCampaignEscrow: $address
@@ -147,6 +171,8 @@ cat > "$remote_env_file" <<EOF
 NEXT_PUBLIC_CHAIN_ID=$chain_id
 SHOW_CAMPAIGN_ESCROW_ADDRESS=$contract_address
 NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=$contract_address
+SHOW_CAMPAIGN_FEE_BPS=$fee_bps
+SHOW_CAMPAIGN_FEE_RECIPIENT=$fee_recipient
 EOF
 
 echo "ShowCampaignEscrow deployment record: $record_file"
