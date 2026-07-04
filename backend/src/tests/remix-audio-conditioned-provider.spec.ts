@@ -10,6 +10,16 @@ jest.mock("google-auth-library", () => ({
   })),
 }));
 
+// The provider calls the worker through undici (its dedicated dispatcher
+// disables the 300s default headers timeout that killed cold starts).
+// Route it to the test's global fetch mock.
+jest.mock("undici", () => ({
+  Agent: jest.fn().mockImplementation(() => ({})),
+  FormData: global.FormData,
+  fetch: (...args: unknown[]) =>
+    (global.fetch as unknown as (...a: unknown[]) => unknown)(...args),
+}));
+
 import { AudioConditionedRemixGenerationProvider } from "../modules/remix/audio-conditioned-remix-generation.provider";
 import {
   RemixGenerationProviderError,

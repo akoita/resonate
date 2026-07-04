@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { GoogleAuth } from "google-auth-library";
+import { Agent, FormData as WorkerFormData, fetch as undiciFetch } from "undici";
 import { randomUUID } from "crypto";
 import { StorageProvider } from "../storage/storage_provider";
 import {
@@ -151,7 +152,7 @@ export class AudioConditionedRemixGenerationProvider
     sampleRate: number | null;
   }> {
     const { config } = args;
-    const form = new FormData();
+    const form = new WorkerFormData();
     form.append(
       "file",
       // Copy into a plain Uint8Array: Node's Buffer is backed by a (possibly
@@ -176,12 +177,19 @@ export class AudioConditionedRemixGenerationProvider
       headers.Authorization = `Bearer ${idToken}`;
     }
 
-    let response: Response;
+    let response: Awaited<ReturnType<typeof undiciFetch>>;
     try {
-      response = await fetch(`${config.workerUrl}/generate`, {
+      // undici (not global fetch): Node's built-in fetch enforces a default
+      // 300s headers timeout that fires BEFORE our AbortSignal during the
+      // worker's scale-to-zero cold start (~6 min incl. model load) — the
+      // first staging generation died at exactly 300s while the worker was
+      // still warming. The dedicated dispatcher disables undici's own
+      // timeouts so config.timeoutMs is the single source of truth.
+      response = await undiciFetch(`${config.workerUrl}/generate`, {
         method: "POST",
         body: form,
         headers,
+        dispatcher: this.workerDispatcher(),
         // Generous: absorbs the scale-to-zero cold start (~4 min model load)
         // plus generation. The job is already async/queued (#1167).
         signal: AbortSignal.timeout(config.timeoutMs),
@@ -234,6 +242,15 @@ export class AudioConditionedRemixGenerationProvider
 
   private googleAuth: GoogleAuth | null = null;
   private idTokenUnavailableLogged = false;
+  private dispatcher: Agent | null = null;
+
+  /** Lazy dispatcher with undici's built-in timeouts disabled: the request
+   *  can legitimately sit headers-less for the whole cold start, bounded
+   *  only by the AbortSignal above. */
+  private workerDispatcher(): Agent {
+    this.dispatcher ??= new Agent({ headersTimeout: 0, bodyTimeout: 0 });
+    return this.dispatcher;
+  }
 
   /**
    * Mint an identity token for the worker's audience (Cloud Run
@@ -323,7 +340,7 @@ function parseIntHeader(raw: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-async function safeReadText(response: Response): Promise<string> {
+async function safeReadText(response: { text(): Promise<string> }): Promise<string> {
   try {
     return (await response.text()).slice(0, 500);
   } catch {
