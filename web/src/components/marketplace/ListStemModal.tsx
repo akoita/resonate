@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useListStem, useStemBalance } from "../../hooks/useContracts";
+import { useListStem, useProtocolFee, useStemBalance, useStemData } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
@@ -24,6 +24,7 @@ import {
   LicenseTypeSelector,
   type LicenseType,
 } from "./LicenseTypeSelector";
+import { sellerNetProceedsLine } from "../../lib/marketplaceProceeds";
 
 interface ListStemModalProps {
   tokenId: bigint;
@@ -36,6 +37,8 @@ interface ListStemModalProps {
 
 export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: ListStemModalProps) {
   const { balance } = useStemBalance(tokenId);
+  const { data: stemData } = useStemData(tokenId);
+  const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
   const { list, pending, error, txHash } = useListStem();
   const { address, smartAccountAddress } = useAuth();
   const { addToast } = useToast();
@@ -168,6 +171,16 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
   const txExplorerUrl = getExplorerTxUrl(txHash);
   const editionHint = multiTierEditionHint({ balance, tier: licenseType });
   const manualPriceUsd = usdDenominated ? parseFloat(price) || 0 : 0;
+  const parsedAmount = Math.max(1, Number.parseInt(amount || "1", 10) || 1);
+  const proceedsLine = protocolFeeLoading
+    ? null
+    : sellerNetProceedsLine({
+      priceUnits,
+      quantity: BigInt(parsedAmount),
+      asset: listingAsset,
+      protocolFeeBps,
+      royaltyBps: stemData?.royaltyBps,
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -294,6 +307,9 @@ export function ListStemModal({ tokenId, stemId, isOpen, onClose, onSuccess }: L
                 {listingAsset ? `${listingAsset.name} (${listingSymbol})` : "Native ETH"}
               </span>
             </div>
+            {proceedsLine && (
+              <p className="text-xs text-zinc-400 pt-1">{proceedsLine}</p>
+            )}
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Expires</span>
               <span className="text-white">

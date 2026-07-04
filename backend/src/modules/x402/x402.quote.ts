@@ -1,4 +1,6 @@
-export type QuoteLicenseKey = "personal" | "remix" | "commercial";
+import type { X402LicenseKey, X402LicensePricing } from "./x402.config";
+
+export type QuoteLicenseKey = X402LicenseKey;
 
 export type X402QuoteInput = {
   stemId: string;
@@ -15,19 +17,34 @@ export type X402QuoteInput = {
   listingWei?: string | null;
   network: string;
   payTo: string;
+  licensePricing: X402LicensePricing;
 };
-
-const DEFAULT_PRICING = {
-  personal: 0.05,
-  remix: 5,
-  commercial: 25,
-} as const;
 
 export function formatUsdcAmount(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
 }
 
-function makeLicenseOption(key: QuoteLicenseKey, amount: number) {
+function toUsdBreakdown(amount: number, feeBps: number) {
+  const feeUsd = amount * feeBps / 10_000;
+  const netToSellerUsd = Math.max(0, amount - feeUsd);
+  return {
+    feeBps,
+    royaltyBps: null,
+    platformFee: {
+      currency: "USDC",
+      amount: formatUsdcAmount(feeUsd),
+      usd: feeUsd,
+    },
+    royalty: null,
+    netToSeller: {
+      currency: "USDC",
+      amount: formatUsdcAmount(netToSellerUsd),
+      usd: netToSellerUsd,
+    },
+  };
+}
+
+function makeLicenseOption(key: QuoteLicenseKey, amount: number, feeBps: number) {
   const normalized = formatUsdcAmount(amount);
   return {
     key,
@@ -36,22 +53,23 @@ function makeLicenseOption(key: QuoteLicenseKey, amount: number) {
       amount: normalized,
     },
     displayPrice: `${normalized} USDC`,
+    breakdown: toUsdBreakdown(amount, feeBps),
   };
 }
 
 export function buildStemX402Quote(input: X402QuoteInput) {
-  const personalPrice = input.basePlayPriceUsd ?? DEFAULT_PRICING.personal;
-  const remixPrice = input.remixLicenseUsd ?? DEFAULT_PRICING.remix;
+  const personalPrice = input.basePlayPriceUsd ?? input.licensePricing.personal.amountUsd;
+  const remixPrice = input.remixLicenseUsd ?? input.licensePricing.remix.amountUsd;
   const commercialPrice =
-    input.commercialLicenseUsd ?? DEFAULT_PRICING.commercial;
+    input.commercialLicenseUsd ?? input.licensePricing.commercial.amountUsd;
 
   const purchaseUrl = `/api/stems/${input.stemId}/x402`;
   const quoteUrl = `/api/stems/${input.stemId}/x402/info`;
 
   const licenseOptions = [
-    makeLicenseOption("personal", personalPrice),
-    makeLicenseOption("remix", remixPrice),
-    makeLicenseOption("commercial", commercialPrice),
+    makeLicenseOption("personal", personalPrice, input.licensePricing.personal.feeBps),
+    makeLicenseOption("remix", remixPrice, input.licensePricing.remix.feeBps),
+    makeLicenseOption("commercial", commercialPrice, input.licensePricing.commercial.feeBps),
   ];
 
   const fromAmount = formatUsdcAmount(personalPrice);

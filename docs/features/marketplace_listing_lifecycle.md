@@ -56,6 +56,9 @@ buyer and machine-commerce surfaces strict about availability.
   eligibility. Relist keeps the original listing's tier (tier change on relist
   is a deferred follow-up). Offering several tiers at once requires several
   editions, since one active listing consumes the listed units.
+- Seller listing and manager surfaces show estimated net proceeds from the
+  current marketplace protocol fee and the stem's royalty bps. These values
+  are derived from on-chain/API fields, not hardcoded display constants.
 
 ## How To Use
 
@@ -79,6 +82,8 @@ buyer and machine-commerce surfaces strict about availability.
   - `PATCH /api/metadata/notifications/:address/preferences`
 - Relisting uses the existing `StemMarketplaceV2.list` transaction path through
   `useListStem`; it does not mutate the expired listing.
+- Buyer quote-backed checkout surfaces expose price, royalty, platform fee,
+  seller proceeds, and total payment amounts where those fields are available.
 
 ## Lifecycle Semantics
 

@@ -1265,6 +1265,9 @@ export class ContractsService implements OnModuleInit {
             uri: true,
             artworkUrl: true,
             durationSeconds: true,
+            nftMint: {
+              select: { royaltyBps: true },
+            },
             track: {
               include: {
                 release: true
@@ -1484,6 +1487,9 @@ export class ContractsService implements OnModuleInit {
             uri: true,
             artworkUrl: true,
             durationSeconds: true,
+            nftMint: {
+              select: { royaltyBps: true },
+            },
             track: {
               include: {
                 release: true,
@@ -1623,6 +1629,7 @@ export class ContractsService implements OnModuleInit {
       include: {
         stem: {
           include: {
+            nftMint: true,
             track: {
               include: { release: true }
             }

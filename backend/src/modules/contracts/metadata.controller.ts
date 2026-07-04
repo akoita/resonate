@@ -654,6 +654,7 @@ export class MetadataController {
           price: l.pricePerUnit,
           paymentToken: l.paymentToken,
           licenseType: l.licenseType,
+          royaltyBps: stem?.nftMint?.royaltyBps ?? null,
           amount: l.amount.toString(),
           status: l.status,
           expiresAt: l.expiresAt.toISOString(),
@@ -782,6 +783,7 @@ export class MetadataController {
       amount: listing.amount.toString(),
       paymentToken: listing.paymentToken,
       licenseType: listing.licenseType,
+      royaltyBps: stem?.nftMint?.royaltyBps ?? null,
       status: listing.status,
       expiresAt: listing.expiresAt.toISOString(),
       listedAt: listing.listedAt.toISOString(),
@@ -847,6 +849,9 @@ export class MetadataController {
             type?: string | null;
           } | null;
         } | null;
+        nftMint?: {
+          royaltyBps: number;
+        } | null;
       } | null;
     },
     includeOwnerFields = false,
@@ -881,6 +886,7 @@ export class MetadataController {
       price: listing.pricePerUnit,
       paymentToken: listing.paymentToken,
       licenseType: listing.licenseType,
+      royaltyBps: stem?.nftMint?.royaltyBps ?? null,
       amount: listing.amount.toString(),
       status: listing.status,
       lifecycleStatus,

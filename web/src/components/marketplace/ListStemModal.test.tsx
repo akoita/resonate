@@ -10,6 +10,8 @@ vi.mock("../../hooks/useContracts", () => ({
     txHash: null,
   }),
   useStemBalance: () => ({ balance: 1n }),
+  useStemData: () => ({ data: { royaltyBps: 500n } }),
+  useProtocolFee: () => ({ feeBps: 1000n, loading: false }),
 }));
 vi.mock("../../hooks/usePaymentAssets", () => ({
   usePaymentAssets: () => ({

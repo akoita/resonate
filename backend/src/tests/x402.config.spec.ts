@@ -48,6 +48,32 @@ describe('X402Config', () => {
     expect(cfg.network).toBe('eip155:84532');
   });
 
+  it('uses canonical x402 license prices and take-rates by default', () => {
+    const cfg = createConfig();
+    expect(cfg.licensePricing).toEqual({
+      personal: { amountUsd: 0.05, feeBps: 1500 },
+      remix: { amountUsd: 5, feeBps: 1000 },
+      commercial: { amountUsd: 25, feeBps: 1000 },
+    });
+    expect(cfg.resolveLicenseAmountUsd(null, 'personal')).toBe(0.05);
+    expect(cfg.resolveLicenseAmountUsd(null, 'remix')).toBe(5);
+    expect(cfg.resolveLicenseAmountUsd(null, 'commercial')).toBe(25);
+  });
+
+  it('allows x402 license price and fee overrides from env', () => {
+    const cfg = createConfig({
+      X402_PERSONAL_PRICE_USD: '0.07',
+      X402_PERSONAL_FEE_BPS: '1200',
+    });
+    expect(cfg.licensePricing.personal).toEqual({ amountUsd: 0.07, feeBps: 1200 });
+  });
+
+  it('rejects invalid x402 fee bps overrides', () => {
+    expect(() => createConfig({ X402_REMIX_FEE_BPS: '10001' })).toThrow(
+      'X402_REMIX_FEE_BPS must be an integer between 0 and 10000',
+    );
+  });
+
   it('should allow custom network', () => {
     const cfg = createConfig({ X402_NETWORK: 'eip155:8453' });
     expect(cfg.network).toBe('eip155:8453');

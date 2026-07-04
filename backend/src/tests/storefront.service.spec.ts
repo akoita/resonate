@@ -1,6 +1,51 @@
 import { StorefrontService } from "../modules/storefront/storefront.service";
 import { X402Config } from "../modules/x402/x402.config";
 
+const licensePricing = {
+  personal: { amountUsd: 0.05, feeBps: 1500 },
+  remix: { amountUsd: 5, feeBps: 1000 },
+  commercial: { amountUsd: 25, feeBps: 1000 },
+};
+
+const licenseOptions = [
+  {
+    key: "personal",
+    price: { currency: "USDC", amount: "0.05" },
+    displayPrice: "0.05 USDC",
+    breakdown: {
+      feeBps: 1500,
+      royaltyBps: null,
+      platformFee: { currency: "USDC", amount: "0.0075", usd: 0.0075 },
+      royalty: null,
+      netToSeller: { currency: "USDC", amount: "0.0425", usd: 0.0425 },
+    },
+  },
+  {
+    key: "remix",
+    price: { currency: "USDC", amount: "5" },
+    displayPrice: "5 USDC",
+    breakdown: {
+      feeBps: 1000,
+      royaltyBps: null,
+      platformFee: { currency: "USDC", amount: "0.5", usd: 0.5 },
+      royalty: null,
+      netToSeller: { currency: "USDC", amount: "4.5", usd: 4.5 },
+    },
+  },
+  {
+    key: "commercial",
+    price: { currency: "USDC", amount: "25" },
+    displayPrice: "25 USDC",
+    breakdown: {
+      feeBps: 1000,
+      royaltyBps: null,
+      platformFee: { currency: "USDC", amount: "2.5", usd: 2.5 },
+      royalty: null,
+      netToSeller: { currency: "USDC", amount: "22.5", usd: 22.5 },
+    },
+  },
+];
+
 function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
   return {
     enabled: true,
@@ -8,6 +53,7 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     facilitatorUrl: "https://x402.org/facilitator",
     network: "eip155:84532",
     chainId: 84532,
+    licensePricing,
     ...overrides,
   } as unknown as X402Config;
 }
@@ -67,23 +113,7 @@ describe("StorefrontService", () => {
         display: "0.05 USDC",
         usd: 0.05,
       },
-      licenseOptions: [
-        {
-          key: "personal",
-          price: { currency: "USDC", amount: "0.05" },
-          displayPrice: "0.05 USDC",
-        },
-        {
-          key: "remix",
-          price: { currency: "USDC", amount: "5" },
-          displayPrice: "5 USDC",
-        },
-        {
-          key: "commercial",
-          price: { currency: "USDC", amount: "25" },
-          displayPrice: "25 USDC",
-        },
-      ],
+      licenseOptions,
       priceSummary: {
         currency: "USDC",
         from: "0.05",
@@ -151,23 +181,7 @@ describe("StorefrontService", () => {
     });
     expect(result.pricing).toEqual({
       currency: "USDC",
-      licenses: [
-        {
-          key: "personal",
-          price: { currency: "USDC", amount: "0.05" },
-          displayPrice: "0.05 USDC",
-        },
-        {
-          key: "remix",
-          price: { currency: "USDC", amount: "5" },
-          displayPrice: "5 USDC",
-        },
-        {
-          key: "commercial",
-          price: { currency: "USDC", amount: "25" },
-          displayPrice: "25 USDC",
-        },
-      ],
+      licenses: licenseOptions,
       summary: {
         currency: "USDC",
         from: "0.05",

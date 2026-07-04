@@ -49,12 +49,16 @@ export class PaymentsController {
     @Query("chainId") chainId?: string,
     @Query("assetId") assetId?: string,
     @Query("surface") surface?: string,
+    @Query("feeBps") feeBps?: string,
+    @Query("royaltyBps") royaltyBps?: string,
   ) {
     return this.paymentsService.quotePayment({
       amountUsd,
       chainId: chainId ? Number(chainId) : undefined,
       assetId,
       surface: surface as PaymentSurface | undefined,
+      feeBps,
+      royaltyBps,
     });
   }
 

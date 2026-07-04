@@ -95,6 +95,15 @@ interface PaymentAssetQuote {
   expiresAt: string;
 }
 
+interface PaymentQuoteBreakdown {
+  feeBps: number;
+  royaltyBps: number;
+  grossUsd: string;
+  platformFeeUsd: string;
+  royaltyUsd: string;
+  netToSellerUsd: string;
+}
+
 interface DecimalFraction {
   numerator: bigint;
   scale: bigint;
@@ -311,8 +320,12 @@ export class PaymentsService {
     chainId?: number;
     assetId?: string;
     surface?: PaymentSurface;
+    feeBps?: string | number;
+    royaltyBps?: string | number;
   }) {
     const amountUsd = this.parsePositiveDecimal(input.amountUsd, "amountUsd");
+    const feeBps = this.parseOptionalBps(input.feeBps, "feeBps");
+    const royaltyBps = this.parseOptionalBps(input.royaltyBps, "royaltyBps");
     const assets = this.loadPaymentAssets();
     const chainId = input.chainId ?? this.getConfiguredChainId(assets);
     const surface = input.surface;
@@ -336,6 +349,9 @@ export class PaymentsService {
       chainId,
       surface: surface ?? null,
       amountUsd: amountUsd.normalized,
+      breakdown: feeBps !== null || royaltyBps !== null
+        ? this.buildUsdBreakdown(amountUsd.normalized, feeBps ?? 0, royaltyBps ?? 0)
+        : null,
       quotes,
       defaultAsset: this.resolveDefaultAssetId(chainAssets, surface),
       source: this.getPaymentConfigSource(),
@@ -734,6 +750,37 @@ export class PaymentsService {
     const numerator = amountUsd.numerator * priceUsd.scale * unitScale;
     const denominator = amountUsd.scale * priceUsd.numerator;
     return this.ceilDiv(numerator, denominator);
+  }
+
+  private parseOptionalBps(value: string | number | undefined, label: string) {
+    if (value === undefined || value === "") return null;
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000) {
+      throw new BadRequestException(`${label} must be an integer between 0 and 10000`);
+    }
+    return parsed;
+  }
+
+  private buildUsdBreakdown(
+    grossUsd: string,
+    feeBps: number,
+    royaltyBps: number,
+  ): PaymentQuoteBreakdown {
+    const gross = Number(grossUsd);
+    const platformFee = gross * feeBps / 10_000;
+    const royalty = gross * royaltyBps / 10_000;
+    return {
+      feeBps,
+      royaltyBps,
+      grossUsd,
+      platformFeeUsd: this.formatUsd(platformFee),
+      royaltyUsd: this.formatUsd(royalty),
+      netToSellerUsd: this.formatUsd(Math.max(0, gross - platformFee - royalty)),
+    };
+  }
+
+  private formatUsd(value: number) {
+    return value.toFixed(6).replace(/\.?0+$/, "");
   }
 
   private resolveAssetPriceUsd(asset: PaymentAsset): DecimalFraction {

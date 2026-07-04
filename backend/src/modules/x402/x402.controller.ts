@@ -651,7 +651,7 @@ export class X402Controller {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId },
     });
-    const amountUsd = pricing?.basePlayPriceUsd ?? 0.05;
+    const amountUsd = this.x402Config.resolveLicenseAmountUsd(pricing, 'personal');
     const asset = this.resolveAssetInfo();
     const amountUnits = this.toTokenAmount(amountUsd, asset.decimals);
     const payTo = getAddress(this.x402Config.payoutAddress);
@@ -811,7 +811,7 @@ export class X402Controller {
     ) {
       return Number(formatUnits(BigInt(input.activeListing.pricePerUnit), input.assetInfo.decimals));
     }
-    return input.pricing?.basePlayPriceUsd ?? 0.05;
+    return this.x402Config.resolveLicenseAmountUsd(input.pricing, 'personal');
   }
 
   private resolveBuyerAddress(req: Request, fallback?: string | null) {
@@ -1246,6 +1246,7 @@ export class X402Controller {
       listingWei: listing?.pricePerUnit ?? null,
       network: this.x402Config.network,
       payTo: this.x402Config.payoutAddress,
+      licensePricing: this.x402Config.licensePricing,
     });
 
     const storefrontDetail = buildStorefrontStemDetail(

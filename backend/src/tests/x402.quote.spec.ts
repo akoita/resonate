@@ -1,5 +1,11 @@
 import { buildStemX402Quote } from "../modules/x402/x402.quote";
 
+const licensePricing = {
+  personal: { amountUsd: 0.05, feeBps: 1500 },
+  remix: { amountUsd: 5, feeBps: 1000 },
+  commercial: { amountUsd: 25, feeBps: 1000 },
+};
+
 describe("buildStemX402Quote", () => {
   it("returns storefront-grade quote metadata with license options and purchase info", () => {
     const quote = buildStemX402Quote({
@@ -17,6 +23,7 @@ describe("buildStemX402Quote", () => {
       listingWei: "10000000000000000",
       network: "eip155:84532",
       payTo: "0xPayTo",
+      licensePricing,
     });
 
     expect(quote.price).toEqual({
@@ -36,16 +43,37 @@ describe("buildStemX402Quote", () => {
         key: "personal",
         price: { currency: "USDC", amount: "0.05" },
         displayPrice: "0.05 USDC",
+        breakdown: {
+          feeBps: 1500,
+          royaltyBps: null,
+          platformFee: { currency: "USDC", amount: "0.0075", usd: 0.0075 },
+          royalty: null,
+          netToSeller: { currency: "USDC", amount: "0.0425", usd: 0.0425 },
+        },
       },
       {
         key: "remix",
         price: { currency: "USDC", amount: "5" },
         displayPrice: "5 USDC",
+        breakdown: {
+          feeBps: 1000,
+          royaltyBps: null,
+          platformFee: { currency: "USDC", amount: "0.5", usd: 0.5 },
+          royalty: null,
+          netToSeller: { currency: "USDC", amount: "4.5", usd: 4.5 },
+        },
       },
       {
         key: "commercial",
         price: { currency: "USDC", amount: "25" },
         displayPrice: "25 USDC",
+        breakdown: {
+          feeBps: 1000,
+          royaltyBps: null,
+          platformFee: { currency: "USDC", amount: "2.5", usd: 2.5 },
+          royalty: null,
+          netToSeller: { currency: "USDC", amount: "22.5", usd: 22.5 },
+        },
       },
     ]);
     expect(quote.purchase).toEqual({
@@ -77,6 +105,7 @@ describe("buildStemX402Quote", () => {
       tokenId: null,
       network: "eip155:84532",
       payTo: "0xPayTo",
+      licensePricing,
     });
 
     expect(quote.price.amount).toBe("0.05");
