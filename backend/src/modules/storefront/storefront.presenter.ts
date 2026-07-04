@@ -29,7 +29,7 @@ export type StorefrontStemPresentationRow = {
 
 export function buildStorefrontStemItem(
   row: StorefrontStemPresentationRow,
-  x402Config: Pick<X402Config, "network" | "payoutAddress">,
+  x402Config: Pick<X402Config, "network" | "payoutAddress" | "licensePricing">,
 ) {
   const artist = row.track.release.primaryArtist ?? row.track.artist ?? null;
   const stemLabel = row.title ?? `${row.track.title} - ${row.type}`;
@@ -48,6 +48,7 @@ export function buildStorefrontStemItem(
     listingWei: row.listingWei ?? null,
     network: x402Config.network,
     payTo: x402Config.payoutAddress,
+    licensePricing: x402Config.licensePricing,
   });
 
   return {
@@ -73,7 +74,7 @@ export function buildStorefrontStemItem(
 
 export function buildStorefrontStemDetail(
   row: StorefrontStemPresentationRow,
-  x402Config: Pick<X402Config, "network" | "payoutAddress">,
+  x402Config: Pick<X402Config, "network" | "payoutAddress" | "licensePricing">,
 ) {
   const item = buildStorefrontStemItem(row, x402Config);
 

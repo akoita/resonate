@@ -170,7 +170,10 @@ contract StemMarketplaceFuzzTest is Test {
         uint256 listingId = marketplace.list(tokenId, 1000, pricePerUnit, address(0), 7 days);
         vm.stopPrank();
 
-        // Quote
+        // Quote at the ADR-BM-2 production rate (10%), not the setUp default,
+        // so the decided fee math is what conservation is proven against.
+        vm.prank(admin);
+        marketplace.setProtocolFee(1000);
         (uint256 totalPrice, uint256 royaltyAmount, uint256 protocolFee, uint256 sellerAmount) =
             marketplace.quoteBuy(listingId, amount);
 
@@ -178,15 +181,17 @@ contract StemMarketplaceFuzzTest is Test {
         assertEq(totalPrice, amount * pricePerUnit);
         assertEq(totalPrice, royaltyAmount + protocolFee + sellerAmount);
 
-        // Verify caps
+        // Verify caps. MAX_ROYALTY (25%) + MAX_PROTOCOL_FEE (15%) = 40% < 100%,
+        // so sellerAmount can never underflow even at both caps.
         assertLe(royaltyAmount, (totalPrice * 2500) / 10000); // Max 25%
-        assertLe(protocolFee, (totalPrice * 500) / 10000); // Max 5%
+        assertLe(protocolFee, (totalPrice * 1500) / 10000); // Max 15%
+        assertEq(protocolFee, (totalPrice * 1000) / 10000); // decided rate exact
     }
 
     // ============ Protocol Fee Fuzz Tests ============
 
     function testFuzz_SetProtocolFee(uint256 feeBps) public {
-        feeBps = bound(feeBps, 0, 500);
+        feeBps = bound(feeBps, 0, marketplace.MAX_PROTOCOL_FEE());
 
         vm.prank(admin);
         marketplace.setProtocolFee(feeBps);
@@ -195,7 +200,7 @@ contract StemMarketplaceFuzzTest is Test {
     }
 
     function testFuzz_SetProtocolFee_InvalidReverts(uint256 feeBps) public {
-        vm.assume(feeBps > 500);
+        vm.assume(feeBps > marketplace.MAX_PROTOCOL_FEE());
 
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);

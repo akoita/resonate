@@ -540,6 +540,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             ],
           },
           {
+            kind: "paragraph",
+            text: "Before you confirm, Resonate estimates what you receive after the current marketplace platform fee and the stem royalty. Those percentages come from the marketplace and listing data shown in the app.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: "Remix-tier listings power Remix Studio",

@@ -109,6 +109,14 @@ export type PaymentQuoteResponse = {
   chainId: number;
   surface: PaymentSurface | null;
   amountUsd: string;
+  breakdown: {
+    feeBps: number;
+    royaltyBps: number;
+    grossUsd: string;
+    platformFeeUsd: string;
+    royaltyUsd: string;
+    netToSellerUsd: string;
+  } | null;
   quotes: PaymentAssetQuote[];
   defaultAsset: string | null;
   source: "env" | "artifact" | "empty" | string;
@@ -159,6 +167,8 @@ export function getPaymentQuote(input: {
   chainId?: number;
   assetId?: string;
   surface?: PaymentSurface;
+  feeBps?: number;
+  royaltyBps?: number;
 }) {
   return paymentsGet<PaymentQuoteResponse>(
     appendQuery("/payments/quote", input),

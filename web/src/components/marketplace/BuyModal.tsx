@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import type { Address } from "viem";
-import { useBuyQuote, useBuyStem, useListing } from "../../hooks/useContracts";
+import { useBuyQuote, useBuyStem, useListing, useProtocolFee, useStemData } from "../../hooks/useContracts";
 import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useX402PublicConfig } from "../../hooks/useX402PublicConfig";
 import { useAuth } from "../auth/AuthProvider";
@@ -25,6 +25,7 @@ import {
   paymentAssetSymbol,
 } from "../../lib/payments";
 import { hasStablecoinMarketplaceAsset } from "../../lib/listingPricing";
+import { formatBpsPercent } from "../../lib/marketplaceProceeds";
 import { getX402ChainName } from "../../lib/x402BrowserWallet";
 import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
@@ -176,6 +177,8 @@ export function BuyModal({
   );
   const listing = initialListingForSelection ?? onchainListing;
   const listingLoading = !initialListingForSelection && onchainListingLoading;
+  const { data: stemData } = useStemData(listing?.tokenId);
+  const { feeBps: protocolFeeBps } = useProtocolFee();
   const canQuoteOnchain = !listingChainMismatch && selectedListingId !== undefined;
   const { quote, loading: quoteLoading } = useBuyQuote(canQuoteOnchain ? selectedListingId : undefined, amount);
   const { buy, pending, error, txHash } = useBuyStem();
@@ -229,6 +232,8 @@ export function BuyModal({
     : "-";
   const formatOnchainAmount = (amountUnits: bigint) =>
     `${formatPaymentAmount(amountUnits, onchainDecimals)} ${onchainSymbol}`;
+  const protocolFeePercent = formatBpsPercent(protocolFeeBps);
+  const royaltyPercent = formatBpsPercent(stemData?.royaltyBps);
   const x402DownloadUrl = useMemo(
     () => (x402Result ? URL.createObjectURL(x402Result.audio) : null),
     [x402Result],
@@ -561,15 +566,25 @@ export function BuyModal({
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
-                  <span className="buy-modal__breakdown-label">Creator Royalty</span>
+                  <span className="buy-modal__breakdown-label">
+                    Creator Royalty{royaltyPercent ? ` (${royaltyPercent})` : ""}
+                  </span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--royalty">
                     {formatOnchainAmount(quote.royaltyAmount)}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-row">
-                  <span className="buy-modal__breakdown-label">Protocol Fee</span>
+                  <span className="buy-modal__breakdown-label">
+                    Protocol Fee{protocolFeePercent ? ` (${protocolFeePercent})` : ""}
+                  </span>
                   <span className="buy-modal__breakdown-value buy-modal__breakdown-value--fee">
                     {formatOnchainAmount(quote.protocolFee)}
+                  </span>
+                </div>
+                <div className="buy-modal__breakdown-row">
+                  <span className="buy-modal__breakdown-label">Seller receives</span>
+                  <span className="buy-modal__breakdown-value">
+                    {formatOnchainAmount(quote.sellerAmount)}
                   </span>
                 </div>
                 <div className="buy-modal__breakdown-divider" />

@@ -136,13 +136,7 @@ export class X402PaymentService {
       | undefined,
     licenseType: QuoteLicenseKey,
   ) {
-    if (licenseType === "remix") {
-      return pricing?.remixLicenseUsd ?? 5;
-    }
-    if (licenseType === "commercial") {
-      return pricing?.commercialLicenseUsd ?? 25;
-    }
-    return pricing?.basePlayPriceUsd ?? 0.05;
+    return this.x402Config.resolveLicenseAmountUsd(pricing, licenseType);
   }
 
   private toTokenAmount(amount: number, decimals: number): string {

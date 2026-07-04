@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useZeroDev } from "../../../components/auth/ZeroDevProviderClient";
-import { useListStem } from "../../../hooks/useContracts";
+import { useListStem, useProtocolFee } from "../../../hooks/useContracts";
 import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import {
   findPaymentAssetForToken,
@@ -23,6 +23,7 @@ import {
   type MarketplaceListingAsset,
 } from "../../../lib/listingPricing";
 import { API_BASE, getReleaseArtworkUrl } from "../../../lib/api";
+import { sellerNetProceedsLine } from "../../../lib/marketplaceProceeds";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
 import "../marketplace.css";
 
@@ -44,6 +45,7 @@ type OwnerListing = {
   price: string;
   paymentToken: string;
   licenseType: string;
+  royaltyBps?: number | null;
   amount: string;
   status: string;
   lifecycleStatus: Exclude<ListingLifecycleStatus, "all">;
@@ -140,6 +142,7 @@ export default function MarketplaceListingManagerPage() {
   const { address, smartAccountAddress, token } = useAuth();
   const { chainId } = useZeroDev();
   const { list, pending, error } = useListStem();
+  const { feeBps: protocolFeeBps, loading: protocolFeeLoading } = useProtocolFee();
   const {
     assets: paymentAssets,
     loading: paymentAssetsLoading,
@@ -551,6 +554,14 @@ export default function MarketplaceListingManagerPage() {
             const asset = resolveListingAsset(paymentAssets, chainId, listing.paymentToken);
             const symbol = listingAssetSymbol(asset);
             const isHighlighted = highlightedListingId === listing.id;
+            const proceedsLine = protocolFeeLoading
+              ? null
+              : sellerNetProceedsLine({
+                priceUnits: BigInt(listing.price),
+                asset,
+                protocolFeeBps,
+                royaltyBps: listing.royaltyBps,
+              });
             const artworkUrl = resolveArtworkUrl(listing.stem?.artworkUrl)
               ?? (listing.stem?.releaseId ? getReleaseArtworkUrl(listing.stem.releaseId) : undefined);
             return (
@@ -595,6 +606,9 @@ export default function MarketplaceListingManagerPage() {
                     <span>Expires {formatShortDate(listing.expiresAt)}</span>
                     <span>{symbol}</span>
                   </div>
+                  {proceedsLine && (
+                    <div className="marketplace-manager-row__meta">{proceedsLine}</div>
+                  )}
                 </div>
                 <div className="marketplace-manager-row__actions">
                   <span className={`listing-status-pill listing-status-pill--${listing.lifecycleStatus}`}>
@@ -693,10 +707,27 @@ export default function MarketplaceListingManagerPage() {
             </label>
             <div className="marketplace-manager-modal__summary">
               {price && amount
-                ? `${formatListingPrice({
-                  priceUnits: parseListingPriceUnits({ price, asset: selectedAsset }) * BigInt(amount || "1"),
-                  asset: selectedAsset,
-                })} total`
+                ? (
+                  <>
+                    <div>
+                      {`${formatListingPrice({
+                        priceUnits: parseListingPriceUnits({ price, asset: selectedAsset }) * BigInt(amount || "1"),
+                        asset: selectedAsset,
+                      })} total`}
+                    </div>
+                    {!protocolFeeLoading && relistingListings.length === 1 && (
+                      <div>
+                        {sellerNetProceedsLine({
+                          priceUnits: parseListingPriceUnits({ price, asset: selectedAsset }),
+                          quantity: BigInt(amount || "1"),
+                          asset: selectedAsset,
+                          protocolFeeBps,
+                          royaltyBps: relistingListings[0].royaltyBps,
+                        })}
+                      </div>
+                    )}
+                  </>
+                )
                 : "Enter a price and quantity"}
             </div>
             {error && <div className="marketplace-manager-alert marketplace-manager-alert--error">{error.message}</div>}

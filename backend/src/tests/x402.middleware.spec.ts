@@ -28,6 +28,11 @@ jest.mock('../db/prisma', () => ({
 }));
 
 function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
+  const licensePricing = {
+    personal: { amountUsd: 0.05, feeBps: 1500 },
+    remix: { amountUsd: 5, feeBps: 1000 },
+    commercial: { amountUsd: 25, feeBps: 1000 },
+  };
   return {
     enabled: true,
     payoutAddress: '0xTestPayoutAddr',
@@ -36,6 +41,12 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     chainId: 84532,
     contractSettlementEnabled: false,
     settlementPrivateKey: null,
+    licensePricing,
+    resolveLicenseAmountUsd: (pricing: any, licenseType: string) => {
+      if (licenseType === 'remix') return pricing?.remixLicenseUsd ?? licensePricing.remix.amountUsd;
+      if (licenseType === 'commercial') return pricing?.commercialLicenseUsd ?? licensePricing.commercial.amountUsd;
+      return pricing?.basePlayPriceUsd ?? licensePricing.personal.amountUsd;
+    },
     ...overrides,
   } as X402Config;
 }

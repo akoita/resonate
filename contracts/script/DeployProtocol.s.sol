@@ -42,9 +42,17 @@ contract DeployProtocol is DeploymentKey {
 
         // Config
         string memory baseUri = vm.envOr("BASE_URI", string("https://api.resonate.fm/metadata/"));
-        address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
+        // Fee recipient may default to the deployer only on local chains; remote
+        // deployments must name the platform wallet explicitly (mirrors
+        // DeployShowCampaignEscrow).
+        address feeRecipient;
+        if (block.chainid == 31337 || block.chainid == 1337) {
+            feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
+        } else {
+            feeRecipient = vm.envAddress("FEE_RECIPIENT");
+        }
         address mintAuthorizer = vm.envOr("MINT_AUTHORIZER_ADDRESS", deployer);
-        uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(250)); // 2.5%
+        uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(1000)); // 10% — ADR-BM-2
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
         uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days)); // Default 30 days
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));

@@ -227,6 +227,30 @@ describe("PaymentsService local payment metadata", () => {
     });
   });
 
+  it("adds fee, royalty, and net-to-seller breakdowns when quote bps are provided", () => {
+    const service = createService({
+      PAYMENT_ASSETS_JSON: JSON.stringify(assets),
+    });
+
+    const quote = service.quotePayment({
+      amountUsd: "10",
+      chainId: 31337,
+      assetId: "local:usdc",
+      surface: "marketplace",
+      feeBps: 1000,
+      royaltyBps: 500,
+    });
+
+    expect(quote.breakdown).toEqual({
+      feeBps: 1000,
+      royaltyBps: 500,
+      grossUsd: "10",
+      platformFeeUsd: "1",
+      royaltyUsd: "0.5",
+      netToSellerUsd: "8.5",
+    });
+  });
+
   it("rounds ETH quotes up to the smallest token unit", () => {
     const service = createService({
       PAYMENT_ASSETS_JSON: JSON.stringify(assets),

@@ -179,7 +179,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
         new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 501
+            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 1501
         ); // > 5%
     }
 
@@ -674,7 +674,17 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     function test_SetProtocolFee_RevertInvalidFee() public {
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
-        marketplace.setProtocolFee(501);
+        marketplace.setProtocolFee(1501);
+    }
+
+    function test_SetProtocolFee_AcceptsDecidedRateAndCap() public {
+        // ADR-BM-2: 1000 bps is the decided production rate; 1500 is the cap.
+        vm.startPrank(admin);
+        marketplace.setProtocolFee(1000);
+        assertEq(marketplace.protocolFeeBps(), 1000);
+        marketplace.setProtocolFee(1500);
+        assertEq(marketplace.protocolFeeBps(), 1500);
+        vm.stopPrank();
     }
 
     function test_SetProtocolFee_RevertNotOwner() public {

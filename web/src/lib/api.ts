@@ -3319,6 +3319,7 @@ export type APIListing = {
   amount: string;
   paymentToken: string;
   licenseType?: "personal" | "remix" | "commercial";
+  royaltyBps?: number | null;
   tierListings?: Partial<Record<"personal" | "remix" | "commercial", string>> | null;
   status: string;
   expiresAt: string;

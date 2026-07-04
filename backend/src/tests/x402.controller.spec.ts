@@ -47,6 +47,11 @@ const { prisma } = jest.requireMock('../db/prisma') as {
 };
 
 function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
+  const licensePricing = {
+    personal: { amountUsd: 0.05, feeBps: 1500 },
+    remix: { amountUsd: 5, feeBps: 1000 },
+    commercial: { amountUsd: 25, feeBps: 1000 },
+  };
   return {
     enabled: true,
     payoutAddress: '0xTestPayoutAddr',
@@ -56,6 +61,12 @@ function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
     rpcUrl: 'https://sepolia.base.org',
     contractSettlementEnabled: false,
     settlementPrivateKey: null,
+    licensePricing,
+    resolveLicenseAmountUsd: (pricing: any, licenseType: string) => {
+      if (licenseType === 'remix') return pricing?.remixLicenseUsd ?? licensePricing.remix.amountUsd;
+      if (licenseType === 'commercial') return pricing?.commercialLicenseUsd ?? licensePricing.commercial.amountUsd;
+      return pricing?.basePlayPriceUsd ?? licensePricing.personal.amountUsd;
+    },
     ...overrides,
   } as X402Config;
 }
@@ -767,6 +778,44 @@ describe('X402Controller', () => {
     );
 
     const result = await controller.getStemInfo('stem_1');
+    const expectedLicenseOptions = [
+      {
+        key: 'personal',
+        price: { currency: 'USDC', amount: '0.05' },
+        displayPrice: '0.05 USDC',
+        breakdown: {
+          feeBps: 1500,
+          royaltyBps: null,
+          platformFee: { currency: 'USDC', amount: '0.0075', usd: 0.0075 },
+          royalty: null,
+          netToSeller: { currency: 'USDC', amount: '0.0425', usd: 0.0425 },
+        },
+      },
+      {
+        key: 'remix',
+        price: { currency: 'USDC', amount: '5' },
+        displayPrice: '5 USDC',
+        breakdown: {
+          feeBps: 1000,
+          royaltyBps: null,
+          platformFee: { currency: 'USDC', amount: '0.5', usd: 0.5 },
+          royalty: null,
+          netToSeller: { currency: 'USDC', amount: '4.5', usd: 4.5 },
+        },
+      },
+      {
+        key: 'commercial',
+        price: { currency: 'USDC', amount: '25' },
+        displayPrice: '25 USDC',
+        breakdown: {
+          feeBps: 1000,
+          royaltyBps: null,
+          platformFee: { currency: 'USDC', amount: '2.5', usd: 2.5 },
+          royalty: null,
+          netToSeller: { currency: 'USDC', amount: '22.5', usd: 22.5 },
+        },
+      },
+    ];
 
     expect(result).toEqual({
       id: 'stem_1',
@@ -789,23 +838,7 @@ describe('X402Controller', () => {
         display: '0.05 USDC',
         usd: 0.05,
       },
-      licenseOptions: [
-        {
-          key: 'personal',
-          price: { currency: 'USDC', amount: '0.05' },
-          displayPrice: '0.05 USDC',
-        },
-        {
-          key: 'remix',
-          price: { currency: 'USDC', amount: '5' },
-          displayPrice: '5 USDC',
-        },
-        {
-          key: 'commercial',
-          price: { currency: 'USDC', amount: '25' },
-          displayPrice: '25 USDC',
-        },
-      ],
+      licenseOptions: expectedLicenseOptions,
       priceSummary: {
         currency: 'USDC',
         from: '0.05',
@@ -828,23 +861,7 @@ describe('X402Controller', () => {
       },
       pricing: {
         currency: 'USDC',
-        licenses: [
-          {
-            key: 'personal',
-            price: { currency: 'USDC', amount: '0.05' },
-            displayPrice: '0.05 USDC',
-          },
-          {
-            key: 'remix',
-            price: { currency: 'USDC', amount: '5' },
-            displayPrice: '5 USDC',
-          },
-          {
-            key: 'commercial',
-            price: { currency: 'USDC', amount: '25' },
-            displayPrice: '25 USDC',
-          },
-        ],
+        licenses: expectedLicenseOptions,
         summary: {
           currency: 'USDC',
           from: '0.05',

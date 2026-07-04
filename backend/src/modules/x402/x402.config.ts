@@ -2,11 +2,23 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { getX402ChainId } from './x402.public';
 
+export type X402LicenseKey = 'personal' | 'remix' | 'commercial';
+
+export type X402LicensePricing = Record<X402LicenseKey, {
+  amountUsd: number;
+  feeBps: number;
+}>;
+
 const DEFAULT_TESTNET_FACILITATOR_URL = 'https://x402.org/facilitator';
 const DEFAULT_TESTNET_NETWORK = 'eip155:84532';
 const DEFAULT_BASE_MAINNET_RPC_URL = 'https://mainnet.base.org';
 const DEFAULT_BASE_SEPOLIA_RPC_URL = 'https://sepolia.base.org';
 const DEFAULT_LOCAL_RPC_URL = 'http://localhost:8545';
+const DEFAULT_X402_LICENSE_PRICING: X402LicensePricing = {
+  personal: { amountUsd: 0.05, feeBps: 1500 },
+  remix: { amountUsd: 5, feeBps: 1000 },
+  commercial: { amountUsd: 25, feeBps: 1000 },
+};
 
 /**
  * x402 Configuration — reads env vars for the x402 payment layer.
@@ -20,6 +32,7 @@ const DEFAULT_LOCAL_RPC_URL = 'http://localhost:8545';
  *   X402_RPC_URL         — RPC used to verify in-app smart-account payments
  *   X402_CONTRACT_SETTLEMENT_ENABLED — execute marketplace settlement for listed stems
  *   X402_SETTLEMENT_PRIVATE_KEY — settlement wallet key; must control X402_PAYOUT_ADDRESS
+ *   X402_*_PRICE_USD / X402_*_FEE_BPS — x402 license defaults and take-rates
  *   X402_ENABLED         — feature flag (default: false)
  */
 @Injectable()
@@ -50,6 +63,9 @@ export class X402Config {
   /** Private key for the x402 settlement wallet. Secret; never log. */
   readonly settlementPrivateKey: `0x${string}` | null;
 
+  /** Canonical x402 license defaults and off-chain facilitator take-rates. */
+  readonly licensePricing: X402LicensePricing;
+
   constructor(private readonly config: ConfigService) {
     this.enabled = this.config.get<string>('X402_ENABLED') === 'true';
     const configuredFacilitator = this.config.get<string>('X402_FACILITATOR_URL');
@@ -70,6 +86,22 @@ export class X402Config {
     this.settlementPrivateKey = settlementPrivateKey
       ? this.normalizePrivateKey(settlementPrivateKey)
       : null;
+    // Facilitator-mode settlements carry the take-rate as off-chain accounting;
+    // contract-settlement mode uses the marketplace contract's on-chain split.
+    this.licensePricing = {
+      personal: {
+        amountUsd: this.getPositiveNumber('X402_PERSONAL_PRICE_USD', DEFAULT_X402_LICENSE_PRICING.personal.amountUsd),
+        feeBps: this.getBps('X402_PERSONAL_FEE_BPS', DEFAULT_X402_LICENSE_PRICING.personal.feeBps),
+      },
+      remix: {
+        amountUsd: this.getPositiveNumber('X402_REMIX_LICENSE_USD', DEFAULT_X402_LICENSE_PRICING.remix.amountUsd),
+        feeBps: this.getBps('X402_REMIX_FEE_BPS', DEFAULT_X402_LICENSE_PRICING.remix.feeBps),
+      },
+      commercial: {
+        amountUsd: this.getPositiveNumber('X402_COMMERCIAL_LICENSE_USD', DEFAULT_X402_LICENSE_PRICING.commercial.amountUsd),
+        feeBps: this.getBps('X402_COMMERCIAL_FEE_BPS', DEFAULT_X402_LICENSE_PRICING.commercial.feeBps),
+      },
+    };
 
     if (this.enabled) {
       if (!this.payoutAddress) {
@@ -123,5 +155,42 @@ export class X402Config {
       throw new Error('X402_SETTLEMENT_PRIVATE_KEY must be a 32-byte hex private key');
     }
     return normalized as `0x${string}`;
+  }
+
+  resolveLicenseAmountUsd(
+    pricing: {
+      basePlayPriceUsd?: number | null;
+      remixLicenseUsd?: number | null;
+      commercialLicenseUsd?: number | null;
+    } | null | undefined,
+    licenseType: X402LicenseKey,
+  ) {
+    if (licenseType === 'remix') {
+      return pricing?.remixLicenseUsd ?? this.licensePricing.remix.amountUsd;
+    }
+    if (licenseType === 'commercial') {
+      return pricing?.commercialLicenseUsd ?? this.licensePricing.commercial.amountUsd;
+    }
+    return pricing?.basePlayPriceUsd ?? this.licensePricing.personal.amountUsd;
+  }
+
+  private getPositiveNumber(name: string, fallback: number): number {
+    const raw = this.config.get<string>(name)?.trim();
+    if (!raw) return fallback;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error(`${name} must be a non-negative number`);
+    }
+    return value;
+  }
+
+  private getBps(name: string, fallback: number): number {
+    const raw = this.config.get<string>(name)?.trim();
+    if (!raw) return fallback;
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+      throw new Error(`${name} must be an integer between 0 and 10000`);
+    }
+    return value;
   }
 }
