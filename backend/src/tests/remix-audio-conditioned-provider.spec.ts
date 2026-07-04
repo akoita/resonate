@@ -1,3 +1,15 @@
+// The deployed worker is IAM-protected Cloud Run: the provider mints an
+// identity token per call. Mocked per the testing standards (google-auth
+// is an allowed mock); fetchIdTokenMock is switchable per test.
+const fetchIdTokenMock = jest.fn().mockResolvedValue("test-id-token");
+jest.mock("google-auth-library", () => ({
+  GoogleAuth: jest.fn().mockImplementation(() => ({
+    getIdTokenClient: jest.fn().mockResolvedValue({
+      idTokenProvider: { fetchIdToken: fetchIdTokenMock },
+    }),
+  })),
+}));
+
 import { AudioConditionedRemixGenerationProvider } from "../modules/remix/audio-conditioned-remix-generation.provider";
 import {
   RemixGenerationProviderError,
@@ -229,6 +241,39 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
   it("maps a worker 5xx to a retryable provider_unavailable", async () => {
     fetchMock.mockResolvedValue(
       fakeResponse({ ok: false, status: 503, body: Buffer.from("overloaded") }),
+    );
+    const { provider } = buildProvider();
+    await expect(
+      provider.createRemixDraft(generationInput(), AUTH),
+    ).rejects.toMatchObject({ code: "provider_unavailable", retryable: true });
+  });
+
+  it("attaches an identity token for the IAM-protected worker", async () => {
+    const { provider } = buildProvider();
+    await provider.createRemixDraft(generationInput(), AUTH);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer test-id-token",
+    });
+  });
+
+  it("calls unauthenticated when no identity token is mintable (local dev)", async () => {
+    fetchIdTokenMock.mockRejectedValueOnce(
+      new Error("Could not load the default credentials"),
+    );
+    const { provider } = buildProvider();
+    await provider.createRemixDraft(generationInput(), AUTH);
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers).toEqual({});
+  });
+
+  it("maps a worker 403 (auth/config fault) to provider_unavailable, not a prompt rejection", async () => {
+    fetchMock.mockResolvedValue(
+      fakeResponse({
+        ok: false,
+        status: 403,
+        body: Buffer.from("The request was not authenticated."),
+      }),
     );
     const { provider } = buildProvider();
     await expect(

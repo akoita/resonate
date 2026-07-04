@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { GoogleAuth } from "google-auth-library";
 import { randomUUID } from "crypto";
 import { StorageProvider } from "../storage/storage_provider";
 import {
@@ -165,11 +166,22 @@ export class AudioConditionedRemixGenerationProvider
     form.append("duration", String(args.durationSeconds));
     form.append("model", config.model);
 
+    // The deployed worker is a private Cloud Run service: the invoker IAM
+    // grant alone is not enough — the caller must attach an identity token
+    // minted for the worker's audience. Locally (no ADC / localhost worker)
+    // minting fails and we fall back to an unauthenticated call.
+    const headers: Record<string, string> = {};
+    const idToken = await this.mintWorkerIdToken(config.workerUrl);
+    if (idToken) {
+      headers.Authorization = `Bearer ${idToken}`;
+    }
+
     let response: Response;
     try {
       response = await fetch(`${config.workerUrl}/generate`, {
         method: "POST",
         body: form,
+        headers,
         // Generous: absorbs the scale-to-zero cold start (~4 min model load)
         // plus generation. The job is already async/queued (#1167).
         signal: AbortSignal.timeout(config.timeoutMs),
@@ -190,17 +202,22 @@ export class AudioConditionedRemixGenerationProvider
 
     if (!response.ok) {
       const detail = await safeReadText(response);
-      // 4xx = the model rejected this request (e.g. unusable prompt/audio):
-      // not retryable. 5xx = transient service fault: retryable.
-      const clientError = response.status >= 400 && response.status < 500;
       this.logger.error(
         `Audio worker returned ${response.status} for project ${args.projectId}: ${detail}`,
       );
+      // 401/403 are auth/config faults between the backend and the worker —
+      // never the user's prompt. Surface them as service-unavailable so the
+      // user isn't told to "adjust the prompt" for an IAM problem.
+      const authError = response.status === 401 || response.status === 403;
+      // Other 4xx = the model rejected this request (e.g. unusable
+      // prompt/audio): not retryable. 5xx = transient service fault: retryable.
+      const clientError =
+        !authError && response.status >= 400 && response.status < 500;
       throw new RemixGenerationProviderError(
         clientError ? "provider_rejected" : "provider_unavailable",
         clientError
           ? "The generation service rejected this remix. Adjust the prompt or stems and try again."
-          : "The remix generation service failed. Please try again later.",
+          : "The remix generation service is unavailable right now. Try again in a few minutes.",
         !clientError,
       );
     }
@@ -213,6 +230,34 @@ export class AudioConditionedRemixGenerationProvider
       seed: parseIntHeader(response.headers.get("x-seed")),
       sampleRate: parseIntHeader(response.headers.get("x-sample-rate")),
     };
+  }
+
+  private googleAuth: GoogleAuth | null = null;
+  private idTokenUnavailableLogged = false;
+
+  /**
+   * Mint an identity token for the worker's audience (Cloud Run
+   * service-to-service auth). Returns null when Application Default
+   * Credentials cannot mint one — the local-dev worker on localhost accepts
+   * unauthenticated calls, so that path stays functional.
+   */
+  private async mintWorkerIdToken(workerUrl: string): Promise<string | null> {
+    try {
+      const audience = new URL(workerUrl).origin;
+      this.googleAuth ??= new GoogleAuth();
+      const client = await this.googleAuth.getIdTokenClient(audience);
+      return await client.idTokenProvider.fetchIdToken(audience);
+    } catch (error) {
+      if (!this.idTokenUnavailableLogged) {
+        this.idTokenUnavailableLogged = true;
+        this.logger.warn(
+          `No identity token for the audio worker (calling unauthenticated; fine for local dev): ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+      return null;
+    }
   }
 }
 
