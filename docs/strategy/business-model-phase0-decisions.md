@@ -142,10 +142,24 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ---
 
-## Ready-to-file commands
+## Filed issues (2026-07-04)
 
-The epic body is maintained at `docs/strategy/business-model-phase0-decisions.md`
-(this file). File the epic + six decision issues with:
+All tracking issues are now filed:
+
+| Decision | Issue | Status |
+| --- | --- | --- |
+| Epic | [#1332](https://github.com/akoita/resonate/issues/1332) | open |
+| ADR-BM-1 — Shows campaign fee | [#1330](https://github.com/akoita/resonate/issues/1330) | **accepted** (6%, success-only); blocking #1271 |
+| ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | proposed |
+| ADR-BM-3 — Generation credits | [#1334](https://github.com/akoita/resonate/issues/1334) | proposed |
+| ADR-BM-4 — Payout doctrine | [#1335](https://github.com/akoita/resonate/issues/1335) | proposed |
+| ADR-BM-5 — Identity policy | [#1336](https://github.com/akoita/resonate/issues/1336) | proposed |
+| ADR-BM-6 — Sequencing & billing | [#1337](https://github.com/akoita/resonate/issues/1337) | proposed |
+
+## Original ready-to-file commands (historical)
+
+The commands below were used to seed the issues above and are kept for
+reference:
 
 ```bash
 cd <repo-root>
