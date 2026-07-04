@@ -849,6 +849,8 @@ model ShowEscrowIndexerState {
   chainId         Int      @unique
   contractAddress String
   lastBlockNumber BigInt   @default(0)
+  currentFeeBps   Int?
+  feeRecipient    String?
   updatedAt       DateTime @updatedAt
 }
 
@@ -1406,6 +1408,8 @@ model ShowCampaign {
   onChainStatus               String?
   totalRefundedUnits          String                       @default("0")
   totalReleasedUnits          String                       @default("0")
+  feeBps                      Int?
+  totalFeePaidUnits           String                       @default("0")
   lastEscrowIndexedBlock      BigInt?
   reconciliationErrorAt       DateTime?
   reconciliationError         String?                      @db.Text

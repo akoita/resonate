@@ -15,6 +15,7 @@ import {
 import { foundry, sepolia, baseSepolia } from "viem/chains";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import type { ShowCampaignSettledEvent } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
 import { resolveIndexerChainId } from "../contracts/indexer.service";
 import { configuredShowCampaignEscrowAddress } from "./shows.service";
@@ -60,6 +61,12 @@ const ESCROW_EVENTS = [
   ),
   parseAbiItem(
     "event DepositReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount)",
+  ),
+  parseAbiItem(
+    "event FeeCharged(uint256 indexed campaignId, address indexed feeRecipient, uint256 amount)",
+  ),
+  parseAbiItem(
+    "event FeeConfigUpdated(uint256 feeBps, address feeRecipient)",
   ),
   parseAbiItem(
     "event FulfillmentConfirmed(uint256 indexed campaignId, address indexed confirmer)",
@@ -134,6 +141,16 @@ function addUnits(current: string | null | undefined, delta: string): string {
     }
   })();
   return (base + BigInt(delta)).toString();
+}
+
+function addUnitBigInt(current: string | null | undefined, delta: bigint): string {
+  return addUnits(current, delta.toString());
+}
+
+function inferFeeBps(feeAmount: bigint, grossAmount: bigint): number | null {
+  if (feeAmount <= 0n || grossAmount <= 0n) return null;
+  const bps = feeAmount * 10000n / grossAmount;
+  return bps <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(bps) : null;
 }
 
 @Injectable()
@@ -309,6 +326,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       blockNumber: blockNumber ?? 0n,
     };
     const mismatches: MismatchInput[] = [];
+    const settlementEvents: ShowCampaignSettledEvent[] = [];
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -329,7 +347,14 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
           update: {},
         });
 
-        await this.reconcile(tx, eventName, args, ctx, (m) => mismatches.push(m));
+        await this.reconcile(
+          tx,
+          eventName,
+          args,
+          ctx,
+          (m) => mismatches.push(m),
+          (e) => settlementEvents.push(e),
+        );
 
         await tx.showCampaignEscrowEvent.update({
           where: { transactionHash_logIndex: { transactionHash, logIndex } },
@@ -338,6 +363,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       });
       // Side effects only after the durable state committed.
       for (const m of mismatches) this.emitMismatch(m);
+      for (const e of settlementEvents) this.eventBus.publish(e);
     } catch (error) {
       this.logger.error(
         `Reconcile failed for ${eventName} (campaign ${contractCampaignId}); will retry: ${
@@ -370,8 +396,26 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       blockNumber: bigint;
     },
     pushMismatch: (m: MismatchInput) => void,
+    pushSettlement: (e: ShowCampaignSettledEvent) => void,
   ): Promise<void> {
     // Contract-only events with no campaign mapping: recorded, not reconciled.
+    if (eventName === "FeeConfigUpdated") {
+      await tx.showEscrowIndexerState.upsert({
+        where: { chainId: ctx.chainId },
+        create: {
+          chainId: ctx.chainId,
+          contractAddress: ctx.escrowAddress,
+          currentFeeBps: Number(args.feeBps),
+          feeRecipient: String(args.feeRecipient),
+        },
+        update: {
+          contractAddress: ctx.escrowAddress,
+          currentFeeBps: Number(args.feeBps),
+          feeRecipient: String(args.feeRecipient),
+        },
+      });
+      return;
+    }
     if (eventName === "CampaignPaused" || eventName === "ConfirmerUpdated") {
       return;
     }
@@ -388,8 +432,15 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       select: {
         id: true,
         status: true,
+        slug: true,
+        artistId: true,
+        paymentAssetSymbol: true,
+        paymentAssetDecimals: true,
+        paymentTokenAddress: true,
         totalRefundedUnits: true,
         totalReleasedUnits: true,
+        feeBps: true,
+        totalFeePaidUnits: true,
       },
       take: 2,
     });
@@ -429,9 +480,17 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       | null = null;
 
     switch (eventName) {
-      case "CampaignCreated":
+      case "CampaignCreated": {
         data.onChainStatus = "Draft";
+        const feeState = await tx.showEscrowIndexerState.findUnique({
+          where: { chainId: ctx.chainId },
+          select: { currentFeeBps: true },
+        });
+        if (feeState?.currentFeeBps !== null && feeState?.currentFeeBps !== undefined) {
+          data.feeBps = feeState.currentFeeBps;
+        }
         break;
+      }
       case "CampaignActivated":
         data.onChainStatus = "Active";
         if (campaign.status === "draft") data.status = "active";
@@ -487,43 +546,77 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         // makes this read-modify-write safe under the single-writer indexer.
         data.totalRefundedUnits = addUnits(campaign.totalRefundedUnits, String(args.amount));
         break;
-      case "DepositReleased":
-        data.onChainStatus = "DepositReleased";
-        if (this.canAdvance(campaign.status, "deposit_released"))
-          data.status = "deposit_released";
-        data.depositReleasedAt = new Date();
-        data.totalReleasedUnits = addUnits(campaign.totalReleasedUnits, String(args.amount));
-        eventType = "deposit_released";
+      case "FeeCharged":
+        data.totalFeePaidUnits = addUnits(campaign.totalFeePaidUnits, String(args.amount));
         break;
+      case "DepositReleased":
+      case "FundsReleased": {
+        const feeAmount = await this.feeChargedInSameTransaction(tx, contractCampaignId, ctx.transactionHash);
+        const netAmount = BigInt(String(args.amount));
+        const grossAmount = netAmount + feeAmount;
+        if (campaign.feeBps === null || campaign.feeBps === undefined) {
+          const inferredFeeBps = inferFeeBps(feeAmount, grossAmount);
+          if (inferredFeeBps !== null) data.feeBps = inferredFeeBps;
+        }
+        const feeBps = (data.feeBps as number | undefined) ?? campaign.feeBps ?? null;
+        data.totalReleasedUnits = addUnitBigInt(campaign.totalReleasedUnits, grossAmount);
+        if (eventName === "DepositReleased") {
+          data.onChainStatus = "DepositReleased";
+          if (this.canAdvance(campaign.status, "deposit_released"))
+            data.status = "deposit_released";
+          data.depositReleasedAt = new Date();
+          eventType = "deposit_released";
+        } else {
+          data.onChainStatus = "Released";
+          if (this.canAdvance(campaign.status, "released")) data.status = "released";
+          data.releasedAt = new Date();
+          eventType = "campaign_released";
+          // #950: on-chain release is authoritative, but a release that lands
+          // while an off-chain dispute is still open is an ops red flag — record
+          // it (we can't undo the chain) and surface a reconciliation mismatch.
+          const openDispute = await tx.showCampaignDispute.findFirst({
+            where: { campaignId: campaign.id, status: "open" },
+            select: { id: true },
+          });
+          if (openDispute) {
+            pushMismatch({
+              ...ctx,
+              contractCampaignId,
+              reason: `funds released on-chain while an off-chain dispute is open`,
+              eventName,
+            });
+          }
+        }
+        pushSettlement({
+          eventName: "shows.campaign_settled",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          campaignId: campaign.id,
+          campaignSlug: campaign.slug,
+          artistId: campaign.artistId ?? undefined,
+          contractCampaignId,
+          settlementStage: eventName === "DepositReleased" ? "deposit" : "final",
+          grossAmountUnits: grossAmount.toString(),
+          feeAmountUnits: feeAmount.toString(),
+          netAmountUnits: netAmount.toString(),
+          feeBps: feeBps ?? undefined,
+          totalFeePaidUnits: campaign.totalFeePaidUnits,
+          paymentAssetSymbol: campaign.paymentAssetSymbol,
+          paymentAssetDecimals: campaign.paymentAssetDecimals,
+          paymentToken: campaign.paymentTokenAddress ?? undefined,
+          chainId: ctx.chainId,
+          contractAddress: ctx.escrowAddress,
+          transactionHash: ctx.transactionHash,
+          blockNumber: ctx.blockNumber.toString(),
+        });
+        break;
+      }
       case "FulfillmentConfirmed":
         data.onChainStatus = "Fulfilled";
         if (this.canAdvance(campaign.status, "fulfilled")) data.status = "fulfilled";
         data.fulfilledAt = new Date();
         eventType = "fulfillment_confirmed";
         break;
-      case "FundsReleased": {
-        data.onChainStatus = "Released";
-        if (this.canAdvance(campaign.status, "released")) data.status = "released";
-        data.releasedAt = new Date();
-        data.totalReleasedUnits = addUnits(campaign.totalReleasedUnits, String(args.amount));
-        eventType = "campaign_released";
-        // #950: on-chain release is authoritative, but a release that lands
-        // while an off-chain dispute is still open is an ops red flag — record
-        // it (we can't undo the chain) and surface a reconciliation mismatch.
-        const openDispute = await tx.showCampaignDispute.findFirst({
-          where: { campaignId: campaign.id, status: "open" },
-          select: { id: true },
-        });
-        if (openDispute) {
-          pushMismatch({
-            ...ctx,
-            contractCampaignId,
-            reason: `funds released on-chain while an off-chain dispute is open`,
-            eventName,
-          });
-        }
-        break;
-      }
       case "AuthorityUpdated":
         if (args.beneficiary && args.beneficiary !== ZERO_ADDRESS) {
           data.beneficiaryAddress = String(args.beneficiary);
@@ -555,6 +648,29 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         },
       });
     }
+  }
+
+  private async feeChargedInSameTransaction(
+    tx: Prisma.TransactionClient,
+    contractCampaignId: string,
+    transactionHash: string,
+  ): Promise<bigint> {
+    const feeEvents = await tx.showCampaignEscrowEvent.findMany({
+      where: {
+        transactionHash,
+        eventName: "FeeCharged",
+        contractCampaignId,
+      },
+      select: { args: true },
+    });
+    return feeEvents.reduce((sum, event) => {
+      const args = event.args as Record<string, unknown>;
+      try {
+        return sum + BigInt(String(args.amount ?? "0"));
+      } catch {
+        return sum;
+      }
+    }, 0n);
   }
 
   /** Confirm a backer's pledge from an on-chain Pledged event (not client claim). */

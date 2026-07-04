@@ -24,8 +24,12 @@ const ESCROW = "0x5fbdb2315678afecb367f032d93f642f64180aa3";
 const TEST_PREFIX = `escrowidx_${Date.now()}_`;
 const BACKER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const OTHER_BACKER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+const FEE_RECIPIENT = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
 
 const EVENT_ABIS = {
+  CampaignCreated: parseAbiItem(
+    "event CampaignCreated(uint256 indexed campaignId, bytes32 indexed artistIdHash, bytes32 indexed authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline)",
+  ),
   CampaignActivated: parseAbiItem("event CampaignActivated(uint256 indexed campaignId)"),
   Pledged: parseAbiItem(
     "event Pledged(uint256 indexed campaignId, address indexed backer, uint256 amount, uint256 totalPledged)",
@@ -37,6 +41,15 @@ const EVENT_ABIS = {
   FundsReleased: parseAbiItem(
     "event FundsReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount)",
   ),
+  DepositReleased: parseAbiItem(
+    "event DepositReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount)",
+  ),
+  FeeCharged: parseAbiItem(
+    "event FeeCharged(uint256 indexed campaignId, address indexed feeRecipient, uint256 amount)",
+  ),
+  FeeConfigUpdated: parseAbiItem(
+    "event FeeConfigUpdated(uint256 feeBps, address feeRecipient)",
+  ),
   RefundClaimed: parseAbiItem(
     "event RefundClaimed(uint256 indexed campaignId, address indexed backer, uint256 amount)",
   ),
@@ -46,6 +59,7 @@ let logCounter = 0;
 function buildLog(
   eventName: keyof typeof EVENT_ABIS,
   args: Record<string, unknown>,
+  overrides: { transactionHash?: `0x${string}`; logIndex?: number } = {},
 ): Log {
   const item = EVENT_ABIS[eventName] as any;
   const topics = encodeEventTopics({ abi: [item], eventName, args } as any);
@@ -63,8 +77,10 @@ function buildLog(
     topics,
     data,
     blockNumber: BigInt(1000 + logCounter),
-    transactionHash: ("0x" + logCounter.toString(16).padStart(64, "0")) as `0x${string}`,
-    logIndex: 0,
+    transactionHash:
+      overrides.transactionHash ??
+      (("0x" + logCounter.toString(16).padStart(64, "0")) as `0x${string}`),
+    logIndex: overrides.logIndex ?? 0,
     blockHash: ("0x" + "ab".repeat(32)) as `0x${string}`,
     removed: false,
     transactionIndex: 0,
@@ -75,6 +91,7 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
   const eventBus = new EventBus();
   const service = new ShowsEscrowIndexerService(eventBus);
   const mismatches: any[] = [];
+  const settlements: any[] = [];
   let savedEscrowAddr: string | undefined;
   let savedChainId: string | undefined;
 
@@ -86,10 +103,14 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     eventBus.subscribe("shows.campaign_reconciliation_mismatch", (e) => {
       mismatches.push(e);
     });
+    eventBus.subscribe("shows.campaign_settled", (e) => {
+      settlements.push(e);
+    });
   });
 
   afterAll(async () => {
     await prisma.showCampaignEscrowEvent.deleteMany({ where: { contractAddress: ESCROW } });
+    await prisma.showEscrowIndexerState.deleteMany({ where: { contractAddress: ESCROW } });
     await prisma.showPledge.deleteMany({ where: { campaign: { slug: { startsWith: TEST_PREFIX } } } });
     await prisma.showCampaignEvent.deleteMany({ where: { campaign: { slug: { startsWith: TEST_PREFIX } } } });
     await prisma.showCampaign.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
@@ -221,6 +242,78 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     const after = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
     expect(after.status).toBe("refund_available");
     expect(after.totalRefundedUnits).toBe("400");
+  });
+
+  it("snapshots fee config on campaign creation", async () => {
+    const campaign = await seedCampaign("fee-config", "6");
+
+    await service.processLog(
+      buildLog("FeeConfigUpdated", {
+        feeBps: 600n,
+        feeRecipient: FEE_RECIPIENT as `0x${string}`,
+      }),
+      CHAIN_ID,
+      ESCROW,
+    );
+    await service.processLog(
+      buildLog("CampaignCreated", {
+        campaignId: 6n,
+        artistIdHash: ("0x" + "11".repeat(32)) as `0x${string}`,
+        authorityHash: ("0x" + "22".repeat(32)) as `0x${string}`,
+        beneficiary: BACKER as `0x${string}`,
+        paymentToken: ("0x" + "33".repeat(20)) as `0x${string}`,
+        goalAmount: 1000n,
+        minimumBackers: 1n,
+        deadline: 1n,
+        bookingDeadline: 2n,
+      }),
+      CHAIN_ID,
+      ESCROW,
+    );
+
+    const updated = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(updated.feeBps).toBe(600);
+  });
+
+  it("reconciles net release events with same-transaction FeeCharged gross accounting", async () => {
+    const campaign = await seedCampaign("release-fee", "7");
+    settlements.length = 0;
+    const txHash = ("0x" + "77".repeat(32)) as `0x${string}`;
+
+    await service.processLog(
+      buildLog("FeeCharged", {
+        campaignId: 7n,
+        feeRecipient: FEE_RECIPIENT as `0x${string}`,
+        amount: 60n,
+      }, { transactionHash: txHash, logIndex: 0 }),
+      CHAIN_ID,
+      ESCROW,
+    );
+    await service.processLog(
+      buildLog("FundsReleased", {
+        campaignId: 7n,
+        beneficiary: BACKER as `0x${string}`,
+        amount: 940n,
+      }, { transactionHash: txHash, logIndex: 1 }),
+      CHAIN_ID,
+      ESCROW,
+    );
+
+    const released = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(released.status).toBe("released");
+    expect(released.totalFeePaidUnits).toBe("60");
+    expect(released.totalReleasedUnits).toBe("1000");
+    expect(released.feeBps).toBe(600);
+    expect(settlements).toContainEqual(expect.objectContaining({
+      eventName: "shows.campaign_settled",
+      settlementStage: "final",
+      grossAmountUnits: "1000",
+      feeAmountUnits: "60",
+      netAmountUnits: "940",
+      feeBps: 600,
+      totalFeePaidUnits: "60",
+      transactionHash: txHash,
+    }));
   });
 
   it("emits a reconciliation mismatch for an on-chain pledge with no backend intent", async () => {

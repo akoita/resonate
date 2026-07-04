@@ -215,6 +215,45 @@ function isoOrNull(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
+function subtractUnits(left: string | null | undefined, right: string | null | undefined): string {
+  try {
+    const value = BigInt(left ?? "0") - BigInt(right ?? "0");
+    return value > 0n ? value.toString() : "0";
+  } catch {
+    return "0";
+  }
+}
+
+function feeForAmount(amountUnits: string | null | undefined, feeBps: number | null | undefined): string | null {
+  if (feeBps === null || feeBps === undefined) return null;
+  if (!Number.isSafeInteger(feeBps) || feeBps < 0) return null;
+  try {
+    return (BigInt(amountUnits ?? "0") * BigInt(feeBps) / 10000n).toString();
+  } catch {
+    return null;
+  }
+}
+
+function campaignFeeBreakdown(campaign: any) {
+  const feeBps = Number.isSafeInteger(campaign.feeBps) ? campaign.feeBps : null;
+  const estimatedFeeAtGoalUnits = feeForAmount(campaign.goalAmountUnits, feeBps);
+  const estimatedNetToArtistAtGoalUnits =
+    estimatedFeeAtGoalUnits === null
+      ? null
+      : subtractUnits(campaign.goalAmountUnits, estimatedFeeAtGoalUnits);
+  const totalFeePaidUnits = campaign.totalFeePaidUnits ?? "0";
+  return {
+    feeBps,
+    totalFeePaidUnits,
+    grossReleasedUnits: campaign.totalReleasedUnits ?? "0",
+    netReleasedToArtistUnits: subtractUnits(campaign.totalReleasedUnits, totalFeePaidUnits),
+    estimatedFeeAtGoalUnits,
+    estimatedNetToArtistAtGoalUnits,
+    feeChargedOnlyOnSuccessfulRelease: true,
+    refundFeeUnits: "0",
+  };
+}
+
 // Canonical, presentation-independent view of the fan-risk terms. Tier order
 // and sortOrder are deliberately excluded — reordering tiers is not a change to
 // what a backer receives, so it must not break the lock.
@@ -614,6 +653,10 @@ export function serializePublicShowCampaign(campaign: any) {
     raisedAmountUnits: campaign.raisedAmountUnits,
     totalRefundedUnits: campaign.totalRefundedUnits,
     totalReleasedUnits: campaign.totalReleasedUnits,
+    feeBps: Number.isSafeInteger(campaign.feeBps) ? campaign.feeBps : null,
+    totalFeePaid: campaign.totalFeePaidUnits ?? "0",
+    totalFeePaidUnits: campaign.totalFeePaidUnits ?? "0",
+    campaignFeeBreakdown: campaignFeeBreakdown(campaign),
     confirmedPledgeCount: campaign.confirmedPledgeCount,
     uniqueBackerCount: campaign.uniqueBackerCount,
     // Lifecycle timestamps (public state transitions).
