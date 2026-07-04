@@ -50,5 +50,5 @@ Every sprint plan passes the **Business Model Conformance** check in
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
 | [2026-06-29](2026-06-29-shows-mvp.md) | Shows MVP — campaign funding & trust escrow | ✅ Closed — over-delivered (12/12) |
-| [2026-06-30](2026-06-30-remix-licensed-remixing.md) | Remix — licensed remixing end-to-end | 🟡 8/9 done; #1206 carries into Vision Sprint 1 |
-| [2026-07-06](2026-07-06-vision-sprint-1.md) | Vision Sprint 1 — remix finish + first revenue rails | ▶️ Current |
+| [2026-06-30](2026-06-30-remix-licensed-remixing.md) | Remix — licensed remixing end-to-end | ✅ Closed 2026-07-04 — 9/9, goal met on staging |
+| [2026-07-06](2026-07-06-vision-sprint-1.md) | Vision Sprint 1 — remix finish + first revenue rails | 🟢 Engineering scope done 2026-07-04 (P0 #1330 ✅, P0 #1206 ✅, P1 #1193 ✅) — open: owner ADR-BM-3…6 review; next theme to be judged |
