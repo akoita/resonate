@@ -138,7 +138,20 @@ P3 Listener Pro → P4 rights infra/B2B).
 
 - 90 open issues reviewed → **84 remain open** (6 closed).
 - 8 issues received alignment comments; 3 priority changes recorded here
-  (#281 ↑ Phase 2, #309 → Phase 4, #408 ↑ first-line defense) without label
-  churn.
+  (#281 ↑ Phase 2, #309 → Phase 4, #408 ↑ first-line defense).
 - No issue needed reopening or migration; no orphaned child issues were left
   by the #332 closure (#348/#349 are self-contained).
+
+## Vision labels (applied 2026-07-04)
+
+Every open triaged issue now carries a GitHub label matching its verdict:
+
+- **`vision:core`** (29 issues) — directly serves an active revenue line.
+- **`vision:keep`** (55 issues) — conformant or vision-neutral.
+- #309 relabeled `P1 — Next Sprint` → `P3 — Backlog` per its Phase-4
+  re-sequencing.
+
+New issues must be labeled on creation — see the "💰 Business Model
+Conformance" section in `CLAUDE.md` and the conformance steps in
+`.agents/workflows/start-issue.md` / `finish-issue.md`. An issue that fits
+neither label should be challenged before work starts.

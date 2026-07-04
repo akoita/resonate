@@ -35,6 +35,12 @@ When the user says "start issue #N", "work on #N", or references working on a sp
 ## 4. Plan the work
 
 - Create an implementation plan artifact
+- **Business-model conformance check** (see CLAUDE.md "💰 Business Model
+  Conformance"): if the issue touches money, fees, payouts, upload/ingestion
+  trust, AI-generation billing, collectibles, or licensing, verify it complies
+  with the ADR-BM-4 red lines and note which revenue line/phase it serves
+  (ADR-BM-6). Ensure the issue carries a `vision:core` or `vision:keep` label;
+  if it fits neither, raise that with the user before coding.
 - Request user review before coding
 
 ## 5. Commit conventions
