@@ -32,6 +32,8 @@ interface IShowCampaignEscrow {
         uint256 uniqueBackers;
         uint256 fulfilledAt;
         CampaignStatus status;
+        uint256 feeBps;
+        uint256 totalFeePaid;
     }
 
     event CampaignCreated(
@@ -54,11 +56,13 @@ interface IShowCampaignEscrow {
     event RefundAvailable(uint256 indexed campaignId);
     event RefundClaimed(uint256 indexed campaignId, address indexed backer, uint256 amount);
     event DepositReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount);
+    event FeeCharged(uint256 indexed campaignId, address indexed feeRecipient, uint256 amount);
     event FulfillmentConfirmed(uint256 indexed campaignId, address indexed confirmer);
     event FundsReleased(uint256 indexed campaignId, address indexed beneficiary, uint256 amount);
     event AuthorityUpdated(uint256 indexed campaignId, bytes32 indexed authorityHash, address beneficiary);
     event CampaignPaused(bool paused);
     event ConfirmerUpdated(address indexed confirmer, bool allowed);
+    event FeeConfigUpdated(uint256 feeBps, address feeRecipient);
 
     error NotConfirmer(address caller);
     error Paused();
@@ -68,6 +72,7 @@ interface IShowCampaignEscrow {
     error InvalidAuthority(bytes32 artistIdHash, bytes32 authorityHash);
     error InvalidDeadline(uint256 deadline, uint256 bookingDeadline, uint256 currentTime);
     error DepositReleaseTooHigh(uint256 requestedBps, uint256 maxBps);
+    error InvalidFeeBps(uint256 requested, uint256 max);
     error InvalidStatus(uint256 campaignId, CampaignStatus current);
     error DeadlinePassed(uint256 campaignId, uint256 deadline, uint256 currentTime);
     error DeadlineNotPassed(uint256 campaignId, uint256 deadline, uint256 currentTime);

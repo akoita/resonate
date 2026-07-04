@@ -19,6 +19,7 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
     address public confirmer = makeAddr("confirmer");
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
+    address public feeRecipient = makeAddr("feeRecipient");
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
@@ -26,7 +27,7 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner);
+        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
@@ -147,6 +148,75 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
         assertEq(escrow.refundable(campaignId, alice), 0);
     }
 
+    function testFuzz_FeeSplitConservesReleaseAndRefunds(uint256 aliceAmount, uint256 bobAmount, uint256 feeBps)
+        public
+    {
+        aliceAmount = bound(aliceAmount, 1e6, 500_000e6);
+        bobAmount = bound(bobAmount, 1e6, 500_000e6);
+        feeBps = bound(feeBps, 0, escrow.MAX_CAMPAIGN_FEE_BPS());
+        _useFeeEscrow(feeBps);
+
+        uint256 totalPledged = aliceAmount + bobAmount;
+        uint256 campaignId = _createAndActivate(totalPledged, 2, 0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        vm.prank(confirmer);
+        escrow.confirmFulfillment(campaignId);
+
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+
+        uint256 artistBefore = usdc.balanceOf(artist);
+        uint256 feeBefore = usdc.balanceOf(feeRecipient);
+        escrow.releaseFunds(campaignId);
+
+        uint256 gross = totalPledged;
+        uint256 expectedFee = gross * feeBps / escrow.BPS_DENOMINATOR();
+        uint256 expectedNet = gross - expectedFee;
+        uint256 beneficiaryDelta = usdc.balanceOf(artist) - artistBefore;
+        uint256 feeRecipientDelta = usdc.balanceOf(feeRecipient) - feeBefore;
+        (, uint256 totalFeePaid) = escrow.campaignFees(campaignId);
+
+        assertEq(expectedNet + expectedFee, gross);
+        assertEq(beneficiaryDelta, expectedNet);
+        assertEq(feeRecipientDelta, expectedFee);
+        assertEq(totalFeePaid, expectedFee);
+        assertLe(beneficiaryDelta + feeRecipientDelta, totalPledged);
+    }
+
+    function testFuzz_RefundAmountIndependentOfFeeBps(uint256 aliceAmount, uint256 bobAmount, uint256 feeBps) public {
+        aliceAmount = bound(aliceAmount, 1e6, 500_000e6);
+        bobAmount = bound(bobAmount, 1e6, 500_000e6);
+        feeBps = bound(feeBps, 0, escrow.MAX_CAMPAIGN_FEE_BPS());
+        _useFeeEscrow(feeBps);
+
+        uint256 campaignId = _createAndActivate(aliceAmount + bobAmount + 1, 2, 0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        vm.warp(block.timestamp + 15 days);
+        escrow.markFailed(campaignId);
+
+        assertEq(escrow.refundable(campaignId, alice), aliceAmount);
+        assertEq(escrow.refundable(campaignId, bob), bobAmount);
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+
+        assertEq(usdc.balanceOf(alice) - aliceBefore, aliceAmount);
+        (, uint256 totalFeePaid) = escrow.campaignFees(campaignId);
+        assertEq(totalFeePaid, 0);
+    }
+
     function _createAndActivate(uint256 goal, uint256 minimumBackers, uint256 depositReleaseBps)
         internal
         returns (uint256 campaignId)
@@ -172,5 +242,16 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
         usdc.mint(backer, amount);
         vm.prank(backer);
         usdc.approve(address(escrow), amount);
+    }
+
+    function _useFeeEscrow(uint256 feeBps) internal {
+        escrow = new ShowCampaignEscrow(owner, feeBps, feeRecipient);
+        vm.prank(owner);
+        escrow.setConfirmer(confirmer, true);
+
+        vm.prank(alice);
+        usdc.approve(address(escrow), type(uint256).max);
+        vm.prank(bob);
+        usdc.approve(address(escrow), type(uint256).max);
     }
 }

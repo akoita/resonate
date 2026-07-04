@@ -26,6 +26,7 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
     address public confirmer = address(0x3000);
     address public alice = address(0x4000);
     address public bob = address(0x5000);
+    address public feeRecipient = address(0x6000);
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
@@ -33,7 +34,7 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner);
+        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
@@ -97,6 +98,75 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
         assert(totalReleased == totalPledged);
         assert(usdc.balanceOf(artist) == totalPledged);
         assert(escrow.campaignStatus(campaignId) == CampaignStatus.Released);
+    }
+
+    function check_releaseFeeSplitConservesGross(uint256 aliceAmount, uint256 bobAmount, uint256 feeBps) public {
+        vm.assume(aliceAmount > 0 && aliceAmount <= 500_000e6);
+        vm.assume(bobAmount > 0 && bobAmount <= 500_000e6);
+        vm.assume(feeBps <= escrow.MAX_CAMPAIGN_FEE_BPS());
+
+        vm.prank(owner);
+        escrow.setFeeConfig(feeBps, feeRecipient);
+
+        uint256 totalPledged = aliceAmount + bobAmount;
+        uint256 campaignId = _createAndActivate(totalPledged, 2, 0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        vm.prank(confirmer);
+        escrow.confirmFulfillment(campaignId);
+
+        vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
+
+        uint256 artistBefore = usdc.balanceOf(artist);
+        uint256 feeBefore = usdc.balanceOf(feeRecipient);
+        escrow.releaseFunds(campaignId);
+
+        uint256 gross = totalPledged;
+        uint256 expectedFee = gross * feeBps / escrow.BPS_DENOMINATOR();
+        uint256 expectedNet = gross - expectedFee;
+        uint256 artistDelta = usdc.balanceOf(artist) - artistBefore;
+        uint256 feeDelta = usdc.balanceOf(feeRecipient) - feeBefore;
+        (, uint256 totalFeePaid) = escrow.campaignFees(campaignId);
+
+        assert(artistDelta == expectedNet);
+        assert(feeDelta == expectedFee);
+        assert(artistDelta + feeDelta == gross);
+        assert(totalFeePaid == expectedFee);
+    }
+
+    function check_refundAmountIndependentOfFeeBps(uint256 aliceAmount, uint256 bobAmount, uint256 feeBps) public {
+        vm.assume(aliceAmount > 0 && aliceAmount <= 500_000e6);
+        vm.assume(bobAmount > 0 && bobAmount <= 500_000e6);
+        vm.assume(feeBps <= escrow.MAX_CAMPAIGN_FEE_BPS());
+
+        vm.prank(owner);
+        escrow.setFeeConfig(feeBps, feeRecipient);
+
+        uint256 campaignId = _createAndActivate(aliceAmount + bobAmount + 1, 2, 0);
+
+        vm.prank(alice);
+        escrow.pledge(campaignId, aliceAmount);
+        vm.prank(bob);
+        escrow.pledge(campaignId, bobAmount);
+
+        vm.warp(block.timestamp + 15 days);
+        escrow.markFailed(campaignId);
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        uint256 feeBefore = usdc.balanceOf(feeRecipient);
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+        (, uint256 totalFeePaid) = escrow.campaignFees(campaignId);
+
+        assert(usdc.balanceOf(alice) - aliceBefore == aliceAmount);
+        assert(usdc.balanceOf(feeRecipient) == feeBefore);
+        assert(totalFeePaid == 0);
     }
 
     function _createAndActivate(uint256 goal, uint256 minimumBackers, uint256 depositReleaseBps)
