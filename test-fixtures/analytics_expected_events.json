@@ -81,6 +81,27 @@
     }
   },
   {
+    "eventName": "shows.campaign_settled",
+    "payload": {
+      "campaignId": "campaign-1",
+      "campaignSlug": "artist-paris-fr",
+      "artistId": "artist-1",
+      "contractCampaignId": "1",
+      "settlementStage": "final",
+      "grossAmountUnits": "1100000000",
+      "feeAmountUnits": "66000000",
+      "netAmountUnits": "1034000000",
+      "feeBps": 600,
+      "totalFeePaidUnits": "66000000",
+      "paymentAssetSymbol": "USDC",
+      "paymentAssetDecimals": 6,
+      "chainId": 84532,
+      "contractAddress": "0xescrow",
+      "transactionHash": "tx-settled-1",
+      "blockNumber": "120"
+    }
+  },
+  {
     "eventName": "shows.campaign_visuals_updated",
     "payload": {
       "campaignId": "campaign-1",

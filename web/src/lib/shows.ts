@@ -368,7 +368,7 @@ export function releasePolicyLabel(policy?: string | null): string {
 }
 
 export function formatCampaignFeePercent(feeBps?: number | null): string | null {
-  if (!Number.isSafeInteger(feeBps) || feeBps <= 0) return null;
+  if (feeBps == null || !Number.isSafeInteger(feeBps) || feeBps <= 0) return null;
   const percent = feeBps / 100;
   const display = Number.isInteger(percent)
     ? percent.toFixed(0)
