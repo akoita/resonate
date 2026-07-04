@@ -17,8 +17,12 @@ import {
   StubRemixGenerationProvider,
 } from "./remix-generation.provider";
 import { LyriaRemixGenerationProvider } from "./lyria-remix-generation.provider";
-import { AudioConditionedRemixGenerationProvider } from "./audio-conditioned-remix-generation.provider";
+import {
+  AUDIO_CONDITIONED_REMIX_GENERATION_PROVIDER_KIND,
+  AudioConditionedRemixGenerationProvider,
+} from "./audio-conditioned-remix-generation.provider";
 import { RemixGenerationProcessor } from "./remix-generation.processor";
+import { RemixWorkerPrewarmService } from "./remix-worker-prewarm.service";
 import {
   FfmpegStemMixRenderer,
   REMIX_STEM_MIX_RENDERER,
@@ -51,6 +55,7 @@ import {
     RemixEligibilityService,
     RemixProjectService,
     RemixGenerationProcessor,
+    RemixWorkerPrewarmService,
     // Shared stem mixer (#1182 slice 4): loads + ffmpeg-mixes the unmuted
     // stems into one buffer. Used by both stem_mix render and the
     // audio-conditioned provider so the encrypted-stem deferral and
@@ -79,7 +84,7 @@ import {
         switch (process.env.REMIX_GENERATION_PROVIDER_KIND) {
           case "lyria":
             return new LyriaRemixGenerationProvider(lyriaClient, storageProvider);
-          case "audio-conditioned":
+          case AUDIO_CONDITIONED_REMIX_GENERATION_PROVIDER_KIND:
             return new AudioConditionedRemixGenerationProvider(
               mixer,
               storageProvider,

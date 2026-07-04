@@ -34,6 +34,9 @@ export class AudioConditionedRemixGenerationProvider
   private readonly logger = new Logger(
     AudioConditionedRemixGenerationProvider.name,
   );
+  private readonly idTokenMinter = new AudioWorkerIdentityTokenMinter(
+    this.logger,
+  );
 
   constructor(
     private readonly mixer: StemAudioMixer,
@@ -44,7 +47,7 @@ export class AudioConditionedRemixGenerationProvider
     input: RemixGenerationInput,
     authorization: StemRenderAuthorization,
   ): Promise<RemixGenerationJob> {
-    if (process.env.REMIX_GENERATION_ENABLED !== "true") {
+    if (!isRemixGenerationEnabled()) {
       throw new RemixGenerationProviderError(
         "provider_disabled",
         "AI remix generation is not enabled on this environment yet.",
@@ -77,7 +80,7 @@ export class AudioConditionedRemixGenerationProvider
     const durationSeconds =
       input.constraints.durationSeconds ??
       REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
-    const config = readWorkerConfig();
+    const config = readAudioConditionedWorkerConfig();
     const jobId = randomUUID();
 
     // Condition on exactly what the user arranged. The shared mixer decrypts
@@ -139,7 +142,7 @@ export class AudioConditionedRemixGenerationProvider
   }
 
   private async callWorker(args: {
-    config: WorkerConfig;
+    config: AudioConditionedWorkerConfig;
     audio: Buffer;
     audioMimeType: string;
     prompt: string;
@@ -240,8 +243,6 @@ export class AudioConditionedRemixGenerationProvider
     };
   }
 
-  private googleAuth: GoogleAuth | null = null;
-  private idTokenUnavailableLogged = false;
   private dispatcher: Agent | null = null;
 
   /** Lazy dispatcher with undici's built-in timeouts disabled: the request
@@ -259,6 +260,72 @@ export class AudioConditionedRemixGenerationProvider
    * unauthenticated calls, so that path stays functional.
    */
   private async mintWorkerIdToken(workerUrl: string): Promise<string | null> {
+    return this.idTokenMinter.mint(workerUrl);
+  }
+}
+
+export type AudioConditionedWorkerConfig = {
+  workerUrl: string;
+  cfgScale: number;
+  noiseLevel: number;
+  steps: number;
+  model: string;
+  timeoutMs: number;
+};
+
+export const AUDIO_CONDITIONED_REMIX_GENERATION_PROVIDER_KIND =
+  "audio-conditioned";
+
+export function isRemixGenerationEnabled(): boolean {
+  return process.env.REMIX_GENERATION_ENABLED === "true";
+}
+
+export function isAudioConditionedRemixGenerationActiveAndEnabled(): boolean {
+  return (
+    process.env.REMIX_GENERATION_PROVIDER_KIND ===
+      AUDIO_CONDITIONED_REMIX_GENERATION_PROVIDER_KIND &&
+    isRemixGenerationEnabled()
+  );
+}
+
+const SUPPORTED_AUDIO_WORKER_MODELS = [
+  "medium",
+  "small-music",
+  "small-sfx",
+  "medium-base",
+  "small-music-base",
+  "small-sfx-base",
+] as const;
+
+/**
+ * Worker connection + generation knobs from env, defaulting to the values the
+ * #1193 spike validated (cfg 7 / noise 0.2 / steps 25, medium model). Per-env
+ * tuning needs no code or image change.
+ */
+export function readAudioConditionedWorkerConfig(): AudioConditionedWorkerConfig {
+  return {
+    workerUrl: process.env.REMIX_AUDIO_WORKER_URL ?? "http://localhost:8000",
+    cfgScale: numberEnv(process.env.REMIX_AUDIO_CFG_SCALE, 7),
+    noiseLevel: numberEnv(process.env.REMIX_AUDIO_NOISE_LEVEL, 0.2),
+    steps: numberEnv(process.env.REMIX_AUDIO_STEPS, 25),
+    model: modelEnv(process.env.REMIX_AUDIO_MODEL, "medium"),
+    timeoutMs: numberEnv(process.env.REMIX_AUDIO_TIMEOUT_MS, 360_000),
+  };
+}
+
+export class AudioWorkerIdentityTokenMinter {
+  private googleAuth: GoogleAuth | null = null;
+  private idTokenUnavailableLogged = false;
+
+  constructor(private readonly logger: Pick<Logger, "warn">) {}
+
+  /**
+   * Mint an identity token for the worker's audience (Cloud Run
+   * service-to-service auth). Returns null when Application Default
+   * Credentials cannot mint one — the local-dev worker on localhost accepts
+   * unauthenticated calls, so that path stays functional.
+   */
+  async mint(workerUrl: string): Promise<string | null> {
     try {
       const audience = new URL(workerUrl).origin;
       this.googleAuth ??= new GoogleAuth();
@@ -276,40 +343,6 @@ export class AudioConditionedRemixGenerationProvider
       return null;
     }
   }
-}
-
-type WorkerConfig = {
-  workerUrl: string;
-  cfgScale: number;
-  noiseLevel: number;
-  steps: number;
-  model: string;
-  timeoutMs: number;
-};
-
-const SUPPORTED_AUDIO_WORKER_MODELS = [
-  "medium",
-  "small-music",
-  "small-sfx",
-  "medium-base",
-  "small-music-base",
-  "small-sfx-base",
-] as const;
-
-/**
- * Worker connection + generation knobs from env, defaulting to the values the
- * #1193 spike validated (cfg 7 / noise 0.2 / steps 25, medium model). Per-env
- * tuning needs no code or image change.
- */
-function readWorkerConfig(): WorkerConfig {
-  return {
-    workerUrl: process.env.REMIX_AUDIO_WORKER_URL ?? "http://localhost:8000",
-    cfgScale: numberEnv(process.env.REMIX_AUDIO_CFG_SCALE, 7),
-    noiseLevel: numberEnv(process.env.REMIX_AUDIO_NOISE_LEVEL, 0.2),
-    steps: numberEnv(process.env.REMIX_AUDIO_STEPS, 25),
-    model: modelEnv(process.env.REMIX_AUDIO_MODEL, "medium"),
-    timeoutMs: numberEnv(process.env.REMIX_AUDIO_TIMEOUT_MS, 360_000),
-  };
 }
 
 function modelEnv(raw: string | undefined, fallback: string): string {
