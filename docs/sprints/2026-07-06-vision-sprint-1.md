@@ -1,5 +1,21 @@
 # Sprint Plan: Vision Sprint 1 — Remix Finish + First Revenue Rails
 
+> ## ✅ SPRINT COMPLETE — closed 2026-07-05, 12 days early
+>
+> **Outcome: fully delivered.** [Milestone 3](https://github.com/akoita/resonate/milestone/3)
+> closed. Both P0s and both P1s done:
+> P0 #1330 — 6% success-only fee live in `ShowCampaignEscrow` end-to-end
+> (contract + indexer/API/analytics + honest UX, PR #1340);
+> P0 #1206 — licensed remixing finished, milestone 2 closed 9/9,
+> scale-to-zero + studio pre-warm decision (PR #1341);
+> P1 #1193 — SA3/Gemma license adopt-gate resolved GO with clause-level
+> determinations (PR #1344);
+> P1 owner ADR review — **ADR-BM-1…6 all ACCEPTED** (PRs #1331/#1339/#1346);
+> Business Model v2 Phase 0 complete.
+> Stretch items not taken: #1211 (research, backlog); #1333 planning moved
+> into Vision Sprint 2 as committed work.
+> **Next:** [Vision Sprint 2 — first real money](2026-07-06-vision-sprint-2-first-real-money.md).
+
 **Dates:** Mon 2026-07-06 → Fri 2026-07-17 (10 working days, indicative)
 **Team:** 1 engineer ([@akoita](https://github.com/akoita)) + AI agents
 **Milestone:** [Vision Sprint 1: remix finish + first revenue rails](https://github.com/akoita/resonate/milestone/3)
