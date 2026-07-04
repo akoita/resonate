@@ -223,6 +223,16 @@ This is Resonate's primary revenue engine and its deepest moat.
 | **Sample**     | Producer (excerpt < 30s)         | $2 – $20 per sample          | 10%          |
 | **Broadcast**  | Radio / Podcast                  | Annual fee (negotiated)      | 10%          |
 
+**Marketplace take-rate (canonical — ADR-BM-2, accepted 2026-07-04):** the
+platform take is **10% on marketplace sales** (stems, downloads, collectibles,
+remix/commercial licenses) and **15% on x402 personal micro-purchases**, as
+shown in the table above. The on-chain `StemMarketplaceV2` protocol-fee
+default (0.5%) must be raised to match, and because the contract's max-fee cap
+is 5%, the cap change ships through the contract-upgrade path (#1300) with the
+full custody test ladder. Buy modals must display the fee honestly. Decision
+record: `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-2;
+implementation: [#1333](https://github.com/akoita/resonate/issues/1333).
+
 **What makes this different from BeatStars or Splice?**
 
 1. **On-chain proof of licensing** — License NFTs (ERC-1155) serve as verifiable, immutable proof of rights. No more "I bought a license but lost the email."
