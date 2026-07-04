@@ -47,12 +47,18 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-2 — Marketplace take-rate alignment
 
-- **Decision (proposed):** platform take is **10%** on marketplace sales
+> **Status: ACCEPTED — 2026-07-04, confirmed by @akoita.** Canonical rate
+> reconciled into `docs/rfc/business-model.md` (Layer 3). Implementation
+> tracked in [#1333](https://github.com/akoita/resonate/issues/1333)
+> (next-sprint candidate; requires the fee-cap change via the contract-upgrade
+> path #1300).
+
+- **Decision (accepted):** platform take is **10%** on marketplace sales
   (stems, downloads, collectibles, remix/commercial licenses) and **15%** on
   x402 micro-purchases (personal tier). Raise the `StemMarketplaceV2` protocol
-  fee default from 0.5%; if the current max-fee cap (5%) is below the decided
-  rate, the cap change ships through the contract-upgrade path with full test
-  ladder.
+  fee default from 0.5%; the current max-fee cap (5%) is below the decided
+  rate, so the cap change ships through the contract-upgrade path with full
+  test ladder.
 - **Why:** the RFC already documents 10–15% (Bandcamp charges 10–15%,
   BeatStars free tier ~30%); the 0.5% on-chain default contradicts it and
   forfeits ~20x revenue at any GMV. Artist share remains 85–90% after
@@ -150,7 +156,7 @@ All tracking issues are now filed:
 | --- | --- | --- |
 | Epic | [#1332](https://github.com/akoita/resonate/issues/1332) | open |
 | ADR-BM-1 — Shows campaign fee | [#1330](https://github.com/akoita/resonate/issues/1330) | **accepted** (6%, success-only); blocking #1271 |
-| ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | proposed |
+| ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | **accepted** (10% / 15% micro); implementation next-sprint candidate |
 | ADR-BM-3 — Generation credits | [#1334](https://github.com/akoita/resonate/issues/1334) | proposed |
 | ADR-BM-4 — Payout doctrine | [#1335](https://github.com/akoita/resonate/issues/1335) | proposed |
 | ADR-BM-5 — Identity policy | [#1336](https://github.com/akoita/resonate/issues/1336) | proposed |
