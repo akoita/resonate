@@ -565,7 +565,10 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
   self-hosted Stable Audio 3 worker (`workers/stable-audio/`, scale-to-zero
   Cloud Run GPU). Defaults match the spike (`cfg≈7`, `init_noise_level≈0.2`,
   `steps=25`). Behind `REMIX_GENERATION_ENABLED`, default off — not yet
-  user-visible.
+  user-visible. Because the inference worker scales to zero when idle, the
+  first AI draft after an idle period can take about 4–5 minutes while the
+  model loads; opening Remix Studio now pre-warms the worker, and subsequent
+  drafts should usually return in seconds.
 - **Slice 5 (#1207):** the honest `audio_conditioned` grounding kind is wired
   through generation metadata, publish provenance, analytics events, Remix
   Studio draft-status copy, and published remix release provenance. The label

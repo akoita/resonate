@@ -21,6 +21,7 @@ import {
   RemixProjectService,
   type RemixProjectStemUpdate,
 } from "./remix-project.service";
+import { RemixWorkerPrewarmService } from "./remix-worker-prewarm.service";
 import {
   RemixGenerationProviderError,
   validateRemixGenerationConstraints,
@@ -41,6 +42,7 @@ export class RemixController {
     private readonly remixService: RemixService,
     private readonly eligibilityService: RemixEligibilityService,
     private readonly projectService: RemixProjectService,
+    private readonly workerPrewarmService: RemixWorkerPrewarmService,
   ) {}
 
   @UseGuards(AuthGuard("jwt"))
@@ -50,6 +52,7 @@ export class RemixController {
     @Query("trackId") trackId?: string,
     @Query("stemIds") stemIds?: string,
   ) {
+    this.workerPrewarmService.prewarm();
     if (!trackId) {
       throw new BadRequestException("trackId query parameter is required");
     }
@@ -116,6 +119,7 @@ export class RemixController {
   @UseGuards(AuthGuard("jwt"))
   @Get("projects/:id")
   getProject(@Req() req: any, @Param("id") id: string) {
+    this.workerPrewarmService.prewarm();
     return this.projectService.getProject(req.user.userId, id);
   }
 

@@ -20,6 +20,7 @@ import { RemixService } from '../modules/remix/remix.service';
 import { RemixEligibilityService } from '../modules/remix/remix-eligibility.service';
 import { RemixProjectService } from '../modules/remix/remix-project.service';
 import { RemixGenerationProviderError } from '../modules/remix/remix-generation.provider';
+import { RemixWorkerPrewarmService } from '../modules/remix/remix-worker-prewarm.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockRemixService = {
@@ -63,6 +64,10 @@ const mockProjectService = {
   }),
 };
 
+const mockWorkerPrewarmService = {
+  prewarm: jest.fn(),
+};
+
 describe('RemixController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -72,6 +77,7 @@ describe('RemixController (e2e)', () => {
       { provide: RemixService, useValue: mockRemixService },
       { provide: RemixEligibilityService, useValue: mockEligibilityService },
       { provide: RemixProjectService, useValue: mockProjectService },
+      { provide: RemixWorkerPrewarmService, useValue: mockWorkerPrewarmService },
     ]);
   });
 
@@ -178,6 +184,7 @@ describe('RemixController (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
     expect(mockProjectService.getProject).toHaveBeenCalledWith('user-1', 'proj-1');
+    expect(mockWorkerPrewarmService.prewarm).toHaveBeenCalledTimes(1);
   });
 
   it('GET /remix/projects/:id → 404 for missing projects', async () => {
