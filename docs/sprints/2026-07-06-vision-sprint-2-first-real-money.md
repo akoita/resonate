@@ -1,4 +1,13 @@
-# Sprint Plan: Vision Sprint 2 — First Real Money
+# Sprint Plan: Vision Sprint 2 — First Real Money (Staging Edition)
+
+> **RE-SCOPE — 2026-07-05 (@akoita):** the project stays in dev/test/staging
+> until a **stable and coherent version** exists; **no production concerns for
+> now**. #1271 (production go-live) is pulled out of this sprint — its gate
+> checklist stays for when prod prep begins. "First real money" therefore
+> means the fee mechanics proven end to end **on staging (Base Sepolia,
+> testnet USDC)**: both rails deployed at the accepted rates and observably
+> collecting. The production operator inputs listed below are struck for this
+> sprint; only staging-level config is needed.
 
 **Dates:** Mon 2026-07-06 → Fri 2026-07-17 (10 working days, indicative)
 **Team:** 1 engineer ([@akoita](https://github.com/akoita)) + AI agents
@@ -6,10 +15,11 @@
 **Tracker filter:** [`label:sprint:vision-2`](https://github.com/akoita/resonate/issues?q=is%3Aissue+is%3Aopen+label%3Asprint%3Avision-2)
 **Working mode:** flexible priority-set sprint — see [docs/sprints/README.md](README.md)
 
-> **Sprint Goal:** Resonate becomes able to collect real platform revenue:
-> **Shows runs in production with the 6% fee armed and at least one real
-> campaign open for pledges**, and **the marketplace enforces the accepted
-> 10% / 15% take-rate end to end**.
+> **Sprint Goal (re-scoped 2026-07-05):** both revenue rails are proven on
+> staging: **Shows collects the 6% fee end to end on Base Sepolia**, and **the
+> marketplace enforces the accepted 10% / 15% take-rate end to end** — the
+> platform's fee mechanics are stable and coherent, ready for a future prod
+> decision.
 
 If that sentence isn't true at demo, the sprint missed.
 
@@ -26,7 +36,7 @@ roadmap improves a product that has never collected a euro. Per ADR-BM-6, lines
 
 | Tier | Item | What / exit condition |
 | --- | --- | --- |
-| **P0** | [#1271](https://github.com/akoita/resonate/issues/1271) Shows production go-live | Execute the gated go-live ops: deploy production `ShowCampaignEscrow` **with the 6% fee config**, promote the address (resonate-iac / Cloud Run / Secret Manager / `web` ABI), indexer + reconciliation alerting on in prod, seeded `CAMPAIGNS[]` fallback removed from prod builds, controlled real-user cohort. Exit: a real campaign is open for pledges in production. |
+| **P0** | Shows fee live on staging *(re-scoped 2026-07-05; was #1271 prod go-live)* | Deploy the fee-bearing `ShowCampaignEscrow` (6%) to **staging/Base Sepolia**, promote the address through staging config + `web` ABI, indexer + reconciliation on, and verify the full pledge→escrow→release loop **with the 6% fee observably collected** by the staging fee wallet. Exit: fee visible in campaign accounting + analytics on staging. |
 | **P0** | [#1333](https://github.com/akoita/resonate/issues/1333) Marketplace take-rate | `StemMarketplaceV2` enforces 10% (15% x402 micro) — fee cap + default change with the full custody test ladder, x402 config alignment, honest fee display in buy modals, deployment handoffs. Exit: testnet-verified at the decided rates; prod-ready. |
 | **P1** | First-campaign content | 1–3 real campaigns prepared with the wedge artists (BD by @akoita; engineering supports with campaign creation/authority flows already shipped). |
 | **P1** | Revenue observability | The fee/settlement analytics shipped in #1330 surface in the artist/operator views so the first collected fee is visible and auditable (north-star metric groundwork, ties to #281). |
@@ -34,35 +44,42 @@ roadmap improves a product that has never collected a euro. Per ADR-BM-6, lines
 
 ## Operator inputs required (only @akoita can provide)
 
-- **Production fee-recipient wallet** (`SHOW_CAMPAIGN_FEE_RECIPIENT`) — a
-  secured platform wallet, not a dev key.
+> **Re-scope 2026-07-05:** production items below are ~~struck~~ for this
+> sprint. Needed now: only a **staging fee-recipient address** (Base Sepolia —
+> a dev wallet is fine) for `SHOW_CAMPAIGN_FEE_RECIPIENT` / `FEE_RECIPIENT` in
+> staging config, and optionally the free **Stability registration** for the
+> stretch item.
+
+- ~~**Production fee-recipient wallet** (`SHOW_CAMPAIGN_FEE_RECIPIENT`) — a
+  secured platform wallet, not a dev key.~~
 - **Production deployer key** (`PRIVATE_KEY` per `DeploymentKey.s.sol` rules —
   never the Anvil default on remote RPC) + gas funds on the target chain.
-- **Target chain confirmation** for production (Base mainnet vs staying on
-  Base Sepolia for the first cohort — decide consciously; "real money" implies
-  mainnet USDC, but a staged first cohort on testnet USDC is a legitimate
-  de-risking step if the fan cohort is friendly).
-- **GCP billing**: staging is on free-trial billing (GPU quota already bit us
-  once) — confirm the production project's billing state before go-live ops.
+- ~~**Production deployer key** + gas funds; **target chain confirmation**;
+  **production GCP billing state**~~ — deferred with prod prep (re-scope
+  2026-07-05).
 - **Stability AI registration** (free) — not needed for this sprint's P0s, but
   unblocks the stretch item and ADR-BM-3 billing.
 
 ## Explicitly NOT in this sprint
 
+- **Production anything** (re-scope 2026-07-05): go-live ops, mainnet deploys,
+  real-money wallets, real-user cohorts — #1271 keeps the gate checklist for
+  when a stable, coherent version triggers prod prep.
 - Listener Pro / subscriptions (Phase 3; ADR-BM-6 gate not met).
 - Remix real-user enablement (#1342/#1343 + terms — next theme candidate).
 - Recursive royalties / LicenseRegistry (Phase 4).
 
-## Exit criteria
+## Exit criteria (re-scoped 2026-07-05)
 
-- [ ] Production `ShowCampaignEscrow` deployed with 6% fee; address promoted
-      through iac/config/ABI; full pledge→escrow→refund/release loop verified
-      on the production chain; reconciliation alerting green.
-- [ ] At least one real campaign open for pledges in production
-      (`vision Sprint Goal` sentence true).
-- [ ] `StemMarketplaceV2` at 10%/15% with custody suite green (incl. Gambit on
-      the changed contract) and honest fee display; x402 config aligned.
-- [ ] Any mid-sprint re-scope recorded here with a dated note.
+- [ ] Fee-bearing `ShowCampaignEscrow` (6%) deployed to **staging/Base
+      Sepolia**; address promoted through staging config + web ABI; full
+      pledge→escrow→refund/release loop verified with the fee observably
+      collected; reconciliation alerting green on staging.
+- [ ] `StemMarketplaceV2` at 10%/15% redeployed on staging with custody suite
+      green (incl. Gambit on the changed contract), honest fee display, and
+      x402 config aligned.
+- [ ] Fee/settlement figures visible in artist/operator analytics on staging.
+- [ ] Any further mid-sprint re-scope recorded here with a dated note.
 
 ## Business-model conformance
 
