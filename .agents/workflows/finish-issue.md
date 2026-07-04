@@ -57,6 +57,13 @@ finalize work on the current branch, follow these steps.
   validation scope. Implement any missing required updates before proceeding.
   Mention the relevant checklist sections or intentional deferrals in the PR
   summary.
+- **Business-model conformance** (CLAUDE.md "💰 Business Model Conformance"):
+  if the change touches money, fees, payouts, upload/ingestion trust,
+  AI-generation billing, collectibles, or licensing — confirm the ADR-BM-4 red
+  lines are respected, state the revenue line/phase (ADR-BM-6) in the PR body,
+  and reconcile any new or changed fee/split/price into
+  `docs/rfc/business-model.md` (the single canonical source). Vision-neutral
+  changes (infra/quality) can say so explicitly.
 
 ## 3. Ensure test coverage
 
