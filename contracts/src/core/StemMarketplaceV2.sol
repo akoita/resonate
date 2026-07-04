@@ -34,7 +34,11 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ Constants ============
     uint256 public constant BPS = 10000;
-    uint256 public constant MAX_PROTOCOL_FEE = 500; // 5%
+    // ADR-BM-2 (accepted 2026-07-04): platform take is 10% (1000 bps) on
+    // marketplace sales; the cap leaves headroom to the 15% x402 micro tier.
+    // MAX_ROYALTY (25%) + MAX_PROTOCOL_FEE (15%) = 40% < 100%, so
+    // sellerAmount = totalPrice - royalty - fee can never underflow.
+    uint256 public constant MAX_PROTOCOL_FEE = 1500; // 15%
     uint256 public constant MAX_ROYALTY = 2500; // 25%
 
     // ============ State ============
