@@ -177,8 +177,8 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   }
 
   return (
-    <section className="show-detail__operator-panel" aria-label="Campaign operations">
-      <div className="show-detail__operator-header">
+    <details className="show-detail__operator-panel" aria-label="Campaign operations">
+      <summary className="show-detail__operator-summary">
         <div>
           <span className="shows-home-section__kicker">Operator controls</span>
           <h2>Campaign lifecycle</h2>
@@ -189,7 +189,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
           ) : null}
           <span className="show-detail__soon-pill">{formatStatus(role)}</span>
         </div>
-      </div>
+      </summary>
 
       <div className="show-detail__operator-status">
         {statusRows.map(([label, value]) => (
@@ -456,6 +456,6 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
           );
         }}
       />
-    </section>
+    </details>
   );
 }

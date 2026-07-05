@@ -923,8 +923,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "steps",
             items: [
-              "Open a campaign to see its goal, deadline, backers, and the artist-approved terms.",
-              "Send your signal — a free way to show interest — or pledge funds toward the goal.",
+              "Open a campaign to see its goal, deadline, backers, venue target, and the artist-approved terms.",
+              "Use Pledge with wallet in the hero or bottom bar to jump to the pledge tiers.",
               "Before signing, a confirmation step recaps your pledge amount and the refund and release terms — review it, then confirm.",
               "Approve the pledge with your passkey; it's held in escrow, not paid out yet.",
             ],
@@ -941,8 +941,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/show-campaign.png`,
-              alt: "The 'Sennarin in Paris' campaign page showing date and venue, an amount funded toward a goal with a progress bar, backer and deadline counts, a 'Send Your Signal' button, and a 'View escrow contract' link.",
-              caption: "A campaign page: funding progress, deadline, locked terms, and a link to view the escrow contract.",
+              alt: "The 'Sennarin in Paris' campaign page showing date and venue, funding progress, pledge tiers, locked terms, and a pledge button.",
+              caption: "A campaign page: funding progress, deadline, locked terms, pledge tiers, and a link to view the escrow contract.",
               width: 1440,
               height: 900,
               source: STAGING,
