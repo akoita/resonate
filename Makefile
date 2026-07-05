@@ -141,6 +141,56 @@ deploy-stem-marketplace:
 	(cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
 	RPC_URL="$$rpc_url" ./contracts/scripts/write-stem-marketplace-handoff.sh
 
+set-marketplace-protocol-fee:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be the StemMarketplaceV2 owner"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using owner signer from PRIVATE_KEY for StemMarketplaceV2 config update"; \
+	(cd contracts && forge script script/SetMarketplaceProtocolFee.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ StemMarketplaceV2 protocol fee operation complete"
+
+set-show-campaign-fee-config:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be the ShowCampaignEscrow owner"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using owner signer from PRIVATE_KEY for ShowCampaignEscrow fee config update"; \
+	(cd contracts && forge script script/SetShowCampaignFeeConfig.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ ShowCampaignEscrow fee config operation complete"
+
+set-show-campaign-confirmer:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be the ShowCampaignEscrow owner"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using owner signer from PRIVATE_KEY for ShowCampaignEscrow confirmer update"; \
+	(cd contracts && forge script script/SetShowCampaignConfirmer.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ ShowCampaignEscrow confirmer operation complete"
+
+pause-show-campaign-escrow:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be the ShowCampaignEscrow owner"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using owner signer from PRIVATE_KEY for ShowCampaignEscrow pause update"; \
+	(cd contracts && forge script script/SetShowCampaignPaused.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ ShowCampaignEscrow pause operation complete"
+
+create-show-campaign:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be the ShowCampaignEscrow owner"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using owner signer from PRIVATE_KEY to create and activate a Show campaign"; \
+	(cd contracts && forge script script/CreateShowCampaign.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ Show campaign create/activate operation complete"
+
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
 

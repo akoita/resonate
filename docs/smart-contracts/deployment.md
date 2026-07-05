@@ -212,6 +212,11 @@ Manual smart-contract deployment is available in
 It intentionally runs only through `workflow_dispatch`; no push, pull request,
 or repository-dispatch event can deploy contracts.
 
+For a cold-start, operation-by-operation guide, use
+[`operations-runbook.md`](operations-runbook.md). It covers every workflow
+operation, the GitHub environment variables behind it, verification retries, and
+the reviewed `resonate-iac` address-promotion path.
+
 Recommended operator flow:
 
 1. Open **Actions -> Smart Contract Deployment**.
@@ -234,6 +239,11 @@ Deployment operations:
 | `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and `RevenueEscrow` without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
 | `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
+| `set-marketplace-protocol-fee` | Marketplace fee config update | No redeploy; calls `StemMarketplaceV2.setProtocolFee` and optionally `setFeeRecipient` | Requires `MARKETPLACE_ADDRESS` and `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`; signer must be marketplace owner |
+| `set-show-campaign-fee-config` | Shows campaign fee config update | No redeploy; calls `ShowCampaignEscrow.setFeeConfig` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, and `NEW_FEE_RECIPIENT`; fee rate applies to future campaigns only, recipient rotates at charge time |
+| `set-show-campaign-confirmer` | Shows confirmer allowlist update | No redeploy; calls `ShowCampaignEscrow.setConfirmer` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `CONFIRMER_ADDRESS`, and `CONFIRMER_ALLOWED`; signer must be escrow owner |
+| `pause-show-campaign-escrow` | Shows pledge pause/unpause | No redeploy; calls `ShowCampaignEscrow.setPaused` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS` and `PAUSED`; signer must be escrow owner |
+| `create-show-campaign` | Owner-managed Shows campaign creation | No redeploy; calls `ShowCampaignEscrow.createCampaign` and `activateCampaign` | Requires campaign env vars documented in the runbook; logs the resulting `CAMPAIGN_ID` prominently |
 | `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer, then writes JSON, `.remote.env`, and ABI handoffs | No existing protocol contract references need updating today; promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` / `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before live pledge execution |
 | `verify-base-sepolia` | BaseScan/Etherscan verification retry | No deploy | Reads the selected broadcast file |
 | `verify-base-sepolia-sourcify` | Sourcify verification retry | No deploy | Reads the selected broadcast file |
@@ -267,6 +277,7 @@ Optional GitHub environment variables:
 | --- | --- |
 | `VERIFY_CONTRACTS` | Usually set from the workflow input. `auto` verifies when an explorer API key is present. |
 | `BROADCAST_FILE` | Override the broadcast JSON used by verification retry jobs. |
+| `VERIFY_ONLY` | Optional contract-name filter for BaseScan/Etherscan or Sourcify verification retries. |
 | `BASESCAN_API_URL` | Override the BaseScan/Etherscan verification API URL. |
 | `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | Tune BaseScan verification retry behavior. |
 | `SOURCIFY_API_URL`, `SOURCIFY_RETRIES`, `SOURCIFY_DELAY_SECONDS` | Tune Sourcify verification retry behavior. |
@@ -278,6 +289,12 @@ Optional GitHub environment variables:
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
 | `SHOW_CAMPAIGN_ESCROW_OWNER` | Optional owner/ops multisig for `deploy-show-campaign-escrow`; defaults to the deployer. |
+| `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Existing escrow address for Shows config and campaign-creation operations. |
+| `NEW_PROTOCOL_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-marketplace-protocol-fee`; `NEW_FEE_RECIPIENT` is optional for marketplace recipient rotation. |
+| `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-show-campaign-fee-config`; both are required for the escrow fee config operation. |
+| `CONFIRMER_ADDRESS`, `CONFIRMER_ALLOWED` | Inputs for `set-show-campaign-confirmer`. |
+| `PAUSED` | Input for `pause-show-campaign-escrow`. |
+| `ARTIST_ID_HASH`, `AUTHORITY_HASH`, `BENEFICIARY`, `PAYMENT_TOKEN`, `GOAL_UNITS`, `MIN_BACKERS`, `FUNDING_DEADLINE`, `BOOKING_DEADLINE`, `DEPOSIT_RELEASE_BPS`, `DISPUTE_WINDOW_SECONDS` | Inputs for `create-show-campaign`; `DEPOSIT_RELEASE_BPS` and `DISPUTE_WINDOW_SECONDS` are optional. |
 
 Security guidance:
 
