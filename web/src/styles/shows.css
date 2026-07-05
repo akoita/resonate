@@ -1904,6 +1904,55 @@
   line-height: 1.65;
 }
 
+/* Signal snapshot inside the lede panel (#1383): fills the height the tall
+ * pledge card imposes on the row instead of leaving dead space. */
+.campaign-detail-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 6px 0 0;
+}
+
+.campaign-detail-hero__stat {
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.03);
+  min-width: 0;
+}
+
+.campaign-detail-hero__stat dt {
+  margin: 0 0 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.campaign-detail-hero__stat dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.campaign-detail-hero__stat strong {
+  color: #fff;
+  font-size: clamp(17px, 1.4vw, 21px);
+  font-weight: 850;
+  line-height: 1.15;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  max-height: 2.3em;
+}
+
+.campaign-detail-hero__stat small {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .campaign-detail-hero__trust-line {
   margin: 0;
   max-width: 68ch;
@@ -2082,113 +2131,15 @@
 
 /* ─── 4-Up Signal Snapshot Cards ─────────────────────────────────── */
 
-.show-detail__snapshot {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
-}
 
-.show-detail__signal-card {
-  min-height: 160px;
-  max-height: 190px;
-  padding: 28px;
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  background:
-    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--color-signal) 6%, transparent), transparent 50%),
-    rgba(255, 255, 255, 0.015);
-  backdrop-filter: blur(20px) saturate(140%);
-  -webkit-backdrop-filter: blur(20px) saturate(140%);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 16px;
-  position: relative;
-  overflow: hidden;
-  transition:
-    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-    box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.3s ease;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.05),
-    inset 1px 1px 0 0 rgba(255, 255, 255, 0.03),
-    0 8px 24px rgba(0, 0, 0, 0.3);
-}
 
-.show-detail__signal-card:hover {
-  transform: translateY(-5px);
-  border-color: color-mix(in srgb, var(--color-signal) 30%, transparent);
-  box-shadow:
-    0 20px 48px -12px color-mix(in srgb, var(--color-signal) 28%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    inset 1px 1px 0 0 color-mix(in srgb, var(--color-signal) 15%, transparent);
-}
 
-/* Featured / primary snapshot card */
-.show-detail__signal-card--primary {
-  border-color: color-mix(in srgb, var(--color-signal) 22%, transparent);
-  background:
-    radial-gradient(circle at 0% 0%, var(--color-signal-soft), transparent 55%),
-    rgba(255, 255, 255, 0.025);
-}
 
-/* Neon rail */
-.show-detail__signal-card--primary::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 18px;
-  bottom: 18px;
-  width: 4px;
-  border-radius: 0 4px 4px 0;
-  background: linear-gradient(180deg, var(--color-signal), color-mix(in srgb, var(--color-signal) 20%, transparent));
-  box-shadow: 0 0 16px var(--color-signal);
-}
 
-.show-detail__signal-label {
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
 
-.show-detail__signal-card strong {
-  color: #fff;
-  font-size: clamp(24px, 2.8vw, 32px);
-  line-height: 1.1;
-  letter-spacing: -0.04em;
-  display: block;
-  font-weight: 900;
-  overflow: hidden;
-  max-height: 4.45em;
-  overflow-wrap: anywhere;
-}
 
-.show-detail__signal-card--primary strong {
-  background: linear-gradient(135deg, #fff 0%, color-mix(in srgb, var(--color-signal) 60%, #fff) 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 2px 10px color-mix(in srgb, var(--color-signal) 15%, transparent));
-}
 
-.show-detail__signal-card--target strong {
-  font-size: clamp(18px, 1.7vw, 24px);
-  line-height: 1.12;
-  max-height: 3.36em;
-}
 
-.show-detail__signal-card p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.55);
-  font-size: 13px;
-  line-height: 1.55;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-}
 
 /* ─── Operator Lifecycle Panel ───────────────────────────────────── */
 
@@ -3317,10 +3268,6 @@
     gap: 24px;
   }
 
-  .show-detail__snapshot {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-  }
 
   .show-detail__visual-story {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3570,10 +3517,6 @@
     gap: 28px;
   }
 
-  .show-detail__snapshot {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
 
   .show-detail__visual-story {
     grid-template-columns: 1fr;

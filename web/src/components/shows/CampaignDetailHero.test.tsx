@@ -76,6 +76,12 @@ describe("CampaignDetailHero", () => {
     expect(html).toContain("Le Trianon");
     expect(html).toContain("View escrow contract");
     expect(html).toContain(campaign.etherscanUrl);
+    // #1383: the signal snapshot lives inside the copy panel (2x2 grid) so
+    // the lede row has no dead space beside a tall pledge card.
+    expect(html).toContain("campaign-detail-hero__stats");
+    expect(html).toContain("40%"); // 120000 / 300000 funded
+    expect(html).toContain("96 more to threshold"); // 100 - 4 backers
+    expect(html).toContain("Le Trianon");
     // No dead or self-linking CTAs.
     expect(html).not.toContain("Send Your Signal");
     expect(html).not.toContain(`href="/shows/${campaign.id}"`);

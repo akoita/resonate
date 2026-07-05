@@ -6,6 +6,8 @@ import { CampaignProgress } from "./CampaignProgress";
 import {
   campaignDisplayTitle,
   daysUntil,
+  formatMoneyCompact,
+  progressRatio,
   type Campaign,
 } from "../../lib/shows";
 
@@ -35,6 +37,12 @@ export function CampaignDetailHero({ campaign, children }: Props) {
     month: "long",
     year: "numeric",
   });
+  const deadlineFmt = new Date(campaign.deadline).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+  });
+  const progressPct = Math.round(progressRatio(campaign) * 100);
+  const backersNeeded = Math.max(0, campaign.thresholdBackers - campaign.backerCount);
   const displayTitle = campaignDisplayTitle(campaign);
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
@@ -88,6 +96,37 @@ export function CampaignDetailHero({ campaign, children }: Props) {
           <p className="campaign-detail-hero__tagline">{campaign.tagline}</p>
 
           <CampaignProgress campaign={campaign} daysLeft={daysLeft} />
+
+          <dl className="campaign-detail-hero__stats" aria-label="Campaign signal snapshot">
+            <div className="campaign-detail-hero__stat">
+              <dt>Funded</dt>
+              <dd>
+                <strong>{progressPct}%</strong>
+                <small>of {formatMoneyCompact(campaign.goalCents, campaign.currency)} goal</small>
+              </dd>
+            </div>
+            <div className="campaign-detail-hero__stat">
+              <dt>Backers</dt>
+              <dd>
+                <strong>{campaign.backerCount.toLocaleString("en-US")}</strong>
+                <small>{backersNeeded.toLocaleString("en-US")} more to threshold</small>
+              </dd>
+            </div>
+            <div className="campaign-detail-hero__stat">
+              <dt>Deadline</dt>
+              <dd>
+                <strong>{daysLeft}d left</strong>
+                <small>closes {deadlineFmt}, then auto-refund</small>
+              </dd>
+            </div>
+            <div className="campaign-detail-hero__stat">
+              <dt>Show target</dt>
+              <dd>
+                <strong title={campaign.venue ?? campaign.city}>{campaign.venue ?? campaign.city}</strong>
+                <small>{targetDateFmt}</small>
+              </dd>
+            </div>
+          </dl>
 
           <p className="campaign-detail-hero__trust-line">
             {campaign.isSample
