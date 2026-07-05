@@ -1019,6 +1019,88 @@ describe('CatalogService (integration)', () => {
     });
   });
 
+  // #1379 regression: campaigns link to the public catalog artist credit,
+  // which can be a different Artist row than the uploader-profile
+  // release.artistId (the exact staging shape that left the chip disabled).
+  it('links Support a show through the release artist credit, not just release.artistId', async () => {
+    const uploaderArtistId = `${TEST_PREFIX}player_actions_credit_uploader`;
+    const publicArtistId = `${TEST_PREFIX}player_actions_credit_public`;
+    const releaseId = `${TEST_PREFIX}player_actions_credit_release`;
+    const trackId = `${TEST_PREFIX}player_actions_credit_track`;
+    const campaignId = `${TEST_PREFIX}player_actions_credit_campaign`;
+
+    await prisma.artist.create({
+      data: {
+        id: uploaderArtistId,
+        displayName: 'Credit Uploader Profile',
+        payoutAddress: '0x' + '9'.repeat(40),
+      },
+    });
+    await prisma.artist.create({
+      data: {
+        id: publicArtistId,
+        displayName: 'Credited Public Artist',
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: uploaderArtistId,
+        title: 'Credited Campaign Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'Credited Public Artist',
+        artistCredits: {
+          create: {
+            artistId: publicArtistId,
+            role: 'main',
+            displayName: 'Credited Public Artist',
+            sortOrder: 0,
+          },
+        },
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'Credited Campaign Track',
+            processingStatus: 'complete',
+          },
+        },
+      },
+    });
+    await prisma.showCampaign.create({
+      data: {
+        id: campaignId,
+        slug: `${TEST_PREFIX}player-shows-credited`,
+        artistId: publicArtistId,
+        artistDisplayName: 'Credited Public Artist',
+        title: 'Credited Public Artist Live',
+        city: 'Brooklyn',
+        country: 'US',
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: '1000',
+        raisedAmountUnits: '250',
+        confirmedPledgeCount: 3,
+        chainId: 84532,
+        status: 'active',
+      },
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId);
+    const showAction = result!.actions.find((action) => action.key === 'shows_campaign');
+
+    expect(showAction).toMatchObject({
+      status: 'available',
+      href: `/shows/${TEST_PREFIX}player-shows-credited`,
+      metadata: expect.objectContaining({
+        campaignId,
+        title: 'Credited Public Artist Live',
+        city: 'Brooklyn',
+        progressPct: 25,
+        backerCount: 3,
+      }),
+    });
+  });
+
   it('keeps Support a show disabled when the artist campaign is not active', async () => {
     const artistId = `${TEST_PREFIX}player_actions_cancelled_show_artist`;
     const releaseId = `${TEST_PREFIX}player_actions_cancelled_show_release`;
