@@ -85,6 +85,9 @@ contract_id_for() {
         StemMarketplaceV2)
             echo "src/core/StemMarketplaceV2.sol:StemMarketplaceV2"
             ;;
+        ShowCampaignEscrow)
+            echo "src/core/ShowCampaignEscrow.sol:ShowCampaignEscrow"
+            ;;
         *)
             return 1
             ;;
@@ -267,17 +270,16 @@ poll_verification() {
 
 cd "$CONTRACTS_DIR"
 
-CONTRACTS=(
-    TransferValidator
-    ContentProtection
-    ERC1967Proxy
-    DisputeResolution
-    CurationRewards
-    RevenueEscrow
-    StemNFT
-    PaymentAssetRegistry
-    StemMarketplaceV2
-)
+# Derive the contract list from the broadcast's CREATE transactions so this
+# script works for ANY deploy script's broadcast (DeployProtocol,
+# DeployShowCampaignEscrow, DeployStemMarketplace, ...), not a hardcoded set.
+# Names without a contract_id_for mapping are reported and skipped.
+mapfile -t CONTRACTS < <(jq -r '[.transactions[] | select(.transactionType == "CREATE") | .contractName] | unique | .[]' "$BROADCAST_FILE")
+
+if [[ "${#CONTRACTS[@]}" -eq 0 ]]; then
+    echo -e "${RED}No CREATE transactions found in broadcast.${NC}"
+    exit 1
+fi
 
 if [[ -n "${VERIFY_ONLY:-}" ]]; then
     CONTRACTS=("$VERIFY_ONLY")
