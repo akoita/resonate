@@ -1,6 +1,6 @@
 <svg width="1600" height="1120" viewBox="0 0 1600 1120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
   <title id="title">Resonate deployment architecture</title>
-  <desc id="desc">A deployment architecture diagram for Resonate showing clients, a global HTTPS edge with managed TLS and Cloud Armor, Cloud Run services, private data services, Pub/Sub Demucs processing, selectable analytics streaming or batch execution, BigQuery warehouse layers, x402 settlement, ERC-4337 smart accounts, protocol contracts, and GitHub/Terraform delivery.</desc>
+  <desc id="desc">A deployment architecture diagram for Resonate showing clients, a global HTTPS edge with managed TLS and Cloud Armor, Cloud Run services, private data services, Pub/Sub Demucs processing, a GPU Stable Audio remix service, selectable analytics streaming or batch execution, BigQuery warehouse layers, x402 settlement, ERC-4337 smart accounts, protocol contracts including the show campaign escrow, and GitHub/Terraform delivery.</desc>
   <defs>
     <linearGradient id="bg" x1="60" y1="20" x2="1540" y2="1090" gradientUnits="userSpaceOnUse">
       <stop stop-color="#F8FBFF"/>
@@ -51,7 +51,7 @@
 
   <rect class="page" x="0" y="0" width="1600" height="1120"/>
   <text x="70" y="74" class="title">Resonate deployment architecture</text>
-  <text x="72" y="108" class="subtitle">Music marketplace, agent-native commerce, smart accounts, AI stem processing, analytics intelligence, and Terraform-managed GCP delivery.</text>
+  <text x="72" y="108" class="subtitle">Music marketplace, agent-native commerce, smart accounts, AI stem processing, GPU remix generation, analytics intelligence, and Terraform-managed GCP delivery.</text>
 
   <rect x="55" y="150" width="210" height="850" class="zone"/>
   <text x="82" y="188" class="h">Clients</text>
@@ -88,16 +88,18 @@
   <rect x="861" y="282" width="150" height="38" class="secure"/>
   <text x="884" y="306" class="small">Cloud Armor</text>
 
-  <rect x="330" y="390" width="345" height="250" class="panel"/>
+  <rect x="330" y="390" width="345" height="270" class="panel"/>
   <text x="354" y="424" class="label">Application containers</text>
-  <rect x="358" y="454" width="278" height="42" class="sub"/>
-  <text x="382" y="481" class="small">Cloud Run frontend - Next.js</text>
-  <rect x="358" y="516" width="278" height="42" class="sub"/>
-  <text x="382" y="543" class="small">Cloud Run backend - NestJS API</text>
-  <rect x="358" y="578" width="278" height="42" class="sub"/>
-  <text x="382" y="605" class="small">Cloud Run Demucs Job - on demand</text>
+  <rect x="358" y="448" width="278" height="40" class="sub"/>
+  <text x="382" y="474" class="small">Cloud Run frontend - Next.js</text>
+  <rect x="358" y="500" width="278" height="40" class="sub"/>
+  <text x="382" y="526" class="small">Cloud Run backend - NestJS API</text>
+  <rect x="358" y="552" width="278" height="40" class="sub"/>
+  <text x="382" y="578" class="small">Cloud Run Demucs Job - on demand</text>
+  <rect x="358" y="604" width="278" height="40" class="sub"/>
+  <text x="382" y="630" class="small">Cloud Run stable-audio - GPU remix</text>
 
-  <rect x="705" y="390" width="345" height="250" class="panel"/>
+  <rect x="705" y="390" width="345" height="270" class="panel"/>
   <text x="729" y="424" class="label">Private data and media</text>
   <rect x="733" y="454" width="125" height="42" class="data"/>
   <text x="757" y="481" class="small">Cloud SQL</text>
@@ -110,29 +112,29 @@
   <rect x="733" y="578" width="270" height="42" class="data"/>
   <text x="775" y="605" class="small">Pub/Sub jobs, results, DLQ</text>
 
-  <rect x="330" y="672" width="720" height="142" class="panel"/>
-  <text x="354" y="706" class="label">Analytics event pipeline</text>
-  <rect x="358" y="734" width="132" height="42" class="analytics"/>
-  <text x="382" y="760" class="small">Event ledger</text>
-  <rect x="512" y="734" width="132" height="42" class="analytics"/>
-  <text x="532" y="760" class="small">Pub/Sub + DLQ</text>
-  <rect x="666" y="734" width="150" height="42" class="analytics"/>
-  <text x="684" y="760" class="small">Stream / batch</text>
-  <rect x="838" y="734" width="175" height="42" class="warehouse"/>
-  <text x="858" y="760" class="small">BigQuery warehouse</text>
-  <text x="358" y="794" class="tiny">Dataflow streaming or batch landing/materialization</text>
-  <text x="358" y="808" class="tiny">artist dashboard reports and agent taste scores</text>
+  <rect x="330" y="690" width="720" height="142" class="panel"/>
+  <text x="354" y="724" class="label">Analytics event pipeline</text>
+  <rect x="358" y="752" width="132" height="42" class="analytics"/>
+  <text x="382" y="778" class="small">Event ledger</text>
+  <rect x="512" y="752" width="132" height="42" class="analytics"/>
+  <text x="532" y="778" class="small">Pub/Sub + DLQ</text>
+  <rect x="666" y="752" width="150" height="42" class="analytics"/>
+  <text x="684" y="778" class="small">Stream / batch</text>
+  <rect x="838" y="752" width="175" height="42" class="warehouse"/>
+  <text x="858" y="778" class="small">BigQuery warehouse</text>
+  <text x="358" y="812" class="tiny">Dataflow streaming or batch landing/materialization</text>
+  <text x="358" y="826" class="tiny">artist dashboard reports and agent taste scores</text>
 
-  <rect x="330" y="842" width="720" height="132" class="panel"/>
-  <text x="354" y="876" class="label">Delivery and operations</text>
-  <rect x="358" y="904" width="155" height="40" class="ops"/>
-  <text x="381" y="929" class="small">GitHub Actions</text>
-  <rect x="535" y="904" width="170" height="40" class="ops"/>
-  <text x="557" y="929" class="small">Artifact Registry</text>
-  <rect x="727" y="904" width="136" height="40" class="ops"/>
-  <text x="758" y="929" class="small">Terraform</text>
-  <rect x="885" y="904" width="128" height="40" class="ops"/>
-  <text x="916" y="929" class="small">Monitoring</text>
+  <rect x="330" y="862" width="720" height="132" class="panel"/>
+  <text x="354" y="896" class="label">Delivery and operations</text>
+  <rect x="358" y="924" width="155" height="40" class="ops"/>
+  <text x="381" y="949" class="small">GitHub Actions</text>
+  <rect x="535" y="924" width="170" height="40" class="ops"/>
+  <text x="557" y="949" class="small">Artifact Registry</text>
+  <rect x="727" y="924" width="136" height="40" class="ops"/>
+  <text x="758" y="949" class="small">Terraform</text>
+  <rect x="885" y="924" width="128" height="40" class="ops"/>
+  <text x="916" y="949" class="small">Monitoring</text>
 
   <rect x="1130" y="150" width="415" height="850" class="zone"/>
   <text x="1158" y="188" class="h">Protocol and payments</text>
@@ -145,13 +147,14 @@
   <rect x="1188" y="342" width="290" height="42" class="chain"/>
   <text x="1230" y="369" class="small">Kernel smart accounts + sessions</text>
 
-  <rect x="1160" y="438" width="350" height="176" class="panel"/>
+  <rect x="1160" y="438" width="350" height="196" class="panel"/>
   <text x="1184" y="472" class="label">Resonate contracts</text>
   <text x="1188" y="506" class="small">StemNFT, marketplace, content protection,</text>
   <text x="1188" y="526" class="small">curation rewards, dispute resolution,</text>
-  <text x="1188" y="546" class="small">revenue escrow, transfer validation</text>
-  <rect x="1188" y="568" width="290" height="30" class="chain"/>
-  <text x="1258" y="588" class="tiny">Base Sepolia / EVM deployments</text>
+  <text x="1188" y="546" class="small">show campaign escrow, revenue escrow,</text>
+  <text x="1188" y="566" class="small">transfer validation</text>
+  <rect x="1188" y="586" width="290" height="30" class="chain"/>
+  <text x="1258" y="606" class="tiny">Base Sepolia / EVM deployments</text>
 
   <rect x="1160" y="654" width="350" height="140" class="panel"/>
   <text x="1184" y="688" class="label">x402 commerce</text>
@@ -166,21 +169,21 @@
   <path d="M1011 301 C1040 301 1052 301 1080 301" class="blueLine"/>
   <path d="M1080 301 C1100 360 1088 475 1050 475" class="blueLine"/>
   <path d="M1080 301 C1100 430 1088 537 1050 537" class="blueLine"/>
-  <path d="M636 537 C662 537 682 537 705 537" class="greenLine"/>
-  <path d="M636 599 C662 599 682 599 705 599" class="greenLine"/>
-  <path d="M675 537 C705 490 720 475 733 475" class="greenLine"/>
-  <path d="M675 537 C705 520 718 537 733 537" class="greenLine"/>
-  <path d="M675 537 C704 570 720 599 733 599" class="greenLine"/>
-  <path d="M636 537 H690 V712 H424 V734" class="purpleLine"/>
-  <path d="M492 755 H504" class="purpleLine"/>
-  <path d="M646 755 H658" class="purpleLine"/>
-  <path d="M818 755 H830" class="purpleLine"/>
-  <path d="M636 537 H675 V360 H1088 C1116 360 1130 320 1160 305" class="orangeLine"/>
-  <path d="M636 537 H675 V650 H1088 C1118 650 1128 720 1160 736" class="orangeLine"/>
-  <path d="M236 652 C280 800 310 924 358 924" class="blueLine dash"/>
-  <path d="M513 924 C520 924 528 924 535 924" class="blueLine"/>
-  <path d="M705 924 C712 924 720 924 727 924" class="blueLine"/>
-  <path d="M863 924 C870 924 878 924 885 924" class="blueLine"/>
+  <path d="M636 520 C662 520 682 528 705 537" class="greenLine"/>
+  <path d="M636 572 C662 572 682 590 705 599" class="greenLine"/>
+  <path d="M675 520 C705 482 720 475 733 475" class="greenLine"/>
+  <path d="M675 520 C705 528 718 537 733 537" class="greenLine"/>
+  <path d="M675 520 C704 560 720 599 733 599" class="greenLine"/>
+  <path d="M636 520 H690 V668 H424 V752" class="purpleLine"/>
+  <path d="M492 773 H504" class="purpleLine"/>
+  <path d="M646 773 H658" class="purpleLine"/>
+  <path d="M818 773 H830" class="purpleLine"/>
+  <path d="M636 520 H685 V360 H1088 C1116 360 1130 320 1160 305" class="orangeLine"/>
+  <path d="M636 520 H685 V682 H1088 C1118 682 1128 726 1160 736" class="orangeLine"/>
+  <path d="M236 652 C280 800 310 944 358 944" class="blueLine dash"/>
+  <path d="M513 944 C520 944 528 944 535 944" class="blueLine"/>
+  <path d="M705 944 C712 944 720 944 727 944" class="blueLine"/>
+  <path d="M863 944 C870 944 878 944 885 944" class="blueLine"/>
 
   <rect x="70" y="1030" width="1460" height="54" class="sub"/>
   <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. App CI publishes immutable images and analytics templates, while resonate-iac owns Terraform state, IAM, routing, analytics mode selection, alerts, and validation.</text>
