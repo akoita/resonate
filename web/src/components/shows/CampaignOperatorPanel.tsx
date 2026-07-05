@@ -15,6 +15,7 @@ import {
   confirmShowCampaignFulfillment,
   getManagedShowCampaign,
   initiateShowCampaignDispute,
+  resyncShowCampaignFromChain,
   resolveShowCampaignDispute,
   type Campaign,
 } from "../../lib/shows";
@@ -22,6 +23,7 @@ import {
 type ActionKey =
   | "authority"
   | "activate"
+  | "resync"
   | "cancel"
   | "booking"
   | "fulfillment"
@@ -271,6 +273,20 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
             disabled={!isAuthenticated || busy || !canActivate || !contractAddress || !contractCampaignId}
           >
             {pending === "activate" ? "Activating..." : "Activate campaign"}
+          </button>
+          <button
+            type="button"
+            onClick={() => runAction(
+              "resync",
+              () => resyncShowCampaignFromChain({
+                campaign: current,
+                token: token ?? "",
+              }),
+              "Campaign re-synced from chain.",
+            )}
+            disabled={!isAuthenticated || busy || !current.escrowContractAddress || !current.contractCampaignId}
+          >
+            {pending === "resync" ? "Re-syncing..." : "Re-sync from chain"}
           </button>
         </fieldset>
 

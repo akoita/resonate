@@ -1542,6 +1542,17 @@ export async function activateShowCampaign(input: {
   });
 }
 
+export async function resyncShowCampaignFromChain(input: {
+  campaign: Campaign;
+  token: string;
+}): Promise<Campaign> {
+  return await mutateShowCampaign(`/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/resync-chain`, {
+    method: "POST",
+    token: input.token,
+    body: {},
+  });
+}
+
 export async function cancelShowCampaign(input: {
   campaign: Campaign;
   token: string;

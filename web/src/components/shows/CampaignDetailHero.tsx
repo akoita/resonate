@@ -112,7 +112,7 @@ export function CampaignDetailHero({ campaign, tiers }: Props) {
             target="_blank"
             rel="noreferrer noopener"
             className="campaign-detail-hero__cta-secondary"
-            aria-label="View the escrow contract on Sepolia Etherscan"
+            aria-label="View the escrow contract on the block explorer"
           >
             View escrow contract ↗
           </a>

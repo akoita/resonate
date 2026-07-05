@@ -267,6 +267,16 @@ export class ShowsController {
     return this.showsService.activateCampaign(this.actorFromRequest(req), id, body);
   }
 
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Post("campaigns/:id/resync-chain")
+  resyncCampaignFromChain(
+    @Param("id") id: string,
+    @Request() req: any,
+  ) {
+    return this.showsService.resyncCampaignFromChain(this.actorFromRequest(req), id);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Post("campaigns/:id/pledges/intent")
   createPledgeIntent(
