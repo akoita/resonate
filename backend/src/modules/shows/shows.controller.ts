@@ -34,10 +34,12 @@ export class ShowsController {
   listCampaigns(
     @Query("includeSignals") includeSignals?: string,
     @Query("status") status?: string,
+    @Query("scope") scope?: string,
   ) {
     return this.showsService.listCampaigns({
       includeSignals: includeSignals === "true",
       status,
+      scope,
     });
   }
 

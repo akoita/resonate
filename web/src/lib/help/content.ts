@@ -1010,6 +1010,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "When a campaign has a platform fee, the management view shows the estimated net artist payout at the goal. The fee is charged only on successful release, so failed campaigns still refund backers in full.",
           },
+          {
+            kind: "paragraph",
+            text: "Admin and operator accounts can use the Shows list filter to switch from the default actionable campaign view to all campaigns or to a specific status such as cancelled, refunds, or released.",
+          },
         ],
       },
       {

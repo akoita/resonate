@@ -1,9 +1,48 @@
 import { CampaignCard } from "../../components/shows/CampaignCard";
-import { listCampaigns } from "../../lib/shows";
+import { ShowsCampaignFilters } from "../../components/shows/ShowsCampaignFilters";
+import { listCampaigns, type CampaignListOptions, type CampaignListStatus } from "../../lib/shows";
 import Link from "next/link";
 
-export default async function ShowsExplorerPage() {
-  const campaigns = await listCampaigns();
+type SearchParams = Record<string, string | string[] | undefined>;
+
+const OPERATOR_FILTER_STATUSES = new Set<CampaignListStatus>([
+  "active",
+  "funded",
+  "cancelled",
+  "refund_available",
+  "released",
+]);
+
+function firstParam(params: SearchParams | undefined, key: string): string | undefined {
+  const value = params?.[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function campaignListOptions(params: SearchParams | undefined): {
+  activeFilter: "default" | "all" | CampaignListStatus;
+  options: CampaignListOptions;
+} {
+  const status = firstParam(params, "status");
+  if (status && OPERATOR_FILTER_STATUSES.has(status as CampaignListStatus)) {
+    return {
+      activeFilter: status as CampaignListStatus,
+      options: { status: status as CampaignListStatus },
+    };
+  }
+  if (firstParam(params, "scope") === "all") {
+    return { activeFilter: "all", options: { scope: "all" } };
+  }
+  return { activeFilter: "default", options: {} };
+}
+
+export default async function ShowsExplorerPage({
+  searchParams,
+}: {
+  searchParams?: Promise<SearchParams> | SearchParams;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const { activeFilter, options } = campaignListOptions(resolvedSearchParams);
+  const campaigns = await listCampaigns(options);
   const totalBackers = campaigns.reduce((s, c) => s + c.backerCount, 0);
 
   return (
@@ -22,12 +61,12 @@ export default async function ShowsExplorerPage() {
         </div>
 
         <div className="shows-page__intro-art">
-          <div className="shows-page__intro-stat" aria-label="Active campaigns">
+          <div className="shows-page__intro-stat" aria-label="Campaigns shown">
             <span className="shows-page__intro-stat-num tabular">
               {campaigns.length}
             </span>
             <span className="shows-page__intro-stat-label">
-              Active campaigns
+              Campaigns shown
             </span>
           </div>
           <div
@@ -47,6 +86,7 @@ export default async function ShowsExplorerPage() {
       <section aria-label="All campaigns">
         <div className="shows-page__toolbar" style={{ marginBottom: 20 }}>
           <h2 className="shows-page__toolbar-heading">All campaigns</h2>
+          <ShowsCampaignFilters activeFilter={activeFilter} />
           <Link href="/shows/create" className="shows-page__create-link">
             Create campaign
           </Link>

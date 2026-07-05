@@ -8,6 +8,7 @@ import { CampaignTrustBadge } from "./CampaignTrustBadge";
 import {
   campaignDisplayInitial,
   campaignDisplayTitle,
+  campaignStatusBadge,
   campaignVisualEndpoint,
   daysUntil,
   type Campaign,
@@ -28,6 +29,7 @@ export function CampaignCard({ campaign }: Props) {
     setDaysLeft(daysUntil(campaign.deadline));
   }, [campaign.deadline]);
   const displayTitle = campaignDisplayTitle(campaign);
+  const statusBadge = campaignStatusBadge(campaign);
   const monogram = campaignDisplayInitial(campaign);
   const declaredVisualImage = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
   const fallbackVisualImage = !declaredVisualImage && fallbackVisualSlot !== "none"
@@ -70,7 +72,14 @@ export function CampaignCard({ campaign }: Props) {
         ) : null}
       </div>
       <div className="campaign-card__body">
-        <CampaignTrustBadge campaign={campaign} className="campaign-card__trust" />
+        <div className="campaign-card__badge-row">
+          <CampaignTrustBadge campaign={campaign} className="campaign-card__trust" />
+          {statusBadge ? (
+            <span className={`campaign-card__status-badge campaign-card__status-badge--${statusBadge.tone}`}>
+              {statusBadge.label}
+            </span>
+          ) : null}
+        </div>
         <h3 className="campaign-card__title">
           {displayTitle}
         </h3>

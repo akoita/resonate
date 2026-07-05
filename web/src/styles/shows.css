@@ -311,6 +311,36 @@
   text-decoration: none;
 }
 
+.shows-page__filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.shows-page__filter-link {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.shows-page__filter-link[aria-current="page"] {
+  color: #fff;
+  background: color-mix(in srgb, var(--color-signal) 30%, rgba(255, 255, 255, 0.08));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-signal) 35%, transparent);
+}
+
 /* ══════════════════════════════════════════════════════════════════
  * CREATE CAMPAIGN — /shows/create
  * ══════════════════════════════════════════════════════════════════ */
@@ -1050,6 +1080,35 @@
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+}
+
+.campaign-card__badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.campaign-card__status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+
+.campaign-card__status-badge--warning {
+  color: #fbbf24;
+}
+
+.campaign-card__status-badge--danger {
+  color: #f87171;
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -3463,7 +3522,6 @@
 .campaign-trust-badge--danger { color: #f87171; }
 /* Card placement: a compact pill above the title. */
 .campaign-card__trust {
-  margin-bottom: 8px;
   font-size: 0.66rem;
   padding: 3px 8px;
 }
