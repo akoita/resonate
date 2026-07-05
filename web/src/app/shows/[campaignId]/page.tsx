@@ -195,8 +195,8 @@ export default async function CampaignDetailPage({ params }: Props) {
               <span className="show-detail__step-num">Step 1 — Pledge</span>
               <h3 className="show-detail__step-title">You lock funds in escrow</h3>
               <p className="show-detail__step-body">
-                You pick a tier and pledge. The money goes into a smart
-                contract on Sepolia — not a company&apos;s bank account.
+                You pick a tier and pledge. The money goes into a public smart
+                contract — not a company&apos;s bank account.
               </p>
             </article>
             <article className="show-detail__step">
