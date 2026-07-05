@@ -64,6 +64,8 @@ const baseCampaign = {
   status: "active",
   featured: false,
   contractAddress: "0xescrow",
+  escrowContractAddress: "0x1234567890abcdef1234567890abcdef12345678",
+  contractCampaignId: "1",
   etherscanUrl: "",
   tagline: "",
   tiers: [],
@@ -86,6 +88,7 @@ describe("CampaignOperatorPanel disputes (#950 operator controls)", () => {
     expect(html).toContain("Artist net at goal");
     expect(html).toContain("2820 USDC after 6% fee");
     expect(html).toContain("Raise dispute");
+    expect(html).toContain("Re-sync from chain");
     // The active hint (not the disabled-window hint) is shown when eligible.
     expect(html).toContain("Flag a problem between booking confirmation");
     // No open dispute → resolve controls are absent.

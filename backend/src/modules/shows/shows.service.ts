@@ -1,5 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, Optional } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from "@nestjs/common";
 import { createHash, randomUUID } from "crypto";
+import { createPublicClient, http, parseAbi, type Address } from "viem";
+import { baseSepolia, foundry, sepolia } from "viem/chains";
 import type {
   Artist,
   ShowArtistAuthorityStatus,
@@ -180,6 +182,39 @@ const TERMINAL_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "revoked",
   "expired",
 ];
+const SHOW_ESCROW_READ_ABI = parseAbi([
+  "function campaigns(uint256) view returns (bytes32 artistIdHash, bytes32 authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline, uint256 depositReleaseBps, uint256 disputeWindowSeconds, uint256 totalPledged, uint256 totalRefunded, uint256 totalReleased, uint256 uniqueBackers, uint256 fulfilledAt, uint8 status, uint256 feeBps, uint256 totalFeePaid)",
+  "function campaignFees(uint256 campaignId) view returns (uint256 feeBps, uint256 totalFeePaid)",
+  "function campaignStatus(uint256 campaignId) view returns (uint8)",
+]);
+const SHOW_ESCROW_STATUS_NAMES = [
+  "Draft",
+  "Active",
+  "Funded",
+  "BookingConfirmed",
+  "DepositReleased",
+  "Fulfilled",
+  "Released",
+  "Cancelled",
+  "RefundAvailable",
+  "Refunded",
+] as const;
+
+const SHOW_ESCROW_CHAIN_CONFIGS: Record<number, { chain: any; rpcEnvKeys: string[]; localFallback?: string }> = {
+  31337: {
+    chain: foundry,
+    rpcEnvKeys: ["RPC_URL", "ANVIL_RPC_URL", "LOCAL_RPC_URL"],
+    localFallback: "http://localhost:8545",
+  },
+  11155111: {
+    chain: sepolia,
+    rpcEnvKeys: ["RPC_URL", "SEPOLIA_RPC_URL"],
+  },
+  84532: {
+    chain: baseSepolia,
+    rpcEnvKeys: ["RPC_URL", "BASE_SEPOLIA_RPC_URL"],
+  },
+};
 
 // #946: the fan-risk terms that the artist signs and an operator approves.
 // Once authority is approved these become immutable (see approvedTermsHash):
@@ -529,6 +564,25 @@ function defaultChainId() {
   return configuredNumber(["SHOWS_DEFAULT_CHAIN_ID", "PAYMENT_CHAIN_ID", "AA_CHAIN_ID", "CHAIN_ID"], 84532);
 }
 
+function configuredRpcUrl(keys: string[], fallback?: string): string | null {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return fallback ?? null;
+}
+
+function showEscrowClient(chainId: number) {
+  const config = SHOW_ESCROW_CHAIN_CONFIGS[chainId];
+  if (!config) return null;
+  const rpcUrl = configuredRpcUrl(config.rpcEnvKeys, config.localFallback);
+  if (!rpcUrl) return null;
+  return createPublicClient({
+    chain: { ...config.chain, id: chainId },
+    transport: http(rpcUrl),
+  });
+}
+
 /**
  * Resolve the deployed `ShowCampaignEscrow` address for a chain from
  * deployment-handoff config (#947). Mirrors the per-chain env pattern used for
@@ -557,6 +611,23 @@ export function configuredShowCampaignEscrowAddress(chainId: number): string | n
 
 function defaultPaymentAssetSymbol() {
   return process.env.SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL?.trim() || "USDC";
+}
+
+function parseContractCampaignId(value: string | null | undefined): bigint | null {
+  if (!value || !/^[0-9]+$/.test(value)) return null;
+  const parsed = BigInt(value);
+  return parsed > 0n ? parsed : null;
+}
+
+function numberFromChain(value: bigint, field: string): number {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error(`${field} exceeds safe integer range`);
+  }
+  return Number(value);
+}
+
+function showEscrowStatusName(value: number): string {
+  return SHOW_ESCROW_STATUS_NAMES[value] ?? `Unknown(${value})`;
 }
 
 /**
@@ -753,6 +824,8 @@ function visualExtension(mimeType: string) {
 
 @Injectable()
 export class ShowsService {
+  private readonly logger = new Logger(ShowsService.name);
+
   constructor(
     @Optional() private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService,
     @Optional() private readonly storageProvider?: StorageProvider,
@@ -1678,7 +1751,7 @@ export class ShowsService {
       }
     }
 
-    return prisma.showCampaign.update({
+    const activated = await prisma.showCampaign.update({
       where: { id: campaign.id },
       data: {
         status: "active",
@@ -1706,6 +1779,103 @@ export class ShowsService {
       },
       include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
     });
+    return this.hydrateLinkedCampaignFromChainOrWarn(activated);
+  }
+
+  async resyncCampaignFromChain(actor: Actor, campaignId: string) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can re-sync campaign chain state");
+    }
+    const campaign = await this.findCampaignOrThrow(campaignId);
+    return this.hydrateLinkedCampaignFromChain(campaign);
+  }
+
+  private async hydrateLinkedCampaignFromChainOrWarn(campaign: any) {
+    if (!campaign.contractAddress || !campaign.contractCampaignId) return campaign;
+    try {
+      return await this.hydrateLinkedCampaignFromChain(campaign);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Show campaign chain hydration failed for ${campaign.id} (${campaign.chainId}:${campaign.contractAddress}:${campaign.contractCampaignId}); activation/link preserved for retry: ${message}`,
+      );
+      await this.recordHydrationFailure(campaign.id, message);
+      return campaign;
+    }
+  }
+
+  private async hydrateLinkedCampaignFromChain(campaign: any) {
+    const chainId = campaign.chainId ?? defaultChainId();
+    const contractAddress = validateOptionalAddress(campaign.contractAddress, "contractAddress");
+    const contractCampaignId = parseContractCampaignId(campaign.contractCampaignId);
+    if (!contractAddress || !contractCampaignId) {
+      throw new BadRequestException("Campaign must be linked to an escrow contract and contract campaign ID before re-sync");
+    }
+    const client = showEscrowClient(chainId);
+    if (!client) {
+      throw new BadRequestException(`No RPC client configured for show campaign chain ${chainId}`);
+    }
+
+    try {
+      const [campaignSnapshot, feeSnapshot, statusSnapshot, blockNumber] = await Promise.all([
+        client.readContract({
+          address: contractAddress as Address,
+          abi: SHOW_ESCROW_READ_ABI,
+          functionName: "campaigns",
+          args: [contractCampaignId],
+        }),
+        client.readContract({
+          address: contractAddress as Address,
+          abi: SHOW_ESCROW_READ_ABI,
+          functionName: "campaignFees",
+          args: [contractCampaignId],
+        }),
+        client.readContract({
+          address: contractAddress as Address,
+          abi: SHOW_ESCROW_READ_ABI,
+          functionName: "campaignStatus",
+          args: [contractCampaignId],
+        }),
+        client.getBlockNumber(),
+      ]);
+
+      const campaignTuple = campaignSnapshot as readonly bigint[];
+      const feeTuple = feeSnapshot as readonly bigint[];
+      const feeBps = feeTuple[0] ?? campaignTuple[16] ?? 0n;
+      const totalFeePaid = feeTuple[1] ?? campaignTuple[17] ?? 0n;
+      const onChainStatusCode = Number(statusSnapshot ?? campaignTuple[15] ?? 0);
+
+      return await prisma.showCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          onChainStatus: showEscrowStatusName(onChainStatusCode),
+          raisedAmountUnits: String(campaignTuple[10] ?? 0n),
+          totalRefundedUnits: String(campaignTuple[11] ?? 0n),
+          totalReleasedUnits: String(campaignTuple[12] ?? 0n),
+          uniqueBackerCount: numberFromChain(campaignTuple[13] ?? 0n, "uniqueBackers"),
+          feeBps: numberFromChain(feeBps, "feeBps"),
+          totalFeePaidUnits: String(totalFeePaid),
+          lastEscrowIndexedBlock: blockNumber,
+          reconciliationError: null,
+          reconciliationErrorAt: null,
+        },
+        include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await this.recordHydrationFailure(campaign.id, message);
+      throw new BadRequestException(`Could not re-sync campaign from chain: ${message}`);
+    }
+  }
+
+  private async recordHydrationFailure(campaignId: string, message: string) {
+    await prisma.showCampaign.update({
+      where: { id: campaignId },
+      data: {
+        reconciliationErrorAt: new Date(),
+        reconciliationError: `show-campaign-chain-hydration: ${message}`.slice(0, 2000),
+      },
+    }).catch(() => undefined);
   }
 
   async createPledgeIntent(actor: Actor, campaignId: string, input: PledgeIntentInput) {

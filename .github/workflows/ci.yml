@@ -437,6 +437,22 @@ jobs:
         run: npm exec -- prisma generate
         working-directory: backend
 
+      # Integration specs that deploy real contracts to the Anvil Testcontainer
+      # (e.g. shows.service.integration.spec.ts) require Foundry build artifacts
+      # under contracts/out/.
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.4.3
+
+      - name: Install contract dependencies
+        run: ./scripts/install-deps.sh
+        working-directory: contracts
+
+      - name: Build contract artifacts for integration tests
+        run: forge build
+        working-directory: contracts
+
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
       - name: Run selected backend integration tests
         run: |
