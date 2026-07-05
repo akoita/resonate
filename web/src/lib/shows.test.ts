@@ -3,6 +3,7 @@ import {
   buildCatalogArtistCandidates,
   campaignDisplayInitial,
   campaignDisplayTitle,
+  campaignStatusBadge,
   campaignRouteCode,
   filterActionableCampaigns,
   campaignTrustState,
@@ -16,6 +17,7 @@ import {
   campaignFeeNotice,
   formatCampaignFeePercent,
   pledgeConfirmSummary,
+  showsCampaignListPath,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -38,6 +40,31 @@ describe("Shows campaign presentation", () => {
       "funded",
       "booking-confirmed",
     ]);
+  });
+
+  it("builds campaign list query paths for operator filters", () => {
+    expect(showsCampaignListPath()).toBe("/shows/campaigns");
+    expect(showsCampaignListPath({ scope: "all" })).toBe("/shows/campaigns?scope=all");
+    expect(showsCampaignListPath({ status: "cancelled" })).toBe("/shows/campaigns?status=cancelled");
+    expect(showsCampaignListPath({ scope: "all", status: "released" })).toBe(
+      "/shows/campaigns?status=released",
+    );
+  });
+
+  it("labels non-actionable campaign states for operator list cards", () => {
+    expect(campaignStatusBadge({ rawStatus: "active" })).toBeNull();
+    expect(campaignStatusBadge({ rawStatus: "cancelled" })).toEqual({
+      label: "Cancelled - refunds open",
+      tone: "danger",
+    });
+    expect(campaignStatusBadge({ rawStatus: "refund_available" })).toEqual({
+      label: "Refunds open",
+      tone: "warning",
+    });
+    expect(campaignStatusBadge({ rawStatus: "released" })).toEqual({
+      label: "Released",
+      tone: "neutral",
+    });
   });
 
   it("uses the campaign title as the public display identity", () => {

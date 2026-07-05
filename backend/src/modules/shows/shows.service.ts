@@ -371,6 +371,8 @@ const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
   "refunded",
   "released",
 ] as const satisfies readonly ShowCampaignStatus[];
+const SHOW_CAMPAIGN_LIST_SCOPES = ["all"] as const;
+type ShowCampaignListScope = typeof SHOW_CAMPAIGN_LIST_SCOPES[number];
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -385,6 +387,13 @@ function optionalText(value: unknown): string | null | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function assertShowCampaignListScope(value: string): ShowCampaignListScope {
+  if ((SHOW_CAMPAIGN_LIST_SCOPES as readonly string[]).includes(value)) {
+    return value as ShowCampaignListScope;
+  }
+  throw new BadRequestException("Invalid campaign list scope");
 }
 
 function parseDate(value: unknown, field: string): Date {
@@ -749,15 +758,19 @@ export class ShowsService {
     @Optional() private readonly storageProvider?: StorageProvider,
   ) {}
 
-  async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
+  async listCampaigns(query: { includeSignals?: boolean; status?: string; scope?: string } = {}) {
     const includeSignals = query.includeSignals === true;
     const requestedStatus = optionalText(query.status);
     const status = requestedStatus ? assertShowCampaignStatus(requestedStatus) : null;
+    const requestedScope = optionalText(query.scope);
+    const scope = requestedScope ? assertShowCampaignListScope(requestedScope) : null;
     const campaigns = await prisma.showCampaign.findMany({
       where: {
         ...(status
           ? { status }
-          : { status: { notIn: [...PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES] } }),
+          : scope === "all"
+            ? {}
+            : { status: { notIn: [...PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES] } }),
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
       },
       include: {

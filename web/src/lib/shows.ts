@@ -9,6 +9,22 @@
 import { API_BASE, type Release } from "./api";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
+export type CampaignListScope = "all";
+export type CampaignListStatus =
+  | "active"
+  | "funded"
+  | "booking_confirmed"
+  | "deposit_released"
+  | "fulfilled"
+  | "released"
+  | "cancelled"
+  | "refund_available"
+  | "refunded";
+
+export type CampaignListOptions = {
+  scope?: CampaignListScope;
+  status?: CampaignListStatus;
+};
 
 export interface CampaignTier {
   id: string;
@@ -134,6 +150,28 @@ export function isActionableCampaign(campaign: Pick<Campaign, "rawStatus">): boo
 
 export function filterActionableCampaigns<T extends Pick<Campaign, "rawStatus">>(campaigns: T[]): T[] {
   return campaigns.filter(isActionableCampaign);
+}
+
+export type CampaignStatusBadge = {
+  label: string;
+  tone: "neutral" | "warning" | "danger";
+};
+
+export function campaignStatusBadge(campaign: Pick<Campaign, "rawStatus">): CampaignStatusBadge | null {
+  switch (campaign.rawStatus) {
+    case "cancelled":
+      return { label: "Cancelled - refunds open", tone: "danger" };
+    case "refund_available":
+      return { label: "Refunds open", tone: "warning" };
+    case "refunded":
+      return { label: "Refunded", tone: "neutral" };
+    case "released":
+      return { label: "Released", tone: "neutral" };
+    case "failed":
+      return { label: "Failed - refunds open", tone: "warning" };
+    default:
+      return null;
+  }
 }
 
 export function campaignDisplayTitle(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {
@@ -1150,10 +1188,24 @@ const CAMPAIGNS: Campaign[] = [
   },
 ];
 
-export async function listCampaigns(): Promise<Campaign[]> {
-  const campaigns = await fetchShowsApi<BackendShowCampaign[]>("/shows/campaigns");
+export function showsCampaignListPath(options: CampaignListOptions = {}): string {
+  const params = new URLSearchParams();
+  if (options.status) {
+    params.set("status", options.status);
+  } else if (options.scope === "all") {
+    params.set("scope", "all");
+  }
+  const query = params.toString();
+  return `/shows/campaigns${query ? `?${query}` : ""}`;
+}
+
+export async function listCampaigns(options: CampaignListOptions = {}): Promise<Campaign[]> {
+  const campaigns = await fetchShowsApi<BackendShowCampaign[]>(showsCampaignListPath(options));
   if (!campaigns?.length) {
-    return CAMPAIGNS;
+    const fallback = options.status
+      ? CAMPAIGNS.filter((campaign) => campaign.rawStatus === options.status)
+      : CAMPAIGNS;
+    return options.scope === "all" ? fallback : filterActionableCampaigns(fallback);
   }
   return campaigns.map(mapBackendCampaign);
 }
