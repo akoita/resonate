@@ -49,13 +49,15 @@ test("/shows explorer renders all four campaign cards", async ({ page }) => {
   await expect(page.locator(".campaign-card")).toHaveCount(4);
 });
 
-test("/shows/sennarin-paris detail renders pledge-first hero + how-it-works + escrow notice", async ({ page }) => {
+test("/shows/sennarin-paris detail renders pledge-module hero + how-it-works + escrow notice", async ({ page }) => {
   await page.goto("/shows/sennarin-paris");
   await page.waitForLoadState("domcontentloaded");
 
   const hero = page.locator(".campaign-detail-hero:visible", { hasText: "SennaRin in Paris" }).first();
   await expect(hero).toBeVisible();
-  await expect(hero.getByRole("link", { name: /pledge with wallet/i })).toBeVisible();
+  // The live pledge module (tiers panel) sits inside the hero, above the fold.
+  await expect(hero.locator(".show-detail__pledge-panel")).toBeVisible();
+  await expect(hero.getByText(/signal tiers/i)).toBeVisible();
   await expect(page.getByRole("heading", { name: /Three steps/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: /Pledging follows the live escrow/i })).toBeVisible();
 });

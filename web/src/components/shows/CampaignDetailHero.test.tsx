@@ -59,15 +59,24 @@ const campaign = {
 } satisfies Campaign;
 
 describe("CampaignDetailHero", () => {
-  it("uses pledge-focused copy and anchors to the pledge rail", () => {
-    const html = renderToStaticMarkup(<CampaignDetailHero campaign={campaign} tiers={tiers} />);
+  it("hosts the pledge module above the fold and keeps trust/explorer context", () => {
+    const html = renderToStaticMarkup(
+      <CampaignDetailHero campaign={campaign}>
+        <div data-testid="pledge-module">pledge module</div>
+      </CampaignDetailHero>,
+    );
 
     expect(html).toContain("campaign-detail-hero");
-    expect(html).toContain('href="#campaign-pledge-rail"');
-    expect(html).toContain("Pledge with wallet");
-    expect(html).toContain("Fan signal");
-    expect(html).toContain("Ticket intent");
-    expect(html).toContain("A 6% platform fee applies only if the campaign is funded");
+    // The conversion slot renders inside the hero at the pledge anchor target.
+    expect(html).toContain('id="campaign-pledge-rail"');
+    expect(html).toContain("pledge module");
+    // Copy column context: title, tagline, venue, escrow trust link.
+    expect(html).toContain("Show X");
+    expect(html).toContain("A live demand signal.");
+    expect(html).toContain("Le Trianon");
+    expect(html).toContain("View escrow contract");
+    expect(html).toContain(campaign.etherscanUrl);
+    // No dead or self-linking CTAs.
     expect(html).not.toContain("Send Your Signal");
     expect(html).not.toContain(`href="/shows/${campaign.id}"`);
   });
