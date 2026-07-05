@@ -11,6 +11,8 @@ const PRIMARY_ACTION_KEYS: PlayerTrackActionKey[] = [
   "add_to_playlist",
   "inspect_stems",
   "buy_license",
+  "shows_campaign",
+  "remix",
 ];
 
 export type GroupedPlayerActions = {
@@ -28,13 +30,12 @@ export function groupPlayerActions(
 
   const primaryActions: PlayerTrackAction[] = [];
   const unavailableActions: PlayerTrackAction[] = [];
-  const primaryKeySet = new Set(PRIMARY_ACTION_KEYS);
+  const actionOrder = new Map(actionState.actions.map((action, index) => [action.key, index]));
 
   for (const action of actionState.actions) {
-    const isPrimaryCandidate = primaryKeySet.has(action.key);
     const isAvailable = action.status === "available";
 
-    if (isPrimaryCandidate && isAvailable) {
+    if (isAvailable) {
       primaryActions.push(
         action.key === "save" && saved
           ? { ...action, label: "Saved", reason: "In your library" }
@@ -47,10 +48,33 @@ export function groupPlayerActions(
   }
 
   primaryActions.sort(
-    (a, b) => PRIMARY_ACTION_KEYS.indexOf(a.key) - PRIMARY_ACTION_KEYS.indexOf(b.key),
+    (a, b) => {
+      const aPriority = PRIMARY_ACTION_KEYS.indexOf(a.key);
+      const bPriority = PRIMARY_ACTION_KEYS.indexOf(b.key);
+      if (aPriority !== -1 || bPriority !== -1) {
+        return (aPriority === -1 ? 99 : aPriority) - (bPriority === -1 ? 99 : bPriority);
+      }
+      return (actionOrder.get(a.key) ?? 0) - (actionOrder.get(b.key) ?? 0);
+    },
   );
 
   return { primaryActions, unavailableActions };
+}
+
+function getActionDetail(action: PlayerTrackAction) {
+  if (action.key !== "shows_campaign") return null;
+
+  const title = typeof action.metadata?.title === "string" ? action.metadata.title : null;
+  const city = typeof action.metadata?.city === "string" ? action.metadata.city : null;
+  const progressPct = typeof action.metadata?.progressPct === "number"
+    ? `${action.metadata.progressPct}% funded`
+    : null;
+  const campaignTitle =
+    title && city && !title.toLocaleLowerCase().includes(city.toLocaleLowerCase())
+      ? `${title} in ${city}`
+      : title;
+
+  return [campaignTitle, progressPct].filter(Boolean).join(" \u00b7 ") || null;
 }
 
 /* Compact inline glyphs per action — keeps the action layer to a single
@@ -127,6 +151,7 @@ export function PlayerActionPanel({
         <div className="player-action-row" aria-label="Available actions">
           {primaryActions.map((action) => {
             const isSavedAction = action.key === "save" && saved;
+            const detail = getActionDetail(action);
             return (
               <button
                 key={action.key}
@@ -135,10 +160,13 @@ export function PlayerActionPanel({
                 onClick={() => onAction(action)}
                 disabled={isSavedAction}
                 aria-pressed={isSavedAction || undefined}
-                title={action.reason ? `${action.label} — ${action.reason}` : action.label}
+                title={detail || action.reason ? `${action.label} — ${detail || action.reason}` : action.label}
               >
                 <ActionIcon k={action.key} />
-                <span>{action.label}</span>
+                <span className="player-action-chip-copy">
+                  <span>{action.label}</span>
+                  {detail && <small>{detail}</small>}
+                </span>
               </button>
             );
           })}

@@ -243,10 +243,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "playing-music",
     title: "Playing music & the Now Playing console",
     summary:
-      "Play any track and use the Now Playing console to manage your queue, inspect stems, save tracks, and take licensing actions.",
+      "Play any track and use the Now Playing console to manage your queue, inspect stems, save tracks, take licensing actions, and back live show campaigns.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync"],
+    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync", "shows", "campaign", "support a show"],
     sections: [
       {
         id: "playing",
@@ -279,6 +279,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Save the track to your library or add it to a playlist.",
               "Inspect the track's stems to hear the individual parts.",
               "Open licensing actions when a stem is available to collect or license in the Marketplace.",
+              "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
             ],
           },
           {
@@ -293,7 +294,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Open the Player", href: "/player", description: "The Now Playing console." },
     ],
-    related: ["discover-music", "ai-dj", "marketplace-buy", "library-playlists"],
+    related: ["discover-music", "ai-dj", "marketplace-buy", "shows-back", "library-playlists"],
   },
   {
     slug: "ai-dj",

@@ -669,8 +669,8 @@ button:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 38px;
-  padding: 0 14px;
+  min-height: 38px;
+  padding: 7px 14px;
   border-radius: 11px;
   border: 1px solid var(--r-chrome-border);
   background: var(--r-chrome-glass);
@@ -683,6 +683,23 @@ button:focus-visible,
     background 0.16s ease, box-shadow 0.16s ease;
 }
 .player-action-chip svg { opacity: 0.85; flex: 0 0 auto; }
+.player-action-chip-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  line-height: 1.15;
+}
+.player-action-chip-copy small {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--r-on-surface-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+}
 .player-action-chip--available:hover {
   transform: translateY(-1px);
   border-color: rgba(124, 92, 255, 0.5);

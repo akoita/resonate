@@ -39,6 +39,12 @@ const actionState: PlayerTrackActionsResponse = {
       reason: "No active drop is available for this track.",
     },
     {
+      key: "shows_campaign",
+      label: "Support a show",
+      status: "disabled",
+      reason: "No live campaign for this artist right now.",
+    },
+    {
       key: "inspect_stems",
       label: "Inspect stems",
       status: "available",
@@ -55,7 +61,7 @@ const actionState: PlayerTrackActionsResponse = {
 };
 
 describe("PlayerActionPanel", () => {
-  it("groups only immediately useful available actions as primary buttons", () => {
+  it("groups available actions as primary buttons and keeps disabled/planned actions locked", () => {
     const grouped = groupPlayerActions(actionState);
 
     expect(grouped.primaryActions.map((action) => action.key)).toEqual([
@@ -66,6 +72,7 @@ describe("PlayerActionPanel", () => {
     expect(grouped.unavailableActions.map((action) => action.key)).toEqual([
       "remix",
       "collect_drop",
+      "shows_campaign",
       "buy_license",
     ]);
   });
@@ -84,6 +91,41 @@ describe("PlayerActionPanel", () => {
     expect(grouped.unavailableActions.map((action) => action.key)).not.toContain("buy_license");
   });
 
+  it("renders an available Support a show action as an enabled chip with campaign detail", () => {
+    const onAction = vi.fn();
+    const showActionState: PlayerTrackActionsResponse = {
+      ...actionState,
+      actions: actionState.actions.map((action) =>
+        action.key === "shows_campaign"
+          ? {
+              ...action,
+              status: "available" as const,
+              href: "/shows/ada-mix-montreal",
+              metadata: {
+                campaignId: "campaign-1",
+                slug: "ada-mix-montreal",
+                title: "Ada Mix",
+                city: "Montreal",
+                progressPct: 78,
+                backerCount: 42,
+              },
+            }
+          : action,
+      ),
+    };
+
+    const grouped = groupPlayerActions(showActionState);
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={showActionState} loading={false} onAction={onAction} />,
+    );
+
+    expect(grouped.primaryActions.map((action) => action.key)).toContain("shows_campaign");
+    expect(grouped.unavailableActions.map((action) => action.key)).not.toContain("shows_campaign");
+    expect(html).toContain("Support a show");
+    expect(html).toContain("Ada Mix in Montreal \u00b7 78% funded");
+    expect(html).not.toContain("player-action-lockchip--available");
+  });
+
   it("renders unavailable actions as compact lock-chips with reasons in tooltips", () => {
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={actionState} loading={false} onAction={vi.fn()} />,
@@ -97,6 +139,7 @@ describe("PlayerActionPanel", () => {
     // ...and the reasons are preserved as tooltips (title attributes).
     expect(html).toContain("Remix rights are not available for this track.");
     expect(html).toContain("No active drop is available for this track.");
+    expect(html).toContain("No live campaign for this artist right now.");
     expect(html).toContain("No active license is available.");
   });
 

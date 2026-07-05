@@ -65,9 +65,10 @@ describe('CatalogService (integration)', () => {
     await prisma.stemPricing.deleteMany({ where: { stem: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } });
     await prisma.stemNftMint.deleteMany({ where: { stem: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } });
     await prisma.stem.deleteMany({ where: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } });
-    await prisma.track.deleteMany({ where: { release: { artistId: `${TEST_PREFIX}artist` } } });
-    await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } });
-    await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { release: { artistId: { startsWith: TEST_PREFIX } } } });
+    await prisma.release.deleteMany({ where: { artistId: { startsWith: TEST_PREFIX } } });
+    await prisma.showCampaign.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   });
 
@@ -946,6 +947,130 @@ describe('CatalogService (integration)', () => {
     expect(result!.actions.find((action) => action.key === 'buy_license')).toMatchObject({
       status: 'disabled',
       reason: 'No active stem license is available.',
+    });
+    expect(result!.actions.find((action) => action.key === 'shows_campaign')).toMatchObject({
+      status: 'disabled',
+      reason: 'No live campaign for this artist right now.',
+    });
+  });
+
+  it('links the player Support a show action to the artist active campaign', async () => {
+    const artistId = `${TEST_PREFIX}player_actions_show_artist`;
+    const releaseId = `${TEST_PREFIX}player_actions_show_release`;
+    const trackId = `${TEST_PREFIX}player_actions_show_track`;
+    const campaignId = `${TEST_PREFIX}player_actions_show_campaign`;
+
+    await prisma.artist.create({
+      data: {
+        id: artistId,
+        displayName: 'Player Shows Artist',
+        payoutAddress: '0x' + 'E'.repeat(40),
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId,
+        title: 'Player Shows Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'Player Shows Artist',
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'Player Shows Track',
+            processingStatus: 'complete',
+          },
+        },
+      },
+    });
+    await prisma.showCampaign.create({
+      data: {
+        id: campaignId,
+        slug: `${TEST_PREFIX}player-shows-montreal`,
+        artistId,
+        artistDisplayName: 'Player Shows Artist',
+        title: 'Player Shows Artist',
+        city: 'Montreal',
+        country: 'CA',
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: '1000',
+        raisedAmountUnits: '780',
+        confirmedPledgeCount: 12,
+        chainId: 84532,
+        status: 'active',
+      },
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId);
+    const showAction = result!.actions.find((action) => action.key === 'shows_campaign');
+
+    expect(showAction).toMatchObject({
+      status: 'available',
+      href: `/shows/${TEST_PREFIX}player-shows-montreal`,
+      metadata: expect.objectContaining({
+        campaignId,
+        slug: `${TEST_PREFIX}player-shows-montreal`,
+        title: 'Player Shows Artist',
+        city: 'Montreal',
+        progressPct: 78,
+        backerCount: 12,
+      }),
+    });
+  });
+
+  it('keeps Support a show disabled when the artist campaign is not active', async () => {
+    const artistId = `${TEST_PREFIX}player_actions_cancelled_show_artist`;
+    const releaseId = `${TEST_PREFIX}player_actions_cancelled_show_release`;
+    const trackId = `${TEST_PREFIX}player_actions_cancelled_show_track`;
+
+    await prisma.artist.create({
+      data: {
+        id: artistId,
+        displayName: 'Cancelled Shows Artist',
+        payoutAddress: '0x' + 'F'.repeat(40),
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId,
+        title: 'Cancelled Shows Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'Cancelled Shows Artist',
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'Cancelled Shows Track',
+            processingStatus: 'complete',
+          },
+        },
+      },
+    });
+    await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}player_actions_cancelled_show_campaign`,
+        slug: `${TEST_PREFIX}player-shows-cancelled`,
+        artistId,
+        artistDisplayName: 'Cancelled Shows Artist',
+        title: 'Cancelled Shows Artist',
+        city: 'Paris',
+        country: 'FR',
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: '1000',
+        raisedAmountUnits: '500',
+        confirmedPledgeCount: 8,
+        chainId: 84532,
+        status: 'cancelled',
+      },
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId);
+
+    expect(result!.actions.find((action) => action.key === 'shows_campaign')).toMatchObject({
+      status: 'disabled',
+      reason: 'No live campaign for this artist right now.',
     });
   });
 });
