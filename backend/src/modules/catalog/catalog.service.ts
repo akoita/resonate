@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import { LicenseType, Prisma } from "@prisma/client";
+import { LicenseType, Prisma, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -24,6 +24,11 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
 const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
+// Mirrors AUTHORIZED_STATUSES in ../shows/shows.service.ts; keep local to avoid importing service internals.
+const PLEDGE_OPEN_ARTIST_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
+  "artist_authorized",
+  "trusted_source_authorized",
+];
 
 /** Source attribution + AI provenance for a published remix release (#1196). */
 export type RemixReleaseProvenance = {
@@ -1187,7 +1192,15 @@ export class CatalogService implements OnModuleInit {
     );
     const activeCampaign = campaignCandidateArtistIds.length
       ? await prisma.showCampaign.findFirst({
-          where: { artistId: { in: campaignCandidateArtistIds }, status: "active" },
+          // "Support a show" means a fan can pledge right now, so the chip
+          // requires authority + escrow linkage, not just lifecycle status.
+          where: {
+            artistId: { in: campaignCandidateArtistIds },
+            status: "active",
+            artistAuthorityStatus: { in: PLEDGE_OPEN_ARTIST_AUTHORITY_STATUSES },
+            contractAddress: { not: null },
+            contractCampaignId: { not: null },
+          },
           orderBy: { createdAt: "desc" },
           select: {
             id: true,

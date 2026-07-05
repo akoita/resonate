@@ -999,6 +999,9 @@ describe('CatalogService (integration)', () => {
         confirmedPledgeCount: 12,
         chainId: 84532,
         status: 'active',
+        artistAuthorityStatus: 'artist_authorized',
+        contractAddress: `0x${'C'.repeat(40)}`,
+        contractCampaignId: '1',
       },
     });
 
@@ -1082,6 +1085,9 @@ describe('CatalogService (integration)', () => {
         confirmedPledgeCount: 3,
         chainId: 84532,
         status: 'active',
+        artistAuthorityStatus: 'artist_authorized',
+        contractAddress: `0x${'C'.repeat(40)}`,
+        contractCampaignId: '1',
       },
     });
 
@@ -1098,6 +1104,78 @@ describe('CatalogService (integration)', () => {
         progressPct: 25,
         backerCount: 3,
       }),
+    });
+  });
+
+  it('keeps Support a show disabled when an active credited campaign lacks authority and escrow linkage', async () => {
+    const uploaderArtistId = `${TEST_PREFIX}player_actions_unlinked_uploader`;
+    const publicArtistId = `${TEST_PREFIX}player_actions_unlinked_public`;
+    const releaseId = `${TEST_PREFIX}player_actions_unlinked_release`;
+    const trackId = `${TEST_PREFIX}player_actions_unlinked_track`;
+
+    await prisma.artist.create({
+      data: {
+        id: uploaderArtistId,
+        displayName: 'Unlinked Uploader Profile',
+        payoutAddress: '0x' + '8'.repeat(40),
+      },
+    });
+    await prisma.artist.create({
+      data: {
+        id: publicArtistId,
+        displayName: 'Unlinked Public Artist',
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: uploaderArtistId,
+        title: 'Unlinked Campaign Release',
+        status: 'published',
+        type: 'single',
+        primaryArtist: 'Unlinked Public Artist',
+        artistCredits: {
+          create: {
+            artistId: publicArtistId,
+            role: 'main',
+            displayName: 'Unlinked Public Artist',
+            sortOrder: 0,
+          },
+        },
+        tracks: {
+          create: {
+            id: trackId,
+            title: 'Unlinked Campaign Track',
+            processingStatus: 'complete',
+          },
+        },
+      },
+    });
+    await prisma.showCampaign.create({
+      data: {
+        id: `${TEST_PREFIX}player_actions_unlinked_campaign`,
+        slug: `${TEST_PREFIX}player-shows-unlinked`,
+        artistId: publicArtistId,
+        artistDisplayName: 'Unlinked Public Artist',
+        title: 'Unlinked Public Artist Live',
+        city: 'Chicago',
+        country: 'US',
+        deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+        goalAmountUnits: '1000',
+        raisedAmountUnits: '125',
+        confirmedPledgeCount: 2,
+        chainId: 84532,
+        status: 'active',
+        artistAuthorityStatus: 'none',
+      },
+    });
+
+    const result = await catalog.getPlayerTrackActions(trackId);
+    const showAction = result!.actions.find((action) => action.key === 'shows_campaign');
+
+    expect(showAction).toMatchObject({
+      status: 'disabled',
+      reason: 'No live campaign for this artist right now.',
     });
   });
 
