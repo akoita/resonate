@@ -924,7 +924,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "steps",
             items: [
               "Open a campaign to see its goal, deadline, backers, venue target, and the artist-approved terms.",
-              "Use Pledge with wallet in the hero or bottom bar to jump to the pledge tiers.",
+              "Pick a tier in the pledge card at the top of the campaign page (on mobile, the bottom Pledge bar jumps straight to it).",
               "Before signing, a confirmation step recaps your pledge amount and the refund and release terms — review it, then confirm.",
               "Approve the pledge with your passkey; it's held in escrow, not paid out yet.",
             ],

@@ -1,26 +1,25 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { CampaignProgress } from "./CampaignProgress";
-import { CampaignPledgeAnchor } from "./CampaignPledgeAnchor";
 import {
-  campaignDisplayInitial,
   campaignDisplayTitle,
-  campaignFeeNotice,
-  campaignRouteCode,
   daysUntil,
-  formatMoney,
   type Campaign,
-  type CampaignTier,
 } from "../../lib/shows";
 
 interface Props {
   campaign: Campaign;
-  tiers: CampaignTier[];
+  /**
+   * Conversion slot rendered inside the hero's right column (#1373): the live
+   * pledge module (tiers + wallet action) sits above the fold instead of an
+   * anchor button pointing below it.
+   */
+  children: ReactNode;
 }
 
-export function CampaignDetailHero({ campaign, tiers }: Props) {
+export function CampaignDetailHero({ campaign, children }: Props) {
   const [daysLeft, setDaysLeft] = useState(0);
 
   useEffect(() => {
@@ -37,18 +36,15 @@ export function CampaignDetailHero({ campaign, tiers }: Props) {
     year: "numeric",
   });
   const displayTitle = campaignDisplayTitle(campaign);
-  const monogram = campaignDisplayInitial(campaign);
-  const routeCode = campaignRouteCode(campaign);
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
   const denseCopy = displayTitle.length > 54 || (campaign.venue?.length ?? 0) > 72;
   const titleParts = denseCopy && displayTitle.includes(":")
     ? displayTitle.split(/:\s*/, 2)
     : null;
-  const feeNotice = campaignFeeNotice(campaign);
 
   return (
-    <section
+    <header
       className={`campaign-detail-hero ${hasHeroImage ? "campaign-detail-hero--visual" : ""} ${
         denseCopy ? "campaign-detail-hero--dense-copy" : ""
       }`}
@@ -76,80 +72,40 @@ export function CampaignDetailHero({ campaign, tiers }: Props) {
           <span>
             <strong>{targetDateFmt}</strong>
           </span>
-          {campaign.venue ? (
-            <span>
-              <strong title={campaign.venue}>{campaign.venue}</strong>
-            </span>
-          ) : (
-            <span>
-              <strong>{campaign.city}</strong>
-            </span>
-          )}
+          <span>
+            <strong title={campaign.venue ?? campaign.city}>
+              {campaign.venue ?? campaign.city}
+            </strong>
+          </span>
         </div>
+
+        <p className="campaign-detail-hero__tagline">{campaign.tagline}</p>
 
         <CampaignProgress campaign={campaign} daysLeft={daysLeft} />
 
-        {tiers.length > 0 ? (
-          <div className="campaign-detail-hero__tier-chips" aria-label="Available pledge tiers">
-            {tiers.slice(0, 3).map((tier) => (
-              <span key={tier.id} className="campaign-detail-hero__tier-chip">
-                <strong>{formatMoney(tier.amountCents, tier.currency)}</strong>
-                {tier.title}
-              </span>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="campaign-detail-hero__actions">
-          <CampaignPledgeAnchor
-            className="campaign-detail-hero__cta-primary"
-            aria-label="Pledge with wallet, jump to pledge tiers"
-          >
-            Pledge with wallet
-          </CampaignPledgeAnchor>
+        <p className="campaign-detail-hero__trust-line">
+          {campaign.isSample
+            ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
+            : "Funds held in a smart contract, not a company bank account. Miss the threshold and every pledge refunds automatically — enforced by code."}
+          {" "}
           <a
             href={campaign.etherscanUrl}
             target="_blank"
             rel="noreferrer noopener"
-            className="campaign-detail-hero__cta-secondary"
             aria-label="View the escrow contract on the block explorer"
           >
             View escrow contract ↗
           </a>
-        </div>
-
-        {feeNotice ? (
-          <p className="campaign-detail-hero__fee-note">{feeNotice}</p>
-        ) : null}
+        </p>
       </div>
 
       <div
-        className={`campaign-detail-hero__visual ${hasHeroImage ? "campaign-detail-hero__visual--image" : ""}`}
-        aria-hidden
+        id="campaign-pledge-rail"
+        className="campaign-detail-hero__pledge"
+        aria-label="Pledge from this campaign"
       >
-        <span className="campaign-detail-hero__visual-ribbon">Fan-funded route</span>
-        {hasHeroImage ? (
-          <div className="campaign-detail-hero__visual-caption">
-            <span>{routeCode}</span>
-            <span>{campaign.city}</span>
-          </div>
-        ) : (
-          <>
-            <div className="campaign-detail-hero__visual-grid">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <span className="campaign-detail-hero__visual-monogram">{monogram}</span>
-            <span className="campaign-detail-hero__visual-city">{campaign.city}</span>
-            <div className="campaign-detail-hero__visual-caption">
-              <span>{routeCode}</span>
-              <span>{campaign.status}</span>
-            </div>
-          </>
-        )}
+        {children}
       </div>
-    </section>
+    </header>
   );
 }
