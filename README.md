@@ -82,11 +82,13 @@ flowchart LR
   Studio["Human Studio<br>Next.js"] --> API["NestJS API<br>modular backend"]
   Agents["Agents<br>OpenAPI + MCP + x402"] --> API
   API --> Catalog["Catalog, pricing,<br>rights, library"]
-  API --> Commerce["Marketplace + x402<br>stablecoin settlement"]
+  API --> Commerce["Marketplace, Shows +<br>x402 stablecoin settlement"]
   API --> Runtime["AI DJ + agent runtime"]
   API --> Ingestion["Upload + stem processing"]
+  API --> Remix["Remix Studio +<br>AI generation"]
   Commerce --> Chain["Smart accounts +<br>Resonate contracts"]
   Ingestion --> Worker["Demucs worker"]
+  Remix --> SAW["Stable Audio worker<br>GPU, scale-to-zero"]
   Catalog --> Data["Postgres, Redis,<br>GCS, Pub/Sub"]
   Runtime --> Data
   Worker --> Data

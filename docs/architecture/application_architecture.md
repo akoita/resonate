@@ -3,7 +3,7 @@
 Resonate is organized as a modular full-stack product around one catalog and
 several first-class interaction surfaces: a human music studio, an agent-native
 storefront, x402 commerce, smart-account marketplace actions, and asynchronous
-stem processing.
+stem processing plus request-driven remix generation.
 
 This document is the application-level complement to the
 [deployment architecture](./deployment_architecture.md). The deployment view
@@ -23,12 +23,14 @@ flowchart LR
   Storefront --> Backend
 
   Backend --> Catalog["Catalog, pricing,<br>rights, library"]
-  Backend --> Commerce["Marketplace, x402,<br>payment router"]
+  Backend --> Commerce["Marketplace, Shows,<br>x402, payment router"]
   Backend --> Runtime["AI DJ + agent runtime"]
   Backend --> Ingestion["Upload + stem processing"]
+  Backend --> Remix["Remix Studio +<br>AI generation"]
 
   Commerce --> Chain["Smart accounts +<br>protocol contracts"]
   Ingestion --> Worker["Demucs worker"]
+  Remix --> StableAudio["Stable Audio worker<br>GPU, scale-to-zero"]
   Catalog --> Storage["Postgres, GCS,<br>Redis, Pub/Sub"]
   Runtime --> Storage
   Worker --> Storage
@@ -38,13 +40,13 @@ flowchart LR
 
 | Context | Responsibilities | Primary Code |
 | --- | --- | --- |
-| Human studio | App shell, player, upload, marketplace, library, wallet UX, disputes, AI DJ panels | `web/src/app`, `web/src/components`, `web/src/hooks` |
+| Human studio | App shell, player, upload, marketplace, library, wallet UX, disputes, Remix Studio, AI DJ panels | `web/src/app`, `web/src/components`, `web/src/hooks` |
 | Catalog and library | Releases, tracks, stems, search, ownership, listener library, storefront discovery | `backend/src/modules/catalog`, `backend/src/modules/library` |
-| Marketplace and contracts | Mint/list/buy flows, contract indexing, listing read models, royalty and settlement records | `backend/src/modules/contracts`, `contracts/` |
+| Marketplace and contracts | Mint/list/buy flows, Shows campaign escrow, contract indexing, listing read models, royalty and settlement records | `backend/src/modules/contracts`, `backend/src/modules/shows`, `contracts/` |
 | Pricing and licensing | Stem pricing, license tiers, marketplace quote behavior, durable purchase metadata | `backend/src/modules/pricing`, `web/src/components/marketplace` |
 | Agent commerce | Storefront x402, MCP tools, machine-readable receipts, payment-router envelope | `backend/src/modules/x402`, `backend/src/modules/mcp`, `backend/src/modules/agents` |
 | Agent runtime | AI DJ orchestration, recommendation adapters, policy guard, wallet/purchase execution, evaluation | `backend/src/modules/agents`, `backend/src/modules/recommendations` |
-| Ingestion and AI media | Upload validation, queueing, stem separation, encryption, storage, status updates | `backend/src/modules/ingestion`, `workers/demucs`, `backend/src/modules/storage` |
+| Ingestion and AI media | Upload validation, queueing, stem separation, remix draft generation, encryption, storage, status updates | `backend/src/modules/ingestion`, `backend/src/modules/remix`, `workers/demucs`, `workers/stable-audio`, `backend/src/modules/storage` |
 | Rights and trust | Upload rights routing, evidence bundles, human verification, disputes, content protection | `backend/src/modules/rights`, `backend/src/modules/trust`, `backend/src/modules/curation` |
 | Realtime and notifications | Socket.IO fan-out, notification persistence, event broadcasts, Redis adapter fallback | `backend/src/modules/shared`, `backend/src/modules/notifications` |
 
@@ -69,7 +71,7 @@ flowchart TB
   Ports --> Storage["Storage providers<br>local, GCS, IPFS"]
   Ports --> Chain["viem + ERC-4337<br>contracts/bundler"]
   Ports --> X402["x402 facilitator"]
-  Ports --> AI["AI generation / Demucs"]
+  Ports --> AI["AI generation / Stable Audio / Demucs"]
 ```
 
 The backend follows a modular-monolith style. Modules are deployed together, but
@@ -156,6 +158,35 @@ sequenceDiagram
   API-->>Web: Listing consumed / library updated
 ```
 
+### Remix Studio Draft Generation
+
+```mermaid
+sequenceDiagram
+  participant Creator
+  participant Web as Remix Studio
+  participant API as RemixModule
+  participant Worker as Stable Audio Worker
+  participant Drafts as Remix draft versions
+
+  Creator->>Web: Open licensed remixable track
+  Web->>API: Create or load remix project
+  API->>API: Verify remix eligibility and license
+  Web->>API: Request A/B draft render
+  API->>Worker: HTTP render request with Cloud Run ID token
+  Worker-->>API: Rendered WAV response
+  API->>Drafts: Persist generation metadata and draft versions
+  API-->>Web: Return playable draft versions
+  Creator->>Web: Export or download
+  Web->>API: Request export
+  API->>API: Re-check license-gated export policy
+  API-->>Web: Export/download allowed
+```
+
+The remix path is request-driven rather than Pub/Sub-driven. Remix Studio sends
+licensed, remixable project state to the backend remix module; the backend calls
+the Stable Audio worker synchronously and records private draft versions before
+the A/B draft selection (#1321) and export/download gate (#1324) run.
+
 ### Agent x402 Download
 
 ```mermaid
@@ -179,11 +210,45 @@ sequenceDiagram
   API-->>Agent: Audio + X-Resonate-Receipt
 ```
 
+### Shows Campaign Escrow
+
+```mermaid
+sequenceDiagram
+  participant Fan
+  participant Web as Shows campaign page
+  participant API as ShowsModule
+  participant Wallet as Smart account
+  participant Escrow as ShowCampaignEscrow
+  participant Indexer as Escrow indexer
+  participant DB as Campaign records
+  participant Beneficiary as Artist payout wallet
+
+  Fan->>Web: Choose pledge tier
+  Web->>API: Create pledge intent
+  API-->>Web: Payment asset, escrow address, campaign terms
+  Web->>Wallet: Plan approval + pledge
+  Wallet->>Escrow: Pledge into campaign escrow
+  Escrow-->>Indexer: Pledged event
+  Indexer->>DB: Reconcile pledge and campaign totals
+  API-->>Web: Confirmed receipt after indexed event
+  alt campaign fails or is cancelled
+    Wallet->>Escrow: Claim refund
+  else booking and fulfillment confirmed
+    Escrow->>Beneficiary: Release according to campaign policy
+  end
+```
+
+Shows campaigns use `ShowCampaignEscrow` as the protocol contract for
+fan-funded demand. The application keeps campaign copy, authority state, pledge
+receipts, disputes, and community surfaces in the backend while on-chain events
+provide the escrow truth used for pledge confirmation, refunds, release, and
+the 6% success-only campaign fee.
+
 ## Architectural Patterns
 
 | Pattern | How Resonate uses it | Why it matters |
 | --- | --- | --- |
-| Modular monolith | NestJS modules group catalog, contracts, x402, agents, ingestion, rights, trust, and notifications | Keeps delivery simple while preserving domain boundaries |
+| Modular monolith | NestJS modules group catalog, contracts, x402, agents, ingestion, remix, rights, trust, shows, and notifications | Keeps delivery simple while preserving domain boundaries |
 | BFF plus machine storefront | The same backend serves the human app, OpenAPI, MCP, and x402 surfaces | Human and agent clients share catalog/pricing truth |
 | Event-driven side effects | Contract events, upload progress, processing results, and marketplace updates flow through event handlers and realtime broadcasts | Long-running work and on-chain state changes do not block UI flows |
 | Read-model reconciliation | Indexer events and frontend listing intents are reconciled into marketplace listing rows | UI state remains stable even when chain events and app notifications arrive out of order |

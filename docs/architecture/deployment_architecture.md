@@ -14,10 +14,10 @@ module diagram. It follows a C4-style container/deployment view:
 
 - External actors: human users, AI agents, and operators
 - Cloud edge/runtime: DNS, Google-managed TLS, external HTTPS load balancer,
-  Cloud Armor, serverless NEGs, Cloud Run frontend/backend/Demucs, Pub/Sub,
-  selectable analytics execution with Dataflow streaming or batch BigQuery
-  landing/materialization, BigQuery, Cloud SQL, Redis, GCS, Secret Manager,
-  IAM, Artifact Registry, and Monitoring
+  Cloud Armor, serverless NEGs, Cloud Run frontend/backend, Demucs job,
+  stable-audio GPU remix service, Pub/Sub, selectable analytics execution with
+  Dataflow streaming or batch BigQuery landing/materialization, BigQuery, Cloud
+  SQL, Redis, GCS, Secret Manager, IAM, Artifact Registry, and Monitoring
 - Delivery control plane: `resonate` CI creates immutable images and
   `resonate-iac` applies Terraform-managed Cloud Run releases
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
@@ -47,6 +47,7 @@ flowchart LR
   Worker --> GCS
   Worker --> Results["Pub/Sub stem-results"]
   Results --> Backend
+  Backend --> StableAudio["Cloud Run stable-audio<br>GPU remix service"]
 
   Backend --> AnalyticsTopic["Pub/Sub analytics events"]
   AnalyticsTopic --> AnalyticsMode{"Analytics execution mode"}
@@ -79,6 +80,7 @@ flowchart LR
   IaC --> Frontend
   IaC --> Backend
   IaC --> Worker
+  IaC --> StableAudio
 ```
 
 ## Components
@@ -105,14 +107,31 @@ enforcement.
 ### Backend
 
 NestJS modules for auth, catalog, storefront, x402, MCP, storage, generation,
-contracts, rights, payments, notifications, and indexing. Runs on Cloud Run with
-Secret Manager-backed configuration.
+remix, contracts, rights, payments, notifications, and indexing. Runs on Cloud
+Run with Secret Manager-backed configuration.
 
 ### Stem Processing
 
 Pub/Sub topics `stem-separate`, `stem-results`, and `stem-dlq`; Demucs Cloud
 Run Job. The worker can run CPU or GPU mode, starts on demand per queued track,
 and writes processed stems to durable storage.
+
+### Remix Generation
+
+The Stable Audio remix worker is a Cloud Run v2 service named
+`resonate-<env>-stable-audio`. It runs in the gen2 execution environment with a
+GPU node selector, scales to zero at idle, accepts requests on port 8000, uses
+the `stable-audio-worker` image from Artifact Registry, reads its Hugging Face
+token from Secret Manager, uses an 1800s request timeout, and reaches private
+dependencies through the VPC connector with `PRIVATE_RANGES_ONLY` egress. Scale
+from zero can include an approximately four-minute model cold start.
+
+The backend calls the service synchronously over HTTP through
+`REMIX_AUDIO_WORKER_URL` and authenticates with Cloud Run ID tokens. The worker
+returns the rendered WAV in the response; unlike the Demucs stem-separation job,
+it does not consume Pub/Sub work or write rendered audio to GCS itself. The
+product surface is Remix Studio draft rendering with A/B versions (#1321),
+followed by license-gated export/download (#1324).
 
 ### Data
 
@@ -150,9 +169,11 @@ permissioned session keys.
 ### Contracts
 
 `StemNFT`, `StemMarketplaceV2`, `ContentProtection`, `CurationRewards`,
-`DisputeResolution`, `RevenueEscrow`, `TransferValidator`, and payment asset
-contracts. Contract addresses are deployed from this repo and handed to
-`resonate-iac` for cloud runtime config.
+`DisputeResolution`, `ShowCampaignEscrow`, `RevenueEscrow`,
+`TransferValidator`, and payment asset contracts. `ShowCampaignEscrow` backs
+fan-funded Shows campaigns and the 6% success-only campaign fee, with the
+staging deployment on Base Sepolia. Contract addresses are deployed from this
+repo and handed to `resonate-iac` for cloud runtime config.
 
 ### x402
 
@@ -172,10 +193,12 @@ state.
 Cloud Monitoring uptime checks, error-rate alerts, Pub/Sub backlog, and DB CPU.
 Managed by the `observability` Terraform module; Demucs job mode is monitored
 through queue/backlog and job execution logs rather than a resident health
-endpoint. Analytics alerts cover Pub/Sub publish errors, active subscription
-backlog, dead-letter forwarding, Dataflow failures, and Dataflow system lag when
-the corresponding analytics mode is enabled. Batch materialization job failure
-alerting is tracked with the batch materializer implementation.
+endpoint. The stable-audio service is monitored as a request-driven Cloud Run
+service, with cold starts expected when it scales from zero. Analytics alerts
+cover Pub/Sub publish errors, active subscription backlog, dead-letter
+forwarding, Dataflow failures, and Dataflow system lag when the corresponding
+analytics mode is enabled. Batch materialization job failure alerting is tracked
+with the batch materializer implementation.
 
 ## Source References
 
