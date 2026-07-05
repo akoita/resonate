@@ -13,9 +13,13 @@ issue: "https://github.com/akoita/resonate/issues/1005"
 
 The first implementation slice adds a player-facing action availability contract
 and a Now Playing action surface in the player console. It connects playback to
-existing save, playlist, stem inspection, marketplace/license, and remix paths
-while keeping future community, Shows, and collect/drop actions safely disabled
-or planned until those surfaces expose linkable public state.
+existing save, playlist, stem inspection, marketplace/license, remix, and
+active Shows campaign paths while keeping future community and collect/drop
+actions safely disabled or planned until those surfaces expose linkable public
+state. The Support-a-show chip is implemented in [#1367](https://github.com/akoita/resonate/issues/1367):
+when the playing artist has an active Shows campaign, it deep-links to that
+campaign with compact title and funding progress metadata; otherwise it explains
+that no live campaign is open for the artist right now.
 
 ## Who It Is For
 
@@ -46,6 +50,11 @@ Immediately usable actions render in the right console near progress, volume,
 and queue context. Disabled or future actions render as a compact
 `Unavailable / Coming soon` list with safe reasons, so unavailable capabilities
 are visible without behaving like conversion buttons.
+
+The Shows campaign action is part of the implemented conversion feed for revenue
+line (1) Shows campaign fees: active campaigns render as `Support a show` chips
+linking to `/shows/<slug>`. Non-active campaign states stay disabled here
+because player support means pledging is open now.
 
 ## Action Contract
 
@@ -83,6 +92,20 @@ Marketplace/license availability is based only on public active listings with
 positive amount and future expiry. Expired, sold, cancelled, zero-amount, and
 owner-only inventory must not make player purchase actions available.
 
+Shows campaign availability is stricter than general campaign discovery:
+only `active` campaigns are linkable from the player. Draft, pending, funded,
+booked, cancelled, refund, and released states remain disabled for this action.
+
+## Remaining Work
+
+- Artist room actions remain planned until public listener room eligibility and
+  deep links are available from the action endpoint.
+- Collect/drop actions remain planned until active drop state has a public,
+  redacted player contract.
+- Remix and marketplace/license chips should continue to be hardened as their
+  downstream workflows evolve, but no new analytics event names are required for
+  this slice.
+
 ## How To Test
 
 Backend:
@@ -108,11 +131,14 @@ Manual:
 3. Confirm save changes to `Saved` after success and add-to-playlist uses the
    existing playlist flow.
 4. Confirm marketplace/license appears only when an active public listing exists.
-5. Confirm disabled/planned actions show safe reasons.
+5. Confirm Support a show links to `/shows/<slug>` only when the playing artist
+   has an active campaign, with title/funding progress shown on the chip.
+6. Confirm disabled/planned actions show safe reasons.
 
 ## References
 
 - [#1005](https://github.com/akoita/resonate/issues/1005)
+- [#1367](https://github.com/akoita/resonate/issues/1367)
 - [Strategy execution plan](../strategy/next_generation_music_platform_execution_plan.md)
 - [Agent Taste Intelligence](agent_taste_intelligence.md)
 - [Marketplace Listing Lifecycle](marketplace_listing_lifecycle.md)

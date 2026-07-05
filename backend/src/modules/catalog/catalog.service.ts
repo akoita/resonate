@@ -1174,6 +1174,27 @@ export class CatalogService implements OnModuleInit {
     const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
     const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
     const safeRecommendationReasons = sanitizeRecommendationReasons(options?.recommendationReasons);
+    const activeCampaign = track.release.artistId
+      ? await prisma.showCampaign.findFirst({
+          where: { artistId: track.release.artistId, status: "active" },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            city: true,
+            goalAmountUnits: true,
+            raisedAmountUnits: true,
+            confirmedPledgeCount: true,
+          },
+        })
+      : null;
+    const campaignGoal = Number(activeCampaign?.goalAmountUnits ?? 0);
+    const campaignRaised = Number(activeCampaign?.raisedAmountUnits ?? 0);
+    const campaignProgressPct =
+      Number.isFinite(campaignGoal) && campaignGoal > 0 && Number.isFinite(campaignRaised)
+        ? Math.min(100, Math.round((campaignRaised / campaignGoal) * 100))
+        : 0;
 
     return {
       track: {
@@ -1272,8 +1293,23 @@ export class CatalogService implements OnModuleInit {
         {
           key: "shows_campaign",
           label: PLAYER_ACTION_LABELS.shows_campaign,
-          status: "planned",
-          reason: "No linked Shows campaign is available yet.",
+          ...(activeCampaign
+            ? {
+                status: "available" as const,
+                href: `/shows/${activeCampaign.slug}`,
+                metadata: {
+                  campaignId: activeCampaign.id,
+                  slug: activeCampaign.slug,
+                  title: activeCampaign.title,
+                  city: activeCampaign.city,
+                  progressPct: campaignProgressPct,
+                  backerCount: activeCampaign.confirmedPledgeCount,
+                },
+              }
+            : {
+                status: "disabled" as const,
+                reason: "No live campaign for this artist right now.",
+              }),
         },
         {
           key: "collect_drop",
