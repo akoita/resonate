@@ -126,6 +126,37 @@ describe("PlayerActionPanel", () => {
     expect(html).not.toContain("player-action-lockchip--available");
   });
 
+  it("does not double the location when the campaign title already names one", () => {
+    const onAction = vi.fn();
+    const showActionState: PlayerTrackActionsResponse = {
+      ...actionState,
+      actions: actionState.actions.map((action) =>
+        action.key === "shows_campaign"
+          ? {
+              ...action,
+              status: "available" as const,
+              href: "/shows/tiken-brooklyn",
+              metadata: {
+                campaignId: "campaign-2",
+                slug: "tiken-brooklyn",
+                title: "Tiken Jah Fakoly in Brooklyn",
+                city: "New York",
+                progressPct: 0,
+                backerCount: 0,
+              },
+            }
+          : action,
+      ),
+    };
+
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={showActionState} loading={false} onAction={onAction} />,
+    );
+
+    expect(html).toContain("Tiken Jah Fakoly in Brooklyn \u00b7 0% funded");
+    expect(html).not.toContain("in Brooklyn in New York");
+  });
+
   it("renders unavailable actions as compact lock-chips with reasons in tooltips", () => {
     const html = renderToStaticMarkup(
       <PlayerActionPanel actionState={actionState} loading={false} onAction={vi.fn()} />,

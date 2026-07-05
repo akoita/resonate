@@ -69,10 +69,12 @@ function getActionDetail(action: PlayerTrackAction) {
   const progressPct = typeof action.metadata?.progressPct === "number"
     ? `${action.metadata.progressPct}% funded`
     : null;
-  const campaignTitle =
-    title && city && !title.toLocaleLowerCase().includes(city.toLocaleLowerCase())
-      ? `${title} in ${city}`
-      : title;
+  // Campaign titles usually already name a place ("Artist in Brooklyn") —
+  // only append the city when the title carries no location of its own.
+  const titleNamesPlace = Boolean(
+    title && (/ in /i.test(title) || (city && title.toLocaleLowerCase().includes(city.toLocaleLowerCase()))),
+  );
+  const campaignTitle = title && city && !titleNamesPlace ? `${title} in ${city}` : title;
 
   return [campaignTitle, progressPct].filter(Boolean).join(" \u00b7 ") || null;
 }
