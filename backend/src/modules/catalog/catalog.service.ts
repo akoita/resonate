@@ -1174,9 +1174,20 @@ export class CatalogService implements OnModuleInit {
     const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
     const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
     const safeRecommendationReasons = sanitizeRecommendationReasons(options?.recommendationReasons);
-    const activeCampaign = track.release.artistId
+    // #1379: campaigns link to the public catalog artist credit, which can be
+    // a different Artist row than the uploader-profile release.artistId —
+    // match against every credited artist plus the profile fallback.
+    const campaignCandidateArtistIds = Array.from(
+      new Set(
+        [
+          ...track.release.artistCredits.map((credit) => credit.artistId),
+          track.release.artistId,
+        ].filter((artistId): artistId is string => Boolean(artistId)),
+      ),
+    );
+    const activeCampaign = campaignCandidateArtistIds.length
       ? await prisma.showCampaign.findFirst({
-          where: { artistId: track.release.artistId, status: "active" },
+          where: { artistId: { in: campaignCandidateArtistIds }, status: "active" },
           orderBy: { createdAt: "desc" },
           select: {
             id: true,
