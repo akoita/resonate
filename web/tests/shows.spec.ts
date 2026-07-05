@@ -27,7 +27,7 @@ test("home hero features the SennaRin campaign and links to its detail page", as
   await expect(hero.getByText(/Featured Campaign/i)).toBeVisible();
 
   // Primary CTA navigates to the campaign detail page.
-  const cta = hero.getByRole("link", { name: /listen now/i });
+  const cta = hero.getByRole("link", { name: /back this show/i });
   await expect(cta).toHaveAttribute("href", "/shows/sennarin-paris");
 });
 
