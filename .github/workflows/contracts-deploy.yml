@@ -29,6 +29,7 @@ on:
           - deploy-protocol
           - deploy-content-protection
           - deploy-show-campaign-escrow
+          - deploy-stem-marketplace
           - upgrade-content-protection
           - set-content-protection-stake
           - verify-base-sepolia
@@ -98,6 +99,7 @@ jobs:
           INPUT_PAYMENT_ETH_USD_FEED: ${{ vars.PAYMENT_ETH_USD_FEED }}
           INPUT_PAYMENT_USDC_USD_FEED: ${{ vars.PAYMENT_USDC_USD_FEED }}
           INPUT_PAYMENT_ORACLE_MAX_STALENESS: ${{ vars.PAYMENT_ORACLE_MAX_STALENESS }}
+          INPUT_PAYMENT_ASSET_REGISTRY_ADDRESS: ${{ vars.PAYMENT_ASSET_REGISTRY_ADDRESS }}
           INPUT_STEM_NFT_ADDRESS: ${{ vars.STEM_NFT_ADDRESS }}
           INPUT_MARKETPLACE_ADDRESS: ${{ vars.MARKETPLACE_ADDRESS }}
           INPUT_TRANSFER_VALIDATOR_ADDRESS: ${{ vars.TRANSFER_VALIDATOR_ADDRESS }}
@@ -108,6 +110,10 @@ jobs:
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
           INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
           INPUT_SHOW_CAMPAIGN_ESCROW_OWNER: ${{ vars.SHOW_CAMPAIGN_ESCROW_OWNER }}
+          INPUT_SHOW_CAMPAIGN_FEE_BPS: ${{ vars.SHOW_CAMPAIGN_FEE_BPS }}
+          INPUT_SHOW_CAMPAIGN_FEE_RECIPIENT: ${{ vars.SHOW_CAMPAIGN_FEE_RECIPIENT }}
+          INPUT_FEE_RECIPIENT: ${{ vars.FEE_RECIPIENT }}
+          INPUT_PROTOCOL_FEE_BPS: ${{ vars.PROTOCOL_FEE_BPS }}
         run: |
           set -euo pipefail
 
@@ -134,6 +140,7 @@ jobs:
             PAYMENT_ETH_USD_FEED
             PAYMENT_USDC_USD_FEED
             PAYMENT_ORACLE_MAX_STALENESS
+            PAYMENT_ASSET_REGISTRY_ADDRESS
             STEM_NFT_ADDRESS
             MARKETPLACE_ADDRESS
             TRANSFER_VALIDATOR_ADDRESS
@@ -144,6 +151,10 @@ jobs:
             STAKE_ASSET_AMOUNT
             STAKE_ASSET_SYMBOL
             SHOW_CAMPAIGN_ESCROW_OWNER
+            SHOW_CAMPAIGN_FEE_BPS
+            SHOW_CAMPAIGN_FEE_RECIPIENT
+            FEE_RECIPIENT
+            PROTOCOL_FEE_BPS
           )
 
           for name in "${optional_names[@]}"; do
@@ -225,6 +236,24 @@ jobs:
                 exit 1
               fi
               ;;
+            deploy-stem-marketplace)
+              if [[ -z "${STEM_NFT_ADDRESS:-}" ]]; then
+                echo "::error::deploy-stem-marketplace requires STEM_NFT_ADDRESS."
+                exit 1
+              fi
+              if [[ -z "${CONTENT_PROTECTION_ADDRESS:-}" && -z "${CONTENT_PROTECTION_PROXY:-}" ]]; then
+                echo "::error::deploy-stem-marketplace requires CONTENT_PROTECTION_ADDRESS or CONTENT_PROTECTION_PROXY."
+                exit 1
+              fi
+              if [[ -z "${PAYMENT_ASSET_REGISTRY_ADDRESS:-}" ]]; then
+                echo "::error::deploy-stem-marketplace requires PAYMENT_ASSET_REGISTRY_ADDRESS."
+                exit 1
+              fi
+              if [[ -z "${FEE_RECIPIENT:-}" ]]; then
+                echo "::error::deploy-stem-marketplace requires FEE_RECIPIENT on shared networks."
+                exit 1
+              fi
+              ;;
           esac
 
           case "${{ inputs.target_network }}" in
@@ -298,6 +327,10 @@ jobs:
         if: inputs.operation == 'deploy-show-campaign-escrow'
         run: make deploy-show-campaign-escrow
 
+      - name: Deploy stem marketplace
+        if: inputs.operation == 'deploy-stem-marketplace'
+        run: make deploy-stem-marketplace
+
       - name: Upgrade content protection proxy
         if: inputs.operation == 'upgrade-content-protection'
         run: |
@@ -352,6 +385,15 @@ jobs:
             fi
             if [[ -f contracts/deployments/show-campaign-escrow.abi.json ]]; then
               echo "- ShowCampaignEscrow ABI handoff: \`contracts/deployments/show-campaign-escrow.abi.json\`"
+            fi
+            if [[ -f "contracts/deployments/stem-marketplace.${{ inputs.target_network }}.json" ]]; then
+              echo "- StemMarketplaceV2 deployment record: \`contracts/deployments/stem-marketplace.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/stem-marketplace.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- StemMarketplaceV2 environment handoff: \`contracts/deployments/stem-marketplace.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/stem-marketplace.abi.json ]]; then
+              echo "- StemMarketplaceV2 ABI handoff: \`contracts/deployments/stem-marketplace.abi.json\`"
             fi
             if [[ -f contracts/deployments/sepolia.json ]]; then
               echo "- Sepolia deployment record: \`contracts/deployments/sepolia.json\`"
