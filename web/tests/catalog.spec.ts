@@ -38,9 +38,9 @@ test.describe("Catalog & Home Page", () => {
 
     test("HOME-04: Hero actions are visible", async ({ page }) => {
         await page.goto("/");
-        // New hero (Stitch design) exposes "Listen Now" + "View Campaign".
-        await expect(page.getByRole("link", { name: /Listen Now/i })).toBeVisible({ timeout: 15000 });
-        await expect(page.getByRole("link", { name: /View Campaign/i })).toBeVisible();
+        // Campaign hero exposes "Back This Show" (campaign detail) + "All Campaigns" (list).
+        await expect(page.getByRole("link", { name: /Back This Show/i })).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole("link", { name: /All Campaigns/i })).toBeVisible();
     });
 
     test("HOME-05: Upcoming Live Events section exists", async ({ page }) => {

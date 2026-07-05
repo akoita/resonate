@@ -639,11 +639,11 @@ export default function Home() {
                   href={`/shows/${activeHeroCampaign.id}`}
                   className="ng-btn ng-btn--primary"
                 >
-                  <span className="ms-icon" data-fill="1" aria-hidden>play_arrow</span>
-                  Listen Now
+                  <span className="ms-icon" data-fill="1" aria-hidden>rocket_launch</span>
+                  Back This Show
                 </Link>
                 <Link href="/shows" className="ng-btn ng-btn--glass">
-                  View Campaign
+                  All Campaigns
                 </Link>
               </div>
             </div>
