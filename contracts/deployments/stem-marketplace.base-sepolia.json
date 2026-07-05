@@ -1,0 +1,29 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployer": "0x3e19e4b2f22fc27b5105a6762fcc6c6f129550be",
+  "feeConfig": {
+    "protocolFeeBps": 1000,
+    "feeRecipient": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE"
+  },
+  "deployedAt": "2026-07-05T00:41:32Z",
+  "contracts": {
+    "StemMarketplaceV2": "0x85c9767fced270ab3724820389cc410956f4f397",
+    "StemNFT": "0xb50859BB6FBB0180720D7E7663fD07B4a4fA7622",
+    "ContentProtection": "0x8b727A56760b1017610Eb54dD0AE77b3DC0Ca51C",
+    "PaymentAssetRegistry": "0xDDBaf98Bb5708c7809EFa783DC72cC15A97ba495"
+  },
+  "verification": {
+    "basescan": "https://sepolia.basescan.org/address/0x85c9767fced270ab3724820389cc410956f4f397"
+  },
+  "deployment": {
+    "transaction": "0x814681ec3f9a29eafaa50033481d22303303497e9c1e3abed78d150635e79023",
+    "blockNumber": "0x29b24ac",
+    "broadcastFile": "contracts/broadcast/DeployStemMarketplace.s.sol/84532/run-latest.json",
+    "artifactFile": "contracts/out/StemMarketplaceV2.sol/StemMarketplaceV2.json"
+  },
+  "abi": {
+    "file": "contracts/deployments/stem-marketplace.abi.json",
+    "sha256": "964d5768f9b89c16ff72c2695b78d4cf92ac69118ae8d626bebc31cd35619463"
+  }
+}
