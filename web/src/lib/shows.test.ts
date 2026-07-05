@@ -4,6 +4,7 @@ import {
   campaignDisplayInitial,
   campaignDisplayTitle,
   campaignRouteCode,
+  filterActionableCampaigns,
   campaignTrustState,
   campaignTerms,
   pledgeStateLabel,
@@ -20,6 +21,25 @@ import {
 import type { Release } from "./api";
 
 describe("Shows campaign presentation", () => {
+  it("filters refund and terminal campaigns from discovery surfaces", () => {
+    const campaigns = [
+      { id: "active", rawStatus: "active" },
+      { id: "funded", rawStatus: "funded" },
+      { id: "booking-confirmed", rawStatus: "booking_confirmed" },
+      { id: "refund", rawStatus: "refund_available" },
+      { id: "cancelled", rawStatus: "cancelled" },
+      { id: "failed", rawStatus: "failed" },
+      { id: "refunded", rawStatus: "refunded" },
+      { id: "released", rawStatus: "released" },
+    ];
+
+    expect(filterActionableCampaigns(campaigns).map((campaign) => campaign.id)).toEqual([
+      "active",
+      "funded",
+      "booking-confirmed",
+    ]);
+  });
+
   it("uses the campaign title as the public display identity", () => {
     const campaign = {
       title: "Sennarin in Paris",

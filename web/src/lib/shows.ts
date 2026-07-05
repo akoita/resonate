@@ -120,6 +120,22 @@ export interface Campaign {
   tiers: CampaignTier[];
 }
 
+export const NON_ACTIONABLE_CAMPAIGN_RAW_STATUSES = new Set([
+  "refund_available",
+  "cancelled",
+  "failed",
+  "refunded",
+  "released",
+]);
+
+export function isActionableCampaign(campaign: Pick<Campaign, "rawStatus">): boolean {
+  return !NON_ACTIONABLE_CAMPAIGN_RAW_STATUSES.has(campaign.rawStatus);
+}
+
+export function filterActionableCampaigns<T extends Pick<Campaign, "rawStatus">>(campaigns: T[]): T[] {
+  return campaigns.filter(isActionableCampaign);
+}
+
 export function campaignDisplayTitle(campaign: Pick<Campaign, "title" | "artistName" | "city">): string {
   return campaign.title?.trim() || `${campaign.artistName} in ${campaign.city}`;
 }
@@ -1617,7 +1633,8 @@ export function getCampaignSync(id: string): Campaign | null {
 }
 
 export function getFeaturedCampaignSync(): Campaign {
-  return CAMPAIGNS.find((c) => c.featured) ?? CAMPAIGNS[0];
+  const campaigns = filterActionableCampaigns(CAMPAIGNS);
+  return campaigns.find((c) => c.featured) ?? campaigns[0] ?? CAMPAIGNS[0];
 }
 
 async function fetchShowsApi<T>(path: string): Promise<T | null> {
