@@ -1,0 +1,27 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployer": "0x3e19e4b2f22fc27b5105a6762fcc6c6f129550be",
+  "owner": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE",
+  "feeConfig": {
+    "feeBps": 600,
+    "feeRecipient": "0x3e19e4B2f22fC27B5105A6762FCC6C6f129550BE"
+  },
+  "deployedAt": "2026-07-05T00:26:44Z",
+  "contracts": {
+    "ShowCampaignEscrow": "0xd7035cf620c09653542b75a9b95bbec1514d8b23"
+  },
+  "verification": {
+    "basescan": "https://sepolia.basescan.org/address/0xd7035cf620c09653542b75a9b95bbec1514d8b23"
+  },
+  "deployment": {
+    "transaction": "0x8ca380a0d43ee7e61d79412b82e7e24ff0cc4c21d98cd3fae856799e2d02dd3b",
+    "blockNumber": "0x29b22f3",
+    "broadcastFile": "contracts/broadcast/DeployShowCampaignEscrow.s.sol/84532/run-latest.json",
+    "artifactFile": "contracts/out/ShowCampaignEscrow.sol/ShowCampaignEscrow.json"
+  },
+  "abi": {
+    "file": "contracts/deployments/show-campaign-escrow.abi.json",
+    "sha256": "ef7413bc6416c10941acd32fcbbb59fc938ee316281f3ed7ace0a5647ede5d3b"
+  }
+}
