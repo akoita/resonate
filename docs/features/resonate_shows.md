@@ -55,11 +55,19 @@ a compact preview is not supplied, the UI reuses the hero or gallery visual
 with a safe crop and falls back to the generated concert-card atmosphere only
 as a last resort.
 
-Campaign detail pages keep the primary hero focused on the booking signal and
-pledge call-to-action even when campaign copy is long. Long `Title: Subtitle`
-campaign names render as a two-part headline, unusually long venue targets are
-clamped with the full text preserved in browser hover text, and long campaign
-pitches are expanded into a dedicated pitch section below the visual story.
+Campaign detail pages use a conversion-first layout: the above-the-fold hero
+shows the title, date/venue, funding progress, compact tier cues, a pledge CTA,
+and the success-only fee notice beside the action. The CTA scrolls to the pledge
+rail instead of linking back to the current page. On desktop, campaign story,
+artist context, gallery, community, and how-it-works content sit in the main
+column while locked terms, trust state, pledge tiers, and the wallet pledge
+button stay in a sticky right rail. On mobile, a bottom pledge bar keeps funding
+progress and the pledge shortcut available while scrolling. Long `Title:
+Subtitle` campaign names render as a two-part headline, unusually long venue
+targets are clamped with the full text preserved in browser hover text, and
+long campaign pitches are expanded into a dedicated pitch section below the
+hero. Operator controls remain admin/operator-only and sit at the bottom of the
+detail page in a collapsed lifecycle panel.
 
 The repository also ships four media-rich, repeatable sample concepts:
 SennaRin in Paris, Felicia Farerre in Dublin, Leona Lewis in Lagos, and Aya

@@ -82,6 +82,9 @@ describe("CampaignOperatorPanel disputes (#950 operator controls)", () => {
 
   it("lets an operator raise a dispute in the booking → release window", () => {
     const html = renderToStaticMarkup(<CampaignOperatorPanel campaign={baseCampaign} />);
+    expect(html).toContain('<details class="show-detail__operator-panel"');
+    expect(html).toContain('<summary class="show-detail__operator-summary"');
+    expect(html).not.toContain("<details open");
     expect(html).toContain("Disputes");
     expect(html).toContain("Artist net at goal");
     expect(html).toContain("2820 USDC after 6% fee");
