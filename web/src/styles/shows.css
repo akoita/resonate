@@ -1744,13 +1744,15 @@
 .campaign-detail-hero {
   /* #1373 v2: the hero holds the copy AND the live pledge module side by
    * side, so the conversion action is functional above the fold — not an
-   * anchor pointing below it. Height is content-driven (the pledge card
-   * decides), keeping the page overview reachable on 1080p. */
+   * anchor pointing below it. Both cards anchor to the bottom and the
+   * min-height reserves canvas above them, so the campaign visual stays
+   * genuinely visible instead of hiding behind the glass panels. */
   position: relative;
+  min-height: min(660px, 74vh);
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
   gap: clamp(18px, 2.2vw, 32px);
-  align-items: center;
+  align-items: end;
   padding: clamp(18px, 2.4vw, 36px);
   overflow: hidden;
   border-radius: 30px;
@@ -1764,8 +1766,10 @@
 }
 
 .campaign-detail-hero--visual {
+  /* Light scrim only — the copy/pledge glass cards carry their own contrast,
+   * so the artist visual is allowed to read across the whole hero (#1373). */
   background:
-    linear-gradient(90deg, rgba(8, 8, 15, 0.98) 0%, rgba(8, 8, 15, 0.92) 40%, rgba(8, 8, 15, 0.18) 72%, rgba(8, 8, 15, 0.08) 100%),
+    linear-gradient(90deg, rgba(8, 8, 15, 0.42) 0%, rgba(8, 8, 15, 0.22) 45%, rgba(8, 8, 15, 0.08) 100%),
     var(--campaign-visual);
   background-position: center;
   background-size: cover;
@@ -1776,19 +1780,17 @@
   position: absolute;
   inset: 0;
   z-index: 0;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 18%, rgba(8, 8, 15, 0.42)),
-    radial-gradient(circle at 62% 30%, transparent 0 22%, rgba(8, 8, 15, 0.28) 58%, rgba(8, 8, 15, 0.78) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 26%, rgba(8, 8, 15, 0.52) 88%);
   pointer-events: none;
 }
 
 .campaign-detail-hero__copy {
   position: relative;
   z-index: 2;
-  align-self: stretch;
+  align-self: end;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-end;
   gap: clamp(12px, 1.4vw, 18px);
   min-width: 0;
   padding: clamp(28px, 4vw, 46px);
@@ -1909,6 +1911,7 @@
 .campaign-detail-hero__pledge {
   position: relative;
   z-index: 2;
+  align-self: end;
   min-width: 0;
 }
 
@@ -3391,6 +3394,10 @@
 
   .campaign-detail-hero {
     grid-template-columns: 1fr;
+    /* Stacked cards fill the hero; reserved canvas height would only add
+     * empty space here, so the visual reads through the lighter scrim
+     * behind the cards instead. */
+    min-height: 0;
     gap: 18px;
     padding: 16px;
   }
