@@ -21,6 +21,7 @@ const mockShowsService = {
   revokeAuthority: jest.fn(),
   expireAuthority: jest.fn(),
   activateCampaign: jest.fn(),
+  resyncCampaignFromChain: jest.fn(),
   createPledgeIntent: jest.fn(),
   confirmPledge: jest.fn(),
   confirmPledgeRefund: jest.fn(),
@@ -121,5 +122,31 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockCommunityRoomsService.createShowCampaignUpdate).not.toHaveBeenCalled();
+  });
+
+  it("re-syncs campaign chain state for operators", async () => {
+    mockShowsService.resyncCampaignFromChain.mockResolvedValue({ id: "campaign-1" });
+
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/resync-chain")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.id).toBe("campaign-1");
+      });
+
+    expect(mockShowsService.resyncCampaignFromChain).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      "campaign-1",
+    );
+  });
+
+  it("rejects listener role for campaign chain re-sync", async () => {
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/resync-chain")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(mockShowsService.resyncCampaignFromChain).not.toHaveBeenCalled();
   });
 });

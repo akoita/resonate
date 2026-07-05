@@ -1,4 +1,7 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { createPublicClient, createWalletClient, http, keccak256, stringToHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { foundry } from "viem/chains";
 import { prisma } from "../db/prisma";
 import { ShowsService } from "../modules/shows/shows.service";
 
@@ -13,12 +16,22 @@ const artistWallet = "0x" + "7".repeat(40);
 const otherArtistUserId = `${TEST_PREFIX}other_artist_user`;
 const otherArtistId = `${TEST_PREFIX}other_artist`;
 const operatorUserId = `${TEST_PREFIX}operator`;
+const ANVIL_CHAIN_ID = 31337;
+const ANVIL_DEPLOYER_PRIVATE_KEY =
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+const SHOW_ESCROW_ARTIFACT =
+  require("../../../contracts/out/ShowCampaignEscrow.sol/ShowCampaignEscrow.json") as {
+    abi: any[];
+    bytecode: { object: `0x${string}` };
+  };
 
 const futureIso = (days: number) => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString();
 };
+
+const anvilUrl = () => process.env.ANVIL_RPC_URL;
 
 const visualFile = (name: string, body: string): Express.Multer.File => ({
   fieldname: "gallery",
@@ -641,6 +654,135 @@ describe("ShowsService integration", () => {
     expect(activated.status).toBe("active");
     expect(activated.contractCampaignId).toBe("1");
     expect(activated.events[0].eventType).toBe("campaign_activated");
+  });
+
+  it("hydrates linked escrow state directly from Anvil during activation", async () => {
+    if (!anvilUrl()) {
+      console.warn("ANVIL_RPC_URL not set. Skipping activation chain hydration integration test.");
+      return;
+    }
+
+    const chain = { ...foundry, id: ANVIL_CHAIN_ID };
+    const account = privateKeyToAccount(ANVIL_DEPLOYER_PRIVATE_KEY);
+    const publicClient = createPublicClient({
+      chain,
+      transport: http(anvilUrl()),
+    });
+    const walletClient = createWalletClient({
+      account,
+      chain,
+      transport: http(anvilUrl()),
+    });
+    const deployHash = await walletClient.deployContract({
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
+      args: [account.address, 600n, account.address],
+    });
+    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const escrowAddress = deployReceipt.contractAddress;
+    expect(escrowAddress).toBeTruthy();
+
+    const block = await publicClient.getBlock({ blockTag: "latest" });
+    const deadline = block.timestamp + 7n * 24n * 60n * 60n;
+    const bookingDeadline = deadline + 7n * 24n * 60n * 60n;
+    const paymentToken = "0x" + "1".repeat(40);
+    const createHash = await walletClient.writeContract({
+      address: escrowAddress!,
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      functionName: "createCampaign",
+      args: [
+        keccak256(stringToHex(`${TEST_PREFIX}artist`)),
+        keccak256(stringToHex(`${TEST_PREFIX}authority`)),
+        artistWallet,
+        paymentToken,
+        1500000n,
+        10n,
+        deadline,
+        bookingDeadline,
+        0n,
+        604800n,
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: createHash });
+    const activateHash = await walletClient.writeContract({
+      address: escrowAddress!,
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      functionName: "activateCampaign",
+      args: [1n],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: activateHash });
+
+    const campaign = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Hydrated Artist`,
+        city: "Berlin",
+        country: "DE",
+        deadline: futureIso(20),
+        goalAmountUnits: "1500000",
+        minimumBackers: 10,
+        bookingDeadline: futureIso(30),
+        paymentTokenAddress: paymentToken,
+        chainId: ANVIL_CHAIN_ID,
+      },
+    );
+    await service.requestAuthority(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        beneficiaryAddress: artistWallet,
+        beneficiaryType: "wallet",
+        authorityEvidenceBundleId: `${TEST_PREFIX}hydrated-authority`,
+      },
+    );
+    await service.approveAuthority(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+      {
+        authorityStatus: "artist_authorized",
+        authorityCredentialId: `${TEST_PREFIX}hydrated-credential`,
+      },
+    );
+
+    const activated = await service.activateCampaign(
+      { userId, role: "artist" },
+      campaign.id,
+      {
+        contractAddress: escrowAddress,
+        contractCampaignId: "1",
+      },
+    );
+
+    expect(activated.status).toBe("active");
+    expect(activated.contractAddress).toBe(escrowAddress!.toLowerCase());
+    expect(activated.contractCampaignId).toBe("1");
+    expect(activated.feeBps).toBe(600);
+    expect(activated.onChainStatus).toBe("Active");
+    expect(activated.raisedAmountUnits).toBe("0");
+    expect(activated.totalRefundedUnits).toBe("0");
+    expect(activated.totalReleasedUnits).toBe("0");
+    expect(activated.totalFeePaidUnits).toBe("0");
+    expect(activated.uniqueBackerCount).toBe(0);
+    expect(activated.reconciliationError).toBeNull();
+    expect(activated.lastEscrowIndexedBlock).not.toBeNull();
+
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        feeBps: null,
+        onChainStatus: null,
+        reconciliationError: "stale snapshot",
+        reconciliationErrorAt: new Date(),
+      },
+    });
+    const resynced = await service.resyncCampaignFromChain(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+    );
+    expect(resynced.feeBps).toBe(600);
+    expect(resynced.onChainStatus).toBe("Active");
+    expect(resynced.reconciliationError).toBeNull();
   });
 
   it("rejects invalid beneficiary addresses and records rejected authority reviews", async () => {
