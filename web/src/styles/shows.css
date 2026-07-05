@@ -119,6 +119,14 @@
   animation: shows-fade-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Detail page runs wider than the explorer so the narrative can go
+ * side-by-side without cramping the sticky pledge rail (#1371). */
+.shows-page--wide {
+  max-width: min(1720px, 100%);
+  padding-left: clamp(24px, 3vw, 48px);
+  padding-right: clamp(24px, 3vw, 48px);
+}
+
 /* ─── Cinematic Intro Banner ─────────────────────────────────────── */
 
 .shows-page__intro {
@@ -1742,7 +1750,8 @@
 
 .campaign-detail-hero {
   position: relative;
-  min-height: min(620px, calc(100vh - 132px));
+  /* Capped so the pitch/trust row peeks above the fold on 1080p (#1371). */
+  min-height: min(560px, 72vh);
   display: grid;
   grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
   overflow: hidden;
@@ -2054,7 +2063,7 @@
 
 .show-detail__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
   gap: clamp(24px, 3vw, 40px);
   align-items: start;
 }
@@ -2064,6 +2073,49 @@
   display: flex;
   flex-direction: column;
   gap: 40px;
+}
+
+/* ─── Two-up narrative rows (#1371) ──────────────────────────────────
+ * At the widened detail width the narrative pairs sections side by side
+ * instead of one tall stack. Below 1280px they fall back to a single
+ * column (the default here). When a row has only one child present it
+ * spans the full width so a missing pitch/artist never leaves a gap. */
+.show-detail__two-up {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: clamp(20px, 2.4vw, 32px);
+  align-items: start;
+}
+
+.show-detail__two-up > * {
+  min-width: 0;
+}
+
+/* A single present child (e.g. artist story with no pitch) fills the row. */
+.show-detail__two-up > :only-child {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1280px) {
+  /* Row A: campaign pitch beside "Meet the artist". */
+  .show-detail__two-up--intro {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  /* Row C: "Why this matters" beside "How it works". */
+  .show-detail__two-up--mechanics {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* The pitch card can shed its centering max-width when it shares a row. */
+  .show-detail__two-up--intro .show-detail__pitch {
+    max-width: none;
+  }
+
+  /* Steps stack vertically inside the narrower "How it works" half. */
+  .show-detail__two-up--mechanics .show-detail__how {
+    grid-template-columns: 1fr;
+  }
 }
 
 .show-detail__pledge-rail {
@@ -2083,7 +2135,7 @@
  * masonry that turned portrait photos into a lopsided collage. */
 .show-detail__visual-story {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 14px;
 }
 
