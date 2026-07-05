@@ -1263,6 +1263,27 @@ describe("ShowsService integration", () => {
     expect(withSignals.some((campaign) => campaign.artistDisplayName === `${TEST_PREFIX}Signal Artist`)).toBe(true);
   });
 
+  it("excludes refund/terminal campaigns from public listings by default and allows explicit status lookup", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Bordeaux");
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        status: "refund_available",
+        refundAvailableAt: new Date(),
+      },
+    });
+
+    const defaultList = await service.listCampaigns();
+    expect(defaultList.some((listed) => listed.id === campaign.id)).toBe(false);
+
+    const refundList = await service.listCampaigns({ status: "refund_available" });
+    expect(refundList.some((listed) => listed.id === campaign.id)).toBe(true);
+  });
+
+  it("rejects unknown public campaign list status filters", async () => {
+    await expect(service.listCampaigns({ status: "failed" })).rejects.toThrow(BadRequestException);
+  });
+
   it("public campaign reads expose trust/terms but never sensitive authority evidence (#949)", async () => {
     const { campaign } = await createActiveCampaignWithTier("Strasbourg");
     // Populate an internal storage URI + a visual carrying a storage URI so the

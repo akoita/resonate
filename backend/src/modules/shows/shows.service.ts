@@ -6,6 +6,7 @@ import type {
   ShowCampaignBeneficiaryType,
   ShowCampaignLevel,
   ShowCampaignReleasePolicy,
+  ShowCampaignStatus,
   ShowPledgeConfirmationStatus,
 } from "@prisma/client";
 import { Prisma } from "@prisma/client";
@@ -22,6 +23,7 @@ import {
   assertShowCampaignBeneficiaryType,
   assertShowCampaignLevel,
   assertShowCampaignReleasePolicy,
+  assertShowCampaignStatus,
   assertShowPledgeConfirmationStatus,
 } from "./show-status";
 
@@ -363,6 +365,12 @@ const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
 const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_SHOWS_GALLERY_VISUALS = 8;
+const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
+  "refund_available",
+  "cancelled",
+  "refunded",
+  "released",
+] as const satisfies readonly ShowCampaignStatus[];
 
 function requireText(value: unknown, field: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -743,9 +751,13 @@ export class ShowsService {
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string } = {}) {
     const includeSignals = query.includeSignals === true;
+    const requestedStatus = optionalText(query.status);
+    const status = requestedStatus ? assertShowCampaignStatus(requestedStatus) : null;
     const campaigns = await prisma.showCampaign.findMany({
       where: {
-        ...(query.status ? { status: query.status as any } : {}),
+        ...(status
+          ? { status }
+          : { status: { notIn: [...PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES] } }),
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
       },
       include: {

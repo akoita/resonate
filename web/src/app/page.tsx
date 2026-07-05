@@ -43,6 +43,7 @@ import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
 import {
   campaignDisplayInitial,
   campaignDisplayTitle,
+  filterActionableCampaigns,
   listCampaigns,
   listCampaignsSync,
   getFeaturedCampaignSync,
@@ -135,6 +136,7 @@ export default function Home() {
     () => FILTERS.find((filter) => filter.id === activeFilter) ?? FILTERS[0],
     [activeFilter],
   );
+  const actionableCampaigns = useMemo(() => filterActionableCampaigns(campaigns), [campaigns]);
 
   useWebSockets((data: ReleaseStatusUpdate) => {
     // Keep the "Your Releases" panel live without a manual reload. The backend
@@ -203,17 +205,17 @@ export default function Home() {
     };
   }, []);
 
-  // Fairly rotate the 2-card "Upcoming Live Events" window across all campaigns,
-  // so none stay hidden when there is no priority signal. Pauses while hovered
-  // and honors prefers-reduced-motion.
+  // Fairly rotate the 2-card "Upcoming Live Events" window across actionable
+  // campaigns so none stay hidden when there is no priority signal. Pauses
+  // while hovered and honors prefers-reduced-motion.
   useEffect(() => {
-    if (campaigns.length <= 2 || eventRowPaused) return;
+    if (actionableCampaigns.length <= 2 || eventRowPaused) return;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setInterval(() => {
-      setEventRowOffset((offset) => (offset + 1) % campaigns.length);
+      setEventRowOffset((offset) => (offset + 1) % actionableCampaigns.length);
     }, 8000);
     return () => window.clearInterval(timer);
-  }, [campaigns.length, eventRowPaused]);
+  }, [actionableCampaigns.length, eventRowPaused]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
@@ -266,7 +268,7 @@ export default function Home() {
   // Row data derivation.
   const resumeRow = filteredReleases.slice(0, 4);
   const stemRow = filteredReleases.slice(0, 3);
-  const heroCampaigns = useMemo(() => selectHomeHeroCampaigns(campaigns), [campaigns]);
+  const heroCampaigns = useMemo(() => selectHomeHeroCampaigns(actionableCampaigns), [actionableCampaigns]);
   const activeHeroCampaign = useMemo(
     () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
     [activeHeroCampaignId, heroCampaigns],
@@ -287,10 +289,10 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [heroCampaigns, heroPaused]);
   const eventRow: Campaign[] = useMemo(() => {
-    if (campaigns.length <= 2) return campaigns.slice(0, 2);
-    const start = eventRowOffset % campaigns.length;
-    return [campaigns[start], campaigns[(start + 1) % campaigns.length]];
-  }, [campaigns, eventRowOffset]);
+    if (actionableCampaigns.length <= 2) return actionableCampaigns.slice(0, 2);
+    const start = eventRowOffset % actionableCampaigns.length;
+    return [actionableCampaigns[start], actionableCampaigns[(start + 1) % actionableCampaigns.length]];
+  }, [actionableCampaigns, eventRowOffset]);
   const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
   const catalogStems = useMemo<CatalogStemSummary[]>(
     () => flattenCatalogStems(displayReleases),
