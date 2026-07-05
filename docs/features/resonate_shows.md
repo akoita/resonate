@@ -55,13 +55,14 @@ a compact preview is not supplied, the UI reuses the hero or gallery visual
 with a safe crop and falls back to the generated concert-card atmosphere only
 as a last resort.
 
-Campaign detail pages use a conversion-first layout (#1365, #1373): the
-above-the-fold hero pairs the campaign copy (title, date/venue, tagline,
-funding progress, escrow trust line with explorer link) with the **live pledge
-module** — the real tier picker, wallet pledge button, and success-only fee
-notice render inside the hero as a glass card, so a fan can pledge without
-scrolling at all. Below the hero, a full-width signal strip shows funded %,
-backers needed, deadline, and show target. Campaign story, artist context
+Campaign detail pages use a conversion-first layout (#1365, #1373, #1383):
+the page opens with a clean full-width visual banner (title, date/venue on
+the image), then a lede row pairs the campaign copy panel (tagline, funding
+progress, a compact funded/backers/deadline/target signal grid, escrow trust
+line with explorer link) with the **live pledge module** — the real tier
+picker, wallet pledge button, and success-only fee notice — so a fan can
+pledge without scrolling at all and the copy panel stays as dense as the
+pledge card is tall. Campaign story, artist context
 (portrait beside full-width flowing text), gallery, why-this-matters,
 how-it-works, and community content fill the main column while locked terms
 and trust state stay in a sticky right rail; the detail page and the `/shows`
@@ -70,7 +71,7 @@ funding progress and a shortcut to the hero pledge card available while
 scrolling. Long `Title: Subtitle` campaign names render as a two-part
 headline, unusually long venue targets are clamped with the full text
 preserved in browser hover text, and long campaign pitches are expanded into a
-dedicated pitch section below the signal strip. Operator controls remain
+dedicated pitch section below the lede row. Operator controls remain
 admin/operator-only and sit at the bottom of the detail page in a collapsed
 lifecycle panel.
 

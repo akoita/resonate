@@ -9,11 +9,8 @@ import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperato
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
 import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel";
 import {
-  daysUntil,
   campaignDisplayTitle,
-  formatMoney,
   getCampaign,
-  progressRatio,
   type CampaignTier,
 } from "../../../lib/shows";
 
@@ -56,21 +53,7 @@ export default async function CampaignDetailPage({ params }: Props) {
     notFound();
   }
 
-  const daysLeft = Math.max(0, daysUntil(campaign.deadline));
   const displayTitle = campaignDisplayTitle(campaign);
-  const progressPct = Math.round(progressRatio(campaign) * 100);
-  const remainingCents = Math.max(0, campaign.goalCents - campaign.raisedCents);
-  const backersNeeded = Math.max(0, campaign.thresholdBackers - campaign.backerCount);
-  const targetDate = new Date(campaign.targetDate).toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-  const deadline = new Date(campaign.deadline).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
   const tiers = campaign.tiers.length > 0
     ? campaign.tiers
     : defaultTiers(campaign.currency);
@@ -91,35 +74,6 @@ export default async function CampaignDetailPage({ params }: Props) {
         <CampaignDetailHero campaign={campaign}>
           <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
         </CampaignDetailHero>
-
-        <section className="show-detail__snapshot" aria-label="Campaign snapshot">
-          <article className="show-detail__signal-card show-detail__signal-card--primary">
-            <span className="show-detail__signal-label">Campaign signal</span>
-            <strong>{progressPct}% funded</strong>
-            <p>
-              {formatMoney(remainingCents, campaign.currency)} still needed before
-              the escrow can trigger a serious booking conversation.
-            </p>
-          </article>
-          <article className="show-detail__signal-card">
-            <span className="show-detail__signal-label">Fans needed</span>
-            <strong>{backersNeeded.toLocaleString("en-US")}</strong>
-            <p>
-              {campaign.backerCount.toLocaleString("en-US")} fans have already
-              joined the signal.
-            </p>
-          </article>
-          <article className="show-detail__signal-card">
-            <span className="show-detail__signal-label">Deadline</span>
-            <strong>{daysLeft}d left</strong>
-            <p>Campaign closes on {deadline}. If it misses, pledges refund automatically.</p>
-          </article>
-          <article className="show-detail__signal-card show-detail__signal-card--target">
-            <span className="show-detail__signal-label">Show target</span>
-            <strong title={campaign.venue ?? campaign.city}>{campaign.venue ?? campaign.city}</strong>
-            <p>{targetDate}. Venue and production stay conditional until the threshold clears.</p>
-          </article>
-        </section>
 
         <div className="show-detail__body">
           <div className="show-detail__narrative">
