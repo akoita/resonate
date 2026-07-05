@@ -1742,18 +1742,22 @@
  * ══════════════════════════════════════════════════════════════════ */
 
 .campaign-detail-hero {
-  /* #1373 v2: the hero holds the copy AND the live pledge module side by
-   * side, so the conversion action is functional above the fold — not an
-   * anchor pointing below it. Both cards anchor to the bottom and the
-   * min-height reserves canvas above them, so the campaign visual stays
-   * genuinely visible instead of hiding behind the glass panels. */
+  /* #1373 v3 (banner layout): the campaign visual is a clean full-width
+   * banner with only the identity (eyebrow/title/date/venue) overlaid on
+   * it; the tagline/progress panel and the live pledge module sit as
+   * regular panels directly below, so the image is never hidden behind
+   * cards and conversion still lands above the fold. */
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 1.8vw, 24px);
+}
+
+.campaign-detail-hero__banner {
   position: relative;
-  min-height: min(660px, 74vh);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
-  gap: clamp(18px, 2.2vw, 32px);
-  align-items: end;
-  padding: clamp(18px, 2.4vw, 36px);
+  display: flex;
+  align-items: flex-end;
+  min-height: clamp(280px, 42vh, 480px);
+  padding: clamp(24px, 3.2vw, 44px);
   overflow: hidden;
   border-radius: 30px;
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -1765,45 +1769,59 @@
     0 36px 90px rgba(0, 0, 0, 0.52);
 }
 
-.campaign-detail-hero--visual {
-  /* Light scrim only — the copy/pledge glass cards carry their own contrast,
-   * so the artist visual is allowed to read across the whole hero (#1373). */
+.campaign-detail-hero__banner--visual {
   background:
-    linear-gradient(90deg, rgba(8, 8, 15, 0.42) 0%, rgba(8, 8, 15, 0.22) 45%, rgba(8, 8, 15, 0.08) 100%),
     var(--campaign-visual);
-  background-position: center;
+  background-position: center 22%;
   background-size: cover;
 }
 
-.campaign-detail-hero--visual::before {
+/* Bottom-weighted scrim so the overlaid title reads without dimming the
+ * image as a whole. */
+.campaign-detail-hero__banner::before {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 0;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 26%, rgba(8, 8, 15, 0.52) 88%);
+  background: linear-gradient(180deg, rgba(8, 8, 15, 0.08), transparent 34%, rgba(8, 8, 15, 0.34) 66%, rgba(8, 8, 15, 0.86) 100%);
   pointer-events: none;
 }
 
-.campaign-detail-hero__copy {
+.campaign-detail-hero__banner-copy {
   position: relative;
-  z-index: 2;
-  align-self: end;
+  z-index: 1;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  gap: clamp(10px, 1.2vw, 16px);
+  min-width: 0;
+  max-width: 900px;
+  text-shadow: 0 2px 26px rgba(0, 0, 0, 0.55);
+}
+
+/* Tagline + progress + trust context: a regular panel under the banner,
+ * beside the pledge module. */
+.campaign-detail-hero__lede {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  gap: clamp(16px, 1.8vw, 24px);
+  align-items: stretch;
+}
+
+.campaign-detail-hero__copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: clamp(12px, 1.4vw, 18px);
   min-width: 0;
-  padding: clamp(28px, 4vw, 46px);
-  border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: clamp(24px, 2.6vw, 38px);
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   background:
-    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--color-signal) 14%, transparent), transparent 38%),
-    linear-gradient(145deg, rgba(8, 8, 15, 0.92), rgba(13, 14, 26, 0.84));
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  backdrop-filter: blur(18px) saturate(130%);
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--color-signal) 10%, transparent), transparent 38%),
+    linear-gradient(155deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.005) 100%);
   box-shadow:
-    0 26px 78px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 16px 40px rgba(0, 0, 0, 0.3);
 }
 
 .campaign-detail-hero__eyebrow {
@@ -1905,26 +1923,16 @@
   text-decoration: underline;
 }
 
-/* The live pledge module (tiers + wallet action) rendered inside the hero.
- * It reuses .show-detail__pledge-panel; in here it reads as a glass card
- * floating over the campaign visual. */
+/* The live pledge module (tiers + wallet action) beside the lede panel.
+ * It reuses .show-detail__pledge-panel's own card chrome. */
 .campaign-detail-hero__pledge {
-  position: relative;
-  z-index: 2;
-  align-self: end;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .campaign-detail-hero__pledge .show-detail__pledge-panel {
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background:
-    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--color-signal) 13%, transparent), transparent 42%),
-    linear-gradient(145deg, rgba(8, 8, 15, 0.93), rgba(13, 14, 26, 0.87));
-  -webkit-backdrop-filter: blur(18px) saturate(130%);
-  backdrop-filter: blur(18px) saturate(130%);
-  box-shadow:
-    0 26px 78px rgba(0, 0, 0, 0.46),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  flex: 1;
   padding: clamp(24px, 2.4vw, 34px);
 }
 
@@ -3392,14 +3400,13 @@
     font-size: 80px;
   }
 
-  .campaign-detail-hero {
+  .campaign-detail-hero__banner {
+    min-height: clamp(220px, 32vh, 360px);
+  }
+
+  .campaign-detail-hero__lede {
     grid-template-columns: 1fr;
-    /* Stacked cards fill the hero; reserved canvas height would only add
-     * empty space here, so the visual reads through the lighter scrim
-     * behind the cards instead. */
-    min-height: 0;
     gap: 18px;
-    padding: 16px;
   }
 
   .campaign-detail-hero__copy {
@@ -3533,9 +3540,13 @@
   }
 
   .campaign-detail-hero {
-    border-radius: 24px;
     gap: 12px;
-    padding: 12px;
+  }
+
+  .campaign-detail-hero__banner {
+    min-height: clamp(180px, 30vh, 280px);
+    border-radius: 24px;
+    padding: 18px;
   }
 
   .campaign-detail-hero__copy {
