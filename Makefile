@@ -132,6 +132,15 @@ deploy-show-campaign-escrow:
 	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
 	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
 
+deploy-stem-marketplace:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	(cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	RPC_URL="$$rpc_url" ./contracts/scripts/write-stem-marketplace-handoff.sh
+
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
 
