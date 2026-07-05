@@ -653,7 +653,11 @@ describe("ShowsService integration", () => {
 
     expect(activated.status).toBe("active");
     expect(activated.contractCampaignId).toBe("1");
-    expect(activated.events[0].eventType).toBe("campaign_activated");
+    const activationEvent = await prisma.showCampaignEvent.findFirst({
+      where: { campaignId: campaign.id, eventType: "campaign_activated" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(activationEvent).not.toBeNull();
   });
 
   it("hydrates linked escrow state directly from Anvil during activation", async () => {
@@ -764,14 +768,16 @@ describe("ShowsService integration", () => {
     expect(activated.totalReleasedUnits).toBe("0");
     expect(activated.totalFeePaidUnits).toBe("0");
     expect(activated.uniqueBackerCount).toBe(0);
-    expect(activated.reconciliationError).toBeNull();
-    expect(activated.lastEscrowIndexedBlock).not.toBeNull();
+    expect(activated).not.toHaveProperty("reconciliationError");
+    expect(activated).not.toHaveProperty("lastEscrowIndexedBlock");
+    expect(() => JSON.stringify(activated)).not.toThrow();
 
     await prisma.showCampaign.update({
       where: { id: campaign.id },
       data: {
         feeBps: null,
         onChainStatus: null,
+        lastEscrowIndexedBlock: BigInt(123456789),
         reconciliationError: "stale snapshot",
         reconciliationErrorAt: new Date(),
       },
@@ -782,7 +788,9 @@ describe("ShowsService integration", () => {
     );
     expect(resynced.feeBps).toBe(600);
     expect(resynced.onChainStatus).toBe("Active");
-    expect(resynced.reconciliationError).toBeNull();
+    expect(resynced).not.toHaveProperty("reconciliationError");
+    expect(resynced).not.toHaveProperty("lastEscrowIndexedBlock");
+    expect(() => JSON.stringify(resynced)).not.toThrow();
   });
 
   it("rejects invalid beneficiary addresses and records rejected authority reviews", async () => {
@@ -1257,12 +1265,20 @@ describe("ShowsService integration", () => {
     expect(storedCampaign.raisedAmountUnits).toBe("0");
     expect(storedCampaign.confirmedPledgeCount).toBe(0);
 
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { lastEscrowIndexedBlock: BigInt(234567890) },
+    });
+
     const myPledges = await service.getMyPledges(
       { userId: listenerId, role: "listener" },
       { walletAddress: listenerWallet, chainId: campaign.chainId },
     );
     expect(myPledges).toHaveLength(1);
     expect(myPledges[0].id).toBe(intent.pledge.id);
+    expect(myPledges[0].campaign?.status).toBe("active");
+    expect(myPledges[0].campaign).not.toHaveProperty("lastEscrowIndexedBlock");
+    expect(() => JSON.stringify(myPledges)).not.toThrow();
   });
 
   it("opens pledge refunds when a campaign is cancelled and records refund receipts", async () => {
