@@ -32,6 +32,11 @@ on:
           - deploy-stem-marketplace
           - upgrade-content-protection
           - set-content-protection-stake
+          - set-marketplace-protocol-fee
+          - set-show-campaign-fee-config
+          - set-show-campaign-confirmer
+          - pause-show-campaign-escrow
+          - create-show-campaign
           - verify-base-sepolia
           - verify-base-sepolia-sourcify
       verify_contracts:
@@ -86,6 +91,7 @@ jobs:
         env:
           INPUT_BASESCAN_API_URL: ${{ vars.BASESCAN_API_URL }}
           INPUT_BROADCAST_FILE: ${{ vars.BROADCAST_FILE }}
+          INPUT_VERIFY_ONLY: ${{ vars.VERIFY_ONLY }}
           INPUT_VERIFY_RETRIES: ${{ vars.VERIFY_RETRIES }}
           INPUT_VERIFY_DELAY_SECONDS: ${{ vars.VERIFY_DELAY_SECONDS }}
           INPUT_SOURCIFY_API_URL: ${{ vars.SOURCIFY_API_URL }}
@@ -110,10 +116,27 @@ jobs:
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
           INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
           INPUT_SHOW_CAMPAIGN_ESCROW_OWNER: ${{ vars.SHOW_CAMPAIGN_ESCROW_OWNER }}
+          INPUT_SHOW_CAMPAIGN_ESCROW_ADDRESS: ${{ vars.SHOW_CAMPAIGN_ESCROW_ADDRESS }}
           INPUT_SHOW_CAMPAIGN_FEE_BPS: ${{ vars.SHOW_CAMPAIGN_FEE_BPS }}
           INPUT_SHOW_CAMPAIGN_FEE_RECIPIENT: ${{ vars.SHOW_CAMPAIGN_FEE_RECIPIENT }}
           INPUT_FEE_RECIPIENT: ${{ vars.FEE_RECIPIENT }}
           INPUT_PROTOCOL_FEE_BPS: ${{ vars.PROTOCOL_FEE_BPS }}
+          INPUT_NEW_PROTOCOL_FEE_BPS: ${{ vars.NEW_PROTOCOL_FEE_BPS }}
+          INPUT_NEW_FEE_BPS: ${{ vars.NEW_FEE_BPS }}
+          INPUT_NEW_FEE_RECIPIENT: ${{ vars.NEW_FEE_RECIPIENT }}
+          INPUT_CONFIRMER_ADDRESS: ${{ vars.CONFIRMER_ADDRESS }}
+          INPUT_CONFIRMER_ALLOWED: ${{ vars.CONFIRMER_ALLOWED }}
+          INPUT_PAUSED: ${{ vars.PAUSED }}
+          INPUT_ARTIST_ID_HASH: ${{ vars.ARTIST_ID_HASH }}
+          INPUT_AUTHORITY_HASH: ${{ vars.AUTHORITY_HASH }}
+          INPUT_BENEFICIARY: ${{ vars.BENEFICIARY }}
+          INPUT_PAYMENT_TOKEN: ${{ vars.PAYMENT_TOKEN }}
+          INPUT_GOAL_UNITS: ${{ vars.GOAL_UNITS }}
+          INPUT_MIN_BACKERS: ${{ vars.MIN_BACKERS }}
+          INPUT_FUNDING_DEADLINE: ${{ vars.FUNDING_DEADLINE }}
+          INPUT_BOOKING_DEADLINE: ${{ vars.BOOKING_DEADLINE }}
+          INPUT_DEPOSIT_RELEASE_BPS: ${{ vars.DEPOSIT_RELEASE_BPS }}
+          INPUT_DISPUTE_WINDOW_SECONDS: ${{ vars.DISPUTE_WINDOW_SECONDS }}
         run: |
           set -euo pipefail
 
@@ -127,6 +150,7 @@ jobs:
           optional_names=(
             BASESCAN_API_URL
             BROADCAST_FILE
+            VERIFY_ONLY
             VERIFY_RETRIES
             VERIFY_DELAY_SECONDS
             SOURCIFY_API_URL
@@ -151,10 +175,27 @@ jobs:
             STAKE_ASSET_AMOUNT
             STAKE_ASSET_SYMBOL
             SHOW_CAMPAIGN_ESCROW_OWNER
+            SHOW_CAMPAIGN_ESCROW_ADDRESS
             SHOW_CAMPAIGN_FEE_BPS
             SHOW_CAMPAIGN_FEE_RECIPIENT
             FEE_RECIPIENT
             PROTOCOL_FEE_BPS
+            NEW_PROTOCOL_FEE_BPS
+            NEW_FEE_BPS
+            NEW_FEE_RECIPIENT
+            CONFIRMER_ADDRESS
+            CONFIRMER_ALLOWED
+            PAUSED
+            ARTIST_ID_HASH
+            AUTHORITY_HASH
+            BENEFICIARY
+            PAYMENT_TOKEN
+            GOAL_UNITS
+            MIN_BACKERS
+            FUNDING_DEADLINE
+            BOOKING_DEADLINE
+            DEPOSIT_RELEASE_BPS
+            DISPUTE_WINDOW_SECONDS
           )
 
           for name in "${optional_names[@]}"; do
@@ -253,6 +294,49 @@ jobs:
                 echo "::error::deploy-stem-marketplace requires FEE_RECIPIENT on shared networks."
                 exit 1
               fi
+              ;;
+            set-marketplace-protocol-fee)
+              if [[ -z "${MARKETPLACE_ADDRESS:-}" || -z "${NEW_PROTOCOL_FEE_BPS:-}" ]]; then
+                echo "::error::set-marketplace-protocol-fee requires MARKETPLACE_ADDRESS and NEW_PROTOCOL_FEE_BPS."
+                exit 1
+              fi
+              ;;
+            set-show-campaign-fee-config)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${NEW_FEE_BPS:-}" || -z "${NEW_FEE_RECIPIENT:-}" ]]; then
+                echo "::error::set-show-campaign-fee-config requires SHOW_CAMPAIGN_ESCROW_ADDRESS, NEW_FEE_BPS, and NEW_FEE_RECIPIENT."
+                exit 1
+              fi
+              ;;
+            set-show-campaign-confirmer)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${CONFIRMER_ADDRESS:-}" || -z "${CONFIRMER_ALLOWED:-}" ]]; then
+                echo "::error::set-show-campaign-confirmer requires SHOW_CAMPAIGN_ESCROW_ADDRESS, CONFIRMER_ADDRESS, and CONFIRMER_ALLOWED."
+                exit 1
+              fi
+              ;;
+            pause-show-campaign-escrow)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${PAUSED:-}" ]]; then
+                echo "::error::pause-show-campaign-escrow requires SHOW_CAMPAIGN_ESCROW_ADDRESS and PAUSED."
+                exit 1
+              fi
+              ;;
+            create-show-campaign)
+              required_names=(
+                SHOW_CAMPAIGN_ESCROW_ADDRESS
+                ARTIST_ID_HASH
+                AUTHORITY_HASH
+                BENEFICIARY
+                PAYMENT_TOKEN
+                GOAL_UNITS
+                MIN_BACKERS
+                FUNDING_DEADLINE
+                BOOKING_DEADLINE
+              )
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "::error::create-show-campaign requires ${name}."
+                  exit 1
+                fi
+              done
               ;;
           esac
 
@@ -355,6 +439,26 @@ jobs:
             --via-ir \
             --slow
 
+      - name: Update marketplace protocol fee
+        if: inputs.operation == 'set-marketplace-protocol-fee'
+        run: make set-marketplace-protocol-fee
+
+      - name: Update show campaign fee config
+        if: inputs.operation == 'set-show-campaign-fee-config'
+        run: make set-show-campaign-fee-config
+
+      - name: Update show campaign confirmer
+        if: inputs.operation == 'set-show-campaign-confirmer'
+        run: make set-show-campaign-confirmer
+
+      - name: Pause or unpause show campaign escrow
+        if: inputs.operation == 'pause-show-campaign-escrow'
+        run: make pause-show-campaign-escrow
+
+      - name: Create and activate show campaign
+        if: inputs.operation == 'create-show-campaign'
+        run: make create-show-campaign
+
       - name: Verify Base Sepolia contracts on BaseScan
         if: inputs.operation == 'verify-base-sepolia'
         run: make verify-base-sepolia
@@ -362,6 +466,50 @@ jobs:
       - name: Verify Base Sepolia contracts on Sourcify
         if: inputs.operation == 'verify-base-sepolia-sourcify'
         run: make verify-base-sepolia-sourcify
+
+      - name: Summarize admin/config operation
+        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'create-show-campaign'
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "### Contract admin/config operation"
+            echo ""
+            echo "- operation: \`${{ inputs.operation }}\`"
+            echo "- target network: \`${{ inputs.target_network }}\`"
+            echo "- owner key note: signer from \`CONTRACT_DEPLOYER_PRIVATE_KEY\` / \`PRIVATE_KEY\` must be the target contract owner"
+            case "${{ inputs.operation }}" in
+              set-marketplace-protocol-fee)
+                echo "- marketplace: \`${MARKETPLACE_ADDRESS}\`"
+                echo "- new protocol fee BPS: \`${NEW_PROTOCOL_FEE_BPS}\`"
+                echo "- new fee recipient: \`${NEW_FEE_RECIPIENT:-unchanged}\`"
+                ;;
+              set-show-campaign-fee-config)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- new fee BPS: \`${NEW_FEE_BPS}\`"
+                echo "- new fee recipient: \`${NEW_FEE_RECIPIENT}\`"
+                echo "- note: rate applies to future campaigns only; recipient rotates at charge time"
+                ;;
+              set-show-campaign-confirmer)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- confirmer: \`${CONFIRMER_ADDRESS}\`"
+                echo "- allowed: \`${CONFIRMER_ALLOWED}\`"
+                ;;
+              pause-show-campaign-escrow)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- paused: \`${PAUSED}\`"
+                ;;
+              create-show-campaign)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- beneficiary: \`${BENEFICIARY}\`"
+                echo "- payment token: \`${PAYMENT_TOKEN}\`"
+                echo "- goal units: \`${GOAL_UNITS}\`"
+                echo "- funding deadline: \`${FUNDING_DEADLINE}\`"
+                echo "- booking deadline: \`${BOOKING_DEADLINE}\`"
+                echo "- campaign id: see Forge log line \`CAMPAIGN_ID\`"
+                ;;
+            esac
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Summarize deployment outputs
         if: inputs.operation != 'preflight'
