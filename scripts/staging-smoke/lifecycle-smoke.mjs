@@ -107,6 +107,27 @@ function info(step, message) {
   console.log(`[smoke] ${step} … ${message}`);
 }
 
+// The public RPC endpoint is load-balanced: a receipt from one replica does
+// not guarantee the next call's simulation (eth_call on another replica) sees
+// that block yet. Retry writes whose SIMULATION reverts, briefly — real
+// contract reverts keep failing and surface after the last attempt.
+async function writeWithLagRetry(wallet, params, step, attempts = 5, delayMs = 3000) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await wallet.writeContract(params);
+    } catch (error) {
+      lastError = error;
+      const message = String(error?.message ?? error);
+      const simulationRevert = message.includes("reverted") || message.includes("execution reverted");
+      if (!simulationRevert || i === attempts - 1) throw error;
+      info(step, `simulation reverted (possible replica lag), retry ${i + 1}/${attempts - 1} in ${delayMs}ms`);
+      await sleep(delayMs);
+    }
+  }
+  throw lastError;
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -301,9 +322,9 @@ async function main() {
     contractCampaignId = extractCampaignId(receipt.logs);
     if (contractCampaignId === null) throw new SmokeError("chain-create", "no CampaignCreated event in receipt");
 
-    const activateHash = await deployerWallet.writeContract({
+    const activateHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "activateCampaign", args: [contractCampaignId],
-    });
+    }, "chain-create");
     txHashes.activateCampaignChain = activateHash;
     const activateReceipt = await publicClient.waitForTransactionReceipt({ hash: activateHash });
     if (activateReceipt.status !== "success") throw new SmokeError("chain-create", `activateCampaign tx reverted (${activateHash})`);
@@ -398,9 +419,9 @@ async function main() {
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
       if (approveReceipt.status !== "success") throw new SmokeError("pledge", `approve tx reverted (${approveHash})`);
     }
-    const pledgeHash = await smokeWallet.writeContract({
+    const pledgeHash = await writeWithLagRetry(smokeWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "pledge", args: [contractCampaignId, PLEDGE_UNITS],
-    });
+    }, "pledge");
     txHashes.pledge = pledgeHash;
     const pledgeReceipt = await publicClient.waitForTransactionReceipt({ hash: pledgeHash });
     if (pledgeReceipt.status !== "success") throw new SmokeError("pledge", `pledge tx reverted (${pledgeHash})`);
@@ -462,9 +483,9 @@ async function main() {
     // === 8. cancel (deployer key): Funded is cancellable -> RefundAvailable ==
     {
       const t = Date.now();
-      const cancelHash = await deployerWallet.writeContract({
+      const cancelHash = await writeWithLagRetry(deployerWallet, {
         address: ESCROW, abi: ESCROW_ABI, functionName: "cancelCampaign", args: [contractCampaignId],
-      });
+      }, "cancel");
       txHashes.cancelCampaign = cancelHash;
       const receipt = await publicClient.waitForTransactionReceipt({ hash: cancelHash });
       if (receipt.status !== "success") throw new SmokeError("cancel", `cancelCampaign tx reverted (${cancelHash})`);
@@ -480,9 +501,9 @@ async function main() {
     // === 9. claim-refund (smoke wallet): fee-free, restores the pledge =======
     {
       const t = Date.now();
-      const claimHash = await smokeWallet.writeContract({
+      const claimHash = await writeWithLagRetry(smokeWallet, {
         address: ESCROW, abi: ESCROW_ABI, functionName: "claimRefund", args: [contractCampaignId],
-      });
+      }, "claim-refund");
       txHashes.claimRefund = claimHash;
       const receipt = await publicClient.waitForTransactionReceipt({ hash: claimHash });
       if (receipt.status !== "success") throw new SmokeError("claim-refund", `claimRefund tx reverted (${claimHash})`);
@@ -546,16 +567,16 @@ async function main() {
   let fulfilledAtMs;
   {
     const t = Date.now();
-    const bookingHash = await deployerWallet.writeContract({
+    const bookingHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "confirmBooking", args: [contractCampaignId],
-    });
+    }, "confirm-booking");
     txHashes.confirmBooking = bookingHash;
     const bookingReceipt = await publicClient.waitForTransactionReceipt({ hash: bookingHash });
     if (bookingReceipt.status !== "success") throw new SmokeError("confirm+fulfill", `confirmBooking reverted (${bookingHash})`);
 
-    const fulfillHash = await deployerWallet.writeContract({
+    const fulfillHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "confirmFulfillment", args: [contractCampaignId],
-    });
+    }, "confirm-fulfillment");
     txHashes.confirmFulfillment = fulfillHash;
     const fulfillReceipt = await publicClient.waitForTransactionReceipt({ hash: fulfillHash });
     if (fulfillReceipt.status !== "success") throw new SmokeError("confirm+fulfill", `confirmFulfillment reverted (${fulfillHash})`);
@@ -581,9 +602,9 @@ async function main() {
       info("release", `waiting ${Math.ceil(waitMs / 1000)}s for dispute window`);
       await sleep(waitMs);
     }
-    const releaseHash = await deployerWallet.writeContract({
+    const releaseHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "releaseFunds", args: [contractCampaignId],
-    });
+    }, "release");
     txHashes.releaseFunds = releaseHash;
     const releaseReceipt = await publicClient.waitForTransactionReceipt({ hash: releaseHash });
     if (releaseReceipt.status !== "success") throw new SmokeError("release", `releaseFunds reverted (${releaseHash})`);
