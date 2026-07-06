@@ -1,5 +1,32 @@
 # Sprint Plan: Vision Sprint 3 — Dependable Shows Ops
 
+> **CLOSED — 2026-07-06, goal met (all 5 items).** The shows money path is now
+> machine-provable and operator-usable:
+> - **#1392** — an automated lifecycle smoke walks create → operator-auth →
+>   activate → pledge → indexer → cancel → refund (nightly `auto`,
+>   self-cleaning) or the full confirm → 1h window → release → fee leg
+>   (weekly `full`), filing a `smoke-failure` issue on any break. It went
+>   **green on staging in run 4** (all 10 steps, 27s), and its four-run
+>   shakeout each caught a real flakiness class — SIWE message format
+>   (#1400), write-simulation replica lag (#1401), read replica lag (#1402) —
+>   proving the gate against itself. Auth via a new `OPERATOR_ADDRESSES`
+>   allowlist (#1397 + iac #184) and a funded smoke wallet.
+> - **#1390** — activation prefills the escrow address and discovers the
+>   on-chain campaign id by matching draft terms: zero copy-paste from CI logs.
+> - **#1356** — create/edit/approve validate terms against the contract
+>   (`InvalidDeadline`, dispute-window bounds), with an audited
+>   revoke→edit→re-approve correction path — no silent edits.
+> - **#1363** — the operator panel explains its own gates (activation help +
+>   per-button unlock tooltips).
+> - **#1355** — sample fixtures seed honest `provisional_campaign` instead of
+>   faking an escrow link; optional env-guarded linking populates fees.
+>
+> Delivered in one session; every item reviewed and gated by Fable, most
+> implemented by Opus 4.8 (Codex hit its weekly limit mid-sprint). Follow-up
+> logged: the resonate-iac post-deploy trigger for the smoke (noted in the
+> feature docs, not built). Next theme candidate: player action-layer later
+> slices (#1367) or a new revenue line per ADR-BM-6.
+
 **Dates:** Mon 2026-07-07 → Fri 2026-07-18 (10 working days, indicative)
 **Team:** 1 engineer ([@akoita](https://github.com/akoita)) + AI agents
 **Milestone:** [Vision Sprint 3: dependable shows ops](https://github.com/akoita/resonate/milestone/5)
