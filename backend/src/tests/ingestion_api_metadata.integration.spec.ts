@@ -3,6 +3,7 @@ import request from "supertest";
 import { AppModule } from "../modules/app.module";
 import { INestApplication } from "@nestjs/common";
 import { prisma } from "../db/prisma";
+import { restoreEnv } from "./env-helpers";
 
 describe("Ingestion API metadata", () => {
   let app: INestApplication;
@@ -38,11 +39,7 @@ describe("Ingestion API metadata", () => {
 
   afterAll(async () => {
     await app.close();
-    if (originalAuthDevLoginEnabled === undefined) {
-      delete process.env.AUTH_DEV_LOGIN_ENABLED;
-    } else {
-      process.env.AUTH_DEV_LOGIN_ENABLED = originalAuthDevLoginEnabled;
-    }
+    restoreEnv("AUTH_DEV_LOGIN_ENABLED", originalAuthDevLoginEnabled);
   });
 
   it("accepts metadata in upload payload", async () => {

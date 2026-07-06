@@ -3,6 +3,7 @@ import { JwtService } from "@nestjs/jwt";
 import { createHash } from "crypto";
 import { prisma } from "../../db/prisma";
 import { AuditService } from "../audit/audit.service";
+import { parseEnvList } from "../../config/env";
 
 @Injectable()
 export class AuthService {
@@ -115,27 +116,50 @@ export class AuthService {
     return createHash("sha256").update(`${x}:${y}`).digest("hex");
   }
 
+  /**
+   * Privileged roles a caller may only receive if their wallet is present in
+   * the mapped deployment-managed address allowlist. Any request for one of
+   * these roles from an unlisted wallet fails closed to {@link SAFE_ROLE}.
+   */
+  private static readonly ALLOWLISTED_ROLES: Record<string, string> = {
+    admin: "ADMIN_ADDRESSES",
+    agent: "AGENT_ADDRESSES",
+  };
+
+  /** Role granted when a requested role is not authorized. */
+  private static readonly SAFE_ROLE = "listener";
+
+  /**
+   * Roles a caller is trusted to request for themselves without an allowlist.
+   * Everything else — including privileged roles like `artist`, `curator`, and
+   * `operator` that lack an allowlist source — fails closed to {@link SAFE_ROLE}
+   * so a self-declared `role` in an auth request can never be an escalation.
+   */
+  private static readonly SELF_ASSIGNABLE_ROLES = new Set([AuthService.SAFE_ROLE]);
+
   private addressAllowList(envName: string) {
-    return (process.env[envName] ?? "")
-      .split(",")
-      .map((value) => value.trim().toLowerCase())
-      .filter(Boolean);
+    return parseEnvList(process.env[envName], { lowercase: true });
   }
 
   private resolveRole(userId: string, role: string) {
     const normalizedUserId = userId.toLowerCase();
 
-    // Always check admin allow list — auto-promote if address matches
-    const adminAllowList = this.addressAllowList("ADMIN_ADDRESSES");
-    if (adminAllowList.includes(normalizedUserId)) {
+    // Admin allow list auto-promotes matching wallets regardless of the
+    // requested role, and always wins.
+    if (this.addressAllowList("ADMIN_ADDRESSES").includes(normalizedUserId)) {
       return "admin";
     }
 
-    if (role === "agent") {
-      const agentAllowList = this.addressAllowList("AGENT_ADDRESSES");
-      return agentAllowList.includes(normalizedUserId) ? "agent" : "listener";
+    // Allowlist-gated roles: grant only when the wallet is listed, else fail closed.
+    const allowlistEnv = AuthService.ALLOWLISTED_ROLES[role];
+    if (allowlistEnv) {
+      return this.addressAllowList(allowlistEnv).includes(normalizedUserId)
+        ? role
+        : AuthService.SAFE_ROLE;
     }
 
-    return role;
+    // Any other requested role must be explicitly self-assignable; otherwise
+    // fail closed so callers cannot mint themselves artist/curator/operator/etc.
+    return AuthService.SELF_ASSIGNABLE_ROLES.has(role) ? role : AuthService.SAFE_ROLE;
   }
 }

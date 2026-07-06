@@ -11,15 +11,7 @@
  */
 import { AuthNonceService } from "../modules/auth/auth_nonce.service";
 import { AuthService } from "../modules/auth/auth.service";
-
-function restoreEnv(name: string, value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-
-  process.env[name] = value;
-}
+import { restoreEnv } from "./env-helpers";
 
 // ============ AuthNonceService ============
 
@@ -99,9 +91,16 @@ describe("AuthService", () => {
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "listener" });
   });
 
-  it("issues token with specified role", () => {
+  it("fails closed to listener for a self-requested privileged role", () => {
+    // Roles like artist/curator/operator have no self-assignment path — a caller
+    // that requests one without allowlist authorization must not be escalated.
     authService.issueToken("0xuser123", "artist");
-    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "artist" });
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "listener" });
+  });
+
+  it("fails closed to listener when requesting admin without ADMIN_ADDRESSES", () => {
+    authService.issueToken("0xNotAdmin", "admin");
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xNotAdmin", role: "listener" });
   });
 
   it("auto-promotes admin addresses from ADMIN_ADDRESSES env", () => {
@@ -158,13 +157,14 @@ describe("AuthService", () => {
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xabcdef", role: "listener" });
   });
 
-  it("logs audit event on token issuance", () => {
-    authService.issueToken("0xuser", "artist");
+  it("logs audit event with the resolved (effective) role", () => {
+    process.env.ADMIN_ADDRESSES = "0xAdmin1";
+    authService.issueToken("0xadmin1", "listener");
     expect(mockAudit.log).toHaveBeenCalledWith({
       action: "auth.login",
-      actorId: "0xuser",
+      actorId: "0xadmin1",
       resource: "auth",
-      metadata: { role: "artist" },
+      metadata: { role: "admin" },
     });
   });
 });

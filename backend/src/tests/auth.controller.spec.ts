@@ -12,6 +12,7 @@
  */
 
 import { AuthController } from '../modules/auth/auth.controller';
+import { restoreEnv } from './env-helpers';
 
 // Mock viem's recoverMessageAddress — called in the EOA fallback path
 jest.mock('viem', () => ({
@@ -59,15 +60,6 @@ const body = (overrides: Record<string, any> = {}) => ({
   signature: '0xsig' as `0x${string}`,
   ...overrides,
 });
-
-function restoreEnv(name: string, value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-
-  process.env[name] = value;
-}
 
 beforeEach(() => {
   jest.clearAllMocks();

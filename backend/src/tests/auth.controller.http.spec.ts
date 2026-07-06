@@ -14,6 +14,7 @@ import { AuthService } from '../modules/auth/auth.service';
 import { AuthNonceService } from '../modules/auth/auth_nonce.service';
 import { EventBus } from '../modules/shared/event_bus';
 import { createControllerTestApp } from './e2e-helpers';
+import { restoreEnv } from './env-helpers';
 
 const mockAuthService = {
   issueToken: jest.fn().mockReturnValue({ accessToken: 'test-token' }),
@@ -31,15 +32,6 @@ const mockPublicClient = {
   verifyMessage: jest.fn().mockResolvedValue(true),
   getCode: jest.fn().mockResolvedValue('0x6080604052'),
 };
-
-function restoreEnv(name: string, value: string | undefined) {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-
-  process.env[name] = value;
-}
 
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
