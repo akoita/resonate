@@ -21,6 +21,10 @@ export class AnalyticsAuthorizationService {
       return;
     }
 
+    if (user?.role === "agent") {
+      return;
+    }
+
     if (!user?.userId) {
       throw new ForbiddenException("Missing authenticated user for artist analytics");
     }

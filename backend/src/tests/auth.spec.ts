@@ -11,6 +11,7 @@
  */
 import { AuthNonceService } from "../modules/auth/auth_nonce.service";
 import { AuthService } from "../modules/auth/auth.service";
+import { restoreEnv } from "./env-helpers";
 
 // ============ AuthNonceService ============
 
@@ -67,10 +68,21 @@ describe("AuthService", () => {
   const mockJwt = { sign: jest.fn().mockReturnValue("mock-jwt-token") };
   const mockAudit = { log: jest.fn() };
   let authService: AuthService;
+  let originalAdminAddresses: string | undefined;
+  let originalAgentAddresses: string | undefined;
 
   beforeEach(() => {
+    originalAdminAddresses = process.env.ADMIN_ADDRESSES;
+    originalAgentAddresses = process.env.AGENT_ADDRESSES;
+    delete process.env.ADMIN_ADDRESSES;
+    delete process.env.AGENT_ADDRESSES;
     jest.clearAllMocks();
     authService = new AuthService(mockJwt as any, mockAudit as any);
+  });
+
+  afterEach(() => {
+    restoreEnv("ADMIN_ADDRESSES", originalAdminAddresses);
+    restoreEnv("AGENT_ADDRESSES", originalAgentAddresses);
   });
 
   it("issues token with default listener role", () => {
@@ -79,9 +91,16 @@ describe("AuthService", () => {
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "listener" });
   });
 
-  it("issues token with specified role", () => {
+  it("fails closed to listener for a self-requested privileged role", () => {
+    // Roles like artist/curator/operator have no self-assignment path — a caller
+    // that requests one without allowlist authorization must not be escalated.
     authService.issueToken("0xuser123", "artist");
-    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "artist" });
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "listener" });
+  });
+
+  it("fails closed to listener when requesting admin without ADMIN_ADDRESSES", () => {
+    authService.issueToken("0xNotAdmin", "admin");
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xNotAdmin", role: "listener" });
   });
 
   it("auto-promotes admin addresses from ADMIN_ADDRESSES env", () => {
@@ -108,18 +127,44 @@ describe("AuthService", () => {
     process.env.ADMIN_ADDRESSES = originalEnv;
   });
 
+  it("grants agent role to addresses from AGENT_ADDRESSES env", () => {
+    process.env.AGENT_ADDRESSES = "0xAgent1, 0xAgent2";
+
+    authService.issueToken("0xagent1", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xagent1", role: "agent" });
+  });
+
+  it("downgrades agent role to listener when address is not allowlisted", () => {
+    process.env.AGENT_ADDRESSES = "0xAgent1";
+
+    authService.issueToken("0xNotAgent", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xNotAgent", role: "listener" });
+  });
+
+  it("keeps admin allowlist promotion ahead of requested agent role", () => {
+    process.env.ADMIN_ADDRESSES = "0xAdmin1";
+    process.env.AGENT_ADDRESSES = "0xAgent1";
+
+    authService.issueToken("0xadmin1", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xadmin1", role: "admin" });
+  });
+
   it("issueTokenForAddress lowercases the address", () => {
     authService.issueTokenForAddress("0xABCDEF");
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xabcdef", role: "listener" });
   });
 
-  it("logs audit event on token issuance", () => {
-    authService.issueToken("0xuser", "artist");
+  it("logs audit event with the resolved (effective) role", () => {
+    process.env.ADMIN_ADDRESSES = "0xAdmin1";
+    authService.issueToken("0xadmin1", "listener");
     expect(mockAudit.log).toHaveBeenCalledWith({
       action: "auth.login",
-      actorId: "0xuser",
+      actorId: "0xadmin1",
       resource: "auth",
-      metadata: { role: "artist" },
+      metadata: { role: "admin" },
     });
   });
 });

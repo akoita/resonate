@@ -3,12 +3,16 @@ import request from "supertest";
 import { AppModule } from "../modules/app.module";
 import { INestApplication } from "@nestjs/common";
 import { prisma } from "../db/prisma";
+import { restoreEnv } from "./env-helpers";
 
 describe("Asset Persistence", () => {
     let app: INestApplication;
+    let originalAuthDevLoginEnabled: string | undefined;
 
     beforeAll(async () => {
         process.env.JWT_SECRET = "dev-secret";
+        originalAuthDevLoginEnabled = process.env.AUTH_DEV_LOGIN_ENABLED;
+        process.env.AUTH_DEV_LOGIN_ENABLED = "true";
         const moduleRef = await Test.createTestingModule({
             imports: [AppModule],
         }).compile();
@@ -18,6 +22,7 @@ describe("Asset Persistence", () => {
 
     afterAll(async () => {
         await app.close();
+        restoreEnv("AUTH_DEV_LOGIN_ENABLED", originalAuthDevLoginEnabled);
     });
 
     it("persists stem data and artwork to the database", async () => {
