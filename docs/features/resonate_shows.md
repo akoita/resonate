@@ -87,6 +87,16 @@ openly licensed media. Real artist photography is included only when its reuse
 license is documented. The UI labels these records as samples and does not
 claim artist endorsement, a venue hold, or a live escrow deployment.
 
+By default these sample campaigns seed at the honest `provisional_campaign`
+level with no artist authority and no escrow link — they are demand-signal
+concepts, not live escrow campaigns, so the public trust badge reads
+"Provisional" and pledging stays gated (#1355). The seed accepts optional,
+off-by-default escrow linking: given `SHOW_CAMPAIGN_ESCROW_ADDRESS` plus a
+per-slug `SAMPLE_SHOWS_ESCROW_LINKS` JSON map (`contractCampaignId` +
+`beneficiaryAddress`), the mapped fixtures are promoted to artist-authorized
+`active_escrow_campaign` records linked to that escrow so hydration can
+reconcile fee/terms from the contract. Unmapped slugs stay provisional.
+
 ## Who It Is For
 
 - Listeners who want to bring an artist to their city.
@@ -189,6 +199,16 @@ a campaign already marked `artist_authorized` against their own payout wallet an
 self-activate it, bypassing review entirely — so create rejects it the same way
 the request endpoint does. Activation additionally requires an approved status
 plus a bound `beneficiaryAddress`/`beneficiaryType`.
+
+**Operator panel guidance (#1363).** The lifecycle panel now explains its own
+gates inline so an operator does not have to reverse-engineer the state machine.
+The Activation fields carry help text pointing to the create-show-campaign ops
+workflow (Actions → Smart Contract Deployment → create-show-campaign, whose run
+log prints the `CAMPAIGN_ID`) and the **Find on-chain campaign** button, linking
+the [operations runbook](../smart-contracts/operations-runbook.md). Every
+lifecycle button (Approve authority, Activate, Confirm booking, Confirm
+fulfillment, Cancel, Raise dispute) shows its unlock condition in a `title`
+tooltip while disabled. This is guidance only — no behavior or gate changed.
 
 **Approved terms are immutable.** The moment authority is approved (or an
 operator stands a campaign up already authorized), the campaign's fan-risk terms

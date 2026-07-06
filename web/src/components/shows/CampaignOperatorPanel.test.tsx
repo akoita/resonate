@@ -170,6 +170,24 @@ describe("CampaignOperatorPanel disputes (#950 operator controls)", () => {
     expect(html).not.toContain("0x0000000000000000000000000000000000000000");
   });
 
+  it("renders activation guidance pointing to the create-show-campaign workflow and runbook (#1363)", () => {
+    const html = renderToStaticMarkup(
+      <CampaignOperatorPanel campaign={{ ...baseCampaign, rawStatus: "draft" }} />,
+    );
+    expect(html).toContain("create-show-campaign");
+    expect(html).toContain("its run log prints the CAMPAIGN_ID");
+    expect(html).toContain("docs/smart-contracts/operations-runbook.md");
+  });
+
+  it("explains why a lifecycle button is disabled via its title (#1363)", () => {
+    // A draft campaign can't confirm booking yet — the disabled button carries
+    // its unlock condition in `title`.
+    const html = renderToStaticMarkup(
+      <CampaignOperatorPanel campaign={{ ...baseCampaign, rawStatus: "draft" }} />,
+    );
+    expect(html).toContain('title="Enabled once the campaign is funded."');
+  });
+
   it("shows resolved dispute history with its outcome and note", () => {
     const html = renderToStaticMarkup(
       <CampaignOperatorPanel

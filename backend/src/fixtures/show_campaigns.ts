@@ -326,11 +326,31 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
   },
 ];
 
+/**
+ * #1355 optional escrow linking. Maps a fixture campaign slug to its already
+ * deployed on-chain campaign so hydration can reconcile fee/terms from the
+ * escrow. OFF by default: with no entry a fixture stays an honest, unlinked
+ * provisional campaign. Beneficiary is required to link because an authorized
+ * escrow campaign must have a payout target.
+ */
+export type ShowCampaignEscrowLink = {
+  escrowContractAddress: string;
+  contractCampaignId: string;
+  beneficiaryAddress: string;
+  beneficiaryType?: "wallet" | "split_contract" | "multisig";
+};
+
 export type ApplyShowCampaignFixturesOptions = {
   assetDirectory: string;
   chainId: number;
   dryRun?: boolean;
   now?: Date;
+  /**
+   * Per-slug escrow links. When a fixture's slug is present, that fixture is
+   * seeded as an artist-authorized `active_escrow_campaign` linked to the given
+   * escrow + contract campaign id; absent slugs stay provisional (honest).
+   */
+  escrowLinks?: Record<string, ShowCampaignEscrowLink>;
 };
 
 const dateFrom = (now: Date, days: number) => new Date(now.getTime() + days * 86_400_000);
@@ -418,6 +438,25 @@ export async function applyShowCampaignFixtures(
     const heroCredit = fixture.campaign.heroCredit ?? "AI-generated campaign concept artwork; not an artist photograph";
     const artistImageUrl = fixture.artist.portraitKey ? visualUrl(fixture.artist.portraitKey) : heroUrl;
 
+    // #1355: unlinked fixtures are honest provisional campaigns (no escrow link,
+    // no authority). Only when an operator supplies a real escrow link do we
+    // promote the fixture to an artist-authorized escrow campaign so hydration
+    // can reconcile fee/terms from the contract.
+    const escrowLink = options.escrowLinks?.[fixture.campaign.slug];
+    const escrowFields = escrowLink
+      ? {
+          campaignLevel: "active_escrow_campaign" as const,
+          artistAuthorityStatus: "artist_authorized" as const,
+          escrowContractAddress: escrowLink.escrowContractAddress,
+          contractCampaignId: escrowLink.contractCampaignId,
+          beneficiaryAddress: escrowLink.beneficiaryAddress,
+          beneficiaryType: escrowLink.beneficiaryType ?? ("wallet" as const),
+        }
+      : {
+          campaignLevel: "provisional_campaign" as const,
+          artistAuthorityStatus: "none" as const,
+        };
+
     const campaignData = {
       slug: fixture.campaign.slug,
       artistId: fixture.artist.id,
@@ -447,8 +486,7 @@ export async function applyShowCampaignFixtures(
       paymentAssetDecimals: 6,
       chainId: options.chainId,
       status: "active" as const,
-      campaignLevel: "active_escrow_campaign" as const,
-      artistAuthorityStatus: "none" as const,
+      ...escrowFields,
       metadata: {
         fixture: true,
         fixtureSet: "sample-show-campaigns/v1",
