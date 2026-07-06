@@ -255,12 +255,16 @@ async function main() {
       body: JSON.stringify({ address }),
     }, "auth");
     if (!nonce) throw new SmokeError("auth", "nonce endpoint returned no nonce");
-    const signature = await smokeWallet.signMessage({ account: smokeAccount, message: nonce });
+    // The backend extracts the nonce from the signed message via
+    // /Nonce:\s*(.+)$/m (auth.controller verify), so sign the SIWE-style
+    // text the web client signs — mirrors AuthProvider.tsx.
+    const message = `Resonate Sign-In\nAddress: ${address}\nNonce: ${nonce}\nIssued At: ${new Date().toISOString()}`;
+    const signature = await smokeWallet.signMessage({ account: smokeAccount, message });
     const verify = await fetchJson(`${API_BASE}/auth/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // Plain EOA on a non-31337 chain: address == signer, role operator.
-      body: JSON.stringify({ address, message: nonce, signature, role: "operator", chainId: EXPECTED_CHAIN_ID }),
+      body: JSON.stringify({ address, message, signature, role: "operator", chainId: EXPECTED_CHAIN_ID }),
     }, "auth");
     token = verify.accessToken;
     if (!token) throw new SmokeError("auth", `verify returned no accessToken: ${JSON.stringify(verify)}`);
