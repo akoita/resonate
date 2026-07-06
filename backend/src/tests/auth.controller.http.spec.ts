@@ -32,10 +32,21 @@ const mockPublicClient = {
   getCode: jest.fn().mockResolvedValue('0x6080604052'),
 };
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
+
 describe('AuthController (e2e)', () => {
   let app: INestApplication;
+  let originalAuthDevLoginEnabled: string | undefined;
 
   beforeAll(async () => {
+    originalAuthDevLoginEnabled = process.env.AUTH_DEV_LOGIN_ENABLED;
     app = await createControllerTestApp(AuthController, [
       { provide: AuthService, useValue: mockAuthService },
       { provide: AuthNonceService, useValue: mockNonceService },
@@ -46,9 +57,11 @@ describe('AuthController (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
+    restoreEnv('AUTH_DEV_LOGIN_ENABLED', originalAuthDevLoginEnabled);
   });
 
   beforeEach(() => {
+    delete process.env.AUTH_DEV_LOGIN_ENABLED;
     jest.clearAllMocks();
     mockAuthService.issueToken.mockReturnValue({ accessToken: 'test-token' });
     mockAuthService.issueTokenForAddress.mockReturnValue({ accessToken: 'test-token-addr' });
@@ -61,7 +74,19 @@ describe('AuthController (e2e)', () => {
   });
 
   // ----- POST /auth/login -----
+  it('POST /auth/login → 403 when dev login is disabled', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ userId: 'user-1' })
+      .expect(403);
+
+    expect(res.body.message).toBe('auth/login is disabled');
+    expect(mockAuthService.issueToken).not.toHaveBeenCalled();
+  });
+
   it('POST /auth/login → 201 with accessToken', async () => {
+    process.env.AUTH_DEV_LOGIN_ENABLED = 'true';
+
     const res = await request(app.getHttpServer())
       .post('/auth/login')
       .send({ userId: 'user-1' })

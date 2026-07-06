@@ -12,6 +12,15 @@
 import { AuthNonceService } from "../modules/auth/auth_nonce.service";
 import { AuthService } from "../modules/auth/auth.service";
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
+
 // ============ AuthNonceService ============
 
 describe("AuthNonceService", () => {
@@ -67,10 +76,21 @@ describe("AuthService", () => {
   const mockJwt = { sign: jest.fn().mockReturnValue("mock-jwt-token") };
   const mockAudit = { log: jest.fn() };
   let authService: AuthService;
+  let originalAdminAddresses: string | undefined;
+  let originalAgentAddresses: string | undefined;
 
   beforeEach(() => {
+    originalAdminAddresses = process.env.ADMIN_ADDRESSES;
+    originalAgentAddresses = process.env.AGENT_ADDRESSES;
+    delete process.env.ADMIN_ADDRESSES;
+    delete process.env.AGENT_ADDRESSES;
     jest.clearAllMocks();
     authService = new AuthService(mockJwt as any, mockAudit as any);
+  });
+
+  afterEach(() => {
+    restoreEnv("ADMIN_ADDRESSES", originalAdminAddresses);
+    restoreEnv("AGENT_ADDRESSES", originalAgentAddresses);
   });
 
   it("issues token with default listener role", () => {
@@ -106,6 +126,31 @@ describe("AuthService", () => {
     authService.issueToken("0xuser", "listener");
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser", role: "listener" });
     process.env.ADMIN_ADDRESSES = originalEnv;
+  });
+
+  it("grants agent role to addresses from AGENT_ADDRESSES env", () => {
+    process.env.AGENT_ADDRESSES = "0xAgent1, 0xAgent2";
+
+    authService.issueToken("0xagent1", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xagent1", role: "agent" });
+  });
+
+  it("downgrades agent role to listener when address is not allowlisted", () => {
+    process.env.AGENT_ADDRESSES = "0xAgent1";
+
+    authService.issueToken("0xNotAgent", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xNotAgent", role: "listener" });
+  });
+
+  it("keeps admin allowlist promotion ahead of requested agent role", () => {
+    process.env.ADMIN_ADDRESSES = "0xAdmin1";
+    process.env.AGENT_ADDRESSES = "0xAgent1";
+
+    authService.issueToken("0xadmin1", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xadmin1", role: "admin" });
   });
 
   it("issueTokenForAddress lowercases the address", () => {

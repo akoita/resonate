@@ -60,6 +60,15 @@ const body = (overrides: Record<string, any> = {}) => ({
   ...overrides,
 });
 
+function restoreEnv(name: string, value: string | undefined) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+
+  process.env[name] = value;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   // Re-apply defaults (clearAllMocks strips mockReturnValue)
@@ -76,13 +85,33 @@ beforeEach(() => {
 describe('AuthController', () => {
   // ----- login() -----
   describe('login()', () => {
+    let originalAuthDevLoginEnabled: string | undefined;
+
+    beforeEach(() => {
+      originalAuthDevLoginEnabled = process.env.AUTH_DEV_LOGIN_ENABLED;
+      delete process.env.AUTH_DEV_LOGIN_ENABLED;
+    });
+
+    afterEach(() => {
+      restoreEnv('AUTH_DEV_LOGIN_ENABLED', originalAuthDevLoginEnabled);
+    });
+
+    it('rejects when AUTH_DEV_LOGIN_ENABLED is not "true"', () => {
+      const ctrl = makeController();
+
+      expect(() => ctrl.login({ userId: 'u1' })).toThrow('auth/login is disabled');
+      expect(mockAuthService.issueToken).not.toHaveBeenCalled();
+    });
+
     it('defaults role to "listener" when omitted', () => {
+      process.env.AUTH_DEV_LOGIN_ENABLED = 'true';
       const ctrl = makeController();
       ctrl.login({ userId: 'u1' });
       expect(mockAuthService.issueToken).toHaveBeenCalledWith('u1', 'listener');
     });
 
     it('passes explicit role through', () => {
+      process.env.AUTH_DEV_LOGIN_ENABLED = 'true';
       const ctrl = makeController();
       ctrl.login({ userId: 'u1', role: 'artist' });
       expect(mockAuthService.issueToken).toHaveBeenCalledWith('u1', 'artist');

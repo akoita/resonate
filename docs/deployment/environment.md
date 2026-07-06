@@ -29,6 +29,9 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_PASSKEY_SERVER_URL` | Frontend server runtime | Optional hosted passkey server URL. If it ends with a ZeroDev project UUID, the frontend derives `NEXT_PUBLIC_ZERODEV_PROJECT_ID` from it for backward-compatible passkey login |
 | `NEXT_PUBLIC_PASSKEY_RP_ID` | Frontend | Optional WebAuthn relying-party ID override. Leave unset for normal hostname-based passkeys; set only to recover or intentionally share passkeys across subdomains |
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
+| `ADMIN_ADDRESSES` | Backend | Optional comma-separated wallet addresses that are promoted to `admin` when authenticated through wallet auth or dev login. Store deployment-specific values in environment configuration, not source. |
+| `AGENT_ADDRESSES` | Backend | Optional comma-separated wallet addresses allowed to receive the `agent` JWT role. Wallets that request `agent` without being listed are downgraded to `listener`; admin promotion still wins. |
+| `AUTH_DEV_LOGIN_ENABLED` | Backend | Local/test-only switch for `POST /auth/login`. The endpoint returns 403 unless this is exactly `true`; leave unset/false in shared and production environments. |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
 | `ANALYTICS_WAREHOUSE_PROJECT_ID` | Backend | Optional analytics warehouse project/target id for export metadata. Falls back to `GCP_PROJECT_ID`, then `local` for local development. |
 | `ANALYTICS_WAREHOUSE_DATASET_PREFIX` | Backend | Optional dataset/table prefix for analytics export layer metadata. Defaults to `analytics_local` for local development. |

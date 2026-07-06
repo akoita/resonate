@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-// These tests require the backend to be running on localhost:3000
+// These tests require the backend to be running on localhost:3000 with
+// AUTH_DEV_LOGIN_ENABLED=true for the local /auth/login shortcut.
 // Skip if backend is not available
 test.describe("account abstraction flows", () => {
   test.skip(() => true, "Requires running backend server");

@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Optional, Post } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Inject, Optional, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
@@ -19,6 +19,10 @@ export class AuthController {
   @Post("login")
   @Throttle({ default: { limit: 10, ttl: 60 } })
   login(@Body() body: { userId: string; role?: string }) {
+    if (process.env.AUTH_DEV_LOGIN_ENABLED !== "true") {
+      throw new ForbiddenException("auth/login is disabled");
+    }
+
     return this.authService.issueToken(body.userId, body.role ?? "listener");
   }
 

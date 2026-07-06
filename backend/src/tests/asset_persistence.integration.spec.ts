@@ -6,9 +6,12 @@ import { prisma } from "../db/prisma";
 
 describe("Asset Persistence", () => {
     let app: INestApplication;
+    let originalAuthDevLoginEnabled: string | undefined;
 
     beforeAll(async () => {
         process.env.JWT_SECRET = "dev-secret";
+        originalAuthDevLoginEnabled = process.env.AUTH_DEV_LOGIN_ENABLED;
+        process.env.AUTH_DEV_LOGIN_ENABLED = "true";
         const moduleRef = await Test.createTestingModule({
             imports: [AppModule],
         }).compile();
@@ -18,6 +21,11 @@ describe("Asset Persistence", () => {
 
     afterAll(async () => {
         await app.close();
+        if (originalAuthDevLoginEnabled === undefined) {
+            delete process.env.AUTH_DEV_LOGIN_ENABLED;
+        } else {
+            process.env.AUTH_DEV_LOGIN_ENABLED = originalAuthDevLoginEnabled;
+        }
     });
 
     it("persists stem data and artwork to the database", async () => {

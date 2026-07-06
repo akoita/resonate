@@ -6,9 +6,12 @@ import { prisma } from "../db/prisma";
 
 describe("Ingestion API metadata", () => {
   let app: INestApplication;
+  let originalAuthDevLoginEnabled: string | undefined;
 
   beforeAll(async () => {
     process.env.JWT_SECRET = "dev-secret";
+    originalAuthDevLoginEnabled = process.env.AUTH_DEV_LOGIN_ENABLED;
+    process.env.AUTH_DEV_LOGIN_ENABLED = "true";
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -35,6 +38,11 @@ describe("Ingestion API metadata", () => {
 
   afterAll(async () => {
     await app.close();
+    if (originalAuthDevLoginEnabled === undefined) {
+      delete process.env.AUTH_DEV_LOGIN_ENABLED;
+    } else {
+      process.env.AUTH_DEV_LOGIN_ENABLED = originalAuthDevLoginEnabled;
+    }
   });
 
   it("accepts metadata in upload payload", async () => {

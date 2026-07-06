@@ -115,15 +115,27 @@ export class AuthService {
     return createHash("sha256").update(`${x}:${y}`).digest("hex");
   }
 
-  private resolveRole(userId: string, role: string) {
-    // Always check admin allow list — auto-promote if address matches
-    const allowList = (process.env.ADMIN_ADDRESSES ?? "")
+  private addressAllowList(envName: string) {
+    return (process.env[envName] ?? "")
       .split(",")
       .map((value) => value.trim().toLowerCase())
       .filter(Boolean);
-    if (allowList.includes(userId.toLowerCase())) {
+  }
+
+  private resolveRole(userId: string, role: string) {
+    const normalizedUserId = userId.toLowerCase();
+
+    // Always check admin allow list — auto-promote if address matches
+    const adminAllowList = this.addressAllowList("ADMIN_ADDRESSES");
+    if (adminAllowList.includes(normalizedUserId)) {
       return "admin";
     }
+
+    if (role === "agent") {
+      const agentAllowList = this.addressAllowList("AGENT_ADDRESSES");
+      return agentAllowList.includes(normalizedUserId) ? "agent" : "listener";
+    }
+
     return role;
   }
 }
