@@ -106,6 +106,9 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const isAuthenticated = status === "authenticated" && Boolean(token);
 
   const canApproveAuthority = current.rawStatus === "draft" && !AUTHORIZED_STATUSES.includes(current.artistAuthorityStatus);
+  // #1356: once authority is approved the critical terms are locked; surface the
+  // revoke→edit→re-approve correction path while it's still risk-free (no backers).
+  const termsLocked = AUTHORIZED_STATUSES.includes(current.artistAuthorityStatus);
   const canActivate = current.rawStatus === "draft" && AUTHORIZED_STATUSES.includes(current.artistAuthorityStatus);
   const canCancel = ["draft", "active", "funded", "booking_confirmed"].includes(current.rawStatus);
   const canConfirmBooking = current.rawStatus === "funded";
@@ -274,6 +277,13 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
       <div className="show-detail__operator-grid">
         <fieldset>
           <legend>Artist authority</legend>
+          {termsLocked && current.backerCount === 0 ? (
+            <p className="show-detail__operator-hint" role="note">
+              Terms are locked while authority is approved. To correct a mistake
+              on this draft (no backers yet), revoke authority — that unlocks the
+              deadlines and other critical terms for editing, then re-approve.
+            </p>
+          ) : null}
           <label>
             Beneficiary
             <input

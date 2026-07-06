@@ -33,6 +33,10 @@ const futureIso = (days: number) => {
 
 const anvilUrl = () => process.env.ANVIL_RPC_URL;
 
+// #1356: mirror the service default so seeded "pre-validation" drafts still
+// carry an in-range dispute window (isolating the invalid deadline under test).
+const DEFAULT_DISPUTE_WINDOW_SECONDS_TEST = 604800;
+
 const visualFile = (name: string, body: string): Express.Multer.File => ({
   fieldname: "gallery",
   originalname: `${name}.webp`,
@@ -1827,5 +1831,184 @@ describe("ShowsService integration", () => {
     expect(resolvedView.disputeStatus).toBe("resolved");
     expect(resolvedView.disputeWindowClosesAt).toBeTruthy();
     expect(JSON.stringify(resolvedView)).not.toContain("evidence sufficient");
+  });
+
+  // #1356: create/update/approve must mirror the escrow's createCampaign bounds
+  // (deadline > now, bookingDeadline > deadline, dispute window in [1h, 90d]),
+  // and there must be a revoke→edit→re-approve correction path for locked terms.
+  describe("#1356 terms validation + locked-terms correction", () => {
+    const validDraftInput = (city: string) => ({
+      artistId,
+      artistDisplayName: `${TEST_PREFIX}Artist`,
+      city,
+      country: "FR",
+      deadline: futureIso(30),
+      goalAmountUnits: "3000000",
+      minimumBackers: 100,
+      bookingDeadline: futureIso(45),
+    });
+
+    it("rejects create when bookingDeadline <= funding deadline", async () => {
+      await expect(
+        service.createDraftCampaign(
+          { userId, role: "artist" },
+          { ...validDraftInput("Lyon1356a"), deadline: futureIso(30), bookingDeadline: futureIso(30) },
+        ),
+      ).rejects.toThrow("bookingDeadline must be after the funding deadline");
+    });
+
+    it("rejects create when the funding deadline is in the past", async () => {
+      await expect(
+        service.createDraftCampaign(
+          { userId, role: "artist" },
+          { ...validDraftInput("Lyon1356b"), deadline: futureIso(-1), bookingDeadline: futureIso(45) },
+        ),
+      ).rejects.toThrow("deadline must be in the future");
+    });
+
+    it("rejects create when the dispute window is below the 1h minimum", async () => {
+      await expect(
+        service.createDraftCampaign(
+          { userId, role: "artist" },
+          { ...validDraftInput("Lyon1356c"), disputeWindowSeconds: 3599 },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects create when the dispute window is above the 90d maximum", async () => {
+      await expect(
+        service.createDraftCampaign(
+          { userId, role: "artist" },
+          { ...validDraftInput("Lyon1356d"), disputeWindowSeconds: 7776001 },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects an update that sets bookingDeadline on or before the funding deadline", async () => {
+      const draft = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        validDraftInput("Lyon1356e"),
+      );
+      await expect(
+        service.updateDraftCampaign(
+          { userId, role: "artist" },
+          draft.id,
+          { ...validDraftInput("Lyon1356e"), deadline: futureIso(30), bookingDeadline: futureIso(30) },
+        ),
+      ).rejects.toThrow("bookingDeadline must be after the funding deadline");
+    });
+
+    it("blocks authority approval when the persisted draft carries contract-invalid terms", async () => {
+      // Seed a draft directly with a booking deadline on the funding deadline
+      // (a record that predates create-time validation, like the Brooklyn one).
+      const badDeadline = new Date();
+      badDeadline.setUTCDate(badDeadline.getUTCDate() + 30);
+      const bad = await prisma.showCampaign.create({
+        data: {
+          slug: `${TEST_PREFIX}bad-terms-${Date.now()}`,
+          title: `${TEST_PREFIX}Bad Terms`,
+          status: "draft",
+          campaignLevel: "active_escrow_campaign",
+          artistAuthorityStatus: "none",
+          artistId,
+          artistDisplayName: `${TEST_PREFIX}Artist`,
+          city: "Brooklyn1356",
+          country: "US",
+          deadline: badDeadline,
+          bookingDeadline: badDeadline, // invalid: not strictly after funding
+          goalAmountUnits: "3000000",
+          currency: "USD",
+          paymentAssetSymbol: "USDC",
+          paymentAssetDecimals: 6,
+          beneficiaryAddress: artistWallet,
+          beneficiaryType: "wallet",
+          disputeWindowSeconds: DEFAULT_DISPUTE_WINDOW_SECONDS_TEST,
+          chainId: ANVIL_CHAIN_ID,
+        },
+      });
+      await expect(
+        service.approveAuthority(
+          { userId: operatorUserId, role: "operator" },
+          bad.id,
+          { authorityStatus: "artist_authorized" },
+        ),
+      ).rejects.toThrow(/Cannot approve authority/);
+    });
+
+    it("supports the full correction loop: create → approve → revoke → update → re-approve", async () => {
+      const draft = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        validDraftInput("Lyon1356loop"),
+      );
+
+      await service.requestAuthority(
+        { userId, role: "artist" },
+        draft.id,
+        {
+          beneficiaryAddress: artistWallet,
+          beneficiaryType: "wallet",
+          authorityEvidenceBundleId: `${TEST_PREFIX}loop-authority`,
+        },
+      );
+      const approved = await service.approveAuthority(
+        { userId: operatorUserId, role: "operator" },
+        draft.id,
+        { authorityStatus: "artist_authorized" },
+      );
+      expect(approved.artistAuthorityStatus).toBe("artist_authorized");
+
+      // Terms are now locked: editing critical terms must fail.
+      await expect(
+        service.updateDraftCampaign(
+          { userId, role: "artist" },
+          draft.id,
+          { ...validDraftInput("Lyon1356loop"), deadline: futureIso(60), bookingDeadline: futureIso(75) },
+        ),
+      ).rejects.toThrow(/locked/);
+
+      // Operator revokes authority — this unlocks the terms.
+      const revoked = await service.revokeAuthority(
+        { userId: operatorUserId, role: "operator" },
+        draft.id,
+        { reason: "correct deadlines" },
+      );
+      expect(revoked.artistAuthorityStatus).toBe("revoked");
+      expect(revoked.approvedTermsHash).toBeNull();
+
+      // With authority revoked the corrected terms are accepted.
+      const corrected = await service.updateDraftCampaign(
+        { userId, role: "artist" },
+        draft.id,
+        { ...validDraftInput("Lyon1356loop"), deadline: futureIso(60), bookingDeadline: futureIso(75) },
+      );
+      expect(new Date(corrected.deadline).getTime()).toBeGreaterThan(new Date(draft.deadline).getTime());
+
+      // Re-request + re-approve succeeds.
+      await service.requestAuthority(
+        { userId, role: "artist" },
+        draft.id,
+        {
+          beneficiaryAddress: artistWallet,
+          beneficiaryType: "wallet",
+          authorityEvidenceBundleId: `${TEST_PREFIX}loop-authority-2`,
+        },
+      );
+      const reapproved = await service.approveAuthority(
+        { userId: operatorUserId, role: "operator" },
+        draft.id,
+        { authorityStatus: "artist_authorized" },
+      );
+      expect(reapproved.artistAuthorityStatus).toBe("artist_authorized");
+
+      // Every step is audited via lifecycle events (no silent edits).
+      const events = await prisma.showCampaignEvent.findMany({
+        where: { campaignId: draft.id },
+        select: { eventType: true },
+      });
+      const eventTypes = events.map((event) => event.eventType);
+      expect(eventTypes).toContain("campaign_created");
+      expect(eventTypes).toContain("artist_authority_approved");
+      expect(eventTypes).toContain("artist_authority_revoked");
+    });
   });
 });

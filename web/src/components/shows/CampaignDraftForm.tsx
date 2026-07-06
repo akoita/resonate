@@ -20,6 +20,7 @@ import {
   reorderShowCampaignVisuals,
   updateShowCampaignDraft,
   uploadShowCampaignVisuals,
+  validateCampaignDeadlines,
   type Campaign,
   type CatalogArtistCandidate,
   type ShowCampaignDraftTierInput,
@@ -162,6 +163,19 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // #1356: inline client-side mirror of the escrow's deadline rules so the
+  // operator sees booking-after-funding / future-deadline problems before
+  // submit. The backend remains the source of truth.
+  const deadlineErrors = useMemo(
+    () =>
+      validateCampaignDeadlines({
+        deadline: inputDateToIso(deadline),
+        bookingDeadline: inputDateToIso(bookingDeadline),
+      }),
+    [deadline, bookingDeadline],
+  );
+  const hasDeadlineErrors = Boolean(deadlineErrors.deadline || deadlineErrors.bookingDeadline);
+
   const isEdit = Boolean(campaign);
   // #946: once artist authority is approved, the critical fan-risk terms are
   // locked server-side (updateDraftCampaign refuses changes until authority is
@@ -175,6 +189,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const canSubmit = status === "authenticated"
     && Boolean(token)
     && Boolean(selectedArtistCandidate)
+    && !hasDeadlineErrors
     && (isPrivileged || (artistLoaded && artistHasCatalogContent === true));
   const needsArtistProfile = status === "authenticated" && artistLoaded && !artist && !isPrivileged;
   const needsArtistCatalogContent = status === "authenticated"
@@ -393,6 +408,13 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   async function submit() {
     if (!token) {
       await connect();
+      return;
+    }
+
+    // #1356: block submit on contract-invalid deadlines (the backend rejects
+    // these too, but surfacing it here avoids a round-trip).
+    if (deadlineErrors.deadline || deadlineErrors.bookingDeadline) {
+      setError(deadlineErrors.deadline ?? deadlineErrors.bookingDeadline ?? "Fix the campaign deadlines before saving.");
       return;
     }
 
@@ -728,11 +750,17 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
         </div>
         <label>
           Funding deadline
-          <input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} disabled={termsLocked} />
+          <input type="datetime-local" value={deadline} onChange={(event) => setDeadline(event.target.value)} disabled={termsLocked} aria-invalid={Boolean(deadlineErrors.deadline)} />
+          {deadlineErrors.deadline ? (
+            <span className="shows-create__field-error" role="alert">{deadlineErrors.deadline}</span>
+          ) : null}
         </label>
         <label>
           Booking deadline
-          <input type="datetime-local" value={bookingDeadline} onChange={(event) => setBookingDeadline(event.target.value)} disabled={termsLocked} />
+          <input type="datetime-local" value={bookingDeadline} onChange={(event) => setBookingDeadline(event.target.value)} disabled={termsLocked} aria-invalid={Boolean(deadlineErrors.bookingDeadline)} />
+          {deadlineErrors.bookingDeadline ? (
+            <span className="shows-create__field-error" role="alert">{deadlineErrors.bookingDeadline}</span>
+          ) : null}
         </label>
         <label>
           Target show date
