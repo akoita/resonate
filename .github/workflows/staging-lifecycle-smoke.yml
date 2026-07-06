@@ -58,12 +58,12 @@ jobs:
       RELEASE_MODE: ${{ inputs.release_mode || (github.event.schedule == '0 4 * * 0' && 'full') || 'auto' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: scripts/staging-smoke/package-lock.json
 
