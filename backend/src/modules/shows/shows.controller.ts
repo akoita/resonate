@@ -277,6 +277,18 @@ export class ShowsController {
     return this.showsService.resyncCampaignFromChain(this.actorFromRequest(req), id);
   }
 
+  // #1390 Tier 2: operator-only, read-only on-chain discovery of the contract
+  // campaign id by matching the draft's deterministic escrow terms.
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Post("campaigns/:id/discover-onchain")
+  discoverOnChainCampaign(
+    @Param("id") id: string,
+    @Request() req: any,
+  ) {
+    return this.showsService.discoverOnChainCampaign(this.actorFromRequest(req), id);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Post("campaigns/:id/pledges/intent")
   createPledgeIntent(

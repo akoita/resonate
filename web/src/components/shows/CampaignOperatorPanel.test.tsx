@@ -12,6 +12,13 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("../auth/AuthProvider", () => ({ useAuth: () => auth.current }));
 
+// #1390: the contract-address map is built from env at module-eval time, so the
+// escrow address for chain 84532 must be set before contracts_abi is imported.
+vi.hoisted(() => {
+  process.env.NEXT_PUBLIC_BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS =
+    "0xabc0000000000000000000000000000000000abc";
+});
+
 import { CampaignOperatorPanel } from "./CampaignOperatorPanel";
 import type { Campaign } from "../../lib/shows";
 
@@ -129,6 +136,38 @@ describe("CampaignOperatorPanel disputes (#950 operator controls)", () => {
     expect(html).toContain("Inconclusive");
     // The open dispute is not also offered as "raise" again.
     expect(html).not.toContain("Raise dispute");
+  });
+
+  it("prefills the escrow input from platform config when the campaign has no escrow yet", () => {
+    // 84532 → NEXT_PUBLIC_BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS (set below).
+    const html = renderToStaticMarkup(
+      <CampaignOperatorPanel
+        campaign={{
+          ...baseCampaign,
+          rawStatus: "draft",
+          escrowContractAddress: null,
+          contractCampaignId: null,
+        }}
+      />,
+    );
+    expect(html).toContain("0xabc0000000000000000000000000000000000abc");
+    expect(html).toContain("Prefilled from platform config");
+    expect(html).toContain("Find on-chain campaign");
+  });
+
+  it("does not prefill a zero-address escrow (activation stays gated)", () => {
+    const html = renderToStaticMarkup(
+      <CampaignOperatorPanel
+        campaign={{
+          ...baseCampaign,
+          rawStatus: "draft",
+          chainId: 421614, // no escrow env set → zero address → empty
+          escrowContractAddress: null,
+          contractCampaignId: null,
+        }}
+      />,
+    );
+    expect(html).not.toContain("0x0000000000000000000000000000000000000000");
   });
 
   it("shows resolved dispute history with its outcome and note", () => {

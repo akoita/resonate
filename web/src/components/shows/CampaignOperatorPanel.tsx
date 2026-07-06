@@ -13,12 +13,15 @@ import {
   formatCampaignFeePercent,
   confirmShowCampaignBooking,
   confirmShowCampaignFulfillment,
+  discoverShowCampaignOnChain,
   getManagedShowCampaign,
   initiateShowCampaignDispute,
   resyncShowCampaignFromChain,
   resolveShowCampaignDispute,
   type Campaign,
+  type DiscoveredOnChainCampaign,
 } from "../../lib/shows";
+import { getAddresses } from "../../contracts_abi";
 
 type ActionKey =
   | "authority"
@@ -33,6 +36,29 @@ type ActionKey =
 type DisputeOutcome = "upheld" | "rejected" | "inconclusive";
 
 const AUTHORIZED_STATUSES = ["artist_authorized", "trusted_source_authorized"];
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
+function defaultChainId(): number {
+  const raw = Number(process.env.NEXT_PUBLIC_CHAIN_ID);
+  return Number.isSafeInteger(raw) && raw > 0 ? raw : 31337;
+}
+
+/**
+ * #1390 Tier 1: the platform-configured escrow for a campaign's chain, so the
+ * activation input is prefilled instead of copy-pasted. Returns "" when no
+ * escrow is configured (unknown chain or the zero address) so the activate
+ * button stays disabled rather than binding to 0x0. Never throws — getAddresses
+ * throws on unknown chains, which must not break the operator panel render.
+ */
+function configuredEscrowAddress(chainId?: number | null): string {
+  try {
+    const escrow = getAddresses(chainId ?? defaultChainId()).showCampaignEscrow;
+    if (!escrow || escrow.toLowerCase() === ZERO_ADDRESS) return "";
+    return escrow;
+  } catch {
+    return "";
+  }
+}
 
 function formatStatus(value?: string | null) {
   return value ? value.replaceAll("_", " ") : "not set";
@@ -60,8 +86,12 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   );
   const [authorityCredentialId, setAuthorityCredentialId] = useState(campaign.authorityCredentialId ?? "");
   const [authorityEvidenceBundleId, setAuthorityEvidenceBundleId] = useState(campaign.authorityEvidenceBundleId ?? "");
-  const [contractAddress, setContractAddress] = useState(campaign.escrowContractAddress ?? "");
+  const [contractAddress, setContractAddress] = useState(
+    campaign.escrowContractAddress ?? configuredEscrowAddress(campaign.chainId),
+  );
   const [contractCampaignId, setContractCampaignId] = useState(campaign.contractCampaignId ?? "");
+  const [discoverBusy, setDiscoverBusy] = useState(false);
+  const [discoverMatches, setDiscoverMatches] = useState<DiscoveredOnChainCampaign[] | null>(null);
   const [lifecycleEvidenceBundleId, setLifecycleEvidenceBundleId] = useState("");
   const [reason, setReason] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
@@ -129,6 +159,47 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
       cancelled = true;
     };
   }, [isOperator, isAuthenticated, token, campaign.backendId]);
+
+  // #1390 Tier 2: match the draft's on-chain-deterministic terms against the
+  // configured escrow and fill the activation ids, so an operator never has to
+  // capture the contract campaign id from an event log by hand. Read-only.
+  async function runDiscover() {
+    if (!token) {
+      setError("Connect with an operator account first.");
+      return;
+    }
+    setDiscoverBusy(true);
+    setError(null);
+    setNotice(null);
+    setDiscoverMatches(null);
+    try {
+      const result = await discoverShowCampaignOnChain({ campaign: current, token });
+      if (result.escrowAddress) {
+        setContractAddress((prev) => prev || result.escrowAddress!);
+      }
+      if (result.matches.length === 0) {
+        setNotice("No matching on-chain campaign found — check the terms or enter the id manually.");
+        return;
+      }
+      if (result.matches.length === 1) {
+        applyDiscoveredMatch(result.matches[0], result.escrowAddress);
+        return;
+      }
+      setDiscoverMatches(result.matches);
+      setNotice("Multiple on-chain campaigns match these terms — pick the right one below.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "On-chain discovery failed.");
+    } finally {
+      setDiscoverBusy(false);
+    }
+  }
+
+  function applyDiscoveredMatch(match: DiscoveredOnChainCampaign, escrowAddress?: string | null) {
+    if (escrowAddress) setContractAddress(escrowAddress);
+    setContractCampaignId(String(match.contractCampaignId));
+    setDiscoverMatches(null);
+    setNotice(`Found campaign #${match.contractCampaignId} (status ${match.onChainStatus}) — review and activate.`);
+  }
 
   if (!isOperator) return null;
 
@@ -253,11 +324,32 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
           <label>
             Escrow contract
             <input value={contractAddress} onChange={(event) => setContractAddress(event.target.value)} placeholder="0x..." />
+            <small className="show-detail__operator-hint">
+              Prefilled from platform config — override only if this campaign uses a different escrow.
+            </small>
           </label>
           <label>
             Contract campaign ID
             <input value={contractCampaignId} onChange={(event) => setContractCampaignId(event.target.value)} />
           </label>
+          <button
+            type="button"
+            onClick={runDiscover}
+            disabled={!isAuthenticated || busy || discoverBusy || !current.beneficiaryAddress}
+          >
+            {discoverBusy ? "Searching chain..." : "Find on-chain campaign"}
+          </button>
+          {discoverMatches && discoverMatches.length > 1 ? (
+            <ul className="show-detail__operator-discover-matches">
+              {discoverMatches.map((match) => (
+                <li key={match.contractCampaignId}>
+                  <button type="button" onClick={() => applyDiscoveredMatch(match, current.escrowContractAddress ?? contractAddress)}>
+                    Use #{match.contractCampaignId} · {match.onChainStatus}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <button
             type="button"
             onClick={() => runAction(
