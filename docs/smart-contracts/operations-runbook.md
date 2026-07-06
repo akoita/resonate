@@ -71,6 +71,33 @@ Core GitHub environment variables:
 | `verify-base-sepolia` | Retry BaseScan/Etherscan verification from a prior Base Sepolia broadcast. | Workflow: `operation=verify-base-sepolia`, `target_network=base-sepolia`. Secrets: `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, retry/API URL vars. | Explorer verification logs. No deploy. | If verification fails because the wrong broadcast was selected, set `BROADCAST_FILE` to the exact `contracts/broadcast/.../run-*.json` artifact and rerun. |
 | `verify-base-sepolia-sourcify` | Verify contracts through Sourcify without an explorer API key. Preferred retry path when a broadcast artifact exists. | Workflow: `operation=verify-base-sepolia-sourcify`, `target_network=base-sepolia`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, Sourcify retry/API URL vars. | Sourcify verification logs. No deploy. | Keep the broadcast artifact with the deployment record. Sourcify reads the broadcast's creation transactions and rebuilt compiler input. |
 
+## Staging Lifecycle Smoke
+
+The **Staging Lifecycle Smoke** (`.github/workflows/staging-lifecycle-smoke.yml`,
+#1392) is the automated end-to-end check for the Shows money path against the
+real staging deployment. It uses the same `contracts-staging` environment and
+`CONTRACT_DEPLOYER_PRIVATE_KEY` as this runbook, plus a dedicated pre-funded
+smoke wallet, and runs on two schedules:
+
+- **Nightly 05:00 UTC (`auto` mode)** — pledge + cancel + `claimRefund` loop:
+  tests the refund seam end to end, restores the smoke wallet's USDC (only gas
+  burns), and ends the campaign in a discovery-excluded state so no test
+  campaign lingers publicly.
+- **Weekly Sunday 04:00 UTC (`full` mode)** — booking → fulfillment → waits the
+  real 1-hour dispute window (contract `MIN_DISPUTE_WINDOW`) → `releaseFunds` +
+  on-chain/backend fee assertions. This is the fee-leg coverage; expect a
+  >1-hour runtime.
+- **Manual dispatch** lets you pick the mode (`auto`/`full`/`skip`). `skip`
+  leaves the campaign Funded and prints cleanup commands — either a direct
+  cancel/refund pair or this runbook's `confirm-show-campaign-booking` →
+  `confirm-show-campaign-fulfillment` → `release-show-campaign-funds`
+  operations with the campaign id.
+
+Full operator guide, env contract, failure triage, and the smoke-wallet top-up
+runbook: [`docs/features/staging_lifecycle_smoke.md`](../features/staging_lifecycle_smoke.md).
+On failure it opens/comments a `smoke-failure`-labeled issue linking the run;
+look for the `SMOKE_FAIL <step>: <reason>` line in the run log.
+
 ## Address Promotion Through IaC
 
 Do not copy console output straight into Cloud Run or GitHub variables by hand.
