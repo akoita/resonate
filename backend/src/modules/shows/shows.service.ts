@@ -1779,7 +1779,8 @@ export class ShowsService {
       },
       include: { events: { orderBy: { createdAt: "desc" }, take: 5 }, tiers: true },
     });
-    return this.hydrateLinkedCampaignFromChainOrWarn(activated);
+    const hydrated = await this.hydrateLinkedCampaignFromChainOrWarn(activated);
+    return serializeManagedShowCampaign(hydrated);
   }
 
   async resyncCampaignFromChain(actor: Actor, campaignId: string) {
@@ -1787,7 +1788,8 @@ export class ShowsService {
       throw new ForbiddenException("Only operators can re-sync campaign chain state");
     }
     const campaign = await this.findCampaignOrThrow(campaignId);
-    return this.hydrateLinkedCampaignFromChain(campaign);
+    const hydrated = await this.hydrateLinkedCampaignFromChain(campaign);
+    return serializeManagedShowCampaign(hydrated);
   }
 
   private async hydrateLinkedCampaignFromChainOrWarn(campaign: any) {
@@ -2552,11 +2554,19 @@ export class ShowsService {
 
   private serializePledge<T extends {
     blockNumber: bigint | number | string | null;
+    campaign?: any;
     events?: Array<{ blockNumber: bigint | number | string | null }>;
   }>(pledge: T) {
     return {
       ...pledge,
       blockNumber: pledge.blockNumber?.toString() ?? null,
+      ...(Object.prototype.hasOwnProperty.call(pledge, "campaign")
+        ? {
+            campaign: pledge.campaign
+              ? serializePublicShowCampaign(pledge.campaign)
+              : pledge.campaign,
+          }
+        : {}),
       events: pledge.events?.map((event) => ({
         ...event,
         blockNumber: event.blockNumber?.toString() ?? null,
