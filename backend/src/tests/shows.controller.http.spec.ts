@@ -1,5 +1,5 @@
 import request from "supertest";
-import { INestApplication } from "@nestjs/common";
+import { BadRequestException, INestApplication } from "@nestjs/common";
 import { RolesGuard } from "../modules/auth/roles.guard";
 import { CommunityRoomsService } from "../modules/community/community_rooms.service";
 import { ShowsController } from "../modules/shows/shows.controller";
@@ -148,5 +148,36 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockShowsService.resyncCampaignFromChain).not.toHaveBeenCalled();
+  });
+
+  // #1356: contract-invalid terms surface as HTTP 400 from create and approval.
+  it("surfaces terms-validation BadRequest as HTTP 400 on draft create", async () => {
+    mockShowsService.createDraftCampaign.mockRejectedValue(
+      new BadRequestException("bookingDeadline must be after the funding deadline"),
+    );
+
+    await request(app.getHttpServer())
+      .post("/shows/campaigns")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ artistDisplayName: "Test", city: "Lyon", country: "FR", deadline: "2999-01-01T00:00:00.000Z" })
+      .expect(400)
+      .expect((res) => {
+        expect(res.body.message).toContain("bookingDeadline must be after");
+      });
+  });
+
+  it("surfaces approval terms-validation BadRequest as HTTP 400", async () => {
+    mockShowsService.approveAuthority.mockRejectedValue(
+      new BadRequestException("Cannot approve authority: deadline must be in the future. Edit the draft to fix the campaign terms before approving."),
+    );
+
+    await request(app.getHttpServer())
+      .patch("/shows/campaigns/campaign-1/authority")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .send({ authorityStatus: "artist_authorized" })
+      .expect(400)
+      .expect((res) => {
+        expect(res.body.message).toContain("Cannot approve authority");
+      });
   });
 });

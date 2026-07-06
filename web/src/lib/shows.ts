@@ -408,6 +408,45 @@ export function chainName(chainId?: number | null): string {
   }
 }
 
+// #1356: client-side mirror of the escrow's activation-time deadline rules
+// (ShowCampaignEscrow.createCampaign reverts InvalidDeadline when
+// `deadline <= now || bookingDeadline <= deadline`). The backend stays the
+// source of truth; this is UX so the operator sees the problem before submit.
+// Inputs are datetime-local strings (or ISO); returns a field-keyed error map.
+export type CampaignDeadlineErrors = {
+  deadline?: string;
+  bookingDeadline?: string;
+};
+
+export function validateCampaignDeadlines(
+  input: { deadline?: string | null; bookingDeadline?: string | null },
+  now: number = Date.now(),
+): CampaignDeadlineErrors {
+  const errors: CampaignDeadlineErrors = {};
+  const deadlineMs = input.deadline ? new Date(input.deadline).getTime() : NaN;
+  const bookingMs = input.bookingDeadline ? new Date(input.bookingDeadline).getTime() : NaN;
+
+  if (input.deadline) {
+    if (Number.isNaN(deadlineMs)) {
+      errors.deadline = "Enter a valid funding deadline.";
+    } else if (deadlineMs <= now) {
+      errors.deadline = "Funding deadline must be in the future.";
+    }
+  }
+
+  if (input.bookingDeadline && !Number.isNaN(bookingMs)) {
+    if (Number.isNaN(deadlineMs)) {
+      // can't compare yet — the deadline error above already flags the problem
+    } else if (bookingMs <= deadlineMs) {
+      errors.bookingDeadline = "Booking deadline must be after the funding deadline.";
+    }
+  } else if (input.bookingDeadline && Number.isNaN(bookingMs)) {
+    errors.bookingDeadline = "Enter a valid booking deadline.";
+  }
+
+  return errors;
+}
+
 export function releasePolicyLabel(policy?: string | null): string {
   switch (policy) {
     case "refund_only_until_booking":

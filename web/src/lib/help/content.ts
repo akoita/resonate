@@ -1013,6 +1013,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
+            text: "Deadlines have to line up so the campaign can go live: the funding deadline must be in the future, and the booking deadline must fall after the funding deadline. The form flags a problem before you save.",
+          },
+          {
+            kind: "paragraph",
+            text: "Need to fix a locked term after authority is approved — for example a wrong deadline, and no one has backed the campaign yet? An operator revokes authority, which unlocks the terms for editing, then re-approves. Every step is recorded, so the correction is fully auditable.",
+          },
+          {
+            kind: "paragraph",
             text: "Admin and operator accounts can use the Shows list filter to switch from the default actionable campaign view to all campaigns or to a specific status such as cancelled, refunds, or released. If a linked escrow campaign looks stale, operators can re-sync it from the chain to refresh the fee and escrow status shown to fans.",
           },
         ],

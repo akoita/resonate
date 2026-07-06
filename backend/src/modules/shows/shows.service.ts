@@ -173,6 +173,12 @@ type MyPledgesQuery = {
 const DEFAULT_CURRENCY = "USD";
 const DEFAULT_PAYMENT_ASSET_DECIMALS = 6;
 const DEFAULT_DISPUTE_WINDOW_SECONDS = 604800;
+// Mirror the escrow contract's createCampaign bounds so drafts can never carry
+// terms the chain would reject at activation (ShowCampaignEscrow.sol:
+// MIN_DISPUTE_WINDOW = 1 hours, MAX_DISPUTE_WINDOW = 90 days, and
+// InvalidDeadline reverts when `deadline <= now || bookingDeadline <= deadline`).
+const MIN_DISPUTE_WINDOW_SECONDS = 3600;
+const MAX_DISPUTE_WINDOW_SECONDS = 7776000;
 const AUTHORIZED_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
   "trusted_source_authorized",
@@ -444,6 +450,32 @@ function parseOptionalDate(value: unknown, field: string): Date | null | undefin
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
   return parseDate(value, field);
+}
+
+// #1356: single source of truth for the escrow's activation-time deadline and
+// dispute-window rules. Create, update, and authority-approval all run this so
+// a draft can never carry terms the contract's createCampaign would revert on
+// (InvalidDeadline / InvalidDisputeWindow). `now` is injectable for tests.
+function assertContractValidTerms(
+  terms: { deadline: Date; bookingDeadline?: Date | null; disputeWindowSeconds?: number | null },
+  now: number = Date.now(),
+): void {
+  if (terms.deadline.getTime() <= now) {
+    throw new BadRequestException("deadline must be in the future");
+  }
+  if (terms.bookingDeadline && terms.bookingDeadline.getTime() <= terms.deadline.getTime()) {
+    throw new BadRequestException("bookingDeadline must be after the funding deadline");
+  }
+  if (terms.disputeWindowSeconds !== undefined && terms.disputeWindowSeconds !== null) {
+    if (
+      terms.disputeWindowSeconds < MIN_DISPUTE_WINDOW_SECONDS ||
+      terms.disputeWindowSeconds > MAX_DISPUTE_WINDOW_SECONDS
+    ) {
+      throw new BadRequestException(
+        `disputeWindowSeconds must be between ${MIN_DISPUTE_WINDOW_SECONDS} and ${MAX_DISPUTE_WINDOW_SECONDS} seconds`,
+      );
+    }
+  }
 }
 
 function optionalPositiveInteger(value: unknown, field: string): number | null | undefined {
@@ -978,6 +1010,9 @@ export class ShowsService {
       : "refund_only_until_booking";
     const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
     const disputeWindowSeconds = input.disputeWindowSeconds ?? DEFAULT_DISPUTE_WINDOW_SECONDS;
+    // #1356: mirror the escrow's createCampaign bounds so we never persist a
+    // draft the chain would reject at activation.
+    assertContractValidTerms({ deadline: normalized.deadline, bookingDeadline, disputeWindowSeconds });
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
     const slug = await this.uniqueSlug(title, normalized.country);
     const tiers = this.normalizeCampaignTiers(input.tiers ?? [], normalized);
@@ -1091,6 +1126,8 @@ export class ShowsService {
     const title = campaignTitle(input, normalized.artistDisplayName, normalized.city);
     const bookingDeadline = parseOptionalDate(input.bookingDeadline, "bookingDeadline");
     const disputeWindowSeconds = input.disputeWindowSeconds ?? campaign.disputeWindowSeconds;
+    // #1356: edits are subject to the same contract-validity bounds as create.
+    assertContractValidTerms({ deadline: normalized.deadline, bookingDeadline, disputeWindowSeconds });
 
     // #946: once artist authority is approved the critical fan-risk terms are
     // locked. We refuse any edit that would change them (the update endpoint is
@@ -1564,6 +1601,22 @@ export class ShowsService {
       : campaign.beneficiaryType;
     if (!beneficiaryAddress || !beneficiaryType) {
       throw new BadRequestException("beneficiaryAddress and beneficiaryType are required for authority approval");
+    }
+    // #1356: approval locks the terms, so refuse to lock terms the escrow would
+    // reject at activation. Re-validate the CURRENT persisted deadline/dispute
+    // values — a draft may predate the create/update validation. The operator
+    // must fix the draft (edit the deadlines) before authority can be approved.
+    try {
+      assertContractValidTerms({
+        deadline: campaign.deadline,
+        bookingDeadline: campaign.bookingDeadline,
+        disputeWindowSeconds: campaign.disputeWindowSeconds,
+      });
+    } catch (error) {
+      const detail = error instanceof BadRequestException ? error.message : "invalid campaign terms";
+      throw new BadRequestException(
+        `Cannot approve authority: ${detail}. Edit the draft to fix the campaign terms before approving.`,
+      );
     }
 
     // #946: snapshot exactly the fan-risk terms being approved (with the freshly
@@ -2691,9 +2744,10 @@ export class ShowsService {
     defaultChainId: number;
   }) {
     const deadline = parseDate(input.deadline, "deadline");
-    if (deadline.getTime() <= Date.now()) {
-      throw new BadRequestException("deadline must be in the future");
-    }
+    // #1356: funding deadline must be in the future (contract reverts when
+    // deadline <= now). booking/dispute bounds are validated by callers once
+    // those optional fields are parsed.
+    assertContractValidTerms({ deadline });
     const goalAmountUnits = optionalText(input.goalAmountUnits) ?? defaults.defaultGoalAmountUnits;
     if (!goalAmountUnits) {
       throw new BadRequestException("goalAmountUnits is required");

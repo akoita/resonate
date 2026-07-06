@@ -18,6 +18,7 @@ import {
   formatCampaignFeePercent,
   pledgeConfirmSummary,
   showsCampaignListPath,
+  validateCampaignDeadlines,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -448,5 +449,39 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     expect(summary).not.toContain("Deposit released on booking");
     // Other known rows still present.
     expect(summary).toContain("Dispute window: 7 days");
+  });
+});
+
+describe("validateCampaignDeadlines (#1356)", () => {
+  const NOW = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const iso = (days: number) => new Date(NOW + days * 86_400_000).toISOString();
+
+  it("accepts a future funding deadline with booking strictly after it", () => {
+    const errors = validateCampaignDeadlines(
+      { deadline: iso(30), bookingDeadline: iso(45) },
+      NOW,
+    );
+    expect(errors).toEqual({});
+  });
+
+  it("flags a past funding deadline", () => {
+    const errors = validateCampaignDeadlines(
+      { deadline: iso(-1), bookingDeadline: iso(45) },
+      NOW,
+    );
+    expect(errors.deadline).toBeTruthy();
+  });
+
+  it("flags a booking deadline on or before the funding deadline", () => {
+    const errors = validateCampaignDeadlines(
+      { deadline: iso(30), bookingDeadline: iso(30) },
+      NOW,
+    );
+    expect(errors.bookingDeadline).toContain("after the funding deadline");
+  });
+
+  it("ignores an absent booking deadline (optional field)", () => {
+    const errors = validateCampaignDeadlines({ deadline: iso(30) }, NOW);
+    expect(errors).toEqual({});
   });
 });
