@@ -124,6 +124,7 @@ export class AuthService {
   private static readonly ALLOWLISTED_ROLES: Record<string, string> = {
     admin: "ADMIN_ADDRESSES",
     agent: "AGENT_ADDRESSES",
+    operator: "OPERATOR_ADDRESSES",
   };
 
   /** Role granted when a requested role is not authorized. */
@@ -131,9 +132,9 @@ export class AuthService {
 
   /**
    * Roles a caller is trusted to request for themselves without an allowlist.
-   * Everything else — including privileged roles like `artist`, `curator`, and
-   * `operator` that lack an allowlist source — fails closed to {@link SAFE_ROLE}
-   * so a self-declared `role` in an auth request can never be an escalation.
+   * Everything else — including privileged roles like `artist` and `curator`
+   * that lack an allowlist source — fails closed to {@link SAFE_ROLE} so a
+   * self-declared `role` in an auth request can never be an escalation.
    */
   private static readonly SELF_ASSIGNABLE_ROLES = new Set([AuthService.SAFE_ROLE]);
 

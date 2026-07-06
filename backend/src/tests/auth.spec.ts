@@ -70,12 +70,15 @@ describe("AuthService", () => {
   let authService: AuthService;
   let originalAdminAddresses: string | undefined;
   let originalAgentAddresses: string | undefined;
+  let originalOperatorAddresses: string | undefined;
 
   beforeEach(() => {
     originalAdminAddresses = process.env.ADMIN_ADDRESSES;
     originalAgentAddresses = process.env.AGENT_ADDRESSES;
+    originalOperatorAddresses = process.env.OPERATOR_ADDRESSES;
     delete process.env.ADMIN_ADDRESSES;
     delete process.env.AGENT_ADDRESSES;
+    delete process.env.OPERATOR_ADDRESSES;
     jest.clearAllMocks();
     authService = new AuthService(mockJwt as any, mockAudit as any);
   });
@@ -83,6 +86,7 @@ describe("AuthService", () => {
   afterEach(() => {
     restoreEnv("ADMIN_ADDRESSES", originalAdminAddresses);
     restoreEnv("AGENT_ADDRESSES", originalAgentAddresses);
+    restoreEnv("OPERATOR_ADDRESSES", originalOperatorAddresses);
   });
 
   it("issues token with default listener role", () => {
@@ -148,6 +152,39 @@ describe("AuthService", () => {
     process.env.AGENT_ADDRESSES = "0xAgent1";
 
     authService.issueToken("0xadmin1", "agent");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xadmin1", role: "admin" });
+  });
+
+  it("grants operator role to addresses from OPERATOR_ADDRESSES env", () => {
+    process.env.OPERATOR_ADDRESSES = "0xOperator1, 0xOperator2";
+
+    authService.issueToken("0xoperator1", "operator");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xoperator1", role: "operator" });
+  });
+
+  it("downgrades operator role to listener when address is not allowlisted", () => {
+    process.env.OPERATOR_ADDRESSES = "0xOperator1";
+
+    authService.issueToken("0xNotOperator", "operator");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xNotOperator", role: "listener" });
+  });
+
+  it("does not cross-grant admin from the operator allowlist", () => {
+    process.env.OPERATOR_ADDRESSES = "0xOperator1";
+
+    authService.issueToken("0xoperator1", "admin");
+
+    expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xoperator1", role: "listener" });
+  });
+
+  it("keeps admin allowlist promotion ahead of requested operator role", () => {
+    process.env.ADMIN_ADDRESSES = "0xAdmin1";
+    process.env.OPERATOR_ADDRESSES = "0xOperator1";
+
+    authService.issueToken("0xadmin1", "operator");
 
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xadmin1", role: "admin" });
   });
