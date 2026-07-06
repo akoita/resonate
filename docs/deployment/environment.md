@@ -31,6 +31,7 @@ When adding a new environment variable:
 | `RPC_URL` | Backend | RPC endpoint used by contract-aware backend flows |
 | `ADMIN_ADDRESSES` | Backend | Optional comma-separated wallet addresses that are promoted to `admin` when authenticated through wallet auth or dev login. Store deployment-specific values in environment configuration, not source. |
 | `AGENT_ADDRESSES` | Backend | Optional comma-separated wallet addresses allowed to receive the `agent` JWT role. Wallets that request `agent` without being listed are downgraded to `listener`; admin promotion still wins. |
+| `OPERATOR_ADDRESSES` | Backend | Optional deployment-managed comma-separated allowlist of wallet addresses that may authenticate with the `operator` role; used by the staging lifecycle smoke #1392. |
 | `AUTH_DEV_LOGIN_ENABLED` | Backend | Local/test-only switch for `POST /auth/login`. The endpoint returns 403 unless this is exactly `true`; leave unset/false in shared and production environments. |
 | `GCP_PROJECT_ID` | Backend | Recommended explicit GCP project for Pub/Sub-backed ingestion; when unset in Cloud Run the backend can also derive the project from Application Default Credentials |
 | `ANALYTICS_WAREHOUSE_PROJECT_ID` | Backend | Optional analytics warehouse project/target id for export metadata. Falls back to `GCP_PROJECT_ID`, then `local` for local development. |
