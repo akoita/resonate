@@ -192,7 +192,11 @@ const SHOW_ESCROW_READ_ABI = parseAbi([
   "function campaigns(uint256) view returns (bytes32 artistIdHash, bytes32 authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline, uint256 depositReleaseBps, uint256 disputeWindowSeconds, uint256 totalPledged, uint256 totalRefunded, uint256 totalReleased, uint256 uniqueBackers, uint256 fulfilledAt, uint8 status, uint256 feeBps, uint256 totalFeePaid)",
   "function campaignFees(uint256 campaignId) view returns (uint256 feeBps, uint256 totalFeePaid)",
   "function campaignStatus(uint256 campaignId) view returns (uint8)",
+  "function nextCampaignId() view returns (uint256)",
 ]);
+// #1390: cap the newest-first discovery scan so a large escrow can't turn one
+// operator click into hundreds of RPC reads.
+const SHOW_DISCOVERY_SCAN_CAP = 200n;
 const SHOW_ESCROW_STATUS_NAMES = [
   "Draft",
   "Active",
@@ -1843,6 +1847,130 @@ export class ShowsService {
     const campaign = await this.findCampaignOrThrow(campaignId);
     const hydrated = await this.hydrateLinkedCampaignFromChain(campaign);
     return serializeManagedShowCampaign(hydrated);
+  }
+
+  /**
+   * #1390 Tier 2: discover the on-chain campaign id for a draft by scanning the
+   * configured escrow (newest-first, bounded) and matching the draft's
+   * on-chain-deterministic terms — beneficiary, payment token, goal amount,
+   * minimum backers, funding deadline, and booking deadline. This deliberately
+   * does NOT match artistIdHash/authorityHash: those are keccak of arbitrary
+   * strings chosen by whoever called createCampaign, not derivable from the
+   * backend draft. Read-only (no signer). Zero matches returns an empty list,
+   * not an error, so the UI can offer manual entry.
+   */
+  async discoverOnChainCampaign(actor: Actor, campaignId: string) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can discover on-chain campaigns");
+    }
+    const campaign = await this.findCampaignOrThrow(campaignId);
+    const chainId = campaign.chainId ?? defaultChainId();
+
+    const escrowAddress =
+      validateOptionalAddress(campaign.contractAddress, "contractAddress") ??
+      configuredShowCampaignEscrowAddress(chainId);
+    if (!escrowAddress) {
+      throw new BadRequestException(
+        `No escrow contract is configured for chain ${chainId}; link the campaign's escrow address or set the platform escrow env before discovery`,
+      );
+    }
+    const client = showEscrowClient(chainId);
+    if (!client) {
+      throw new BadRequestException(`No RPC client configured for show campaign chain ${chainId}`);
+    }
+
+    const beneficiary = campaign.beneficiaryAddress?.trim().toLowerCase();
+    if (!beneficiary) {
+      throw new BadRequestException("Campaign beneficiary must be bound before on-chain discovery");
+    }
+    const paymentToken = (campaign.paymentTokenAddress ?? "").trim().toLowerCase() || null;
+    const goalAmount = (() => {
+      try {
+        return BigInt(campaign.goalAmountUnits);
+      } catch {
+        return null;
+      }
+    })();
+    if (goalAmount == null) {
+      throw new BadRequestException("Campaign goal amount is invalid for on-chain discovery");
+    }
+    const minimumBackers = BigInt(campaign.minimumBackers ?? 0);
+    const deadlineEpoch = BigInt(Math.floor(new Date(campaign.deadline).getTime() / 1000));
+    const bookingDeadlineEpoch = campaign.bookingDeadline
+      ? BigInt(Math.floor(new Date(campaign.bookingDeadline).getTime() / 1000))
+      : null;
+
+    let nextId: bigint;
+    try {
+      nextId = (await client.readContract({
+        address: escrowAddress as Address,
+        abi: SHOW_ESCROW_READ_ABI,
+        functionName: "nextCampaignId",
+      })) as bigint;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(`Could not read escrow campaign count: ${message}`);
+    }
+
+    // ids are 1..nextId-1; scan newest-first, capped so discovery stays cheap.
+    const highest = nextId > 0n ? nextId - 1n : 0n;
+    const floor = highest > SHOW_DISCOVERY_SCAN_CAP ? highest - SHOW_DISCOVERY_SCAN_CAP + 1n : 1n;
+    const matches: Array<{
+      contractCampaignId: string;
+      onChainStatus: string;
+      beneficiary: string;
+      paymentToken: string;
+      goalAmount: string;
+      minimumBackers: number;
+      deadline: number;
+      bookingDeadline: number;
+    }> = [];
+
+    for (let id = highest; id >= floor; id--) {
+      let tuple: readonly unknown[];
+      try {
+        tuple = (await client.readContract({
+          address: escrowAddress as Address,
+          abi: SHOW_ESCROW_READ_ABI,
+          functionName: "campaigns",
+          args: [id],
+        })) as readonly unknown[];
+      } catch {
+        continue;
+      }
+
+      const chainBeneficiary = String(tuple[2] ?? "").toLowerCase();
+      const chainPaymentToken = String(tuple[3] ?? "").toLowerCase();
+      const chainGoal = (tuple[4] as bigint | undefined) ?? 0n;
+      const chainMinBackers = (tuple[5] as bigint | undefined) ?? 0n;
+      const chainDeadline = (tuple[6] as bigint | undefined) ?? 0n;
+      const chainBookingDeadline = (tuple[7] as bigint | undefined) ?? 0n;
+      const statusCode = Number((tuple[15] as bigint | undefined) ?? 0);
+
+      if (chainBeneficiary !== beneficiary) continue;
+      if (paymentToken != null && chainPaymentToken !== paymentToken) continue;
+      if (chainGoal !== goalAmount) continue;
+      if (chainMinBackers !== minimumBackers) continue;
+      if (chainDeadline !== deadlineEpoch) continue;
+      if (bookingDeadlineEpoch != null && chainBookingDeadline !== bookingDeadlineEpoch) continue;
+
+      const statusName = showEscrowStatusName(statusCode);
+      // For activation we only want a live match; skip terminal states.
+      if (["Released", "Refunded", "Cancelled"].includes(statusName)) continue;
+
+      matches.push({
+        contractCampaignId: id.toString(),
+        onChainStatus: statusName,
+        beneficiary: chainBeneficiary,
+        paymentToken: chainPaymentToken,
+        goalAmount: chainGoal.toString(),
+        minimumBackers: numberFromChain(chainMinBackers, "minimumBackers"),
+        deadline: numberFromChain(chainDeadline, "deadline"),
+        bookingDeadline: numberFromChain(chainBookingDeadline, "bookingDeadline"),
+      });
+    }
+
+    return { escrowAddress, matches };
   }
 
   private async hydrateLinkedCampaignFromChainOrWarn(campaign: any) {

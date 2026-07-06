@@ -1592,6 +1592,55 @@ export async function resyncShowCampaignFromChain(input: {
   });
 }
 
+// #1390 Tier 2: an on-chain campaign whose deterministic terms match the draft.
+export type DiscoveredOnChainCampaign = {
+  contractCampaignId: string;
+  onChainStatus: string;
+  beneficiary: string;
+  paymentToken: string;
+  goalAmount: string;
+  minimumBackers: number;
+  deadline: number;
+  bookingDeadline: number;
+};
+
+export type DiscoverOnChainResult = {
+  escrowAddress: string | null;
+  matches: DiscoveredOnChainCampaign[];
+};
+
+/**
+ * #1390 Tier 2: ask the backend to scan the configured escrow for a campaign
+ * whose on-chain-deterministic terms (beneficiary, payment token, goal, minimum
+ * backers, deadlines) match this draft, so the operator can fill the activation
+ * ids without capturing the contract campaign id from an event log by hand.
+ * Read-only on the backend (no signer). Zero matches is a 200 with an empty
+ * `matches` array, not an error.
+ */
+export async function discoverShowCampaignOnChain(input: {
+  campaign: Campaign;
+  token: string;
+}): Promise<DiscoverOnChainResult> {
+  const response = await fetch(
+    `${API_BASE}/shows/campaigns/${encodeURIComponent(input.campaign.backendId)}/discover-onchain`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${input.token}`,
+      },
+      body: JSON.stringify({}),
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || `On-chain discovery failed with status ${response.status}`);
+  }
+
+  return await response.json() as DiscoverOnChainResult;
+}
+
 export async function cancelShowCampaign(input: {
   campaign: Campaign;
   token: string;

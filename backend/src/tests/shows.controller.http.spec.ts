@@ -22,6 +22,7 @@ const mockShowsService = {
   expireAuthority: jest.fn(),
   activateCampaign: jest.fn(),
   resyncCampaignFromChain: jest.fn(),
+  discoverOnChainCampaign: jest.fn(),
   createPledgeIntent: jest.fn(),
   confirmPledge: jest.fn(),
   confirmPledgeRefund: jest.fn(),
@@ -179,5 +180,34 @@ describe("ShowsController (http)", () => {
       .expect((res) => {
         expect(res.body.message).toContain("Cannot approve authority");
       });
+  });
+
+  it("discovers the on-chain campaign for operators", async () => {
+    mockShowsService.discoverOnChainCampaign.mockResolvedValue({
+      escrowAddress: "0x" + "e".repeat(40),
+      matches: [],
+    });
+
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/discover-onchain")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(201)
+      .expect((res) => {
+        expect(res.body.matches).toEqual([]);
+      });
+
+    expect(mockShowsService.discoverOnChainCampaign).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      "campaign-1",
+    );
+  });
+
+  it("rejects listener role for on-chain discovery", async () => {
+    await request(app.getHttpServer())
+      .post("/shows/campaigns/campaign-1/discover-onchain")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(mockShowsService.discoverOnChainCampaign).not.toHaveBeenCalled();
   });
 });

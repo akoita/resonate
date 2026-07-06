@@ -812,6 +812,141 @@ describe("ShowsService integration", () => {
     expect(tokenCorrected.paymentTokenAddress!.toLowerCase()).toBe(paymentToken.toLowerCase());
   });
 
+  it("discovers the on-chain campaign id by matching deterministic draft terms", async () => {
+    if (!anvilUrl()) {
+      console.warn("ANVIL_RPC_URL not set. Skipping on-chain discovery integration test.");
+      return;
+    }
+
+    const chain = { ...foundry, id: ANVIL_CHAIN_ID };
+    const account = privateKeyToAccount(ANVIL_DEPLOYER_PRIVATE_KEY);
+    const publicClient = createPublicClient({ chain, transport: http(anvilUrl()) });
+    const walletClient = createWalletClient({ account, chain, transport: http(anvilUrl()) });
+
+    const deployHash = await walletClient.deployContract({
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
+      args: [account.address, 600n, account.address],
+    });
+    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
+    const escrowAddress = deployReceipt.contractAddress!;
+    expect(escrowAddress).toBeTruthy();
+
+    const block = await publicClient.getBlock({ blockTag: "latest" });
+    const beneficiary = ("0x" + "b".repeat(40)) as `0x${string}`;
+    const paymentToken = ("0x" + "c".repeat(40)) as `0x${string}`;
+
+    // Campaign #1 — deliberately different terms (different goal + deadlines).
+    const deadline1 = block.timestamp + 5n * 24n * 60n * 60n;
+    const create1 = await walletClient.writeContract({
+      address: escrowAddress,
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      functionName: "createCampaign",
+      args: [
+        keccak256(stringToHex(`${TEST_PREFIX}artist-a`)),
+        keccak256(stringToHex(`${TEST_PREFIX}authority-a`)),
+        beneficiary,
+        paymentToken,
+        2000000n,
+        20n,
+        deadline1,
+        deadline1 + 7n * 24n * 60n * 60n,
+        0n,
+        604800n,
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: create1 });
+
+    // Campaign #2 — the terms our draft will match exactly.
+    const draftDeadlineIso = futureIso(12);
+    const draftBookingIso = futureIso(24);
+    const deadline2 = BigInt(Math.floor(new Date(draftDeadlineIso).getTime() / 1000));
+    const bookingDeadline2 = BigInt(Math.floor(new Date(draftBookingIso).getTime() / 1000));
+    const create2 = await walletClient.writeContract({
+      address: escrowAddress,
+      abi: SHOW_ESCROW_ARTIFACT.abi,
+      functionName: "createCampaign",
+      args: [
+        keccak256(stringToHex(`${TEST_PREFIX}artist-b`)),
+        keccak256(stringToHex(`${TEST_PREFIX}authority-b`)),
+        beneficiary,
+        paymentToken,
+        1234567n,
+        7n,
+        deadline2,
+        bookingDeadline2,
+        0n,
+        604800n,
+      ],
+    });
+    await publicClient.waitForTransactionReceipt({ hash: create2 });
+
+    const previousEscrowEnv = process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS;
+    process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS = escrowAddress;
+    try {
+      const matchingDraft = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        {
+          artistId,
+          artistDisplayName: `${TEST_PREFIX}Discover Artist`,
+          city: "Oslo",
+          country: "NO",
+          deadline: draftDeadlineIso,
+          bookingDeadline: draftBookingIso,
+          goalAmountUnits: "1234567",
+          minimumBackers: 7,
+          paymentTokenAddress: paymentToken,
+          chainId: ANVIL_CHAIN_ID,
+        },
+      );
+      await prisma.showCampaign.update({
+        where: { id: matchingDraft.id },
+        data: { beneficiaryAddress: beneficiary.toLowerCase() },
+      });
+
+      const discovered = await service.discoverOnChainCampaign(
+        { userId: operatorUserId, role: "operator" },
+        matchingDraft.id,
+      );
+      expect(discovered.escrowAddress!.toLowerCase()).toBe(escrowAddress.toLowerCase());
+      expect(discovered.matches).toHaveLength(1);
+      expect(discovered.matches[0].contractCampaignId).toBe("2");
+      expect(discovered.matches[0].onChainStatus).toBe("Draft");
+
+      // A draft matching nothing on-chain returns an empty list, not an error.
+      const noMatchDraft = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        {
+          artistId,
+          artistDisplayName: `${TEST_PREFIX}No Match Artist`,
+          city: "Helsinki",
+          country: "FI",
+          deadline: futureIso(99),
+          bookingDeadline: futureIso(120),
+          goalAmountUnits: "999999999",
+          minimumBackers: 3,
+          paymentTokenAddress: paymentToken,
+          chainId: ANVIL_CHAIN_ID,
+        },
+      );
+      await prisma.showCampaign.update({
+        where: { id: noMatchDraft.id },
+        data: { beneficiaryAddress: beneficiary.toLowerCase() },
+      });
+      const noMatch = await service.discoverOnChainCampaign(
+        { userId: operatorUserId, role: "operator" },
+        noMatchDraft.id,
+      );
+      expect(noMatch.matches).toHaveLength(0);
+    } finally {
+      if (previousEscrowEnv === undefined) {
+        delete process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS;
+      } else {
+        process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS = previousEscrowEnv;
+      }
+    }
+  });
+
   it("rejects invalid beneficiary addresses and records rejected authority reviews", async () => {
     const campaign = await service.createDraftCampaign(
       { userId, role: "artist" },
