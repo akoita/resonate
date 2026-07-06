@@ -1,0 +1,125 @@
+name: Staging Lifecycle Smoke
+
+# Walks the full Shows money path against the REAL staging deployment (#1392).
+# Manual dispatch + schedules only — never on PRs. On failure it opens (or
+# comments on) a `smoke-failure`-labeled issue linking the run.
+#
+# Two scheduled flavors:
+#   nightly 05:00 UTC  -> RELEASE_MODE=auto  (pledge + cancel + refund loop:
+#                         fast, self-cleaning, ~0 USDC net cost)
+#   weekly  Sun 04:00  -> RELEASE_MODE=full  (booking/fulfillment/release fee
+#                         leg; waits out the contract-minimum 1h dispute window)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Stop cleanly after preflight + auth (no campaign burned).
+        required: false
+        default: false
+        type: boolean
+      release_mode:
+        description: auto (cancel+refund loop, self-cleaning), full (release fee leg, >1h), or skip (leaves the campaign Funded — warned).
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - full
+          - skip
+  schedule:
+    # Nightly auto-mode run at 05:00 UTC.
+    - cron: "0 5 * * *"
+    # Weekly full-mode run (fee/release leg) on Sundays at 04:00 UTC.
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    environment: contracts-staging
+    # Full mode waits out the 1-hour dispute window; auto stays well under 15.
+    timeout-minutes: 90
+    env:
+      API_BASE: ${{ vars.STAGING_API_BASE }}
+      RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || vars.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
+      SHOW_CAMPAIGN_ESCROW_ADDRESS: ${{ vars.SHOW_CAMPAIGN_ESCROW_ADDRESS }}
+      PAYMENT_TOKEN: ${{ vars.PAYMENT_TOKEN }}
+      SMOKE_BENEFICIARY: ${{ vars.SMOKE_BENEFICIARY || '0xa5369569fd24b019923bae45db8f9c0e6bf482cb' }}
+      SMOKE_ARTIST_DISPLAY_NAME: ${{ vars.SMOKE_ARTIST_DISPLAY_NAME }}
+      SMOKE_ARTIST_ID: ${{ vars.SMOKE_ARTIST_ID }}
+      CONTRACT_DEPLOYER_PRIVATE_KEY: ${{ secrets.CONTRACT_DEPLOYER_PRIVATE_KEY }}
+      SMOKE_WALLET_PRIVATE_KEY: ${{ secrets.SMOKE_WALLET_PRIVATE_KEY }}
+      # Dispatch input wins; the weekly schedule (its cron string arrives in
+      # github.event.schedule on schedule events) runs full; everything else auto.
+      RELEASE_MODE: ${{ inputs.release_mode || (github.event.schedule == '0 4 * * 0' && 'full') || 'auto' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: scripts/staging-smoke/package-lock.json
+
+      - name: Install smoke dependencies
+        working-directory: scripts/staging-smoke
+        run: npm ci
+
+      - name: Validate required config
+        run: |
+          missing=""
+          for v in API_BASE SHOW_CAMPAIGN_ESCROW_ADDRESS PAYMENT_TOKEN; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          for s in CONTRACT_DEPLOYER_PRIVATE_KEY SMOKE_WALLET_PRIVATE_KEY; do
+            if [ -z "${!s}" ]; then missing="$missing $s"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required config in contracts-staging environment:$missing"
+            exit 1
+          fi
+
+      - name: Run lifecycle smoke
+        id: smoke
+        working-directory: scripts/staging-smoke
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node lifecycle-smoke.mjs --dry-run
+          else
+            node lifecycle-smoke.mjs
+          fi
+
+      - name: Open or update failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Staging lifecycle smoke failed"
+          LABEL="smoke-failure"
+
+          # Ensure the label exists (ignore "already exists").
+          gh label create "$LABEL" --color "d73a4a" \
+            --description "Staging lifecycle smoke (#1392) failure" 2>/dev/null || true
+
+          BODY=$(printf '## Staging lifecycle smoke failed\n\nThe automated Shows money-path smoke (#1392) failed.\n\n- Run: %s\n- Attempt: %s\n- Trigger: %s\n\nCheck the `Run lifecycle smoke` step logs for the `SMOKE_FAIL <step>: <reason>` line, then follow the runbook in `docs/features/staging_lifecycle_smoke.md`.' \
+            "$RUN_URL" "${{ github.run_attempt }}" "${{ github.event_name }}")
+
+          # Reuse the most recent open failure issue when present.
+          EXISTING=$(gh issue list --state open --label "$LABEL" \
+            --search "$TITLE in:title" --json number --jq '.[0].number' || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            echo "Commenting on existing issue #$EXISTING"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "Opening new failure issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi
