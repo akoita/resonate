@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  discoverShowCampaignOnChain,
   buildCatalogArtistCandidates,
   campaignDisplayInitial,
   campaignDisplayTitle,
@@ -448,5 +449,60 @@ describe("pledgeConfirmSummary pre-sign terms (#1240)", () => {
     expect(summary).not.toContain("Deposit released on booking");
     // Other known rows still present.
     expect(summary).toContain("Dispute window: 7 days");
+  });
+});
+
+describe("discoverShowCampaignOnChain (#1390 Tier 2)", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const campaign = { backendId: "camp-1" } as unknown as Campaign;
+
+  it("POSTs the discovery route with auth and parses the matches", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        escrowAddress: "0xESCROW",
+        matches: [
+          {
+            contractCampaignId: "2",
+            onChainStatus: "Draft",
+            beneficiary: "0xbeef",
+            paymentToken: "0xcafe",
+            goalAmount: "1234567",
+            minimumBackers: 7,
+            deadline: 1234,
+            bookingDeadline: 5678,
+          },
+        ],
+      }),
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await discoverShowCampaignOnChain({ campaign, token: "tok" });
+    expect(result.escrowAddress).toBe("0xESCROW");
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0].contractCampaignId).toBe("2");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/shows/campaigns/camp-1/discover-onchain");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
+  });
+
+  it("throws with the backend detail on a non-ok response", async () => {
+    globalThis.fetch = (vi.fn(async () => ({
+      ok: false,
+      status: 400,
+      text: async () => "escrow not configured",
+    })) as unknown) as typeof fetch;
+
+    await expect(discoverShowCampaignOnChain({ campaign, token: "tok" })).rejects.toThrow(
+      "escrow not configured",
+    );
   });
 });
