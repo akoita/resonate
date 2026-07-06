@@ -132,6 +132,27 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// A tx receipt does not guarantee the next read (on another load-balanced RPC
+// replica) reflects the new block yet. Poll a fresh campaignStatus read until
+// it reaches one of `wanted`, or throw after the bound. Used for post-write
+// state assertions so read lag can't fail a step whose write succeeded.
+async function readStatusUntil(publicClient, escrow, abi, campaignId, wanted, statusNames, step, timeoutMs = 60000, delayMs = 3000) {
+  const wantSet = new Set(wanted);
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  for (;;) {
+    const code = Number(await publicClient.readContract({
+      address: escrow, abi, functionName: "campaignStatus", args: [campaignId],
+    }));
+    last = statusNames[code] ?? code;
+    if (wantSet.has(last)) return last;
+    if (Date.now() >= deadline) {
+      throw new SmokeError(step, `on-chain status is ${last} after ${Math.round(timeoutMs / 1000)}s, expected one of ${wanted.join("/")}`);
+    }
+    await sleep(delayMs);
+  }
+}
+
 async function fetchJson(url, init, step) {
   let res;
   try {
@@ -493,12 +514,11 @@ async function main() {
       txHashes.cancelCampaign = cancelHash;
       const receipt = await publicClient.waitForTransactionReceipt({ hash: cancelHash });
       if (receipt.status !== "success") throw new SmokeError("cancel", `cancelCampaign tx reverted (${cancelHash})`);
-      const statusCode = Number(await publicClient.readContract({
-        address: ESCROW, abi: ESCROW_ABI, functionName: "campaignStatus", args: [contractCampaignId],
-      }));
-      if (STATUS_NAMES[statusCode] !== "RefundAvailable") {
-        throw new SmokeError("cancel", `on-chain status after cancel is ${STATUS_NAMES[statusCode] ?? statusCode}, expected RefundAvailable`);
-      }
+      // Read may hit a replica behind the receipt's block — poll until settled.
+      await readStatusUntil(
+        publicClient, ESCROW, ESCROW_ABI, contractCampaignId,
+        ["RefundAvailable"], STATUS_NAMES, "cancel",
+      );
       ok("cancel", t, `campaign ${contractCampaignId} -> RefundAvailable`);
     }
 
@@ -512,22 +532,26 @@ async function main() {
       const receipt = await publicClient.waitForTransactionReceipt({ hash: claimHash });
       if (receipt.status !== "success") throw new SmokeError("claim-refund", `claimRefund tx reverted (${claimHash})`);
 
-      const [campaignTuple, usdcNow] = await Promise.all([
-        publicClient.readContract({ address: ESCROW, abi: ESCROW_ABI, functionName: "campaigns", args: [contractCampaignId] }),
-        publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [smokeAccount.address] }),
-      ]);
+      // Poll through possible replica lag until the refund accounting settles.
+      const deadline = Date.now() + 60000;
+      let campaignTuple, usdcNow;
+      for (;;) {
+        [campaignTuple, usdcNow] = await Promise.all([
+          publicClient.readContract({ address: ESCROW, abi: ESCROW_ABI, functionName: "campaigns", args: [contractCampaignId] }),
+          publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [smokeAccount.address] }),
+        ]);
+        // Refunds are fee-free: totalRefunded reaches the pledge and the wallet's
+        // USDC is fully restored (delta 0 across the run — gas is ETH, not USDC).
+        if (campaignTuple[11] === PLEDGE_UNITS && usdcNow === smokeUsdcAtStart) break;
+        if (Date.now() >= deadline) {
+          if (campaignTuple[11] !== PLEDGE_UNITS) {
+            throw new SmokeError("claim-refund", `on-chain totalRefunded ${campaignTuple[11]} != pledged ${PLEDGE_UNITS} after 60s`);
+          }
+          throw new SmokeError("claim-refund", `smoke wallet USDC ${usdcNow} != pre-run balance ${smokeUsdcAtStart} after 60s — refund did not restore the pledge`);
+        }
+        await sleep(3000);
+      }
       const totalRefunded = campaignTuple[11];
-      if (totalRefunded !== PLEDGE_UNITS) {
-        throw new SmokeError("claim-refund", `on-chain totalRefunded ${totalRefunded} != pledged ${PLEDGE_UNITS}`);
-      }
-      // Refunds are fee-free: the wallet's USDC must be fully restored across
-      // the whole run (delta 0 — gas is paid in ETH, not USDC).
-      if (usdcNow !== smokeUsdcAtStart) {
-        throw new SmokeError(
-          "claim-refund",
-          `smoke wallet USDC ${usdcNow} != pre-run balance ${smokeUsdcAtStart} — refund did not restore the pledge`,
-        );
-      }
       // With a single unique backer the claim also settles the campaign to Refunded.
       const statusCode = Number(campaignTuple[15]);
       ok("claim-refund", t, `totalRefunded ${totalRefunded}, wallet restored, on-chain status ${STATUS_NAMES[statusCode] ?? statusCode}`);
@@ -613,15 +637,22 @@ async function main() {
     const releaseReceipt = await publicClient.waitForTransactionReceipt({ hash: releaseHash });
     if (releaseReceipt.status !== "success") throw new SmokeError("release", `releaseFunds reverted (${releaseHash})`);
 
-    const [feeTuple, benAfter, feeAfter] = await Promise.all([
-      publicClient.readContract({ address: ESCROW, abi: ESCROW_ABI, functionName: "campaignFees", args: [contractCampaignId] }),
-      publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [BENEFICIARY] }),
-      publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [feeRecipient] }),
-    ]);
-    const totalFeePaid = feeTuple[1];
-    if (totalFeePaid !== expectedFeeUnits) {
-      throw new SmokeError("release", `on-chain totalFeePaid ${totalFeePaid} != expected ${expectedFeeUnits} (6% of ${PLEDGE_UNITS})`);
+    // Poll through replica lag until the fee accounting reflects the release.
+    const releaseDeadline = Date.now() + 60000;
+    let feeTuple, benAfter, feeAfter;
+    for (;;) {
+      [feeTuple, benAfter, feeAfter] = await Promise.all([
+        publicClient.readContract({ address: ESCROW, abi: ESCROW_ABI, functionName: "campaignFees", args: [contractCampaignId] }),
+        publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [BENEFICIARY] }),
+        publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [feeRecipient] }),
+      ]);
+      if (feeTuple[1] === expectedFeeUnits) break;
+      if (Date.now() >= releaseDeadline) {
+        throw new SmokeError("release", `on-chain totalFeePaid ${feeTuple[1]} != expected ${expectedFeeUnits} (6% of ${PLEDGE_UNITS}) after 60s`);
+      }
+      await sleep(3000);
     }
+    const totalFeePaid = feeTuple[1];
     // beneficiary and fee-recipient may be the same address on staging; assert the
     // one that isn't overlapping. Net delta to beneficiary:
     if (getAddress(feeRecipient) !== BENEFICIARY) {
