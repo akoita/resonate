@@ -35,6 +35,18 @@
 #   STORAGE_PROVIDER             Defaults to "gcs".
 #   SAMPLE_SHOWS_CHAIN_ID        Passed through if set.
 #
+# Optional escrow linking (#1355) — OFF by default; fixtures otherwise seed as
+# honest provisional campaigns. To link mapped fixtures to a deployed escrow,
+# pass BOTH of these via SHOWS_SEED_ENV (they are the seed script's own runtime
+# vars, not this wrapper's):
+#   SHOW_CAMPAIGN_ESCROW_ADDRESS=0x...   Deployed ShowCampaignEscrow address.
+#   SAMPLE_SHOWS_ESCROW_LINKS=<json>     JSON map slug → { contractCampaignId,
+#                                        beneficiaryAddress[, beneficiaryType] }.
+#   NOTE: the JSON value contains commas, which collide with gcloud
+#   --set-env-vars splitting. Prefer setting SAMPLE_SHOWS_ESCROW_LINKS as a
+#   secret (SHOWS_SEED_SECRETS) or use a gcloud custom delimiter; keep the raw
+#   JSON out of a bare comma-delimited SHOWS_SEED_ENV.
+#
 # Usage:
 #   GCP_PROJECT=... GCP_REGION=... BACKEND_IMAGE=... SHOWS_SEED_JOB=... \
 #   SHOWS_SEED_SECRETS="DATABASE_URL=resonate-database-url:latest" \

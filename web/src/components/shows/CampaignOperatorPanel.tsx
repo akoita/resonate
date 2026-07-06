@@ -22,6 +22,10 @@ import {
   type DiscoveredOnChainCampaign,
 } from "../../lib/shows";
 import { getAddresses } from "../../contracts_abi";
+import { REPO_URL } from "../../lib/buildInfo";
+
+/** GitHub link to the ops runbook that explains creating the on-chain campaign. */
+const OPERATIONS_RUNBOOK_URL = `${REPO_URL}/blob/main/docs/smart-contracts/operations-runbook.md`;
 
 type ActionKey =
   | "authority"
@@ -123,6 +127,40 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
   const feePercent = formatCampaignFeePercent(current.feeBps);
 
   const busy = pending !== null;
+
+  // #1363: when a lifecycle button is disabled, explain the unlock condition via
+  // its `title`. Returns undefined when the action is available so the enabled
+  // state keeps whatever native tooltip it would otherwise have. `authority`
+  // additionally requires a beneficiary address to be entered.
+  function disabledReason(action: ActionKey): string | undefined {
+    switch (action) {
+      case "authority":
+        if (canApproveAuthority && !beneficiaryAddress) return "Enter a beneficiary address first.";
+        if (!canApproveAuthority)
+          return "Available on a draft campaign whose authority is not yet approved.";
+        return undefined;
+      case "activate":
+        if (!canActivate)
+          return "Approve artist authority first, then link the on-chain campaign (escrow + campaign ID).";
+        if (!contractAddress || !contractCampaignId)
+          return "Enter the escrow address and contract campaign ID, or use Find on-chain campaign.";
+        return undefined;
+      case "booking":
+        return canConfirmBooking ? undefined : "Enabled once the campaign is funded.";
+      case "fulfillment":
+        return canConfirmFulfillment ? undefined : "Enabled after booking is confirmed.";
+      case "cancel":
+        return canCancel
+          ? undefined
+          : "Available only before final release, while the campaign is draft, active, funded, or booking-confirmed.";
+      case "dispute":
+        return canInitiateDispute
+          ? undefined
+          : "Can be raised only between booking confirmation and final fund release, and only when no dispute is already open.";
+      default:
+        return undefined;
+    }
+  }
   const statusRows = useMemo(
     () => [
       ["Campaign", formatStatus(current.rawStatus)],
@@ -324,6 +362,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
               "Artist authority approved.",
             )}
             disabled={!isAuthenticated || busy || !canApproveAuthority || !beneficiaryAddress}
+            title={disabledReason("authority")}
           >
             {pending === "authority" ? "Approving..." : "Approve authority"}
           </button>
@@ -349,6 +388,14 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
           >
             {discoverBusy ? "Searching chain..." : "Find on-chain campaign"}
           </button>
+          <p className="show-detail__operator-hint">
+            Create the on-chain campaign first (Actions → Smart Contract Deployment →
+            create-show-campaign); its run log prints the CAMPAIGN_ID — or use Find on-chain
+            campaign above.{" "}
+            <a href={OPERATIONS_RUNBOOK_URL} target="_blank" rel="noreferrer noopener">
+              Operations runbook ↗
+            </a>
+          </p>
           {discoverMatches && discoverMatches.length > 1 ? (
             <ul className="show-detail__operator-discover-matches">
               {discoverMatches.map((match) => (
@@ -373,6 +420,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
               "Campaign activated.",
             )}
             disabled={!isAuthenticated || busy || !canActivate || !contractAddress || !contractCampaignId}
+            title={disabledReason("activate")}
           >
             {pending === "activate" ? "Activating..." : "Activate campaign"}
           </button>
@@ -416,6 +464,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
                 "Booking confirmed.",
               )}
               disabled={!isAuthenticated || busy || !canConfirmBooking}
+              title={disabledReason("booking")}
             >
               {pending === "booking" ? "Confirming..." : "Confirm booking"}
             </button>
@@ -432,6 +481,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
                 "Fulfillment confirmed.",
               )}
               disabled={!isAuthenticated || busy || !canConfirmFulfillment}
+              title={disabledReason("fulfillment")}
             >
               {pending === "fulfillment" ? "Confirming..." : "Confirm fulfillment"}
             </button>
@@ -440,6 +490,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
               className="show-detail__operator-danger"
               onClick={() => setConfirmCancelOpen(true)}
               disabled={!isAuthenticated || busy || !canCancel}
+              title={disabledReason("cancel")}
             >
               Cancel to refunds
             </button>
@@ -513,6 +564,7 @@ export function CampaignOperatorPanel({ campaign }: { campaign: Campaign }) {
                   "Dispute raised.",
                 )}
                 disabled={!isAuthenticated || busy || !canInitiateDispute}
+                title={disabledReason("dispute")}
               >
                 {pending === "dispute" ? "Raising..." : "Raise dispute"}
               </button>
