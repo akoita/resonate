@@ -52,4 +52,5 @@ Every sprint plan passes the **Business Model Conformance** check in
 | [2026-06-29](2026-06-29-shows-mvp.md) | Shows MVP — campaign funding & trust escrow | ✅ Closed — over-delivered (12/12) |
 | [2026-06-30](2026-06-30-remix-licensed-remixing.md) | Remix — licensed remixing end-to-end | ✅ Closed 2026-07-04 — 9/9, goal met on staging |
 | [2026-07-06](2026-07-06-vision-sprint-1.md) | Vision Sprint 1 — remix finish + first revenue rails | ✅ Closed 2026-07-05, 12 days early — all P0s/P1s incl. ADR-BM-1…6 accepted; Phase 0 complete |
-| [2026-07-06](2026-07-06-vision-sprint-2-first-real-money.md) | Vision Sprint 2 — first real money (Shows go-live + take-rate) | ▶️ Current |
+| [2026-07-06](2026-07-06-vision-sprint-2-first-real-money.md) | Vision Sprint 2 — first real money (Shows go-live + take-rate) | ✅ Closed 2026-07-06 — goal met: 6% fee loop proven end to end on staging (campaign 3: gross 5.00 / net 4.70 / fee 0.30 USDC, indexer-reconciled); 10%/15% take-rate live; carryovers → Sprint 3 |
+| [2026-07-06](2026-07-06-vision-sprint-3-dependable-shows-ops.md) | Vision Sprint 3 — dependable shows ops (lifecycle smoke + operator usability) | ▶️ Current |
