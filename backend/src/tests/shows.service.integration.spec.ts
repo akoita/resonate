@@ -791,6 +791,21 @@ describe("ShowsService integration", () => {
     expect(resynced).not.toHaveProperty("reconciliationError");
     expect(resynced).not.toHaveProperty("lastEscrowIndexedBlock");
     expect(() => JSON.stringify(resynced)).not.toThrow();
+
+    // #1391: campaigns created before the platform-default payment token env
+    // was set persist paymentTokenAddress = null, which blocks wallet pledge
+    // execution. Re-sync from chain must correct this by adopting the escrow's
+    // authoritative token.
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { paymentTokenAddress: null },
+    });
+    const tokenCorrected = await service.resyncCampaignFromChain(
+      { userId: operatorUserId, role: "operator" },
+      campaign.id,
+    );
+    expect(tokenCorrected.paymentTokenAddress).toBeTruthy();
+    expect(tokenCorrected.paymentTokenAddress!.toLowerCase()).toBe(paymentToken.toLowerCase());
   });
 
   it("rejects invalid beneficiary addresses and records rejected authority reviews", async () => {

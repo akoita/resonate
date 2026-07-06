@@ -1841,22 +1841,44 @@ export class ShowsService {
         client.getBlockNumber(),
       ]);
 
-      const campaignTuple = campaignSnapshot as readonly bigint[];
+      // The tuple mixes hex-string fields (index 3 is `paymentToken`, an
+      // address) with numeric ones, so type it as `unknown[]` and coerce per
+      // field. bigint indices below keep behaving exactly as before.
+      const campaignTuple = campaignSnapshot as readonly unknown[];
       const feeTuple = feeSnapshot as readonly bigint[];
-      const feeBps = feeTuple[0] ?? campaignTuple[16] ?? 0n;
-      const totalFeePaid = feeTuple[1] ?? campaignTuple[17] ?? 0n;
-      const onChainStatusCode = Number(statusSnapshot ?? campaignTuple[15] ?? 0);
+      const feeBps = (feeTuple[0] as bigint | undefined) ?? (campaignTuple[16] as bigint | undefined) ?? 0n;
+      const totalFeePaid = (feeTuple[1] as bigint | undefined) ?? (campaignTuple[17] as bigint | undefined) ?? 0n;
+      const onChainStatusCode = Number(statusSnapshot ?? (campaignTuple[15] as bigint | undefined) ?? 0);
+
+      // #1391: the escrow's payment token is authoritative for a linked
+      // campaign. Adopt it when present so campaigns created before the
+      // platform-default token env was set (paymentTokenAddress = null) become
+      // pledgeable. Treat the zero address as absent.
+      const chainPaymentToken = String(campaignTuple[3] ?? "");
+      const chainPaymentTokenPresent =
+        /^0x[0-9a-fA-F]{40}$/.test(chainPaymentToken) &&
+        chainPaymentToken.toLowerCase() !== "0x0000000000000000000000000000000000000000";
+      const storedPaymentToken = campaign.paymentTokenAddress as string | null | undefined;
+      const shouldAdoptPaymentToken =
+        chainPaymentTokenPresent &&
+        (storedPaymentToken == null || storedPaymentToken.toLowerCase() !== chainPaymentToken.toLowerCase());
+      if (shouldAdoptPaymentToken && storedPaymentToken != null) {
+        this.logger.warn(
+          `Show campaign ${campaign.id} payment token differs from chain; adopting chain value (stored=${storedPaymentToken}, chain=${chainPaymentToken})`,
+        );
+      }
 
       return await prisma.showCampaign.update({
         where: { id: campaign.id },
         data: {
           onChainStatus: showEscrowStatusName(onChainStatusCode),
-          raisedAmountUnits: String(campaignTuple[10] ?? 0n),
-          totalRefundedUnits: String(campaignTuple[11] ?? 0n),
-          totalReleasedUnits: String(campaignTuple[12] ?? 0n),
-          uniqueBackerCount: numberFromChain(campaignTuple[13] ?? 0n, "uniqueBackers"),
+          raisedAmountUnits: String((campaignTuple[10] as bigint | undefined) ?? 0n),
+          totalRefundedUnits: String((campaignTuple[11] as bigint | undefined) ?? 0n),
+          totalReleasedUnits: String((campaignTuple[12] as bigint | undefined) ?? 0n),
+          uniqueBackerCount: numberFromChain((campaignTuple[13] as bigint | undefined) ?? 0n, "uniqueBackers"),
           feeBps: numberFromChain(feeBps, "feeBps"),
           totalFeePaidUnits: String(totalFeePaid),
+          ...(shouldAdoptPaymentToken ? { paymentTokenAddress: chainPaymentToken } : {}),
           lastEscrowIndexedBlock: blockNumber,
           reconciliationError: null,
           reconciliationErrorAt: null,
