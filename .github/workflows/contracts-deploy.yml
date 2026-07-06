@@ -37,8 +37,16 @@ on:
           - set-show-campaign-confirmer
           - pause-show-campaign-escrow
           - create-show-campaign
+          - confirm-show-campaign-booking
+          - confirm-show-campaign-fulfillment
+          - release-show-campaign-funds
           - verify-base-sepolia
           - verify-base-sepolia-sourcify
+      campaign_id:
+        description: Campaign id for lifecycle operations
+        required: false
+        default: ""
+        type: string
       verify_contracts:
         description: BaseScan verification mode for Base Sepolia deploys.
         required: true
@@ -80,6 +88,14 @@ jobs:
             echo "::error::Base Sepolia verification operations require target_network=base-sepolia."
             exit 1
           fi
+          case "${{ inputs.operation }}" in
+            confirm-show-campaign-booking|confirm-show-campaign-fulfillment|release-show-campaign-funds)
+              if [[ -z "${{ inputs.campaign_id }}" ]]; then
+                echo "::error::${{ inputs.operation }} requires campaign_id."
+                exit 1
+              fi
+              ;;
+          esac
 
       - name: Checkout
         uses: actions/checkout@v5
@@ -137,6 +153,7 @@ jobs:
           INPUT_BOOKING_DEADLINE: ${{ vars.BOOKING_DEADLINE }}
           INPUT_DEPOSIT_RELEASE_BPS: ${{ vars.DEPOSIT_RELEASE_BPS }}
           INPUT_DISPUTE_WINDOW_SECONDS: ${{ vars.DISPUTE_WINDOW_SECONDS }}
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
         run: |
           set -euo pipefail
 
@@ -196,6 +213,7 @@ jobs:
             BOOKING_DEADLINE
             DEPOSIT_RELEASE_BPS
             DISPUTE_WINDOW_SECONDS
+            CAMPAIGN_ID
           )
 
           for name in "${optional_names[@]}"; do
@@ -338,6 +356,24 @@ jobs:
                 fi
               done
               ;;
+            confirm-show-campaign-booking)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${CAMPAIGN_ID:-}" ]]; then
+                echo "::error::confirm-show-campaign-booking requires SHOW_CAMPAIGN_ESCROW_ADDRESS and campaign_id."
+                exit 1
+              fi
+              ;;
+            confirm-show-campaign-fulfillment)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${CAMPAIGN_ID:-}" ]]; then
+                echo "::error::confirm-show-campaign-fulfillment requires SHOW_CAMPAIGN_ESCROW_ADDRESS and campaign_id."
+                exit 1
+              fi
+              ;;
+            release-show-campaign-funds)
+              if [[ -z "${SHOW_CAMPAIGN_ESCROW_ADDRESS:-}" || -z "${CAMPAIGN_ID:-}" ]]; then
+                echo "::error::release-show-campaign-funds requires SHOW_CAMPAIGN_ESCROW_ADDRESS and campaign_id."
+                exit 1
+              fi
+              ;;
           esac
 
           case "${{ inputs.target_network }}" in
@@ -459,6 +495,48 @@ jobs:
         if: inputs.operation == 'create-show-campaign'
         run: make create-show-campaign
 
+      - name: Confirm show campaign booking
+        if: inputs.operation == 'confirm-show-campaign-booking'
+        shell: bash
+        env:
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${INPUT_CAMPAIGN_ID}" ]]; then
+            echo "::error::confirm-show-campaign-booking requires campaign_id."
+            exit 1
+          fi
+          export CAMPAIGN_ID="${INPUT_CAMPAIGN_ID}"
+          make confirm-show-campaign-booking
+
+      - name: Confirm show campaign fulfillment
+        if: inputs.operation == 'confirm-show-campaign-fulfillment'
+        shell: bash
+        env:
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${INPUT_CAMPAIGN_ID}" ]]; then
+            echo "::error::confirm-show-campaign-fulfillment requires campaign_id."
+            exit 1
+          fi
+          export CAMPAIGN_ID="${INPUT_CAMPAIGN_ID}"
+          make confirm-show-campaign-fulfillment
+
+      - name: Release show campaign funds
+        if: inputs.operation == 'release-show-campaign-funds'
+        shell: bash
+        env:
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${INPUT_CAMPAIGN_ID}" ]]; then
+            echo "::error::release-show-campaign-funds requires campaign_id."
+            exit 1
+          fi
+          export CAMPAIGN_ID="${INPUT_CAMPAIGN_ID}"
+          make release-show-campaign-funds
+
       - name: Verify Base Sepolia contracts on BaseScan
         if: inputs.operation == 'verify-base-sepolia'
         run: make verify-base-sepolia
@@ -468,7 +546,7 @@ jobs:
         run: make verify-base-sepolia-sourcify
 
       - name: Summarize admin/config operation
-        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'create-show-campaign'
+        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'
         shell: bash
         run: |
           set -euo pipefail
@@ -507,6 +585,21 @@ jobs:
                 echo "- funding deadline: \`${FUNDING_DEADLINE}\`"
                 echo "- booking deadline: \`${BOOKING_DEADLINE}\`"
                 echo "- campaign id: see Forge log line \`CAMPAIGN_ID\`"
+                ;;
+              confirm-show-campaign-booking)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- campaign id: \`${CAMPAIGN_ID}\`"
+                echo "- note: signer must be an allowed confirmer"
+                ;;
+              confirm-show-campaign-fulfillment)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- campaign id: \`${CAMPAIGN_ID}\`"
+                echo "- note: signer must be an allowed confirmer"
+                ;;
+              release-show-campaign-funds)
+                echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
+                echo "- campaign id: \`${CAMPAIGN_ID}\`"
+                echo "- note: release is permissionless after the dispute window; Forge logs total released and fee paid"
                 ;;
             esac
           } >> "${GITHUB_STEP_SUMMARY}"

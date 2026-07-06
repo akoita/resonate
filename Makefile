@@ -191,6 +191,36 @@ create-show-campaign:
 	(cd contracts && forge script script/CreateShowCampaign.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
 	echo "✓ Show campaign create/activate operation complete"
 
+confirm-show-campaign-booking:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be an allowed ShowCampaignEscrow confirmer"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using signer from PRIVATE_KEY to confirm Show campaign booking"; \
+	(cd contracts && forge script script/ConfirmShowCampaignBooking.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ Show campaign booking confirmation operation complete"
+
+confirm-show-campaign-fulfillment:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required; signer must be an allowed ShowCampaignEscrow confirmer"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using signer from PRIVATE_KEY to confirm Show campaign fulfillment"; \
+	(cd contracts && forge script script/ConfirmShowCampaignFulfillment.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ Show campaign fulfillment confirmation operation complete"
+
+release-show-campaign-funds:
+	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
+		echo "PRIVATE_KEY is required"; \
+		exit 1; \
+	fi
+	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	echo "Using signer from PRIVATE_KEY to release Show campaign funds"; \
+	(cd contracts && forge script script/ReleaseShowCampaignFunds.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	echo "✓ Show campaign funds release operation complete"
+
 verify-base-sepolia:
 	BASE_SEPOLIA_RPC_URL="$(BASE_SEPOLIA_RPC_URL)" BROADCAST_FILE="$(BROADCAST_FILE)" ./contracts/scripts/verify-base-sepolia.sh
 
