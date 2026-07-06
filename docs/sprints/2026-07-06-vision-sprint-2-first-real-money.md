@@ -1,5 +1,19 @@
 # Sprint Plan: Vision Sprint 2 — First Real Money (Staging Edition)
 
+> **CLOSED — 2026-07-06, goal met.** Both rails proven on staging: the full
+> pledge→release loop ran end to end on Base Sepolia (escrow campaign 3:
+> gross 5.00 → net 4.70 to the artist, fee 0.30 USDC = exactly 6% to the fee
+> recipient, `FeeCharged` on-chain, indexer-reconciled to `released` with the
+> exact breakdown), and `StemMarketplaceV2` enforces the accepted 10%/15%
+> take-rate. The lifecycle is one-click operable via the contracts ops console
+> (#1394/#1395). Live-UAT along the way drove ~15 merged fixes (fee hydration
+> #1364/#1366, chip wiring #1367/#1379/#1385, serialization #1386, payment
+> token #1391/#1393, campaign page redesign #1373–#1384). Open items #1355,
+> #1356, #1363 carry over to
+> [Vision Sprint 3](2026-07-06-vision-sprint-3-dependable-shows-ops.md),
+> which converts the manual UAT into an automated lifecycle smoke (#1392) and
+> removes the operator friction found here (#1390).
+
 > **RE-SCOPE — 2026-07-05 (@akoita):** the project stays in dev/test/staging
 > until a **stable and coherent version** exists; **no production concerns for
 > now**. #1271 (production go-live) is pulled out of this sprint — its gate
