@@ -376,6 +376,15 @@
   gap: 18px;
 }
 
+/* #1356: inline deadline validation error under a form field. */
+.shows-create__field-error {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f87171;
+}
+
 .shows-create__panel {
   display: grid;
   align-content: start;

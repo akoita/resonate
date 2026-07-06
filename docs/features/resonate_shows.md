@@ -210,6 +210,30 @@ lifecycle button (Approve authority, Activate, Confirm booking, Confirm
 fulfillment, Cancel, Raise dispute) shows its unlock condition in a `title`
 tooltip while disabled. This is guidance only — no behavior or gate changed.
 
+**Deadline & dispute-window validation (#1356).** Create and edit mirror the
+`ShowCampaignEscrow.createCampaign` bounds so a draft can never carry terms the
+chain would revert on at activation:
+
+- the funding `deadline` must be in the future (`> now`);
+- when a `bookingDeadline` is set it must be **strictly after** the funding
+  deadline (the contract reverts `InvalidDeadline` when
+  `bookingDeadline <= deadline`);
+- `disputeWindowSeconds` must be within `[3600, 7776000]` (1 hour to 90 days —
+  the contract's `MIN_DISPUTE_WINDOW`/`MAX_DISPUTE_WINDOW`).
+
+These run in the shared `assertContractValidTerms` helper wired into
+`createDraftCampaign`, `updateDraftCampaign`, and `approveAuthority`, and each
+violation returns HTTP 400 naming the offending field. The create/edit form also
+mirrors the rule client-side (inline errors on the funding/booking deadline
+fields) as a UX shortcut — the backend stays the source of truth.
+
+Because approval **locks** the terms, `approveAuthority` re-validates the
+**currently persisted** deadline/dispute values before granting authorized
+status. A draft created before this validation existed (an invalid legacy
+record) cannot be approved: the operator gets a 400 directing them to edit the
+draft's deadlines first, so the platform never locks terms the escrow would
+reject at activation.
+
 **Approved terms are immutable.** The moment authority is approved (or an
 operator stands a campaign up already authorized), the campaign's fan-risk terms
 are snapshotted into a tamper-evident hash (`ShowCampaign.approvedTermsHash`,
@@ -235,6 +259,13 @@ clear the snapshot the same way. Every transition — requested, approved,
 rejected, revoked, expired, and the beneficiary it bound — writes a
 `ShowCampaignEvent`, and the approval event records the `approvedTermsHash`, so
 "what exactly did the artist approve" is auditable after the fact.
+
+This is also the **correction path for a mistake in locked terms** (e.g. a bad
+deadline discovered after approval, with zero backers and no on-chain link):
+revoke authority → edit the deadlines → request → re-approve. There are no
+silent edits — the fix leaves a visible revoke → edit → re-approve event trail.
+The operator panel surfaces a hint pointing operators to this path when a
+campaign is authorized with zero backers.
 
 ## Evidence, Disputes & Release Authority (MVP)
 
