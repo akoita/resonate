@@ -370,9 +370,15 @@ from the JWT, never the request body.
 
 - API (#896/#1167, shipped behind config): `POST /remix/projects/:id/generate` —
   owner-only, re-runs eligibility before generating, requires a prompt for
-  prompted modes (and strips prompts for stem mix), checks constraint bounds
+  prompted modes (and strips prompts for stem mix), **screens the prompt for
+  safety (#1343)** before any queue or credit debit, checks constraint bounds
   before enqueue, rejects duplicate active jobs, and returns immediately with
-  `generationMetadata.status = pending`. Explicit `retry=true` replaces a
+  `generationMetadata.status = pending`. Prompt-safety: the self-hosted
+  generation path has no vendor filter, so `PromptModerationService` rejects
+  unambiguous PUP-2–4 violations (illegal/malicious incl. safety-bypass,
+  voice-impersonation of a real person, sexually explicit, and zero-tolerance
+  minor-sexualization) with HTTP 422 `prompt_rejected` + a `remix.policy_rejected`
+  event; precision-first so legitimate (even edgy) music prompts pass. Explicit `retry=true` replaces a
   completed or failed job; legacy `force=true` is still accepted as a
   compatibility alias and should not be used by new clients. The BullMQ worker
   calls the configured provider and records terminal `completed` or `failed`
