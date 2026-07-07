@@ -253,6 +253,15 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["userId", "amountCents", "reason"],
   },
   {
+    // #1334: a user out of credits asked an operator to top them up (staging);
+    // fans out to operator in-app notifications.
+    eventName: "generation.credits_requested",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: ["userId", "note"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability } from "../../lib/api";
+import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability, requestGenerationCredits } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -53,8 +53,26 @@ export default function CreatePageContent() {
   const [isReplaceConfirmOpen, setIsReplaceConfirmOpen] = useState(false);
   const [publishActionQueue, setPublishActionQueue] = useState<'library' | 'demucs' | null>(null);
   const [hasPublished, setHasPublished] = useState(false);
+  const [creditRequestState, setCreditRequestState] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   const { state, result, error, startGeneration, reset, restoreState } = useGeneration(token, artistId);
+
+  // The out-of-credits (402) failure carries the backend's "generation credits"
+  // message; surface an operator-request action only for that case.
+  const isCreditsError = !!error && /generation credits/i.test(error);
+
+  const handleRequestCredits = useCallback(async () => {
+    if (!token || creditRequestState !== 'idle') return;
+    setCreditRequestState('sending');
+    try {
+      await requestGenerationCredits(token);
+      setCreditRequestState('sent');
+      addToast({ type: 'success', title: 'Operator notified', message: 'You’ll get generation credits soon.' });
+    } catch {
+      setCreditRequestState('idle');
+      addToast({ type: 'error', title: 'Request failed', message: 'Could not send the request. Please try again.' });
+    }
+  }, [token, creditRequestState, addToast]);
 
   // Restore session state on mount
   useEffect(() => {
@@ -460,14 +478,29 @@ export default function CreatePageContent() {
             </svg>
             <div>
               <p style={{ margin: 0 }}>{error}</p>
-              <button
-                className="result-action-btn"
-                style={{ marginTop: "var(--space-3)" }}
-                onClick={() => { reset(); void startFreshGeneration(); }}
-                type="button"
-              >
-                🔄 Try Again
-              </button>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)", marginTop: "var(--space-3)" }}>
+                <button
+                  className="result-action-btn"
+                  onClick={() => { reset(); void startFreshGeneration(); }}
+                  type="button"
+                >
+                  🔄 Try Again
+                </button>
+                {isCreditsError && (
+                  <button
+                    className="result-action-btn"
+                    onClick={handleRequestCredits}
+                    disabled={!token || creditRequestState !== 'idle'}
+                    type="button"
+                  >
+                    {creditRequestState === 'sent'
+                      ? '✓ Operator notified'
+                      : creditRequestState === 'sending'
+                        ? 'Sending…'
+                        : '📨 Request credits from an operator'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

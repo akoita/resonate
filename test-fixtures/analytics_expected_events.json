@@ -258,6 +258,15 @@
     }
   },
   {
+    "eventName": "generation.credits_requested",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "userId": "user-1",
+      "note": "trying the Afrobeat preset"
+    }
+  },
+  {
     "eventName": "stems.uploaded",
     "payload": {
       "releaseId": "release-1",

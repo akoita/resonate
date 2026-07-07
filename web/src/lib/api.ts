@@ -3936,6 +3936,21 @@ export async function getGenerationStatus(token: string, jobId: string) {
   );
 }
 
+/**
+ * Ask an operator to top up your generation credits (#1334). Used from the
+ * out-of-credits state; fans out to operator in-app notifications.
+ */
+export async function requestGenerationCredits(token: string, note?: string) {
+  return apiRequest<{ status: string }>(
+    "/credits/request",
+    {
+      method: "POST",
+      body: JSON.stringify(note?.trim() ? { note: note.trim() } : {}),
+    },
+    token
+  );
+}
+
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;

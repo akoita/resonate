@@ -6,9 +6,14 @@ import {
   ContractDisputeFiledEvent,
   ContractDisputeResolvedEvent,
   ContractDisputeAppealedEvent,
+  GenerationCreditsRequestedEvent,
 } from "../../events/event_types";
+import { parseEnvList } from "../../config/env";
 
 const prisma = new PrismaClient();
+
+/** Window in which a repeat credit request from the same user is coalesced. */
+const CREDIT_REQUEST_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
 
 interface NotificationPayload {
   walletAddress: string;
@@ -29,7 +34,8 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     this.subscribeToDisputeEvents();
-    this.logger.log("Notification service initialized — listening for dispute events");
+    this.subscribeToCreditRequests();
+    this.logger.log("Notification service initialized — listening for dispute + credit-request events");
   }
 
   onModuleDestroy() {
@@ -123,6 +129,68 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
         }
       }),
     );
+  }
+
+  private subscribeToCreditRequests() {
+    // A user out of generation credits (#1334) → notify every configured
+    // operator/admin so they can grant a top-up. Fans out to the same in-app
+    // NotificationBell operators already use; the operator then runs
+    // `make grant-credits` (or POST /credits/grant).
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "generation.credits_requested",
+        async (event: GenerationCreditsRequestedEvent) => {
+          const requesterId = event.userId?.toLowerCase();
+          if (!requesterId) return;
+
+          const operators = this.resolveOperatorWallets();
+          if (operators.length === 0) {
+            this.logger.warn(
+              "Credit request received but no OPERATOR_ADDRESSES/ADMIN_ADDRESSES configured — nobody to notify",
+            );
+            return;
+          }
+
+          // Coalesce repeat requests (reloads, double-clicks) within the window
+          // so a user cannot flood operators.
+          const since = new Date(Date.now() - CREDIT_REQUEST_DEDUPE_WINDOW_MS);
+          const recent = await prisma.notification.findFirst({
+            where: {
+              type: "credits_requested",
+              message: { contains: requesterId },
+              createdAt: { gte: since },
+            },
+          });
+          if (recent) {
+            this.logger.log(`Credit request from ${requesterId} coalesced (recent notification exists)`);
+            return;
+          }
+
+          const note = event.note?.trim();
+          const message =
+            `A user is out of generation credits and asked for a top-up: ${requesterId}.` +
+            (note ? ` Note: "${note}".` : "") +
+            ` Grant with: make grant-credits USER=${requesterId} AMOUNT=<cents>.`;
+
+          for (const walletAddress of operators) {
+            await this.createNotification({
+              walletAddress,
+              type: "credits_requested",
+              title: "Credit request",
+              message,
+            });
+          }
+          this.logger.log(`Credit request from ${requesterId} → notified ${operators.length} operator(s)`);
+        },
+      ),
+    );
+  }
+
+  /** Configured operator + admin wallets (lower-cased, de-duplicated). */
+  private resolveOperatorWallets(): string[] {
+    const operators = parseEnvList(process.env.OPERATOR_ADDRESSES, { lowercase: true });
+    const admins = parseEnvList(process.env.ADMIN_ADDRESSES, { lowercase: true });
+    return Array.from(new Set([...operators, ...admins]));
   }
 
   // ============ Core Methods ============

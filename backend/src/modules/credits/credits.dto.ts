@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsString, Max, MaxLength, Min } from "class-validator";
+import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
 
 /**
  * Operator/promo grant request (#1334). Credits are USD cents; the operator
@@ -19,4 +19,15 @@ export class GrantCreditsDto {
   @IsNotEmpty()
   @MaxLength(120)
   reason!: string;
+}
+
+/**
+ * A user out of credits asking an operator to top them up (#1334). The caller's
+ * identity comes from the JWT — the body carries only an optional short note.
+ */
+export class RequestCreditsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(280)
+  note?: string;
 }

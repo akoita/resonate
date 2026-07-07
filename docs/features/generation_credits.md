@@ -105,10 +105,24 @@ The `make grant-credits` path writes straight to the ledger (no operator JWT
 needed) but, run standalone, does not emit a `generation.credits_granted`
 analytics event — use the API endpoint when the grant must show in analytics.
 
+## Request a Top-up (staging)
+
+Rather than dead-ending a user at the 0-credit wall, the out-of-credits screen
+offers **Request credits from an operator**. `POST /credits/request` (JWT)
+publishes a `generation.credits_requested` domain event; `NotificationService`
+fans it out to the configured operator/admin wallets (`OPERATOR_ADDRESSES` +
+`ADMIN_ADDRESSES`) as in-app notifications (the same `NotificationBell`
+operators already use), coalescing repeat requests from the same user within a
+10-minute window. Each notification carries the requester and a ready-to-run
+`make grant-credits USER=<id> AMOUNT=<cents>` hint. Delivery is in-app only for
+now; email/Slack fan-out is a future enhancement.
+
 ## Surfaces
 
 - API:
   - `GET /credits/balance` (JWT) — caller's balance + recent ledger entries.
+  - `POST /credits/request` (JWT) — ask an operator for a top-up (fans out to
+    operator notifications).
   - `POST /credits/grant` (JWT + `@Roles('admin','operator')`).
 - Service: `backend/src/modules/credits/generation-credits.service.ts`
   (`GenerationCreditsService`: `costForDurationCents`, `getBalance`, `grant`,
@@ -122,7 +136,8 @@ analytics event — use the API endpoint when the grant must show in analytics.
 - Data model: `GenerationCreditAccount`, `GenerationCreditTransaction`
   (migration `20260707120337_generation_credit_ledger`).
 - Analytics events (personal tier): `generation.credits_debited`,
-  `generation.credits_insufficient`, `generation.credits_granted`.
+  `generation.credits_insufficient`, `generation.credits_granted`,
+  `generation.credits_requested`.
 
 ## Verification
 

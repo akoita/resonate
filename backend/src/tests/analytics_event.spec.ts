@@ -209,6 +209,7 @@ describe("analytics event envelope", () => {
       "generation.credits_debited",
       "generation.credits_insufficient",
       "generation.credits_granted",
+      "generation.credits_requested",
       "recommendation.generated",
       "stems.uploaded",
       "stems.processed",
