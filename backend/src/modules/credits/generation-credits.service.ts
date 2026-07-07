@@ -7,7 +7,8 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { prisma } from "../../db/prisma";
-import { AnalyticsIngestService } from "../analytics/analytics_ingest.service";
+import { EventBus } from "../shared/event_bus";
+import type { ResonateEvent } from "../../events/event_types";
 
 /**
  * Default sell price for AI generation, in USD cents per 30 seconds (#1334,
@@ -78,7 +79,7 @@ export class GenerationCreditsService {
 
   constructor(
     @Optional() private readonly configService?: ConfigService,
-    @Optional() private readonly analytics?: AnalyticsIngestService,
+    @Optional() private readonly eventBus?: EventBus,
   ) {
     const raw = this.configService?.get<string | number>(
       "GENERATION_PRICE_CENTS_PER_30S",
@@ -323,17 +324,21 @@ export class GenerationCreditsService {
       | "generation.credits_granted",
     payload: Record<string, unknown>,
   ): Promise<void> {
-    if (!this.analytics) {
+    if (!this.eventBus) {
       return;
     }
     try {
-      await this.analytics.ingest({
+      // Emit as a domain event; the analytics domain-event bridge forwards it
+      // to the ingest pipeline (see analytics_domain_event_bridge.service.ts).
+      // This keeps CreditsModule off the heavyweight AnalyticsModule (which
+      // pulls in Agents/GenerationModule and would form an import cycle) and
+      // depending only on SharedModule's EventBus, per shared_event_bus.spec.ts.
+      this.eventBus.publish({
         eventName,
-        privacyTier: "personal",
-        consentBasis: "platform_analytics:v1",
-        producer: "generation-service",
-        payload,
-      });
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        ...payload,
+      } as unknown as ResonateEvent);
     } catch (error) {
       this.logger.warn(
         `Failed to publish ${eventName}: ${error instanceof Error ? error.message : String(error)}`,

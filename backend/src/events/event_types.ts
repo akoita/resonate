@@ -1262,6 +1262,29 @@ export interface GenerationFailedEvent extends BaseEvent {
   error: string;
 }
 
+export interface GenerationCreditsGrantedEvent extends BaseEvent {
+  eventName: "generation.credits_granted";
+  userId: string;
+  amountCents: number;
+  reason: string;
+}
+
+export interface GenerationCreditsDebitedEvent extends BaseEvent {
+  eventName: "generation.credits_debited";
+  userId: string;
+  amountCents: number;
+  jobId: string | null;
+  kind: string;
+}
+
+export interface GenerationCreditsInsufficientEvent extends BaseEvent {
+  eventName: "generation.credits_insufficient";
+  userId: string;
+  requiredCents: number;
+  balanceCents: number;
+  kind: string;
+}
+
 // ============ Realtime Events ============
 
 export interface RealtimeAudioEvent extends BaseEvent {
@@ -1407,6 +1430,9 @@ export type ResonateEvent =
   | GenerationProgressEvent
   | GenerationCompletedEvent
   | GenerationFailedEvent
+  | GenerationCreditsGrantedEvent
+  | GenerationCreditsDebitedEvent
+  | GenerationCreditsInsufficientEvent
   | RealtimeAudioEvent
   | RealtimeDisconnectedEvent
   | MarketplaceListingNotifyEvent
