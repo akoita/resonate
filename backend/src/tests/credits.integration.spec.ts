@@ -186,3 +186,89 @@ describe("GenerationCreditsService integration", () => {
     }
   });
 });
+
+describe("GenerationCreditsService signup starter (#1334 onboarding)", () => {
+  const STARTER_PREFIX = `credits_starter_${Date.now()}_`;
+  const NEW_USER = `${STARTER_PREFIX}new`;
+  const SPENT_USER = `${STARTER_PREFIX}spent`;
+
+  // Starter enabled at 100¢; price stays at the 10¢/30s default (so a 1-min /
+  // 20¢ generation fits inside the starter).
+  const starterService = new GenerationCreditsService({
+    get: (key: string, fallback?: unknown) =>
+      key === "GENERATION_CREDITS_SIGNUP_STARTER_CENTS" ? 100 : fallback,
+  } as any);
+
+  beforeAll(async () => {
+    await prisma.user.create({
+      data: { id: NEW_USER, email: `${NEW_USER}@test.resonate` },
+    });
+    await prisma.user.create({
+      data: { id: SPENT_USER, email: `${SPENT_USER}@test.resonate` },
+    });
+  });
+
+  afterAll(async () => {
+    const ids = [NEW_USER, SPENT_USER];
+    await prisma.generationCreditTransaction
+      .deleteMany({ where: { userId: { in: ids } } })
+      .catch(() => {});
+    await prisma.generationCreditAccount
+      .deleteMany({ where: { userId: { in: ids } } })
+      .catch(() => {});
+    await prisma.user.deleteMany({ where: { id: { in: ids } } }).catch(() => {});
+  });
+
+  it("provisions the starter on first balance read, exactly once", async () => {
+    const first = await starterService.getBalance(NEW_USER);
+    expect(first.balanceCents).toBe(100);
+    expect(
+      first.recentTransactions.filter((t) => t.reason === "signup_starter"),
+    ).toHaveLength(1);
+
+    // Idempotent: a second read does not hand out a second free starter.
+    const second = await starterService.getBalance(NEW_USER);
+    expect(second.balanceCents).toBe(100);
+    expect(
+      (await ledger(NEW_USER)).filter((t) => t.reason === "signup_starter"),
+    ).toHaveLength(1);
+  });
+
+  it("lets a brand-new user's first generation succeed by self-provisioning the starter", async () => {
+    // SPENT_USER has never been touched: a 20¢ (1-min) debit provisions 100¢
+    // then charges, leaving 80¢ — no 402 wall.
+    const after = await starterService.debit(
+      SPENT_USER,
+      20,
+      "lyria_generation",
+      "starter-job",
+      "lyria",
+    );
+    expect(after).toBe(80);
+    const txns = await ledger(SPENT_USER);
+    expect(txns.filter((t) => t.reason === "signup_starter")).toHaveLength(1);
+    expect(txns.find((t) => t.jobId === "starter-job")).toMatchObject({
+      type: "debit",
+      amountCents: 20,
+      balanceAfterCents: 80,
+    });
+  });
+
+  it("does NOT re-grant the starter to an account that already spent down to 0", async () => {
+    // Drain SPENT_USER from 80¢ to exactly 0.
+    await starterService.debit(
+      SPENT_USER,
+      80,
+      "lyria_generation",
+      "drain-job",
+      "lyria",
+    );
+    expect((await starterService.getBalance(SPENT_USER)).balanceCents).toBe(0);
+
+    // Re-reading balance at 0 must not resurrect a second free starter.
+    expect((await starterService.getBalance(SPENT_USER)).balanceCents).toBe(0);
+    expect(
+      (await ledger(SPENT_USER)).filter((t) => t.reason === "signup_starter"),
+    ).toHaveLength(1);
+  });
+});

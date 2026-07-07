@@ -98,6 +98,18 @@ deploy-all: deploy-backend deploy-frontend deploy-demucs
 seed-shows:
 	cd backend && ALLOW_SAMPLE_SHOW_FIXTURES=true npm run fixtures:shows
 
+# Operator generation-credit grant (#1334). Top up any account's credit balance
+# in one command — the operator ergonomics behind the operator-only
+# POST /credits/grant. Runs against whatever DATABASE_URL is in the env.
+#   make grant-credits USER=<userId> AMOUNT=<cents> [REASON=<text>]
+# AMOUNT is USD cents (100 = $1.00). Also seeds new users automatically via the
+# GENERATION_CREDITS_SIGNUP_STARTER_CENTS starter allowance; use this for
+# top-ups beyond that free tier.
+grant-credits:
+	@test -n "$(USER)" || (echo "USER is required: make grant-credits USER=<userId> AMOUNT=<cents> [REASON=<text>]" && exit 2)
+	@test -n "$(AMOUNT)" || (echo "AMOUNT (cents) is required: make grant-credits USER=<userId> AMOUNT=<cents> [REASON=<text>]" && exit 2)
+	cd backend && npm run credits:grant -- --user "$(USER)" --amount "$(AMOUNT)" $(if $(REASON),--reason "$(REASON)",)
+
 # Refresh the sample Show campaigns on a DEPLOYED env via a one-off Cloud Run Job
 # built from the deployed backend image. Supply GCP_PROJECT, GCP_REGION,
 # BACKEND_IMAGE, SHOWS_SEED_JOB, SHOWS_SEED_SECRETS (see the script header and

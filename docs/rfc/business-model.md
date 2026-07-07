@@ -228,12 +228,19 @@ default `10`** = $0.10 per 30 seconds (internal cost baseline ~6¢ →
 `generation.service.ts COST_PER_30_SECONDS = 0.06`; ~40% margin). Cost of a
 generation = `ceil((durationSeconds / 30) × priceCents)` cents. This meter is a
 cost+margin tool charge, entirely separate from the fan→artist transaction
-split — the 85%+ artist share (ADR-BM-4) is untouched. **Status (#1334):** the
-meter (debit / zero-balance block / refund + analytics) is live on staging;
-credits enter only via the operator/promo `POST /credits/grant` path. Live fiat
-top-up (Stripe) is the deferred production flip, gated on the SA3 commercial-use
-license review (#1193) — the license blocker gates *charging money*, not the
-internal meter, so building the meter now is license-safe.
+split — the 85%+ artist share (ADR-BM-4) is untouched. **Free starter allowance
+(single source):** new accounts are provisioned a one-time free tier on first
+use, **`GENERATION_CREDITS_SIGNUP_STARTER_CENTS`, default `0` (disabled);
+staging `100`** = $1.00 ≈ 5 min of generation. This is a customer-acquisition
+free tier (the "free allowances only via promo credits, never unmetered access"
+rule of ADR-BM-3 — it is a metered, finite, per-account grant, not unmetered
+access) and it subsidises **no** fan→artist payout, so ADR-BM-4 red lines are
+untouched. **Status (#1334):** the meter (debit / zero-balance block / refund +
+analytics) is live on staging; beyond the starter, credits enter only via the
+operator/promo grant path (`POST /credits/grant` or `make grant-credits`). Live
+fiat top-up (Stripe) is the deferred production flip, gated on the SA3
+commercial-use license review (#1193) — the license blocker gates *charging
+money*, not the internal meter, so building the meter now is license-safe.
 
 ### Layer 3 — Stem Licensing Marketplace (the Revenue Core)
 
