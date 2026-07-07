@@ -71,8 +71,11 @@ describe("GenerationCreditsService integration", () => {
     const balance = await service.grant(USER, 100, "promo_grant");
     expect(balance).toBe(100);
 
-    const { balanceCents, recentTransactions } = await service.getBalance(USER);
+    const { balanceCents, priceCentsPer30s, recentTransactions } = await service.getBalance(USER);
     expect(balanceCents).toBe(100);
+    // Balance carries the price so clients can render remaining capacity
+    // (100¢ ÷ 10¢/30s = 5 min) without hardcoding it.
+    expect(priceCentsPer30s).toBe(10);
     expect(recentTransactions[0]).toMatchObject({
       type: "grant",
       amountCents: 100,

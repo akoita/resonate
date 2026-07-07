@@ -120,10 +120,17 @@ now; email/Slack fan-out is a future enhancement.
 ## Surfaces
 
 - API:
-  - `GET /credits/balance` (JWT) — caller's balance + recent ledger entries.
+  - `GET /credits/balance` (JWT) — caller's `balanceCents`, `priceCentsPer30s`,
+    and recent ledger entries.
   - `POST /credits/request` (JWT) — ask an operator for a top-up (fans out to
     operator notifications).
   - `POST /credits/grant` (JWT + `@Roles('admin','operator')`).
+- UI: a **Credits** cell in the Create-page meter strip
+  ([`web/src/app/create/CreatePageContent.tsx`](web/src/app/create/CreatePageContent.tsx))
+  shows remaining capacity as time + 1-min tracks (e.g. "≈ 5 min · 5 tracks"),
+  fed by `getCreditsBalance` and refreshed after each generation so it
+  decrements live. The endpoint returns `priceCentsPer30s` so the client renders
+  capacity without hardcoding the price.
 - Service: `backend/src/modules/credits/generation-credits.service.ts`
   (`GenerationCreditsService`: `costForDurationCents`, `getBalance`, `grant`,
   `debit`, `refund`, `ensureSignupStarter`; `InsufficientCreditsException`).
@@ -152,7 +159,9 @@ now; email/Slack fan-out is a future enhancement.
   commercial-use license review (#1193). No live money changes hands in this
   slice.
 - Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
-- A listener/artist-facing balance UI is not part of this slice.
+- A **remaining-credit display** now ships on the Create page (capacity as
+  time + tracks). A fuller standalone usage-history view (the ledger is already
+  returned by `GET /credits/balance`) is a possible follow-up.
 
 ## Links
 

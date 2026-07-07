@@ -6,7 +6,7 @@ import Link from "next/link";
 import AuthGate from "../../components/auth/AuthGate";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
-import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability, requestGenerationCredits } from "../../lib/api";
+import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability, requestGenerationCredits, getCreditsBalance, GenerationCreditBalance } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
@@ -29,6 +29,33 @@ const DURATION_OPTIONS = [
   { value: 120 as const, label: "2 min" },
   { value: 180 as const, label: "3 min" },
 ];
+
+/**
+ * Turn a credit balance (USD cents) into remaining generation capacity, using
+ * the price the balance endpoint reports (#1334). Displayed as time + 1-min
+ * tracks, e.g. "≈ 5 min · 5 tracks", so users read it like an LLM usage quota
+ * rather than a dollar figure.
+ */
+function formatCreditCapacity(balanceCents: number, priceCentsPer30s: number) {
+  const totalSeconds = priceCentsPer30s > 0 ? (balanceCents / priceCentsPer30s) * 30 : 0;
+  const minutes = totalSeconds / 60;
+  const tracks = Math.floor(totalSeconds / 60); // whole 1-minute tracks
+  let minLabel: string;
+  if (minutes >= 1) {
+    const rounded = Math.round(minutes * 10) / 10;
+    minLabel = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
+  } else if (totalSeconds > 0) {
+    minLabel = "<1";
+  } else {
+    minLabel = "0";
+  }
+  return {
+    minLabel,
+    tracks,
+    empty: balanceCents <= 0,
+    low: balanceCents > 0 && tracks < 1,
+  };
+}
 
 export default function CreatePageContent() {
   const { token, status } = useAuth();
@@ -53,6 +80,7 @@ export default function CreatePageContent() {
   const [isReplaceConfirmOpen, setIsReplaceConfirmOpen] = useState(false);
   const [publishActionQueue, setPublishActionQueue] = useState<'library' | 'demucs' | null>(null);
   const [hasPublished, setHasPublished] = useState(false);
+  const [credits, setCredits] = useState<GenerationCreditBalance | null>(null);
   const [creditRequestState, setCreditRequestState] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   const { state, result, error, startGeneration, reset, restoreState } = useGeneration(token, artistId);
@@ -118,8 +146,20 @@ export default function CreatePageContent() {
       getGenerationAnalytics(token)
         .then(setAnalytics)
         .catch(() => { /* ignore */ });
+      getCreditsBalance(token)
+        .then(setCredits)
+        .catch(() => { /* ignore */ });
     }
   }, [token, status]);
+
+  // Refresh the meters (credit balance + generation count) each time a
+  // generation finishes, so the CREDITS cell decrements live.
+  useEffect(() => {
+    if (state === "complete" && token) {
+      getGenerationAnalytics(token).then(setAnalytics).catch(() => { /* ignore */ });
+      getCreditsBalance(token).then(setCredits).catch(() => { /* ignore */ });
+    }
+  }, [state, token]);
 
   const toggleStyle = useCallback((preset: typeof STYLE_PRESETS[0]) => {
     setActiveStyles((prev) => {
@@ -397,6 +437,23 @@ export default function CreatePageContent() {
           {/* Analytics Info Strip */}
           {analytics && (
             <div className="create-analytics-strip">
+              {credits && (() => {
+                const cap = formatCreditCapacity(credits.balanceCents, credits.priceCentsPer30s);
+                return (
+                  <>
+                    <div className="create-analytics-item">
+                      <span className="create-analytics-label">Credits</span>
+                      <span
+                        className={`create-analytics-value rate-status ${cap.empty ? "exhausted" : cap.low ? "low" : "ok"}`}
+                        title={`${credits.balanceCents}¢ remaining · ~${cap.tracks} × 1-min tracks`}
+                      >
+                        {cap.empty ? "0 — top up" : `≈ ${cap.minLabel} min · ${cap.tracks} tracks`}
+                      </span>
+                    </div>
+                    <div className="create-analytics-divider" />
+                  </>
+                );
+              })()}
               <div className="create-analytics-item">
                 <span className="create-analytics-label">Generations</span>
                 <span className="create-analytics-value">{analytics.totalGenerations}</span>
