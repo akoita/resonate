@@ -31,7 +31,7 @@ jobs:
     steps:
       # The action restores trusted config from origin/main and reads the diff,
       # so the repo must be checked out first (otherwise: "not a git repository").
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
