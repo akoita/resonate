@@ -616,7 +616,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "Generating uses credits",
-            text: "AI generation runs on prepaid credits — longer tracks cost more. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged.",
+            text: "AI generation runs on prepaid credits — longer tracks cost more. The Credits meter above the Generate button shows roughly how much generation you have left (in minutes and tracks) and updates after each track. New accounts start with a small free allowance so you can try it right away. Once that runs out, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged.",
           },
           {
             kind: "callout",

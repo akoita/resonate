@@ -3951,6 +3951,30 @@ export async function requestGenerationCredits(token: string, note?: string) {
   );
 }
 
+export type GenerationCreditTransaction = {
+  id: string;
+  type: string;
+  amountCents: number;
+  reason: string;
+  jobId: string | null;
+  balanceAfterCents: number;
+  createdAt: string;
+};
+
+export type GenerationCreditBalance = {
+  balanceCents: number;
+  priceCentsPer30s: number;
+  recentTransactions: GenerationCreditTransaction[];
+};
+
+/**
+ * The caller's remaining generation-credit balance + recent usage ledger
+ * (#1334). Reading it also provisions the free signup starter on first touch.
+ */
+export async function getCreditsBalance(token: string) {
+  return apiRequest<GenerationCreditBalance>("/credits/balance", {}, token);
+}
+
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;

@@ -64,6 +64,9 @@ export class InsufficientCreditsException extends HttpException {
 
 export interface GenerationCreditBalance {
   balanceCents: number;
+  /** Sell price in cents per 30s, so clients can render remaining capacity
+   * (minutes / tracks) without hardcoding the price. */
+  priceCentsPer30s: number;
   recentTransactions: Array<{
     id: string;
     type: string;
@@ -211,6 +214,7 @@ export class GenerationCreditsService {
     ]);
     return {
       balanceCents: account?.balanceCents ?? 0,
+      priceCentsPer30s: this.priceCentsPer30s,
       recentTransactions: recentTransactions.map((txn) => ({
         id: txn.id,
         type: txn.type,
