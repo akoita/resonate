@@ -1,5 +1,32 @@
 # Sprint Plan: Vision Sprint 4 — Portable Deployments
 
+> **CLOSED — 2026-07-07, goal met (all 5 items).** Migrating the deployment to a
+> fresh GCP project now preserves every user account and all app content:
+> - **iac#188** — a data-plane migration tool (Cloud SQL export→transfer→import +
+>   GCS content), dry-run by default, fail-closed preflight on the identity
+>   invariants, source never mutated.
+> - **#1407** — identity continuity: the preflight guarantees the AA/chain
+>   invariants + carries `ENCRYPTION_SECRET`, and `resolve_identity` (a
+>   deterministic read-only diagnostic) makes continuity **provable** — proven by
+>   a simulated dump→restore test.
+> - **#1408** — a verification gate (row-count parity + identity resolution +
+>   indexer-cursor + content) that BLOCKS cutover until the target is proven
+>   green; decision logic pure and unit-tested.
+> - **iac#186** — durable content by default: found and fixed a **live
+>   content-loss bug** (the content bucket auto-deleted all masters/artwork after
+>   30 days); auto-delete is now opt-in, off by default.
+> - **iac#187** — a complete migration runbook with copy-paste verify commands,
+>   ~15–30 min downtime, and trivial rollback (source stays intact).
+>
+> The correctness spine — move safely, guarantee identity, prove it worked before
+> decommissioning — is complete. First real migration is operator-validated later
+> (against a live target project), by design. Feasibility rested on the finding
+> that identity is anchored to the device passkey + a deterministic on-chain
+> smart account, so the whole feature reduced to moving one Postgres DB + content
+> blobs + three invariants. Implemented by Opus 4.8 / Fable (Codex at weekly
+> limit); every item reviewed and gated by Fable. Design:
+> [`resonate-iac/docs/gcp-project-data-migration-design.md`](https://github.com/akoita/resonate-iac/blob/main/docs/gcp-project-data-migration-design.md).
+
 **Dates:** Mon 2026-07-07 → Fri 2026-07-18 (10 working days, indicative)
 **Team:** 1 engineer ([@akoita](https://github.com/akoita)) + AI agents
 **Milestone:** [Vision Sprint 4: portable deployments](https://github.com/akoita/resonate/milestone/6)
