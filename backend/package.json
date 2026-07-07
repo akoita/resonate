@@ -24,7 +24,8 @@
     "db:seed": "prisma db seed",
     "fixtures:shows": "ts-node --transpile-only src/scripts/create_sample_show_campaigns.ts",
     "fixtures:shows:prod": "node dist/scripts/create_sample_show_campaigns.js",
-    "identity:resolve": "ts-node --transpile-only src/scripts/resolve_identity.ts"
+    "identity:resolve": "ts-node --transpile-only src/scripts/resolve_identity.ts",
+    "verify:migration": "ts-node --transpile-only src/scripts/verify_migration.ts"
   },
   "dependencies": {
     "@google-cloud/kms": "^5.4.0",
