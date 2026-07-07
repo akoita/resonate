@@ -9,7 +9,7 @@ import {
   ResonateEvent,
 } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
-import { AnalyticsEventInput } from "./analytics_event";
+import { AnalyticsEventInput, AnalyticsPrivacyTier } from "./analytics_event";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 
 type ResonateDomainEvent = {
@@ -27,6 +27,10 @@ type DomainBridgeConfig = {
   actorIdKeys?: readonly string[];
   sessionIdKeys?: readonly string[];
   consentBasis?: string;
+  // Defaults to "pseudonymous"; set when the taxonomy declares a stricter tier
+  // (e.g. "personal" for user-identified financial/credit events) so the emitted
+  // envelope matches the canonical classification in analytics_event.ts.
+  privacyTier?: AnalyticsPrivacyTier;
   payloadKeys: readonly string[];
   sourceRefKeys: readonly string[];
 };
@@ -914,6 +918,39 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["jobId", "phase"],
   },
   {
+    eventName: "generation.credits_granted",
+    producer: "generation-service",
+    subjectType: "user",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["userId", "amountCents", "reason"],
+    sourceRefKeys: ["userId"],
+  },
+  {
+    eventName: "generation.credits_debited",
+    producer: "generation-service",
+    subjectType: "user",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["userId", "amountCents", "jobId", "kind"],
+    sourceRefKeys: ["userId", "jobId"],
+  },
+  {
+    eventName: "generation.credits_insufficient",
+    producer: "generation-service",
+    subjectType: "user",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["userId", "requiredCents", "balanceCents", "kind"],
+    sourceRefKeys: ["userId"],
+  },
+  {
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],
@@ -1529,7 +1566,7 @@ export class AnalyticsDomainEventBridgeService implements OnModuleInit, OnModule
         eventVersion: event.eventVersion ?? 1,
         occurredAt: validOccurredAt(event.occurredAt),
         producer: config.producer,
-        privacyTier: "pseudonymous",
+        privacyTier: config.privacyTier ?? "pseudonymous",
         consentBasis: config.consentBasis,
         subjectType: subjectId && config.subjectType ? config.subjectType : undefined,
         subjectId,

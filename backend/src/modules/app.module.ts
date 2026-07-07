@@ -37,6 +37,7 @@ import { StorefrontModule } from "./storefront/storefront.module";
 import { OpenApiModule } from "./openapi/openapi.module";
 import { McpModule } from "./mcp/mcp.module";
 import { ShowsModule } from "./shows/shows.module";
+import { CreditsModule } from "./credits/credits.module";
 
 @Module({
   imports: [
@@ -83,6 +84,7 @@ import { ShowsModule } from "./shows/shows.module";
     OpenApiModule,
     McpModule,
     ShowsModule,
+    CreditsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

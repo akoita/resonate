@@ -20,6 +20,7 @@ import {
 } from "./remix-eligibility.service";
 import {
   buildRemixGenerationInput,
+  REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
   REMIX_GENERATION_PROVIDER,
   RemixGenerationProviderError,
   type RemixGenerationConstraints,
@@ -29,6 +30,10 @@ import {
   type RemixStemTransform,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
+import {
+  GenerationCreditsService,
+  InsufficientCreditsException,
+} from "../credits/generation-credits.service";
 import {
   REMIX_STEM_MIX_RENDERER,
   type StemMixRenderer,
@@ -354,6 +359,7 @@ export class RemixProjectService {
     private readonly storageProvider: StorageProvider,
     @InjectQueue(REMIX_GENERATION_QUEUE)
     private readonly generationQueue: Queue<RemixGenerationJobData>,
+    private readonly credits: GenerationCreditsService,
     @Inject(REMIX_LAYERED_RENDERER)
     private readonly layeredRenderer?: LayeredRemixRenderer,
   ) {}
@@ -947,6 +953,8 @@ export class RemixProjectService {
       return { skipped: true, reason: "stale_job" };
     }
 
+    // #1334: credits charged for this job's AI render, refunded on failure.
+    let debitedCents = 0;
     try {
       // Section grid (#1314): derived deterministically from measured features
       // at process time, exactly like the studio derives it, so the persisted
@@ -1039,6 +1047,30 @@ export class RemixProjectService {
         });
       }
 
+      // #1334 generation-credit meter: AI (prompted) draft rendering is a
+      // metered generation, so it debits the user's prepaid balance before the
+      // provider call. stem_mix is pure DSP (no generation), so it is free and
+      // never charged. An insufficient balance throws here and the job fails
+      // before any generation work. The debit is refunded in the catch below if
+      // the render throws, so a failed draft is never charged.
+      const isAiGeneration = data.generationInput.mode !== "stem_mix";
+      if (isAiGeneration) {
+        const durationSeconds =
+          data.generationInput.constraints?.durationSeconds ??
+          REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
+        const costCents = this.credits.costForDurationCents(durationSeconds);
+        // debit throws (and leaves debitedCents at 0) on insufficient balance,
+        // so the catch below never refunds a charge that never happened.
+        await this.credits.debit(
+          data.userId,
+          costCents,
+          "remix_draft",
+          data.jobId,
+          "remix_draft",
+        );
+        debitedCents = costCents;
+      }
+
       // Mode routing: stem_mix renders arranged stems with pure DSP (#1189);
       // prompted modes ask the configured provider for generated audio. Lyria
       // output is treated as one additive layer (#1209), then mixed back over
@@ -1116,7 +1148,23 @@ export class RemixProjectService {
       });
       return { remixProjectId: project.id, generationJobId: data.jobId };
     } catch (error) {
+      // #1334: a credit block is not a generation failure — nothing was charged
+      // (debitedCents is still 0) and no render was attempted. Surface the 402
+      // verbatim so the meter's intent stays legible instead of being masked as
+      // a normalized provider error.
+      if (error instanceof InsufficientCreditsException) {
+        throw error;
+      }
       const normalized = normalizeRemixGenerationError(error);
+      // Refund the metered credits when a debited AI draft fails so the user is
+      // not charged for a draft they never got. Idempotent per jobId, so it is
+      // safe even if a retry ran the debit again. Best-effort — a refund failure
+      // never masks the original error.
+      if (debitedCents > 0) {
+        await this.credits
+          .refund(data.userId, debitedCents, "remix_draft_failed_refund", data.jobId)
+          .catch(() => undefined);
+      }
       await this.recordGenerationFailure({
         project,
         userId: data.userId,

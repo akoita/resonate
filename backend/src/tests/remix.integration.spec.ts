@@ -18,6 +18,7 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { RemixProjectService } from "../modules/remix/remix-project.service";
+import { stubGenerationCredits } from "./e2e-helpers";
 import { HttpException } from "@nestjs/common";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 import { REMIX_RENDER_AUDIO_POLICY } from "../modules/remix/stem-audio-mixer";
@@ -368,6 +369,7 @@ describe("Remix eligibility and projects (integration)", () => {
       stemMixRenderer,
       storageProvider,
       generationQueue as any,
+      stubGenerationCredits() as any,
     );
     generationQueue.add.mockClear();
     layeredRenderer.render.mockReset();
@@ -687,6 +689,7 @@ describe("Remix eligibility and projects (integration)", () => {
         stemMixRenderer,
         storageProvider,
         generationQueue as any,
+        stubGenerationCredits() as any,
       );
       const read = await freshService.getProject(CREATOR_ID, created.id);
       expect(read.title).toBe("Neon Drift (Flip)");
@@ -1129,6 +1132,7 @@ describe("Remix eligibility and projects (integration)", () => {
           stemMixRenderer,
           storageProvider,
           generationQueue as any,
+          stubGenerationCredits() as any,
           layeredRenderer as any,
         );
         const created = await svc.createProject({
@@ -1455,6 +1459,7 @@ describe("Remix eligibility and projects (integration)", () => {
           stemMixRenderer,
           storageProvider,
           generationQueue as any,
+          stubGenerationCredits() as any,
         );
         const created = await projectService.createProject({
           userId: CREATOR_ID,
@@ -1603,6 +1608,7 @@ describe("Remix eligibility and projects (integration)", () => {
         stemMixRenderer,
         storageProvider,
         generationQueue as any,
+        stubGenerationCredits() as any,
       );
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) delete process.env[key];

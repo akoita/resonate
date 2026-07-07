@@ -222,6 +222,19 @@ with Stability AI (license review D2). Decision record:
 `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-3; implementation
 [#1334](https://github.com/akoita/resonate/issues/1334).
 
+**Canonical generation price (single source):** credits are denominated in USD
+cents (integer money). The sell price is **`GENERATION_PRICE_CENTS_PER_30S`,
+default `10`** = $0.10 per 30 seconds (internal cost baseline ~6¢ →
+`generation.service.ts COST_PER_30_SECONDS = 0.06`; ~40% margin). Cost of a
+generation = `ceil((durationSeconds / 30) × priceCents)` cents. This meter is a
+cost+margin tool charge, entirely separate from the fan→artist transaction
+split — the 85%+ artist share (ADR-BM-4) is untouched. **Status (#1334):** the
+meter (debit / zero-balance block / refund + analytics) is live on staging;
+credits enter only via the operator/promo `POST /credits/grant` path. Live fiat
+top-up (Stripe) is the deferred production flip, gated on the SA3 commercial-use
+license review (#1193) — the license blocker gates *charging money*, not the
+internal meter, so building the meter now is license-safe.
+
 ### Layer 3 — Stem Licensing Marketplace (the Revenue Core)
 
 This is Resonate's primary revenue engine and its deepest moat.

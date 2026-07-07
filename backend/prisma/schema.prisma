@@ -41,6 +41,37 @@ model User {
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
   reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
+  generationCreditAccount     GenerationCreditAccount?
+  generationCreditTxns        GenerationCreditTransaction[]
+}
+
+// Generation-credit meter (#1334, ADR-BM-3). USD-cent balance a user spends on
+// AI generation (Lyria + remix drafts). Cached balance; the append-only
+// GenerationCreditTransaction ledger is the audit source of truth. Staging
+// scope: credits enter only via the operator/promo grant path (no live fiat).
+model GenerationCreditAccount {
+  userId       String   @id
+  balanceCents Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Append-only ledger of every credit movement. `type` (grant|debit|refund)
+// gives the direction; `amountCents` is a positive magnitude; `balanceAfterCents`
+// snapshots the account balance after the movement for audit/reconciliation.
+model GenerationCreditTransaction {
+  id                String   @id @default(uuid())
+  userId            String
+  type              String
+  amountCents       Int
+  reason            String
+  jobId             String?
+  balanceAfterCents Int
+  createdAt         DateTime @default(now())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([jobId])
 }
 
 model Wallet {

@@ -25,6 +25,24 @@ import { sign } from 'jsonwebtoken';
 export const TEST_JWT_SECRET = 'e2e-test-secret';
 
 /**
+ * No-op GenerationCreditsService stub for tests that exercise generation/remix
+ * behavior without the #1334 credit meter. `debit`/`refund`/`grant` are no-ops
+ * and `costForDurationCents` returns 0, so these tests neither charge nor block.
+ * Meter behavior is covered directly by credits.integration.spec.ts and the
+ * dedicated block/debit tests.
+ */
+export function stubGenerationCredits() {
+  return {
+    costForDurationCents: () => 0,
+    getBalance: async () => ({ balanceCents: 0, recentTransactions: [] }),
+    grant: async () => 0,
+    debit: async () => 0,
+    refund: async () => 0,
+    refundFailedGenerationJob: async () => undefined,
+  };
+}
+
+/**
  * Generate a valid JWT token for test requests.
  */
 export function authToken(userId: string, role = 'listener'): string {

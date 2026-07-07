@@ -21,6 +21,7 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { RemixProjectService } from "../modules/remix/remix-project.service";
+import { stubGenerationCredits } from "./e2e-helpers";
 import { REMIX_POLICY_VERSION } from "../modules/remix/remix-eligibility.policy";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 import { CatalogService } from "../modules/catalog/catalog.service";
@@ -280,6 +281,7 @@ describe("Remix publish (integration)", () => {
       stemMixRenderer as any,
       storageProvider as any,
       generationQueue as any,
+      stubGenerationCredits() as any,
     );
     storageProvider.download.mockReset();
     storageProvider.upload.mockReset();

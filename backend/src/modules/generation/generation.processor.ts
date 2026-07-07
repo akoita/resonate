@@ -20,6 +20,14 @@ export class GenerationProcessor extends WorkerHost {
       return result;
     } catch (error: any) {
       this.logger.error(`[GenerationProcessor] Job ${job.id} failed: ${error?.message || error}`);
+      // #1334: only refund the debited credits once the job has terminally
+      // failed (all retries exhausted). Retryable attempts keep the charge so a
+      // transient failure that later succeeds is not double-refunded. The refund
+      // itself is idempotent per jobId, so a re-delivery is safe too.
+      const maxAttempts = job.opts?.attempts ?? 1;
+      if (job.attemptsMade >= maxAttempts) {
+        await this.generationService.refundFailedGenerationJob(job.data);
+      }
       throw error;
     }
   }
