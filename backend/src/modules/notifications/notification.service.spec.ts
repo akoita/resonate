@@ -461,8 +461,8 @@ describe("NotificationService", () => {
       service.onModuleInit();
       service.onModuleDestroy();
 
-      // 3 subscriptions from init
-      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(3);
+      // 3 dispute subscriptions + 1 credit-request subscription (#1334)
+      expect(mockEventBus.subscribe).toHaveBeenCalledTimes(4);
     });
   });
 });

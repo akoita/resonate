@@ -951,6 +951,17 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["userId"],
   },
   {
+    eventName: "generation.credits_requested",
+    producer: "generation-service",
+    subjectType: "user",
+    subjectIdKeys: ["userId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["userId", "note"],
+    sourceRefKeys: ["userId"],
+  },
+  {
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],

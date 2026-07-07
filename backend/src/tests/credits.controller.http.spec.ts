@@ -8,6 +8,7 @@ import { authToken, createControllerTestApp } from "./e2e-helpers";
 const mockCreditsService = {
   getBalance: jest.fn().mockResolvedValue({ balanceCents: 250, recentTransactions: [] }),
   grant: jest.fn().mockResolvedValue(500),
+  requestOperatorCredits: jest.fn().mockResolvedValue(undefined),
 };
 
 describe("CreditsController (http)", () => {
@@ -40,6 +41,36 @@ describe("CreditsController (http)", () => {
           expect(res.body.balanceCents).toBe(250);
         });
       expect(mockCreditsService.getBalance).toHaveBeenCalledWith("user-1");
+    });
+  });
+
+  describe("POST /credits/request", () => {
+    it("requires a JWT", async () => {
+      await request(app.getHttpServer()).post("/credits/request").send({}).expect(401);
+    });
+
+    it("lets any authenticated user ask an operator for credits (from the JWT identity)", async () => {
+      await request(app.getHttpServer())
+        .post("/credits/request")
+        .set("Authorization", `Bearer ${authToken("user-9", "listener")}`)
+        .send({ note: "trying the Afrobeat preset" })
+        .expect(201)
+        .expect((res) => {
+          expect(res.body).toEqual({ status: "notified" });
+        });
+      expect(mockCreditsService.requestOperatorCredits).toHaveBeenCalledWith(
+        "user-9",
+        "trying the Afrobeat preset",
+      );
+    });
+
+    it("accepts a request with no note", async () => {
+      await request(app.getHttpServer())
+        .post("/credits/request")
+        .set("Authorization", `Bearer ${authToken("user-9", "artist")}`)
+        .send({})
+        .expect(201);
+      expect(mockCreditsService.requestOperatorCredits).toHaveBeenCalledWith("user-9", undefined);
     });
   });
 

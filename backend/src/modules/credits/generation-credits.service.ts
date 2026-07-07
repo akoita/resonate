@@ -418,11 +418,29 @@ export class GenerationCreditsService {
    * the amounts stay off the fan→artist ledger. Failures are swallowed:
    * analytics must never block or fail a generation.
    */
+  /**
+   * A user out of credits asks an operator to top them up (#1334). Publishes a
+   * `generation.credits_requested` domain event — the NotificationService fans
+   * it out to operator in-app notifications, and the analytics bridge records
+   * it. Publish failures are swallowed: a request must never 500 on the user.
+   */
+  async requestOperatorCredits(userId: string, note?: string): Promise<void> {
+    const trimmed = note?.trim();
+    await this.publish("generation.credits_requested", {
+      userId,
+      ...(trimmed ? { note: trimmed } : {}),
+    });
+    this.logger.log(
+      `Credit request from user ${userId}${trimmed ? ` (note: ${trimmed})` : ""}`,
+    );
+  }
+
   private async publish(
     eventName:
       | "generation.credits_debited"
       | "generation.credits_insufficient"
-      | "generation.credits_granted",
+      | "generation.credits_granted"
+      | "generation.credits_requested",
     payload: Record<string, unknown>,
   ): Promise<void> {
     if (!this.eventBus) {
