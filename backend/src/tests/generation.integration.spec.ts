@@ -13,6 +13,7 @@ import { GenerationService } from '../modules/generation/generation.service';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
+import { stubGenerationCredits } from './e2e-helpers';
 
 const TEST_PREFIX = `gen_${Date.now()}_`;
 
@@ -114,6 +115,7 @@ describe('GenerationService (integration)', () => {
       mockLyriaClient as any,
       configService as any,
       generationQueue as any,
+      stubGenerationCredits() as any,
     );
   });
 

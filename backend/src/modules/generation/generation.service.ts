@@ -8,6 +8,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import { LyriaClient } from './lyria.client';
 import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
+import { GenerationCreditsService } from '../credits/generation-credits.service';
 import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
@@ -155,6 +156,7 @@ export class GenerationService {
     private readonly lyriaClient: LyriaClient,
     private readonly configService: ConfigService,
     @InjectQueue('generation') private readonly generationQueue: Queue,
+    private readonly credits: GenerationCreditsService,
   ) {
     // Try STRIKE_RATE_LIMIT first (parsed as number), fallback to DEFAULT_RATE_LIMIT
     const limit = this.configService.get<string | number>('STRIKE_RATE_LIMIT', DEFAULT_RATE_LIMIT);
@@ -169,20 +171,42 @@ export class GenerationService {
     this.enforceRateLimit(userId);
 
     const jobId = randomUUID();
+    const durationSeconds = dto.durationSeconds ?? 30;
 
-    await this.generationQueue.add('generate', {
-      jobId,
-      userId,
-      artistId: dto.artistId,
-      prompt: dto.prompt,
-      negativePrompt: dto.negativePrompt,
-      seed: dto.seed,
-      durationSeconds: dto.durationSeconds ?? 30,
-    }, {
-      jobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
+    // #1334 generation-credit meter: charge the user's prepaid balance before
+    // the job is enqueued. A zero/insufficient balance throws
+    // InsufficientCreditsException (HTTP 402) here, so the generation never
+    // starts. The debit runs after the rate-limit check so an over-limit
+    // request is never charged.
+    const costCents = this.credits.costForDurationCents(durationSeconds);
+    await this.credits.debit(userId, costCents, 'lyria_generation', jobId, 'lyria');
+
+    try {
+      await this.generationQueue.add('generate', {
+        jobId,
+        userId,
+        artistId: dto.artistId,
+        prompt: dto.prompt,
+        negativePrompt: dto.negativePrompt,
+        seed: dto.seed,
+        durationSeconds,
+      }, {
+        jobId,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      });
+    } catch (enqueueError) {
+      // The charge is only justified once the work is queued; a failed enqueue
+      // returns the credits so the user is never charged for a no-op.
+      await this.credits
+        .refund(userId, costCents, 'enqueue_failed_refund', jobId)
+        .catch((refundError) =>
+          this.logger.error(
+            `Failed to refund ${costCents}¢ after enqueue failure for job ${jobId}: ${refundError?.message ?? refundError}`,
+          ),
+        );
+      throw enqueueError;
+    }
 
     this.eventBus.publish({
       eventName: 'generation.started',
@@ -195,6 +219,31 @@ export class GenerationService {
 
     this.logger.log(`Generation job ${jobId} enqueued for user ${userId}`);
     return { jobId };
+  }
+
+  /**
+   * #1334: return the debited credits when a generation job terminally fails
+   * (all BullMQ retries exhausted). Idempotent per jobId, so a re-delivery or a
+   * double-call never double-refunds. Called by the GenerationProcessor on the
+   * final failed attempt. Best-effort: a refund failure is logged, not thrown,
+   * so it never masks the original job error.
+   */
+  async refundFailedGenerationJob(data: {
+    jobId?: string;
+    userId?: string;
+    durationSeconds?: number;
+  }): Promise<void> {
+    if (!data?.userId || !data?.jobId) {
+      return;
+    }
+    const costCents = this.credits.costForDurationCents(data.durationSeconds ?? 30);
+    try {
+      await this.credits.refund(data.userId, costCents, 'job_failed_refund', data.jobId);
+    } catch (error: any) {
+      this.logger.error(
+        `Failed to refund ${costCents}¢ for terminally failed job ${data.jobId}: ${error?.message ?? error}`,
+      );
+    }
   }
 
   /**

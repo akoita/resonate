@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "../shared/shared.module";
 import { GenerationModule } from "../generation/generation.module";
+import { CreditsModule } from "../credits/credits.module";
 import { LyriaClient } from "../generation/lyria.client";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
@@ -41,6 +42,7 @@ import {
   imports: [
     SharedModule,
     GenerationModule,
+    CreditsModule,
     BullModule.registerQueue({
       name: REMIX_GENERATION_QUEUE,
       defaultJobOptions: {

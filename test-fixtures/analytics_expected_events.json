@@ -226,6 +226,38 @@
     }
   },
   {
+    "eventName": "generation.credits_debited",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "userId": "user-1",
+      "amountCents": 10,
+      "jobId": "job-1",
+      "kind": "lyria"
+    }
+  },
+  {
+    "eventName": "generation.credits_insufficient",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "userId": "user-1",
+      "requiredCents": 10,
+      "balanceCents": 0,
+      "kind": "lyria"
+    }
+  },
+  {
+    "eventName": "generation.credits_granted",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "userId": "user-1",
+      "amountCents": 500,
+      "reason": "promo_grant"
+    }
+  },
+  {
     "eventName": "stems.uploaded",
     "payload": {
       "releaseId": "release-1",

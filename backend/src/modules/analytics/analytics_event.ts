@@ -227,6 +227,32 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["generationId", "userId", "trackId", "model", "promptPolicy"],
   },
   {
+    // #1334 generation-credit meter: a metered generation charged a user's
+    // prepaid credit balance (kind = lyria | remix_draft).
+    eventName: "generation.credits_debited",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: ["userId", "amountCents", "jobId", "kind"],
+  },
+  {
+    // #1334: a generation was blocked because the user's credit balance was
+    // below the required cost.
+    eventName: "generation.credits_insufficient",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: ["userId", "requiredCents", "balanceCents", "kind"],
+  },
+  {
+    // #1334: credits were added via the operator/promo grant path (staging).
+    eventName: "generation.credits_granted",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: ["userId", "amountCents", "reason"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

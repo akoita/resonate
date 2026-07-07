@@ -17,6 +17,7 @@ import { prisma } from '../db/prisma';
 import { EventBus } from '../modules/shared/event_bus';
 import { GenerationService } from '../modules/generation/generation.service';
 import type { ResonateEvent } from '../events/event_types';
+import { stubGenerationCredits } from './e2e-helpers';
 
 const P = `cf4_${Date.now()}_`;
 
@@ -71,6 +72,7 @@ describe('Choreography Flow 4: AI Generation Pipeline', () => {
       lyriaClient as any,
       configService as any,
       queue as any,
+      stubGenerationCredits() as any,
     );
   });
 

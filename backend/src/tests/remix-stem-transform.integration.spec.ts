@@ -17,6 +17,7 @@ import {
   RemixProjectService,
   type RemixGenerationJobData,
 } from "../modules/remix/remix-project.service";
+import { stubGenerationCredits } from "./e2e-helpers";
 
 const TEST_PREFIX = `remixtr_${Date.now()}_`;
 const OWNER_ID = `${TEST_PREFIX}owner`;
@@ -142,6 +143,7 @@ describe("Remix per-stem transforms (#1316, integration)", () => {
       stemMixRenderer as never,
       storageProvider as never,
       generationQueue as never,
+      stubGenerationCredits() as never,
       layeredRenderer as never,
     );
   });

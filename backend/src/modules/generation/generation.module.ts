@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { CatalogModule } from '../catalog/catalog.module';
+import { CreditsModule } from '../credits/credits.module';
 import { GenerationController } from './generation.controller';
 import { GenerationService } from './generation.service';
 import { GenerationProcessor } from './generation.processor';
@@ -19,6 +20,7 @@ import { SynthIdController } from './synthid.controller';
       },
     }),
     CatalogModule,
+    CreditsModule,
   ],
   controllers: [GenerationController, SynthIdController],
   providers: [GenerationService, GenerationProcessor, LyriaClient, LyriaRealtimeService, SynthIdService],

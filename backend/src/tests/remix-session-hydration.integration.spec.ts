@@ -18,6 +18,7 @@ import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
 import { RemixProjectService } from "../modules/remix/remix-project.service";
+import { stubGenerationCredits } from "./e2e-helpers";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 
 const TEST_PREFIX = `remixhyd_${Date.now()}_`;
@@ -214,6 +215,7 @@ describe("Remix full-session hydration (#1312, integration)", () => {
       stemMixRenderer as never,
       storageProvider as never,
       generationQueue as never,
+      stubGenerationCredits() as never,
     );
   });
 

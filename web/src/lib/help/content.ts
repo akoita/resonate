@@ -586,7 +586,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Generate original tracks from a text prompt and publish them to your catalog, with AI provenance recorded automatically.",
     category: "create",
     audiences: ["artist"],
-    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation"],
+    keywords: ["create", "generate", "ai music", "lyria", "prompt", "text to music", "publish", "generation", "credits"],
     sections: [
       {
         id: "generate",
@@ -611,6 +611,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: LOCAL,
             },
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Generating uses credits",
+            text: "AI generation runs on prepaid credits — longer tracks cost more. If your balance is too low, generation is blocked with a message; ask an operator for a credit grant to top up. Refined-away or failed generations are not charged.",
           },
         ],
       },

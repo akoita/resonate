@@ -18,6 +18,7 @@ import {
   REMIX_PREVIOUS_DRAFTS_MAX,
   type RemixGenerationJobData,
 } from "../modules/remix/remix-project.service";
+import { stubGenerationCredits } from "./e2e-helpers";
 import { StubRemixGenerationProvider } from "../modules/remix/remix-generation.provider";
 
 const TEST_PREFIX = `remixver_${Date.now()}_`;
@@ -115,6 +116,7 @@ describe("Remix draft versions (#1320, integration)", () => {
       stemMixRenderer as never,
       storageProvider as never,
       generationQueue as never,
+      stubGenerationCredits() as never,
     );
   });
 
