@@ -1021,6 +1021,46 @@ describe("Remix eligibility and projects (integration)", () => {
         );
       });
 
+      it("rejects a prompt-safety violation before enqueue or debit (#1343)", async () => {
+        process.env.REMIX_GENERATION_ENABLED = "true";
+        const created = await projectService.createProject({
+          userId: CREATOR_ID,
+          sourceTrackId: TRACK_ID,
+          stemIds: [LICENSED_STEM_ID],
+          title: "Blocked Prompt",
+          mode: "variation",
+          prompt: "make a hardcore porn soundtrack",
+        });
+
+        generationQueue.add.mockClear();
+        publishSpy.mockClear();
+
+        let caught: any;
+        try {
+          await projectService.generateDraft(CREATOR_ID, created.id);
+        } catch (error) {
+          caught = error;
+        }
+        // 422 with the moderation category; mapped from prompt screening.
+        expect(caught).toBeDefined();
+        expect(caught.getStatus()).toBe(422);
+        expect(caught.getResponse()).toMatchObject({
+          code: "prompt_rejected",
+          category: "sexual_explicit",
+        });
+
+        // Never queued → the worker never runs → no credit is ever debited.
+        expect(generationQueue.add).not.toHaveBeenCalled();
+        // Emitted a policy rejection carrying the moderation reason code.
+        expect(publishSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventName: "remix.policy_rejected",
+            creatorId: CREATOR_ID,
+            reasonCodes: ["prompt_moderation:sexual_explicit"],
+          }),
+        );
+      });
+
       it("records audio_conditioned grounding for prompted audio-conditioned provider jobs", async () => {
         process.env.REMIX_GENERATION_ENABLED = "true";
         process.env.REMIX_GENERATION_PROVIDER_KIND = "audio-conditioned";

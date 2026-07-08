@@ -7,7 +7,10 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  UnprocessableEntityException,
 } from "@nestjs/common";
+import { PromptModerationService } from "../moderation/prompt-moderation.service";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
 import { randomUUID } from "crypto";
@@ -362,6 +365,8 @@ export class RemixProjectService {
     private readonly credits: GenerationCreditsService,
     @Inject(REMIX_LAYERED_RENDERER)
     private readonly layeredRenderer?: LayeredRemixRenderer,
+    @Optional()
+    private readonly promptModeration?: PromptModerationService,
   ) {}
 
   /**
@@ -743,6 +748,31 @@ export class RemixProjectService {
       throw new BadRequestException(
         `A prompt is required for ${project.mode} mode`,
       );
+    }
+
+    // Prompt-safety moderation (#1343). The self-hosted generation path has no
+    // vendor safety filter, so we screen the prompt here — before any queue or
+    // credit debit — and reject unambiguous PUP violations. Runs on prompted
+    // modes only (stem_mix carries no prompt → screen() is a no-op).
+    const moderation = (
+      this.promptModeration ?? new PromptModerationService()
+    ).screen(project.prompt);
+    if (!moderation.allowed) {
+      this.eventBus.publish({
+        eventName: "remix.policy_rejected",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        creatorId: userId,
+        sourceTrackId: project.sourceTrackId,
+        stemIds,
+        reasonCodes: [moderation.reasonCode],
+        policyVersion: project.policyVersion,
+      });
+      throw new UnprocessableEntityException({
+        message: moderation.message,
+        code: "prompt_rejected",
+        category: moderation.category,
+      });
     }
 
     // Per-stem transform (#1316): validated against the live project before
