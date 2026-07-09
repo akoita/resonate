@@ -26,6 +26,7 @@ import type { Prisma } from "@prisma/client";
 import { privateKeyToAccount } from "viem/accounts";
 import { prisma } from "../../db/prisma";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
+import { RemixEligibilityService } from "../remix/remix-eligibility.service";
 
 const MINT_AUTHORIZATION_DOMAIN = {
   name: "Resonate StemNFT",
@@ -168,12 +169,30 @@ type StemAuthorizationRecord = Prisma.StemGetPayload<{
                 payoutAddress: true;
               };
             };
+            // Rights hole (#1413): a remix-master stem carries no rights
+            // check today beyond the marketplace route. Resolving the
+            // publishing RemixProject (and its source stems) is how the
+            // export/commercial gate below is enforced.
+            publishedRemixProject: {
+              select: {
+                sourceTrackId: true;
+                stems: { select: { stemId: true } };
+              };
+            };
           };
         };
       };
     };
   };
 }>;
+
+/** Lineage recorded on a remix master's track.generationMetadata at publish
+ * time (see RemixProjectService.publishProject) — the fallback signal when
+ * the RemixProject.publishedRemixProject DB relation is unavailable. */
+type RemixPublishLineage = {
+  sourceTrackId: string;
+  sourceStemIds: string[];
+};
 
 @Injectable()
 export class MintAuthorizationService {
@@ -184,6 +203,7 @@ export class MintAuthorizationService {
   constructor(
     private readonly config: ConfigService,
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
+    private readonly remixEligibilityService: RemixEligibilityService,
   ) {}
 
   async createAuthorization(
@@ -246,6 +266,12 @@ export class MintAuthorizationService {
                     payoutAddress: true,
                   },
                 },
+                publishedRemixProject: {
+                  select: {
+                    sourceTrackId: true,
+                    stems: { select: { stemId: true } },
+                  },
+                },
               },
             },
           },
@@ -267,6 +293,12 @@ export class MintAuthorizationService {
       throw new ForbiddenException("You do not own this stem");
     }
     await this.uploadRightsRoutingService.assertMarketplaceAllowedForStem(input.stemId);
+    // Rights hole (#1413): the check above only enforces the upload rights
+    // *route*. Selling a remix (minting its master stem) additionally
+    // requires the eligibility engine's `export` (commercial) action on
+    // every source stem — otherwise a remix built entirely from
+    // remix-tier (non-commercial) licenses could be minted and listed.
+    await this.assertRemixSellRightsIfApplicable(userId, stem);
 
     const chainId = Number(input.chainId);
     if (!Number.isInteger(chainId) || chainId <= 0) {
@@ -325,6 +357,82 @@ export class MintAuthorizationService {
         nonce,
       },
     };
+  }
+
+  /**
+   * Sell-rights gate for remix masters (#1413). A stem is only a "remix
+   * master" when it is the `master` stem of a `Track` whose `Release` is the
+   * one a `RemixProject` published. For those stems (and only those), the
+   * caller must hold the eligibility engine's `export` action on the
+   * project's *source* stems — i.e. every source stem carries a commercial
+   * license, or the caller owns the source artist profile. Non-remix and
+   * non-master stems are unaffected: this is a no-op for them.
+   */
+  private async assertRemixSellRightsIfApplicable(
+    userId: string,
+    stem: StemAuthorizationRecord,
+  ): Promise<void> {
+    const lineage = this.resolveRemixPublishLineage(stem);
+    if (!lineage) {
+      return;
+    }
+
+    const eligibility = await this.remixEligibilityService.checkEligibility({
+      userId,
+      trackId: lineage.sourceTrackId,
+      stemIds: lineage.sourceStemIds,
+    });
+
+    if (!eligibility.allowedActions.includes("export")) {
+      throw new ForbiddenException({
+        message:
+          "Listing a remix for sale requires a commercial license on every source stem (or owning the source artist).",
+        code: "remix_sell_rights_required",
+      });
+    }
+  }
+
+  /**
+   * Resolves the source-track lineage for a stem if (and only if) it is the
+   * master stem of a published remix release. Prefers the durable
+   * `RemixProject.publishedRemixProject` DB relation; falls back to the
+   * `kind:"remix_publish"` lineage recorded on the track's
+   * `generationMetadata` at publish time (RemixProjectService.publishProject)
+   * so a relation-load gap never silently disables the gate.
+   */
+  private resolveRemixPublishLineage(
+    stem: StemAuthorizationRecord,
+  ): RemixPublishLineage | null {
+    if (stem.type !== "master") {
+      return null;
+    }
+
+    const publishedRemixProject = stem.track?.release?.publishedRemixProject;
+    if (publishedRemixProject) {
+      return {
+        sourceTrackId: publishedRemixProject.sourceTrackId,
+        sourceStemIds: publishedRemixProject.stems.map((s) => s.stemId),
+      };
+    }
+
+    const metadata = stem.track?.generationMetadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+      return null;
+    }
+    const record = metadata as Record<string, unknown>;
+    if (record.kind !== "remix_publish") {
+      return null;
+    }
+    const sourceTrackId = record.sourceTrackId;
+    const sourceStemIds = record.sourceStemIds;
+    if (
+      typeof sourceTrackId === "string" &&
+      Array.isArray(sourceStemIds) &&
+      sourceStemIds.every((id) => typeof id === "string")
+    ) {
+      return { sourceTrackId, sourceStemIds: sourceStemIds as string[] };
+    }
+    return null;
   }
 
   private buildTokenUri(

@@ -51,6 +51,36 @@ server-side and enforces the policy's `allowedActions.export` on top of
 `allowed`, mirroring publish. License-NFT/ancestry minting (E3) remains planned;
 the MVP epic is [#891](https://github.com/akoita/resonate/issues/891).
 
+The **creation→commerce bridge** ([#1413](https://github.com/akoita/resonate/issues/1413))
+closes the **create → own → sell** loop: a published remix's `master` stem can be
+minted and listed on the existing marketplace as an ownership product, growing
+artist take-home (the sprint's north star). No new contract is required — the
+StemNFT contract already treats remixes as first-class (`parentIds`, `remixable`,
+per-token EIP-2981 royalties) and the standard mint-and-list pipeline is generic
+over any authorized stem. Three things make it rights-clean and usable:
+
+- **Sell-rights gate.** Minting a remix master for sale requires the eligibility
+  engine's `export` action (a **commercial** license on every source stem, or
+  owning the source artist) — enforced at **mint authorization**
+  (`code: "remix_sell_rights_required"`), closing the prior gap where only the
+  rights *route* was checked. Selling a remix built from remix-tier-only licenses
+  is refused.
+- **The bridge CTA.** The studio's published banner shows a rights-gated
+  **"List this remix for sale"** action (enabled only when the project's
+  `commerce.sellable` is true; an honest disabled state names the reason
+  otherwise — no dead button). It deep-links to the release page's **NFT
+  Marketplace** section, which runs the existing **Protect Release** (on-chain
+  attestation) → **Mint & List** flow. Attestation is the load-bearing
+  prerequisite (the mint authorizer requires an on-chain ContentProtection
+  attestation); attest-only is sufficient to list, since an unstaked release has
+  an uncapped listing-price cap.
+- **Royalties.** The remix master mints with the standard single EIP-2981
+  receiver = the **remix creator**. Recursive royalty flow-through to the
+  original source artist(s) — the "recursive remix royalties" vision — is
+  **deferred to E3 (License-NFT / ancestry, RFC #310)** because multi-parent
+  splits need a splits contract that is not yet built; tracked on
+  [#891](https://github.com/akoita/resonate/issues/891).
+
 The legacy in-memory remix module remains only as the deprecated
 `POST /remix/create` compatibility shim and is slated for removal with the
 frontend slices.

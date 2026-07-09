@@ -238,6 +238,11 @@ describe("Remix publish (integration)", () => {
         creatorUserId: { in: [CREATOR_ID, OTHER_USER_ID, ARTIST_OWNER_ID] },
       },
     });
+    // Pricing seed (#1413): publishProject now seeds a StemPricing row for
+    // the master stem, so it must be cleared before the stem itself.
+    await prisma.stemPricing.deleteMany({
+      where: { stem: { track: { releaseId: { in: publishedReleaseIds } } } },
+    });
     await prisma.stem.deleteMany({
       where: { track: { releaseId: { in: publishedReleaseIds } } },
     });

@@ -697,6 +697,55 @@ export function publishConfirmMessage(input: {
   return lines.join("\n\n");
 }
 
+/**
+ * "List this remix for sale" bridge CTA (#1413, creation→commerce bridge).
+ * The backend is the sole source of truth for sell-eligibility (the `export`
+ * rights gate on the source stems, or creator-owner) — this component only
+ * renders what `commerce` says, honestly:
+ *  - no `commerce` data (unpublished, or not yet loaded) → render nothing;
+ *  - `sellable` with a `publishedReleaseId` → an enabled link into the
+ *    existing mint-and-list flow on the release page's NFT Marketplace
+ *    section (`#nft-marketplace`);
+ *  - published but not sellable → a non-navigating, aria-disabled control
+ *    with the server's honest `reason` shown beneath it. Never a dead button.
+ */
+export function RemixSellCta({
+  commerce,
+}: {
+  commerce: RemixProject["commerce"] | null | undefined;
+}) {
+  if (!commerce || commerce.sellable == null) return null;
+
+  if (commerce.sellable && commerce.publishedReleaseId) {
+    return (
+      <Link
+        href={`/release/${commerce.publishedReleaseId}#nft-marketplace`}
+        className="ui-btn ui-btn-primary mt-3 inline-flex remix-sell-cta"
+      >
+        List this remix for sale
+      </Link>
+    );
+  }
+
+  return (
+    <div className="mt-3 remix-sell-cta-locked">
+      <button
+        type="button"
+        aria-disabled="true"
+        title={commerce.reason ?? undefined}
+        className="ui-btn ui-btn-ghost opacity-60 cursor-not-allowed inline-flex remix-sell-cta remix-sell-cta--disabled"
+      >
+        List this remix for sale
+      </button>
+      {commerce.reason && (
+        <p className="text-xs text-emerald-100/60 mt-1 max-w-sm remix-sell-cta-reason">
+          {commerce.reason}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function RemixStudioEditor({
   project: persistedProject,
 }: {
@@ -1290,14 +1339,17 @@ export function RemixStudioEditor({
               This draft is now a public remix release. The studio is locked —
               edits and re-generation are disabled so the release stays in sync.
             </p>
-            {project.publishedReleaseId && (
-              <Link
-                href={`/release/${project.publishedReleaseId}`}
-                className="ui-btn ui-btn-primary mt-3 inline-flex remix-published-release-link"
-              >
-                View release page
-              </Link>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              {project.publishedReleaseId && (
+                <Link
+                  href={`/release/${project.publishedReleaseId}`}
+                  className="ui-btn ui-btn-primary mt-3 inline-flex remix-published-release-link"
+                >
+                  View release page
+                </Link>
+              )}
+              <RemixSellCta commerce={project.commerce} />
+            </div>
           </section>
         )}
 

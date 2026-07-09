@@ -8,9 +8,10 @@ import { MintAuthorizationController } from "./mint-authorization.controller";
 import { MintAuthorizationService } from "./mint-authorization.service";
 import { RightsModule } from "../rights/rights.module";
 import { TrustModule } from "../trust/trust.module";
+import { RemixModule } from "../remix/remix.module";
 
 @Module({
-  imports: [SharedModule, NotificationModule, RightsModule, TrustModule],
+  imports: [SharedModule, NotificationModule, RightsModule, TrustModule, RemixModule],
   controllers: [MetadataController, MintAuthorizationController],
   providers: [ContractsService, IndexerService, MintAuthorizationService],
   exports: [ContractsService, IndexerService, MintAuthorizationService],

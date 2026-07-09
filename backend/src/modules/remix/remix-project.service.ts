@@ -101,6 +101,22 @@ export type RemixDraftExport = RemixDraftAudio & {
   filename: string;
 };
 
+/**
+ * Sell-eligibility for the remix master stem (#1413) — surfaced on
+ * `GET /remix/projects/:id` under `commerce` so the studio can show/hide a
+ * "List this remix for sale" CTA without duplicating the eligibility rule.
+ * Mirrors the mint-authorization sell-rights gate exactly: `sellable` is true
+ * only when the project is published AND every source stem is
+ * commercially-licensed (or the caller owns the source artist).
+ */
+export type RemixSellEligibility = {
+  sellable: boolean;
+  reasonCode: string | null;
+  reason: string | null;
+  publishedReleaseId: string | null;
+  masterStemId: string | null;
+};
+
 export type RemixGenerationJobData = {
   jobId: string;
   userId: string;
@@ -495,7 +511,13 @@ export class RemixProjectService {
 
   async getProject(userId: string, projectId: string) {
     const project = await this.loadOwnedProject(userId, projectId);
-    const response = this.toResponse(project);
+    const response = {
+      ...this.toResponse(project),
+      // Sell-rights bridge (#1413): additive/backward-compatible — lets the
+      // studio show/hide a "List this remix for sale" CTA without a second
+      // round-trip.
+      commerce: await this.computeSellEligibility(userId, project),
+    };
     // Sibling availability (#1312): draft studios render an "Also on this
     // track" panel from this — licensed siblings are one click from active,
     // unlicensed ones route to the remix-tier purchase. Published projects are
@@ -507,6 +529,82 @@ export class RemixProjectService {
       ...response,
       availableStems: await this.resolveAvailableStems(userId, project),
     };
+  }
+
+  /**
+   * Standalone sell-eligibility read (#1413). Ownership-enforced the same
+   * way `getProject` is (via `loadOwnedProject`); the studio can poll this
+   * without re-fetching the whole project payload.
+   */
+  async getSellEligibility(
+    userId: string,
+    projectId: string,
+  ): Promise<RemixSellEligibility> {
+    const project = await this.loadOwnedProject(userId, projectId);
+    return this.computeSellEligibility(userId, project);
+  }
+
+  /**
+   * Shared sell-eligibility computation (#1413) for `getProject`'s `commerce`
+   * block and `getSellEligibility`. Mirrors the mint-authorization gate
+   * exactly: unpublished projects are never sellable; published projects are
+   * sellable only when the eligibility engine grants `export` (a commercial
+   * license on every source stem, or source-artist ownership) over the
+   * project's source stems.
+   */
+  private async computeSellEligibility(
+    userId: string,
+    project: RemixProjectWithStems,
+  ): Promise<RemixSellEligibility> {
+    if (project.status !== "published" || !project.publishedReleaseId) {
+      return {
+        sellable: false,
+        reasonCode: "not_published",
+        reason: "Publish this remix before listing it for sale.",
+        publishedReleaseId: null,
+        masterStemId: null,
+      };
+    }
+
+    const publishedReleaseId = project.publishedReleaseId;
+    const [masterStemId, eligibility] = await Promise.all([
+      this.resolveMasterStemId(publishedReleaseId),
+      this.eligibilityService.checkEligibility({
+        userId,
+        trackId: project.sourceTrackId,
+        stemIds: project.stems.map((stem) => stem.stemId),
+      }),
+    ]);
+
+    if (!eligibility.allowedActions.includes("export")) {
+      return {
+        sellable: false,
+        reasonCode: "commercial_license_required",
+        reason:
+          "Listing this remix for sale requires a commercial license on every source stem (or owning the source artist).",
+        publishedReleaseId,
+        masterStemId,
+      };
+    }
+
+    return {
+      sellable: true,
+      reasonCode: null,
+      reason: null,
+      publishedReleaseId,
+      masterStemId,
+    };
+  }
+
+  /** The `type:"master"` stem of the release a remix project published. */
+  private async resolveMasterStemId(
+    publishedReleaseId: string,
+  ): Promise<string | null> {
+    const masterStem = await prisma.stem.findFirst({
+      where: { type: "master", track: { releaseId: publishedReleaseId } },
+      select: { id: true },
+    });
+    return masterStem?.id ?? null;
   }
 
   async listProjects(userId: string) {
@@ -1542,6 +1640,18 @@ export class RemixProjectService {
                       ? audioBytes
                       : undefined,
                   mimeType,
+                  // Pricing seed (#1413): so the master stem has a listing
+                  // price the moment it becomes sellable. Deliberately omits
+                  // every field so Prisma applies the StemPricing model's own
+                  // defaults (schema.prisma) — the exact same numbers
+                  // StemPricingService's "standard" template and its
+                  // no-row-yet fallback already use for every other stem
+                  // (backend/src/modules/pricing/stem-pricing.service.ts).
+                  // No new price is introduced; see docs/rfc/business-model.md
+                  // for canonical fee/price policy. Nested create on a
+                  // brand-new stem id is inherently idempotent — no prior
+                  // row can exist for it.
+                  pricing: { create: {} },
                 },
               },
             },

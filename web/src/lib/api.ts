@@ -4310,6 +4310,8 @@ export type RemixProject = {
   policyVersion: string;
   /** Set once the draft is published as a catalog remix release (#1196). */
   publishedReleaseId: string | null;
+  /** Sell-eligibility for the remix master stem (#1413); null/absent when unpublished. */
+  commerce?: RemixCommerce | null;
   createdAt: string;
   updatedAt: string;
   source: RemixProjectSource;
@@ -4319,6 +4321,20 @@ export type RemixProject = {
   /** Derived section grid (#1314); null when the source has no measured duration. */
   sectionGrid?: RemixSectionGrid | null;
   eligibility?: RemixEligibilityResponse;
+};
+
+/**
+ * Sell-eligibility for the remix master stem (#1413). Server-computed: mirrors
+ * the `export` action gate (all source stems commercial-licensed, or
+ * creator-owner). `reason`/`reasonCode` are only meaningful when !sellable.
+ * Absent/null for unpublished projects.
+ */
+export type RemixCommerce = {
+  sellable: boolean;
+  reasonCode: string | null;
+  reason: string | null;
+  publishedReleaseId: string | null;
+  masterStemId: string | null;
 };
 
 /** Shape returned by POST /remix/projects/:id/publish (#1196). */

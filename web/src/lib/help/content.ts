@@ -657,7 +657,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "create",
     audiences: ["producer", "artist", "listener"],
     status: "partial",
-    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai"],
+    keywords: ["remix", "studio", "stems", "license", "generate", "mix", "publish", "derivative", "ai", "sell", "list", "marketplace"],
     sections: [
       {
         id: "eligibility",
@@ -706,6 +706,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "sell",
+        heading: "Listing your remix for sale",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A published remix can become a sellable item in the Marketplace, so the remix you created can earn — you keep the artist's share, just like any other sale. On the \"Published\" panel in the studio, use \"List this remix for sale\" to jump to your release page, where you protect the release and then mint and list it as an ownership item other people can buy.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "If “List this remix for sale” is locked",
+            text: "Selling a remix needs the commercial license tier on every source stem you used (or you own the source artist). The button tells you when a commercial license is what's missing — collect those stems at the commercial tier in the Marketplace to unlock it.",
+          },
+        ],
+      },
+      {
         id: "export",
         heading: "Exporting your remix",
         blocks: [
@@ -723,7 +739,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "What's still rolling out",
-            text: "In-app remixing, publishing, and commercial-licensed export are live. On-chain remix credentials are on the way; voice or likeness cloning is intentionally not supported.",
+            text: "In-app remixing, publishing, commercial-licensed export, and listing a published remix for sale are all live. Recursive royalties that also pay the original artist when your remix resells are on the way; voice or likeness cloning is intentionally not supported.",
           },
         ],
       },
@@ -732,7 +748,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       { label: "Browse the catalog", href: "/catalog", description: "Open a release or stem to find its Remix button." },
       { label: "Marketplace", href: "/marketplace", description: "Collect a remix-tier stem to get started." },
     ],
-    related: ["marketplace-buy", "create-ai-music", "rights-protection"],
+    related: ["marketplace-buy", "marketplace-sell", "create-ai-music", "rights-protection"],
   },
 
   // ───────────────────────────── For artists ──────────────────────────────
