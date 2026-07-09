@@ -1376,4 +1376,72 @@ describe("analytics", () => {
     expect(result.meta.source).toBe("bigquery");
     expect(result.export.freshness.asOf).toBe("2026-05-20T10:01:00.000Z");
   });
+
+  it("reconciles playsOverTime with totalPlays when BigQuery facts carry count=0 (#1425)", async () => {
+    // The BigQuery fact mapping defaults count with `?? 1`, which does NOT catch
+    // a stored 0 — so play facts can arrive with count=0. Before the fix,
+    // playsOverTime summed `fact.count` and read near-zero while the totals read
+    // correctly (the reported staging regression). It must count one play per
+    // play-event fact, like every other tile.
+    const ingest = new AnalyticsIngestService();
+    const playFact = (id: string, date: string) => ({
+      factId: id,
+      factType: "playback_event",
+      eventId: id,
+      occurredAt: `${date}T10:00:00.000Z`,
+      occurredDate: date,
+      artistId: "artist-z",
+      trackId: "track-z",
+      count: 0, // BigQuery stored zero — the bug trigger
+      dimensions: {
+        eventName: "playback.completed",
+        title: "Zero Count",
+        sessionId: id,
+        source: "web_player",
+      },
+    });
+    const reportSource: ArtistAnalyticsReportSource = {
+      async listArtistFacts() {
+        return {
+          facts: [
+            playFact("z1", "2026-05-20"),
+            playFact("z2", "2026-05-20"),
+            playFact("z3", "2026-05-21"),
+          ],
+          views: [],
+          metadata: {
+            source: "bigquery",
+            generatedAt: "2026-05-22T12:00:00.000Z",
+            timeWindow: {
+              from: "2026-04-22T12:00:00.000Z",
+              to: "2026-05-22T12:00:00.000Z",
+              days: 30,
+            },
+            freshness: { asOf: "2026-05-21T10:00:00.000Z", lagSeconds: 0 },
+            isEmpty: false,
+            cache: { hit: false, ttlSeconds: 60 },
+          },
+        };
+      },
+    };
+    const analytics = new AnalyticsService(ingest, undefined, reportSource);
+
+    const result = await analytics.getArtistDashboard("artist-z", 30);
+
+    // Three play facts → 3 plays everywhere, regardless of the bogus count=0.
+    expect(result.summary.totalPlays).toBe(3);
+    const seriesTotal = result.playsOverTime.reduce((sum, r) => sum + r.plays, 0);
+    const trackTotal = result.trackPerformance.reduce((sum, t) => sum + t.plays, 0);
+    const sourceTotal = result.sources.reduce((sum, s) => sum + s.plays, 0);
+    // The reconciliation invariant — the whole point of #1425. Before the fix,
+    // seriesTotal was 0 here while totalPlays was 3.
+    expect(seriesTotal).toBe(3);
+    expect(trackTotal).toBe(3);
+    expect(sourceTotal).toBe(3);
+    // Series bucketed correctly by date (2 on the 20th, 1 on the 21st).
+    expect(result.playsOverTime).toEqual([
+      { date: "2026-05-20", plays: 2, payoutUsd: 0 },
+      { date: "2026-05-21", plays: 1, payoutUsd: 0 },
+    ]);
+  });
 });
