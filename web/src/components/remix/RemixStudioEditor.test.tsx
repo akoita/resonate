@@ -19,6 +19,7 @@ import {
   classifyProjectLoadError,
   describeSourceRights,
   initialEdits,
+  RemixGenerationAttributionBadge,
   RemixStudioEditor,
   remixGenerationFailureMessage,
   remixGenerationIsActive,
@@ -480,6 +481,38 @@ describe("describeGenerateAvailability (#1162)", () => {
       describeGenerateAvailability({ ...base, generationActive: true }).reason,
     ).toContain("already queued");
     expect(describeGenerateAvailability({ ...base, saving: true }).enabled).toBe(false);
+  });
+});
+
+describe("RemixGenerationAttributionBadge (#1342)", () => {
+  const stability = {
+    poweredBy: "Powered by Stability AI",
+    model: "Stable Audio 3",
+    licenseName: "Stability AI Community License",
+    licenseUrl: "https://stability.ai/license",
+  };
+
+  it("renders the 'Powered by Stability AI' notice and license link when attribution is present", () => {
+    const html = renderToStaticMarkup(
+      <RemixGenerationAttributionBadge attribution={stability} />,
+    );
+    expect(html).toContain("Powered by Stability AI");
+    expect(html).toContain("Stable Audio 3");
+    expect(html).toContain("https://stability.ai/license");
+    expect(html).toContain("Stability AI Community License");
+  });
+
+  it("renders nothing when no attribution is required (Lyria / stem-plus-AI)", () => {
+    expect(
+      renderToStaticMarkup(
+        <RemixGenerationAttributionBadge attribution={null} />,
+      ),
+    ).toBe("");
+    expect(
+      renderToStaticMarkup(
+        <RemixGenerationAttributionBadge attribution={undefined} />,
+      ),
+    ).toBe("");
   });
 });
 

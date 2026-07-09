@@ -9,6 +9,10 @@ import {
   type RemixEligibilityDecision,
   type RemixStemPolicyInput,
 } from "./remix-eligibility.policy";
+import {
+  getActiveRemixGenerationAttribution,
+  type RemixGenerationAttribution,
+} from "./audio-conditioned-remix-generation.provider";
 
 export type RemixEligibilityResult = RemixEligibilityDecision & {
   /**
@@ -29,6 +33,13 @@ export type RemixEligibilityResult = RemixEligibilityDecision & {
     licensed: boolean;
     exportLicensed: boolean;
   }>;
+  /**
+   * Attribution the studio UI must display for the active generation provider,
+   * or null when none is required (#1342). Non-null only while the
+   * audio-conditioned Stable Audio 3 provider is the active backend — the
+   * Stability AI Community License §IV(a) "Powered by Stability AI" gate.
+   */
+  generationAttribution: RemixGenerationAttribution | null;
 };
 
 @Injectable()
@@ -131,6 +142,7 @@ export class RemixEligibilityService {
         licensed: stem.licensed,
         exportLicensed: stem.exportLicensed ?? false,
       })),
+      generationAttribution: getActiveRemixGenerationAttribution(),
     };
   }
 

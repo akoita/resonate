@@ -591,6 +591,22 @@ behind default-off flags; environment enablement and fidelity follow-ups remain.
   details. Fade, trim, loop, effects, and release-grade mastering remain
   explicitly out of scope. Encrypted rendering shipped in #1214 (see below).
 
+- **Attribution gate (#1342):** the [Stability AI Community
+  License](https://stability.ai/license) §IV(a) requires a hosted service that
+  uses the Stable Audio materials to prominently display **"Powered by Stability
+  AI"**, make the license available to users, and keep the required NOTICE text
+  (see the repo [`NOTICE`](../../NOTICE) file). Because the trigger is the
+  *active provider*, the eligibility response carries a `generationAttribution`
+  object **only while `REMIX_GENERATION_PROVIDER_KIND=audio-conditioned`** and
+  generation is enabled (source of truth:
+  `getActiveRemixGenerationAttribution()`); the studio renders the badge and
+  Community License link in the Draft-status panel when present, and shows
+  nothing for Lyria / `stem_plus_ai`, which carry no such notice. This closes
+  the license-review pre-launch obligation #1 and gates flipping the provider to
+  `audio-conditioned` for real users. The remaining operator obligation is
+  registering with Stability AI for commercial use (§III, license review §D2) —
+  no code, tracked on #1342.
+
 Keeps audio-conditioned Stable Audio full regeneration (#1206/#1207) as an
 experimental draft-quality path and stem-mix renders (#1189) as the zero-AI
 mode; release-grade claims stay deferred until the fidelity follow-ups
