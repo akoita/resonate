@@ -1484,7 +1484,13 @@ export class AnalyticsService {
       const eventName = this.stringDimension(fact.dimensions, "eventName");
       const row = byDate.get(fact.occurredDate) ?? { date: fact.occurredDate, plays: 0, payoutUsd: 0 };
       if (this.isPlayEvent(eventName)) {
-        row.plays += fact.count;
+        // Count one play per play-event fact — identical to totalPlays / tracks /
+        // sources (which all do `+= 1`). Facts are event-grain, so summing
+        // `fact.count` here (as this once did) diverged whenever `count` wasn't
+        // exactly 1 — notably on the BigQuery fact path, where the mapping
+        // defaults with `?? 1` (which does NOT catch a stored `0`), so the
+        // series under-counted while the other tiles read the true total (#1425).
+        row.plays += 1;
       }
       if (this.isPayoutEvent(eventName)) {
         row.payoutUsd += this.canonicalUsdAmount(fact);
