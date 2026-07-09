@@ -1,0 +1,52 @@
+Resonate — Third-Party Model Attribution & Notices
+==================================================
+
+This file records attribution and notice obligations for third-party AI models
+that Resonate uses. It is the NOTICE text required to be kept "with our copies"
+of the materials it covers. See the per-model determinations in
+docs/rfc/stable-audio-3-license-review.md.
+
+
+Stable Audio 3 (Stability AI)
+-----------------------------
+
+Powered by Stability AI.
+
+Resonate's Remix Studio can generate audio-conditioned draft remixes using the
+self-hosted Stable Audio 3 model family (e.g. stabilityai/stable-audio-3-medium)
+when the audio-conditioned generation provider is active
+(REMIX_GENERATION_PROVIDER_KIND=audio-conditioned). Stable Audio 3 is licensed
+under the Stability AI Community License.
+
+  Stability AI Community License:
+  https://stability.ai/license
+
+Per Community License §IV(a), a product or service that uses any portion of the
+Stability AI Materials must (i) make the Community License Agreement available to
+users, (ii) keep this NOTICE text with our copies, and (iii) prominently display
+"Powered by Stability AI" on a related website, user interface, about page, or
+product documentation. Resonate satisfies (iii) in the Remix Studio UI (the
+Draft-status "Powered by Stability AI" badge, shown while the audio-conditioned
+provider is active) and in product documentation (docs/features/remix_studio.md).
+
+Copyright (c) Stability AI Ltd. All rights reserved.
+
+
+T5Gemma text encoder (Google) — bundled with Stable Audio 3
+-----------------------------------------------------------
+
+The stable-audio-3-medium weights physically redistribute the T5Gemma text
+encoder, which is governed by the Gemma Terms of Use and the Gemma Prohibited
+Use Policy:
+
+  Gemma Terms of Use:            https://ai.google.dev/gemma/terms
+  Gemma Prohibited Use Policy:   https://ai.google.dev/gemma/prohibited_use_policy
+
+Gemma Terms §3.1 expressly carves the NOTICE-file duty out for Hosted Services;
+the one binding flow-down is that the Gemma §3.2 use restrictions (the Prohibited
+Use Policy) are carried as an enforceable provision in the terms governing the
+service, with notice to users (see docs/compliance/ai_generation_acceptable_use.md).
+Google claims no rights in model Outputs (Gemma §3.3).
+
+Gemma is provided under and subject to the Gemma Terms of Use found at
+ai.google.dev/gemma/terms.

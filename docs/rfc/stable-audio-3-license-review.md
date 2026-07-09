@@ -211,7 +211,7 @@ default off in prod). Pre-launch obligations, all tracked:
 
 | # | Obligation | Owner | When |
 | --- | --- | --- | --- |
-| 1 | "Powered by Stability AI" in Remix Studio UI + docs; link Community License; keep NOTICE | [#1342](https://github.com/akoita/resonate/issues/1342) | before enabling provider for real users |
+| 1 | "Powered by Stability AI" in Remix Studio UI + docs; link Community License; keep NOTICE | [#1342](https://github.com/akoita/resonate/issues/1342) — **UI badge + `NOTICE` + docs landed**; server-driven, shown only while the audio-conditioned provider is active | before enabling provider for real users |
 | 2 | Register with Stability AI (free, §III) | operator (@akoita), tracked in #1342 | before prod enable; hard-required before billing (ADR-BM-3) |
 | 3 | PUP-mapped AUP enforceable in user-facing terms | `docs/compliance/ai_generation_acceptable_use.md` → ToS task under #1164 | before real-user launch |
 | 4 | Prompt-safety moderation for the self-hosted path (no vendor filter, unlike Lyria) | [#1343](https://github.com/akoita/resonate/issues/1343) (under #1164) | before real-user launch |

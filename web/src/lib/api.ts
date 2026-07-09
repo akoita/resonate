@@ -4086,6 +4086,20 @@ export type RemixDenialReason = {
   message: string;
 };
 
+/**
+ * Attribution the studio must display for the active generation provider
+ * (#1342). Non-null only while the self-hosted Stable Audio 3 (audio-conditioned)
+ * provider is active — the Stability AI Community License §IV(a) "Powered by
+ * Stability AI" obligation. The server is the single source of truth, so the
+ * client shows the badge iff this field is present.
+ */
+export type RemixGenerationAttribution = {
+  poweredBy: string;
+  model: string;
+  licenseName: string;
+  licenseUrl: string;
+};
+
 export type RemixEligibilityResponse = {
   allowed: boolean;
   requiredLicense: "remix" | null;
@@ -4104,6 +4118,8 @@ export type RemixEligibilityResponse = {
     remixable: boolean | null;
     licensed: boolean;
   }>;
+  /** Provider attribution to display in the studio, or null/absent when none. */
+  generationAttribution?: RemixGenerationAttribution | null;
 };
 
 export type RemixProjectStem = {

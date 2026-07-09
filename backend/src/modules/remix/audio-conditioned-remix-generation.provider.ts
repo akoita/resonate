@@ -288,6 +288,50 @@ export function isAudioConditionedRemixGenerationActiveAndEnabled(): boolean {
   );
 }
 
+/**
+ * Attribution/notice required by the Stability AI Community License §IV(a)
+ * (#1342). The trigger is running "a product or service that uses any portion"
+ * of the Stable Audio materials — i.e. the hosted Remix Studio, not just weight
+ * redistribution (license review §D1, docs/rfc/stable-audio-3-license-review.md).
+ * These strings are license-mandated constants tied to the self-hosted Stable
+ * Audio 3 provider, not environment configuration, so they live with the
+ * provider rather than in env vars. The obligation applies only while the
+ * audio-conditioned provider is the active generation backend; Lyria and the
+ * stem-plus-AI stack carry no such notice.
+ */
+export type RemixGenerationAttribution = {
+  /** Prominently displayed phrase required verbatim by §IV(a). */
+  poweredBy: string;
+  /** Human-readable model name for the UI badge / provenance copy. */
+  model: string;
+  /** Name of the license users must be able to reach (§IV(a)(i)). */
+  licenseName: string;
+  /** Canonical Community License URL to link from UI + docs. */
+  licenseUrl: string;
+};
+
+export const STABILITY_REMIX_GENERATION_ATTRIBUTION: RemixGenerationAttribution =
+  {
+    poweredBy: "Powered by Stability AI",
+    model: "Stable Audio 3",
+    licenseName: "Stability AI Community License",
+    licenseUrl: "https://stability.ai/license",
+  };
+
+/**
+ * Resolves the attribution the UI must display for the *currently active*
+ * generation provider, or null when the active provider imposes none. Single
+ * source of truth for the "Powered by Stability AI" gate (#1342): the client
+ * shows the badge iff this returns a value, so flipping
+ * REMIX_GENERATION_PROVIDER_KIND to the audio-conditioned provider turns the
+ * required attribution on automatically.
+ */
+export function getActiveRemixGenerationAttribution(): RemixGenerationAttribution | null {
+  return isAudioConditionedRemixGenerationActiveAndEnabled()
+    ? STABILITY_REMIX_GENERATION_ATTRIBUTION
+    : null;
+}
+
 const SUPPORTED_AUDIO_WORKER_MODELS = [
   "medium",
   "small-music",

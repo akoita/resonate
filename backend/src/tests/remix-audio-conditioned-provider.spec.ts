@@ -20,7 +20,11 @@ jest.mock("undici", () => ({
     (global.fetch as unknown as (...a: unknown[]) => unknown)(...args),
 }));
 
-import { AudioConditionedRemixGenerationProvider } from "../modules/remix/audio-conditioned-remix-generation.provider";
+import {
+  AudioConditionedRemixGenerationProvider,
+  getActiveRemixGenerationAttribution,
+  STABILITY_REMIX_GENERATION_ATTRIBUTION,
+} from "../modules/remix/audio-conditioned-remix-generation.provider";
 import {
   RemixGenerationProviderError,
   type RemixGenerationInput,
@@ -341,5 +345,56 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     } finally {
       delete process.env.REMIX_AUDIO_MODEL;
     }
+  });
+});
+
+// Stability AI Community License §IV(a) attribution gate (#1342): the studio
+// must show "Powered by Stability AI" only while the self-hosted Stable Audio 3
+// (audio-conditioned) provider is the active generation backend. This resolver
+// is the single source of truth the eligibility API surfaces to the client.
+describe("getActiveRemixGenerationAttribution (#1342)", () => {
+  const originalKind = process.env.REMIX_GENERATION_PROVIDER_KIND;
+  const originalEnabled = process.env.REMIX_GENERATION_ENABLED;
+
+  afterEach(() => {
+    if (originalKind === undefined)
+      delete process.env.REMIX_GENERATION_PROVIDER_KIND;
+    else process.env.REMIX_GENERATION_PROVIDER_KIND = originalKind;
+    if (originalEnabled === undefined)
+      delete process.env.REMIX_GENERATION_ENABLED;
+    else process.env.REMIX_GENERATION_ENABLED = originalEnabled;
+  });
+
+  it("returns the Stability attribution when the audio-conditioned provider is active and enabled", () => {
+    process.env.REMIX_GENERATION_PROVIDER_KIND = "audio-conditioned";
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    expect(getActiveRemixGenerationAttribution()).toEqual(
+      STABILITY_REMIX_GENERATION_ATTRIBUTION,
+    );
+    // The displayed phrase and license link are license-mandated verbatim.
+    expect(STABILITY_REMIX_GENERATION_ATTRIBUTION.poweredBy).toBe(
+      "Powered by Stability AI",
+    );
+    expect(STABILITY_REMIX_GENERATION_ATTRIBUTION.licenseUrl).toBe(
+      "https://stability.ai/license",
+    );
+  });
+
+  it("returns null when the audio-conditioned provider is selected but generation is disabled", () => {
+    process.env.REMIX_GENERATION_PROVIDER_KIND = "audio-conditioned";
+    process.env.REMIX_GENERATION_ENABLED = "false";
+    expect(getActiveRemixGenerationAttribution()).toBeNull();
+  });
+
+  it("returns null for the Lyria provider (carries no Stability notice)", () => {
+    process.env.REMIX_GENERATION_PROVIDER_KIND = "lyria";
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    expect(getActiveRemixGenerationAttribution()).toBeNull();
+  });
+
+  it("returns null when no provider kind is configured", () => {
+    delete process.env.REMIX_GENERATION_PROVIDER_KIND;
+    process.env.REMIX_GENERATION_ENABLED = "true";
+    expect(getActiveRemixGenerationAttribution()).toBeNull();
   });
 });

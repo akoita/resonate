@@ -14,6 +14,7 @@ import {
   publishRemixProject,
   updateRemixProject,
   type RemixEligibilityResponse,
+  type RemixGenerationAttribution,
   type RemixGenerationMetadata,
   type RemixProject,
   type RemixProjectAvailableStem,
@@ -471,6 +472,37 @@ export function groundingDescription(
     default:
       return null;
   }
+}
+
+/**
+ * "Powered by Stability AI" attribution badge (#1342). Rendered in the studio
+ * only when the server reports that the active generation provider requires it
+ * — i.e. the self-hosted Stable Audio 3 (audio-conditioned) provider, per the
+ * Stability AI Community License §IV(a). `attribution` is the server-driven
+ * `generationAttribution` from the eligibility response; null renders nothing,
+ * so Lyria / stem-plus-AI show no notice.
+ */
+export function RemixGenerationAttributionBadge({
+  attribution,
+}: {
+  attribution: RemixGenerationAttribution | null | undefined;
+}) {
+  if (!attribution) return null;
+  return (
+    <p className="mt-3 pt-2 text-xs text-zinc-300 remix-generation-attribution">
+      <span className="font-medium text-zinc-200">{attribution.poweredBy}</span>
+      {" — "}
+      {attribution.model} draft engine.{" "}
+      <a
+        href={attribution.licenseUrl}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="underline hover:text-white"
+      >
+        {attribution.licenseName}
+      </a>
+    </p>
+  );
 }
 
 export function remixGenerationFailureMessage(
@@ -1730,6 +1762,16 @@ export function RemixStudioEditor({
                     {generationFailure}
                   </p>
                 )}
+                {/*
+                 * Stability AI Community License §IV(a) attribution (#1342).
+                 * Shown whenever the audio-conditioned Stable Audio 3 provider
+                 * is the active generation backend — the server sets
+                 * generationAttribution and the client displays it verbatim.
+                 * Absent for Lyria / stem-plus-AI, which carry no such notice.
+                 */}
+                <RemixGenerationAttributionBadge
+                  attribution={eligibility?.generationAttribution}
+                />
               </div>
             </div>
             {(() => {
