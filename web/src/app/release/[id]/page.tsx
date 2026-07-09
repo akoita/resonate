@@ -2126,7 +2126,7 @@ export default function ReleaseDetails() {
       {/* NFT Marketplace Section - Only for owners */}
       {
         isOwner && release.tracks && release.tracks.some(t => t.stems && t.stems.length > 0) && (
-          <section className="nft-section glass-panel">
+          <section id="nft-marketplace" className="nft-section glass-panel">
             <div className="nft-header">
               <div>
                 <h3 className="nft-title">NFT Marketplace</h3>
@@ -2336,6 +2336,14 @@ export default function ReleaseDetails() {
                                       stem.type.charAt(0).toUpperCase() + stem.type.slice(1)
                                     )}
                                   </span>
+                                  {stem.type.toLowerCase() === "master" && (
+                                    <span
+                                      className="nft-stem-remix-badge"
+                                      title="This is the remix master stem — minting it lists your in-app remix for sale."
+                                    >
+                                      Remix master
+                                    </span>
+                                  )}
                                   <MintStemButton
                                     stemId={stem.id}
                                     stemType={stem.type}
@@ -3179,6 +3187,19 @@ export default function ReleaseDetails() {
           font-weight: 600;
           color: #fff;
           min-width: 60px;
+        }
+
+        .nft-stem-remix-badge {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: #10b981;
+          background: rgba(16, 185, 129, 0.12);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          border-radius: 999px;
+          padding: 2px 8px;
+          white-space: nowrap;
         }
 
         .nft-royalties-banner {

@@ -20,6 +20,7 @@ import {
   describeSourceRights,
   initialEdits,
   RemixGenerationAttributionBadge,
+  RemixSellCta,
   RemixStudioEditor,
   remixGenerationFailureMessage,
   remixGenerationIsActive,
@@ -710,6 +711,53 @@ describe("describeExportAvailability (#1323)", () => {
     expect(
       describeExportAvailability({ ...base, status: "published" }).reasonCode,
     ).toBe("export_not_draft");
+  });
+});
+
+describe("RemixSellCta (#1413)", () => {
+  it("renders an enabled link into the release page's NFT Marketplace section when sellable", () => {
+    const html = renderToStaticMarkup(
+      <RemixSellCta
+        commerce={{
+          sellable: true,
+          reasonCode: null,
+          reason: null,
+          publishedReleaseId: "rel-x",
+          masterStemId: "stem-master-1",
+        }}
+      />,
+    );
+    expect(html).toContain("List this remix for sale");
+    expect(html).toContain('href="/release/rel-x#nft-marketplace"');
+    expect(html).not.toContain("aria-disabled");
+  });
+
+  it("renders a non-navigating, aria-disabled control with the honest reason when published but not sellable", () => {
+    const html = renderToStaticMarkup(
+      <RemixSellCta
+        commerce={{
+          sellable: false,
+          reasonCode: "commercial_license_required",
+          reason:
+            "Listing a remix for sale needs a commercial license on the source stems.",
+          publishedReleaseId: "rel-x",
+          masterStemId: "stem-master-1",
+        }}
+      />,
+    );
+    expect(html).toContain("List this remix for sale");
+    expect(html).toContain("aria-disabled=\"true\"");
+    expect(html).toContain(
+      "Listing a remix for sale needs a commercial license on the source stems.",
+    );
+    expect(html).not.toContain("<a ");
+  });
+
+  it("renders nothing when there is no commerce data (unpublished, or not yet loaded)", () => {
+    expect(renderToStaticMarkup(<RemixSellCta commerce={null} />)).toBe("");
+    expect(renderToStaticMarkup(<RemixSellCta commerce={undefined} />)).toBe(
+      "",
+    );
   });
 });
 
