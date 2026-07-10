@@ -3,18 +3,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   checkPunchlineEligibility,
+  createPunchlineDraft,
+  listMyPunchlineTrackDrops,
+  type PunchlineDrop,
   type PunchlineEligibility,
   type Track,
 } from "../../lib/api";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
+import { PunchlineDropBuilder } from "./PunchlineDropBuilder";
 import {
-  clampClipRange,
-  formatClipDuration,
-  formatClipTime,
-  PunchlineClipSelector,
-  type ClipRange,
-} from "./PunchlineClipSelector";
+  newestDraft,
+  publishedDrops,
+  selectPunchlineView,
+} from "./punchlineDropHelpers";
 import "../../styles/punchline.css";
 
 const VOCALS_STEM_TYPE = "vocals";
@@ -58,7 +60,10 @@ export function PunchlineDropsPanel({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [range, setRange] = useState<ClipRange | null>(null);
+
+  const [myDrops, setMyDrops] = useState<PunchlineDrop[]>([]);
+  const [activeDraft, setActiveDraft] = useState<PunchlineDrop | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const selectedTrack = useMemo(
     () => vocalsTracks.find((t) => t.id === selectedTrackId) ?? null,
@@ -67,7 +72,6 @@ export function PunchlineDropsPanel({
   const vocalsStem = selectedTrack ? findVocalsStem(selectedTrack) : undefined;
   const durationSeconds = vocalsStem?.durationSeconds ?? null;
 
-  // Keep the auto-selection stable if the track list changes to a single track.
   useEffect(() => {
     if (!selectedTrackId && vocalsTracks.length === 1) {
       setSelectedTrackId(vocalsTracks[0].id);
@@ -80,10 +84,20 @@ export function PunchlineDropsPanel({
       setLoading(true);
       setError(null);
       setEligibility(null);
-      setRange(null);
+      setActiveDraft(null);
+      setMyDrops([]);
       try {
         const result = await checkPunchlineEligibility(trackId, token);
         setEligibility(result);
+        if (result.eligible) {
+          try {
+            const drops = await listMyPunchlineTrackDrops(trackId, token);
+            setMyDrops(drops.items);
+          } catch (dropsErr) {
+            console.error(dropsErr);
+            // Non-fatal: overview still lets the artist start a new drop.
+          }
+        }
       } catch (err) {
         console.error(err);
         setError(
@@ -102,28 +116,54 @@ export function PunchlineDropsPanel({
     }
   }, [selectedTrackId, loadEligibility]);
 
-  // Seed a sensible default range once we have both the bounds and a duration.
-  useEffect(() => {
-    if (!eligibility?.eligible || durationSeconds == null) {
-      return;
+  const onDropChange = useCallback((drop: PunchlineDrop) => {
+    setActiveDraft(drop);
+    setMyDrops((prev) => {
+      const without = prev.filter((d) => d.id !== drop.id);
+      return [drop, ...without];
+    });
+  }, []);
+
+  const createDrop = useCallback(async () => {
+    if (!token || !selectedTrackId) return;
+    setCreating(true);
+    try {
+      const draft = await createPunchlineDraft(
+        { trackId: selectedTrackId },
+        token,
+      );
+      setActiveDraft(draft);
+      setMyDrops((prev) => [draft, ...prev]);
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Couldn’t start a drop",
+        message:
+          err instanceof Error
+            ? err.message.replace(/^API \d+:\s*/, "")
+            : "Please try again.",
+      });
+    } finally {
+      setCreating(false);
     }
-    const durationMs = Math.round(durationSeconds * 1000);
-    const { minMs, maxMs } = eligibility.clipBoundsMs;
-    setRange(
-      clampClipRange(
-        { startMs: 0, endMs: Math.min(maxMs, durationMs) },
-        durationMs,
-        minMs,
-        maxMs,
-      ),
-    );
-  }, [eligibility, durationSeconds, selectedTrackId]);
+  }, [token, selectedTrackId, addToast]);
 
   if (vocalsTracks.length === 0) {
     return null;
   }
 
   const bounds = eligibility?.clipBoundsMs;
+  const view = selectPunchlineView({
+    selectedTrackId,
+    activeDraft,
+    loading,
+    error: error !== null,
+    eligible: eligibility ? eligibility.eligible : null,
+  });
+
+  const resumeDraft = newestDraft(myDrops);
+  const published = publishedDrops(myDrops);
+  const stemLengthReady = durationSeconds != null && durationSeconds > 0;
 
   return (
     <section
@@ -137,7 +177,7 @@ export function PunchlineDropsPanel({
         </p>
       </div>
 
-      {vocalsTracks.length > 1 && (
+      {vocalsTracks.length > 1 && !activeDraft && (
         <div className="punchline-track-select">
           <label htmlFor="punchline-track">Track</label>
           <select
@@ -157,104 +197,158 @@ export function PunchlineDropsPanel({
         </div>
       )}
 
-      {!selectedTrackId && (
+      {view === "select-track" && (
         <p className="punchline-hint">
           Select a track with a vocal stem to build a Punchline Drop.
         </p>
       )}
 
-      {selectedTrackId && loading && (
+      {view === "loading" && (
         <p className="punchline-hint">Checking eligibility…</p>
       )}
 
-      {selectedTrackId && error && (
+      {view === "error" && (
         <div className="punchline-error-state">
           <p className="punchline-error">{error}</p>
           <button
             type="button"
             className="punchline-retry-btn"
-            onClick={() => loadEligibility(selectedTrackId)}
+            onClick={() => selectedTrackId && loadEligibility(selectedTrackId)}
           >
             Try again
           </button>
         </div>
       )}
 
-      {selectedTrackId &&
-        !loading &&
-        !error &&
-        eligibility &&
-        !eligibility.eligible && (
-          <div className="punchline-not-eligible">
-            <p className="punchline-not-eligible-title">
-              This track can&apos;t create a Punchline Drop yet:
+      {view === "ineligible" && eligibility && (
+        <div className="punchline-not-eligible">
+          <p className="punchline-not-eligible-title">
+            This track can&apos;t create a Punchline Drop yet:
+          </p>
+          <ul className="punchline-reasons">
+            {eligibility.reasons.map((reason) => (
+              <li key={reason.code}>{reason.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {view === "overview" && eligibility && (
+        <div className="punchline-overview">
+          <p className="punchline-rights-summary">
+            <span className="punchline-rights-label">
+              {eligibility.rightsLabel}
+            </span>{" "}
+            {eligibility.rightsSummary}
+          </p>
+
+          {published.length > 0 && (
+            <div className="punchline-overview-published">
+              <h5>Published drops</h5>
+              <ul className="punchline-moment-list">
+                {published.map((drop) => (
+                  <li key={drop.id} className="punchline-moment-row">
+                    <div className="punchline-moment-row-main">
+                      <span className="punchline-moment-row-title">
+                        {drop.title || "Punchline Drop"}
+                      </span>
+                      <span className="punchline-moment-row-lyric">
+                        {drop.moments.length} moment
+                        {drop.moments.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="punchline-moment-row-actions">
+                      <button
+                        type="button"
+                        className="punchline-link-btn"
+                        onClick={() => setActiveDraft(drop)}
+                      >
+                        View
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {!stemLengthReady ? (
+            <p className="punchline-hint">
+              The vocal stem length isn&apos;t available yet, so a drop can&apos;t
+              be built. Try again once processing finishes.
             </p>
-            <ul className="punchline-reasons">
-              {eligibility.reasons.map((reason) => (
-                <li key={reason.code}>{reason.message}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-      {selectedTrackId &&
-        !loading &&
-        !error &&
-        eligibility?.eligible &&
-        bounds && (
-          <div className="punchline-eligible">
-            <p className="punchline-rights-summary">
-              <span className="punchline-rights-label">
-                {eligibility.rightsLabel}
-              </span>{" "}
-              {eligibility.rightsSummary}
-            </p>
-
-            {durationSeconds == null || durationSeconds <= 0 ? (
-              <p className="punchline-hint">
-                The vocal stem length isn&apos;t available yet, so a clip range
-                can&apos;t be selected. Try again once processing finishes.
-              </p>
-            ) : vocalsStem && range ? (
-              <>
-                <PunchlineClipSelector
-                  stemId={vocalsStem.id}
-                  durationSeconds={durationSeconds}
-                  minMs={bounds.minMs}
-                  maxMs={bounds.maxMs}
-                  value={range}
-                  onChange={setRange}
-                  onPreviewError={(message) =>
-                    addToast({
-                      type: "error",
-                      title: "Preview failed",
-                      message,
-                    })
-                  }
-                />
-
-                <div className="punchline-selection-summary">
-                  Selected: {formatClipTime(range.startMs)} →{" "}
-                  {formatClipTime(range.endMs)} ·{" "}
-                  {formatClipDuration(range.endMs - range.startMs)}
-                </div>
-
-                <div className="punchline-next-step">
+          ) : (
+            <div className="punchline-overview-cta">
+              {resumeDraft ? (
+                <>
                   <button
                     type="button"
-                    className="punchline-save-moment-btn"
-                    aria-disabled="true"
-                    disabled
+                    className="punchline-btn-primary"
+                    onClick={() => setActiveDraft(resumeDraft)}
                   >
-                    Save as moment
+                    Resume draft
                   </button>
-                  <span className="punchline-next-step-hint">
-                    Drop builder arrives next (#484) — your clip range selection
-                    and preview are live today.
-                  </span>
-                </div>
-              </>
-            ) : null}
+                  <button
+                    type="button"
+                    className="punchline-btn-secondary"
+                    onClick={createDrop}
+                    disabled={creating}
+                    aria-disabled={creating}
+                  >
+                    {creating ? "Starting…" : "Start another drop"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="punchline-btn-primary"
+                  onClick={createDrop}
+                  disabled={creating}
+                  aria-disabled={creating}
+                >
+                  {creating ? "Starting…" : "Create Punchline Drop"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === "builder" &&
+        activeDraft &&
+        token &&
+        bounds &&
+        vocalsStem &&
+        stemLengthReady && (
+          <PunchlineDropBuilder
+            token={token}
+            drop={activeDraft}
+            stemId={vocalsStem.id}
+            durationSeconds={durationSeconds as number}
+            minMs={bounds.minMs}
+            maxMs={bounds.maxMs}
+            onDropChange={onDropChange}
+            onExit={() => setActiveDraft(null)}
+            addToast={addToast}
+          />
+        )}
+
+      {view === "builder" &&
+        activeDraft &&
+        (!bounds || !vocalsStem || !stemLengthReady) && (
+          <div className="punchline-builder">
+            <p className="punchline-hint">
+              This drop can&apos;t be edited right now because the track&apos;s
+              vocal stem details aren&apos;t available. Reopen the release once
+              processing finishes.
+            </p>
+            <button
+              type="button"
+              className="punchline-btn-secondary"
+              onClick={() => setActiveDraft(null)}
+            >
+              Back
+            </button>
           </div>
         )}
     </section>

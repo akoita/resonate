@@ -31,7 +31,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Clip extraction | [#481](https://github.com/akoita/resonate/issues/481) | ✅ done | Server-side ffmpeg trim + re-encode of a `[startMs,endMs)` range from the `vocals` stem into a stored MP3. |
 | Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
 | Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | ✅ done | Owner-only release-page panel: pick a vocals-stem track, see explainable eligibility, drag a `[startMs,endMs]` clip range, and preview exactly that range in-browser. Eligibility now also returns the server's `clipBoundsMs` so the client never hardcodes them. |
-| Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | 🔜 planned | Drop builder on the release page. |
+| Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | ✅ done | Full drop builder on the release page: create/resume a draft, moment editor (clip range + title/lyric/artwork/edition/price) with a live collectible-card preview, publish behind a review dialog with the verbatim non-commercial rights warning. Owner draft resume via `GET /punchline/me/track-drops`. |
 | Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | 🔜 planned | Collect a moment; `PunchlineCollectible` grant + take-rate (revenue line 3). |
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | 🔜 planned | Fan-facing collect module beneath playback. |
 | Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | 🔜 planned | Owned moments on the collector profile. |
@@ -68,6 +68,7 @@ from the existing rails and is wired at purchase in #485.
 | `PATCH` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Edit a moment on a draft. |
 | `DELETE` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Remove a moment from a draft. |
 | `POST` | `/punchline/drops/:dropId/publish` | JWT (owner) | Re-run the gate, extract each clip, persist, emit the event. |
+| `GET` | `/punchline/me/track-drops?trackId=` | JWT (owner) | The caller's drops on a track, any status, newest first — powers the builder's draft resume + published summaries (#484). |
 | `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
 | `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
 
@@ -95,11 +96,30 @@ any track that has a processed `vocals` stem:
   (`GET /catalog/stems/:stemId/preview`, which decrypts server-side and supports
   Range seeking); no new backend preview endpoint was added.
 
-The clip selector (`web/src/components/punchline/PunchlineClipSelector.tsx`) is
-deliberately reusable and controlled (`value` + `onChange`) so the drop builder
-(#484) can compose it per moment. Saving a moment is a forward-honest,
-`aria-disabled` affordance today ("Drop builder arrives next (#484) — your clip
-range selection and preview are live today.") — no dead buttons.
+The **drop builder** (#484) completes the flow in the same panel. From the
+eligibility overview the artist creates a drop (or resumes the newest draft —
+drafts survive reloads via the owner-scoped `GET /punchline/me/track-drops`):
+
+- drop title/description with an explicit Save;
+- a **moment editor** composing the #483 clip selector per moment plus title
+  and lyric (live character counters), optional artwork URL (http(s)/ipfs, live
+  thumbnail), edition size ("Limited edition" is the only MVP edition model),
+  and a price entered in dollars and stored as integer cents (`0` renders
+  "Free to claim"; no suggested price — canonical pricing is a pending operator
+  decision);
+- a live **collectible-card preview** rendered from the editor fields (artwork,
+  lyric, duration badge, edition, price, rights chip) — what fans will see;
+- a moment list with edit/remove (ConfirmDialog-confirmed) while the drop is a
+  draft;
+- **Publish** behind a review dialog (a purpose-built modal following
+  ConfirmDialog styling): moment count, total editions, per-moment one-liners,
+  the **verbatim `NON_COMMERCIAL_COLLECTIBLE` rights warning**, an honest note
+  that set-unlock rewards arrive later (#488), and an "Extracting clips…"
+  loading state. Failures (re-gate `track_not_eligible` reasons, per-moment
+  clip-extraction errors) surface inline and the drop stays an editable draft.
+
+All builder validation mirrors the backend limits exactly (shared helpers in
+`punchlineDropHelpers.ts`), so anything the UI accepts is publishable.
 
 ### Environment variables
 
@@ -121,15 +141,20 @@ range selection and preview are live today.") — no dead buttons.
   `punchline-clip.service.ts`, `punchline-drop.service.ts`.
 - Controller: `backend/src/modules/punchline/punchline.controller.ts`.
 - Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`).
-- Artist UI (#483): `web/src/components/punchline/PunchlineDropsPanel.tsx`
-  (release-page owner panel), `PunchlineClipSelector.tsx` (reusable clip
-  selector + preview), `web/src/styles/punchline.css`; API client
-  `checkPunchlineEligibility` in `web/src/lib/api.ts`; wired into
-  `web/src/app/release/[id]/page.tsx`.
+- Artist UI (#483 + #484): `web/src/components/punchline/` —
+  `PunchlineDropsPanel.tsx` (release-page owner panel + view state machine),
+  `PunchlineDropBuilder.tsx` (draft builder), `PunchlineMomentEditor.tsx`,
+  `PunchlineCollectibleCard.tsx` (live preview + published card),
+  `PunchlinePublishReviewDialog.tsx` (publish review + rights warning),
+  `PunchlineClipSelector.tsx` (reusable clip selector + preview),
+  `punchlineDropHelpers.ts` (pure validation/price/view helpers),
+  `web/src/styles/punchline.css`; punchline API client in `web/src/lib/api.ts`;
+  wired into `web/src/app/release/[id]/page.tsx`. User Guide article
+  `punchline-drops` in `web/src/lib/help/content.ts`.
 - Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
   `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`;
-  frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx` and
-  `PunchlineDropsPanel.test.tsx`.
+  frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx`,
+  `PunchlineDropsPanel.test.tsx`, and `punchlineDropHelpers.test.tsx`.
   Run backend: `npm run test:integration -- --testPathPattern='punchline'`
   (the publish/clip render cases require ffmpeg on PATH; CI installs it for the
   backend-integration job). Run frontend: `npx vitest run src/components/punchline`.

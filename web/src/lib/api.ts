@@ -1837,6 +1837,160 @@ export async function checkPunchlineEligibility(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Punchline Drops (#484) — artist drop builder (draft + publish)
+// ---------------------------------------------------------------------------
+
+export type PunchlineDropStatus = "draft" | "published" | "archived";
+
+/** A collectible moment on a drop (mirrors the backend `serializeMoment`). */
+export type PunchlineMoment = {
+  id: string;
+  title: string;
+  lyricText: string;
+  artworkUrl: string | null;
+  sourceStemType: string;
+  startMs: number;
+  endMs: number;
+  /** Populated once the drop is published (the extracted MP3 clip). */
+  clipAssetUri: string | null;
+  editionSize: number;
+  priceCents: number;
+  rightsLabel: string;
+  collectedCount: number;
+};
+
+/** A drop with its moments (mirrors the backend `serializeDrop`). */
+export type PunchlineDrop = {
+  id: string;
+  trackId: string;
+  artistId: string;
+  status: PunchlineDropStatus;
+  title: string | null;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  rightsLabel: string;
+  rightsSummary: string;
+  moments: PunchlineMoment[];
+};
+
+/** Add/edit payload for a moment. On add all fields are required. */
+export type PunchlineMomentInput = {
+  title: string;
+  lyricText: string;
+  artworkUrl?: string | null;
+  startMs: number;
+  endMs: number;
+  editionSize: number;
+  priceCents: number;
+};
+
+export type PunchlineDropListResult = {
+  items: PunchlineDrop[];
+  meta: { count: number; limit?: number };
+};
+
+/** Create a draft drop on an owned, eligible track. */
+export async function createPunchlineDraft(
+  input: { trackId: string; title?: string | null; description?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    "/punchline/drops",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Update a draft drop's title/description. */
+export async function updatePunchlineDraft(
+  dropId: string,
+  input: { title?: string | null; description?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Add a collectible moment to a draft drop. Returns the full updated drop. */
+export async function addPunchlineMoment(
+  dropId: string,
+  input: PunchlineMomentInput,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Edit a moment on a draft drop. Omitted fields keep their stored value. */
+export async function updatePunchlineMoment(
+  dropId: string,
+  momentId: string,
+  input: Partial<PunchlineMomentInput>,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments/${encodeURIComponent(momentId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Remove a moment from a draft drop. Returns the full updated drop. */
+export async function removePunchlineMoment(
+  dropId: string,
+  momentId: string,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments/${encodeURIComponent(momentId)}`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
+/** Publish a draft: re-gate, extract each clip, persist, emit the event. */
+export async function publishPunchlineDrop(dropId: string, token: string) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/publish`,
+    { method: "POST" },
+    token,
+  );
+}
+
+/** Drop detail. Published drops are public; drafts only for the owner. */
+export async function getPunchlineDrop(dropId: string, token?: string | null) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}`,
+    {},
+    token,
+  );
+}
+
+/** The caller's own drops (any status) on a track — the builder resume feed. */
+export async function listMyPunchlineTrackDrops(trackId: string, token: string) {
+  return apiRequest<PunchlineDropListResult>(
+    `/punchline/me/track-drops?trackId=${encodeURIComponent(trackId)}`,
+    {},
+    token,
+  );
+}
+
+/** Public list of published drops for a track. */
+export async function listTrackPunchlineDrops(trackId: string) {
+  return apiRequest<PunchlineDropListResult>(
+    `/punchline/tracks/${encodeURIComponent(trackId)}/drops`,
+  );
+}
+
 export async function submitReleaseRightsUpgradeRequest(
   releaseId: string,
   input: {
