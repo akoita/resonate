@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Punchline Drops MVP"
-status: draft
+status: in-progress
 owner: "@akoita"
 depends_on:
   - artist_upload_flow_mvp
@@ -9,6 +9,107 @@ depends_on:
 ---
 
 # Phase 1: Punchline Drops MVP
+
+> **Status:** `in-progress`. The backend foundation (Sprint 7, #479–#482) is
+> shipped; the artist/collector UI (#483+) and purchase/unlock flows are still
+> pending. The [Implementation Status](#implementation-status-sprint-7) section
+> below is the practical, current-state reference for what works today and how
+> to exercise it. The rest of this page is the product design/RFC intent that
+> the slices implement toward.
+
+## Implementation Status (Sprint 7)
+
+Punchline Drops let an artist turn a track's vocal-stem punchlines into scarce,
+non-commercial fan collectibles. This section tracks what is actually built.
+
+### Slice status
+
+| Slice | Issue | Status | What it shipped |
+| --- | --- | --- | --- |
+| Persistence models | [#479](https://github.com/akoita/resonate/issues/479) | ✅ done | `PunchlineDrop` / `PunchlineMoment` / `PunchlineCollectible` / `PunchlineUnlock` Prisma models. |
+| Eligibility + rights gate | [#480](https://github.com/akoita/resonate/issues/480) | ✅ done | `checkEligibility(trackId)` — explainable allow/deny on ownership, published release, vocals stem, content safety, and rights route. |
+| Clip extraction | [#481](https://github.com/akoita/resonate/issues/481) | ✅ done | Server-side ffmpeg trim + re-encode of a `[startMs,endMs)` range from the `vocals` stem into a stored MP3. |
+| Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
+| Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | 🔜 planned | Clip range selection + preview on the vocal-stem waveform. |
+| Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | 🔜 planned | Drop builder on the release page. |
+| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | 🔜 planned | Collect a moment; `PunchlineCollectible` grant + take-rate (revenue line 3). |
+| Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | 🔜 planned | Fan-facing collect module beneath playback. |
+| Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | 🔜 planned | Owned moments on the collector profile. |
+| Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | 🔜 planned | Collect every moment in a drop to earn a bonus reward. |
+| Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | 🔜 planned | Product analytics events + artist performance metrics. |
+
+Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
+[Vision Sprint 7 — Punchline Drops](../sprints/2026-07-10-vision-sprint-7-punchline-drops.md).
+
+### Rights posture
+
+Every drop and moment is minted under a single, deliberately restrictive rights
+class: `NON_COMMERCIAL_COLLECTIBLE`. The UI-safe summary rendered verbatim on a
+collectible card is:
+
+> Personal collectible for playback and profile display only — no commercial
+> use, no remix or sampling rights, and no transfer of copyright or master
+> ownership.
+
+Only verified/trusted catalogs are eligible (the gate defers to the shared
+upload-rights routing engine). A collectible is **utility, not yield** — it
+grants access and display, never income or a revenue share (ADR-BM-4). The
+artist keeps 85%+ of every transaction; the marketplace 10% take-rate is reused
+from the existing rails and is wired at purchase in #485.
+
+### Backend API surface (implemented)
+
+| Method | Route | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/punchline/eligibility?trackId=` | JWT | Explainable allow/deny for creating a drop on a track (#480). |
+| `POST` | `/punchline/drops` | JWT (owner) | Create a draft drop on an owned, eligible track. |
+| `PATCH` | `/punchline/drops/:dropId` | JWT (owner) | Update a draft drop's title/description. |
+| `POST` | `/punchline/drops/:dropId/moments` | JWT (owner) | Add a collectible moment to a draft. |
+| `PATCH` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Edit a moment on a draft. |
+| `DELETE` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Remove a moment from a draft. |
+| `POST` | `/punchline/drops/:dropId/publish` | JWT (owner) | Re-run the gate, extract each clip, persist, emit the event. |
+| `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
+| `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
+
+Ownership/eligibility rules enforced server-side: only the track's artist can
+create; only draft drops can be mutated; create **and** publish both run the
+#480 gate; moment ranges are validated against the same clip-length bounds the
+extractor enforces (so publish can't fail on a range the draft accepted); at
+most 20 moments per drop.
+
+### Environment variables
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `PUNCHLINE_CLIP_MIN_MS` | `2000` | Minimum moment/clip length. |
+| `PUNCHLINE_CLIP_MAX_MS` | `15000` | Maximum moment/clip length (keeps a collectible a punchline, not a song). |
+
+### Events
+
+- `punchline.drop_published` (v1) — emitted on publish with
+  `{ dropId, trackId, artistId, momentCount, totalEditions }` (identifiers +
+  aggregate counts only; no lyrics, artwork, clip bytes, or pricing). The full
+  product-analytics taxonomy is #489.
+
+### Services, code, and tests
+
+- Services: `backend/src/modules/punchline/punchline-eligibility.service.ts`,
+  `punchline-clip.service.ts`, `punchline-drop.service.ts`.
+- Controller: `backend/src/modules/punchline/punchline.controller.ts`.
+- Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`).
+- Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
+  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`.
+  Run: `npm run test:integration -- --testPathPattern='punchline'`
+  (the publish/clip render cases require ffmpeg on PATH; CI installs it for the
+  backend-integration job).
+
+### Business-model note
+
+Revenue line (3) marketplace take-rate. Phase per ADR-BM-6: MVP/experiment.
+Canonical fee/split numbers live in `docs/rfc/business-model.md`; the 10%
+primary-sale take-rate is reused from existing marketplace rails and is wired at
+purchase in #485. Concrete collectible pricing is left to operator input and is
+reconciled there rather than hardcoded in code.
 
 ## Goal
 
