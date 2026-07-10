@@ -7797,6 +7797,43 @@ a.listener-cohort-detail__action:focus-visible {
   flex-wrap: wrap;
 }
 
+/* Playlist/album detail hero — mobile. The base hero is a fixed 240px-artwork +
+   flex-content ROW with a 48px title and no wrapping, so on a phone the title,
+   "Play All", and share controls overflowed off the right edge (the tabs and
+   track rows already have mobile rules; this hero did not). Stack it vertically,
+   shrink + center the artwork, scale the title, and let the content take the
+   full width so nothing is clipped. Verified against the live page: no
+   horizontal overflow at 390px. */
+@media (max-width: 767px) {
+  .detail-hero {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .detail-hero-artwork {
+    width: 180px;
+    height: 180px;
+  }
+
+  .detail-hero-content {
+    flex: initial;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .detail-hero-title {
+    font-size: 32px;
+    word-break: break-word;
+  }
+
+  .detail-hero-actions {
+    justify-content: center;
+  }
+}
+
 /* Projects section in Artist view */
 .detail-section-title {
   font-size: 20px;
