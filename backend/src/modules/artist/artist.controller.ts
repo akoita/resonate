@@ -51,6 +51,22 @@ export class ArtistController {
         return this.artistService.updateSettings(req.user.userId, id, body);
     }
 
+    @UseGuards(AuthGuard("jwt"))
+    @Patch(":id")
+    updateProfile(
+        @Request() req: any,
+        @Param("id") id: string,
+        @Body()
+        body: {
+            imageUrl?: unknown;
+            summary?: unknown;
+            socialLinks?: unknown;
+            website?: unknown;
+        },
+    ) {
+        return this.artistService.updateProfile(req.user.userId, id, body);
+    }
+
     @Get(":id")
     async getById(@Param("id") id: string) {
         const artist = await this.artistService.findById(id);

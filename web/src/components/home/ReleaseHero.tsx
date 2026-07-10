@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "../ui/Button";
 import { Release } from "../../lib/api";
-import { releaseArtistCreditHref } from "../../lib/artistRoutes";
+import { releaseArtistProfileHref } from "../../lib/artistRoutes";
 
 interface ReleaseHeroProps {
   release: Release;
@@ -37,16 +38,19 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
 
         <h1 className="hero-main-title text-gradient">{release.title}</h1>
         <p className="hero-main-artist">
-          By <span
-            className={`artist-highlight ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              const target = releaseArtistCreditHref(release);
-              if (target) router.push(target);
-            }}
-          >
-            {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
-          </span>
+          By {releaseArtistProfileHref(release) ? (
+            <Link
+              href={releaseArtistProfileHref(release)!}
+              className="artist-highlight clickable"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+            </Link>
+          ) : (
+            <span className="artist-highlight">
+              {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+            </span>
+          )}
         </p>
 
         <div className="hero-actions">

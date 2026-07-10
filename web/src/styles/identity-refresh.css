@@ -944,6 +944,77 @@ button:focus-visible,
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
+/* Artist website + social links row (#1419). */
+.artist-social-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.artist-social-link {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--r-secondary);
+  background: rgba(196, 181, 253, 0.10);
+  border: 1px solid rgba(196, 181, 253, 0.22);
+  border-radius: 999px;
+  padding: 5px 12px;
+  text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.artist-social-link:hover,
+.artist-social-link:focus-visible {
+  border-color: rgba(196, 181, 253, 0.45);
+  background: rgba(196, 181, 253, 0.16);
+}
+
+/* Owner-only edit profile affordance + form (#1419). */
+.artist-profile-editor {
+  margin-top: 16px;
+}
+.artist-edit-profile-btn {
+  font-size: 13px;
+}
+.artist-profile-edit-form {
+  margin-top: 16px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 16px;
+  padding: 20px;
+  backdrop-filter: blur(12px);
+}
+.artist-profile-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.artist-profile-edit-field label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.artist-profile-edit-textarea {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+.artist-profile-edit-socials {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.artist-profile-edit-actions {
+  display: flex;
+  gap: 10px;
+}
+
 /* ----------------------------------------------------------------------
  * 17. Artist community (social rooms) — make it feel alive.
  * Adds presence pulses, a vibrant active room, hover energy, and an

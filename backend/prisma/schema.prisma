@@ -437,6 +437,7 @@ model Artist {
   imageUrl                  String?
   summary                   String?                       @db.Text
   socialLinks               Json?
+  website                   String?
   remixConsent              String                        @default("allowed")
   createdAt                 DateTime                      @default(now())
   updatedAt                 DateTime                      @updatedAt

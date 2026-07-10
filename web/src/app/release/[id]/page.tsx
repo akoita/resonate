@@ -32,7 +32,7 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { releaseArtistCreditHref } from "../../../lib/artistRoutes";
+import { releaseArtistProfileHref, trackArtistCreditHref } from "../../../lib/artistRoutes";
 import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
@@ -1359,16 +1359,19 @@ export default function ReleaseDetails() {
           <h1 className="release-title-lg text-gradient">{release.title}</h1>
           <div className="release-artist-row">
             <div className="artist-avatar" />
-            <span
-              className={`artist-name ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                const target = releaseArtistCreditHref(release);
-                if (target) router.push(target);
-              }}
-            >
-              {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
-            </span>
+            {releaseArtistProfileHref(release) ? (
+              <Link
+                href={releaseArtistProfileHref(release)!}
+                className="artist-name clickable"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+              </Link>
+            ) : (
+              <span className="artist-name">
+                {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
+              </span>
+            )}
             <span className="dot" />
             <span className="track-count">{release.tracks?.length || 0} tracks</span>
           </div>
@@ -2065,16 +2068,20 @@ export default function ReleaseDetails() {
                       })() : null}
                     </td>
                     <td
-                      className={`track-artist ${releaseArtistCreditHref(release) ? "clickable" : ""}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const name = getTrackArtistCredit(track, release);
-                        const isMain = name === getReleaseArtistCredit(release);
-                        const target = isMain ? releaseArtistCreditHref(release) : null;
-                        if (target) router.push(target);
-                      }}
+                      className="track-artist"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {getTrackArtistCredit(track, release)}
+                      {(() => {
+                        const name = getTrackArtistCredit(track, release);
+                        const href = trackArtistCreditHref(name, release);
+                        return href ? (
+                          <Link href={href} className="clickable">
+                            {name}
+                          </Link>
+                        ) : (
+                          name
+                        );
+                      })()}
                     </td>
                     <td className="track-genre">{release.genre || "---"}</td>
                     <td className="track-duration">{formatDuration(getTrackDuration(track))}</td>

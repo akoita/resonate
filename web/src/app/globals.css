@@ -7780,6 +7780,18 @@ a.listener-cohort-detail__action:focus-visible {
   color: var(--color-muted);
 }
 
+/* Playlist/album hero action row (#1419 follow-up): without an explicit rule
+   the primary "Play All" button and the inline-block share control aligned to
+   the text baseline, so they sat at different heights with awkward spacing.
+   A flex row centers them and gives a consistent gap. */
+.detail-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  flex-wrap: wrap;
+}
+
 /* Projects section in Artist view */
 .detail-section-title {
   font-size: 20px;

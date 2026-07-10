@@ -503,6 +503,15 @@ export type APIFolder = {
   playlists?: APIPlaylist[];
 };
 
+/** Artist social links (#1419) — each a full https-normalized URL; absent/empty keys are omitted. */
+export type ArtistSocialLinks = {
+  x?: string;
+  instagram?: string;
+  tiktok?: string;
+  youtube?: string;
+  soundcloud?: string;
+};
+
 export type ArtistProfile = {
   id: string;
   userId?: string | null;
@@ -512,7 +521,8 @@ export type ArtistProfile = {
   claimStatus?: string | null;
   imageUrl?: string | null;
   summary?: string | null;
-  socialLinks?: Record<string, unknown> | null;
+  website?: string | null;
+  socialLinks?: ArtistSocialLinks | null;
   remixConsent?: ArtistRemixConsent | null;
 };
 
@@ -1523,6 +1533,24 @@ export async function createArtist(
   return apiRequest<ArtistProfile>(
     "/artists",
     { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
+/** Owner-scoped artist profile edit (#1419): image, bio, website, social links. */
+export async function updateArtistProfile(
+  token: string,
+  artistId: string,
+  input: {
+    imageUrl?: string;
+    summary?: string;
+    website?: string;
+    socialLinks?: ArtistSocialLinks;
+  }
+) {
+  return apiRequest<ArtistProfile>(
+    `/artists/${artistId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
     token
   );
 }
