@@ -826,7 +826,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Edit how listeners see you — profile image, bio, website, and social links — and know your name links to your page across Resonate.",
     category: "artists",
     audiences: ["artist"],
-    status: "implemented",
+    status: "available",
     keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit"],
     sections: [
       {
