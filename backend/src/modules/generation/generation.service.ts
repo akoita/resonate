@@ -9,11 +9,11 @@ import { LyriaClient } from './lyria.client';
 import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
 import { GenerationCreditsService } from '../credits/generation-credits.service';
+import { estimateGenerationCostUsd, inferColdStart } from './generation-cost-model';
 import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
 
-const COST_PER_30_SECONDS = 0.06; // Estimated cost baseline for 30 seconds of generated audio
 const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const AI_GENERATION_RIGHTS_SOURCE = 'ai_generation';
@@ -274,6 +274,14 @@ export class GenerationService {
       artistId = artist.id;
     }
 
+    // #1421 realized-cost telemetry: measure the provider wall-clock so a
+    // settled generation (success or a failure after the provider was called)
+    // can record its realized cost. Declared outside the try so the catch can
+    // report a provider-call failure's wall-clock too.
+    let providerCallStarted = false;
+    let providerStartedAt = 0;
+    let providerWallClockMs: number | null = null;
+
     try {
       // Phase 1: Generate audio
       this.eventBus.publish({
@@ -284,7 +292,10 @@ export class GenerationService {
         phase: 'generating',
       });
 
+      providerStartedAt = Date.now();
+      providerCallStarted = true;
       const result = await this.lyriaClient.generate({ prompt, negativePrompt, seed, durationSeconds });
+      providerWallClockMs = Date.now() - providerStartedAt;
 
       // Phase 2: Store audio
       this.eventBus.publish({
@@ -332,7 +343,7 @@ export class GenerationService {
         synthIdPresent: result.synthIdPresent,
         durationSeconds: result.durationSeconds,
         sampleRate: result.sampleRate,
-        cost: this.calculateGenerationCost(result.durationSeconds),
+        cost: this.calculateGenerationCost(result.durationSeconds, result.provider),
       };
 
       // Create Release + Track via Prisma
@@ -405,6 +416,17 @@ export class GenerationService {
         releaseId: release.id,
       });
 
+      // #1421: realized-cost telemetry for the completed generation.
+      await this.recordGenerationCost({
+        jobId,
+        userId,
+        path: result.provider,
+        durationSeconds: result.durationSeconds,
+        wallClockMs: providerWallClockMs ?? Date.now() - providerStartedAt,
+        estimatedCostUsd: generationMetadata.cost,
+        sellPriceCents: this.credits.costForDurationCents(durationSeconds),
+      });
+
       this.logger.log(`Generation job ${jobId} completed: track=${trackId}, release=${release.id}`);
       return { trackId, releaseId: release.id };
     } catch (error: any) {
@@ -418,6 +440,25 @@ export class GenerationService {
         userId,
         error: normalizeGenerationErrorMessage(error),
       });
+
+      // #1421: record realized cost for a failure that happened after the
+      // provider call was entered — cold-start/provider failures still incur
+      // GPU/API cost worth reconciling. The exact Lyria variant is unknown on
+      // failure, so the baseline path key is used (both variants default to the
+      // same rate). Best-effort and isolated: never masks the original error.
+      if (providerCallStarted) {
+        const wallClockMs = providerWallClockMs ?? Date.now() - providerStartedAt;
+        const failurePath = 'lyria-002';
+        await this.recordGenerationCost({
+          jobId,
+          userId,
+          path: failurePath,
+          durationSeconds,
+          wallClockMs,
+          estimatedCostUsd: estimateGenerationCostUsd(failurePath, durationSeconds),
+          sellPriceCents: this.credits.costForDurationCents(durationSeconds),
+        });
+      }
 
       throw error; // Let BullMQ handle retries
     }
@@ -537,7 +578,7 @@ export class GenerationService {
           provider: meta.provider || 'lyria-002',
           generatedAt: meta.generatedAt || release.createdAt.toISOString(),
           durationSeconds: meta.durationSeconds || 30,
-          cost: meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30),
+          cost: meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30, meta.provider),
           audioUri: `/catalog/releases/${release.id}/tracks/${track.id}/stream`,
         };
       }),
@@ -570,7 +611,7 @@ export class GenerationService {
         .flatMap((release) => release.tracks)
         .reduce((sum, track) => {
           const meta = (track.generationMetadata as any) || {};
-          return sum + (meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30));
+          return sum + (meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30, meta.provider));
         }, 0)
         .toFixed(2);
     }
@@ -758,8 +799,62 @@ export class GenerationService {
     );
   }
 
-  private calculateGenerationCost(durationSeconds: number): number {
-    return +((durationSeconds / 30) * COST_PER_30_SECONDS).toFixed(2);
+  /**
+   * #1421: best-effort realized-cost telemetry for a settled generation. Writes
+   * a GenerationCostRecord and emits generation.cost_recorded. Fully isolated
+   * from the generation outcome — every failure is logged and swallowed so a
+   * telemetry error can never fail or refund a generation.
+   */
+  private async recordGenerationCost(input: {
+    jobId: string;
+    userId: string;
+    path: string;
+    durationSeconds: number;
+    wallClockMs: number;
+    estimatedCostUsd: number;
+    sellPriceCents: number;
+  }): Promise<void> {
+    try {
+      const wallClockMs = Math.max(0, Math.round(input.wallClockMs));
+      const durationSeconds = Math.max(0, Math.round(input.durationSeconds));
+      const coldStart = inferColdStart(input.path, wallClockMs);
+      await prisma.generationCostRecord.create({
+        data: {
+          jobId: input.jobId,
+          userId: input.userId,
+          path: input.path,
+          durationSeconds,
+          wallClockMs,
+          estimatedCostUsd: input.estimatedCostUsd,
+          sellPriceCents: input.sellPriceCents,
+          coldStart,
+        },
+      });
+      this.eventBus.publish({
+        eventName: 'generation.cost_recorded',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        jobId: input.jobId,
+        userId: input.userId,
+        path: input.path,
+        durationSeconds,
+        wallClockMs,
+        estimatedCostUsd: input.estimatedCostUsd,
+        sellPriceCents: input.sellPriceCents,
+        coldStart,
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to record generation cost telemetry for job ${input.jobId}: ${error?.message ?? error}`,
+      );
+    }
+  }
+
+  private calculateGenerationCost(durationSeconds: number, provider?: string): number {
+    // Behavior-preserving: the per-path cost model defaults to the historical
+    // flat $0.06/30s (#1421), so with default config this returns the same
+    // value as the previous inline arithmetic for every provider.
+    return estimateGenerationCostUsd(provider ?? 'lyria-002', durationSeconds);
   }
 
   private audioExtensionForMimeType(mimeType: string): string {

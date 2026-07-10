@@ -1291,6 +1291,23 @@ export interface GenerationCreditsRequestedEvent extends BaseEvent {
   note?: string;
 }
 
+/**
+ * #1421 realized-cost telemetry: emitted once per settled generation (catalog
+ * or remix) with the backend wall-clock, the model-estimated COGS, and the sell
+ * price charged, so accumulated data can be reconciled against cloud billing.
+ */
+export interface GenerationCostRecordedEvent extends BaseEvent {
+  eventName: "generation.cost_recorded";
+  userId: string;
+  jobId: string;
+  path: string;
+  durationSeconds: number;
+  wallClockMs: number;
+  estimatedCostUsd: number;
+  sellPriceCents: number;
+  coldStart: boolean | null;
+}
+
 // ============ Realtime Events ============
 
 export interface RealtimeAudioEvent extends BaseEvent {
@@ -1440,6 +1457,7 @@ export type ResonateEvent =
   | GenerationCreditsDebitedEvent
   | GenerationCreditsInsufficientEvent
   | GenerationCreditsRequestedEvent
+  | GenerationCostRecordedEvent
   | RealtimeAudioEvent
   | RealtimeDisconnectedEvent
   | MarketplaceListingNotifyEvent

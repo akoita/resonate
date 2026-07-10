@@ -12,9 +12,10 @@ import type { ResonateEvent } from "../../events/event_types";
 
 /**
  * Default sell price for AI generation, in USD cents per 30 seconds (#1334,
- * ADR-BM-3). Baseline internal cost is ~$0.06/30s (COST_PER_30_SECONDS in the
- * generation service, deliberately left untouched); 10¢ sells at ~40% margin.
- * Tunable via the GENERATION_PRICE_CENTS_PER_30S env var.
+ * ADR-BM-3). Baseline internal cost is ~$0.06/30s (the per-path cost model in
+ * generation-cost-model.ts, deliberately left at its behavior-preserving
+ * default); 10¢ sells at ~40% notional margin. Tunable via the
+ * GENERATION_PRICE_CENTS_PER_30S env var. The sell price is unchanged by #1421.
  */
 export const DEFAULT_GENERATION_PRICE_CENTS_PER_30S = 10;
 

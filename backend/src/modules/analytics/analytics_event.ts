@@ -262,6 +262,24 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["userId", "note"],
   },
   {
+    // #1421 realized-cost telemetry: one record per settled generation with the
+    // backend wall-clock, model-estimated COGS, and sell price charged.
+    eventName: "generation.cost_recorded",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: [
+      "userId",
+      "jobId",
+      "path",
+      "durationSeconds",
+      "wallClockMs",
+      "estimatedCostUsd",
+      "sellPriceCents",
+      "coldStart",
+    ],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",
