@@ -8,6 +8,7 @@ import NotificationPreferences from "../../components/notifications/Notification
 import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
+import UsageBillingPanel from "../../components/settings/UsageBillingPanel";
 import { useToast } from "../../components/ui/Toast";
 import { SessionResetDialog } from "../../components/system/SessionResetDialog";
 import { resetLocalAppState } from "../../lib/authSession";
@@ -28,7 +29,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "notifications" | "troubleshooting";
+type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "usage" | "notifications" | "troubleshooting";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -65,6 +66,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Listener Cohorts",
         eyebrow: "Discovery",
         description: "Privacy-safe listener groups and shared signals.",
+    },
+    {
+        id: "usage",
+        label: "Usage & Billing",
+        eyebrow: "Credits & limits",
+        description: "Plan, generation credits, usage limits, and history.",
     },
     {
         id: "notifications",
@@ -507,6 +514,10 @@ export default function SettingsPage() {
                                     <span className="settings-pointer-card__arrow" aria-hidden="true">→</span>
                                 </Link>
                             </div>
+                        ) : null}
+
+                        {activeSection === "usage" ? (
+                            <UsageBillingPanel token={token} addToast={addToast} />
                         ) : null}
 
                         {activeSection === "notifications" ? (

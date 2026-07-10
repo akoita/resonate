@@ -411,6 +411,37 @@ export class RemixProjectService {
     this.rateLimits.set(key, timestamps);
   }
 
+  /**
+   * Peek at the per-user remix *generation* rate-limit window WITHOUT recording
+   * a hit (#1422). Reads the same `generate:${userId}` sliding-window state
+   * `enforceRateLimit` uses, pruning expired timestamps locally only — it never
+   * writes back, so it is side-effect free and safe for the Usage & Billing
+   * aggregation. Mirrors the catalog getter shape (remaining/limit/windowMs +
+   * `resetsAt` as a Date). Uses the generation limit (10 /
+   * REMIX_GENERATION_RATE_LIMIT), not the project-create limit.
+   */
+  getGenerationRateLimitStatus(userId: string): {
+    remaining: number;
+    limit: number;
+    windowMs: number;
+    resetsAt: Date | null;
+  } {
+    const now = Date.now();
+    const activeTimestamps = (this.rateLimits.get(`generate:${userId}`) ?? [])
+      .filter((ts) => now - ts < RATE_LIMIT_WINDOW_MS);
+    const resetsAt =
+      activeTimestamps.length > 0
+        ? new Date(Math.min(...activeTimestamps) + RATE_LIMIT_WINDOW_MS)
+        : null;
+
+    return {
+      remaining: Math.max(0, this.maxGenerationsPerHour - activeTimestamps.length),
+      limit: this.maxGenerationsPerHour,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      resetsAt,
+    };
+  }
+
   async createProject(input: {
     userId: string;
     sourceTrackId: string;
