@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "../ui/Button";
 import { Release } from "../../lib/api";
-import { releaseArtistProfileHref } from "../../lib/artistRoutes";
+import { artistCreditHref } from "../../lib/artistRoutes";
 
 interface ReleaseHeroProps {
   release: Release;
@@ -38,19 +38,22 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
 
         <h1 className="hero-main-title text-gradient">{release.title}</h1>
         <p className="hero-main-artist">
-          By {releaseArtistProfileHref(release) ? (
-            <Link
-              href={releaseArtistProfileHref(release)!}
-              className="artist-highlight clickable"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
-            </Link>
-          ) : (
-            <span className="artist-highlight">
-              {release.primaryArtist || release.artist?.displayName || "Unknown Artist"}
-            </span>
-          )}
+          By {(() => {
+            const displayedArtist =
+              release.primaryArtist || release.artist?.displayName || "Unknown Artist";
+            const href = artistCreditHref(displayedArtist, release);
+            return href ? (
+              <Link
+                href={href}
+                className="artist-highlight clickable"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {displayedArtist}
+              </Link>
+            ) : (
+              <span className="artist-highlight">{displayedArtist}</span>
+            );
+          })()}
         </p>
 
         <div className="hero-actions">

@@ -1,21 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  artistCreditHref,
   artistProfileHref,
-  releaseArtistCreditHref,
   releaseArtistProfileHref,
-  trackArtistCreditHref,
 } from "./artistRoutes";
 
 describe("releaseArtistProfileHref (#1419)", () => {
-  it("links purely off the profile id — it never looks at any name field", () => {
-    // Contrast with releaseArtistCreditHref below: this helper's type doesn't
-    // even accept a free-text name to compare against, by design (#1419's
-    // "id present -> always link" rule).
-    expect(
-      releaseArtistProfileHref({
-        artist: { id: "artist-1" },
-      }),
-    ).toBe(artistProfileHref("artist-1"));
+  it("links purely off the profile id — the release's OWNER profile", () => {
+    expect(releaseArtistProfileHref({ artist: { id: "artist-1" } })).toBe(
+      artistProfileHref("artist-1"),
+    );
   });
 
   it("falls back to a bare artistId when no nested artist object is present", () => {
@@ -29,27 +23,7 @@ describe("releaseArtistProfileHref (#1419)", () => {
   });
 });
 
-describe("releaseArtistCreditHref (name-match heuristic, still available for free-text-only surfaces)", () => {
-  it("does NOT link when the free-text credit disagrees with the profile name", () => {
-    expect(
-      releaseArtistCreditHref({
-        artist: { id: "artist-1", displayName: "Aya Lune" },
-        primaryArtist: "DJ Somebody Else",
-      }),
-    ).toBeNull();
-  });
-
-  it("links when the free-text credit matches the profile name", () => {
-    expect(
-      releaseArtistCreditHref({
-        artist: { id: "artist-1", displayName: "Aya Lune" },
-        primaryArtist: "Aya Lune",
-      }),
-    ).toBe(artistProfileHref("artist-1"));
-  });
-});
-
-describe("trackArtistCreditHref (#1419)", () => {
+describe("artistCreditHref (#1419)", () => {
   const release = {
     artist: { id: "artist-main", displayName: "Aya Lune" },
     artistCredits: [
@@ -58,35 +32,57 @@ describe("trackArtistCreditHref (#1419)", () => {
     ],
   };
 
-  it("links a track credit matching the release's main artist", () => {
-    expect(trackArtistCreditHref("Aya Lune", release)).toBe(
+  it("links a name matching the release's main/owner artist", () => {
+    expect(artistCreditHref("Aya Lune", release)).toBe(
       artistProfileHref("artist-main"),
     );
   });
 
-  it("links a track credit matching a featured artist credit (not just the main artist)", () => {
-    expect(trackArtistCreditHref("Nova Beats", release)).toBe(
+  it("links a featured-artist credit (not just the main artist)", () => {
+    expect(artistCreditHref("Nova Beats", release)).toBe(
       artistProfileHref("artist-feature"),
     );
   });
 
   it("matches case-insensitively and ignores surrounding whitespace", () => {
-    expect(trackArtistCreditHref("  nova beats ", release)).toBe(
+    expect(artistCreditHref("  nova beats ", release)).toBe(
       artistProfileHref("artist-feature"),
     );
   });
 
-  it("does not link a free-text credit with no matching id-backed entry", () => {
-    expect(trackArtistCreditHref("Some Random Feature", release)).toBeNull();
+  // The #1419 regression this fixes: an uploader/manager profile publishes a
+  // release credited to a DIFFERENT artist. The displayed primary-artist name
+  // must resolve to the CREDITED artist's profile, never the uploader's.
+  it("links the credited artist, NOT the uploader/manager profile, when they differ", () => {
+    const uploaded = {
+      // owner = the uploader's manager profile (e.g. "Bouba")
+      artist: { id: "manager-bouba", displayName: "Bouba" },
+      artistId: "manager-bouba",
+      primaryArtist: "Tiken Jah Fakoly",
+      artistCredits: [
+        { artistId: "artist-tiken", displayName: "Tiken Jah Fakoly" },
+      ],
+    };
+    expect(artistCreditHref(uploaded.primaryArtist, uploaded)).toBe(
+      artistProfileHref("artist-tiken"),
+    );
+    // and definitely not the manager profile
+    expect(artistCreditHref(uploaded.primaryArtist, uploaded)).not.toBe(
+      artistProfileHref("manager-bouba"),
+    );
   });
 
-  it("does not link when the track has no credit name at all", () => {
-    expect(trackArtistCreditHref(null, release)).toBeNull();
-    expect(trackArtistCreditHref(undefined, release)).toBeNull();
-    expect(trackArtistCreditHref("", release)).toBeNull();
+  it("does not link a free-text name with no matching id-backed entry", () => {
+    expect(artistCreditHref("Some Random Feature", release)).toBeNull();
   });
 
-  it("does not link when the release itself has no profile id at all", () => {
-    expect(trackArtistCreditHref("Anyone", { artistCredits: [] })).toBeNull();
+  it("does not link when there is no name at all", () => {
+    expect(artistCreditHref(null, release)).toBeNull();
+    expect(artistCreditHref(undefined, release)).toBeNull();
+    expect(artistCreditHref("", release)).toBeNull();
+  });
+
+  it("does not link when the release has no id anywhere", () => {
+    expect(artistCreditHref("Anyone", { artistCredits: [] })).toBeNull();
   });
 });

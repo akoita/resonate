@@ -11,13 +11,12 @@ export function catalogArtistHref(artistName: string) {
 }
 
 /**
- * "Id present -> always link" rule (#1419): whenever a surface already has a
- * genuine profile id for the artist being displayed (e.g. a release's own
- * `artist`, or a release-level `artistCredits[]` entry), it should link with
- * this helper rather than gating on a free-text name match. The name-match
- * heuristic in `releaseArtistCreditHref` exists only for surfaces that show a
- * free-text credit string with no reliable id backing it, where a mismatch
- * would otherwise send the user to the wrong artist's profile.
+ * The release's OWN backing artist profile — i.e. the uploader/owner profile,
+ * which is NOT necessarily the credited primary artist (an uploader/manager can
+ * publish a release credited to a different artist). Do NOT use this to link a
+ * *displayed* artist name — that mis-links the artist's name to the uploader's
+ * profile (the #1419 regression). Use `artistCreditHref` for any shown name.
+ * Kept only for internal owner-match resolution below.
  */
 export function releaseArtistProfileHref(input: {
   artist?: { id?: string | null } | null;
@@ -27,48 +26,34 @@ export function releaseArtistProfileHref(input: {
   return profileId ? artistProfileHref(profileId) : null;
 }
 
-export function releaseArtistCreditHref(input: {
-  artist?: { id?: string | null; displayName?: string | null } | null;
-  artistId?: string | null;
-  primaryArtist?: string | null;
-}) {
-  const profileHref = releaseArtistProfileHref(input);
-  if (!profileHref) return null;
-
-  const profileName = input.artist?.displayName?.trim().toLowerCase();
-  const primaryCredit = input.primaryArtist?.trim().toLowerCase();
-
-  if (!primaryCredit || (profileName && primaryCredit === profileName)) {
-    return profileHref;
-  }
-
-  return null;
-}
-
 /**
- * Per-track artist credit link (#1419). A track's displayed artist credit is
- * free text (`track.artist`, falling back to the release's primary artist),
- * so it carries no id of its own — linking it blindly risks sending the user
- * to an unrelated profile. Instead we only link when the credit's name
- * matches a *known, id-backed* credit on the release: the release's own
- * artist, or one of its `artistCredits[]` rows (which covers featured
- * artists too). Anything else stays plain text.
+ * Resolve a *displayed* artist-credit name on a release to the correct profile
+ * href (#1419). A release's shown name — the header primary artist, a per-track
+ * credit, or the home hero "By …" — is free text that can differ from the
+ * release's OWNER profile: an uploader/manager may publish a release credited to
+ * another artist, so `release.artist.id` is the uploader, not the artist. We
+ * link only to an id we can trust for THIS name:
+ *   1. the release's own artist profile, when the name matches its displayName
+ *      (the release really is by the owner artist); else
+ *   2. a matching `artistCredits[]` row (covers the primary + featured artists);
+ *      else
+ *   3. nothing — never mis-link a free-text credit to an unrelated profile.
  */
-export function trackArtistCreditHref(
-  trackArtistName: string | null | undefined,
+export function artistCreditHref(
+  displayedName: string | null | undefined,
   release: {
     artist?: { id?: string | null; displayName?: string | null } | null;
     artistId?: string | null;
     artistCredits?: Array<{ artistId: string; displayName: string }> | null;
   },
 ): string | null {
-  const name = trackArtistName?.trim().toLowerCase();
+  const name = displayedName?.trim().toLowerCase();
   if (!name) return null;
 
-  const mainHref = releaseArtistProfileHref(release);
-  const mainName = release.artist?.displayName?.trim().toLowerCase();
-  if (mainHref && mainName && name === mainName) {
-    return mainHref;
+  const ownerName = release.artist?.displayName?.trim().toLowerCase();
+  const ownerHref = releaseArtistProfileHref(release);
+  if (ownerHref && ownerName && name === ownerName) {
+    return ownerHref;
   }
 
   const credit = release.artistCredits?.find(
