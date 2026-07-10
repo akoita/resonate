@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 
@@ -40,6 +41,116 @@ function normalizeRemixConsent(input: unknown): ArtistRemixConsent {
         throw new BadRequestException("remixConsent must be allowed or disabled");
     }
     return normalized as ArtistRemixConsent;
+}
+
+// Canonical shape for `Artist.socialLinks` — each key is a full URL. Keys are
+// intentionally an explicit allowlist rather than free-form so the frontend
+// can render a fixed set of icons and so we never persist arbitrary keys.
+export const ARTIST_SOCIAL_LINK_KEYS = [
+    "x",
+    "instagram",
+    "tiktok",
+    "youtube",
+    "soundcloud",
+] as const;
+export type ArtistSocialLinkKey = (typeof ARTIST_SOCIAL_LINK_KEYS)[number];
+export type ArtistSocialLinks = Partial<Record<ArtistSocialLinkKey, string>>;
+
+const MAX_BIO_LENGTH = 2000;
+const MAX_URL_LENGTH = 2048;
+// Only http(s) URLs are ever persisted — this is the primary XSS/open-redirect
+// guard for values that get rendered back as anchors/img src on the profile
+// page (rejects `javascript:`, `data:`, `vbscript:`, bare `//host`, etc).
+const ALLOWED_URL_SCHEMES = ["http:", "https:"];
+
+export type UpdateArtistProfileInput = {
+    imageUrl?: unknown;
+    summary?: unknown;
+    socialLinks?: unknown;
+    website?: unknown;
+};
+
+/**
+ * Validates and normalizes a single URL-like field. `undefined` means "field
+ * not present in the request" (caller should treat as "leave unchanged").
+ * `null` or an empty/whitespace string means "clear the field" and normalizes
+ * to `null`. Anything else must parse as an absolute http(s) URL.
+ */
+function normalizeOptionalUrl(input: unknown, fieldName: string): string | null | undefined {
+    if (input === undefined) {
+        return undefined;
+    }
+    if (input === null) {
+        return null;
+    }
+    if (typeof input !== "string") {
+        throw new BadRequestException(`${fieldName} must be a string URL`);
+    }
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    if (trimmed.length > MAX_URL_LENGTH) {
+        throw new BadRequestException(`${fieldName} must be at most ${MAX_URL_LENGTH} characters`);
+    }
+    let parsed: URL;
+    try {
+        parsed = new URL(trimmed);
+    } catch {
+        throw new BadRequestException(`${fieldName} must be a valid absolute URL`);
+    }
+    if (!ALLOWED_URL_SCHEMES.includes(parsed.protocol)) {
+        throw new BadRequestException(`${fieldName} must use http:// or https://`);
+    }
+    return parsed.toString();
+}
+
+function normalizeOptionalSummary(input: unknown): string | null | undefined {
+    if (input === undefined) {
+        return undefined;
+    }
+    if (input === null) {
+        return null;
+    }
+    if (typeof input !== "string") {
+        throw new BadRequestException("summary must be a string");
+    }
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    if (trimmed.length > MAX_BIO_LENGTH) {
+        throw new BadRequestException(`summary must be at most ${MAX_BIO_LENGTH} characters`);
+    }
+    return trimmed;
+}
+
+function normalizeOptionalSocialLinks(input: unknown): ArtistSocialLinks | null | undefined {
+    if (input === undefined) {
+        return undefined;
+    }
+    if (input === null) {
+        return null;
+    }
+    if (typeof input !== "object" || Array.isArray(input)) {
+        throw new BadRequestException("socialLinks must be an object");
+    }
+    const record = input as Record<string, unknown>;
+    const normalized: ArtistSocialLinks = {};
+    for (const key of Object.keys(record)) {
+        if (!ARTIST_SOCIAL_LINK_KEYS.includes(key as ArtistSocialLinkKey)) {
+            throw new BadRequestException(`socialLinks.${key} is not a supported platform`);
+        }
+        const value = normalizeOptionalUrl(record[key], `socialLinks.${key}`);
+        // Omit empty/absent keys from the persisted shape rather than storing
+        // explicit nulls inside the JSON blob.
+        if (value) {
+            normalized[key as ArtistSocialLinkKey] = value;
+        }
+    }
+    // An entirely empty object clears socialLinks back to null rather than
+    // persisting `{}`.
+    return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
 @Injectable()
@@ -162,6 +273,35 @@ export class ArtistService {
             next,
         });
         return artistSettingsDto(updated);
+    }
+
+    /**
+     * Owner-scoped profile edit (image/bio/social links/website). Separate
+     * from `updateSettings` (`remixConsent`) — this never touches consent,
+     * and settings updates never touch these fields.
+     */
+    async updateProfile(userId: string, artistId: string, input: UpdateArtistProfileInput) {
+        const artist = await this.requireOwnedArtist(userId, artistId);
+
+        const imageUrl = normalizeOptionalUrl(input.imageUrl, "imageUrl");
+        const summary = normalizeOptionalSummary(input.summary);
+        const socialLinks = normalizeOptionalSocialLinks(input.socialLinks);
+        const website = normalizeOptionalUrl(input.website, "website");
+
+        const data: Record<string, unknown> = {};
+        if (imageUrl !== undefined) data.imageUrl = imageUrl;
+        if (summary !== undefined) data.summary = summary;
+        if (socialLinks !== undefined) data.socialLinks = socialLinks === null ? Prisma.JsonNull : socialLinks;
+        if (website !== undefined) data.website = website;
+
+        if (Object.keys(data).length === 0) {
+            return artist;
+        }
+
+        return prisma.artist.update({
+            where: { id: artist.id },
+            data,
+        });
     }
 
     private async requireOwnedArtist(userId: string, artistId: string) {

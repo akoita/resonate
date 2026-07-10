@@ -820,6 +820,48 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["rights-protection", "marketplace-sell", "artist-analytics", "create-ai-music"],
   },
   {
+    slug: "artist-profile",
+    title: "Your artist page",
+    summary:
+      "Edit how listeners see you — profile image, bio, website, and social links — and know your name links to your page across Resonate.",
+    category: "artists",
+    audiences: ["artist"],
+    status: "implemented",
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit"],
+    sections: [
+      {
+        id: "edit",
+        heading: "Editing your profile",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Open your artist page and, when you're signed in as its owner, you'll see an \"Edit profile\" button. Use it to set your profile image, a short bio, your website, and links to your social accounts (X, Instagram, TikTok, YouTube, SoundCloud). Only you can edit your own page; everyone else sees it read-only.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Use full web addresses",
+            text: "Paste complete links (for example https://instagram.com/yourname). Anything that isn't a normal web address is rejected so your page stays safe to click.",
+          },
+        ],
+      },
+      {
+        id: "links",
+        heading: "Your name links to your page",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Wherever your name appears on a release or in the catalog, it now links straight to your artist page — on release pages, track credits (including featured artists), the home hero, and catalog and marketplace listings — so fans can always find your profile in one click.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Your catalog", href: "/artist/catalog", description: "Open your releases; your artist page is linked from your name." },
+    ],
+    related: ["upload-music", "artist-analytics", "getting-started"],
+  },
+  {
     slug: "artist-analytics",
     title: "Artist analytics & your action cockpit",
     summary:

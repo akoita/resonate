@@ -2,25 +2,32 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, listArtistReleases, Release, ArtistProfile } from "../../../lib/api";
+import { getArtistPublic, getArtistMe, listArtistReleases, Release, ArtistProfile } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
+import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
+import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
+import { isArtistProfileOwner } from "../../../lib/artistProfileForm";
+import { useAuth } from "../../../components/auth/AuthProvider";
 
 type ArtistTab = "discography" | "community";
 
 export default function ArtistPage() {
     const params = useParams();
     const router = useRouter();
+    const { token } = useAuth();
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
+    const [me, setMe] = useState<ArtistProfile | null>(null);
     const [placeholderName, setPlaceholderName] = useState<string>("");
 
     const [releases, setReleases] = useState<Release[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
+    const isOwner = isArtistProfileOwner(me, artist);
 
     useEffect(() => {
         const tab = new URLSearchParams(window.location.search).get("tab");
@@ -56,6 +63,26 @@ export default function ArtistPage() {
 
         void fetchData();
     }, [artistId]);
+
+    // Owner detection (#1419): only fetched when signed in, and only used to
+    // gate the "Edit profile" affordance below — never blocks the public view.
+    useEffect(() => {
+        if (!token) {
+            setMe(null);
+            return;
+        }
+        let cancelled = false;
+        getArtistMe(token)
+            .then((profile) => {
+                if (!cancelled) setMe(profile);
+            })
+            .catch(() => {
+                if (!cancelled) setMe(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
 
     const handleBack = () => {
         router.back();
@@ -123,6 +150,14 @@ export default function ArtistPage() {
                         ) : null}
                         {artist?.summary ? (
                             <p className="artist-bio">{artist.summary}</p>
+                        ) : null}
+                        <ArtistSocialLinksRow website={artist?.website} socialLinks={artist?.socialLinks} />
+                        {artist ? (
+                            <ArtistProfileEditor
+                                artist={artist}
+                                isOwner={isOwner}
+                                onSaved={(updated) => setArtist(updated)}
+                            />
                         ) : null}
                     </div>
                 </div>
