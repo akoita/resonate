@@ -1782,6 +1782,61 @@ export async function getLatestReleaseRightsUpgradeRequest(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Punchline Drops (#483) — vocal-stem clip eligibility + selection
+// ---------------------------------------------------------------------------
+
+/** One explainable eligibility failure reason (mirrors the backend gate). */
+export type PunchlineEligibilityReason = {
+  /** Stable machine code, safe for UI/analytics branching. */
+  code: string;
+  /** Human-readable, UI-renderable message. */
+  message: string;
+};
+
+/** Server-resolved clip length bounds (ms). */
+export type PunchlineClipBoundsMs = {
+  minMs: number;
+  maxMs: number;
+};
+
+/**
+ * Result of `GET /punchline/eligibility?trackId=` — whether a track may become
+ * a Punchline Drop, the rights posture, and the server's clip-length bounds so
+ * the selection UI never hardcodes them.
+ */
+export type PunchlineEligibility = {
+  eligible: boolean;
+  reasons: PunchlineEligibilityReason[];
+  rightsLabel: string;
+  rightsSummary: string;
+  clipBoundsMs: PunchlineClipBoundsMs;
+  track?: {
+    id: string;
+    releaseId: string;
+    releaseStatus: string;
+    contentStatus: string;
+    rightsRoute: string | null;
+    releaseRightsRoute: string | null;
+    hasVocalsStem: boolean;
+  };
+};
+
+/**
+ * Explainable allow/deny for creating a Punchline Drop from a track. JWT
+ * required; the create/publish APIs re-run the same gate server-side.
+ */
+export async function checkPunchlineEligibility(
+  trackId: string,
+  token: string,
+) {
+  return apiRequest<PunchlineEligibility>(
+    `/punchline/eligibility?trackId=${encodeURIComponent(trackId)}`,
+    {},
+    token,
+  );
+}
+
 export async function submitReleaseRightsUpgradeRequest(
   releaseId: string,
   input: {
