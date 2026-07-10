@@ -4003,6 +4003,40 @@ export async function getCreditsBalance(token: string) {
   return apiRequest<GenerationCreditBalance>("/credits/balance", {}, token);
 }
 
+/**
+ * A single metered-action rate quota, sourced from the backend metered-action
+ * registry (#1422). Independent of the monetary credit balance — hitting a
+ * limit means "wait for reset", not "top up".
+ */
+export type UsageLimit = {
+  kind: "lyria" | "remix_draft";
+  label: string;
+  remaining: number;
+  limit: number;
+  windowSeconds: number;
+  /** ISO timestamp of when the window resets, or null when idle (no requests). */
+  resetsAt: string | null;
+};
+
+/**
+ * Unified Usage & Billing snapshot for the current user (#1422): the monetary
+ * credit balance + ledger, per-kind usage limits with reset timers, and the
+ * current plan tier. Read from `GET /usage/summary`.
+ */
+export type UsageSummary = {
+  credits: GenerationCreditBalance;
+  limits: UsageLimit[];
+  plan: { tier: "free"; monthlyAllowanceCents: number | null };
+};
+
+/**
+ * The caller's unified Usage & Billing summary (#1422) — credits, usage limits,
+ * and plan tier in one read. Backs the Settings → Usage & Billing panel.
+ */
+export async function getUsageSummary(token: string) {
+  return apiRequest<UsageSummary>("/usage/summary", {}, token);
+}
+
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;

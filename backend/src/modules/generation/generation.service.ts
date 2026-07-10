@@ -605,6 +605,44 @@ export class GenerationService {
   }
 
   /**
+   * Peek at the per-user rate-limit window WITHOUT recording a hit (#1422).
+   *
+   * Reads the same in-memory sliding-window state `enforceRateLimit` mutates,
+   * but only prunes/reads locally — it never writes back, so calling it is
+   * side-effect free and safe to expose to the Usage & Billing aggregation.
+   * Mirrors the shape produced inline by `getAnalytics`, but returns `resetsAt`
+   * as a Date (the aggregator serialises to ISO).
+   */
+  getGenerationRateLimitStatus(userId: string): {
+    remaining: number;
+    limit: number;
+    windowMs: number;
+    resetsAt: Date | null;
+  } {
+    const now = Date.now();
+    const entry = this.rateLimits.get(userId);
+    let used = 0;
+    let resetsAt: Date | null = null;
+
+    if (entry) {
+      const activeTimestamps = entry.timestamps.filter(
+        (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+      );
+      used = activeTimestamps.length;
+      if (activeTimestamps.length > 0) {
+        resetsAt = new Date(Math.min(...activeTimestamps) + RATE_LIMIT_WINDOW_MS);
+      }
+    }
+
+    return {
+      remaining: Math.max(0, this.maxPerHour - used),
+      limit: this.maxPerHour,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      resetsAt,
+    };
+  }
+
+  /**
    * Enforce per-user rate limiting (sliding window).
    */
   private enforceRateLimit(userId: string): void {

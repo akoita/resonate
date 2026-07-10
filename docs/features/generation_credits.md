@@ -164,12 +164,15 @@ now; email/Slack fan-out is a future enhancement.
   commercial-use license review (#1193). No live money changes hands in this
   slice.
 - Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
-- **Usage & Billing consolidation (#1422)** — the reusable `CreditBalanceMeter`
-  + Remix Studio parity shipped (this slice). Still tracked in #1422: a
-  metered-action registry, a unified `GET /usage/summary` (credits + per-kind
-  usage-limit windows, making the remix rate-limit queryable), and a dedicated
-  read-only **Usage & Billing** page (plan tier, limits, ledger/history). Design
-  of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
+- **Usage & Billing consolidation (#1422)** — shipped across two slices: (1) the
+  reusable `CreditBalanceMeter` + Remix Studio parity; (2) a metered-action
+  registry (`backend/src/modules/credits/metered-actions.ts`), a unified
+  **`GET /usage/summary`** (`UsageModule`/`UsageService`) aggregating credits +
+  per-kind usage-limits (the remix rate-limit is now queryable via a
+  side-effect-free peek getter) + plan tier, and a read-only **Usage & Billing**
+  settings section (`UsageBillingPanel`: plan, credits, limits with reset timers,
+  ledger/history). Design of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
+  Still deferred: live Stripe buy/auto-reload (blocked on #1421 pricing + #1193).
 
 ## Links
 
