@@ -258,12 +258,20 @@ This is Resonate's primary revenue engine and its deepest moat.
 **Marketplace take-rate (canonical — ADR-BM-2, accepted 2026-07-04):** the
 platform take is **10% on marketplace sales** (stems, downloads, collectibles,
 remix/commercial licenses) and **15% on x402 personal micro-purchases**, as
-shown in the table above. The on-chain `StemMarketplaceV2` protocol-fee
-default (0.5%) must be raised to match, and because the contract's max-fee cap
-is 5%, the cap change ships through the contract-upgrade path (#1300) with the
-full custody test ladder. Buy modals must display the fee honestly. Decision
-record: `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-2;
-implementation: [#1333](https://github.com/akoita/resonate/issues/1333).
+shown in the table above. **Status: the 10% on-chain take is shipped.**
+`StemMarketplaceV2` carries `MAX_PROTOCOL_FEE = 1500` (15% cap) and the staging
+Base Sepolia marketplace is deployed at **10% (`protocolFeeBps = 1000`)** since
+2026-07-05, collected on-chain in every `buy`; the wallet buy modal displays the
+fee live from the on-chain rate. The contract holds a **single global protocol
+rate** (10%), so the **15% on x402 *personal*** micro-purchases is applied
+off-chain in x402 facilitator mode (`x402.config.ts`, `personal.feeBps = 1500`);
+collecting that 15% on the on-chain contract-settlement path would need a
+per-tier fee (a custody-contract change, marginal on $0.05 purchases) and is
+**deferred to the contract-upgrade path
+[#1300](https://github.com/akoita/resonate/issues/1300)**. The earlier "0.5%
+default / 5% cap / pending upgrade" framing is superseded. Decision record:
+`docs/strategy/business-model-phase0-decisions.md` §ADR-BM-2; accepted decision:
+[#1333](https://github.com/akoita/resonate/issues/1333).
 
 **What makes this different from BeatStars or Splice?**
 
@@ -477,7 +485,7 @@ remix finish #1206, license gate #1193 all shipped):
 | -------- | --- | --- |
 | **P0**   | Shows production go-live ([#1271](https://github.com/akoita/resonate/issues/1271), gated go-decision) + real campaign cohort | Line 1 live — first collected revenue |
 | **P0**   | Generation-credit billing ([#1334](https://github.com/akoita/resonate/issues/1334); Stability registration first) | Line 2 opener — GPU becomes a margin line |
-| **P1**   | Marketplace take-rate implementation ([#1333](https://github.com/akoita/resonate/issues/1333) via upgrade path #1300) | Line 3 — collect the decided 10% / 15% |
+| ~~**P1**~~ ✅ | Marketplace take-rate — on-chain **10% shipped** (deployed 2026-07-05); on-chain 15%-personal deferred to [#1300](https://github.com/akoita/resonate/issues/1300) ([#1333](https://github.com/akoita/resonate/issues/1333)) | Line 3 — 10% collected on-chain today |
 | **P1**   | Artist Pro subscription (Stripe v1) bundling credits + tools | Line 2 |
 | **P1**   | Remix real-user enablement gates (#1342 attribution, #1343 moderation, terms under #1164) | Lines 2/3 supply |
 | **P2**   | Listener Pro + wallet pre-fund (launch gate: ~500–1,000 genuine WAU in wedge communities) | Line 4 |

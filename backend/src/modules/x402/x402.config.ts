@@ -88,6 +88,11 @@ export class X402Config {
       : null;
     // Facilitator-mode settlements carry the take-rate as off-chain accounting;
     // contract-settlement mode uses the marketplace contract's on-chain split.
+    // ADR-BM-2 nuance (docs/rfc/business-model.md): the marketplace contract
+    // holds a single global protocol rate (10%), so the 15% `personal.feeBps`
+    // below is only realized in FACILITATOR mode. Under contract settlement a
+    // personal purchase collects the on-chain 10%, not 15% — collecting a
+    // differentiated 15% on-chain is deferred to the upgrade path #1300.
     this.licensePricing = {
       personal: {
         amountUsd: this.getPositiveNumber('X402_PERSONAL_PRICE_USD', DEFAULT_X402_LICENSE_PRICING.personal.amountUsd),

@@ -47,18 +47,26 @@ reconciled into `docs/rfc/business-model.md` as the single canonical source.
 
 ## ADR-BM-2 — Marketplace take-rate alignment
 
-> **Status: ACCEPTED — 2026-07-04, confirmed by @akoita.** Canonical rate
-> reconciled into `docs/rfc/business-model.md` (Layer 3). Implementation
-> tracked in [#1333](https://github.com/akoita/resonate/issues/1333)
-> (next-sprint candidate; requires the fee-cap change via the contract-upgrade
-> path #1300).
+> **Status: ACCEPTED — 2026-07-04, confirmed by @akoita. On-chain 10% take
+> SHIPPED.** Canonical rate reconciled into `docs/rfc/business-model.md`
+> (Layer 3). `StemMarketplaceV2` now carries `MAX_PROTOCOL_FEE = 1500` (15% cap)
+> and the staging Base Sepolia marketplace is **deployed at 10% (`protocolFeeBps
+> = 1000`)** since 2026-07-05 — the 10% marketplace take is collected on-chain
+> today. The only deferred item is collecting a differentiated **15% on the
+> on-chain path for x402 *personal*** micro-purchases (see below); tracked under
+> the contract-upgrade path [#1300](https://github.com/akoita/resonate/issues/1300).
 
 - **Decision (accepted):** platform take is **10%** on marketplace sales
   (stems, downloads, collectibles, remix/commercial licenses) and **15%** on
-  x402 micro-purchases (personal tier). Raise the `StemMarketplaceV2` protocol
-  fee default from 0.5%; the current max-fee cap (5%) is below the decided
-  rate, so the cap change ships through the contract-upgrade path with full
-  test ladder.
+  x402 micro-purchases (personal tier). **Status:** the 15% fee cap and the 10%
+  default shipped in `StemMarketplaceV2` and are deployed on staging (the old
+  "0.5% default / 5% cap / pending #1300" framing is superseded). The contract
+  holds a **single global protocol rate** (10%); the 15% personal take is
+  applied **off-chain in x402 facilitator mode** (`x402.config.ts`,
+  `personal.feeBps = 1500`). Collecting 15% for personal on the *on-chain
+  contract-settlement* path would need a per-tier/caller-supplied fee — a
+  custody-contract change disproportionate to the ~$0.0025 delta on $0.05
+  micro-purchases — so it is **deliberately deferred to #1300**.
 - **Why:** the RFC already documents 10–15% (Bandcamp charges 10–15%,
   BeatStars free tier ~30%); the 0.5% on-chain default contradicts it and
   forfeits ~20x revenue at any GMV. Artist share remains 85–90% after
@@ -179,7 +187,7 @@ All tracking issues are now filed:
 | --- | --- | --- |
 | Epic | [#1332](https://github.com/akoita/resonate/issues/1332) | open |
 | ADR-BM-1 — Shows campaign fee | [#1330](https://github.com/akoita/resonate/issues/1330) | **accepted** (6%, success-only); blocking #1271 |
-| ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | **accepted** (10% / 15% micro); implementation next-sprint candidate |
+| ADR-BM-2 — Marketplace take-rate | [#1333](https://github.com/akoita/resonate/issues/1333) | **accepted** (10% / 15% micro); on-chain 10% **shipped** (deployed 2026-07-05); on-chain 15%-personal deferred to [#1300](https://github.com/akoita/resonate/issues/1300) |
 | ADR-BM-3 — Generation credits | [#1334](https://github.com/akoita/resonate/issues/1334) | **accepted** (2026-07-05); implementation open — Stability registration precedes billing |
 | ADR-BM-4 — Payout doctrine | [#1335](https://github.com/akoita/resonate/issues/1335) | **accepted** (2026-07-05); closes with reconciliation |
 | ADR-BM-5 — Identity policy | [#1336](https://github.com/akoita/resonate/issues/1336) | **accepted** (2026-07-05); payout-gating implementation open under #1164 |
