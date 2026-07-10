@@ -13495,6 +13495,31 @@ tr[draggable="true"]:hover {
     display: inline-flex;
   }
 
+  /* Mobile topbar de-crowding (#1427). On touch, every topbar button is forced
+   * to a 44px min tap target; packed into a phone-width bar alongside the wide
+   * wallet chip, they overflowed. Worse, `.topbar-leading` (flex:1, min-width:0)
+   * collapsed to width 0 while its hamburger kept its 44px min-width and
+   * `overflow: visible`, so the hamburger rendered ON TOP of the first action
+   * button — clicking the menu hit the playlist button and vice versa. Fix:
+   *   1. keep the leading sized to its content so the hamburger can't overflow;
+   *   2. drop the redundant route title (its max-content was inflating leading);
+   *   3. hide the playlist + help toggles — both reachable from the sidebar nav
+   *      (Playlists, User Guide), same "power-user surface off mobile" pattern
+   *      as the hidden mixer popover above. */
+  .topbar-leading {
+    flex: 0 0 auto;
+    min-width: max-content;
+  }
+
+  .app-topbar .topbar-title {
+    display: none;
+  }
+
+  .topbar-playlist-btn,
+  .topbar-help-btn {
+    display: none;
+  }
+
   /* Drawer above any in-app modal (playlist-modal-overlay z=2000,
    * player-bar-mixer-popover z=2000). Backdrop sits just below it. */
   .sidebar-backdrop {
