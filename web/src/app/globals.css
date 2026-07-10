@@ -422,7 +422,12 @@ a {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  overflow: hidden;
+  /* Scroll the nav when it's taller than the viewport (#1428): the full menu
+     (primary + secondary nav + account footer) exceeds a short/mobile viewport,
+     and `overflow: hidden` clipped everything below the fold with no way to
+     reach Settings / About / the account chip. `auto` only scrolls when needed,
+     so tall desktops are unaffected. */
+  overflow: hidden auto;
   position: relative;
   z-index: 5000;
   transition:
