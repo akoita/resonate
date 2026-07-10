@@ -282,6 +282,25 @@ export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   next: "allowed" | "disabled";
 }
 
+/**
+ * A Punchline Drop was published (#482): the rights/eligibility gate re-passed,
+ * every moment's clip was extracted, and the drop went from draft to published.
+ * Carries only identifiers and aggregate counts — no lyric text, artwork URIs,
+ * clip bytes, or pricing internals. The full product-analytics taxonomy/bridge
+ * for Punchline Drops is #489; this is the domain signal downstream consumers
+ * subscribe to today.
+ */
+export interface PunchlineDropPublishedEvent extends BaseEvent {
+  eventName: "punchline.drop_published";
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  /** Number of collectible moments in the published drop. */
+  momentCount: number;
+  /** Sum of each moment's edition size — total mintable editions. */
+  totalEditions: number;
+}
+
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
   eventName: "recommendation.preferences_updated";
   userId: string;
@@ -1356,6 +1375,7 @@ export type ResonateEvent =
   | RemixPublishedEvent
   | RemixExportedEvent
   | ArtistRemixConsentUpdatedEvent
+  | PunchlineDropPublishedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent

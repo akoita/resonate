@@ -453,6 +453,12 @@ jobs:
         run: forge build
         working-directory: contracts
 
+      # Punchline Drops clip extraction (#481) and the publish path (#482) shell
+      # out to ffmpeg; without it those integration specs skip their render
+      # cases. Install it so the media path is actually exercised in CI.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
       - name: Run selected backend integration tests
         run: |

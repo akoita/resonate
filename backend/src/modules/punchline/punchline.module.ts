@@ -6,17 +6,23 @@ import { StorageProvider } from "../storage/storage_provider";
 import { PunchlineController } from "./punchline.controller";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import { PunchlineClipService } from "./punchline-clip.service";
+import { PunchlineDropService } from "./punchline-drop.service";
 
 /**
- * Punchline Drops (#480, #481). Leaf module: it consumes the shared
+ * Punchline Drops (#480, #481, #482). Leaf module: it consumes the shared
  * upload-rights engine (via RightsModule) for the catalog-trust gate, exposes
- * the eligibility check (#480) and the vocal-stem clip extraction primitive
- * (#481). Create/publish APIs land in #482.
+ * the eligibility check (#480), the vocal-stem clip extraction primitive
+ * (#481), and the draft + publish APIs (#482).
  *
  * StorageProvider, EncryptionService, and ConfigService are all provided by
  * @Global() modules (StorageModule, EncryptionModule, ConfigModule), so the
  * clip service injects them via a factory without importing those modules —
  * exactly as the remix module wires FfmpegStemAudioMixer.
+ *
+ * PunchlineDropService is a plain class provider: Nest resolves its EventBus
+ * (from the @Global() SharedModule), ConfigService, and the two sibling
+ * punchline services by type. It orchestrates the #480 gate + #481 clip
+ * primitive behind the mutation boundary.
  */
 @Module({
   imports: [RightsModule],
@@ -37,7 +43,12 @@ import { PunchlineClipService } from "./punchline-clip.service";
         ),
       inject: [StorageProvider, EncryptionService, ConfigService],
     },
+    PunchlineDropService,
   ],
-  exports: [PunchlineEligibilityService, PunchlineClipService],
+  exports: [
+    PunchlineEligibilityService,
+    PunchlineClipService,
+    PunchlineDropService,
+  ],
 })
 export class PunchlineModule {}
