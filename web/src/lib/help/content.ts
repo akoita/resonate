@@ -902,6 +902,80 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["marketplace-sell", "upload-music", "shows-run", "community"],
   },
   {
+    slug: "punchline-drops",
+    title: "Punchline Drops: turn your best vocal moments into collectibles",
+    summary:
+      "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans will soon be able to own.",
+    category: "artists",
+    audiences: ["artist"],
+    status: "partial",
+    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish"],
+    sections: [
+      {
+        id: "what",
+        heading: "What a Punchline Drop is",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A Punchline Drop is a small collection of \"moments\" cut from your track's vocals — the hook, the punchline, the line fans scream back at you. Each moment is a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). Fans will be able to collect them straight from your track pages.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Available on rights-clean tracks",
+            text: "Drops are only available on published tracks you own with a processed vocals stem and a clean rights status. If a track isn't eligible, the panel tells you exactly why.",
+          },
+        ],
+      },
+      {
+        id: "create",
+        heading: "Creating a drop",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open one of your releases — as the owner you'll see a Punchline Drops panel below your tracks.",
+              "Pick a track, then create a drop (or resume the draft you started earlier).",
+              "Select the moment on the vocal timeline by dragging the start and end handles, and hit Preview to hear exactly what fans will get.",
+              "Add the title, the lyric line, optional artwork, the edition size, and the price — the live card shows exactly how the collectible will look.",
+              "Add more moments if you like (they can become a set), then hit Publish.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Publishing shows you a review of everything in the drop, then cuts the audio clips and makes the drop public. Published drops can't be edited, so give the preview a real listen first.",
+          },
+        ],
+      },
+      {
+        id: "rights",
+        heading: "What buyers actually get",
+        blocks: [
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Personal collectible only",
+            text: "Every moment is sold as a personal collectible: fans can play it and show it off on their profile. It carries no commercial-use, remix, or sampling rights, and never transfers your copyright or master ownership. The same promise is shown to you at publish time and to fans on every card.",
+          },
+        ],
+      },
+      {
+        id: "next",
+        heading: "What's coming next",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Fan collecting is rolling out next: a collect module on track pages, a collector inventory, and a bonus for fans who complete a whole set. You can build and publish drops today so they're ready when collecting opens.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Your catalog", href: "/artist/catalog", description: "Open a release to find its Punchline Drops panel." },
+    ],
+    related: ["upload-music", "artist-profile", "marketplace-sell"],
+  },
+  {
     slug: "rights-protection",
     title: "Rights & content protection",
     summary:

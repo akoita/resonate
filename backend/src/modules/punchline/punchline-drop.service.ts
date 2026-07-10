@@ -403,6 +403,32 @@ export class PunchlineDropService {
     return this.serializeDrop(drop);
   }
 
+  /**
+   * All drops (any status) the calling artist owns on a track, newest first.
+   * Owner-scoped resume surface for the drop builder (#484): lets the release
+   * panel resume the newest draft or show published summaries. Never leaks other
+   * artists' drops — a caller only ever sees drops on `{trackId, own artistId}`.
+   */
+  async listDropsForTrackOwner(userId: string, trackId: string) {
+    const artist = await this.requireArtist(userId);
+    const rows = await prisma.punchlineDrop.findMany({
+      where: { trackId, artistId: artist.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        moments: {
+          orderBy: { createdAt: "asc" },
+          include: { _count: { select: { collectibles: true } } },
+        },
+      },
+    });
+
+    return {
+      items: rows.map((row) => this.serializeDrop(row)),
+      meta: { count: rows.length },
+    };
+  }
+
   /** Published drops for a track, newest first. Public list surface. */
   async listPublishedDropsForTrack(
     trackId: string,

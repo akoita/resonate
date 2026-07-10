@@ -146,6 +146,21 @@ export class PunchlineController {
     return this.dropService.publish(req.user.userId, dropId);
   }
 
+  /**
+   * Owner-scoped list of the caller's drops (any status) on a track (#484).
+   * Powers the release-panel drop builder's resume flow — the newest draft can
+   * be resumed and published drops shown as summaries. Path is under `me/` so it
+   * never collides with the public `GET /punchline/drops/:dropId` route.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/track-drops")
+  listMyTrackDrops(@Req() req: any, @Query("trackId") trackId?: string) {
+    if (!trackId) {
+      throw new BadRequestException("trackId query parameter is required");
+    }
+    return this.dropService.listDropsForTrackOwner(req.user.userId, trackId);
+  }
+
   // ---------------------------------------------------------------------------
   // Public reads
   // ---------------------------------------------------------------------------

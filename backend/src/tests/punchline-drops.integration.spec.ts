@@ -485,6 +485,39 @@ describe("Punchline Drops draft + publish (integration)", () => {
     });
   });
 
+  // ---- owner track-drops listing (#484 resume) -----------------------------
+
+  it("lists the owner's drops for a track, newest first, all statuses", async () => {
+    const draft = await service.createDraft(OWNER_USER, {
+      trackId: TRACK_ELIGIBLE,
+      title: "Resume Me",
+    });
+
+    const list = await service.listDropsForTrackOwner(OWNER_USER, TRACK_ELIGIBLE);
+
+    expect(list.meta.count).toBe(list.items.length);
+    expect(list.items.length).toBeGreaterThanOrEqual(1);
+    // Every returned drop belongs to the caller and this track — no leaks.
+    expect(list.items.every((d) => d.artistId === OWNER_ARTIST)).toBe(true);
+    expect(list.items.every((d) => d.trackId === TRACK_ELIGIBLE)).toBe(true);
+    // Newest-first: the just-created draft heads the list and is resumable.
+    expect(list.items[0].id).toBe(draft.id);
+    expect(list.items[0].status).toBe("draft");
+  });
+
+  it("never leaks another artist's drops to a different artist", async () => {
+    // Owner has drops on the eligible track; the stranger owns none there.
+    await service.createDraft(OWNER_USER, { trackId: TRACK_ELIGIBLE });
+
+    const strangerList = await service.listDropsForTrackOwner(
+      STRANGER_USER,
+      TRACK_ELIGIBLE,
+    );
+
+    expect(strangerList.items).toEqual([]);
+    expect(strangerList.meta.count).toBe(0);
+  });
+
   // ---- draft visibility ----------------------------------------------------
 
   it("hides a draft drop from a non-owner and anonymous callers", async () => {
