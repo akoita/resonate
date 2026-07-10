@@ -962,6 +962,28 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["userId"],
   },
   {
+    // #1421 realized-cost telemetry bridged to analytics for cost/margin
+    // reconciliation.
+    eventName: "generation.cost_recorded",
+    producer: "generation-service",
+    subjectType: "generation_job",
+    subjectIdKeys: ["jobId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: [
+      "userId",
+      "jobId",
+      "path",
+      "durationSeconds",
+      "wallClockMs",
+      "estimatedCostUsd",
+      "sellPriceCents",
+      "coldStart",
+    ],
+    sourceRefKeys: ["jobId", "userId"],
+  },
+  {
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],

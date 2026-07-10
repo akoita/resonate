@@ -267,6 +267,21 @@
     }
   },
   {
+    "eventName": "generation.cost_recorded",
+    "privacyTier": "personal",
+    "consentBasis": "platform_analytics:v1",
+    "payload": {
+      "userId": "user-1",
+      "jobId": "job-1",
+      "path": "lyria-002",
+      "durationSeconds": 30,
+      "wallClockMs": 4200,
+      "estimatedCostUsd": 0.06,
+      "sellPriceCents": 10,
+      "coldStart": false
+    }
+  },
+  {
     "eventName": "stems.uploaded",
     "payload": {
       "releaseId": "release-1",

@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   Optional,
   UnprocessableEntityException,
@@ -33,6 +34,10 @@ import {
   type RemixStemTransform,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
+import {
+  estimateGenerationCostUsd,
+  inferColdStart,
+} from "../generation/generation-cost-model";
 import {
   GenerationCreditsService,
   InsufficientCreditsException,
@@ -367,6 +372,7 @@ export class RemixProjectService {
     15 * 60 * 1000,
   );
   private readonly rateLimits = new Map<string, number[]>();
+  private readonly logger = new Logger(RemixProjectService.name);
 
   constructor(
     private readonly eventBus: EventBus,
@@ -1096,6 +1102,11 @@ export class RemixProjectService {
       return { skipped: true, reason: "already_completed" };
     }
 
+    // #1421 realized-cost telemetry: the processing wall-clock window starts
+    // here (mirroring the processingStartedAt written below) and ends when the
+    // job settles, so the record captures backend time spent on the render.
+    const processingStartedAtMs = Date.now();
+
     // jobId-scoped writes: after a stale reclaim, a superseded worker run
     // must never overwrite the replacement job's metadata.
     const claimed = await prisma.remixProject.updateMany({
@@ -1111,6 +1122,17 @@ export class RemixProjectService {
     if (claimed.count === 0) {
       return { skipped: true, reason: "stale_job" };
     }
+
+    // #1421: the AI render's requested duration, used for cost telemetry on both
+    // the success and failure paths. stem_mix carries no explicit duration and
+    // is not AI-generated, so the default 30s block is used only as a nominal
+    // wall-clock reference (sellPriceCents stays 0 for it — nothing is debited).
+    const recordDurationSeconds =
+      data.generationInput.constraints?.durationSeconds ??
+      REMIX_GENERATION_DEFAULT_DURATION_SECONDS;
+    // #1421: only record telemetry once the provider render was actually
+    // entered, so a pre-render credit block never emits a cost record.
+    let providerCallStarted = false;
 
     // #1334: credits charged for this job's AI render, refunded on failure.
     let debitedCents = 0;
@@ -1234,6 +1256,7 @@ export class RemixProjectService {
       // prompted modes ask the configured provider for generated audio. Lyria
       // output is treated as one additive layer (#1209), then mixed back over
       // the live arranged stems so the final draft keeps source fidelity.
+      providerCallStarted = true;
       const providerJob =
         data.generationInput.mode === "stem_mix"
           ? await this.stemMixRenderer.render({
@@ -1305,6 +1328,22 @@ export class RemixProjectService {
             ? currentMetadata.policyVersion
             : project.policyVersion,
       });
+
+      // #1421: realized-cost telemetry for the completed render. The estimated
+      // cost is the provider's own estimate (present for AI renders, absent for
+      // pure-DSP stem_mix); sellPriceCents is what was debited (0 for stem_mix).
+      await this.recordGenerationCost({
+        jobId: data.jobId,
+        userId: data.userId,
+        path: providerJob.provider,
+        durationSeconds: recordDurationSeconds,
+        wallClockMs: Date.now() - processingStartedAtMs,
+        // 0 when the provider reports no cost estimate (pure-DSP stem_mix is
+        // free) rather than fabricating a rate.
+        estimatedCostUsd: providerJob.estimatedCostUsd ?? 0,
+        sellPriceCents: debitedCents,
+      });
+
       return { remixProjectId: project.id, generationJobId: data.jobId };
     } catch (error) {
       // #1334: a credit block is not a generation failure — nothing was charged
@@ -1331,7 +1370,80 @@ export class RemixProjectService {
         metadata: currentMetadata,
         error: normalized,
       });
+
+      // #1421: record realized cost for a failure that happened after the
+      // provider render was entered — a failed AI render (e.g. a self-hosted GPU
+      // cold start) still incurs cost worth reconciling. The provider is unknown
+      // on failure, so the baseline remix path key is used (defaults to the same
+      // rate). stem_mix is pure DSP with no generation cost, so 0. Best-effort
+      // and isolated: never masks the original error.
+      if (providerCallStarted) {
+        await this.recordGenerationCost({
+          jobId: data.jobId,
+          userId: data.userId,
+          path: "remix-stub",
+          durationSeconds: recordDurationSeconds,
+          wallClockMs: Date.now() - processingStartedAtMs,
+          estimatedCostUsd:
+            data.generationInput.mode === "stem_mix"
+              ? 0
+              : estimateGenerationCostUsd("remix-stub", recordDurationSeconds),
+          sellPriceCents: debitedCents,
+        });
+      }
+
       throw normalized;
+    }
+  }
+
+  /**
+   * #1421: best-effort realized-cost telemetry for a settled remix generation.
+   * Writes a GenerationCostRecord and emits generation.cost_recorded. Fully
+   * isolated from the generation outcome — every failure is logged and swallowed
+   * so a telemetry error can never fail or refund a generation.
+   */
+  private async recordGenerationCost(input: {
+    jobId: string;
+    userId: string;
+    path: string;
+    durationSeconds: number;
+    wallClockMs: number;
+    estimatedCostUsd: number;
+    sellPriceCents: number;
+  }): Promise<void> {
+    try {
+      const wallClockMs = Math.max(0, Math.round(input.wallClockMs));
+      const durationSeconds = Math.max(0, Math.round(input.durationSeconds));
+      const coldStart = inferColdStart(input.path, wallClockMs);
+      await prisma.generationCostRecord.create({
+        data: {
+          jobId: input.jobId,
+          userId: input.userId,
+          path: input.path,
+          durationSeconds,
+          wallClockMs,
+          estimatedCostUsd: input.estimatedCostUsd,
+          sellPriceCents: input.sellPriceCents,
+          coldStart,
+        },
+      });
+      this.eventBus.publish({
+        eventName: "generation.cost_recorded",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        jobId: input.jobId,
+        userId: input.userId,
+        path: input.path,
+        durationSeconds,
+        wallClockMs,
+        estimatedCostUsd: input.estimatedCostUsd,
+        sellPriceCents: input.sellPriceCents,
+        coldStart,
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to record remix generation cost telemetry for job ${input.jobId}: ${error?.message ?? error}`,
+      );
     }
   }
 

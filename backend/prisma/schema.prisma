@@ -43,6 +43,7 @@ model User {
   reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
+  generationCostRecords       GenerationCostRecord[]
 }
 
 // Generation-credit meter (#1334, ADR-BM-3). USD-cent balance a user spends on
@@ -72,6 +73,32 @@ model GenerationCreditTransaction {
 
   @@index([userId, createdAt])
   @@index([jobId])
+}
+
+// Realized per-job generation cost telemetry (#1421, ADR-BM-3, RFC
+// docs/rfc/generation-cost-model.md). Append-only observations written on every
+// settled generation (catalog + remix), so the model-estimated COGS and backend
+// wall-clock can later be reconciled against real cloud billing to derive true
+// per-path cost and margin. Pure telemetry: writing a record never affects the
+// generation outcome or the credit ledger.
+model GenerationCostRecord {
+  id               String   @id @default(uuid())
+  jobId            String
+  userId           String
+  // Provider/model path key (e.g. lyria-002, stable-audio-3-medium, remix-stub).
+  path             String
+  durationSeconds  Int
+  wallClockMs      Int
+  estimatedCostUsd Float
+  sellPriceCents   Int
+  // Best-effort: true/false when known, null when the path has no cold-start
+  // concept or wall-clock was not measured.
+  coldStart        Boolean?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([path, createdAt])
 }
 
 model Wallet {

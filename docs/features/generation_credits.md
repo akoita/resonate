@@ -164,6 +164,16 @@ now; email/Slack fan-out is a future enhancement.
   commercial-use license review (#1193). No live money changes hands in this
   slice.
 - Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
+- **Cost instrumentation (#1421)** — the flat `$0.06/30s` COGS guess is now a
+  typed, env-overridable **per-path cost-model config**
+  (`backend/src/modules/generation/generation-cost-model.ts`; defaults reproduce
+  the old number, so the estimate is unchanged), and every generation records
+  **realized cost telemetry** (`GenerationCostRecord`: path, `wallClockMs`,
+  duration, estimated cost, sell price, `coldStart`) + a `generation.cost_recorded`
+  event — so real cost can be reconciled against cloud billing. The **price
+  itself is unchanged**; deriving a measured, reconciled per-path sell price
+  needs real Lyria/GPU billing data and lands later (reconciled into
+  `business-model.md` + ADR-BM-3). Design: [`docs/rfc/generation-cost-model.md`](../rfc/generation-cost-model.md).
 - **Usage & Billing consolidation (#1422)** — shipped across two slices: (1) the
   reusable `CreditBalanceMeter` + Remix Studio parity; (2) a metered-action
   registry (`backend/src/modules/credits/metered-actions.ts`), a unified
