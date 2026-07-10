@@ -16,6 +16,7 @@ const TEST_PREFIX = `punchline_${Date.now()}_`;
 
 const ARTIST_OWNER_ID = `${TEST_PREFIX}artist_owner`;
 const COLLECTOR_ID = `${TEST_PREFIX}collector`;
+const COLLECTOR_2_ID = `${TEST_PREFIX}collector2`;
 const ARTIST_ID = `${TEST_PREFIX}artist`;
 const RELEASE_ID = `${TEST_PREFIX}release`;
 const TRACK_ID = `${TEST_PREFIX}track`;
@@ -35,6 +36,12 @@ describe("Punchline Drops models (integration)", () => {
       data: {
         id: COLLECTOR_ID,
         email: `${TEST_PREFIX}collector@test.resonate`,
+      },
+    });
+    await prisma.user.create({
+      data: {
+        id: COLLECTOR_2_ID,
+        email: `${TEST_PREFIX}collector2@test.resonate`,
       },
     });
     await prisma.artist.create({
@@ -77,7 +84,7 @@ describe("Punchline Drops models (integration)", () => {
     // drop) / PunchlineUnlock (cascade from drop) → PunchlineDrop, then base
     // seed chain.
     await prisma.punchlineCollectible.deleteMany({
-      where: { collectorUserId: COLLECTOR_ID },
+      where: { collectorUserId: { in: [COLLECTOR_ID, COLLECTOR_2_ID] } },
     });
     await prisma.punchlineDrop.deleteMany({
       where: { id: { startsWith: TEST_PREFIX } },
@@ -93,7 +100,7 @@ describe("Punchline Drops models (integration)", () => {
       where: { id: { startsWith: TEST_PREFIX } },
     });
     await prisma.user.deleteMany({
-      where: { id: { in: [ARTIST_OWNER_ID, COLLECTOR_ID] } },
+      where: { id: { in: [ARTIST_OWNER_ID, COLLECTOR_ID, COLLECTOR_2_ID] } },
     });
   });
 
@@ -189,12 +196,25 @@ describe("Punchline Drops models (integration)", () => {
       }),
     ).rejects.toMatchObject({ code: "P2002" });
 
-    // A different edition number for the same moment is allowed.
+    // The same collector cannot take a second edition of the same moment —
+    // the one-per-fan cap added in #485 (@@unique([momentId, collectorUserId])).
+    await expect(
+      prisma.punchlineCollectible.create({
+        data: {
+          id: `${TEST_PREFIX}collectible_same_fan`,
+          momentId,
+          collectorUserId: COLLECTOR_ID,
+          editionNumber: 2,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+
+    // A different collector taking a different edition number is allowed.
     const second = await prisma.punchlineCollectible.create({
       data: {
         id: `${TEST_PREFIX}collectible_2`,
         momentId,
-        collectorUserId: COLLECTOR_ID,
+        collectorUserId: COLLECTOR_2_ID,
         editionNumber: 2,
       },
     });

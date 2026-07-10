@@ -2158,12 +2158,19 @@ model PunchlineCollectible {
   collectorWallet String?
   editionNumber   Int
   status          PunchlineCollectibleStatus @default(pending)
+  // Payment provenance (#485). Free claims record rail "free_claim" and 0
+  // cents; a paid rail fills paymentRef with its settlement reference once
+  // x402 is generalized beyond stems (follow-up tracked on epic #490).
+  paymentRail     String                     @default("free_claim")
+  pricePaidCents  Int                        @default(0)
+  paymentRef      String?
   acquiredAt      DateTime?
   createdAt       DateTime                   @default(now())
   moment          PunchlineMoment            @relation(fields: [momentId], references: [id])
   collector       User                       @relation(fields: [collectorUserId], references: [id])
 
   @@unique([momentId, editionNumber])
+  @@unique([momentId, collectorUserId])
   @@index([collectorUserId])
 }
 
