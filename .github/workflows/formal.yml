@@ -14,6 +14,13 @@ name: Formal Verification
 on:
   push:
     branches: [main]
+    # Match the pull_request filter: the post-merge run on main is only
+    # meaningful when contracts (or this workflow) changed. Without this,
+    # every merge to main — including frontend/docs-only ones — re-ran the
+    # ~30-min Halmos + Foundry suite for no contract change.
+    paths:
+      - "contracts/**"
+      - ".github/workflows/formal.yml"
   pull_request:
     paths:
       - "contracts/**"
