@@ -301,6 +301,36 @@ export interface PunchlineDropPublishedEvent extends BaseEvent {
   totalEditions: number;
 }
 
+/**
+ * A fan collected one edition of a published Punchline moment (#485): the
+ * ownership grant was persisted with a race-safe edition number. Identifiers,
+ * the edition, and payment provenance only — no lyric/artwork content.
+ */
+export interface PunchlineMomentCollectedEvent extends BaseEvent {
+  eventName: "punchline.moment_collected";
+  momentId: string;
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
+  editionNumber: number;
+  pricePaidCents: number;
+  /** "free_claim" today; the paid rail identifier once x402 generalizes. */
+  paymentRail: string;
+}
+
+/**
+ * A collector now owns every moment in a drop (#485 unlock hook). The
+ * complete-set reward slice (#488) consumes this to grant the bonus.
+ */
+export interface PunchlineSetCompletedEvent extends BaseEvent {
+  eventName: "punchline.set_completed";
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
+}
+
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
   eventName: "recommendation.preferences_updated";
   userId: string;
@@ -1376,6 +1406,8 @@ export type ResonateEvent =
   | RemixExportedEvent
   | ArtistRemixConsentUpdatedEvent
   | PunchlineDropPublishedEvent
+  | PunchlineMomentCollectedEvent
+  | PunchlineSetCompletedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent

@@ -6,13 +6,15 @@ import { StorageProvider } from "../storage/storage_provider";
 import { PunchlineController } from "./punchline.controller";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import { PunchlineClipService } from "./punchline-clip.service";
+import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
 
 /**
- * Punchline Drops (#480, #481, #482). Leaf module: it consumes the shared
+ * Punchline Drops (#480, #481, #482, #485). Leaf module: it consumes the shared
  * upload-rights engine (via RightsModule) for the catalog-trust gate, exposes
  * the eligibility check (#480), the vocal-stem clip extraction primitive
- * (#481), and the draft + publish APIs (#482).
+ * (#481), the draft + publish APIs (#482), and the fan collect / ownership
+ * grant (#485).
  *
  * StorageProvider, EncryptionService, and ConfigService are all provided by
  * @Global() modules (StorageModule, EncryptionModule, ConfigModule), so the
@@ -44,11 +46,13 @@ import { PunchlineDropService } from "./punchline-drop.service";
       inject: [StorageProvider, EncryptionService, ConfigService],
     },
     PunchlineDropService,
+    PunchlineCollectService,
   ],
   exports: [
     PunchlineEligibilityService,
     PunchlineClipService,
     PunchlineDropService,
+    PunchlineCollectService,
   ],
 })
 export class PunchlineModule {}

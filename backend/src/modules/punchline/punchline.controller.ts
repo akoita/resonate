@@ -13,6 +13,7 @@ import {
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
+import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 
@@ -21,6 +22,7 @@ export class PunchlineController {
   constructor(
     private readonly eligibilityService: PunchlineEligibilityService,
     private readonly dropService: PunchlineDropService,
+    private readonly collectService: PunchlineCollectService,
   ) {}
 
   /**
@@ -159,6 +161,35 @@ export class PunchlineController {
       throw new BadRequestException("trackId query parameter is required");
     }
     return this.dropService.listDropsForTrackOwner(req.user.userId, trackId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Collect + ownership (#485)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Collect one edition of a published moment (#485). Free moments grant
+   * immediately (rail "free_claim"); paid moments return the structured
+   * `payment_rail_pending` denial until the x402 rail is generalized beyond
+   * stems. Edition scarcity and the one-per-fan cap are DB-enforced.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("moments/:momentId/collect")
+  collectMoment(
+    @Req() req: any,
+    @Param("momentId") momentId: string,
+    @Body() body?: { collectorWallet?: string | null },
+  ) {
+    return this.collectService.collectMoment(req.user.userId, momentId, {
+      collectorWallet: body?.collectorWallet ?? null,
+    });
+  }
+
+  /** The caller's owned collectibles — the inventory read (#485/#487). */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/collectibles")
+  listMyCollectibles(@Req() req: any) {
+    return this.collectService.listMyCollectibles(req.user.userId);
   }
 
   // ---------------------------------------------------------------------------

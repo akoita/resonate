@@ -10,8 +10,10 @@ depends_on:
 
 # Phase 1: Punchline Drops MVP
 
-> **Status:** `in-progress`. The backend foundation (Sprint 7, #479–#482) is
-> shipped; the artist/collector UI (#483+) and purchase/unlock flows are still
+> **Status:** `in-progress`. The backend (Sprint 7, #479–#482, #485) and the
+> artist UI (#483–#484) are shipped — an artist can build + publish a drop and
+> fans can be granted free moments via the API. The fan-facing UI (#486, #487),
+> paid collects (#1462), unlock rewards (#488), and analytics (#489) are still
 > pending. The [Implementation Status](#implementation-status-sprint-7) section
 > below is the practical, current-state reference for what works today and how
 > to exercise it. The rest of this page is the product design/RFC intent that
@@ -32,7 +34,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
 | Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | ✅ done | Owner-only release-page panel: pick a vocals-stem track, see explainable eligibility, drag a `[startMs,endMs]` clip range, and preview exactly that range in-browser. Eligibility now also returns the server's `clipBoundsMs` so the client never hardcodes them. |
 | Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | ✅ done | Full drop builder on the release page: create/resume a draft, moment editor (clip range + title/lyric/artwork/edition/price) with a live collectible-card preview, publish behind a review dialog with the verbatim non-commercial rights warning. Owner draft resume via `GET /punchline/me/track-drops`. |
-| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | 🔜 planned | Collect a moment; `PunchlineCollectible` grant + take-rate (revenue line 3). |
+| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done (free_claim rail) | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Paid collects return `payment_rail_pending` until the x402 rail generalizes beyond stems ([#1462](https://github.com/akoita/resonate/issues/1462)). |
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | 🔜 planned | Fan-facing collect module beneath playback. |
 | Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | 🔜 planned | Owned moments on the collector profile. |
 | Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | 🔜 planned | Collect every moment in a drop to earn a bonus reward. |
@@ -55,7 +57,9 @@ Only verified/trusted catalogs are eligible (the gate defers to the shared
 upload-rights routing engine). A collectible is **utility, not yield** — it
 grants access and display, never income or a revenue share (ADR-BM-4). The
 artist keeps 85%+ of every transaction; the marketplace 10% take-rate is reused
-from the existing rails and is wired at purchase in #485.
+from the existing rails and is wired with the paid rail
+([#1462](https://github.com/akoita/resonate/issues/1462)) — the shipped #485
+slice grants free moments only, so no fee applies yet.
 
 ### Backend API surface (implemented)
 
@@ -69,6 +73,8 @@ from the existing rails and is wired at purchase in #485.
 | `DELETE` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Remove a moment from a draft. |
 | `POST` | `/punchline/drops/:dropId/publish` | JWT (owner) | Re-run the gate, extract each clip, persist, emit the event. |
 | `GET` | `/punchline/me/track-drops?trackId=` | JWT (owner) | The caller's drops on a track, any status, newest first — powers the builder's draft resume + published summaries (#484). |
+| `POST` | `/punchline/moments/:momentId/collect` | JWT | Collect one edition of a published moment (#485). Free moments grant immediately (`free_claim`); paid moments return `payment_rail_pending` ([#1462](https://github.com/akoita/resonate/issues/1462)). Codes: `moment_not_found`, `drop_not_published`, `sold_out`, `already_collected`, `payment_rail_pending`, `collect_failed`. |
+| `GET` | `/punchline/me/collectibles` | JWT | The caller's owned collectibles with moment/drop/track context — the inventory read (#485/#487). |
 | `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
 | `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
 
@@ -134,11 +140,18 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   `{ dropId, trackId, artistId, momentCount, totalEditions }` (identifiers +
   aggregate counts only; no lyrics, artwork, clip bytes, or pricing). The full
   product-analytics taxonomy is #489.
+- `punchline.moment_collected` (v1) — emitted on every successful collect with
+  identifiers, the edition number, and payment provenance
+  (`pricePaidCents`, `paymentRail`).
+- `punchline.set_completed` (v1) — emitted when a collector now owns every
+  moment in a drop; the #488 reward slice consumes this (the unlock hook).
 
 ### Services, code, and tests
 
 - Services: `backend/src/modules/punchline/punchline-eligibility.service.ts`,
-  `punchline-clip.service.ts`, `punchline-drop.service.ts`.
+  `punchline-clip.service.ts`, `punchline-drop.service.ts`,
+  `punchline-collect.service.ts` (#485: race-safe edition allocation, free_claim
+  rail, set-completion hook).
 - Controller: `backend/src/modules/punchline/punchline.controller.ts`.
 - Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`).
 - Artist UI (#483 + #484): `web/src/components/punchline/` —
@@ -152,7 +165,9 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   wired into `web/src/app/release/[id]/page.tsx`. User Guide article
   `punchline-drops` in `web/src/lib/help/content.ts`.
 - Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
-  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`;
+  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`,
+  `punchline-collect.integration.spec.ts` (#485: incl. a concurrent-collect race
+  proving editions can never oversell);
   frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx`,
   `PunchlineDropsPanel.test.tsx`, and `punchlineDropHelpers.test.tsx`.
   Run backend: `npm run test:integration -- --testPathPattern='punchline'`
