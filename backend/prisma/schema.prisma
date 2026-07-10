@@ -25,6 +25,7 @@ model User {
   communityModerationReports  CommunityModerationReport[]
   communityVisibilitySettings CommunityVisibilitySettings?
   communityBenefitRedemptions CommunityBenefitRedemption[]
+  punchlineCollectibles       PunchlineCollectible[]
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
@@ -476,6 +477,7 @@ model Artist {
   showCampaigns             ShowCampaign[]
   communityBenefitRules     CommunityBenefitRule[]
   communityRooms            CommunityRoom[]
+  punchlineDrops            PunchlineDrop[]
   discordBridge             CommunityDiscordBridge?
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
@@ -561,6 +563,7 @@ model Track {
   dmcaReports         DmcaReport[]
   release             Release           @relation(fields: [releaseId], references: [id])
   remixProjects       RemixProject[]
+  punchlineDrops      PunchlineDrop[]
   rightsRoute         String?
   rightsFlags         Json?
   rightsReason        String?           @db.Text
@@ -2083,4 +2086,96 @@ model NotificationPreference {
   evidenceSubmitted   Boolean @default(true)
   listingExpiringSoon Boolean @default(true)
   listingExpired      Boolean @default(true)
+}
+
+enum PunchlineDropStatus {
+  draft
+  published
+  archived
+}
+
+enum PunchlineCollectibleStatus {
+  pending
+  owned
+  revoked
+}
+
+enum PunchlineUnlockType {
+  complete_set
+}
+
+// A drop groups the collectible moments an artist curates from one track.
+model PunchlineDrop {
+  id          String              @id @default(uuid())
+  trackId     String
+  artistId    String
+  status      PunchlineDropStatus @default(draft)
+  title       String?
+  description String?             @db.Text
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  publishedAt DateTime?
+  track       Track               @relation(fields: [trackId], references: [id])
+  artist      Artist              @relation(fields: [artistId], references: [id])
+  moments     PunchlineMoment[]
+  unlocks     PunchlineUnlock[]
+
+  @@index([trackId])
+  @@index([artistId, status])
+}
+
+// A single collectible moment: a clip range on the vocal stem plus the
+// collectible metadata (lyric, artwork, edition size, price). The clip asset
+// is extracted server-side later, so clipAssetUri is nullable until then.
+model PunchlineMoment {
+  id             String                 @id @default(uuid())
+  dropId         String
+  title          String
+  lyricText      String                 @db.Text
+  artworkUrl     String?
+  sourceStemType String                 @default("vocals")
+  startMs        Int
+  endMs          Int
+  clipAssetUri   String?
+  editionSize    Int
+  priceCents     Int
+  rightsLabel    String                 @default("NON_COMMERCIAL_COLLECTIBLE")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  drop           PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  collectibles   PunchlineCollectible[]
+
+  @@index([dropId])
+}
+
+// The ownership grant: one row per collected edition. Backend ownership record
+// (Path A); on-chain tokenization is deferred. Unique [momentId, editionNumber]
+// enforces per-moment edition scarcity.
+model PunchlineCollectible {
+  id              String                     @id @default(uuid())
+  momentId        String
+  collectorUserId String
+  collectorWallet String?
+  editionNumber   Int
+  status          PunchlineCollectibleStatus @default(pending)
+  acquiredAt      DateTime?
+  createdAt       DateTime                   @default(now())
+  moment          PunchlineMoment            @relation(fields: [momentId], references: [id])
+  collector       User                       @relation(fields: [collectorUserId], references: [id])
+
+  @@unique([momentId, editionNumber])
+  @@index([collectorUserId])
+}
+
+// A drop-level unlock rule. v1 supports one type: collect every moment in the
+// drop to earn a bonus reward (rewardMetadata carries the reward payload).
+model PunchlineUnlock {
+  id             String              @id @default(uuid())
+  dropId         String
+  unlockType     PunchlineUnlockType @default(complete_set)
+  rewardMetadata Json?
+  createdAt      DateTime            @default(now())
+  drop           PunchlineDrop       @relation(fields: [dropId], references: [id], onDelete: Cascade)
+
+  @@index([dropId])
 }
