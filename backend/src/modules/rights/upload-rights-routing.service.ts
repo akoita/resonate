@@ -12,6 +12,7 @@ import {
   getUploadRightsActions,
   normalizeSourceType,
   parseTrustedSourceTypes,
+  type UploadRightsActionProfile,
   type UploadRightsDecision,
   type UploadRightsFlag,
   type UploadRightsRoute,
@@ -189,6 +190,29 @@ export class UploadRightsRoutingService {
         `Marketplace minting is disabled while this release is routed as ${route}.`,
       );
     }
+  }
+
+  /**
+   * Resolve the effective publication action profile for a set of rights
+   * routes (typically a track route + its release route), reusing the same
+   * most-restrictive-route selection and route→action mapping that gates
+   * marketplace minting. Returns `{ route: null, actions: null }` when no route
+   * has been evaluated yet, matching `assertMarketplaceAllowedForStem`'s
+   * "no route ⇒ don't block" posture. Consumers that need a specific action
+   * (e.g. Punchline eligibility checking `marketplaceAllowed`) read it off the
+   * returned profile without re-implementing the rights policy (#480).
+   */
+  getPublicationActionsForRoutes(
+    ...routes: Array<string | null | undefined>
+  ): {
+    route: UploadRightsRoute | null;
+    actions: UploadRightsActionProfile | null;
+  } {
+    const route = this.getMostRestrictiveRoute(...routes);
+    return {
+      route,
+      actions: route ? getUploadRightsActions(route) : null,
+    };
   }
 
   private async persistReleaseDecision(
