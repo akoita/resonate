@@ -30,7 +30,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Eligibility + rights gate | [#480](https://github.com/akoita/resonate/issues/480) | ✅ done | `checkEligibility(trackId)` — explainable allow/deny on ownership, published release, vocals stem, content safety, and rights route. |
 | Clip extraction | [#481](https://github.com/akoita/resonate/issues/481) | ✅ done | Server-side ffmpeg trim + re-encode of a `[startMs,endMs)` range from the `vocals` stem into a stored MP3. |
 | Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
-| Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | 🔜 planned | Clip range selection + preview on the vocal-stem waveform. |
+| Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | ✅ done | Owner-only release-page panel: pick a vocals-stem track, see explainable eligibility, drag a `[startMs,endMs]` clip range, and preview exactly that range in-browser. Eligibility now also returns the server's `clipBoundsMs` so the client never hardcodes them. |
 | Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | 🔜 planned | Drop builder on the release page. |
 | Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | 🔜 planned | Collect a moment; `PunchlineCollectible` grant + take-rate (revenue line 3). |
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | 🔜 planned | Fan-facing collect module beneath playback. |
@@ -61,7 +61,7 @@ from the existing rails and is wired at purchase in #485.
 
 | Method | Route | Auth | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/punchline/eligibility?trackId=` | JWT | Explainable allow/deny for creating a drop on a track (#480). |
+| `GET` | `/punchline/eligibility?trackId=` | JWT | Explainable allow/deny for creating a drop on a track (#480). Response also carries `clipBoundsMs: { minMs, maxMs }` — the server-resolved, env-tunable clip-length bounds the selection UI reads so it never hardcodes them (#483). |
 | `POST` | `/punchline/drops` | JWT (owner) | Create a draft drop on an owned, eligible track. |
 | `PATCH` | `/punchline/drops/:dropId` | JWT (owner) | Update a draft drop's title/description. |
 | `POST` | `/punchline/drops/:dropId/moments` | JWT (owner) | Add a collectible moment to a draft. |
@@ -76,6 +76,30 @@ create; only draft drops can be mutated; create **and** publish both run the
 #480 gate; moment ranges are validated against the same clip-length bounds the
 extractor enforces (so publish can't fail on a range the draft accepted); at
 most 20 moments per drop.
+
+### Artist UI (so far)
+
+The first artist-facing surface ships on the release page (#483). When the
+signed-in owner views their own release, a **Punchline Drops** panel appears for
+any track that has a processed `vocals` stem:
+
+- pick a track (auto-selected when only one qualifies), which runs the #480
+  eligibility check and renders it explainably — the rights summary plus the
+  clip selector when eligible, or the human-readable `reasons[]` list when not;
+- select a `[startMs, endMs]` range on a draggable timeline over the vocals
+  stem (pointer + touch + keyboard-accessible `role="slider"` handles), with
+  live, human-phrased validation that mirrors the backend clip-length bounds so
+  any accepted range is publishable;
+- preview **exactly** that range in the browser — one `HTMLAudioElement` seeked
+  to the selection, using the existing unauthenticated stem-preview endpoint
+  (`GET /catalog/stems/:stemId/preview`, which decrypts server-side and supports
+  Range seeking); no new backend preview endpoint was added.
+
+The clip selector (`web/src/components/punchline/PunchlineClipSelector.tsx`) is
+deliberately reusable and controlled (`value` + `onChange`) so the drop builder
+(#484) can compose it per moment. Saving a moment is a forward-honest,
+`aria-disabled` affordance today ("Drop builder arrives next (#484) — your clip
+range selection and preview are live today.") — no dead buttons.
 
 ### Environment variables
 
@@ -97,11 +121,18 @@ most 20 moments per drop.
   `punchline-clip.service.ts`, `punchline-drop.service.ts`.
 - Controller: `backend/src/modules/punchline/punchline.controller.ts`.
 - Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`).
+- Artist UI (#483): `web/src/components/punchline/PunchlineDropsPanel.tsx`
+  (release-page owner panel), `PunchlineClipSelector.tsx` (reusable clip
+  selector + preview), `web/src/styles/punchline.css`; API client
+  `checkPunchlineEligibility` in `web/src/lib/api.ts`; wired into
+  `web/src/app/release/[id]/page.tsx`.
 - Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
-  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`.
-  Run: `npm run test:integration -- --testPathPattern='punchline'`
+  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`;
+  frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx` and
+  `PunchlineDropsPanel.test.tsx`.
+  Run backend: `npm run test:integration -- --testPathPattern='punchline'`
   (the publish/clip render cases require ffmpeg on PATH; CI installs it for the
-  backend-integration job).
+  backend-integration job). Run frontend: `npx vitest run src/components/punchline`.
 
 ### Business-model note
 

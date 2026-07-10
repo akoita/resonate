@@ -21,6 +21,10 @@ import {
   PUNCHLINE_RIGHTS_LABEL,
   PUNCHLINE_RIGHTS_SUMMARY,
 } from "../modules/punchline/punchline-rights";
+import {
+  PUNCHLINE_CLIP_MAX_MS,
+  PUNCHLINE_CLIP_MIN_MS,
+} from "../modules/punchline/punchline-clip.config";
 
 const TEST_PREFIX = `punchline_elig_${Date.now()}_`;
 
@@ -173,6 +177,12 @@ describe("Punchline eligibility (integration)", () => {
     expect(result.reasons).toEqual([]);
     expect(result.rightsLabel).toBe(PUNCHLINE_RIGHTS_LABEL);
     expect(result.rightsSummary).toBe(PUNCHLINE_RIGHTS_SUMMARY);
+    // The server hands the client its clip bounds so the selection UI never
+    // hardcodes them; defaults are the built-in min/max.
+    expect(result.clipBoundsMs).toEqual({
+      minMs: PUNCHLINE_CLIP_MIN_MS,
+      maxMs: PUNCHLINE_CLIP_MAX_MS,
+    });
     expect(result.track).toMatchObject({
       id: `${ELIGIBLE}_track`,
       releaseStatus: "ready",
@@ -227,5 +237,10 @@ describe("Punchline eligibility (integration)", () => {
     expect(codesOf(result)).toEqual(["track_not_found"]);
     expect(result.track).toBeUndefined();
     expect(result.rightsLabel).toBe(PUNCHLINE_RIGHTS_LABEL);
+    // Bounds are surfaced even on denial so the UI can explain the range rule.
+    expect(result.clipBoundsMs).toEqual({
+      minMs: PUNCHLINE_CLIP_MIN_MS,
+      maxMs: PUNCHLINE_CLIP_MAX_MS,
+    });
   });
 });

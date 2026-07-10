@@ -1,4 +1,5 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { prisma } from "../../db/prisma";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 import {
@@ -7,6 +8,10 @@ import {
   PUNCHLINE_RIGHTS_SUMMARY,
   PUNCHLINE_SOURCE_STEM_TYPE,
 } from "./punchline-rights";
+import {
+  PunchlineClipBounds,
+  resolvePunchlineClipBounds,
+} from "./punchline-clip.config";
 
 /**
  * A single, explainable failure reason. Every gate that denies a track adds one
@@ -34,6 +39,13 @@ export interface PunchlineEligibilityResult {
   rightsLabel: string;
   /** UI-safe human summary of that rights class. */
   rightsSummary: string;
+  /**
+   * Server-resolved clip length bounds (ms). The clip-selection UI reads these
+   * so the client never hardcodes the min/max — the same env-tunable bounds the
+   * extractor (#481) and publish validation (#482) enforce, so a range the UI
+   * accepts is always publishable.
+   */
+  clipBoundsMs: PunchlineClipBounds;
   /** Minimal source snapshot; omitted when the track does not exist. */
   track?: {
     id: string;
@@ -63,11 +75,13 @@ export interface PunchlineEligibilityResult {
 export class PunchlineEligibilityService {
   constructor(
     private readonly rightsRouting: UploadRightsRoutingService = new UploadRightsRoutingService(),
+    @Optional() private readonly configService?: ConfigService,
   ) {}
 
   async checkEligibility(
     trackId: string,
   ): Promise<PunchlineEligibilityResult> {
+    const clipBoundsMs = resolvePunchlineClipBounds(this.configService);
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       select: {
@@ -91,6 +105,7 @@ export class PunchlineEligibilityService {
     const base = {
       rightsLabel: PUNCHLINE_RIGHTS_LABEL,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
+      clipBoundsMs,
     };
 
     if (!track) {

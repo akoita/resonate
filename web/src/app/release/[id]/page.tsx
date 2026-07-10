@@ -43,6 +43,7 @@ import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
+import { PunchlineDropsPanel } from "../../../components/punchline/PunchlineDropsPanel";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
@@ -2480,6 +2481,12 @@ export default function ReleaseDetails() {
         if (pricingTracks.length === 0) return null;
         return <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />;
       })()}
+
+      {/* Punchline Drops — owner-only clip selection + preview (#483).
+          Renders only when at least one track has a vocals stem. */}
+      {isOwner && release.tracks && (
+        <PunchlineDropsPanel releaseId={release.id} tracks={release.tracks} />
+      )}
 
       {/* Public Licensing Info — visible to ALL users */}
       <LicensingInfoSection />
