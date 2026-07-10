@@ -125,12 +125,17 @@ now; email/Slack fan-out is a future enhancement.
   - `POST /credits/request` (JWT) — ask an operator for a top-up (fans out to
     operator notifications).
   - `POST /credits/grant` (JWT + `@Roles('admin','operator')`).
-- UI: a **Credits** cell in the Create-page meter strip
-  ([`web/src/app/create/CreatePageContent.tsx`](web/src/app/create/CreatePageContent.tsx))
-  shows remaining capacity as time + 1-min tracks (e.g. "≈ 5 min · 5 tracks"),
-  fed by `getCreditsBalance` and refreshed after each generation so it
-  decrements live. The endpoint returns `priceCentsPer30s` so the client renders
-  capacity without hardcoding the price.
+- UI: a **reusable `CreditBalanceMeter`**
+  ([`web/src/components/credits/CreditBalanceMeter.tsx`](web/src/components/credits/CreditBalanceMeter.tsx),
+  #1422) shows remaining capacity as time + 1-min tracks (e.g. "≈ 5 min · 5
+  tracks") plus an empty/low "request a top-up" affordance. It is surfaced on
+  the **Create** page (strip variant, replacing the old one-off cell) and in
+  **Remix Studio** (panel variant) — closing the parity gap where remix debits
+  credits but showed no balance. Capacity math is the shared
+  [`formatCreditCapacity`](web/src/lib/credits.ts) util; the endpoint returns
+  `priceCentsPer30s` so the client never hardcodes the price. Because the remix
+  debit happens in a worker (no synchronous 402), the studio fetches the balance
+  directly and gates Generate proactively when it can't fund one 30s block.
 - Service: `backend/src/modules/credits/generation-credits.service.ts`
   (`GenerationCreditsService`: `costForDurationCents`, `getBalance`, `grant`,
   `debit`, `refund`, `ensureSignupStarter`; `InsufficientCreditsException`).
@@ -159,12 +164,16 @@ now; email/Slack fan-out is a future enhancement.
   commercial-use license review (#1193). No live money changes hands in this
   slice.
 - Artist Pro monthly credit allowance bundling (ADR-BM-3) is future work.
-- A **remaining-credit display** now ships on the Create page (capacity as
-  time + tracks). A fuller standalone usage-history view (the ledger is already
-  returned by `GET /credits/balance`) is a possible follow-up.
+- **Usage & Billing consolidation (#1422)** — the reusable `CreditBalanceMeter`
+  + Remix Studio parity shipped (this slice). Still tracked in #1422: a
+  metered-action registry, a unified `GET /usage/summary` (credits + per-kind
+  usage-limit windows, making the remix rate-limit queryable), and a dedicated
+  read-only **Usage & Billing** page (plan tier, limits, ledger/history). Design
+  of record: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md).
 
 ## Links
 
+- Usage & Billing design: [`docs/rfc/usage-billing.md`](../rfc/usage-billing.md) (#1422)
 - RFC / canonical price: `docs/rfc/business-model.md` (ADR-BM-3)
 - Decisions: `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-3
 - Issue: [#1334](https://github.com/akoita/resonate/issues/1334)

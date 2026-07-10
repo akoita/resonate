@@ -8,6 +8,7 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import { useGeneration } from "../../hooks/useGeneration";
 import { getArtistMe, getReleaseArtworkUrl, getReleaseTrackStreamUrl, saveLibraryTrackAPI, getGenerationAnalytics, GenerationAnalytics, publishAiGeneration, retryRelease, waitForReleaseAvailability, requestGenerationCredits, getCreditsBalance, GenerationCreditBalance } from "../../lib/api";
 import { AICreationPublishModal, PublishMetadata } from "../../components/create/AICreationPublishModal";
+import { CreditBalanceMeter } from "../../components/credits/CreditBalanceMeter";
 import { DuplicatePublishWarningModal } from "../../components/create/DuplicatePublishWarningModal";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { useToast } from "../../components/ui/Toast";
@@ -29,33 +30,6 @@ const DURATION_OPTIONS = [
   { value: 120 as const, label: "2 min" },
   { value: 180 as const, label: "3 min" },
 ];
-
-/**
- * Turn a credit balance (USD cents) into remaining generation capacity, using
- * the price the balance endpoint reports (#1334). Displayed as time + 1-min
- * tracks, e.g. "≈ 5 min · 5 tracks", so users read it like an LLM usage quota
- * rather than a dollar figure.
- */
-function formatCreditCapacity(balanceCents: number, priceCentsPer30s: number) {
-  const totalSeconds = priceCentsPer30s > 0 ? (balanceCents / priceCentsPer30s) * 30 : 0;
-  const minutes = totalSeconds / 60;
-  const tracks = Math.floor(totalSeconds / 60); // whole 1-minute tracks
-  let minLabel: string;
-  if (minutes >= 1) {
-    const rounded = Math.round(minutes * 10) / 10;
-    minLabel = Number.isInteger(rounded) ? `${rounded}` : rounded.toFixed(1);
-  } else if (totalSeconds > 0) {
-    minLabel = "<1";
-  } else {
-    minLabel = "0";
-  }
-  return {
-    minLabel,
-    tracks,
-    empty: balanceCents <= 0,
-    low: balanceCents > 0 && tracks < 1,
-  };
-}
 
 export default function CreatePageContent() {
   const { token, status } = useAuth();
@@ -437,23 +411,17 @@ export default function CreatePageContent() {
           {/* Analytics Info Strip */}
           {analytics && (
             <div className="create-analytics-strip">
-              {credits && (() => {
-                const cap = formatCreditCapacity(credits.balanceCents, credits.priceCentsPer30s);
-                return (
-                  <>
-                    <div className="create-analytics-item">
-                      <span className="create-analytics-label">Credits</span>
-                      <span
-                        className={`create-analytics-value rate-status ${cap.empty ? "exhausted" : cap.low ? "low" : "ok"}`}
-                        title={`${credits.balanceCents}¢ remaining · ~${cap.tracks} × 1-min tracks`}
-                      >
-                        {cap.empty ? "0 — top up" : `≈ ${cap.minLabel} min · ${cap.tracks} tracks`}
-                      </span>
-                    </div>
-                    <div className="create-analytics-divider" />
-                  </>
-                );
-              })()}
+              {credits && (
+                <>
+                  <CreditBalanceMeter
+                    variant="strip"
+                    balance={credits}
+                    onRequestCredits={handleRequestCredits}
+                    requesting={creditRequestState === 'sending'}
+                  />
+                  <div className="create-analytics-divider" />
+                </>
+              )}
               <div className="create-analytics-item">
                 <span className="create-analytics-label">Generations</span>
                 <span className="create-analytics-value">{analytics.totalGenerations}</span>

@@ -7,12 +7,15 @@ import { useToast } from "../ui/Toast";
 import {
   exportRemixDraftBlob,
   generateRemixDraft,
+  getCreditsBalance,
   getRemixEligibility,
   getRemixProject,
   getRemixDraftAudioBlob,
   getStemPreviewUrl,
   publishRemixProject,
+  requestGenerationCredits,
   updateRemixProject,
+  type GenerationCreditBalance,
   type RemixEligibilityResponse,
   type RemixGenerationAttribution,
   type RemixGenerationMetadata,
@@ -25,6 +28,8 @@ import {
   type RemixStemTransform,
 } from "../../lib/api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
+import { canAffordGeneration } from "../../lib/credits";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
   activePresetLabel,
@@ -402,6 +407,9 @@ export function generationErrorMessage(code: string, message: string): string {
       return "AI generation is not enabled on this environment yet.";
     case "provider_rejected":
       return "The provider rejected this prompt. Adjust it and try again.";
+    case "insufficient_credits":
+    case "payment_required":
+      return "You're out of generation credits. Request a top-up from an operator and try again.";
     case "invalid_input":
     case "provider_unavailable":
     // The transport strips the normalized code but keeps the server's
@@ -764,6 +772,13 @@ export function RemixStudioEditor({
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  // Generation-credit balance (#1422). The remix debit runs in a worker, so no
+  // synchronous 402 reaches the studio — we surface the balance proactively and
+  // gate Generate when it can't fund even one 30s block.
+  const [credits, setCredits] = useState<GenerationCreditBalance | null>(null);
+  const [creditRequestState, setCreditRequestState] = useState<
+    "idle" | "sending" | "sent"
+  >("idle");
   const [exporting, setExporting] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
   const [eligibility, setEligibility] =
@@ -822,6 +837,30 @@ export function RemixStudioEditor({
   const draftOutputUri = remixGenerationPlayableOutputUri(
     project.generationMetadata,
   );
+  const canAffordDraft = credits
+    ? canAffordGeneration(credits.balanceCents, credits.priceCentsPer30s)
+    : true;
+
+  const handleRequestCredits = async () => {
+    if (!token || creditRequestState !== "idle") return;
+    setCreditRequestState("sending");
+    try {
+      await requestGenerationCredits(token);
+      setCreditRequestState("sent");
+      addToast({
+        type: "success",
+        title: "Operator notified",
+        message: "You’ll get generation credits soon.",
+      });
+    } catch {
+      setCreditRequestState("idle");
+      addToast({
+        type: "error",
+        title: "Request failed",
+        message: "Could not send the request. Please try again.",
+      });
+    }
+  };
 
   const stopStemPreview = () => {
     stemPreviewRef.current?.stop();
@@ -854,6 +893,25 @@ export function RemixStudioEditor({
     if (stemPreviewStatus !== "playing" || !stemPreviewRef.current) return;
     stemPreviewRef.current.update(stemPreviewStates(project, edits), soloStemId);
   }, [edits, project, soloStemId, stemPreviewStatus]);
+
+  // Credit balance (#1422): fetch on mount and re-fetch whenever a generation
+  // settles (the `remix_draft` debit lands in the worker), so the panel
+  // decrements live. `generationStatus` flips to completed/failed when polling
+  // picks up the worker result.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    getCreditsBalance(token)
+      .then((balance) => {
+        if (!cancelled) setCredits(balance);
+      })
+      .catch(() => {
+        /* a failed balance probe just leaves the panel empty */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, generationStatus]);
 
   useEffect(() => {
     if (!token || !generationActive) return;
@@ -1846,10 +1904,21 @@ export function RemixStudioEditor({
                       edits,
                     )
                   : {};
-              const availability =
+              const transformGated =
                 baseAvailability.enabled && transformCheck.problem
                   ? { enabled: false, reason: transformCheck.problem }
                   : baseAvailability;
+              // Credit gate (#1422): block a run the balance can't fund even at
+              // one 30s block, so the user tops up instead of queuing a job the
+              // worker would reject. Only applies once the balance is known.
+              const availability =
+                transformGated.enabled && !canAffordDraft
+                  ? {
+                      enabled: false,
+                      reason:
+                        "You're out of generation credits — request a top-up below.",
+                    }
+                  : transformGated;
               return (
                 <div className="text-right">
                   <button
@@ -1961,6 +2030,20 @@ export function RemixStudioEditor({
                 </div>
               );
             })()}
+          </div>
+          {/*
+           * Credit meter (#1422): the remix draft debit runs in a worker, so we
+           * surface the shared generation-credit balance proactively here — when
+           * it's empty/low the operator-request affordance appears without
+           * waiting for a failed job.
+           */}
+          <div className="mt-4">
+            <CreditBalanceMeter
+              variant="panel"
+              balance={credits}
+              onRequestCredits={handleRequestCredits}
+              requesting={creditRequestState === "sending"}
+            />
           </div>
         </section>
 
