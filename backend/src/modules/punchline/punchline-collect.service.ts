@@ -14,6 +14,7 @@ import {
 import { EventBus } from "../shared/event_bus";
 import { PUNCHLINE_RIGHTS_SUMMARY } from "./punchline-rights";
 import { PunchlineUnlockService } from "./punchline-unlock.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
  * Collect / ownership grant for Punchline collectibles (#485).
@@ -211,7 +212,16 @@ export class PunchlineCollectService {
                 artistId: true,
                 title: true,
                 status: true,
-                track: { select: { title: true, releaseId: true } },
+                track: {
+                  select: {
+                    title: true,
+                    releaseId: true,
+                    // Credited-artist inputs (#1492) so the inventory shows the
+                    // real artist, not the uploader/manager account label.
+                    artist: true,
+                    release: { select: { primaryArtist: true } },
+                  },
+                },
                 artist: { select: { displayName: true } },
                 // Total moments in the drop — the inventory renders set
                 // progress ("you own N of M") without a second query.
@@ -248,7 +258,11 @@ export class PunchlineCollectService {
           trackTitle: row.moment.drop.track?.title ?? null,
           releaseId: row.moment.drop.track?.releaseId ?? null,
           artistId: row.moment.drop.artistId,
-          artistName: row.moment.drop.artist?.displayName ?? null,
+          artistName: resolveCreditedArtistName({
+            trackArtist: row.moment.drop.track?.artist,
+            primaryArtist: row.moment.drop.track?.release?.primaryArtist,
+            accountDisplayName: row.moment.drop.artist?.displayName,
+          }),
           momentCount: row.moment.drop._count?.moments ?? 0,
         },
       })),

@@ -196,6 +196,24 @@ describe('CatalogController', () => {
     });
   });
 
+  describe('updateRelease', () => {
+    it('passes the caller userId through for the ownership check (#1492)', async () => {
+      const ctrl = makeController();
+
+      await ctrl.updateRelease(
+        'rel-1',
+        { primaryArtist: 'The Game' },
+        { user: { userId: 'user-123' } },
+      );
+
+      expect(mockCatalogService.updateRelease).toHaveBeenCalledWith(
+        'rel-1',
+        'user-123',
+        { primaryArtist: 'The Game' },
+      );
+    });
+  });
+
   describe('getTrackActions', () => {
     it('passes recommendation reason query params to the service', async () => {
       const ctrl = makeController();

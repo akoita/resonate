@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { getReleaseArtworkUrl, type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
-import { artistProfileHref } from "../../lib/artistRoutes";
+import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
 
 /*
  * Home popularity rails (#1451 WS-4) — engagement-ranked Trending Now and
@@ -122,8 +122,10 @@ export function TopArtistsRail({
         <div className="ng-artist-pills">
           {items.map((a) => (
             <Link
-              key={a.artistId}
-              href={artistProfileHref(a.artistId)}
+              // Key by credited name (#1492): artistId is null when the credited
+              // artist has no matching account, so it cannot be the key.
+              key={a.name}
+              href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
               className="ng-artist-pill"
               title={`#${a.rank} · ${listenersLabel(a.uniqueListeners)}`}
             >

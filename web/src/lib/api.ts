@@ -2459,7 +2459,12 @@ export interface TrendingTrackItem {
 
 export interface TopArtistItem {
   rank: number;
-  artistId: string;
+  /**
+   * The matching account profile id when a claimed/self-managed artist's
+   * displayName equals the credited name; null when the credited artist has no
+   * matching account (#1492 — `name` is the credited artist, not an account).
+   */
+  artistId: string | null;
   name: string;
   imageUrl: string | null;
   score: number;
@@ -3745,6 +3750,23 @@ export async function cancelProcessing(
   return apiRequest<{ success: boolean; message: string }>(
     `/ingestion/cancel/${releaseId}`,
     { method: "POST" },
+    token
+  );
+}
+
+/**
+ * Owner-scoped release update (PATCH /catalog/releases/:id). Supports the
+ * post-hoc credited-artist correction (#1492): `primaryArtist` is the artist
+ * the release is credited to, not the managing account's name.
+ */
+export async function updateRelease(
+  token: string,
+  releaseId: string,
+  input: { title?: string; status?: string; primaryArtist?: string }
+) {
+  return apiRequest<Release>(
+    `/catalog/releases/${releaseId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
     token
   );
 }

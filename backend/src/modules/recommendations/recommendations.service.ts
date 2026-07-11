@@ -5,6 +5,7 @@ import { prisma } from "../../db/prisma";
 import { CommunityCohortDiscoveryContext, CommunityCohortService } from "../community/community_cohort.service";
 import { EventBus } from "../shared/event_bus";
 import { RedisCacheService } from "../shared/redis_cache.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
   DiscoveryCandidate,
   DiscoveryRankingService,
@@ -426,11 +427,12 @@ export class RecommendationsService {
         id: entry.id,
         title: source.candidate.track.title,
         artistId: source.candidate.track.release.artistId,
-        artist:
-          source.candidate.track.artist ||
-          source.candidate.track.release.primaryArtist ||
-          source.candidate.track.release.artist?.displayName ||
-          null,
+        // Credited artist (#1492), not the uploader/manager account label.
+        artist: resolveCreditedArtistName({
+          trackArtist: source.candidate.track.artist,
+          primaryArtist: source.candidate.track.release.primaryArtist,
+          accountDisplayName: source.candidate.track.release.artist?.displayName,
+        }),
         releaseId: source.candidate.track.releaseId,
         releaseTitle: source.candidate.track.release.title,
         genre: source.candidate.track.release.genre,

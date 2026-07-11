@@ -261,10 +261,19 @@ export default function ArtistUploadPage() {
       .then((profile) => {
         if (cancelled) return;
         setArtistProfile(profile);
-        if (profile?.displayName) {
+        // #1492: prefill the CREDITED artist only for self-managed (non-manager)
+        // profiles. A manager account's displayName is an account label, not
+        // the artist the music is by — silently prefilling it laundered the
+        // account name into Release.primaryArtist at creation time. When the
+        // payload carries no profileType we cannot tell, so we do not prefill.
+        const creditPrefill =
+          profile?.profileType && profile.profileType !== "manager"
+            ? profile.displayName
+            : "";
+        if (creditPrefill) {
           setFormData((prev) => ({
             ...prev,
-            primaryArtist: prev.primaryArtist || profile.displayName,
+            primaryArtist: prev.primaryArtist || creditPrefill,
           }));
         }
       })
@@ -312,6 +321,14 @@ export default function ArtistUploadPage() {
       cancelled = true;
     };
   }, [chainId, preferredStableStakeAsset, publicClient]);
+
+  // #1492: the credited-artist prefill. Only a self-managed (non-manager)
+  // profile's displayName may prefill Primary artist — a manager account's
+  // name is an account label, not the artist the music is credited to.
+  const creditPrefillName =
+    artistProfile?.profileType && artistProfile.profileType !== "manager"
+      ? artistProfile.displayName
+      : "";
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -639,7 +656,7 @@ export default function ArtistUploadPage() {
         releaseType: "single",
         releaseTitle: "",
         title: "", // Still keeping title in state for now although unused, but better to remove later in a full cleanup
-        primaryArtist: artistProfile?.displayName || "",
+        primaryArtist: creditPrefillName,
         featuredArtists: "",
         genre: "",
         moods: [],
@@ -767,7 +784,7 @@ export default function ArtistUploadPage() {
       // Auto-extract metadata to pre-fill individual track metadata
       extractMetadata(file).then(meta => {
         const extractedArtworkUrl = meta.artworkBlob ? URL.createObjectURL(meta.artworkBlob) : undefined;
-        const extractedArtistCredit = !formData.primaryArtist && !artistProfile?.displayName
+        const extractedArtistCredit = !formData.primaryArtist && !creditPrefillName
           ? meta.artist || meta.albumArtist || ""
           : "";
 
@@ -796,7 +813,9 @@ export default function ArtistUploadPage() {
           return {
             ...prev,
             releaseTitle: prev.releaseTitle || detectedTitle || "",
-            primaryArtist: prev.primaryArtist || artistProfile?.displayName || meta.artist || meta.albumArtist || "",
+            // #1492: the file's embedded credit outranks any account label;
+            // only a self-managed profile name may prefill ahead of it.
+            primaryArtist: prev.primaryArtist || creditPrefillName || meta.artist || meta.albumArtist || "",
             genre: prev.genre || meta.genre || "",
             label: prev.label || meta.label || "",
             releaseDate: meta.year ? `${meta.year}-01-01` : prev.releaseDate,
@@ -865,7 +884,7 @@ export default function ArtistUploadPage() {
         }
       }, 200);
     }
-  }, [addToast, artistProfile?.displayName, artistProfile?.id, formData.primaryArtist, selectedStemId, stems.length, token]);
+  }, [addToast, creditPrefillName, artistProfile?.id, formData.primaryArtist, selectedStemId, stems.length, token]);
 
   const handleRemoveStem = useCallback((id: string) => {
     setStems(prev => prev.filter(s => s.id !== id));
@@ -1091,15 +1110,17 @@ export default function ArtistUploadPage() {
                       token={token}
                       name="primaryArtist"
                       ariaLabel="Primary artist"
-                      placeholder="Aya Lune"
+                      placeholder="Credited artist — e.g. The Game"
                       value={formData.primaryArtist}
                       onChange={(value) => setFormData(prev => ({ ...prev, primaryArtist: value }))}
                     />
-                    {artistProfile?.displayName && (
-                      <span className="studio-field-help">
-                        Defaults to your managed artist profile: {artistProfile.displayName}.
-                      </span>
-                    )}
+                    <span className="studio-field-help">
+                      The artist this music is credited to — shown on the release,
+                      charts, and discovery.
+                      {artistProfile?.displayName
+                        ? ` Not your account name (${artistProfile.displayName}) unless you are that artist.`
+                        : " Not your account name unless you are that artist."}
+                    </span>
                     {primaryArtistDiffersFromProfile && (
                       <span className="studio-field-warning">
                         This release will be managed by {artistProfile?.displayName}, but credited to {formData.primaryArtist}. Marketplace rights may require proof of control.
