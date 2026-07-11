@@ -15,6 +15,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
+import { DROP_KIND_LABEL } from "./punchlineDropHelpers";
 import {
   collectableDrops,
   describeCollectError,
@@ -340,7 +341,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     >
       <div className="punchline-collect-header">
         <div>
-          <span className="punchline-collect-eyebrow">🎤 Punchline Drops</span>
+          <span className="punchline-collect-eyebrow">🎤 Drops</span>
           <h3>Collect moments</h3>
           <p className="punchline-collect-subtitle">
             Own a piece of the hook — limited-edition vocal moments from this
@@ -361,6 +362,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
               <div key={drop.id} className="punchline-collect-drop">
                 <div className="punchline-collect-drop-head">
                   <div>
+                    <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
                     {drop.title && (
                       <h5 className="punchline-collect-drop-title">
                         {drop.title}

@@ -1523,7 +1523,7 @@ export default function ReleaseDetails() {
                       scrollToPunchlineSection("punchline-drops-panel")
                     }
                   >
-                    🎤 Punchline Drops
+                    🎤 Drops
                   </Button>
                 )}
             </div>
