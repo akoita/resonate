@@ -1885,6 +1885,25 @@ export type PunchlineDrop = {
   } | null;
 };
 
+/** A featured drop for the Home shelf (#1479): public drop + display context. */
+export type FeaturedDrop = PunchlineDrop & {
+  context: {
+    trackTitle: string;
+    releaseId: string;
+    releaseTitle: string;
+    releaseHasArtwork: boolean;
+    artistName: string | null;
+  };
+};
+
+/** Momentum-ranked published drops for the Home shelf (#1479). Public. */
+export async function fetchFeaturedDrops(limit = 6): Promise<{ items: FeaturedDrop[] }> {
+  return apiRequest<{ items: FeaturedDrop[] }>(
+    `/punchline/featured?limit=${encodeURIComponent(String(limit))}`,
+    {},
+  );
+}
+
 /** The complete-set bonus reward (#488): a bonus vocal clip + optional note. */
 export type PunchlineUnlockReward = {
   kind: "bonus_clip";

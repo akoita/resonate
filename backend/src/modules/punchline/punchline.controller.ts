@@ -258,6 +258,18 @@ export class PunchlineController {
     return this.dropService.getDropDetail(dropId, req.user?.userId);
   }
 
+  /** Public featured drops for the Home shelf (#1479) — momentum-ranked. */
+  @Get("featured")
+  listFeatured(@Query("limit") limit?: string) {
+    const parsed =
+      typeof limit === "string" && limit.trim().length > 0
+        ? Number.parseInt(limit, 10)
+        : undefined;
+    return this.dropService.listFeaturedDrops({
+      limit: Number.isFinite(parsed) ? (parsed as number) : undefined,
+    });
+  }
+
   /** Public list of published drops for a track. */
   @Get("tracks/:trackId/drops")
   listPublishedForTrack(
