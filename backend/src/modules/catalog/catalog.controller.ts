@@ -20,10 +20,23 @@ import { AuthGuard } from "@nestjs/passport";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
+import {
+  DiscoveryPopularityService,
+  PopularityWindow,
+} from "./discovery-popularity.service";
+
+function parsePopularityWindow(value?: string): PopularityWindow | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (value === "24h" || value === "7d" || value === "30d") return value;
+  throw new BadRequestException("window must be one of 24h, 7d, 30d");
+}
 
 @Controller("catalog")
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) { }
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly discoveryPopularity: DiscoveryPopularityService,
+  ) { }
 
   private sendAudioResponse(
     stem: { data: Buffer; mimeType?: string | null; range?: { start: number; end: number; total: number } },
@@ -237,6 +250,32 @@ export class CatalogController {
       Number.isNaN(parsedLimit) ? 20 : parsedLimit,
       primaryArtist,
     );
+  }
+
+  @Get("trending")
+  getTrending(
+    @Query("window") window?: string,
+    @Query("genre") genre?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.discoveryPopularity.getTrendingTracks({
+      window: parsePopularityWindow(window),
+      genre,
+      limit: limit ? Number(limit) || undefined : undefined,
+    });
+  }
+
+  @Get("top-artists")
+  getTopArtists(
+    @Query("window") window?: string,
+    @Query("genre") genre?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.discoveryPopularity.getTopArtists({
+      window: parsePopularityWindow(window),
+      genre,
+      limit: limit ? Number(limit) || undefined : undefined,
+    });
   }
 
   @Get("releases/:releaseId")

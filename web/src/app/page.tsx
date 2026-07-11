@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
   createAgentConfig,
+  fetchTopArtists,
+  fetchTrendingTracks,
   getAgentConfig,
   getRelease,
   getReleaseTrackStreamUrl,
@@ -20,7 +22,9 @@ import {
   updateAgentConfig,
   type PublicPlaylistSummary,
   type SongRecommendationItem,
+  type TopArtistItem,
   type Track,
+  type TrendingTrackItem,
 } from "../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
 import {
@@ -35,6 +39,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { TopArtistsRail, TrendingNowRail } from "../components/home/PopularityRails";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -272,6 +277,35 @@ export default function Home() {
     };
   }, [activeFilterConfig, status, token, userId]);
 
+  // #1451 WS-4: true engagement-ranked rails from the popularity serving
+  // tables. Genre chips re-rank server-side; when the data is below the
+  // minimum-audience threshold the rails say so honestly instead of quietly
+  // falling back to recency.
+  const popularityGenre =
+    activeFilterConfig.kind === "genre" ? activeFilterConfig.value : undefined;
+  const [trendingTracks, setTrendingTracks] = useState<TrendingTrackItem[] | null>(null);
+  const [rankedTopArtists, setRankedTopArtists] = useState<TopArtistItem[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetchTrendingTracks({ window: "7d", genre: popularityGenre, limit: 8 }),
+      fetchTopArtists({ window: "7d", genre: popularityGenre, limit: 8 }),
+    ])
+      .then(([trending, artists]) => {
+        if (cancelled) return;
+        setTrendingTracks(trending.items ?? []);
+        setRankedTopArtists(artists.items ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTrendingTracks([]);
+        setRankedTopArtists([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [popularityGenre]);
+
   const displayReleases = releases;
 
   // Client-side filter (genre match on `release.genre`, case-insensitive).
@@ -442,13 +476,10 @@ export default function Home() {
     });
   };
 
-  // Derive top artists from the catalog (de-dup by primary artist name).
-  const topArtists = useMemo(() => {
-    return catalogArtists.slice(0, 8).map((a) => ({
-      name: a.name,
-      artistId: a.artistId,
-    }));
-  }, [catalogArtists]);
+  // #1451 WS-4: Top Artists come from the engagement serving table only —
+  // no recency fallback. `null` = still loading (hide the rail), `[]` = the
+  // catalog is below the minimum-audience threshold (honest empty state).
+  const topArtists = rankedTopArtists;
 
   const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
     const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood|cohort):/, "") || "Discovery";
@@ -1202,6 +1233,9 @@ export default function Home() {
           </section>
         )}
 
+        {/* 5b. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
+        <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
+
         {/* 6. TRENDING STEMS ———————————————————————————————————— */}
         {stemRow.length > 0 && (
           <section className="ng-section">
@@ -1251,39 +1285,8 @@ export default function Home() {
           <AgentSessionPresets compact />
         </section>
 
-        {/* 9. TOP ARTISTS —————————————————————————————————————— */}
-        {topArtists.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--violet">Pioneer network</span>
-                <h3 className="ng-section-title">Top Artists</h3>
-              </div>
-            </header>
-            <div className="ng-artist-pills">
-              {topArtists.map((a) => {
-                const pillContent = (
-                  <>
-                    <span className="ng-artist-pill__avatar" aria-hidden>
-                      {a.name[0]?.toUpperCase() ?? "?"}
-                    </span>
-                    <span>{a.name}</span>
-                  </>
-                );
-
-                return (
-                  <Link
-                    key={a.name}
-                    href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
-                    className="ng-artist-pill"
-                  >
-                    {pillContent}
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        {/* 9. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
+        <TopArtistsRail items={topArtists} genreLabel={popularityGenre} />
       </main>
       <AddToPlaylistModal
         tracks={tracksToAddToPlaylist}

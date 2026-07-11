@@ -178,7 +178,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks once you start listening.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["discover", "home", "browse", "catalog", "trending", "mood", "vibe", "search", "recommended", "explore", "genre", "playlists"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "explore", "genre", "playlists"],
     sections: [
       {
         id: "home",
@@ -202,12 +202,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "trending",
+        heading: "Trending Now & Top Artists",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The Trending Now and Top Artists rails rank tracks and artists by what listeners actually played over the last 7 days — completed listens and playlist saves, not upload dates. Each card shows its chart position and how many people listened.",
+          },
+          {
+            kind: "paragraph",
+            text: "These charts are honest: if not enough different people have listened yet (overall or in a genre you selected), the rail says \"not enough listening yet\" instead of showing a made-up ranking. Charts fill in as the community listens more.",
+          },
+        ],
+      },
+      {
         id: "mood",
         heading: "Browse by mood & vibe",
         blocks: [
           {
             kind: "paragraph",
-            text: "Tap a mood chip (Focus, Hype, Chill, Late Night, and more) to reshape your recommendations and start a vibe session that keeps a consistent feel as you listen.",
+            text: "Tap a mood chip (Focus, Hype, Chill, Late Night, and more) to reshape your recommendations and start a vibe session that keeps a consistent feel as you listen. Genre chips also re-rank Trending Now and Top Artists for that genre.",
           },
         ],
       },

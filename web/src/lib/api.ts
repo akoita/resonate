@@ -2419,6 +2419,77 @@ export async function listPublishedReleases(limit = 20, primaryArtist?: string) 
   }));
 }
 
+export type PopularityWindow = "24h" | "7d" | "30d";
+
+export interface TrendingTrackItem {
+  rank: number;
+  trackId: string;
+  title: string;
+  artist: string | null;
+  artistId: string;
+  releaseId: string;
+  releaseTitle: string;
+  genre: string | null;
+  artworkUrl: string | null;
+  artworkMimeType: string | null;
+  score: number;
+  plays: number;
+  uniqueListeners: number;
+  saves: number;
+}
+
+export interface TopArtistItem {
+  rank: number;
+  artistId: string;
+  name: string;
+  imageUrl: string | null;
+  score: number;
+  plays: number;
+  uniqueListeners: number;
+  saves: number;
+}
+
+export interface PopularityResponse<T> {
+  window: PopularityWindow;
+  genre: string | null;
+  minimumAudience: number;
+  items: T[];
+}
+
+/** Engagement-ranked trending tracks (empty items = not enough listening data yet). */
+export async function fetchTrendingTracks(options?: {
+  window?: PopularityWindow;
+  genre?: string;
+  limit?: number;
+}): Promise<PopularityResponse<TrendingTrackItem>> {
+  const params = new URLSearchParams();
+  if (options?.window) params.set("window", options.window);
+  if (options?.genre) params.set("genre", options.genre);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return apiRequest<PopularityResponse<TrendingTrackItem>>(
+    `/catalog/trending${query ? `?${query}` : ""}`,
+    {},
+  );
+}
+
+/** Engagement-ranked top artists (empty items = not enough listening data yet). */
+export async function fetchTopArtists(options?: {
+  window?: PopularityWindow;
+  genre?: string;
+  limit?: number;
+}): Promise<PopularityResponse<TopArtistItem>> {
+  const params = new URLSearchParams();
+  if (options?.window) params.set("window", options.window);
+  if (options?.genre) params.set("genre", options.genre);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return apiRequest<PopularityResponse<TopArtistItem>>(
+    `/catalog/top-artists${query ? `?${query}` : ""}`,
+    {},
+  );
+}
+
 type PublicPlaylistSummaryResponse = Omit<PublicPlaylistSummary, "coverArtworkUrls"> & {
   coverArtworkPaths?: string[];
 };

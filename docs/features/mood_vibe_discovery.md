@@ -71,6 +71,7 @@ Known follow-up work:
 | Upload metadata | `StemsUploadedEvent.metadata.moods` |
 | Catalog create | `POST /catalog` accepts `moods?: string[]` |
 | Recommendations | `GET /recommendations/:userId?mood=Focus&energy=low&genres=Ambient,Electronic` |
+| Trending / Top Artists | `GET /catalog/trending` and `GET /catalog/top-artists` (`window`, `genre`, `limit`) — engagement-ranked Home rails; genre chips re-rank server-side (see [Agent Taste Intelligence](agent_taste_intelligence.md), #1451) |
 | Home session signal | `recordAgentSignal` metadata uses `agent-signal-metadata/v1` and includes `source`, `vibe`, `filterKind`, `autoQueuedTracks`, and outcome context |
 
 ## Verification

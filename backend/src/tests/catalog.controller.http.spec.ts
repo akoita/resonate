@@ -12,6 +12,7 @@ import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { CatalogController } from '../modules/catalog/catalog.controller';
 import { CatalogService } from '../modules/catalog/catalog.service';
+import { DiscoveryPopularityService } from '../modules/catalog/discovery-popularity.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockCatalogService = {
@@ -33,6 +34,11 @@ const mockCatalogService = {
   search: jest.fn().mockResolvedValue([]),
 };
 
+const mockDiscoveryPopularityService = {
+  getTrendingTracks: jest.fn().mockResolvedValue({ window: '7d', genre: null, minimumAudience: 3, items: [] }),
+  getTopArtists: jest.fn().mockResolvedValue({ window: '7d', genre: null, minimumAudience: 3, items: [] }),
+};
+
 describe('CatalogController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -40,6 +46,7 @@ describe('CatalogController (e2e)', () => {
   beforeAll(async () => {
     app = await createControllerTestApp(CatalogController, [
       { provide: CatalogService, useValue: mockCatalogService },
+      { provide: DiscoveryPopularityService, useValue: mockDiscoveryPopularityService },
     ]);
   });
 
@@ -84,6 +91,38 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/artist/art-1')
       .expect(200);
+  });
+
+  it('GET /catalog/trending → 200 (no auth required)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/catalog/trending?window=24h&genre=Hip%20Hop&limit=5')
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(mockDiscoveryPopularityService.getTrendingTracks).toHaveBeenCalledWith({
+      window: '24h',
+      genre: 'Hip Hop',
+      limit: 5,
+    });
+  });
+
+  it('GET /catalog/trending → 400 on unknown window', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/trending?window=1y')
+      .expect(400);
+  });
+
+  it('GET /catalog/top-artists → 200 (no auth required)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/catalog/top-artists')
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(mockDiscoveryPopularityService.getTopArtists).toHaveBeenCalledWith({
+      window: undefined,
+      genre: undefined,
+      limit: undefined,
+    });
   });
 
   // ----- Guard enforcement -----

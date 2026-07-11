@@ -62,6 +62,8 @@ When adding a new environment variable:
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the analytics BigQuery API base URL, then the public BigQuery API. |
+| `DISCOVERY_MIN_AUDIENCE` | Backend | Minimum unique listeners before a track/artist may appear in Trending Now / Top Artists (`/catalog/trending`, `/catalog/top-artists`). Below it, rows are never written and the UI shows an honest low-data state. Defaults to `3`. |
+| `DISCOVERY_POPULARITY_REFRESH_MINUTES` | Backend | Cadence of the interim popularity aggregation that fills the `TrackPopularity`/`ArtistEngagement` serving tables from local analytics facts (replaced by the #1450 warehouse marts). `0` disables the scheduler (tests). Defaults to `15`. |
 | `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
 | `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
 | `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |

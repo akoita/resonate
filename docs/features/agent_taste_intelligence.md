@@ -170,6 +170,38 @@ taste-memory policy) and receive weighted signals + human explanations.
   (durability across instances, wide-pool, deterministic fallback) plus the
   pre-existing recommendation/agent suites.
 
+## True Trending & Top Artists (#1451 WS-4)
+
+Home's "Trending Now" and "Top Artists" rails rank by **measured engagement**,
+never upload recency. They read the WS-3 serving tables
+(`TrackPopularity` / `ArtistEngagement`: `window` 24h/7d/30d × `genre`
+dimension, `""` = overall) through public endpoints:
+
+- `GET /catalog/trending?window&genre&limit` — ranked tracks with score,
+  plays, unique listeners, saves.
+- `GET /catalog/top-artists?window&genre&limit` — per-artist rollups with
+  listeners **unioned** across their tracks, per-genre re-rank for the Home
+  genre chips.
+
+Both are fronted by the fail-open Redis cache (120s TTL). Honesty rules:
+rows below `DISCOVERY_MIN_AUDIENCE` unique listeners (default 3) are never
+written, and an empty result renders an explicit "not enough listening yet"
+state on Home — there is no recency fallback.
+
+Until the WS-3 warehouse marts land (#1450), the tables are filled by an
+interim in-process aggregation over local `AnalyticsEvent` facts
+(`DiscoveryPopularityService.refresh()`: completion-weighted plays +
+playlist saves, linear time-decay per window, bounded read) on an
+env-driven cadence (`DISCOVERY_POPULARITY_REFRESH_MINUTES`, default 15,
+`0` disables). WS-3 replaces only this filler — endpoints, tables, and UI
+are already on the final contract.
+
+Tests: `backend/src/tests/discovery-popularity.integration.spec.ts`
+(aggregation, threshold exclusion, genre dimension, snapshot replace),
+catalog controller unit + HTTP specs, and
+`web/src/components/home/PopularityRails.test.tsx` (ranked render, genre
+re-rank, honest empty state).
+
 ## Recommendation Explanations
 
 Warehouse explanations are treated as untrusted hints. The backend sanitizes
