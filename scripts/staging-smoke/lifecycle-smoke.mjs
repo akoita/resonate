@@ -402,20 +402,39 @@ async function main() {
       }),
     }, "api-authority");
 
-    const activated = await fetchJson(`${API_BASE}/shows/campaigns/${encodeURIComponent(backendId)}/activate`, {
+    let activated = await fetchJson(`${API_BASE}/shows/campaigns/${encodeURIComponent(backendId)}/activate`, {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify({ contractAddress: ESCROW, contractCampaignId: contractCampaignId.toString() }),
     }, "api-authority");
 
+    // The backend hydrates from ITS OWN RPC replica, which can lag behind the
+    // replica that just confirmed our activateCampaign tx (observed 2026-07-11:
+    // onChainStatus "Draft" right after an on-chain activate — #1399). Stale
+    // hydration is transient, so do what an operator would do: poll the
+    // resync-chain correction path (#1364 rail) with backoff before failing.
+    // Bonus: the nightly smoke now exercises resync-chain for free.
+    const hydrationStale = (c) =>
+      c.onChainStatus !== "Active" || c.feeBps !== EXPECTED_FEE_BPS;
+    for (let attempt = 1; hydrationStale(activated) && attempt <= 5; attempt++) {
+      console.log(
+        `[smoke] api-authority … hydration stale (onChainStatus "${activated.onChainStatus}", feeBps ${activated.feeBps}) — resync ${attempt}/5 in 4000ms`,
+      );
+      await sleep(4000);
+      activated = await fetchJson(`${API_BASE}/shows/campaigns/${encodeURIComponent(backendId)}/resync-chain`, {
+        method: "POST",
+        headers: authHeaders(token),
+      }, "api-authority");
+    }
+
     // Hydration assertions — the #1364/#1391 regressions.
     assertAddressEqual("api-authority", "paymentTokenAddress", activated.paymentTokenAddress, PAYMENT_TOKEN);
     if (activated.onChainStatus !== "Active") {
-      throw new SmokeError("api-authority", `onChainStatus is "${activated.onChainStatus}", expected "Active"`);
+      throw new SmokeError("api-authority", `onChainStatus is "${activated.onChainStatus}", expected "Active" (after 5 resync attempts — not replica lag)`);
     }
     // feeBps must equal the on-chain fee (600 on staging, or whatever the chain reports).
     if (activated.feeBps !== EXPECTED_FEE_BPS) {
-      throw new SmokeError("api-authority", `feeBps hydrated as ${activated.feeBps}, expected on-chain ${EXPECTED_FEE_BPS}`);
+      throw new SmokeError("api-authority", `feeBps hydrated as ${activated.feeBps}, expected on-chain ${EXPECTED_FEE_BPS} (after resync attempts)`);
     }
     ok("api-authority", t, `activated, feeBps ${activated.feeBps}, onChainStatus Active`);
   }
