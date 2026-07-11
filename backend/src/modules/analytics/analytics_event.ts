@@ -280,6 +280,75 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     ],
   },
   {
+    // #489 Punchline Drops domain events (bridged from the event bus).
+    eventName: "punchline.drop_published",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["dropId", "trackId", "artistId", "momentCount", "totalEditions"],
+  },
+  {
+    eventName: "punchline.moment_collected",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: [
+      "momentId",
+      "dropId",
+      "trackId",
+      "artistId",
+      "collectorUserId",
+      "editionNumber",
+      "pricePaidCents",
+      "paymentRail",
+    ],
+  },
+  {
+    eventName: "punchline.set_completed",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["dropId", "trackId", "artistId", "collectorUserId"],
+  },
+  {
+    eventName: "punchline.unlock_granted",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["unlockId", "dropId", "trackId", "artistId", "collectorUserId"],
+  },
+  {
+    // #489 Punchline funnel product events (client-emitted): view → preview →
+    // collect_started → collect_completed, joinable with the domain truth
+    // above by dropId/momentId + session.
+    eventName: "punchline.drop_viewed",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "trackId", "momentCount", "source"],
+  },
+  {
+    eventName: "punchline.preview_played",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "source"],
+  },
+  {
+    eventName: "punchline.collect_started",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "priceCents", "source"],
+  },
+  {
+    eventName: "punchline.collect_completed",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "editionNumber", "setCompleted", "source"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

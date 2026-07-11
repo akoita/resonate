@@ -41,6 +41,7 @@ SUPPORTED_EVENT_FAMILIES = {
     "x402",
     "experiment",
     "system",
+    "punchline",
 }
 
 ANALYTICS_ENVIRONMENTS = {"local", "dev", "staging", "prod"}

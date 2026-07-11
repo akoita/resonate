@@ -12,6 +12,7 @@ import {
   type Track,
 } from "../../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import {
@@ -62,6 +63,10 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   useEffect(() => {
     onSummaryRef.current = onSummary;
   }, [onSummary]);
+  const tokenRef = useRef(token);
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
   const [ownedMomentIds, setOwnedMomentIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -95,6 +100,19 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         const next = new Map(entries);
         setDropsByTrack(next);
         onSummaryRef.current?.(summarizeCollectableDrops(next));
+        // Funnel (#489): one drop_viewed per visible drop per page load.
+        for (const [trackId, drops] of next) {
+          for (const d of drops) {
+            void recordProductAnalytics(tokenRef.current, "punchline.drop_viewed", {
+              payload: {
+                dropId: d.id,
+                trackId,
+                momentCount: d.moments.length,
+                source: "release_page",
+              },
+            });
+          }
+        }
       }
     })();
     return () => {
@@ -144,7 +162,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   useEffect(() => () => stopClip(), [stopClip]);
 
   const playClip = useCallback(
-    (moment: PunchlineMoment) => {
+    (moment: PunchlineMoment, dropId?: string) => {
       const url = resolveClipUrl(moment.clipAssetUri);
       if (!url) {
         addToast({
@@ -168,7 +186,12 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
       });
       audio
         .play()
-        .then(() => setPlayingMomentId(moment.id))
+        .then(() => {
+          setPlayingMomentId(moment.id);
+          void recordProductAnalytics(tokenRef.current, "punchline.preview_played", {
+            payload: { dropId: dropId ?? null, momentId: moment.id, source: "release_page" },
+          });
+        })
         .catch(() => stopClip());
     },
     [addToast, stopClip],
@@ -217,6 +240,15 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         return;
       }
       setCollectingId(moment.id);
+      void recordProductAnalytics(token, "punchline.collect_started", {
+        payload: {
+          dropId: drop.id,
+          momentId: moment.id,
+          trackId: drop.trackId,
+          priceCents: moment.priceCents,
+          source: "release_page",
+        },
+      });
       try {
         const result = await collectPunchlineMoment(moment.id, token);
         setOwnedMomentIds((prev) => new Set([...prev, moment.id]));
@@ -224,6 +256,16 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
           const next = new Map(prev);
           next.set(moment.id, effectiveCollectedCount(moment) + 1);
           return next;
+        });
+        void recordProductAnalytics(token, "punchline.collect_completed", {
+          payload: {
+            dropId: drop.id,
+            momentId: moment.id,
+            trackId: drop.trackId,
+            editionNumber: result.collectible.editionNumber,
+            setCompleted: result.setCompleted,
+            source: "release_page",
+          },
         });
         addToast({
           type: "success",
@@ -298,6 +340,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     >
       <div className="punchline-collect-header">
         <div>
+          <span className="punchline-collect-eyebrow">🎤 Punchline Drops</span>
           <h3>Collect moments</h3>
           <p className="punchline-collect-subtitle">
             Own a piece of the hook — limited-edition vocal moments from this
@@ -394,12 +437,27 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                           <span
                             className={`punchline-collect-remaining ${
                               state === "sold_out" ? "is-sold-out" : ""
+                            } ${
+                              state !== "sold_out" &&
+                              moment.editionSize - collectedCount <=
+                                Math.max(1, Math.floor(moment.editionSize * 0.1))
+                                ? "is-low"
+                                : ""
                             }`}
-                          >
-                            {formatEditionsRemaining(
+                            aria-label={formatEditionsRemaining(
                               moment.editionSize,
                               collectedCount,
                             )}
+                          >
+                            <span className="punchline-remaining-count">
+                              {Math.max(0, moment.editionSize - collectedCount)}
+                              <span className="punchline-remaining-total">
+                                {" "}/ {moment.editionSize}
+                              </span>
+                            </span>
+                            <span className="punchline-remaining-label">
+                              {state === "sold_out" ? "sold out" : "editions left"}
+                            </span>
                           </span>
                           <div className="punchline-collect-actions">
                             <button
@@ -408,7 +466,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               onClick={
                                 playingMomentId === moment.id
                                   ? stopClip
-                                  : () => playClip(moment)
+                                  : () => playClip(moment, drop.id)
                               }
                               aria-label={
                                 playingMomentId === moment.id
@@ -416,7 +474,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                                   : `Preview ${moment.title}`
                               }
                             >
-                              {playingMomentId === moment.id ? "■ Stop" : "▶ Play"}
+                              {playingMomentId === moment.id ? "■" : "▶"}
                             </button>
                             <CollectButton
                               state={state}
@@ -535,7 +593,7 @@ export function PunchlineBonusReveal({
       {reward?.clipAssetUri && (
         <button
           type="button"
-          className="punchline-btn-secondary punchline-collect-play"
+          className="punchline-btn-secondary"
           onClick={playing ? onStop : onPlay}
         >
           {playing ? "■ Stop" : "▶ Play bonus clip"}

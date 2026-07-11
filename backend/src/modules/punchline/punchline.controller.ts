@@ -15,6 +15,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
+import { PunchlineMetricsService } from "./punchline-metrics.service";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import {
   PunchlineUnlockService,
@@ -29,6 +30,7 @@ export class PunchlineController {
     private readonly dropService: PunchlineDropService,
     private readonly collectService: PunchlineCollectService,
     private readonly unlockService: PunchlineUnlockService,
+    private readonly metricsService: PunchlineMetricsService,
   ) {}
 
   /**
@@ -192,6 +194,17 @@ export class PunchlineController {
   @Delete("drops/:dropId/unlock")
   removeDropUnlock(@Req() req: any, @Param("dropId") dropId: string) {
     return this.unlockService.removeDropUnlock(req.user.userId, dropId);
+  }
+
+  /**
+   * Owner-only funnel metrics for one drop (#489): views → previews →
+   * collect starts (analytics facts) joined with collected editions and set
+   * completions (DB truth), per drop and per moment.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/drops/:dropId/metrics")
+  getDropMetrics(@Req() req: any, @Param("dropId") dropId: string) {
+    return this.metricsService.getDropMetrics(req.user.userId, dropId);
   }
 
   /** The caller's granted set rewards, revealed — collector reward state. */

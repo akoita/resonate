@@ -58,6 +58,10 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "remix.studio_saved",
   "remix.studio_action_unavailable",
   "remix.published",
+  "punchline.drop_viewed",
+  "punchline.preview_played",
+  "punchline.collect_started",
+  "punchline.collect_completed",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];
