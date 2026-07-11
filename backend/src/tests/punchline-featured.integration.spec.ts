@@ -132,6 +132,11 @@ describe("Featured drops heuristic (#1479)", () => {
           artistId: artist,
           title: `${artist} release`,
           status: "ready",
+          // Artist A credits a distinct primary artist so the shelf footer
+          // proves it shows the CREDITED artist, not the manager displayName.
+          ...(artist === ARTIST_A
+            ? { primaryArtist: "True Credited Artist" }
+            : {}),
         },
       });
       await prisma.track.create({
@@ -213,7 +218,8 @@ describe("Featured drops heuristic (#1479)", () => {
       trackTitle: `${ARTIST_A} track`,
       releaseId: `${ARTIST_A}_release`,
       releaseTitle: `${ARTIST_A} release`,
-      artistName: ARTIST_A,
+      // Credited artist wins over the manager's displayName (ARTIST_A).
+      artistName: "True Credited Artist",
     });
     // Public serialization: moments carry collectedCount, unlock reward hidden.
     expect(hot.moments[0].collectedCount).toBe(6);

@@ -1,4 +1,5 @@
 import React from "react";
+import "../../styles/punchline.css";
 import { formatClipDuration } from "./PunchlineClipSelector";
 import { formatEditionLabel, formatPriceCents } from "./punchlineDropHelpers";
 

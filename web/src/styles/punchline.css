@@ -808,7 +808,9 @@
   justify-content: flex-end;
   width: 100%;
   height: 100%;
-  padding: 16px 16px 18px;
+  /* Bottom padding clears the waveform ribbon (top edge ~30px from the bottom)
+     so the lyric never touches the bars. */
+  padding: 16px 16px 46px;
 }
 
 .punchline-card-quote {
@@ -824,14 +826,14 @@
 }
 
 .punchline-card-art-lyric {
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   line-height: 1.45;
   font-weight: 600;
   font-style: italic;
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
   display: -webkit-box;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }

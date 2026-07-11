@@ -561,10 +561,12 @@ export class PunchlineDropService {
           select: {
             id: true,
             title: true,
+            artist: true,
             release: {
               select: {
                 id: true,
                 title: true,
+                primaryArtist: true,
                 artworkMimeType: true,
                 artist: { select: { id: true, displayName: true } },
               },
@@ -632,7 +634,13 @@ export class PunchlineDropService {
           releaseId: row.track.release.id,
           releaseTitle: row.track.release.title,
           releaseHasArtwork: Boolean(row.track.release.artworkMimeType),
-          artistName: row.track.release.artist?.displayName ?? null,
+          // Credited/true artist, not the manager account behind the release
+          // (same precedence chain as recommendations home-feed.service.ts).
+          artistName:
+            row.track.artist ||
+            row.track.release.primaryArtist ||
+            row.track.release.artist?.displayName ||
+            null,
         },
       })),
       meta: { count: selected.length, limit },
