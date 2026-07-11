@@ -202,6 +202,35 @@ catalog controller unit + HTTP specs, and
 `web/src/components/home/PopularityRails.test.tsx` (ranked render, genre
 re-rank, honest empty state).
 
+## Home Feed v2 (#1454 WS-7)
+
+Home's personalized surface is a **multi-rail feed** composed (never
+re-ranked) from the WS-1 core and WS-4 serving by
+`backend/src/modules/recommendations/home-feed.service.ts`, served at
+`GET /recommendations/:userId/home-feed` (JWT):
+
+- `because_genre` — "Because you save a lot of \<genre\>": WS-1 items whose
+  reasons match the dominant saved genre/mood.
+- `new_from_artists` — newest catalog from artists the listener has actually
+  played (derived server-side; item history never leaves the backend).
+- `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables.
+- `exploration` — a controlled slice of fresh/low-data tracks
+  (`DISCOVERY_EXPLORATION_COUNT`, default 4) to escape feedback loops.
+- `catalog_signal` — cold users only (RFC §8), labeled as exactly that.
+
+Rules enforced in composition: every explanation is **categorical** (RFC §7 —
+never itemized listening history), max 2 items per artist per rail, each
+track appears in at most one rail, previously-served items sink to the rail
+tail and rendered ids re-enter the served history (impression rotation), and
+the old "first 4 catalog releases" fallback is gone — an empty feed says so.
+The frontend (`web/src/components/home/HomeFeedRails.tsx`) is presentation
+only and emits one `recommendation.served` per rail plus
+`recommendation.clicked` per action (#1449 measurement base).
+
+Tests: `backend/src/tests/home-feed.integration.spec.ts` (rails, caps,
+rotation, cold/warm), `recommendations.controller.http.spec.ts` (routing,
+guard, shape), `web/src/components/home/HomeFeedRails.test.tsx`.
+
 ## Recommendation Explanations
 
 Warehouse explanations are treated as untrusted hints. The backend sanitizes

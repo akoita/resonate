@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
   createAgentConfig,
+  fetchHomeFeed,
   fetchTopArtists,
   fetchTrendingTracks,
   getAgentConfig,
   getRelease,
   getReleaseTrackStreamUrl,
   getStemPreviewUrl,
-  getSongRecommendations,
   listMyReleases,
   listPublicPlaylists,
   listPublishedReleases,
@@ -20,8 +20,9 @@ import {
   Release,
   startAgentSession,
   updateAgentConfig,
+  type HomeFeedItem,
+  type HomeFeedResponse,
   type PublicPlaylistSummary,
-  type SongRecommendationItem,
   type TopArtistItem,
   type Track,
   type TrendingTrackItem,
@@ -39,6 +40,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import { TopArtistsRail, TrendingNowRail } from "../components/home/PopularityRails";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
@@ -121,8 +123,8 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
-  const [recommendationRequestId, setRecommendationRequestId] = useState<string | null>(null);
+  // #1454 WS-7: multi-rail personalized feed. null = loading, [] rails = honest empty.
+  const [homeFeed, setHomeFeed] = useState<HomeFeedResponse | null>(null);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
@@ -225,7 +227,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
-      setSongRecommendations([]);
+      setMyReleases([]);
       return;
     }
 
@@ -245,37 +247,37 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !userId) {
-      setSongRecommendations([]);
+      setHomeFeed(null);
       return;
     }
 
     let cancelled = false;
-    getSongRecommendations(userId, token, 6, recommendationPreferencesForFilter(activeFilterConfig))
-      .then((result) => {
+    fetchHomeFeed(userId, token)
+      .then((feed) => {
         if (cancelled) return;
-        setSongRecommendations(result.items ?? []);
-        setRecommendationRequestId(result.requestId ?? null);
-        // #1449 WS-2: Home ranking impression — which ranked items were shown.
-        if (result.items?.length) {
+        setHomeFeed(feed);
+        // #1449 WS-2: Home ranking impressions — one served event per rail.
+        for (const rail of feed.rails) {
+          if (!rail.items.length) continue;
           void recordProductAnalytics(token, "recommendation.served", {
             payload: {
-              requestId: result.requestId ?? null,
-              railId: "home_recommendations",
-              trackIds: result.items.map((item) => item.id),
-              count: result.items.length,
+              requestId: feed.requestId,
+              railId: rail.id,
+              trackIds: rail.items.map((item) => item.id),
+              count: rail.items.length,
               source: "home",
             },
           });
         }
       })
       .catch(() => {
-        if (!cancelled) setSongRecommendations([]);
+        if (!cancelled) setHomeFeed(null);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activeFilterConfig, status, token, userId]);
+  }, [status, token, userId]);
 
   // #1451 WS-4: true engagement-ranked rails from the popularity serving
   // tables. Genre chips re-rank server-side; when the data is below the
@@ -391,37 +393,38 @@ export default function Home() {
         : catalogView === "stems"
           ? catalogFilteredStems.length
           : catalogFilteredPlaylists.length;
-  const recommendedForYou = useMemo(
-    () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
-    [songRecommendations, displayReleases],
-  );
+  // #1454 WS-7: feed items adapted to the legacy HomeRecommendation shape so
+  // the AI DJ session seeding and vibe-queue building keep working unchanged.
+  const feedRecommendations = useMemo<HomeRecommendation[]>(() => {
+    if (!homeFeed) return [];
+    const releaseById = new Map(displayReleases.map((release) => [release.id, release]));
+    return homeFeed.rails.flatMap((rail) =>
+      rail.items.map((item) => ({
+        key: item.id,
+        trackId: item.id,
+        title: item.title,
+        artist: item.artist ?? "Unknown Artist",
+        releaseId: item.releaseId,
+        genre: item.genre,
+        moods: item.moods,
+        reasons: item.reasons,
+        release: releaseById.get(item.releaseId),
+      })),
+    );
+  }, [homeFeed, displayReleases]);
   // #1449 WS-2: a served recommendation was acted on (open or play).
-  const emitRecommendationClick = useCallback((trackId: string | undefined, position: number) => {
+  const emitRecommendationClick = useCallback((trackId: string | undefined, railId: string, position: number) => {
     if (!trackId) return;
     void recordProductAnalytics(token, "recommendation.clicked", {
       payload: {
-        requestId: recommendationRequestId,
-        railId: "home_recommendations",
+        requestId: homeFeed?.requestId ?? null,
+        railId,
         trackId,
         position,
         source: "home",
       },
     });
-  }, [token, recommendationRequestId]);
-  // Distinct cohort labels actually influencing the picks on screen (honest signal —
-  // reflects matched tracks, not just consented cohorts available in the response).
-  const cohortLabels = useMemo(() => {
-    const labels = new Set<string>();
-    for (const item of recommendedForYou) {
-      for (const reason of item.reasons) {
-        if (reason.startsWith("cohort:")) {
-          const label = reason.slice("cohort:".length).trim();
-          if (label) labels.add(label);
-        }
-      }
-    }
-    return [...labels];
-  }, [recommendedForYou]);
+  }, [token, homeFeed]);
   const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
@@ -548,7 +551,7 @@ export default function Home() {
 
     setStartingVibe(filter.id);
     try {
-      const queue = buildVibeQueue(recommendedForYou, filteredReleases);
+      const queue = buildVibeQueue(feedRecommendations, filteredReleases);
       if (queue.length > 0) {
         await saveTracksMetadata(queue, "remote");
         await playQueue(queue, 0);
@@ -770,81 +773,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* 3. RECOMMENDED FOR YOU ——————————————————————————————— */}
-        {recommendedForYou.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
-                <h3 className="ng-section-title">Recommended for You</h3>
-                {cohortLabels.length > 0 && (
-                  <span
-                    className="ng-section-flag"
-                    title={`Influenced by your community: ${cohortLabels.join(", ")}`}
-                  >
-                    <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>groups</span>
-                    {cohortLabels.length === 1
-                      ? `Tuned by your ${cohortLabels[0]} cohort`
-                      : `Tuned by ${cohortLabels.length} of your cohorts`}
-                  </span>
-                )}
-              </div>
-              <Link href="/agent" className="ng-section-link">
-                Open AI DJ
-                <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-              </Link>
-            </header>
-            <div className="ng-recommendation-grid">
-              {recommendedForYou.map((item, recommendationIndex) => {
-                const seedKey = item.trackId || item.releaseId || item.key;
-                return (
-                  <article key={item.key} className="ng-recommendation-card ng-glass">
-                    <Link
-                      href={item.releaseId ? `/release/${item.releaseId}` : "/agent"}
-                      className="ng-recommendation-card__art"
-                      aria-label={`Open ${item.title}`}
-                      onClick={() => emitRecommendationClick(item.trackId, recommendationIndex)}
-                    >
-                      {item.release?.artworkUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.release.artworkUrl} alt="" />
-                      ) : (
-                        <span className="ng-monogram" aria-hidden>
-                          {(item.title[0] ?? "?").toUpperCase()}
-                        </span>
-                      )}
-                      <span className="ng-recommendation-card__score">
-                        {Math.round(item.score ?? 0)}
-                      </span>
-                    </Link>
-                    <div className="ng-recommendation-card__body">
-                      <h4>{item.title}</h4>
-                      <p>{item.artist}</p>
-                      <div className="ng-recommendation-card__meta">
-                        <span>{item.genre || "Discovery"}</span>
-                        <span>{formatRecommendationReason(item.reasons)}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="ng-recommendation-card__action"
-                        onClick={() => {
-                          emitRecommendationClick(item.trackId, recommendationIndex);
-                          void handleStartRecommendedSession(item);
-                        }}
-                        disabled={startingSeed === seedKey}
-                      >
-                        <span className="ms-icon" data-fill="1" aria-hidden>
-                          {startingSeed === seedKey ? "hourglass_top" : "play_arrow"}
-                        </span>
-                        {startingSeed === seedKey ? "Starting" : "Start session"}
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        {/* 3. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
+        <HomeFeedRails
+          feed={homeFeed}
+          startingSeed={startingSeed}
+          onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
+          onStartSession={(item, railId, position) => {
+            emitRecommendationClick(item.id, railId, position);
+            void handleStartRecommendedSession(feedItemToRecommendation(item, displayReleases));
+          }}
+        />
 
         {/* 3. CATALOG BROWSER ——————————————————————————————————— */}
         <section className="ng-section">
@@ -1413,16 +1351,6 @@ function filterStems(stems: CatalogStemSummary[], query: string) {
   );
 }
 
-function recommendationPreferencesForFilter(filter: FilterOption) {
-  if (filter.kind === "genre" && filter.value) {
-    return { genres: [filter.value], energy: filter.energy };
-  }
-  if (filter.kind === "mood" && filter.value) {
-    return { mood: filter.value, energy: filter.energy };
-  }
-  return undefined;
-}
-
 function releaseMatchesFilter(release: Release, filter: FilterOption) {
   const value = filter.value?.toLowerCase();
   if (!value) return true;
@@ -1459,67 +1387,24 @@ function buildVibeQueue(recommendations: HomeRecommendation[], releases: Release
   return Array.from(byId.values()).slice(0, 12);
 }
 
-function buildHomeRecommendations(
-  items: SongRecommendationItem[],
-  releases: Release[],
-): HomeRecommendation[] {
-  const releaseById = new Map(releases.map((release) => [release.id, release]));
-  const releaseByTrackId = new Map<string, Release>();
-  for (const release of releases) {
-    for (const track of release.tracks ?? []) {
-      releaseByTrackId.set(track.id, release);
-    }
-  }
-
-  const mapped = items.map((item) => {
-    const release = (item.releaseId ? releaseById.get(item.releaseId) : undefined)
-      ?? releaseByTrackId.get(item.id);
-    return {
-      key: item.id,
-      trackId: item.id,
-      title: item.title,
-      artist: item.artist || (release ? getArtistName(release) : "Unknown Artist"),
-      releaseId: item.releaseId || release?.id,
-      genre: item.genre ?? release?.genre,
-      moods: item.moods ?? release?.moods ?? [],
-      score: item.score,
-      reasons: item.reasons ?? [],
-      release,
-    };
-  });
-
-  if (mapped.length > 0) {
-    return mapped;
-  }
-
-  return releases.slice(0, 4).map((release) => ({
-    key: release.id,
-    title: release.title,
-    artist: getArtistName(release),
-    releaseId: release.id,
-    genre: release.genre,
-    moods: release.moods ?? [],
-    score: release.genre ? 35 : 20,
-    reasons: release.genre ? [`genre:${release.genre}`] : ["catalog_seed"],
+/**
+ * #1454 WS-7: adapt a Home feed item to the legacy HomeRecommendation shape
+ * consumed by AI DJ session seeding. No catalog fallback — the multi-rail
+ * feed's honest empty state replaced the old "first 4 releases" filler.
+ */
+function feedItemToRecommendation(item: HomeFeedItem, releases: Release[]): HomeRecommendation {
+  const release = releases.find((candidate) => candidate.id === item.releaseId);
+  return {
+    key: item.id,
+    trackId: item.id,
+    title: item.title,
+    artist: item.artist ?? (release ? getArtistName(release) : "Unknown Artist"),
+    releaseId: item.releaseId,
+    genre: item.genre ?? release?.genre,
+    moods: item.moods,
+    reasons: item.reasons,
     release,
-  }));
-}
-
-function formatRecommendationReason(reasons: string[]) {
-  // Drop internal/diagnostic markers (e.g. `downranked:genre:*`) so they never reach the UI.
-  const meaningful = reasons.filter((reason) => reason && !reason.startsWith("downranked:"));
-  // Cohort context is the most specific, human-meaningful signal — surface it ahead of
-  // generic taste/mood matches even when it was scored after them.
-  const cohort = meaningful.find((reason) => reason.startsWith("cohort:"));
-  if (cohort) {
-    const label = cohort.slice("cohort:".length).trim();
-    return label ? `From your ${label} cohort` : "Cohort signal";
-  }
-  const first = meaningful[0];
-  if (!first) return "Catalog signal";
-  if (first.startsWith("genre:")) return "Taste match";
-  if (first.startsWith("mood:")) return "Mood match";
-  return first.replace(/_/g, " ");
+  };
 }
 
 function formatStatus(status?: string | null) {

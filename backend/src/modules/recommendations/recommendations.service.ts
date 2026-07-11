@@ -150,6 +150,18 @@ export class RecommendationsService {
     return (await this.loadProfile(userId)).preferences;
   }
 
+  /** Served-history for impression rotation (#1454 WS-7). */
+  async getServedHistory(userId: string): Promise<string[]> {
+    return (await this.loadProfile(userId)).servedTrackIds;
+  }
+
+  /** Record externally-composed impressions (Home feed rails, #1454 WS-7). */
+  async noteServed(userId: string, trackIds: string[]) {
+    if (!trackIds.length) return;
+    const previous = await this.getServedHistory(userId);
+    await this.recordServed(userId, trackIds, previous);
+  }
+
   private async recordServed(userId: string, trackIds: string[], previous: string[]) {
     const updated = [...trackIds, ...previous].slice(0, SERVED_HISTORY_CAP);
     await prisma.recommendationProfile.upsert({

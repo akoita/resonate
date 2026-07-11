@@ -2548,6 +2548,51 @@ export type SongRecommendationsResponse = {
   items: SongRecommendationItem[];
 };
 
+export type HomeFeedRailKind =
+  | "because_genre"
+  | "new_from_artists"
+  | "trending_genre"
+  | "exploration"
+  | "catalog_signal";
+
+export interface HomeFeedItem {
+  id: string;
+  title: string;
+  artist: string | null;
+  artistId: string;
+  releaseId: string;
+  releaseTitle: string;
+  genre: string | null;
+  moods: string[];
+  artworkMimeType: string | null;
+  reasons: string[];
+}
+
+export interface HomeFeedRail {
+  id: string;
+  kind: HomeFeedRailKind;
+  title: string;
+  /** Categorical, human-readable — never itemized listener history. */
+  explanation: string;
+  items: HomeFeedItem[];
+}
+
+export interface HomeFeedResponse {
+  userId: string;
+  requestId: string;
+  cold: boolean;
+  rails: HomeFeedRail[];
+}
+
+/** Multi-rail personalized Home feed (#1454 WS-7). */
+export async function fetchHomeFeed(userId: string, token: string): Promise<HomeFeedResponse> {
+  return apiRequest<HomeFeedResponse>(
+    `/recommendations/${encodeURIComponent(userId)}/home-feed`,
+    {},
+    token,
+  );
+}
+
 export async function getSongRecommendations(
   userId: string,
   token: string,

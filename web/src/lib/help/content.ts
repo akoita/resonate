@@ -178,7 +178,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks once you start listening.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "explore", "genre", "playlists"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists"],
     sections: [
       {
         id: "home",
@@ -186,7 +186,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by trending and mood chips, then Recommended for You — personalized picks that improve as you listen.",
+            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by trending and mood chips, then your personalized feed — several themed rows like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each row says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
+          },
+          {
+            kind: "paragraph",
+            text: "Every visit also includes a small \"Step outside your lanes\" row of fresh, barely-played tracks so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks or save a genre and it gets personal.",
           },
           {
             kind: "figure",
