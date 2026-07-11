@@ -34,6 +34,8 @@ import {
 } from "../../lib/playlistStore";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
+import { PunchlineInventory } from "../../components/punchline/PunchlineInventory";
+import { listMyPunchlineCollectibles, type PunchlineCollectibleItem } from "../../lib/api";
 import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
@@ -48,7 +50,7 @@ import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
 import { libraryArtistHref } from "../../lib/artistRoutes";
 
-type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations";
+type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations" | "moments";
 
 function getRelativeTime(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -96,6 +98,9 @@ export default function LibraryPage() {
     
     // Remote collection state
     const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);
+    // Punchline collectible inventory (#487) — owned moments for the Moments tab.
+    const [ownedMoments, setOwnedMoments] = useState<PunchlineCollectibleItem[]>([]);
+    const [momentsLoading, setMomentsLoading] = useState(false);
     const [isCollectionLoading, setIsCollectionLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
 
@@ -290,6 +295,33 @@ export default function LibraryPage() {
         }
     }, [token]);
 
+    // Owned Punchline moments for the Moments tab (#487); caller-scoped.
+    useEffect(() => {
+        if (!token) {
+            setOwnedMoments([]);
+            return;
+        }
+        let cancelled = false;
+        setMomentsLoading(true);
+        (async () => {
+            try {
+                const mine = await listMyPunchlineCollectibles(token);
+                if (!cancelled) {
+                    setOwnedMoments(mine.items);
+                }
+            } catch (error) {
+                console.error("Error fetching punchline moments:", error);
+            } finally {
+                if (!cancelled) {
+                    setMomentsLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
+
     // Handle deep-linking from query params
     useEffect(() => {
         const tab = searchParams.get("tab");
@@ -301,6 +333,8 @@ export default function LibraryPage() {
             setActiveTab("playlists");
         } else if (tab === "ai_creations") {
             setActiveTab("ai_creations");
+        } else if (tab === "moments") {
+            setActiveTab("moments");
         } else if (artist) {
             setSelectedArtist(artist);
             setActiveTab("artists");
@@ -1029,6 +1063,12 @@ export default function LibraryPage() {
                             >
                                 ✨ AI Creations ({aiCreations.length})
                             </button>
+                            <button
+                                className={`library-tab ${activeTab === "moments" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("moments"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                🎤 Moments ({ownedMoments.length})
+                            </button>
                         </div>
                         
                         {activeTab === "tracks" && (
@@ -1102,6 +1142,13 @@ export default function LibraryPage() {
                                         )
                                     )}
                                     {activeTab === "stems" && renderTrackList(ownedStems)}
+                                    {activeTab === "moments" && (
+                                        <PunchlineInventory
+                                            items={ownedMoments}
+                                            loading={momentsLoading}
+                                            signedIn={!!token}
+                                        />
+                                    )}
                                     {activeTab === "ai_creations" && (
                                         <>
                                             <div className="create-analytics-strip ai-analytics-header">

@@ -12,6 +12,12 @@ import {
   summarizeCollectableDrops,
 } from "./punchlineCollectHelpers";
 import { CollectButton } from "./PunchlineCollectModule";
+import {
+  PunchlineInventory,
+  formatAcquiredAt,
+  groupCollectiblesByDrop,
+} from "./PunchlineInventory";
+import type { PunchlineCollectibleItem } from "../../lib/api";
 import { API_BASE, type PunchlineDrop, type PunchlineMoment } from "../../lib/api";
 
 function moment(overrides: Partial<PunchlineMoment> = {}): PunchlineMoment {
@@ -205,5 +211,95 @@ describe("collect summary (above-the-fold discovery)", () => {
     expect(formatCollectSummaryValue({ dropCount: 2, momentCount: 3 })).toBe(
       "3 moments",
     );
+  });
+});
+
+function collectible(
+  overrides: Partial<PunchlineCollectibleItem> = {},
+): PunchlineCollectibleItem {
+  return {
+    id: "c1",
+    editionNumber: 4,
+    editionSize: 100,
+    acquiredAt: "2026-07-11T10:00:00.000Z",
+    paymentRail: "free_claim",
+    pricePaidCents: 0,
+    moment: {
+      id: "m1",
+      title: "Hook",
+      lyricText: "The punchline",
+      artworkUrl: null,
+      startMs: 1000,
+      endMs: 6000,
+      clipAssetUri: "/catalog/stems/clip.mp3/blob",
+      rightsLabel: "NON_COMMERCIAL_COLLECTIBLE",
+    },
+    drop: {
+      id: "d1",
+      title: "Drop One",
+      trackId: "t1",
+      trackTitle: "Track One",
+      releaseId: "r1",
+      artistId: "a1",
+      artistName: "The Artist",
+      momentCount: 2,
+    },
+    ...overrides,
+  };
+}
+
+describe("inventory grouping (#487)", () => {
+  it("groups by drop and computes set completion", () => {
+    const items = [
+      collectible({ id: "c1", moment: { ...collectible().moment, id: "m1" } }),
+      collectible({ id: "c2", moment: { ...collectible().moment, id: "m2" } }),
+      collectible({
+        id: "c3",
+        drop: { ...collectible().drop, id: "d2", title: "Solo", momentCount: 3 },
+      }),
+    ];
+    const groups = groupCollectiblesByDrop(items);
+    expect(groups).toHaveLength(2);
+    const first = groups.find((g) => g.dropId === "d1")!;
+    expect(first.items).toHaveLength(2);
+    expect(first.complete).toBe(true);
+    const second = groups.find((g) => g.dropId === "d2")!;
+    expect(second.items).toHaveLength(1);
+    expect(second.complete).toBe(false);
+  });
+
+  it("formats acquisition dates and tolerates bad input", () => {
+    expect(formatAcquiredAt("2026-07-11T10:00:00.000Z")).toMatch(/^Acquired /);
+    expect(formatAcquiredAt(null)).toBeNull();
+    expect(formatAcquiredAt("not-a-date")).toBeNull();
+  });
+});
+
+describe("PunchlineInventory states", () => {
+  it("renders the signed-out and empty states", () => {
+    const signedOut = renderToStaticMarkup(
+      <PunchlineInventory items={[]} loading={false} signedIn={false} />,
+    );
+    expect(signedOut).toContain("Sign in");
+
+    const empty = renderToStaticMarkup(
+      <PunchlineInventory items={[]} loading={false} signedIn={true} />,
+    );
+    expect(empty).toContain("No moments yet");
+    expect(empty).toContain("/catalog");
+  });
+
+  it("renders owned cards with edition, set progress, and release link", () => {
+    const html = renderToStaticMarkup(
+      <PunchlineInventory
+        items={[collectible()]}
+        loading={false}
+        signedIn={true}
+      />,
+    );
+    expect(html).toContain("Edition #4 of 100");
+    expect(html).toContain("You own 1 of 2");
+    expect(html).toContain("/release/r1");
+    expect(html).toContain("The Artist");
   });
 });

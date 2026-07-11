@@ -1126,6 +1126,73 @@
   scroll-margin-top: 84px;
 }
 
+
+/* ==========================================
+   Collector inventory (#487) — Library "Moments" tab
+   ========================================== */
+
+.punchline-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 1.5rem);
+}
+
+.punchline-inventory-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: var(--space-6, 3rem) var(--space-4, 1.5rem);
+  text-align: center;
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+}
+
+.punchline-inventory-empty h4 {
+  margin: 0;
+  color: var(--r-text, rgba(255, 255, 255, 0.92));
+}
+
+.punchline-inventory-empty p {
+  margin: 0;
+  max-width: 420px;
+  font-size: 0.9rem;
+}
+
+.punchline-inventory-empty-icon {
+  font-size: 2rem;
+}
+
+.punchline-inventory-empty .punchline-btn-primary {
+  margin-top: 0.6rem;
+  text-decoration: none;
+}
+
+.punchline-inventory-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.punchline-inventory-edition {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.punchline-inventory-acquired {
+  font-size: 0.75rem;
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+}
+
+.punchline-inventory-release-link {
+  color: var(--r-accent, #8b5cf6);
+  text-decoration: none;
+}
+
+.punchline-inventory-release-link:hover {
+  text-decoration: underline;
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */

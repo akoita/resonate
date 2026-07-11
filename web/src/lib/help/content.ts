@@ -981,15 +981,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Next up: a collection page to browse everything you own, paid collecting, and a bonus for fans who complete a whole set. Artists can build and publish drops today — free moments are collectable immediately.",
+            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward completing each set. Still ahead: paid collecting and a bonus for fans who complete a whole set.",
           },
         ],
       },
     ],
     appLinks: [
       { label: "Your catalog", href: "/artist/catalog", description: "Open a release to find its Punchline Drops panel." },
+      { label: "Your moments", href: "/library?tab=moments", description: "The Punchline moments you have collected." },
     ],
-    related: ["upload-music", "artist-profile", "marketplace-sell"],
+    related: ["upload-music", "artist-profile", "marketplace-sell", "library-playlists"],
   },
   {
     slug: "rights-protection",
