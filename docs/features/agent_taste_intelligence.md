@@ -125,6 +125,34 @@ Optional columns:
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
 
+## Unified Ranking Core (#1448 WS-1)
+
+Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:
+`DiscoveryRankingService` (`backend/src/modules/recommendations/
+discovery-ranking.service.ts`), extracted from the DJ's selector. Both
+surfaces feed it candidates plus context (taste queries, learned genre
+weights, embedding similarity, warehouse taste scores, cohort context, energy,
+taste-memory policy) and receive weighted signals + human explanations.
+
+- `GET /recommendations/:userId` now routes through the core: candidates come
+  from a UNION of sources (newest-50, catalog-wide preference matches with no
+  recency bias, cohort query hints) instead of "50 newest" — older tracks are
+  recommendable. WS-3 popularity marts / WS-5 embeddings / WS-6 CF slot in as
+  further sources.
+- User preferences and served-history are durable (`RecommendationProfile`
+  Prisma model), fronted by a fail-open Redis cache
+  (`shared/redis_cache.service.ts`) — they survive restarts and are coherent
+  across Cloud Run instances.
+- Deterministic fallback: with Redis, BigQuery, and every optional signal
+  source unavailable, both surfaces still return correct ranked results from
+  Postgres alone.
+- The legacy Home response contract is unchanged (reason strings
+  `genre:X`/`mood:Y`/`cohort:Title`, strategies, taste-memory hide/downrank
+  semantics); items additionally carry `explanations` from the core.
+- Tests: `backend/src/tests/discovery-ranking.integration.spec.ts`
+  (durability across instances, wide-pool, deterministic fallback) plus the
+  pre-existing recommendation/agent suites.
+
 ## Recommendation Explanations
 
 Warehouse explanations are treated as untrusted hints. The backend sanitizes

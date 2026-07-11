@@ -27,6 +27,7 @@ model User {
   communityBenefitRedemptions CommunityBenefitRedemption[]
   punchlineCollectibles       PunchlineCollectible[]
   punchlineUnlockGrants       PunchlineUnlockGrant[]
+  recommendationProfile       RecommendationProfile?
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
@@ -2192,6 +2193,20 @@ model PunchlineUnlock {
 // Exactly-once reward grant per collector per unlock (#488). The unique pair
 // makes double-granting impossible at the database level — same philosophy as
 // edition scarcity on PunchlineCollectible.
+// Durable discovery state (#1448 WS-1): replaces the per-process in-memory
+// preference/served-history Maps that were lost on restart and incoherent
+// across Cloud Run instances. One row per user; servedTrackIds is capped
+// app-side (most recent first).
+model RecommendationProfile {
+  userId               String    @id
+  preferences          Json?
+  preferencesUpdatedAt DateTime?
+  servedTrackIds       String[]  @default([])
+  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+  user                 User      @relation(fields: [userId], references: [id])
+}
+
 model PunchlineUnlockGrant {
   id              String          @id @default(uuid())
   unlockId        String

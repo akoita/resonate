@@ -1,3 +1,4 @@
+import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
 import {
   computeAgentTasteProfileFromSignals,
   AGENT_SIGNAL_WEIGHTS,
@@ -83,7 +84,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["music"],
@@ -122,7 +123,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -171,7 +172,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any, tasteMemory as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any, tasteMemory as any);
 
     await selector.select({
       userId: "user-1",
@@ -204,7 +205,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -248,7 +249,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -278,7 +279,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Hip Hop"],
@@ -318,6 +319,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService(
       { get: jest.fn().mockReturnValue(tool) } as any,
+      new DiscoveryRankingService(),
       undefined,
       undefined,
       undefined,
@@ -354,7 +356,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Reggaeton"],
@@ -375,7 +377,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Techno"],

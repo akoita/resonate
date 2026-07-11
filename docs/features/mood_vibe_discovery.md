@@ -28,7 +28,9 @@ Status: `in-progress`
 Available in this branch:
 
 - Home mood and genre chips pass request-scoped preference overrides to
-  `GET /recommendations/:userId`.
+  `GET /recommendations/:userId` (since Sprint 8 backed by the unified
+  `DiscoveryRankingService` shared with the AI DJ — see
+  [agent_taste_intelligence.md](agent_taste_intelligence.md) §Unified Ranking Core).
 - Home exposes a vibe session action for active mood or genre chips. It queues
   matching tracks, updates the listener AI DJ config, starts an agent session,
   and records an `agent.track_selected` signal with `source:
