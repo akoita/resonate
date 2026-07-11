@@ -4,9 +4,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   collectPunchlineMoment,
   listMyPunchlineCollectibles,
+  listMyPunchlineUnlocks,
   listTrackPunchlineDrops,
   type PunchlineDrop,
   type PunchlineMoment,
+  type PunchlineUnlockReward,
   type Track,
 } from "../../lib/api";
 import { useAuth } from "../auth/AuthProvider";
@@ -63,6 +65,10 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   const [ownedMomentIds, setOwnedMomentIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
+  // Granted set rewards by dropId (#488) — drives the bonus reveal.
+  const [rewardsByDrop, setRewardsByDrop] = useState<
+    Map<string, PunchlineUnlockReward | null>
+  >(new Map());
   const [collectedCounts, setCollectedCounts] = useState<Map<string, number>>(
     new Map(),
   );
@@ -105,9 +111,15 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     let cancelled = false;
     (async () => {
       try {
-        const mine = await listMyPunchlineCollectibles(token);
+        const [mine, unlocks] = await Promise.all([
+          listMyPunchlineCollectibles(token),
+          listMyPunchlineUnlocks(token),
+        ]);
         if (!cancelled) {
           setOwnedMomentIds(new Set(mine.items.map((item) => item.moment.id)));
+          setRewardsByDrop(
+            new Map(unlocks.items.map((g) => [g.drop.id, g.reward])),
+          );
         }
       } catch {
         // Inventory is an enhancement here — the module still works without it.
@@ -162,6 +174,31 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     [addToast, stopClip],
   );
 
+  const playBonus = useCallback(
+    (dropId: string) => {
+      const reward = rewardsByDrop.get(dropId);
+      const url = resolveClipUrl(reward?.clipAssetUri ?? null);
+      if (!url) {
+        addToast({
+          type: "error",
+          title: "Bonus unavailable",
+          message: "The bonus clip isn't ready yet.",
+        });
+        return;
+      }
+      stopClip();
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.addEventListener("ended", stopClip);
+      audio.addEventListener("error", stopClip);
+      audio
+        .play()
+        .then(() => setPlayingMomentId(`bonus-${dropId}`))
+        .catch(() => stopClip());
+    },
+    [rewardsByDrop, addToast, stopClip],
+  );
+
   const effectiveCollectedCount = useCallback(
     (moment: PunchlineMoment) =>
       collectedCounts.get(moment.id) ?? moment.collectedCount,
@@ -200,6 +237,17 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
             message: `You collected every moment in ${
               drop.title ? `“${drop.title}”` : "this drop"
             }.`,
+          });
+        }
+        if (result.unlock?.newlyGranted) {
+          setRewardsByDrop((prev) =>
+            new Map(prev).set(drop.id, result.unlock?.reward ?? null),
+          );
+          addToast({
+            type: "success",
+            title: "🎁 Bonus unlocked!",
+            message:
+              "Your set reward is waiting below — and in your Library under Moments.",
           });
         }
       } catch (error) {
@@ -281,18 +329,34 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                       </p>
                     )}
                   </div>
-                  {progress && progress.total > 1 && (
-                    <span
-                      className={`punchline-collect-progress ${
-                        progress.complete ? "is-complete" : ""
-                      }`}
-                    >
-                      {progress.complete
-                        ? "Set complete 🎉"
-                        : `You own ${progress.owned} of ${progress.total}`}
-                    </span>
-                  )}
+                  <div className="punchline-collect-head-chips">
+                    {drop.unlock && !rewardsByDrop.has(drop.id) && (
+                      <span className="punchline-collect-bonus-chip">
+                        🎁 Collect the set to unlock a bonus
+                      </span>
+                    )}
+                    {progress && progress.total > 1 && (
+                      <span
+                        className={`punchline-collect-progress ${
+                          progress.complete ? "is-complete" : ""
+                        }`}
+                      >
+                        {progress.complete
+                          ? "Set complete 🎉"
+                          : `You own ${progress.owned} of ${progress.total}`}
+                      </span>
+                    )}
+                  </div>
                 </div>
+
+                {rewardsByDrop.has(drop.id) && (
+                  <PunchlineBonusReveal
+                    reward={rewardsByDrop.get(drop.id) ?? null}
+                    playing={playingMomentId === `bonus-${drop.id}`}
+                    onPlay={() => playBonus(drop.id)}
+                    onStop={stopClip}
+                  />
+                )}
 
                 <div className="punchline-collect-grid">
                   {drop.moments.map((moment) => {
@@ -431,6 +495,42 @@ export function CollectButton({
         </button>
       );
   }
+}
+
+/**
+ * The unlocked set-bonus reveal (#488): the artist's note + the bonus clip,
+ * shown only to collectors who completed the set. Exported for tests.
+ */
+export function PunchlineBonusReveal({
+  reward,
+  playing,
+  onPlay,
+  onStop,
+}: {
+  reward: PunchlineUnlockReward | null;
+  playing: boolean;
+  onPlay: () => void;
+  onStop: () => void;
+}) {
+  return (
+    <div className="punchline-bonus-reveal" role="status">
+      <span className="punchline-bonus-reveal-title">
+        🎁 Set bonus unlocked
+      </span>
+      {reward?.message && (
+        <p className="punchline-bonus-reveal-message">“{reward.message}”</p>
+      )}
+      {reward?.clipAssetUri && (
+        <button
+          type="button"
+          className="punchline-btn-secondary punchline-collect-play"
+          onClick={playing ? onStop : onPlay}
+        >
+          {playing ? "■ Stop" : "▶ Play bonus clip"}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default PunchlineCollectModule;

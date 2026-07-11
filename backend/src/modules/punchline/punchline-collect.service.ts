@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
@@ -12,6 +13,7 @@ import {
 } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
 import { PUNCHLINE_RIGHTS_SUMMARY } from "./punchline-rights";
+import { PunchlineUnlockService } from "./punchline-unlock.service";
 
 /**
  * Collect / ownership grant for Punchline collectibles (#485).
@@ -65,7 +67,10 @@ const FREE_CLAIM_RAIL = "free_claim";
 export class PunchlineCollectService {
   private readonly logger = new Logger(PunchlineCollectService.name);
 
-  constructor(private readonly eventBus: EventBus) {}
+  constructor(
+    private readonly eventBus: EventBus,
+    @Optional() private readonly unlockService?: PunchlineUnlockService,
+  ) {}
 
   /**
    * Collect one edition of a published moment for the calling fan.
@@ -137,6 +142,9 @@ export class PunchlineCollectService {
       userId,
       moment.drop.id,
     );
+    let unlock: Awaited<
+      ReturnType<PunchlineUnlockService["grantForCompletedSet"]>
+    > = null;
     if (setCompleted) {
       const setEvent: PunchlineSetCompletedEvent = {
         eventName: "punchline.set_completed",
@@ -148,6 +156,22 @@ export class PunchlineCollectService {
         collectorUserId: userId,
       };
       this.eventBus.publish(setEvent);
+
+      // #488: grant the drop's complete-set reward exactly once (DB-unique).
+      // A grant failure must never fail the collect itself.
+      try {
+        unlock =
+          (await this.unlockService?.grantForCompletedSet(
+            userId,
+            moment.drop.id,
+          )) ?? null;
+      } catch (error) {
+        this.logger.error(
+          `Unlock grant failed for drop ${moment.drop.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
 
     return {
@@ -163,6 +187,7 @@ export class PunchlineCollectService {
         acquiredAt: collectible.acquiredAt,
       },
       setCompleted,
+      unlock,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
     };
   }

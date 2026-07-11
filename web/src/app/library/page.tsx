@@ -35,7 +35,7 @@ import {
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
 import { PunchlineInventory } from "../../components/punchline/PunchlineInventory";
-import { listMyPunchlineCollectibles, type PunchlineCollectibleItem } from "../../lib/api";
+import { listMyPunchlineCollectibles, listMyPunchlineUnlocks, type PunchlineCollectibleItem, type PunchlineUnlockGrantItem } from "../../lib/api";
 import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
@@ -100,6 +100,7 @@ export default function LibraryPage() {
     const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);
     // Punchline collectible inventory (#487) — owned moments for the Moments tab.
     const [ownedMoments, setOwnedMoments] = useState<PunchlineCollectibleItem[]>([]);
+    const [momentUnlocks, setMomentUnlocks] = useState<PunchlineUnlockGrantItem[]>([]);
     const [momentsLoading, setMomentsLoading] = useState(false);
     const [isCollectionLoading, setIsCollectionLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
@@ -299,15 +300,20 @@ export default function LibraryPage() {
     useEffect(() => {
         if (!token) {
             setOwnedMoments([]);
+            setMomentUnlocks([]);
             return;
         }
         let cancelled = false;
         setMomentsLoading(true);
         (async () => {
             try {
-                const mine = await listMyPunchlineCollectibles(token);
+                const [mine, unlocks] = await Promise.all([
+                    listMyPunchlineCollectibles(token),
+                    listMyPunchlineUnlocks(token),
+                ]);
                 if (!cancelled) {
                     setOwnedMoments(mine.items);
+                    setMomentUnlocks(unlocks.items);
                 }
             } catch (error) {
                 console.error("Error fetching punchline moments:", error);
@@ -1145,6 +1151,7 @@ export default function LibraryPage() {
                                     {activeTab === "moments" && (
                                         <PunchlineInventory
                                             items={ownedMoments}
+                                            unlocks={momentUnlocks}
                                             loading={momentsLoading}
                                             signedIn={!!token}
                                         />

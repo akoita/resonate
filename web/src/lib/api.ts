@@ -1874,6 +1874,41 @@ export type PunchlineDrop = {
   rightsLabel: string;
   rightsSummary: string;
   moments: PunchlineMoment[];
+  /**
+   * Set-bonus summary (#488). Public payloads carry existence only; owner
+   * surfaces also include the reward config.
+   */
+  unlock?: {
+    unlockType: string;
+    reward?: PunchlineUnlockReward | null;
+  } | null;
+};
+
+/** The complete-set bonus reward (#488): a bonus vocal clip + optional note. */
+export type PunchlineUnlockReward = {
+  kind: "bonus_clip";
+  startMs: number;
+  endMs: number;
+  message: string | null;
+  clipAssetUri: string | null;
+};
+
+/** One granted set reward with drop/track context. */
+export type PunchlineUnlockGrantItem = {
+  id: string;
+  grantedAt: string;
+  unlockId: string;
+  unlockType: string;
+  reward: PunchlineUnlockReward | null;
+  drop: {
+    id: string;
+    title: string | null;
+    trackId: string;
+    trackTitle: string | null;
+    releaseId: string | null;
+    artistId: string;
+    artistName: string | null;
+  };
 };
 
 /** Add/edit payload for a moment. On add all fields are required. */
@@ -2006,6 +2041,13 @@ export type PunchlineCollectResult = {
   };
   /** True when this collect completed the drop's full set (#488 hook). */
   setCompleted: boolean;
+  /** The granted set reward when this collect completed the set (#488). */
+  unlock: {
+    unlockId: string;
+    unlockType: string;
+    newlyGranted: boolean;
+    reward: PunchlineUnlockReward | null;
+  } | null;
   rightsSummary: string;
 };
 
@@ -2065,6 +2107,41 @@ export async function listMyPunchlineCollectibles(token: string) {
     items: PunchlineCollectibleItem[];
     meta: { count: number };
   }>(`/punchline/me/collectibles`, {}, token);
+}
+
+/** Configure (create/replace) a draft drop's complete-set bonus (#488). */
+export async function setPunchlineDropUnlock(
+  dropId: string,
+  input: { startMs: number; endMs: number; message?: string | null },
+  token: string,
+) {
+  return apiRequest<{
+    id: string;
+    unlockType: string;
+    reward: PunchlineUnlockReward | null;
+    grantedCount: number;
+  } | null>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/unlock`,
+    { method: "PUT", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Remove a draft drop's complete-set bonus. */
+export async function removePunchlineDropUnlock(dropId: string, token: string) {
+  return apiRequest<{ removed: boolean }>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/unlock`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
+/** The caller's granted set rewards, revealed (#488). */
+export async function listMyPunchlineUnlocks(token: string) {
+  return apiRequest<{
+    items: PunchlineUnlockGrantItem[];
+    meta: { count: number };
+  }>(`/punchline/me/unlocks`, {}, token);
 }
 
 export async function submitReleaseRightsUpgradeRequest(

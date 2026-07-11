@@ -938,7 +938,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Pick a track, then create a drop (or resume the draft you started earlier).",
               "Select the moment on the vocal timeline by dragging the start and end handles, and hit Preview to hear exactly what fans will get.",
               "Add the title, the lyric line, optional artwork, the edition size, and the price — the live card shows exactly how the collectible will look.",
-              "Add more moments if you like (they can become a set), then hit Publish.",
+              "Add more moments if you like (they can become a set), and optionally add a Set bonus — an extra vocal clip and a note that only fans who collect the whole set will unlock.",
+              "Hit Publish when everything looks right.",
             ],
           },
           {
@@ -981,7 +982,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward completing each set. Still ahead: paid collecting and a bonus for fans who complete a whole set.",
+            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward each set. Complete a whole set and the artist's bonus unlocks instantly: a hidden extra clip and a personal note, shown right on the release page and in your Library. Still ahead: paid collecting.",
           },
         ],
       },
