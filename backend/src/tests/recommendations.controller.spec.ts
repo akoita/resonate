@@ -20,8 +20,16 @@ const mockTasteMemoryService = {
   removeSignalControl: jest.fn(),
 };
 
+const mockHomeFeedService = {
+  getHomeFeed: jest.fn().mockResolvedValue({ rails: [], cold: true }),
+};
+
 function makeController() {
-  return new RecommendationsController(mockService as any, mockTasteMemoryService as any);
+  return new RecommendationsController(
+    mockService as any,
+    mockTasteMemoryService as any,
+    mockHomeFeedService as any,
+  );
 }
 
 beforeEach(() => jest.clearAllMocks());
