@@ -7,6 +7,22 @@
 **Working mode:** flexible priority-set sprint — see [README.md](README.md)
 **Revenue line:** (3) marketplace take-rate / ownership products — a new **collectible** asset class (Engagement). Fan→artist commerce; artist keeps 85%+ (ADR-BM-4).
 
+> **OUTCOME (closed 2026-07-11): goal met — 11/11 slices shipped in ~2 days.**
+> The demo loop is live: an artist builds a drop from a rights-clean track
+> (optionally with a complete-set bonus clip + note), a fan collects free
+> moments, completes the set, unlocks the bonus, and browses everything in
+> Library → Moments; the full view → preview → collect funnel and per-moment
+> artist metrics are measurable (#489). Epic #490 closed. Also shipped: three
+> design passes (collectible-first "living audio object" cards) and two infra
+> fixes surfaced by the work (encrypted-stem decrypt allowlist; CI Postgres
+> connection ceiling). Deliberate deferrals, tracked: paid collects
+> [#1462](https://github.com/akoita/resonate/issues/1462), optional on-chain
+> claims [#1467](https://github.com/akoita/resonate/issues/1467)
+> (trigger-gated), auctions
+> [#1470](https://github.com/akoita/resonate/issues/1470) (trigger-gated).
+> Operator inputs still pending: moment pricing reconciliation into
+> `business-model.md`; verified-catalog demo scope.
+
 > **Sprint Goal:** ship the **Phase-1 Punchline Drops MVP** — artists turn a
 > track's **vocal stem** into scarce, artist-approved collectible **moments**
 > (title, lyric, artwork, edition size, price), and fans **discover, collect,
