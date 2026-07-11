@@ -5,6 +5,7 @@ import {
   centsToPriceDollars,
   formatEditionLabel,
   formatPriceCents,
+  maskSensitiveLyric,
   newestDraft,
   parsePriceDollarsToCents,
   publishedDrops,
@@ -349,5 +350,44 @@ describe("PunchlinePublishReviewContent", () => {
       <PunchlinePublishReviewContent drop={withBonus} />,
     );
     expect(html).toContain("unlock your set bonus");
+  });
+});
+
+describe("maskSensitiveLyric (display-only masking)", () => {
+  it("masks the weighted word in all common variants, keeping first/last letters", () => {
+    expect(maskSensitiveLyric("you don't want none, nigga better run")).toBe(
+      "you don't want none, n***a better run",
+    );
+    expect(maskSensitiveLyric("Nigga, please")).toBe("N***a, please");
+    expect(maskSensitiveLyric("my niggas")).toBe("my n****s");
+    expect(maskSensitiveLyric("NIGGER")).toBe("N****R");
+  });
+
+  it("respects word boundaries — no false positives inside other words", () => {
+    expect(maskSensitiveLyric("Niger river sniggering")).toBe(
+      "Niger river sniggering",
+    );
+  });
+
+  it("is idempotent and leaves clean text untouched", () => {
+    const clean = "Fresh like, uh, Impala, uh Chrome hydraulics";
+    expect(maskSensitiveLyric(clean)).toBe(clean);
+    const once = maskSensitiveLyric("nigga");
+    expect(maskSensitiveLyric(once)).toBe(once);
+  });
+
+  it("the collectible card renders the masked lyric, never the raw word", () => {
+    const html = renderToStaticMarkup(
+      <PunchlineCollectibleCard
+        title="Hook"
+        lyricText="You don't want none, nigga better run"
+        durationMs={9900}
+        editionSize={100}
+        priceCents={200}
+        rightsLabel="NON_COMMERCIAL_COLLECTIBLE"
+      />,
+    );
+    expect(html).not.toContain("nigga");
+    expect(html).toContain("n***a");
   });
 });

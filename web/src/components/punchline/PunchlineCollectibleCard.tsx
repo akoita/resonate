@@ -1,7 +1,7 @@
 import React from "react";
 import "../../styles/punchline.css";
 import { formatClipDuration } from "./PunchlineClipSelector";
-import { formatEditionLabel, formatPriceCents } from "./punchlineDropHelpers";
+import { formatEditionLabel, formatPriceCents, maskSensitiveLyric } from "./punchlineDropHelpers";
 
 /**
  * Deterministic hue (0-359) from a seed string, so every moment gets its own
@@ -62,7 +62,9 @@ export function PunchlineCollectibleCard({
   playing,
 }: PunchlineCollectibleCardProps) {
   const displayTitle = title.trim() || "Untitled moment";
-  const displayLyric = lyricText.trim();
+  // Display-only masking of socially-weighted words: the stored lyric is never
+  // mutated — the card just doesn't broadcast them on discovery surfaces.
+  const displayLyric = maskSensitiveLyric(lyricText.trim());
   const hue = hueFromSeed(displayTitle + lyricText);
 
   return (
