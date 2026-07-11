@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -117,6 +117,7 @@ export default function Home() {
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
   const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
+  const [recommendationRequestId, setRecommendationRequestId] = useState<string | null>(null);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
@@ -246,7 +247,21 @@ export default function Home() {
     let cancelled = false;
     getSongRecommendations(userId, token, 6, recommendationPreferencesForFilter(activeFilterConfig))
       .then((result) => {
-        if (!cancelled) setSongRecommendations(result.items ?? []);
+        if (cancelled) return;
+        setSongRecommendations(result.items ?? []);
+        setRecommendationRequestId(result.requestId ?? null);
+        // #1449 WS-2: Home ranking impression — which ranked items were shown.
+        if (result.items?.length) {
+          void recordProductAnalytics(token, "recommendation.served", {
+            payload: {
+              requestId: result.requestId ?? null,
+              railId: "home_recommendations",
+              trackIds: result.items.map((item) => item.id),
+              count: result.items.length,
+              source: "home",
+            },
+          });
+        }
       })
       .catch(() => {
         if (!cancelled) setSongRecommendations([]);
@@ -346,6 +361,19 @@ export default function Home() {
     () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
     [songRecommendations, displayReleases],
   );
+  // #1449 WS-2: a served recommendation was acted on (open or play).
+  const emitRecommendationClick = useCallback((trackId: string | undefined, position: number) => {
+    if (!trackId) return;
+    void recordProductAnalytics(token, "recommendation.clicked", {
+      payload: {
+        requestId: recommendationRequestId,
+        railId: "home_recommendations",
+        trackId,
+        position,
+        source: "home",
+      },
+    });
+  }, [token, recommendationRequestId]);
   // Distinct cohort labels actually influencing the picks on screen (honest signal —
   // reflects matched tracks, not just consented cohorts available in the response).
   const cohortLabels = useMemo(() => {
@@ -736,7 +764,7 @@ export default function Home() {
               </Link>
             </header>
             <div className="ng-recommendation-grid">
-              {recommendedForYou.map((item) => {
+              {recommendedForYou.map((item, recommendationIndex) => {
                 const seedKey = item.trackId || item.releaseId || item.key;
                 return (
                   <article key={item.key} className="ng-recommendation-card ng-glass">
@@ -744,6 +772,7 @@ export default function Home() {
                       href={item.releaseId ? `/release/${item.releaseId}` : "/agent"}
                       className="ng-recommendation-card__art"
                       aria-label={`Open ${item.title}`}
+                      onClick={() => emitRecommendationClick(item.trackId, recommendationIndex)}
                     >
                       {item.release?.artworkUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -767,7 +796,10 @@ export default function Home() {
                       <button
                         type="button"
                         className="ng-recommendation-card__action"
-                        onClick={() => void handleStartRecommendedSession(item)}
+                        onClick={() => {
+                          emitRecommendationClick(item.trackId, recommendationIndex);
+                          void handleStartRecommendedSession(item);
+                        }}
                         disabled={startingSeed === seedKey}
                       >
                         <span className="ms-icon" data-fill="1" aria-hidden>

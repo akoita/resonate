@@ -872,7 +872,8 @@ export async function recordPlaybackCompleted(
 }
 
 export type PlaybackLifecycleAnalyticsInput = {
-  action: "started" | "heartbeat";
+  reason?: string;
+  action: "started" | "heartbeat" | "skipped";
   trackId: string;
   artistId?: string;
   releaseId?: string;
@@ -2455,6 +2456,8 @@ export type SongRecommendationItem = {
 
 export type SongRecommendationsResponse = {
   userId: string;
+  /** #1449: correlates recommendation.served / .clicked impressions. */
+  requestId?: string;
   preferences: {
     mood?: string;
     energy?: "low" | "medium" | "high";

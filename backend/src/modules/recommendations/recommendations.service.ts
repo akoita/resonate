@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
@@ -405,6 +406,8 @@ export class RecommendationsService {
 
     return {
       userId,
+      /** #1449: correlates recommendation.served / .clicked impressions. */
+      requestId: randomUUID(),
       preferences: prefs,
       cohortContext: cohortContextSummary(cohortContext),
       items: selected.map(({ entry, source, reasons }) => ({

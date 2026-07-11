@@ -467,6 +467,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         action: PlaybackLifecycleAction,
         trackOverride?: LocalTrack | null,
         currentTimeOverride?: number,
+        reason?: string,
     ) => {
         const token = authTokenRef.current;
         const playbackInstanceId = playbackInstanceIdRef.current;
@@ -484,6 +485,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             currentTimeSeconds: currentTimeOverride ?? audio?.currentTime ?? 0,
             durationSeconds: audio?.duration,
             heartbeatIntervalSeconds: action === "heartbeat" ? PLAYBACK_HEARTBEAT_SECONDS : undefined,
+            reason,
             queueIndex: currentIndexRef.current >= 0 ? currentIndexRef.current : undefined,
             queueLength: queueRef.current.length || undefined,
             repeatMode: repeatModeRef.current,
@@ -733,6 +735,22 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         if (q.length === 0) return;
 
+        // #1449 WS-2: a user-invoked "next" before the track is (nearly) done
+        // is a DELIBERATE skip — a distinct negative signal, not a short
+        // listen. The natural-end auto-advance path never hits this branch
+        // because there currentTime ≈ duration.
+        const audio = audioRef.current;
+        const activeTrack = q[idx] ?? null;
+        if (
+            activeTrack &&
+            audio &&
+            Number.isFinite(audio.duration) &&
+            audio.duration > 0 &&
+            audio.currentTime / audio.duration < 0.97
+        ) {
+            recordPlaybackLifecycleEvent("skipped", activeTrack, audio.currentTime, "next_clicked");
+        }
+
         if (isShuffle) {
             const nextIdx = Math.floor(Math.random() * q.length);
             void playQueue(q, nextIdx);
@@ -746,7 +764,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         } else {
             setIsPlaying(false);
         }
-    }, [playQueue]);
+    }, [playQueue, recordPlaybackLifecycleEvent]);
 
     const prevTrack = useCallback(() => {
         const q = queueRef.current;
