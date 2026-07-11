@@ -19,7 +19,9 @@ import {
   formatEditionsRemaining,
   momentCollectState,
   resolveClipUrl,
+  summarizeCollectableDrops,
   type MomentCollectState,
+  type PunchlineCollectSummary,
 } from "./punchlineCollectHelpers";
 import "../../styles/punchline.css";
 
@@ -39,15 +41,25 @@ import "../../styles/punchline.css";
 
 export interface PunchlineCollectModuleProps {
   tracks: Track[];
+  /**
+   * Reports the release-level drop/moment counts once loaded, so the page can
+   * render above-the-fold discovery affordances (hero CTA, overview-strip
+   * cell) without duplicating the fetch.
+   */
+  onSummary?: (summary: PunchlineCollectSummary) => void;
 }
 
 type DropsByTrack = Map<string, PunchlineDrop[]>;
 
-export function PunchlineCollectModule({ tracks }: PunchlineCollectModuleProps) {
+export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectModuleProps) {
   const { token, login } = useAuth();
   const { addToast } = useToast();
 
   const [dropsByTrack, setDropsByTrack] = useState<DropsByTrack | null>(null);
+  const onSummaryRef = useRef(onSummary);
+  useEffect(() => {
+    onSummaryRef.current = onSummary;
+  }, [onSummary]);
   const [ownedMomentIds, setOwnedMomentIds] = useState<ReadonlySet<string>>(
     new Set(),
   );
@@ -74,7 +86,9 @@ export function PunchlineCollectModule({ tracks }: PunchlineCollectModuleProps) 
         }),
       );
       if (!cancelled) {
-        setDropsByTrack(new Map(entries));
+        const next = new Map(entries);
+        setDropsByTrack(next);
+        onSummaryRef.current?.(summarizeCollectableDrops(next));
       }
     })();
     return () => {
@@ -230,7 +244,10 @@ export function PunchlineCollectModule({ tracks }: PunchlineCollectModuleProps) 
   const signedIn = !!token;
 
   return (
-    <section className="punchline-collect-module glass-panel">
+    <section
+      id="punchline-collect-module"
+      className="punchline-collect-module glass-panel"
+    >
       <div className="punchline-collect-header">
         <div>
           <h3>Collect moments</h3>

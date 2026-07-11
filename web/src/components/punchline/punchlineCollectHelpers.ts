@@ -123,3 +123,52 @@ export function describeCollectError(error: unknown): {
     becameState: null,
   };
 }
+
+/** Release-level summary the hero/strip discovery affordances render (#490 UX). */
+export type PunchlineCollectSummary = {
+  dropCount: number;
+  momentCount: number;
+};
+
+/** Aggregate the fetched per-track drops into the release-level summary. */
+export function summarizeCollectableDrops(
+  dropsByTrack: ReadonlyMap<string, PunchlineDrop[]>,
+): PunchlineCollectSummary {
+  let dropCount = 0;
+  let momentCount = 0;
+  for (const drops of dropsByTrack.values()) {
+    for (const drop of drops) {
+      dropCount += 1;
+      momentCount += drop.moments.length;
+    }
+  }
+  return { dropCount, momentCount };
+}
+
+/** "3 moments" / "1 moment" — the DROPS overview-strip cell value. */
+export function formatCollectSummaryValue(
+  summary: PunchlineCollectSummary,
+): string {
+  return `${summary.momentCount} ${summary.momentCount === 1 ? "moment" : "moments"}`;
+}
+
+/**
+ * Smooth-scroll to a page section and pulse a highlight ring on it so the eye
+ * lands where the click meant to go. The class is removed after the animation
+ * so repeat clicks pulse again.
+ */
+export function scrollToPunchlineSection(sectionId: string): void {
+  const el = document.getElementById(sectionId);
+  if (!el) {
+    return;
+  }
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+  el.classList.remove("punchline-anchor-highlight");
+  // Force a reflow so re-adding the class restarts the CSS animation.
+  void (el as HTMLElement).offsetWidth;
+  el.classList.add("punchline-anchor-highlight");
+  window.setTimeout(
+    () => el.classList.remove("punchline-anchor-highlight"),
+    2100,
+  );
+}

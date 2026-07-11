@@ -5,9 +5,11 @@ import {
   collectableDrops,
   describeCollectError,
   dropSetProgress,
+  formatCollectSummaryValue,
   formatEditionsRemaining,
   momentCollectState,
   resolveClipUrl,
+  summarizeCollectableDrops,
 } from "./punchlineCollectHelpers";
 import { CollectButton } from "./PunchlineCollectModule";
 import { API_BASE, type PunchlineDrop, type PunchlineMoment } from "../../lib/api";
@@ -176,5 +178,32 @@ describe("CollectButton states", () => {
     const paid = render("paid_pending");
     expect(paid).toContain("Coming soon");
     expect(paid).toContain("aria-disabled");
+  });
+});
+
+describe("collect summary (above-the-fold discovery)", () => {
+  it("aggregates drops and moments across tracks", () => {
+    const byTrack = new Map([
+      ["t1", [drop({ moments: [moment({ id: "a" }), moment({ id: "b" })] })]],
+      ["t2", [drop({ id: "d2", moments: [moment({ id: "c" })] })]],
+      ["t3", []],
+    ]);
+    expect(summarizeCollectableDrops(byTrack)).toEqual({
+      dropCount: 2,
+      momentCount: 3,
+    });
+    expect(summarizeCollectableDrops(new Map())).toEqual({
+      dropCount: 0,
+      momentCount: 0,
+    });
+  });
+
+  it("formats the strip cell value with singular/plural", () => {
+    expect(formatCollectSummaryValue({ dropCount: 1, momentCount: 1 })).toBe(
+      "1 moment",
+    );
+    expect(formatCollectSummaryValue({ dropCount: 2, momentCount: 3 })).toBe(
+      "3 moments",
+    );
   });
 });

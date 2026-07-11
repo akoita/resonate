@@ -167,6 +167,7 @@ export function PunchlineDropsPanel({
 
   return (
     <section
+      id="punchline-drops-panel"
       className="punchline-panel glass-panel"
       data-release-id={releaseId}
     >

@@ -1101,6 +1101,31 @@
   white-space: nowrap;
 }
 
+
+/* Anchor highlight pulse — played once when a hero/strip affordance jumps to a
+   punchline section, so the eye lands where the click meant to go. */
+@keyframes punchline-anchor-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 14px rgba(139, 92, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+.punchline-anchor-highlight {
+  animation: punchline-anchor-pulse 2s ease-out 1;
+  scroll-margin-top: 84px;
+}
+
+#punchline-collect-module,
+#punchline-drops-panel {
+  scroll-margin-top: 84px;
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */
