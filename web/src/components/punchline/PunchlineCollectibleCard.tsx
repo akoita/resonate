@@ -33,6 +33,8 @@ export interface PunchlineCollectibleCardProps {
   rightsLabel: string;
   /** Shown on published cards. */
   collectedCount?: number;
+  /** Animates the waveform ribbon while this moment's clip is playing. */
+  playing?: boolean;
 }
 
 export function PunchlineCollectibleCard({
@@ -44,6 +46,7 @@ export function PunchlineCollectibleCard({
   priceCents,
   rightsLabel,
   collectedCount,
+  playing,
 }: PunchlineCollectibleCardProps) {
   const displayTitle = title.trim() || "Untitled moment";
   const displayLyric = lyricText.trim();
@@ -73,20 +76,34 @@ export function PunchlineCollectibleCard({
             </span>
           </div>
         )}
+        <span className="punchline-card-serial" aria-hidden="true">
+          № 1–{editionSize}
+        </span>
         <span className="punchline-card-duration">
           {formatClipDuration(Math.max(0, durationMs))}
+        </span>
+        <span className="punchline-card-holo" aria-hidden="true" />
+        <span
+          className={`punchline-card-wave ${playing ? "is-playing" : ""}`}
+          aria-hidden="true"
+        >
+          {Array.from({ length: 14 }, (_, i) => (
+            <i key={i} />
+          ))}
         </span>
       </div>
 
       <div className="punchline-card-body">
         <h5 className="punchline-card-title">{displayTitle}</h5>
-        {displayLyric ? (
-          <p className="punchline-card-lyric">“{displayLyric}”</p>
-        ) : (
+        {artworkUrl ? (
+          displayLyric ? (
+            <p className="punchline-card-lyric">“{displayLyric}”</p>
+          ) : null
+        ) : !displayLyric ? (
           <p className="punchline-card-lyric is-placeholder">
             Add the lyric to bring this moment to life.
           </p>
-        )}
+        ) : null}
 
         <div className="punchline-card-meta">
           <span className="punchline-card-edition">
