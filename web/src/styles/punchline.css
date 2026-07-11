@@ -989,6 +989,118 @@
   cursor: not-allowed;
 }
 
+
+/* ==========================================
+   Fan collect module (#486) — release page
+   ========================================== */
+
+.punchline-collect-module {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 1.5rem);
+}
+
+.punchline-collect-header h3 {
+  margin: 0 0 0.25rem;
+}
+
+.punchline-collect-subtitle {
+  margin: 0;
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+  font-size: 0.9rem;
+}
+
+.punchline-collect-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-collect-track-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.punchline-collect-drop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-collect-drop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-collect-drop-title {
+  margin: 0 0 0.15rem;
+  font-size: 0.95rem;
+}
+
+.punchline-collect-drop-note {
+  margin: 0;
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+  font-size: 0.85rem;
+}
+
+.punchline-collect-progress {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--r-chrome-border);
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+  white-space: nowrap;
+}
+
+.punchline-collect-progress.is-complete {
+  color: var(--r-accent, #8b5cf6);
+  border-color: currentColor;
+}
+
+.punchline-collect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-collect-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.punchline-collect-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.punchline-collect-remaining {
+  font-size: 0.8rem;
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+}
+
+.punchline-collect-remaining.is-sold-out {
+  color: var(--r-danger, #f87171);
+}
+
+.punchline-collect-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.punchline-collect-owned {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--r-accent, #8b5cf6);
+  white-space: nowrap;
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */
@@ -1016,5 +1128,13 @@
 
   .punchline-moment-row-meta {
     align-items: flex-start;
+  }
+
+  .punchline-collect-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .punchline-collect-drop-head {
+    flex-direction: column;
   }
 }

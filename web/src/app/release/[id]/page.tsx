@@ -44,6 +44,7 @@ import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { PunchlineDropsPanel } from "../../../components/punchline/PunchlineDropsPanel";
+import { PunchlineCollectModule } from "../../../components/punchline/PunchlineCollectModule";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
@@ -2133,6 +2134,12 @@ export default function ReleaseDetails() {
           </table>
         </div>
       </section>
+
+      {/* Collect moments — fan-facing Punchline module (#486). Renders only
+          when a track has published drops; visible to every visitor. */}
+      {release.tracks && release.tracks.length > 0 && (
+        <PunchlineCollectModule tracks={release.tracks} />
+      )}
 
       {/* NFT Marketplace Section - Only for owners */}
       {

@@ -1991,6 +1991,79 @@ export async function listTrackPunchlineDrops(trackId: string) {
   );
 }
 
+/** Result of collecting one edition of a published moment (#485). */
+export type PunchlineCollectResult = {
+  collectible: {
+    id: string;
+    momentId: string;
+    dropId: string;
+    editionNumber: number;
+    editionSize: number;
+    status: string;
+    paymentRail: string;
+    pricePaidCents: number;
+    acquiredAt: string | null;
+  };
+  /** True when this collect completed the drop's full set (#488 hook). */
+  setCompleted: boolean;
+  rightsSummary: string;
+};
+
+/** One owned collectible with its moment/drop/track context (#485/#487). */
+export type PunchlineCollectibleItem = {
+  id: string;
+  editionNumber: number;
+  editionSize: number;
+  acquiredAt: string | null;
+  paymentRail: string;
+  pricePaidCents: number;
+  moment: {
+    id: string;
+    title: string;
+    lyricText: string;
+    artworkUrl: string | null;
+    startMs: number;
+    endMs: number;
+    clipAssetUri: string | null;
+    rightsLabel: string;
+  };
+  drop: {
+    id: string;
+    title: string | null;
+    trackId: string;
+    trackTitle: string | null;
+    artistId: string;
+    artistName: string | null;
+  };
+};
+
+/**
+ * Collect one edition of a published moment. Free moments grant immediately;
+ * paid moments currently return the `payment_rail_pending` denial (#1462).
+ */
+export async function collectPunchlineMoment(
+  momentId: string,
+  token: string,
+  collectorWallet?: string | null,
+) {
+  return apiRequest<PunchlineCollectResult>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect`,
+    {
+      method: "POST",
+      body: JSON.stringify({ collectorWallet: collectorWallet ?? null }),
+    },
+    token,
+  );
+}
+
+/** The caller's owned collectibles — the inventory read (#485/#487). */
+export async function listMyPunchlineCollectibles(token: string) {
+  return apiRequest<{
+    items: PunchlineCollectibleItem[];
+    meta: { count: number };
+  }>(`/punchline/me/collectibles`, {}, token);
+}
+
 export async function submitReleaseRightsUpgradeRequest(
   releaseId: string,
   input: {
