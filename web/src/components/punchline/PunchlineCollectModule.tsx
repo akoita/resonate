@@ -378,6 +378,18 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                           priceCents={moment.priceCents}
                           rightsLabel={moment.rightsLabel}
                         />
+                        <div className="punchline-scarcity">
+                          <div
+                            className="punchline-scarcity-fill"
+                            style={{
+                              width: `${Math.min(
+                                100,
+                                (collectedCount / Math.max(1, moment.editionSize)) * 100,
+                              )}%`,
+                            }}
+                            aria-hidden="true"
+                          />
+                        </div>
                         <div className="punchline-collect-item-footer">
                           <span
                             className={`punchline-collect-remaining ${
