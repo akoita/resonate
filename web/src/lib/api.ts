@@ -2032,8 +2032,11 @@ export type PunchlineCollectibleItem = {
     title: string | null;
     trackId: string;
     trackTitle: string | null;
+    releaseId: string | null;
     artistId: string;
     artistName: string | null;
+    /** Total moments in the drop — drives "you own N of M" set progress. */
+    momentCount: number;
   };
 };
 

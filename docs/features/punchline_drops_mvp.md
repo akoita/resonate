@@ -12,8 +12,7 @@ depends_on:
 
 > **Status:** `in-progress`. The backend (Sprint 7, #479–#482, #485) and the
 > artist UI (#483–#484) are shipped — an artist can build + publish a drop and
-> fans can discover, play, and collect free moments right on release pages (#486). The inventory UI (#487),
-> paid collects (#1462), unlock rewards (#488), and analytics (#489) are still
+> fans can discover, play, and collect free moments right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collects (#1462), unlock rewards (#488), and analytics (#489) are still
 > pending. The [Implementation Status](#implementation-status-sprint-7) section
 > below is the practical, current-state reference for what works today and how
 > to exercise it. The rest of this page is the product design/RFC intent that
@@ -36,7 +35,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | ✅ done | Full drop builder on the release page: create/resume a draft, moment editor (clip range + title/lyric/artwork/edition/price) with a live collectible-card preview, publish behind a review dialog with the verbatim non-commercial rights warning. Owner draft resume via `GET /punchline/me/track-drops`. |
 | Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done (free_claim rail) | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Paid collects return `payment_rail_pending` until the x402 rail generalizes beyond stems ([#1462](https://github.com/akoita/resonate/issues/1462)). |
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA (free moments collect end-to-end; paid show an honest "Coming soon" until [#1462](https://github.com/akoita/resonate/issues/1462); signed-out visitors get a working sign-in CTA). |
-| Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | 🔜 planned | Owned moments on the collector profile. |
+| Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | ✅ done | "🎤 Moments" tab in the Library: owned moments grouped by drop with set progress ("you own N of M" / "Set complete"), edition number, acquisition date, clip playback, and a link back to the release. Deep-linkable via `/library?tab=moments`. |
 | Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | 🔜 planned | Collect every moment in a drop to earn a bonus reward. |
 | Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | 🔜 planned | Product analytics events + artist performance metrics. |
 
@@ -161,6 +160,8 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   `PunchlinePublishReviewDialog.tsx` (publish review + rights warning),
   `PunchlineClipSelector.tsx` (reusable clip selector + preview),
   `punchlineDropHelpers.ts` (pure validation/price/view helpers),
+  `PunchlineCollectModule.tsx` + `punchlineCollectHelpers.ts` (#486 fan module),
+  `PunchlineInventory.tsx` (#487 Library Moments tab),
   `web/src/styles/punchline.css`; punchline API client in `web/src/lib/api.ts`;
   wired into `web/src/app/release/[id]/page.tsx`. User Guide article
   `punchline-drops` in `web/src/lib/help/content.ts`.

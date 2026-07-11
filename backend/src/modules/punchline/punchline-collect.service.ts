@@ -186,8 +186,11 @@ export class PunchlineCollectService {
                 artistId: true,
                 title: true,
                 status: true,
-                track: { select: { title: true } },
+                track: { select: { title: true, releaseId: true } },
                 artist: { select: { displayName: true } },
+                // Total moments in the drop — the inventory renders set
+                // progress ("you own N of M") without a second query.
+                _count: { select: { moments: true } },
               },
             },
           },
@@ -218,8 +221,10 @@ export class PunchlineCollectService {
           title: row.moment.drop.title,
           trackId: row.moment.drop.trackId,
           trackTitle: row.moment.drop.track?.title ?? null,
+          releaseId: row.moment.drop.track?.releaseId ?? null,
           artistId: row.moment.drop.artistId,
           artistName: row.moment.drop.artist?.displayName ?? null,
+          momentCount: row.moment.drop._count?.moments ?? 0,
         },
       })),
       meta: { count: rows.length },

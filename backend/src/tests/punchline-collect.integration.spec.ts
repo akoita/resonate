@@ -196,6 +196,8 @@ describe("Punchline collect + ownership grant (integration)", () => {
     expect(inventory.items.map((i) => i.moment.id)).toContain(MOMENT_FREE);
     const item = inventory.items.find((i) => i.moment.id === MOMENT_FREE)!;
     expect(item.drop.trackTitle).toBe("Collect Track");
+    expect(item.drop.releaseId).toBe(RELEASE_ID);
+    expect(item.drop.momentCount).toBe(3);
     expect(item.editionSize).toBe(100);
 
     const collected = events.find(
