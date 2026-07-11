@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { RedisCacheService } from "../shared/redis_cache.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
  * True Trending & Top Artists serving (#1451 WS-4), on the #1450 WS-3
@@ -160,13 +161,23 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       (acc) => acc.listeners.size >= threshold,
     );
 
-    // Resolve genre + artist for qualifying tracks in one query.
+    // Resolve genre + CREDITED artist for qualifying tracks in one query. The
+    // rollup key is the credited artist name (#1492), not the uploader/manager
+    // account id, so the Home "Top Artists" rail ranks the real artist.
     const tracks = qualifying.length
       ? await prisma.track.findMany({
           where: { id: { in: qualifying.map((acc) => acc.trackId) } },
           select: {
             id: true,
-            release: { select: { genre: true, artistId: true } },
+            artist: true,
+            release: {
+              select: {
+                genre: true,
+                artistId: true,
+                primaryArtist: true,
+                artist: { select: { id: true, displayName: true } },
+              },
+            },
           },
         })
       : [];
@@ -207,7 +218,15 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       trackRows.push({ ...row, genre: "" });
       if (genre) trackRows.push({ ...row, genre });
 
-      const artistId = meta.release.artistId;
+      // Interim identity key (#1492 Phase A): roll up by CREDITED artist name,
+      // not the uploader/manager account id. Two different accounts crediting
+      // the same artist name collapse into one chart entry — which is correct.
+      const artistId =
+        resolveCreditedArtistName({
+          trackArtist: meta.artist,
+          primaryArtist: meta.release.primaryArtist,
+          accountDisplayName: meta.release.artist?.displayName,
+        }) ?? meta.release.artistId;
       const artist =
         byArtist.get(artistId) ??
         ({
@@ -235,6 +254,10 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       byArtist.set(artistId, artist);
     }
 
+    // NOTE (#1492 Phase A): `ArtistEngagement.artistId` holds the interim
+    // identity key — the CREDITED artist display name, not an account id. Phase B
+    // replaces it with a stable credited-artist id; #1450's warehouse marts MUST
+    // adopt the same key so the serving contract stays consistent.
     const artistRows: {
       artistId: string;
       window: string;
@@ -323,6 +346,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
                 artworkUrl: true,
                 artworkMimeType: true,
                 artistId: true,
+                primaryArtist: true,
                 artist: { select: { id: true, displayName: true } },
               },
             },
@@ -342,10 +366,12 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             rank: index + 1,
             trackId: row.trackId,
             title: track.title,
-            artist:
-              track.artist ||
-              track.release.artist?.displayName ||
-              null,
+            // Credited artist (#1492), not the uploader/manager account label.
+            artist: resolveCreditedArtistName({
+              trackArtist: track.artist,
+              primaryArtist: track.release.primaryArtist,
+              accountDisplayName: track.release.artist?.displayName,
+            }),
             artistId: track.release.artistId,
             releaseId: track.release.id,
             releaseTitle: track.release.title,
@@ -382,33 +408,38 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       orderBy: { score: "desc" },
       take: limit,
     });
-    const artists = rows.length
+    // `row.artistId` is now the credited artist NAME (#1492 Phase A interim key).
+    // Hydrate an account only when its displayName equals the credited name
+    // (claimed/self-managed artists) — that gives us a profile link + image.
+    // Otherwise the credited artist has no matching account, so `artistId` is
+    // null and the UI links to the catalog artist route.
+    const names = rows.map((row) => row.artistId);
+    const accounts = names.length
       ? await prisma.artist.findMany({
-          where: { id: { in: rows.map((row) => row.artistId) } },
+          where: { displayName: { in: names } },
           select: { id: true, displayName: true, imageUrl: true },
         })
       : [];
-    const artistById = new Map(artists.map((artist) => [artist.id, artist]));
+    const accountByName = new Map(
+      accounts.map((account) => [account.displayName, account]),
+    );
     const result = {
       window,
       genre: genre || null,
       minimumAudience: minAudience(),
-      items: rows
-        .map((row, index) => {
-          const artist = artistById.get(row.artistId);
-          if (!artist) return null;
-          return {
-            rank: index + 1,
-            artistId: row.artistId,
-            name: artist.displayName,
-            imageUrl: artist.imageUrl ?? null,
-            score: row.score,
-            plays: row.plays,
-            uniqueListeners: row.uniqueListeners,
-            saves: row.saves,
-          };
-        })
-        .filter(Boolean),
+      items: rows.map((row, index) => {
+        const account = accountByName.get(row.artistId) ?? null;
+        return {
+          rank: index + 1,
+          name: row.artistId,
+          artistId: account?.id ?? null,
+          imageUrl: account?.imageUrl ?? null,
+          score: row.score,
+          plays: row.plays,
+          uniqueListeners: row.uniqueListeners,
+          saves: row.saves,
+        };
+      }),
     };
     await this.redisCache?.setJson(cacheKey, result, CACHE_TTL_SECONDS);
     return result;

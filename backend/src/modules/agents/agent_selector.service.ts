@@ -10,6 +10,7 @@ import {
   TasteMemoryPolicy,
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 export interface AgentSelectorInput {
   userId?: string;
@@ -163,7 +164,15 @@ export class AgentSelectorService {
           genre: track.release?.genre ?? null,
           title: track.release?.title ?? null,
           moods: track.release?.moods ?? null,
-          artistDisplayName: track.release?.artist?.displayName ?? null,
+          // Credited artist (#1492), not the uploader/manager account label.
+          // catalog.search does not include release.primaryArtist / release.artist,
+          // so in practice this resolves to the Track.artist scalar; the helper
+          // still applies the canonical order for whatever fields are present.
+          artistDisplayName: resolveCreditedArtistName({
+            trackArtist: track.artist ?? null,
+            primaryArtist: track.release?.primaryArtist ?? null,
+            accountDisplayName: track.release?.artist?.displayName ?? null,
+          }),
         },
         matchedQueries: track.matchedQueries ?? [],
       })),

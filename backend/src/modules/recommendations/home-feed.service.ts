@@ -3,6 +3,7 @@ import { Injectable, Optional } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
 import { RecommendationsService } from "./recommendations.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
  * Home feed v2 composition (#1454 WS-7).
@@ -225,8 +226,12 @@ export class HomeFeedService {
       tracks.map((track) => ({
         id: track.id,
         title: track.title,
-        artist:
-          track.artist || track.release.primaryArtist || track.release.artist?.displayName || null,
+        // Credited artist (#1492), not the uploader/manager account label.
+        artist: resolveCreditedArtistName({
+          trackArtist: track.artist,
+          primaryArtist: track.release.primaryArtist,
+          accountDisplayName: track.release.artist?.displayName,
+        }),
         artistId: track.release.artistId,
         releaseId: track.release.id,
         releaseTitle: track.release.title,
@@ -324,8 +329,12 @@ export class HomeFeedService {
         .map((track) => ({
           id: track.id,
           title: track.title,
-          artist:
-            track.artist || track.release.primaryArtist || track.release.artist?.displayName || null,
+          // Credited artist (#1492), not the uploader/manager account label.
+          artist: resolveCreditedArtistName({
+            trackArtist: track.artist,
+            primaryArtist: track.release.primaryArtist,
+            accountDisplayName: track.release.artist?.displayName,
+          }),
           artistId: track.release.artistId,
           releaseId: track.release.id,
           releaseTitle: track.release.title,

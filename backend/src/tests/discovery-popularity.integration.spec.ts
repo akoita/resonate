@@ -21,14 +21,24 @@ import { DiscoveryPopularityService } from "../modules/catalog/discovery-popular
 const TEST_PREFIX = `pop_${Date.now()}_`;
 const GENRE = `${TEST_PREFIX}hiphop`; // unique genre isolates rank assertions
 const QUIET_GENRE = `${TEST_PREFIX}jazz`; // below-threshold everywhere
+const CLAIMED_GENRE = `${TEST_PREFIX}pop`; // credited name == account displayName
 const USER_ID = `${TEST_PREFIX}owner`;
-const HOT_ARTIST = `${TEST_PREFIX}hot_artist`;
+const HOT_ARTIST = `${TEST_PREFIX}hot_artist`; // manager account; displayName "Hot Artist"
 const QUIET_ARTIST = `${TEST_PREFIX}quiet_artist`;
+const CLAIMED_ARTIST = `${TEST_PREFIX}claimed_artist`; // self-managed; displayName == credit
 const HOT_RELEASE = `${TEST_PREFIX}hot_release`;
 const QUIET_RELEASE = `${TEST_PREFIX}quiet_release`;
+const CLAIMED_RELEASE = `${TEST_PREFIX}claimed_release`;
+// Credited artist for HOT_RELEASE — DIFFERENT from the "Hot Artist" account
+// label (#1492). Prefixed so the ArtistEngagement rows keyed by this name are
+// isolated + cleaned up across parallel suites.
+const HOT_CREDITED = `${TEST_PREFIX}Hot Credited`;
+// Self-managed artist whose account displayName IS the credited name.
+const CLAIMED_NAME = `${TEST_PREFIX}Claimed Star`;
 const TRACK_A = `${TEST_PREFIX}track_a`; // 4 listeners, full completions
 const TRACK_B = `${TEST_PREFIX}track_b`; // 3 listeners + a playlist save
 const TRACK_C = `${TEST_PREFIX}track_c`; // 2 listeners — below threshold
+const TRACK_D = `${TEST_PREFIX}track_d`; // 3 listeners — claimed artist, no primaryArtist
 
 let eventSeq = 0;
 async function seedEvent(
@@ -70,6 +80,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     await prisma.artist.create({
       data: { id: QUIET_ARTIST, displayName: "Quiet Artist" },
     });
+    await prisma.artist.create({
+      data: { id: CLAIMED_ARTIST, displayName: CLAIMED_NAME },
+    });
     await prisma.release.create({
       data: {
         id: HOT_RELEASE,
@@ -77,6 +90,8 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         title: "Hot Release",
         status: "ready",
         genre: GENRE,
+        // Credited artist differs from the "Hot Artist" account label (#1492).
+        primaryArtist: HOT_CREDITED,
       },
     });
     await prisma.release.create({
@@ -88,11 +103,23 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         genre: QUIET_GENRE,
       },
     });
+    await prisma.release.create({
+      data: {
+        id: CLAIMED_RELEASE,
+        artistId: CLAIMED_ARTIST,
+        title: "Claimed Release",
+        status: "ready",
+        genre: CLAIMED_GENRE,
+        // No primaryArtist: the credited name falls back to the account label,
+        // which for a claimed/self-managed artist is the artist's real name.
+      },
+    });
     await prisma.track.createMany({
       data: [
         { id: TRACK_A, releaseId: HOT_RELEASE, title: "Anthem", position: 1, explicit: false },
         { id: TRACK_B, releaseId: HOT_RELEASE, title: "Deep Cut", position: 2, explicit: false },
         { id: TRACK_C, releaseId: QUIET_RELEASE, title: "Quiet Tune", position: 1, explicit: false },
+        { id: TRACK_D, releaseId: CLAIMED_RELEASE, title: "Claimed Anthem", position: 1, explicit: false },
       ],
     });
 
@@ -112,6 +139,13 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     // TRACK_C: only 2 unique listeners — must stay below the threshold.
     for (const listener of ["l1", "l2"]) {
       await seedEvent("playback.completed", TRACK_C, `${TEST_PREFIX}${listener}`, {
+        completionRatio: 1,
+      });
+    }
+    // TRACK_D: 3 unique listeners — claimed artist above threshold; credited
+    // name falls back to the (self-managed) account displayName.
+    for (const listener of ["l1", "l2", "l3"]) {
+      await seedEvent("playback.completed", TRACK_D, `${TEST_PREFIX}${listener}`, {
         completionRatio: 1,
       });
     }
@@ -153,8 +187,10 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     const trackRows = await prisma.trackPopularity.findMany({
       where: { trackId: TRACK_C },
     });
+    // ArtistEngagement is now keyed by credited name (#1492); the quiet artist
+    // is below threshold in its own genre, so no rows exist for QUIET_GENRE.
     const artistRows = await prisma.artistEngagement.findMany({
-      where: { artistId: QUIET_ARTIST },
+      where: { genre: QUIET_GENRE },
     });
     expect(trackRows).toHaveLength(0);
     expect(artistRows).toHaveLength(0);
@@ -196,7 +232,10 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     expect(result.items).toHaveLength(0);
   });
 
-  it("getTopArtists rolls tracks up per artist with unioned listeners", async () => {
+  it("getTopArtists ranks the CREDITED artist, not the manager account (#1492)", async () => {
+    // ArtistEngagement is keyed by credited name; HOT_RELEASE credits
+    // HOT_CREDITED, NOT the "Hot Artist" account. No account has that
+    // displayName, so artistId is null and the UI links to the catalog route.
     const result = (await service.getTopArtists({
       window: "7d",
       genre: GENRE,
@@ -204,10 +243,27 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0]).toMatchObject({
       rank: 1,
-      artistId: HOT_ARTIST,
-      name: "Hot Artist",
+      name: HOT_CREDITED,
+      artistId: null,
       // 4 listeners on A ∪ 3 on B (same actor ids) = 4, not 7
       uniqueListeners: 4,
+    });
+  });
+
+  it("getTopArtists attaches the account when its displayName is the credited name", async () => {
+    // CLAIMED_RELEASE has no primaryArtist, so the credited name falls back to
+    // the self-managed account's displayName — which lets us hydrate a profile
+    // id + image for a real artist-account link.
+    const result = (await service.getTopArtists({
+      window: "7d",
+      genre: CLAIMED_GENRE,
+    })) as { items: any[] };
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      rank: 1,
+      name: CLAIMED_NAME,
+      artistId: CLAIMED_ARTIST,
+      uniqueListeners: 3,
     });
   });
 

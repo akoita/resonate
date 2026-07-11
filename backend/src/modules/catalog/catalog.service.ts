@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
 import { LicenseType, Prisma, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
@@ -16,6 +16,10 @@ import {
   getUploadRightsActions,
   type UploadRightsRoute,
 } from "../rights/upload-rights-policy";
+import {
+  normalizeCreditName,
+  resolveCreditedArtistName,
+} from "../shared/artist_attribution";
 
 const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "LIMITED_MONITORING",
@@ -23,7 +27,6 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "TRUSTED_FAST_PATH",
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
-const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
 // Mirrors AUTHORIZED_STATUSES in ../shows/shows.service.ts; keep local to avoid importing service internals.
 const PLEDGE_OPEN_ARTIST_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
@@ -85,10 +88,6 @@ function normalizeMoodTags(value?: string[] | null) {
   return Array.from(new Set(normalized)).slice(0, 8);
 }
 
-function normalizeCreditName(value?: string | null) {
-  return (value || "").trim().replace(/\s+/g, " ");
-}
-
 function splitFeaturedArtists(value?: string[] | string | null) {
   const entries = Array.isArray(value) ? value : (value || "").split(",");
   return entries.map(normalizeCreditName).filter(Boolean).slice(0, 20);
@@ -101,15 +100,16 @@ function publicArtistCreditName(
     artistCredits?: Array<{ role: string; displayName: string }> | null;
   },
 ) {
-  const mainCredits = (release.artistCredits || [])
-    .filter((credit) => MAIN_ARTIST_CREDIT_ROLES.has(credit.role.toLowerCase()))
-    .map((credit) => normalizeCreditName(credit.displayName))
-    .filter(Boolean);
-
-  return mainCredits.join(", ")
-    || normalizeCreditName(release.primaryArtist)
-    || normalizeCreditName(release.artist?.displayName)
-    || "Unknown Artist";
+  // Canonical credited-artist rule (#1492): delegate to the shared helper. This
+  // caller has no per-track `artist` scalar, so behavior is identical to before;
+  // the local "Unknown Artist" fallback stays here.
+  return (
+    resolveCreditedArtistName({
+      credits: release.artistCredits,
+      primaryArtist: release.primaryArtist,
+      accountDisplayName: release.artist?.displayName,
+    }) || "Unknown Artist"
+  );
 }
 
 function sanitizeRecommendationReasons(value?: string[] | null) {
@@ -1677,15 +1677,52 @@ export class CatalogService implements OnModuleInit {
 
   async updateRelease(
     releaseId: string,
+    userId: string,
     input: Partial<{
       title: string;
       status: string;
+      /** Post-hoc credited-artist correction (#1492). */
+      primaryArtist: string;
     }>,
   ) {
+    // Ownership check (same pattern as deleteRelease): only the release's
+    // managing artist account can update it.
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      include: { artist: { select: { userId: true } } },
+    });
+    if (!release) {
+      throw new NotFoundException("Release not found");
+    }
+    if (!sameUserId(release.artist?.userId, userId)) {
+      throw new ForbiddenException("Not authorized to update this release");
+    }
+
+    const data: { title?: string; status?: string; primaryArtist?: string } = {};
+    if (input.title !== undefined) data.title = input.title;
+    if (input.status !== undefined) data.status = input.status;
+    if (input.primaryArtist !== undefined) {
+      if (typeof input.primaryArtist !== "string") {
+        throw new BadRequestException("primaryArtist must be a string.");
+      }
+      const primaryArtist = normalizeCreditName(input.primaryArtist);
+      if (!primaryArtist) {
+        throw new BadRequestException(
+          "primaryArtist must be a non-empty string.",
+        );
+      }
+      if (primaryArtist.length > 200) {
+        throw new BadRequestException(
+          "primaryArtist must be at most 200 characters.",
+        );
+      }
+      data.primaryArtist = primaryArtist;
+    }
+
     this.clearCache();
     return prisma.release.update({
       where: { id: releaseId },
-      data: input,
+      data,
       include: { tracks: true },
     });
   }

@@ -13,6 +13,7 @@ import { PunchlineUnlockGrantedEvent } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
 import { resolvePunchlineClipBounds } from "./punchline-clip.config";
 import { PunchlineClipService } from "./punchline-clip.service";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
  * Complete-set unlock rewards (#488).
@@ -259,7 +260,16 @@ export class PunchlineUnlockService {
                 title: true,
                 trackId: true,
                 artistId: true,
-                track: { select: { title: true, releaseId: true } },
+                track: {
+                  select: {
+                    title: true,
+                    releaseId: true,
+                    // Credited-artist inputs (#1492): show the real artist, not
+                    // the uploader/manager account label.
+                    artist: true,
+                    release: { select: { primaryArtist: true } },
+                  },
+                },
                 artist: { select: { displayName: true } },
               },
             },
@@ -282,7 +292,11 @@ export class PunchlineUnlockService {
           trackTitle: row.unlock.drop.track?.title ?? null,
           releaseId: row.unlock.drop.track?.releaseId ?? null,
           artistId: row.unlock.drop.artistId,
-          artistName: row.unlock.drop.artist?.displayName ?? null,
+          artistName: resolveCreditedArtistName({
+            trackArtist: row.unlock.drop.track?.artist,
+            primaryArtist: row.unlock.drop.track?.release?.primaryArtist,
+            accountDisplayName: row.unlock.drop.artist?.displayName,
+          }),
         },
       })),
       meta: { count: rows.length },

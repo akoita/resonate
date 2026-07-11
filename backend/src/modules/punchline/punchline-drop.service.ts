@@ -25,6 +25,7 @@ import {
   PUNCHLINE_RIGHTS_SUMMARY,
   PUNCHLINE_SOURCE_STEM_TYPE,
 } from "./punchline-rights";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 
 /**
  * Draft + publish APIs for Punchline Drops (#482).
@@ -635,12 +636,12 @@ export class PunchlineDropService {
           releaseTitle: row.track.release.title,
           releaseHasArtwork: Boolean(row.track.release.artworkMimeType),
           // Credited/true artist, not the manager account behind the release
-          // (same precedence chain as recommendations home-feed.service.ts).
-          artistName:
-            row.track.artist ||
-            row.track.release.primaryArtist ||
-            row.track.release.artist?.displayName ||
-            null,
+          // (canonical rule shared everywhere, #1492).
+          artistName: resolveCreditedArtistName({
+            trackArtist: row.track.artist,
+            primaryArtist: row.track.release.primaryArtist,
+            accountDisplayName: row.track.release.artist?.displayName,
+          }),
         },
       })),
       meta: { count: selected.length, limit },

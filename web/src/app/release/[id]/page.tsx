@@ -9,6 +9,7 @@ import {
   type Track,
   getLatestReleaseRightsUpgradeRequest,
   type ReleaseRightsUpgradeRequestRecord,
+  updateRelease,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
@@ -400,6 +401,10 @@ export default function ReleaseDetails() {
   const [loading, setLoading] = useState(true);
   const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
+  // #1492: owner-only inline correction of the credited artist (primaryArtist).
+  const [isEditingCreditedArtist, setIsEditingCreditedArtist] = useState(false);
+  const [creditedArtistDraft, setCreditedArtistDraft] = useState("");
+  const [isSavingCreditedArtist, setIsSavingCreditedArtist] = useState(false);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
   const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
@@ -1311,6 +1316,42 @@ export default function ReleaseDetails() {
     }
   };
 
+  // #1492: owner-only post-hoc correction of the credited artist. Fixes
+  // releases whose primaryArtist was laundered from the manager account name
+  // at upload time.
+  const handleSaveCreditedArtist = async () => {
+    if (!release?.id || !token) return;
+    const name = creditedArtistDraft.trim();
+    if (!name) {
+      addToast({
+        type: "error",
+        title: "Credited artist required",
+        message: "Enter the artist this release is credited to.",
+      });
+      return;
+    }
+    setIsSavingCreditedArtist(true);
+    try {
+      await updateRelease(token, release.id, { primaryArtist: name });
+      setRelease(prev => (prev ? { ...prev, primaryArtist: name } : prev));
+      setIsEditingCreditedArtist(false);
+      addToast({
+        type: "success",
+        title: "Credited artist updated",
+        message: `This release is now credited to ${name}.`,
+      });
+    } catch (err) {
+      console.error("Credited artist update failed", err);
+      addToast({
+        type: "error",
+        title: "Update failed",
+        message: "Could not update the credited artist. Please try again.",
+      });
+    } finally {
+      setIsSavingCreditedArtist(false);
+    }
+  };
+
   if (loading) return <div className="loading-state">Initializing Studio...</div>;
   if (!release) return <div className="error-state">Release not found.</div>;
 
@@ -1396,8 +1437,53 @@ export default function ReleaseDetails() {
             {(() => {
               const displayedArtist =
                 release.primaryArtist || release.artist?.displayName || "Unknown Artist";
+              // #1492: owners can correct the credited artist inline — fixes
+              // releases whose credit was laundered from the account name.
+              if (isOwner && isEditingCreditedArtist) {
+                return (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="text"
+                      value={creditedArtistDraft}
+                      onChange={(e) => setCreditedArtistDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleSaveCreditedArtist();
+                        if (e.key === "Escape") setIsEditingCreditedArtist(false);
+                      }}
+                      placeholder="Credited artist — e.g. The Game"
+                      aria-label="Credited artist"
+                      autoFocus
+                      disabled={isSavingCreditedArtist}
+                      style={{
+                        background: "rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(255,255,255,0.25)",
+                        borderRadius: 8,
+                        color: "inherit",
+                        font: "inherit",
+                        padding: "4px 10px",
+                        minWidth: 220,
+                      }}
+                    />
+                    <Button
+                      onClick={() => void handleSaveCreditedArtist()}
+                      disabled={isSavingCreditedArtist}
+                      style={{ padding: "4px 14px", fontSize: 13 }}
+                    >
+                      {isSavingCreditedArtist ? "Saving..." : "Save"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setIsEditingCreditedArtist(false)}
+                      disabled={isSavingCreditedArtist}
+                      style={{ padding: "4px 14px", fontSize: 13 }}
+                    >
+                      Cancel
+                    </Button>
+                  </span>
+                );
+              }
               const href = artistCreditHref(displayedArtist, release);
-              return href ? (
+              const name = href ? (
                 <Link
                   href={href}
                   className="artist-name clickable"
@@ -1407,6 +1493,42 @@ export default function ReleaseDetails() {
                 </Link>
               ) : (
                 <span className="artist-name">{displayedArtist}</span>
+              );
+              return (
+                <>
+                  {name}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      aria-label="Edit credited artist"
+                      title="Edit the credited artist"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCreditedArtistDraft(release.primaryArtist || "");
+                        setIsEditingCreditedArtist(true);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        borderRadius: 999,
+                        color: "inherit",
+                        cursor: "pointer",
+                        width: 26,
+                        height: 26,
+                        marginLeft: 6,
+                        opacity: 0.8,
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  )}
+                </>
               );
             })()}
             <span className="dot" />

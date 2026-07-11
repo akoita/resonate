@@ -307,9 +307,11 @@ export class CatalogController {
   @Patch("releases/:releaseId")
   updateRelease(
     @Param("releaseId") releaseId: string,
-    @Body() body: { title?: string; status?: string },
+    @Body() body: { title?: string; status?: string; primaryArtist?: string },
+    @Request() req: any,
   ) {
-    return this.catalogService.updateRelease(releaseId, body);
+    // Owner-scoped: the service verifies release.artist.userId === userId.
+    return this.catalogService.updateRelease(releaseId, req.user.userId, body);
   }
 
   @UseGuards(AuthGuard("jwt"))

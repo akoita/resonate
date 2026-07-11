@@ -7,6 +7,7 @@
  * Run: npm run test:integration
  */
 
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { EventBus } from '../modules/shared/event_bus';
@@ -315,9 +316,60 @@ describe('CatalogService (integration)', () => {
       title: 'Before Update',
       tracks: [{ title: 'T', position: 1 }],
     });
-    const updated = await catalog.updateRelease(created.id, { title: 'After Update', status: 'published' });
+    const updated = await catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+      title: 'After Update',
+      status: 'published',
+    });
     expect(updated.title).toBe('After Update');
     expect(updated.status).toBe('published');
+  });
+
+  // #1492: owner-scoped post-hoc correction of the credited artist.
+  describe('updateRelease primaryArtist correction (#1492)', () => {
+    let releaseId: string;
+
+    beforeAll(async () => {
+      // A second user with no claim on the release — the non-owner caller.
+      await prisma.user.create({
+        data: { id: `${TEST_PREFIX}user2`, email: `${TEST_PREFIX}user2@test.resonate` },
+      });
+      const created = await catalog.createRelease({
+        userId: `${TEST_PREFIX}user`,
+        title: 'Miscredited Release',
+        tracks: [{ title: 'T', position: 1 }],
+      });
+      releaseId = created.id;
+    });
+
+    it('lets the owner correct the credited artist', async () => {
+      const updated = await catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, {
+        primaryArtist: '  The   Game ',
+      });
+      // Trimmed + whitespace-collapsed on write.
+      expect(updated.primaryArtist).toBe('The Game');
+    });
+
+    it('rejects a non-owner with Forbidden', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user2`, {
+          primaryArtist: 'Hijacked Credit',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects an empty credited artist with BadRequest', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, { primaryArtist: '   ' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects an over-long credited artist with BadRequest', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, {
+          primaryArtist: 'x'.repeat(201),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   it('preserves bucket-relative URIs when decrypting marketplace previews', async () => {

@@ -94,6 +94,24 @@ describe("TopArtistsRail", () => {
     expect(html).toContain("art_2");
   });
 
+  it("links a credited artist WITH a matching account to the profile route (#1492)", () => {
+    const html = renderToStaticMarkup(
+      <TopArtistsRail items={[artistItem({ artistId: "art_1", name: "Claimed Star" })]} />,
+    );
+    expect(html).toContain('href="/artist/art_1"');
+    expect(html).not.toContain("/catalog/artists/");
+  });
+
+  it("links a credited artist WITHOUT an account to the catalog artist route (#1492)", () => {
+    // artistId is null when the credited name has no matching account; the pill
+    // must still be a working link — to the catalog artist route by name.
+    const html = renderToStaticMarkup(
+      <TopArtistsRail items={[artistItem({ artistId: null, name: "Hot Credited" })]} />,
+    );
+    expect(html).toContain('href="/catalog/artists/Hot%20Credited"');
+    expect(html).not.toContain('href="/artist/');
+  });
+
   it("re-ranks per genre: a different ranking for the selected genre renders as served", () => {
     // The genre chip triggers a server-side re-rank; the rail renders whatever
     // ranking the endpoint returns for that genre, labeled accordingly.
