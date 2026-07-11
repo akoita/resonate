@@ -33,8 +33,16 @@ const mockCatalogService = {
   search: jest.fn().mockResolvedValue([]),
 };
 
+const mockDiscoveryPopularityService = {
+  getTrendingTracks: jest.fn().mockResolvedValue({ items: [] }),
+  getTopArtists: jest.fn().mockResolvedValue({ items: [] }),
+};
+
 function makeController() {
-  return new CatalogController(mockCatalogService as any);
+  return new CatalogController(
+    mockCatalogService as any,
+    mockDiscoveryPopularityService as any,
+  );
 }
 
 /** Minimal Express Response mock with chainable .status().set() */
@@ -219,6 +227,42 @@ describe('CatalogController', () => {
       const ctrl = makeController();
       await ctrl.listPublished('abc');
       expect(mockCatalogService.listPublished).toHaveBeenCalledWith(20, undefined);
+    });
+  });
+
+  // ===== trending / top-artists — query param handling (#1451) =====
+
+  describe('getTrending / getTopArtists — popularity params', () => {
+    it('passes parsed window/genre/limit to the popularity service', async () => {
+      const ctrl = makeController();
+      await ctrl.getTrending('24h', 'Hip Hop', '5');
+      expect(mockDiscoveryPopularityService.getTrendingTracks).toHaveBeenCalledWith({
+        window: '24h',
+        genre: 'Hip Hop',
+        limit: 5,
+      });
+      await ctrl.getTopArtists('30d', undefined, undefined);
+      expect(mockDiscoveryPopularityService.getTopArtists).toHaveBeenCalledWith({
+        window: '30d',
+        genre: undefined,
+        limit: undefined,
+      });
+    });
+
+    it('defaults window/limit when omitted and rejects unknown windows', async () => {
+      const ctrl = makeController();
+      await ctrl.getTrending(undefined, undefined, 'abc');
+      expect(mockDiscoveryPopularityService.getTrendingTracks).toHaveBeenCalledWith({
+        window: undefined,
+        genre: undefined,
+        limit: undefined,
+      });
+      expect(() => ctrl.getTrending('1y', undefined, undefined)).toThrow(
+        'window must be one of 24h, 7d, 30d',
+      );
+      expect(() => ctrl.getTopArtists('weekly', undefined, undefined)).toThrow(
+        'window must be one of 24h, 7d, 30d',
+      );
     });
   });
 

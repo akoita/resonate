@@ -2197,6 +2197,40 @@ model PunchlineUnlock {
 // preference/served-history Maps that were lost on restart and incoherent
 // across Cloud Run instances. One row per user; servedTrackIds is capped
 // app-side (most recent first).
+// Discovery popularity serving tables (#1450 WS-3 contract, filled today by
+// the interim local-facts refresher from #1451 WS-4; the warehouse mart
+// export replaces the FILLER, not these tables). genre "" = all genres.
+// Rows below the minimum-audience threshold are never written (RFC §7).
+model TrackPopularity {
+  id              String   @id @default(uuid())
+  trackId         String
+  window          String // "24h" | "7d" | "30d"
+  genre           String   @default("")
+  score           Float
+  plays           Int
+  uniqueListeners Int
+  saves           Int
+  computedAt      DateTime @default(now())
+
+  @@unique([trackId, window, genre])
+  @@index([window, genre, score])
+}
+
+model ArtistEngagement {
+  id              String   @id @default(uuid())
+  artistId        String
+  window          String
+  genre           String   @default("")
+  score           Float
+  plays           Int
+  uniqueListeners Int
+  saves           Int
+  computedAt      DateTime @default(now())
+
+  @@unique([artistId, window, genre])
+  @@index([window, genre, score])
+}
+
 model RecommendationProfile {
   userId               String    @id
   preferences          Json?
