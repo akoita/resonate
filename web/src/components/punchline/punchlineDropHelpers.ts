@@ -19,6 +19,13 @@ export const PRICE_CENTS_MAX = 1_000_000;
 
 const ARTWORK_URL_PATTERN = /^(https?:\/\/|ipfs:\/\/)/i;
 
+/**
+ * Umbrella naming (operator decision 2026-07-11): the product is "Drops";
+ * "Punchline" is the first drop KIND, shown as a per-drop chip. Other kinds
+ * (Crescendo, Hook, Solo…) arrive with #1476, which wires this to data.
+ */
+export const DROP_KIND_LABEL = "Punchline";
+
 // ---------------------------------------------------------------------------
 // Price: dollars <-> integer cents
 // ---------------------------------------------------------------------------

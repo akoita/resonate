@@ -20,8 +20,16 @@ depends_on:
 
 ## Implementation Status (Sprint 7)
 
-Punchline Drops let an artist turn a track's vocal-stem punchlines into scarce,
-non-commercial fan collectibles. This section tracks what is actually built.
+**Naming (operator decision 2026-07-11):** the umbrella product is **"Drops"**;
+**"Punchline"** is the first drop *kind*, shown as a per-drop chip in the UI.
+Surfaces (home shelf #1479, collect module, builder, hero buttons) use the
+umbrella name so new kinds (#1476: Crescendo, Hook, Solo…) need no renaming;
+internal code keeps the `Punchline*` names (no churn). The brand name itself
+may be revisited later.
+
+Drops let an artist turn a track's golden moments into scarce, non-commercial
+fan collectibles — starting with the Punchline kind (vocal-stem punchlines).
+This section tracks what is actually built.
 
 ### Slice status
 

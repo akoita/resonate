@@ -903,7 +903,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
   {
     slug: "punchline-drops",
-    title: "Punchline Drops: turn your best vocal moments into collectibles",
+    title: "Drops: turn your track's best moments into collectibles",
     summary:
       "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans will soon be able to own.",
     category: "artists",
@@ -913,11 +913,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     sections: [
       {
         id: "what",
-        heading: "What a Punchline Drop is",
+        heading: "What a Drop is",
         blocks: [
           {
             kind: "paragraph",
-            text: "A Punchline Drop is a small collection of \"moments\" cut from your track's vocals — the hook, the punchline, the line fans scream back at you. Each moment is a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). Fans will be able to collect them straight from your track pages.",
+            text: "A Drop is a small collection of \"moments\" cut from your track — each a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). The first kind of drop is the Punchline drop, cut from your vocals: the hook, the punchline, the line fans scream back at you. More kinds — like epic orchestral moments — are on the way, and every drop shows its kind.",
           },
           {
             kind: "callout",

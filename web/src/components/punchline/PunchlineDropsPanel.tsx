@@ -13,6 +13,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import { PunchlineDropBuilder } from "./PunchlineDropBuilder";
 import {
+  DROP_KIND_LABEL,
   newestDraft,
   publishedDrops,
   selectPunchlineView,
@@ -172,7 +173,10 @@ export function PunchlineDropsPanel({
       data-release-id={releaseId}
     >
       <div className="punchline-panel-header">
-        <h3>🎤 Punchline Drops</h3>
+        <h3>
+          🎤 Drops{" "}
+          <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
+        </h3>
         <p>
           Turn your track&apos;s best vocal punchlines into collectible moments.
         </p>

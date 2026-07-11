@@ -1712,6 +1712,24 @@
   }
 }
 
+
+/* Drop-kind chip — "Drops" is the umbrella; the kind ("Punchline" today,
+   more via #1476) is labeled per drop. */
+.punchline-kind-chip {
+  display: inline-block;
+  vertical-align: middle;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--r-accent, #8b5cf6) 45%, transparent);
+  color: var(--r-accent, #8b5cf6);
+  background: color-mix(in srgb, var(--r-accent, #8b5cf6) 10%, transparent);
+  margin-right: 0.4rem;
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */
