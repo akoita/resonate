@@ -44,6 +44,13 @@ import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
 import { PunchlineDropsPanel } from "../../../components/punchline/PunchlineDropsPanel";
+import { PunchlineCollectModule } from "../../../components/punchline/PunchlineCollectModule";
+import { tracksWithVocalsStem } from "../../../components/punchline/PunchlineDropsPanel";
+import {
+  formatCollectSummaryValue,
+  scrollToPunchlineSection,
+  type PunchlineCollectSummary,
+} from "../../../components/punchline/punchlineCollectHelpers";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
@@ -376,6 +383,10 @@ export default function ReleaseDetails() {
     setRightsMonitorCardOpen(!isPhone);
   }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
+  // Release-level Punchline summary reported up by the collect module, driving
+  // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
+  const [punchlineSummary, setPunchlineSummary] =
+    useState<PunchlineCollectSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
@@ -451,6 +462,18 @@ export default function ReleaseDetails() {
       value: totalDurationSeconds > 0 ? formatDuration(totalDurationSeconds) : "Not timed",
       tone: "accent" as const,
     },
+    // Collectible moments exist → surface them above the fold (money/engagement
+    // modules must not hide below the scroll). Click jumps to the module.
+    ...(punchlineSummary && punchlineSummary.momentCount > 0
+      ? [
+          {
+            label: "Drops",
+            value: formatCollectSummaryValue(punchlineSummary),
+            tone: "accent" as const,
+            onClick: () => scrollToPunchlineSection("punchline-collect-module"),
+          },
+        ]
+      : []),
   ];
   const rightsUpgradeStatus =
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
@@ -1479,6 +1502,30 @@ export default function ReleaseDetails() {
                   Mixer
                 </Button>
               )}
+              {punchlineSummary && punchlineSummary.momentCount > 0 && (
+                <Button
+                  variant="ghost"
+                  className="btn-save"
+                  onClick={() =>
+                    scrollToPunchlineSection("punchline-collect-module")
+                  }
+                >
+                  🎤 Collect moments · {punchlineSummary.momentCount}
+                </Button>
+              )}
+              {isOwner &&
+                release.tracks &&
+                tracksWithVocalsStem(release.tracks).length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="btn-save"
+                    onClick={() =>
+                      scrollToPunchlineSection("punchline-drops-panel")
+                    }
+                  >
+                    🎤 Punchline Drops
+                  </Button>
+                )}
             </div>
 
             {isOwner && (
@@ -2133,6 +2180,15 @@ export default function ReleaseDetails() {
           </table>
         </div>
       </section>
+
+      {/* Collect moments — fan-facing Punchline module (#486). Renders only
+          when a track has published drops; visible to every visitor. */}
+      {release.tracks && release.tracks.length > 0 && (
+        <PunchlineCollectModule
+          tracks={release.tracks}
+          onSummary={setPunchlineSummary}
+        />
+      )}
 
       {/* NFT Marketplace Section - Only for owners */}
       {

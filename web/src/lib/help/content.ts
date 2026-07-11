@@ -907,9 +907,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary:
       "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans will soon be able to own.",
     category: "artists",
-    audiences: ["artist"],
+    audiences: ["artist", "listener"],
     status: "partial",
-    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish"],
+    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free"],
     sections: [
       {
         id: "what",
@@ -960,12 +960,28 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "collecting",
+        heading: "Collecting moments (for fans)",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Free moments can be collected right now — sign in, tap Collect, and the edition number is yours. Each fan can collect one edition per moment, and when they are gone, they are gone.',
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: 'Priced moments say "Coming soon"',
+            text: "Artists can set a price on a moment today, but paid collecting has not opened yet — those cards show their price with a Coming soon button until payments arrive.",
+          },
+        ],
+      },
+      {
         id: "next",
         heading: "What's coming next",
         blocks: [
           {
             kind: "paragraph",
-            text: "Fan collecting is rolling out next: a collect module on track pages, a collector inventory, and a bonus for fans who complete a whole set. You can build and publish drops today so they're ready when collecting opens.",
+            text: "Next up: a collection page to browse everything you own, paid collecting, and a bonus for fans who complete a whole set. Artists can build and publish drops today — free moments are collectable immediately.",
           },
         ],
       },
