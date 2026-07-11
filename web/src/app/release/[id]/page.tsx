@@ -387,6 +387,16 @@ export default function ReleaseDetails() {
   // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
   const [punchlineSummary, setPunchlineSummary] =
     useState<PunchlineCollectSummary | null>(null);
+  // #1479: Home Drops shelf lands visitors with ?focus=moments — once the
+  // collect module reports its drops, scroll + pulse it exactly once.
+  const focusMomentsHandledRef = useRef(false);
+  useEffect(() => {
+    if (focusMomentsHandledRef.current) return;
+    if (searchParams.get("focus") !== "moments") return;
+    if (!punchlineSummary || punchlineSummary.momentCount === 0) return;
+    focusMomentsHandledRef.current = true;
+    scrollToPunchlineSection("punchline-collect-module");
+  }, [searchParams, punchlineSummary]);
   const [loading, setLoading] = useState(true);
   const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);

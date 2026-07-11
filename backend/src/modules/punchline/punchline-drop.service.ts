@@ -531,6 +531,114 @@ export class PunchlineDropService {
     return this.serializeDrop(drop);
   }
 
+  /**
+   * Featured drops for the Home shelf (#1479). Deterministic momentum
+   * heuristic — never random:
+   *   1. published drops only, fully sold-out drops excluded (nothing
+   *      actionable on the shelf);
+   *   2. collect activity in the last 7 days first (from
+   *      `PunchlineCollectible.acquiredAt` — no analytics dependency);
+   *   3. then scarcity urgency: highest collected/editions ratio below 100%;
+   *   4. tiebreak `publishedAt` desc (also the cold-start fallback when no
+   *      collect signals exist yet);
+   *   5. at most 2 drops per artist for shelf diversity.
+   * Items mirror the public serialization plus release/artist context so the
+   * shelf can render footer + link without extra requests.
+   */
+  async listFeaturedDrops(options?: { limit?: number }) {
+    const limit = Math.min(Math.max(options?.limit ?? 6, 1), 12);
+    const rows = await prisma.punchlineDrop.findMany({
+      where: { status: "published" },
+      orderBy: { publishedAt: "desc" },
+      take: 60,
+      include: {
+        moments: {
+          orderBy: { createdAt: "asc" },
+          include: { _count: { select: { collectibles: true } } },
+        },
+        unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
+        track: {
+          select: {
+            id: true,
+            title: true,
+            release: {
+              select: {
+                id: true,
+                title: true,
+                artworkMimeType: true,
+                artist: { select: { id: true, displayName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const momentIds = rows.flatMap((row) => row.moments.map((moment) => moment.id));
+    const recentByMoment = new Map<string, number>(
+      momentIds.length
+        ? (
+            await prisma.punchlineCollectible.groupBy({
+              by: ["momentId"],
+              where: { momentId: { in: momentIds }, acquiredAt: { gte: since } },
+              _count: { momentId: true },
+            })
+          ).map((group) => [group.momentId, group._count.momentId] as [string, number])
+        : [],
+    );
+
+    const scored = rows
+      .map((row) => {
+        const soldOut = row.moments.every(
+          (moment) => (moment._count?.collectibles ?? 0) >= moment.editionSize,
+        );
+        const recentCollects = row.moments.reduce(
+          (sum, moment) => sum + (recentByMoment.get(moment.id) ?? 0),
+          0,
+        );
+        const scarcity = Math.max(
+          0,
+          ...row.moments
+            .filter((moment) => (moment._count?.collectibles ?? 0) < moment.editionSize)
+            .map((moment) => (moment._count?.collectibles ?? 0) / moment.editionSize),
+        );
+        return { row, soldOut, recentCollects, scarcity };
+      })
+      .filter((entry) => !entry.soldOut && entry.row.moments.length > 0)
+      .sort((a, b) => {
+        if (a.recentCollects !== b.recentCollects) return b.recentCollects - a.recentCollects;
+        if (a.scarcity !== b.scarcity) return b.scarcity - a.scarcity;
+        return (
+          (b.row.publishedAt?.getTime() ?? 0) - (a.row.publishedAt?.getTime() ?? 0)
+        );
+      });
+
+    const perArtist = new Map<string, number>();
+    const selected: typeof scored = [];
+    for (const entry of scored) {
+      if (selected.length >= limit) break;
+      const count = perArtist.get(entry.row.artistId) ?? 0;
+      if (count >= 2) continue;
+      perArtist.set(entry.row.artistId, count + 1);
+      selected.push(entry);
+    }
+
+    return {
+      items: selected.map(({ row }) => ({
+        ...this.serializeDrop(row),
+        context: {
+          trackTitle: row.track.title,
+          releaseId: row.track.release.id,
+          releaseTitle: row.track.release.title,
+          releaseHasArtwork: Boolean(row.track.release.artworkMimeType),
+          artistName: row.track.release.artist?.displayName ?? null,
+        },
+      })),
+      meta: { count: selected.length, limit },
+    };
+  }
+
   private serializeDrop(
     drop: {
       id: string;

@@ -987,6 +987,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Free moments can be collected right now — sign in, tap Collect, and the edition number is yours. Each fan can collect one edition per moment, and when they are gone, they are gone.',
           },
           {
+            kind: "paragraph",
+            text: "You don't have to know which release has a drop: the Home page has a \"Drops\" shelf showing the moments with the most collecting momentum right now — recent collects and nearly-gone editions float to the top, and sold-out drops leave the shelf. Tap any card and you land directly on that release's collect section.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: 'Priced moments say "Coming soon"',

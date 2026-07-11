@@ -40,6 +40,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { DropsShelf } from "../components/home/DropsShelf";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import { TopArtistsRail, TrendingNowRail } from "../components/home/PopularityRails";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
@@ -1190,6 +1191,9 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        {/* 6b. DROPS — collectible moments shelf (#1479) ——————————— */}
+        <DropsShelf token={token} />
 
         {/* 7. UPCOMING LIVE EVENTS ————————————————————————————— */}
         {eventRow.length > 0 && (
