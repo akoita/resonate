@@ -83,6 +83,8 @@ const PRODUCT_EVENT_NAMES = new Set([
   "punchline.preview_played",
   "punchline.collect_started",
   "punchline.collect_completed",
+  "recommendation.served",
+  "recommendation.clicked",
 ]);
 
 @UseGuards(AuthGuard("jwt"))

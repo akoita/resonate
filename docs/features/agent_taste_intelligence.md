@@ -125,6 +125,23 @@ Optional columns:
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
 
+## Signal Completeness (#1449 WS-2)
+
+The learning loop now sees the full implicit-feedback set without any client
+POSTing agent signals:
+
+- `playback.started` auto-mirrors into an `accept` (+1) AgentSignal;
+  `playback.completed` already mirrored `complete` (+1.5); the new explicit
+  `playback.skipped` event mirrors `skip` (−1) with the skip `positionMs` —
+  a deliberate early skip is now distinct from a short listen.
+- Agent-originated playback is **excluded** from mirroring (the agent runtime
+  records its own signals — no double-counting), and consent gating
+  (`shouldTrainAgentPlayback`) is enforced inside `recordSignal` on every path.
+- Home emits `recommendation.served` (one per rail render: requestId, railId,
+  trackIds, count) and `recommendation.clicked` (per action: trackId,
+  position) — the measurement base for WS-8 and for training on Home outcomes.
+  The `/recommendations` response carries the correlating `requestId`.
+
 ## Unified Ranking Core (#1448 WS-1)
 
 Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:

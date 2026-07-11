@@ -116,6 +116,101 @@ describe("AnalyticsInstrumentationService", () => {
     });
   });
 
+  it("mirrors a deliberate skip into a negative AgentSignal (#1449)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordPlaybackLifecycle({
+      action: "skipped",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      sessionId: "playback-session-1",
+      source: "web_player",
+      positionMs: 12000,
+      durationMs: 180000,
+    } as any);
+
+    expect(await ingest.listEvents()).toEqual([
+      expect.objectContaining({ eventName: "playback.skipped" }),
+    ]);
+    expect(agentLearning.recordSignal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        trackId: "track-1",
+        action: "skip",
+        metadata: expect.objectContaining({
+          outcome: expect.objectContaining({
+            type: "playback_skipped",
+            positionMs: 12000,
+          }),
+        }),
+      }),
+    );
+  });
+
+  it("mirrors playback started into an accept AgentSignal, but never heartbeats (#1449)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordPlaybackLifecycle({
+      action: "started",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      source: "web_player",
+    } as any);
+    expect(agentLearning.recordSignal).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "accept", trackId: "track-1" }),
+    );
+
+    agentLearning.recordSignal.mockClear();
+    await instrumentation.recordPlaybackLifecycle({
+      action: "heartbeat",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      source: "web_player",
+    } as any);
+    expect(agentLearning.recordSignal).not.toHaveBeenCalled();
+  });
+
+  it("does not mirror agent-originated playback (the agent runtime records its own signals) (#1449)", async () => {
+    const ingest = new AnalyticsIngestService();
+    const agentLearning = {
+      recordSignal: jest.fn().mockResolvedValue({}),
+    };
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      undefined,
+      agentLearning as any,
+    );
+
+    await instrumentation.recordPlaybackLifecycle({
+      action: "skipped",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorUserId: "user-1",
+      source: "web_player",
+      agentOriginated: true,
+    } as any);
+    expect(agentLearning.recordSignal).not.toHaveBeenCalled();
+  });
+
   it("emits playback lifecycle events with listener, instance, and queue dimensions", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);

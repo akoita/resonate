@@ -103,6 +103,15 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs"],
   },
   {
+    // #1449 WS-2: explicit deliberate-skip signal, distinct from a short
+    // listen (previously only derivable as completionRatio < 0.3).
+    eventName: "playback.skipped",
+    eventVersion: 1,
+    producer: "playback-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason"],
+  },
+  {
     eventName: "onboarding.step_completed",
     eventVersion: 1,
     producer: "web-app",
@@ -354,6 +363,22 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     producer: "recommendations-service",
     privacyTier: "pseudonymous",
     payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence"],
+  },
+  {
+    // #1449 WS-2: Home ranking impressions — which ranked items were shown.
+    eventName: "recommendation.served",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["requestId", "railId", "trackIds", "count", "source"],
+  },
+  {
+    // #1449 WS-2: a served recommendation was acted on (click/play).
+    eventName: "recommendation.clicked",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["requestId", "railId", "trackId", "position", "source"],
   },
   {
     eventName: "stems.uploaded",

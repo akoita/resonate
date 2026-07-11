@@ -185,6 +185,9 @@ function sanitizeSignalOutcome(outcome?: Record<string, unknown>) {
   copyBoolean(sanitized, "firstPick", outcome.firstPick);
   copyNumber(sanitized, "completionRatio", outcome.completionRatio);
   copyNumber(sanitized, "durationMs", outcome.durationMs);
+  // #1449: where in the track a deliberate skip happened — a useful,
+  // non-identifying learning feature for the skip signal.
+  copyNumber(sanitized, "positionMs", outcome.positionMs);
   copyNumber(sanitized, "sessionDurationMs", outcome.sessionDurationMs);
   copyNumber(sanitized, "priceUsd", outcome.priceUsd);
   copyString(sanitized, "status", outcome.status, 40);
