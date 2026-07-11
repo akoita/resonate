@@ -3,6 +3,19 @@ import { formatClipDuration } from "./PunchlineClipSelector";
 import { formatEditionLabel, formatPriceCents } from "./punchlineDropHelpers";
 
 /**
+ * Deterministic hue (0-359) from a seed string, so every moment gets its own
+ * stable accent color — no two cards in a drop look identical, and the same
+ * moment always renders the same. Exported for tests.
+ */
+export function hueFromSeed(seed: string): number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return ((hash % 360) + 360) % 360;
+}
+
+/**
  * Live preview of a collectible moment card (#484).
  *
  * Pure presentational — the same card renders from the editor's live fields
@@ -34,9 +47,14 @@ export function PunchlineCollectibleCard({
 }: PunchlineCollectibleCardProps) {
   const displayTitle = title.trim() || "Untitled moment";
   const displayLyric = lyricText.trim();
+  const hue = hueFromSeed(displayTitle + lyricText);
 
   return (
-    <div className="punchline-card" data-testid="punchline-collectible-card">
+    <div
+      className="punchline-card"
+      data-testid="punchline-collectible-card"
+      style={{ ["--card-hue" as never]: hue }}
+    >
       <div className="punchline-card-art">
         {artworkUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- artist-supplied remote/ipfs thumbnail; upload is out of scope
@@ -47,7 +65,12 @@ export function PunchlineCollectibleCard({
           />
         ) : (
           <div className="punchline-card-art-placeholder" aria-hidden="true">
-            🎤
+            <span className="punchline-card-quote">“</span>
+            <span className="punchline-card-art-lyric">
+              {displayLyric.length > 90
+                ? `${displayLyric.slice(0, 90)}…`
+                : displayLyric || "…"}
+            </span>
           </div>
         )}
         <span className="punchline-card-duration">
