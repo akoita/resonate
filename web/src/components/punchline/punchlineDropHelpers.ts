@@ -27,6 +27,32 @@ const ARTWORK_URL_PATTERN = /^(https?:\/\/|ipfs:\/\/)/i;
 export const DROP_KIND_LABEL = "Punchline";
 
 // ---------------------------------------------------------------------------
+// Display masking for socially-weighted words (operator decision 2026-07-11)
+// ---------------------------------------------------------------------------
+
+/**
+ * Words masked on every public lyric render. Display-only: the stored lyric is
+ * never mutated — artists wrote it, the platform just doesn't broadcast it on
+ * discovery surfaces. Word-boundary matched, case-insensitive; each pattern
+ * covers its common spelling variants. Extend deliberately, not casually.
+ */
+const MASKED_LYRIC_WORDS = [/\bnigg(?:a|er)s?\b/gi];
+
+/**
+ * Mask socially-weighted words for display: first and last letters kept, the
+ * middle starred (e.g. "n***a", "n****s"). Pure and idempotent.
+ */
+export function maskSensitiveLyric(text: string): string {
+  let masked = text;
+  for (const pattern of MASKED_LYRIC_WORDS) {
+    masked = masked.replace(pattern, (match) => {
+      return `${match[0]}${"*".repeat(Math.max(1, match.length - 2))}${match[match.length - 1]}`;
+    });
+  }
+  return masked;
+}
+
+// ---------------------------------------------------------------------------
 // Price: dollars <-> integer cents
 // ---------------------------------------------------------------------------
 

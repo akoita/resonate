@@ -991,6 +991,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "You don't have to know which release has a drop: the Home page has a \"Drops\" shelf showing the moments with the most collecting momentum right now — recent collects and nearly-gone editions float to the top, and sold-out drops leave the shelf. Tap any card and you land directly on that release's collect section.",
           },
           {
+            kind: "paragraph",
+            text: "One note on lyrics: cards mask a small set of socially weighted words with asterisks on screen. The audio and the artist's original text are untouched — the card display just doesn't spell them out.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: 'Priced moments say "Coming soon"',
