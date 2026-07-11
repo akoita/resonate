@@ -501,6 +501,38 @@ describe("ShowsService integration", () => {
     expect(declaredCreditDraft.title).toBe(`${TEST_PREFIX}Declared Credit in Paris`);
   });
 
+  it("resolves the configured platform-default payment token when the field is empty (#1391)", async () => {
+    // The create form shows "Platform default" as a placeholder; leaving it
+    // empty must persist the CONFIGURED default, never null (null blocks
+    // wallet pledge execution downstream).
+    const DEFAULT_TOKEN = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
+    const prev = process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS;
+    process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS = DEFAULT_TOKEN;
+    try {
+      const campaign = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        {
+          artistId,
+          artistDisplayName: `${TEST_PREFIX}Default Token Artist`,
+          title: "Default token draft",
+          city: "Lyon",
+          country: "FR",
+          deadline: futureIso(30),
+          goalAmountUnits: "1000000",
+          // paymentTokenAddress deliberately omitted — the UI's empty field.
+        },
+      );
+      expect(campaign.paymentTokenAddress).toBeTruthy();
+      expect(campaign.paymentTokenAddress!.toLowerCase()).toBe(DEFAULT_TOKEN);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS;
+      } else {
+        process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS = prev;
+      }
+    }
+  });
+
   it("lets campaign owners replace, reorder, and delete draft gallery visuals", async () => {
     const draft = await service.createDraftCampaign(
       { userId, role: "artist" },
