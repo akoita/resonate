@@ -2136,6 +2136,37 @@ export async function removePunchlineDropUnlock(dropId: string, token: string) {
   );
 }
 
+/** Per-moment funnel metrics for one drop (#489). */
+export type PunchlineDropMetrics = {
+  dropId: string;
+  views: number;
+  previews: number;
+  collectStarts: number;
+  collected: number;
+  totalEditions: number;
+  /** collected / views, 0..1; null when there are no views yet. */
+  conversion: number | null;
+  setCompletions: number;
+  moments: Array<{
+    momentId: string;
+    title: string;
+    previews: number;
+    collectStarts: number;
+    collected: number;
+    editionSize: number;
+    soldOut: boolean;
+  }>;
+};
+
+/** Owner-only funnel metrics for a drop (#489). */
+export async function getPunchlineDropMetrics(dropId: string, token: string) {
+  return apiRequest<PunchlineDropMetrics>(
+    `/punchline/me/drops/${encodeURIComponent(dropId)}/metrics`,
+    {},
+    token,
+  );
+}
+
 /** The caller's granted set rewards, revealed (#488). */
 export async function listMyPunchlineUnlocks(token: string) {
   return apiRequest<{

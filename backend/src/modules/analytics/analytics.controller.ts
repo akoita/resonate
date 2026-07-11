@@ -79,6 +79,10 @@ const PRODUCT_EVENT_NAMES = new Set([
   "shows.pledge_submitted",
   "shows.pledge_confirmed",
   "shows.pledge_failed",
+  "punchline.drop_viewed",
+  "punchline.preview_played",
+  "punchline.collect_started",
+  "punchline.collect_completed",
 ]);
 
 @UseGuards(AuthGuard("jwt"))

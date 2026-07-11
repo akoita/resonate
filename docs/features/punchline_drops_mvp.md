@@ -37,7 +37,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA (free moments collect end-to-end; paid show an honest "Coming soon" until [#1462](https://github.com/akoita/resonate/issues/1462); signed-out visitors get a working sign-in CTA). |
 | Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | ✅ done | "🎤 Moments" tab in the Library: owned moments grouped by drop with set progress ("you own N of M" / "Set complete"), edition number, acquisition date, clip playback, and a link back to the release. Deep-linkable via `/library?tab=moments`. |
 | Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | ✅ done | Artist attaches an optional set bonus (bonus vocal clip + note, extracted at publish with the #481 primitive); completing the set grants it **exactly once** (DB-unique `PunchlineUnlockGrant`), emits `punchline.unlock_granted`, and reveals it in the collect module + Moments tab. Reward content is gated: public payloads carry existence only. |
-| Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | 🔜 planned | Product analytics events + artist performance metrics. |
+| Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | ✅ done | Full funnel instrumentation: the 4 domain events registered + bridged into the analytics fact store, 4 client funnel events (`drop_viewed` → `preview_played` → `collect_started` → `collect_completed`) through the product-analytics rail, and an owner metrics endpoint + builder strip (views/previews/collected/conversion/sets completed, per drop and per moment). |
 
 Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
 [Vision Sprint 7 — Punchline Drops](../sprints/2026-07-10-vision-sprint-7-punchline-drops.md).
@@ -80,6 +80,7 @@ slice grants free moments only, so no fee applies yet.
 | `PUT` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Create/replace the drop's single `complete_set` bonus: clip range (same bounds as moments) + optional note ≤500 chars (#488). |
 | `DELETE` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Remove the set bonus. |
 | `GET` | `/punchline/me/unlocks` | JWT | The caller's granted set rewards, revealed, with drop/track context (#488). |
+| `GET` | `/punchline/me/drops/:dropId/metrics` | JWT (owner) | Funnel metrics for one drop (#489): views → previews → collect starts (analytics facts) joined with collected editions + set completions (DB truth), per drop and per moment; server-computed conversion. |
 | `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
 | `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
 
@@ -153,6 +154,12 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 - `punchline.unlock_granted` (v1) — the complete-set reward was granted (#488),
   exactly once per collector per unlock (DB-enforced); identifiers only, never
   the reward content.
+- All four domain events are registered in the analytics taxonomy and bridged
+  into the fact store (#489). Client funnel events `punchline.drop_viewed`,
+  `punchline.preview_played`, `punchline.collect_started`, and
+  `punchline.collect_completed` flow through the product-analytics rail
+  (allowlisted + declared; pseudonymous tier); the `punchline` event family is
+  registered in the warehouse export matrix.
 
 ### Services, code, and tests
 

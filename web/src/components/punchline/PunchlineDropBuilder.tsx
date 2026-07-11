@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   addPunchlineMoment,
   publishPunchlineDrop,
@@ -19,6 +19,10 @@ import {
 import { PunchlineMomentEditor } from "./PunchlineMomentEditor";
 import { PunchlinePublishReviewDialog } from "./PunchlinePublishReviewDialog";
 import { PunchlineSetBonusEditor } from "./PunchlineSetBonusEditor";
+import {
+  getPunchlineDropMetrics,
+  type PunchlineDropMetrics,
+} from "../../lib/api";
 import {
   formatEditionLabel,
   formatPriceCents,
@@ -79,6 +83,27 @@ export function PunchlineDropBuilder({
 
   const [reviewOpen, setReviewOpen] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+
+  // Artist funnel metrics (#489) — fetched for published drops only.
+  const [metrics, setMetrics] = useState<PunchlineDropMetrics | null>(null);
+  useEffect(() => {
+    if (!isPublished || !token) {
+      setMetrics(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const m = await getPunchlineDropMetrics(drop.id, token);
+        if (!cancelled) setMetrics(m);
+      } catch {
+        // Metrics are an enhancement — the published view works without them.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isPublished, token, drop.id]);
 
   const metaDirty =
     (title.trim() || null) !== (drop.title ?? null) ||
@@ -202,6 +227,37 @@ export function PunchlineDropBuilder({
           <span className="punchline-rights-label">{drop.rightsLabel}</span>{" "}
           {drop.rightsSummary}
         </p>
+
+        {metrics && (
+          <div className="punchline-metrics-strip" aria-label="Drop performance">
+            <div className="punchline-metric">
+              <span className="punchline-metric-value">{metrics.views}</span>
+              <span className="punchline-metric-label">views</span>
+            </div>
+            <div className="punchline-metric">
+              <span className="punchline-metric-value">{metrics.previews}</span>
+              <span className="punchline-metric-label">previews</span>
+            </div>
+            <div className="punchline-metric">
+              <span className="punchline-metric-value">{metrics.collected}</span>
+              <span className="punchline-metric-label">collected</span>
+            </div>
+            <div className="punchline-metric">
+              <span className="punchline-metric-value">
+                {metrics.conversion == null
+                  ? "—"
+                  : `${Math.round(metrics.conversion * 100)}%`}
+              </span>
+              <span className="punchline-metric-label">conversion</span>
+            </div>
+            <div className="punchline-metric">
+              <span className="punchline-metric-value">
+                {metrics.setCompletions}
+              </span>
+              <span className="punchline-metric-label">sets completed</span>
+            </div>
+          </div>
+        )}
 
         <ul className="punchline-moment-list">
           {drop.moments.map((moment) => (

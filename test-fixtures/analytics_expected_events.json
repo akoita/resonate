@@ -108,7 +108,10 @@
       "campaignSlug": "artist-paris-fr",
       "campaignLevel": "active_escrow_campaign",
       "artistId": "artist-1",
-      "visualSlots": ["hero", "card"],
+      "visualSlots": [
+        "hero",
+        "card"
+      ],
       "source": "shows-api"
     }
   },
@@ -198,7 +201,9 @@
       "releaseId": "release-1",
       "artistId": "artist-1",
       "route": "STANDARD_ESCROW",
-      "evidenceTypes": ["rights_metadata"],
+      "evidenceTypes": [
+        "rights_metadata"
+      ],
       "decisionReason": "verified uploader"
     }
   },
@@ -287,7 +292,9 @@
       "releaseId": "release-1",
       "artistId": "artist-1",
       "sourceType": "direct_upload",
-      "trackIds": ["track-1"],
+      "trackIds": [
+        "track-1"
+      ],
       "trackCount": 1,
       "stemCount": 1
     }
@@ -298,8 +305,13 @@
       "releaseId": "release-1",
       "artistId": "artist-1",
       "trackId": "track-1",
-      "trackIds": ["track-1"],
-      "stemIds": ["stem-1", "stem-2"],
+      "trackIds": [
+        "track-1"
+      ],
+      "stemIds": [
+        "stem-1",
+        "stem-2"
+      ],
       "modelVersion": "demucs-v4",
       "durationMs": 30000
     }
@@ -329,7 +341,9 @@
       "releaseId": "release-1",
       "artistId": "artist-1",
       "status": "ready",
-      "trackIds": ["track-1"],
+      "trackIds": [
+        "track-1"
+      ],
       "trackCount": 1,
       "stemCount": 2
     }
@@ -499,7 +513,10 @@
     "payload": {
       "userId": "user-1",
       "userCohortId": "cohort-1",
-      "trackIds": ["track-1", "track-2"],
+      "trackIds": [
+        "track-1",
+        "track-2"
+      ],
       "strategy": "preference_mapping",
       "candidateCount": 2
     }
@@ -543,7 +560,10 @@
       "remixId": "remix-1",
       "creatorId": "creator-1",
       "sourceTrackId": "track-1",
-      "stemIds": ["stem-1", "stem-2"],
+      "stemIds": [
+        "stem-1",
+        "stem-2"
+      ],
       "stemCount": 2,
       "txHash": "tx-remix-1"
     }
@@ -658,6 +678,87 @@
       "contractAddress": "0xcontract",
       "transactionHash": "tx-appeal-stake-1",
       "blockNumber": "108"
+    }
+  },
+  {
+    "eventName": "punchline.drop_published",
+    "payload": {
+      "dropId": "drop-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "momentCount": 3,
+      "totalEditions": 150
+    }
+  },
+  {
+    "eventName": "punchline.moment_collected",
+    "payload": {
+      "momentId": "moment-1",
+      "dropId": "drop-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "collectorUserId": "user-1",
+      "editionNumber": 1,
+      "pricePaidCents": 0,
+      "paymentRail": "free_claim"
+    }
+  },
+  {
+    "eventName": "punchline.set_completed",
+    "payload": {
+      "dropId": "drop-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "collectorUserId": "user-1"
+    }
+  },
+  {
+    "eventName": "punchline.unlock_granted",
+    "payload": {
+      "unlockId": "unlock-1",
+      "dropId": "drop-1",
+      "trackId": "track-1",
+      "artistId": "artist-1",
+      "collectorUserId": "user-1"
+    }
+  },
+  {
+    "eventName": "punchline.drop_viewed",
+    "payload": {
+      "dropId": "drop-1",
+      "trackId": "track-1",
+      "momentCount": 3,
+      "source": "release_page"
+    }
+  },
+  {
+    "eventName": "punchline.preview_played",
+    "payload": {
+      "dropId": "drop-1",
+      "momentId": "moment-1",
+      "trackId": "track-1",
+      "source": "release_page"
+    }
+  },
+  {
+    "eventName": "punchline.collect_started",
+    "payload": {
+      "dropId": "drop-1",
+      "momentId": "moment-1",
+      "trackId": "track-1",
+      "priceCents": 0,
+      "source": "release_page"
+    }
+  },
+  {
+    "eventName": "punchline.collect_completed",
+    "payload": {
+      "dropId": "drop-1",
+      "momentId": "moment-1",
+      "trackId": "track-1",
+      "editionNumber": 1,
+      "setCompleted": false,
+      "source": "release_page"
     }
   }
 ]

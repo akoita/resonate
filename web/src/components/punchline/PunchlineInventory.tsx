@@ -257,7 +257,7 @@ export function PunchlineInventory({
               {rewardByDrop.get(group.dropId)?.clipAssetUri && (
                 <button
                   type="button"
-                  className="punchline-btn-secondary punchline-collect-play"
+                  className="punchline-btn-secondary"
                   onClick={
                     playingId === `bonus-${group.dropId}`
                       ? stopClip
@@ -305,7 +305,7 @@ export function PunchlineInventory({
                         : `Play ${item.moment.title}`
                     }
                   >
-                    {playingId === item.id ? "■ Stop" : "▶ Play"}
+                    {playingId === item.id ? "■" : "▶"}
                   </button>
                 </div>
               </div>

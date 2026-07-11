@@ -39,6 +39,7 @@ export const SUPPORTED_EVENT_FAMILIES = new Set([
   "x402",
   "experiment",
   "system",
+  "punchline",
 ]);
 
 export interface AnalyticsWarehouseConfig {
