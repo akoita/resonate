@@ -1535,6 +1535,183 @@
   color: var(--r-text-muted, rgba(255, 255, 255, 0.5));
 }
 
+
+/* ==========================================
+   Round 3 — living audio-object cards (#486 polish)
+   ========================================== */
+
+/* Aurora: a slow-breathing hue blob behind the lyric. */
+@keyframes punchline-aurora {
+  0%, 100% {
+    transform: translate(-8%, -6%) scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(8%, 6%) scale(1.15);
+    opacity: 0.65;
+  }
+}
+
+.punchline-card-art::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(
+    45% 40% at 30% 25%,
+    color-mix(in srgb, var(--card-accent) 40%, transparent),
+    transparent 70%
+  );
+  animation: punchline-aurora 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Holographic foil sheen — faint iridescent conic wash, alive on hover. */
+.punchline-card-holo {
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(
+    from 210deg at 60% 40%,
+    transparent 0deg,
+    rgba(139, 92, 246, 0.10) 60deg,
+    rgba(244, 114, 182, 0.08) 130deg,
+    rgba(56, 189, 248, 0.08) 210deg,
+    transparent 300deg
+  );
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  transition: opacity 0.4s ease, transform 1.2s ease;
+  pointer-events: none;
+}
+
+.punchline-card:hover .punchline-card-holo {
+  opacity: 0.9;
+  transform: rotate(12deg) scale(1.12);
+}
+
+/* Serial stamp — limited print-run language. */
+.punchline-card-serial {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--card-accent) 45%, transparent);
+  color: color-mix(in srgb, var(--card-accent) 85%, #fff);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Waveform ribbon — the card visualizes sound; bars dance while playing. */
+.punchline-card-wave {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.punchline-card-wave i {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  background: color-mix(in srgb, var(--card-accent) 70%, #fff);
+  height: 30%;
+}
+
+/* Static staggered profile — reads as a frozen waveform. */
+.punchline-card-wave i:nth-child(4n + 1) { height: 55%; }
+.punchline-card-wave i:nth-child(4n + 2) { height: 30%; }
+.punchline-card-wave i:nth-child(4n + 3) { height: 80%; }
+.punchline-card-wave i:nth-child(4n)     { height: 45%; }
+
+@keyframes punchline-eq {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1); }
+}
+
+.punchline-card-wave.is-playing {
+  opacity: 0.95;
+}
+
+.punchline-card-wave.is-playing i {
+  transform-origin: bottom;
+  animation: punchline-eq 0.9s ease-in-out infinite;
+}
+
+.punchline-card-wave.is-playing i:nth-child(3n)     { animation-duration: 0.7s; animation-delay: -0.2s; }
+.punchline-card-wave.is-playing i:nth-child(3n + 1) { animation-duration: 1.1s; animation-delay: -0.5s; }
+.punchline-card-wave.is-playing i:nth-child(5n)     { animation-duration: 0.8s; animation-delay: -0.35s; }
+
+/* Lyric sits above the decorations. */
+.punchline-card-art-lyric {
+  z-index: 1;
+}
+
+/* The section is an atmosphere, not a panel: ambient glow + watermark quote. */
+.punchline-collect-module {
+  position: relative;
+  overflow: hidden;
+}
+
+.punchline-collect-module::before {
+  content: "";
+  position: absolute;
+  top: -140px;
+  left: -80px;
+  width: 460px;
+  height: 380px;
+  background: radial-gradient(
+    closest-side,
+    rgba(139, 92, 246, 0.16),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.punchline-collect-module::after {
+  content: "\201C";
+  position: absolute;
+  right: -14px;
+  top: -60px;
+  font-size: 17rem;
+  line-height: 1;
+  font-weight: 800;
+  font-family: Georgia, "Times New Roman", serif;
+  color: rgba(139, 92, 246, 0.07);
+  pointer-events: none;
+}
+
+.punchline-collect-module > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Accessibility: no motion for users who asked for none. */
+@media (prefers-reduced-motion: reduce) {
+  .punchline-card-art::after,
+  .punchline-card-wave.is-playing i {
+    animation: none;
+  }
+  .punchline-card,
+  .punchline-card-holo,
+  .punchline-btn-primary,
+  .punchline-btn-secondary,
+  .punchline-btn-publish {
+    transition: none;
+  }
+  .punchline-card::after {
+    display: none;
+  }
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */

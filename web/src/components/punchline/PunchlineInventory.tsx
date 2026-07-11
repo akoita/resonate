@@ -281,6 +281,7 @@ export function PunchlineInventory({
                   editionSize={item.editionSize}
                   priceCents={item.pricePaidCents}
                   rightsLabel={item.moment.rightsLabel}
+                  playing={playingId === item.id}
                 />
                 <div className="punchline-collect-item-footer">
                   <div className="punchline-inventory-meta">

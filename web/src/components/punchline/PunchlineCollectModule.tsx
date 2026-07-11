@@ -420,6 +420,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                           editionSize={moment.editionSize}
                           priceCents={moment.priceCents}
                           rightsLabel={moment.rightsLabel}
+                          playing={playingMomentId === moment.id}
                         />
                         <div className="punchline-scarcity">
                           <div
