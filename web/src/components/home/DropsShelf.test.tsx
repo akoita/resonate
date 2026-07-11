@@ -64,18 +64,19 @@ describe("DropsShelfView", () => {
     expect(html).toContain("Own a piece of the hook");
     // Umbrella naming: the section title is NOT "Punchline Drops"…
     expect(html).not.toContain("Punchline Drops");
-    // …the kind lives on the card chip instead (#1476-ready).
+    // …the kind lives on a chip in the footer instead (#1476-ready).
     expect(html).toContain("punchline-kind-chip");
     expect(html).toContain(">Punchline<");
   });
 
-  it("reuses the living collectible card and adds the context footer", () => {
+  it("reuses the living collectible card and adds the artist·track footer", () => {
     const html = renderToStaticMarkup(<DropsShelfView drops={[drop()]} />);
     expect(html).toContain("punchline-collectible-card"); // shipped card, verbatim
     expect(html).toContain("Hot Artist");
     expect(html).toContain("Anthem");
-    expect(html).toContain("12 of 100 left"); // scarcity numerals
-    expect(html).toContain("Free to collect");
+    // The footer no longer duplicates edition size / price — those live on the
+    // card face — so scarcity numerals must NOT reappear in the footer.
+    expect(html).not.toContain("of 100 left");
   });
 
   it("links each card to the release collect module via ?focus=moments", () => {

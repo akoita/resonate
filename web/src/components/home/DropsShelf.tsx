@@ -6,7 +6,6 @@ import { fetchFeaturedDrops, type FeaturedDrop, type PunchlineMoment } from "../
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { PunchlineCollectibleCard } from "../punchline/PunchlineCollectibleCard";
 import { DROP_KIND_LABEL } from "../punchline/punchlineDropHelpers";
-import { formatEditionsRemaining } from "../punchline/punchlineCollectHelpers";
 
 /*
  * Home "Drops" shelf (#1479) — first-class discovery surface for drops.
@@ -17,8 +16,10 @@ import { formatEditionsRemaining } from "../punchline/punchlineCollectHelpers";
  *
  * Cards reuse the shipped living-collectible card verbatim (seeded hue,
  * lyric-as-poster, serial №, waveform ribbon) plus a compact context footer:
- * artist · track · scarcity numerals · price. One click lands the visitor on
- * the release page's collect module (`?focus=moments` scroll + pulse).
+ * kind chip · artist · track. Edition size, collected count, and price already
+ * live on the card face, so the footer never duplicates them. One click lands
+ * the visitor on the release page's collect module (`?focus=moments` scroll +
+ * pulse).
  *
  * The shelf renders NOTHING when no published, still-collectable drops exist —
  * no dead shelf, no dead buttons. Funnel (#489): one `punchline.drop_viewed`
@@ -110,12 +111,6 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
               }}
               aria-label={`Collect ${moment.title} from ${drop.context.trackTitle}`}
             >
-              <span
-                className="punchline-kind-chip"
-                style={{ position: "absolute", top: 22, right: 22, zIndex: 2 }}
-              >
-                {DROP_KIND_LABEL}
-              </span>
               <PunchlineCollectibleCard
                 title={moment.title}
                 lyricText={moment.lyricText}
@@ -136,14 +131,11 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
                   alignItems: "baseline",
                 }}
               >
+                <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
                 <strong style={{ fontWeight: 700 }}>
                   {drop.context.artistName ?? "Unknown artist"}
                 </strong>
                 <span style={{ opacity: 0.7 }}>· {drop.context.trackTitle}</span>
-                <span style={{ opacity: 0.9, fontVariantNumeric: "tabular-nums" }}>
-                  · {formatEditionsRemaining(moment.editionSize, moment.collectedCount)}
-                </span>
-                <span style={{ opacity: 0.9 }}>· {formatPrice(moment.priceCents)}</span>
               </p>
             </Link>
           );
