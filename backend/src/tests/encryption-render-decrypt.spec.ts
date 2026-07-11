@@ -73,6 +73,28 @@ describe("EncryptionService.decryptForRender (#1214)", () => {
     expect(result.equals(ciphertext)).toBe(false);
   });
 
+  it("authorizes the punchline clip sentinel (#481) and fails closed without the key", async () => {
+    const plaintext = Buffer.from("vocal stem bytes for a punchline clip");
+    const { ciphertext, metadata } = await aesEncrypt(provider, "stem-punchline", plaintext);
+
+    const punchlineAuth = {
+      address: "0x0000000000000000000000000000000000000000",
+      sig: "punchline-clip-authorized",
+      signedMessage: "Punchline clip extraction authorization",
+      internalKey: INTERNAL_KEY,
+    };
+    const result = await service.decryptForRender(ciphertext, metadata, punchlineAuth);
+    expect(result.equals(plaintext)).toBe(true);
+
+    // Same sentinel WITHOUT the internal key must be refused (fail closed).
+    await expect(
+      service.decryptForRender(ciphertext, metadata, {
+        ...punchlineAuth,
+        internalKey: undefined,
+      }),
+    ).rejects.toBeInstanceOf(RenderDecryptionError);
+  });
+
   it("does not write plaintext to the decrypted cache", async () => {
     const { ciphertext, metadata } = await aesEncrypt(
       provider,

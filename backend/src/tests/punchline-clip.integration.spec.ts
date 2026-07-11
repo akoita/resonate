@@ -30,6 +30,8 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { prisma } from "../db/prisma";
 import { EncryptionService } from "../modules/encryption/encryption.service";
+import { AesEncryptionProvider } from "../modules/encryption/providers/aes_encryption_provider";
+import { ConfigService } from "@nestjs/config";
 import { LocalStorageProvider } from "../modules/storage/local_storage_provider";
 import {
   PunchlineClipException,
@@ -48,6 +50,7 @@ const TRACK_ID = `${TEST_PREFIX}track`;
 const VOCALS_STEM_ID = `${TEST_PREFIX}vocals`;
 // A separate track with only a non-vocals stem for the no_vocals_stem case.
 const TRACK_NO_VOCALS_ID = `${TEST_PREFIX}track_novox`;
+const TRACK_ENCRYPTED_ID = `${TEST_PREFIX}track_enc`;
 
 const SOURCE_DURATION_SEC = 10;
 
@@ -239,6 +242,81 @@ describe("Punchline clip extraction (integration)", () => {
       expect(downloaded).not.toBeNull();
       expect(downloaded!.length).toBeGreaterThan(0);
       expect(downloaded!.length).toBe(result.byteSize);
+    },
+  );
+
+  // Regression for the staging publish failure: an ENCRYPTED vocals stem must
+  // decrypt through the internal punchline-clip-authorized sentinel (allowlisted
+  // in the AES provider, gated by INTERNAL_SERVICE_KEY) and extract normally.
+  // Before the allowlist fix this failed with "unauthorized" → extraction_failed.
+  (ffmpegAvailable ? it : it.skip)(
+    "(h) extracts from an ENCRYPTED vocals stem via the internal decrypt boundary",
+    async () => {
+      const INTERNAL_KEY = `${TEST_PREFIX}internal-key`;
+      const env: Record<string, string> = {
+        ENCRYPTION_SECRET: `${TEST_PREFIX}encryption-secret`,
+        INTERNAL_SERVICE_KEY: INTERNAL_KEY,
+        NODE_ENV: "test",
+      };
+      const config = { get: (key: string) => env[key] } as unknown as ConfigService;
+      const provider = new AesEncryptionProvider(config);
+      const realEncryption = new EncryptionService(provider, config);
+
+      // Encrypt the same fixture MP3 and seed it as an encrypted vocals stem.
+      const fixture = generateFixtureMp3(SOURCE_DURATION_SEC);
+      const payload = await provider.encrypt(fixture, {
+        contentId: `${TEST_PREFIX}enc-vocals`,
+        ownerAddress: "0x000000000000000000000000000000000000dEaD",
+        allowedAddresses: [],
+      });
+      await prisma.track.create({
+        data: {
+          id: TRACK_ENCRYPTED_ID,
+          releaseId: RELEASE_ID,
+          title: "Punchline Clip Track (encrypted)",
+          position: 3,
+          processingStatus: "complete",
+          contentStatus: "clean",
+        },
+      });
+      await prisma.stem.create({
+        data: {
+          id: `${TEST_PREFIX}vocals_enc`,
+          trackId: TRACK_ENCRYPTED_ID,
+          type: "vocals",
+          uri: `local://${TEST_PREFIX}-vocals-enc`,
+          data: payload!.encryptedData,
+          isEncrypted: true,
+          encryptionMetadata: payload!.metadata,
+          durationSeconds: SOURCE_DURATION_SEC,
+          mimeType: "audio/mpeg",
+        },
+      });
+
+      // The clip service reads the sentinel key from process.env at call time.
+      const prevKey = process.env.INTERNAL_SERVICE_KEY;
+      process.env.INTERNAL_SERVICE_KEY = INTERNAL_KEY;
+      try {
+        const encryptedService = new PunchlineClipService(
+          storageProvider,
+          realEncryption,
+          undefined,
+        );
+        const result = await encryptedService.extractClip({
+          trackId: TRACK_ENCRYPTED_ID,
+          startMs: 2000,
+          endMs: 7000,
+        });
+        expect(result.durationMs).toBe(5000);
+        expect(result.byteSize).toBeGreaterThan(0);
+        expect(result.mimeType).toBe("audio/mpeg");
+      } finally {
+        if (prevKey === undefined) {
+          delete process.env.INTERNAL_SERVICE_KEY;
+        } else {
+          process.env.INTERNAL_SERVICE_KEY = prevKey;
+        }
+      }
     },
   );
 
