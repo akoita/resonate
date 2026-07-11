@@ -14,6 +14,10 @@ import {
   PunchlineClipException,
   PunchlineClipService,
 } from "./punchline-clip.service";
+import {
+  PunchlineUnlockService,
+  parsePunchlineUnlockReward,
+} from "./punchline-unlock.service";
 import { resolvePunchlineClipBounds } from "./punchline-clip.config";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import {
@@ -107,6 +111,7 @@ export class PunchlineDropService {
     private readonly eventBus: EventBus,
     private readonly eligibilityService: PunchlineEligibilityService,
     private readonly clipService: PunchlineClipService,
+    private readonly unlockService: PunchlineUnlockService,
     @Optional() private readonly configService?: ConfigService,
   ) {}
 
@@ -341,6 +346,11 @@ export class PunchlineDropService {
       }
     }
 
+    // Set-bonus clip (#488): extract the unlock's bonus clip with the same
+    // primitive. A failure throws the extractor's typed 400 and the drop stays
+    // a draft (deterministic filenames keep the retry idempotent).
+    await this.unlockService.renderUnlockClipForPublish(drop.id, drop.trackId);
+
     const publishedAt = new Date();
     await prisma.$transaction([
       ...drop.moments.map((moment) =>
@@ -420,11 +430,13 @@ export class PunchlineDropService {
           orderBy: { createdAt: "asc" },
           include: { _count: { select: { collectibles: true } } },
         },
+        unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
       },
     });
 
     return {
-      items: rows.map((row) => this.serializeDrop(row)),
+      // Owner surface — reveal the unlock's reward config for the builder.
+      items: rows.map((row) => this.serializeDrop(row, { revealUnlockReward: true })),
       meta: { count: rows.length },
     };
   }
@@ -444,6 +456,7 @@ export class PunchlineDropService {
           orderBy: { createdAt: "asc" },
           include: { _count: { select: { collectibles: true } } },
         },
+        unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
       },
     });
 
@@ -472,6 +485,7 @@ export class PunchlineDropService {
           orderBy: { createdAt: "asc" },
           include: { _count: { select: { collectibles: true } } },
         },
+        unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
       },
     });
   }
@@ -517,19 +531,44 @@ export class PunchlineDropService {
     return this.serializeDrop(drop);
   }
 
-  private serializeDrop(drop: {
-    id: string;
-    trackId: string;
-    artistId: string;
-    status: string;
-    title: string | null;
-    description: string | null;
-    createdAt: Date;
-    updatedAt: Date;
-    publishedAt: Date | null;
-    moments: Array<Parameters<PunchlineDropService["serializeMoment"]>[0]>;
-  }) {
+  private serializeDrop(
+    drop: {
+      id: string;
+      trackId: string;
+      artistId: string;
+      status: string;
+      title: string | null;
+      description: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+      publishedAt: Date | null;
+      moments: Array<Parameters<PunchlineDropService["serializeMoment"]>[0]>;
+      unlocks?: Array<{
+        id: string;
+        unlockType: string;
+        rewardMetadata: unknown;
+      }>;
+    },
+    options?: { revealUnlockReward?: boolean },
+  ) {
+    // Public payloads carry only the EXISTENCE of a set bonus (the incentive);
+    // the reward content is revealed to owners here and to granted collectors
+    // via the collect response / GET /punchline/me/unlocks (#488).
+    const unlockRow = drop.unlocks?.[0] ?? null;
+    const unlock = unlockRow
+      ? {
+          unlockType: unlockRow.unlockType,
+          ...(options?.revealUnlockReward
+            ? {
+                reward: parsePunchlineUnlockReward(
+                  unlockRow.rewardMetadata as never,
+                ),
+              }
+            : {}),
+        }
+      : null;
     return {
+      unlock,
       id: drop.id,
       trackId: drop.trackId,
       artistId: drop.artistId,

@@ -67,7 +67,9 @@ export function PunchlinePublishReviewContent({
       </p>
 
       <p className="punchline-review-note punchline-review-note-muted">
-        Complete-set unlock rewards arrive with a later update.
+        {drop.unlock
+          ? "🎁 Fans who collect every moment unlock your set bonus."
+          : "No set bonus configured — you can add one before publishing."}
       </p>
     </div>
   );

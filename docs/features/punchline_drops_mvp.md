@@ -12,7 +12,7 @@ depends_on:
 
 > **Status:** `in-progress`. The backend (Sprint 7, #479–#482, #485) and the
 > artist UI (#483–#484) are shipped — an artist can build + publish a drop and
-> fans can discover, play, and collect free moments right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collects (#1462), unlock rewards (#488), and analytics (#489) are still
+> fans can discover, play, and collect free moments right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collects (#1462) and analytics (#489) are still
 > pending. The [Implementation Status](#implementation-status-sprint-7) section
 > below is the practical, current-state reference for what works today and how
 > to exercise it. The rest of this page is the product design/RFC intent that
@@ -36,7 +36,7 @@ non-commercial fan collectibles. This section tracks what is actually built.
 | Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done (free_claim rail) | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Paid collects return `payment_rail_pending` until the x402 rail generalizes beyond stems ([#1462](https://github.com/akoita/resonate/issues/1462)). |
 | Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA (free moments collect end-to-end; paid show an honest "Coming soon" until [#1462](https://github.com/akoita/resonate/issues/1462); signed-out visitors get a working sign-in CTA). |
 | Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | ✅ done | "🎤 Moments" tab in the Library: owned moments grouped by drop with set progress ("you own N of M" / "Set complete"), edition number, acquisition date, clip playback, and a link back to the release. Deep-linkable via `/library?tab=moments`. |
-| Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | 🔜 planned | Collect every moment in a drop to earn a bonus reward. |
+| Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | ✅ done | Artist attaches an optional set bonus (bonus vocal clip + note, extracted at publish with the #481 primitive); completing the set grants it **exactly once** (DB-unique `PunchlineUnlockGrant`), emits `punchline.unlock_granted`, and reveals it in the collect module + Moments tab. Reward content is gated: public payloads carry existence only. |
 | Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | 🔜 planned | Product analytics events + artist performance metrics. |
 
 Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
@@ -54,7 +54,10 @@ collectible card is:
 
 Only verified/trusted catalogs are eligible (the gate defers to the shared
 upload-rights routing engine). A collectible is **utility, not yield** — it
-grants access and display, never income or a revenue share (ADR-BM-4). The
+grants access and display, never income or a revenue share (ADR-BM-4).
+Ownership is an off-chain DB grant by design in Phase 1; the staged path to
+optional on-chain claims (ERC-1155 editions) and its hard triggers are recorded
+in [#1467](https://github.com/akoita/resonate/issues/1467). The
 artist keeps 85%+ of every transaction; the marketplace 10% take-rate is reused
 from the existing rails and is wired with the paid rail
 ([#1462](https://github.com/akoita/resonate/issues/1462)) — the shipped #485
@@ -74,6 +77,9 @@ slice grants free moments only, so no fee applies yet.
 | `GET` | `/punchline/me/track-drops?trackId=` | JWT (owner) | The caller's drops on a track, any status, newest first — powers the builder's draft resume + published summaries (#484). |
 | `POST` | `/punchline/moments/:momentId/collect` | JWT | Collect one edition of a published moment (#485). Free moments grant immediately (`free_claim`); paid moments return `payment_rail_pending` ([#1462](https://github.com/akoita/resonate/issues/1462)). Codes: `moment_not_found`, `drop_not_published`, `sold_out`, `already_collected`, `payment_rail_pending`, `collect_failed`. |
 | `GET` | `/punchline/me/collectibles` | JWT | The caller's owned collectibles with moment/drop/track context — the inventory read (#485/#487). |
+| `PUT` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Create/replace the drop's single `complete_set` bonus: clip range (same bounds as moments) + optional note ≤500 chars (#488). |
+| `DELETE` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Remove the set bonus. |
+| `GET` | `/punchline/me/unlocks` | JWT | The caller's granted set rewards, revealed, with drop/track context (#488). |
 | `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
 | `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
 
@@ -143,7 +149,10 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   identifiers, the edition number, and payment provenance
   (`pricePaidCents`, `paymentRail`).
 - `punchline.set_completed` (v1) — emitted when a collector now owns every
-  moment in a drop; the #488 reward slice consumes this (the unlock hook).
+  moment in a drop.
+- `punchline.unlock_granted` (v1) — the complete-set reward was granted (#488),
+  exactly once per collector per unlock (DB-enforced); identifiers only, never
+  the reward content.
 
 ### Services, code, and tests
 

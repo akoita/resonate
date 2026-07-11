@@ -1193,6 +1193,103 @@
   text-decoration: underline;
 }
 
+
+/* ==========================================
+   Set bonus (#488) — builder editor + fan reveal
+   ========================================== */
+
+.punchline-bonus {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 1rem);
+  padding: var(--space-3, 1rem);
+  border: 1px dashed var(--r-chrome-border);
+  border-radius: var(--r-radius-md, 12px);
+}
+
+.punchline-bonus-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-bonus-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.95rem;
+}
+
+.punchline-bonus-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.punchline-bonus-message {
+  color: var(--r-text-muted, rgba(255, 255, 255, 0.65));
+  font-style: italic;
+}
+
+.punchline-bonus-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 1rem);
+}
+
+.punchline-bonus-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.punchline-bonus-remove {
+  color: var(--r-danger, #f87171);
+}
+
+.punchline-collect-head-chips {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex: 0 0 auto;
+}
+
+.punchline-collect-bonus-chip {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px dashed var(--r-accent, #8b5cf6);
+  color: var(--r-accent, #8b5cf6);
+  white-space: nowrap;
+}
+
+.punchline-bonus-reveal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: var(--space-3, 1rem);
+  border-radius: var(--r-radius-md, 12px);
+  border: 1px solid var(--r-accent, #8b5cf6);
+  background: linear-gradient(
+    160deg,
+    rgba(139, 92, 246, 0.12),
+    rgba(139, 92, 246, 0.03)
+  );
+}
+
+.punchline-bonus-reveal-title {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.punchline-bonus-reveal-message {
+  margin: 0;
+  font-style: italic;
+  color: var(--r-text, rgba(255, 255, 255, 0.92));
+}
+
 /* ==========================================
    Responsive — single column, no horizontal overflow
    ========================================== */
@@ -1228,5 +1325,9 @@
 
   .punchline-collect-drop-head {
     flex-direction: column;
+  }
+
+  .punchline-collect-head-chips {
+    align-items: flex-start;
   }
 }

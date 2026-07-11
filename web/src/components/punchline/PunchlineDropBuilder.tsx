@@ -18,6 +18,7 @@ import {
 } from "./PunchlineClipSelector";
 import { PunchlineMomentEditor } from "./PunchlineMomentEditor";
 import { PunchlinePublishReviewDialog } from "./PunchlinePublishReviewDialog";
+import { PunchlineSetBonusEditor } from "./PunchlineSetBonusEditor";
 import {
   formatEditionLabel,
   formatPriceCents,
@@ -404,6 +405,20 @@ export function PunchlineDropBuilder({
           onPreviewError={(message) =>
             addToast({ type: "error", title: "Preview failed", message })
           }
+        />
+      )}
+
+      {/* Set bonus (#488) — draft-only, hidden while the moment editor is open */}
+      {!editor && (
+        <PunchlineSetBonusEditor
+          token={token}
+          drop={drop}
+          stemId={stemId}
+          durationSeconds={durationSeconds}
+          minMs={minMs}
+          maxMs={maxMs}
+          onDropChange={onDropChange}
+          addToast={addToast}
         />
       )}
 

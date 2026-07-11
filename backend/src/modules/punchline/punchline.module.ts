@@ -8,6 +8,7 @@ import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import { PunchlineClipService } from "./punchline-clip.service";
 import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
+import { PunchlineUnlockService } from "./punchline-unlock.service";
 
 /**
  * Punchline Drops (#480, #481, #482, #485). Leaf module: it consumes the shared
@@ -47,12 +48,14 @@ import { PunchlineDropService } from "./punchline-drop.service";
     },
     PunchlineDropService,
     PunchlineCollectService,
+    PunchlineUnlockService,
   ],
   exports: [
     PunchlineEligibilityService,
     PunchlineClipService,
     PunchlineDropService,
     PunchlineCollectService,
+    PunchlineUnlockService,
   ],
 })
 export class PunchlineModule {}

@@ -2,7 +2,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import type { PunchlineCollectibleItem } from "../../lib/api";
+import type {
+  PunchlineCollectibleItem,
+  PunchlineUnlockGrantItem,
+} from "../../lib/api";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import { resolveClipUrl } from "./punchlineCollectHelpers";
 import "../../styles/punchline.css";
@@ -19,6 +22,8 @@ import "../../styles/punchline.css";
 
 export interface PunchlineInventoryProps {
   items: PunchlineCollectibleItem[];
+  /** Granted set rewards (#488), revealed for completed drops. */
+  unlocks?: PunchlineUnlockGrantItem[];
   loading: boolean;
   signedIn: boolean;
 }
@@ -82,6 +87,7 @@ export function formatAcquiredAt(acquiredAt: string | null): string | null {
 
 export function PunchlineInventory({
   items,
+  unlocks,
   loading,
   signedIn,
 }: PunchlineInventoryProps) {
@@ -101,6 +107,30 @@ export function PunchlineInventory({
   }, []);
 
   useEffect(() => () => stopClip(), [stopClip]);
+
+  const playBonusClip = useCallback(
+    (dropId: string, clipAssetUri: string) => {
+      const url = resolveClipUrl(clipAssetUri);
+      if (!url) {
+        setPlayError("The bonus clip isn't available right now.");
+        return;
+      }
+      stopClip();
+      setPlayError(null);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.addEventListener("ended", stopClip);
+      audio.addEventListener("error", () => {
+        stopClip();
+        setPlayError("Could not play the bonus clip.");
+      });
+      audio
+        .play()
+        .then(() => setPlayingId(`bonus-${dropId}`))
+        .catch(() => stopClip());
+    },
+    [stopClip],
+  );
 
   const playClip = useCallback(
     (item: PunchlineCollectibleItem) => {
@@ -168,6 +198,9 @@ export function PunchlineInventory({
   }
 
   const groups = groupCollectiblesByDrop(items);
+  const rewardByDrop = new Map(
+    (unlocks ?? []).map((g) => [g.drop.id, g.reward]),
+  );
 
   return (
     <div className="punchline-inventory">
@@ -210,6 +243,32 @@ export function PunchlineInventory({
                 : `You own ${group.items.length} of ${group.momentCount}`}
             </span>
           </div>
+
+          {rewardByDrop.has(group.dropId) && (
+            <div className="punchline-bonus-reveal" role="status">
+              <span className="punchline-bonus-reveal-title">
+                🎁 Set bonus unlocked
+              </span>
+              {rewardByDrop.get(group.dropId)?.message && (
+                <p className="punchline-bonus-reveal-message">
+                  “{rewardByDrop.get(group.dropId)!.message}”
+                </p>
+              )}
+              {rewardByDrop.get(group.dropId)?.clipAssetUri && (
+                <button
+                  type="button"
+                  className="punchline-btn-secondary punchline-collect-play"
+                  onClick={
+                    playingId === `bonus-${group.dropId}`
+                      ? stopClip
+                      : () => playBonusClip(group.dropId, rewardByDrop.get(group.dropId)!.clipAssetUri!)
+                  }
+                >
+                  {playingId === `bonus-${group.dropId}` ? "■ Stop" : "▶ Play bonus clip"}
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="punchline-collect-grid">
             {group.items.map((item) => (

@@ -16,6 +16,11 @@ import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
+import {
+  PunchlineUnlockService,
+  SetDropUnlockInput,
+} from "./punchline-unlock.service";
+import { Put } from "@nestjs/common";
 
 @Controller("punchline")
 export class PunchlineController {
@@ -23,6 +28,7 @@ export class PunchlineController {
     private readonly eligibilityService: PunchlineEligibilityService,
     private readonly dropService: PunchlineDropService,
     private readonly collectService: PunchlineCollectService,
+    private readonly unlockService: PunchlineUnlockService,
   ) {}
 
   /**
@@ -161,6 +167,38 @@ export class PunchlineController {
       throw new BadRequestException("trackId query parameter is required");
     }
     return this.dropService.listDropsForTrackOwner(req.user.userId, trackId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Complete-set unlock (#488)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Create/replace the drop's single complete_set bonus (owner + draft only):
+   * a bonus vocal clip range + optional note, extracted at publish time.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Put("drops/:dropId/unlock")
+  setDropUnlock(
+    @Req() req: any,
+    @Param("dropId") dropId: string,
+    @Body() body: SetDropUnlockInput,
+  ) {
+    return this.unlockService.setDropUnlock(req.user.userId, dropId, body ?? {});
+  }
+
+  /** Remove the drop's set bonus (owner + draft only). */
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("drops/:dropId/unlock")
+  removeDropUnlock(@Req() req: any, @Param("dropId") dropId: string) {
+    return this.unlockService.removeDropUnlock(req.user.userId, dropId);
+  }
+
+  /** The caller's granted set rewards, revealed — collector reward state. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/unlocks")
+  listMyUnlocks(@Req() req: any) {
+    return this.unlockService.listMyUnlocks(req.user.userId);
   }
 
   // ---------------------------------------------------------------------------

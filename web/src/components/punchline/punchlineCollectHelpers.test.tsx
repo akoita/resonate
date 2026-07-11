@@ -11,7 +11,7 @@ import {
   resolveClipUrl,
   summarizeCollectableDrops,
 } from "./punchlineCollectHelpers";
-import { CollectButton } from "./PunchlineCollectModule";
+import { CollectButton, PunchlineBonusReveal } from "./PunchlineCollectModule";
 import {
   PunchlineInventory,
   formatAcquiredAt,
@@ -301,5 +301,40 @@ describe("PunchlineInventory states", () => {
     expect(html).toContain("You own 1 of 2");
     expect(html).toContain("/release/r1");
     expect(html).toContain("The Artist");
+  });
+});
+
+describe("PunchlineBonusReveal (#488)", () => {
+  it("renders the note and the play control when a clip exists", () => {
+    const html = renderToStaticMarkup(
+      <PunchlineBonusReveal
+        reward={{
+          kind: "bonus_clip",
+          startMs: 2000,
+          endMs: 6000,
+          message: "Just for you",
+          clipAssetUri: "/catalog/stems/bonus.mp3/blob",
+        }}
+        playing={false}
+        onPlay={() => undefined}
+        onStop={() => undefined}
+      />,
+    );
+    expect(html).toContain("Set bonus unlocked");
+    expect(html).toContain("Just for you");
+    expect(html).toContain("Play bonus clip");
+  });
+
+  it("renders without message or clip gracefully", () => {
+    const html = renderToStaticMarkup(
+      <PunchlineBonusReveal
+        reward={null}
+        playing={false}
+        onPlay={() => undefined}
+        onStop={() => undefined}
+      />,
+    );
+    expect(html).toContain("Set bonus unlocked");
+    expect(html).not.toContain("Play bonus clip");
   });
 });

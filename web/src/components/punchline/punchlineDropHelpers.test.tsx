@@ -277,5 +277,16 @@ describe("PunchlinePublishReviewContent", () => {
     expect(html).toContain(d.rightsLabel);
     expect(html).toContain(d.rightsSummary);
     expect(html).toContain("Published drops can’t be edited.");
+    expect(html).toContain("No set bonus configured");
+  });
+
+  it("notes the set bonus when the drop has an unlock (#488)", () => {
+    const withBonus = drop({
+      unlock: { unlockType: "complete_set" },
+    });
+    const html = renderToStaticMarkup(
+      <PunchlinePublishReviewContent drop={withBonus} />,
+    );
+    expect(html).toContain("unlock your set bonus");
   });
 });

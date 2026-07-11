@@ -331,6 +331,19 @@ export interface PunchlineSetCompletedEvent extends BaseEvent {
   collectorUserId: string;
 }
 
+/**
+ * A complete-set reward was granted (#488) — exactly once per collector per
+ * unlock (DB-enforced). Identifiers only; never the reward content.
+ */
+export interface PunchlineUnlockGrantedEvent extends BaseEvent {
+  eventName: "punchline.unlock_granted";
+  unlockId: string;
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
+}
+
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
   eventName: "recommendation.preferences_updated";
   userId: string;
@@ -1408,6 +1421,7 @@ export type ResonateEvent =
   | PunchlineDropPublishedEvent
   | PunchlineMomentCollectedEvent
   | PunchlineSetCompletedEvent
+  | PunchlineUnlockGrantedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent

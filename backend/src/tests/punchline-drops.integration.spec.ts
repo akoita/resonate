@@ -37,6 +37,7 @@ import { PunchlineDropPublishedEvent } from "../events/event_types";
 import { PunchlineClipService } from "../modules/punchline/punchline-clip.service";
 import { PunchlineDropService } from "../modules/punchline/punchline-drop.service";
 import { PunchlineEligibilityService } from "../modules/punchline/punchline-eligibility.service";
+import { PunchlineUnlockService } from "../modules/punchline/punchline-unlock.service";
 
 const TEST_PREFIX = `punchline_drops_${Date.now()}_`;
 
@@ -107,10 +108,16 @@ describe("Punchline Drops draft + publish (integration)", () => {
     undefined,
   );
   const eligibilityService = new PunchlineEligibilityService();
+  const unlockService = new PunchlineUnlockService(
+    eventBus,
+    clipService,
+    undefined,
+  );
   const service = new PunchlineDropService(
     eventBus,
     eligibilityService,
     clipService,
+    unlockService,
     undefined,
   );
 

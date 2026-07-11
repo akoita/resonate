@@ -26,6 +26,7 @@ model User {
   communityVisibilitySettings CommunityVisibilitySettings?
   communityBenefitRedemptions CommunityBenefitRedemption[]
   punchlineCollectibles       PunchlineCollectible[]
+  punchlineUnlockGrants       PunchlineUnlockGrant[]
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
@@ -2183,6 +2184,22 @@ model PunchlineUnlock {
   rewardMetadata Json?
   createdAt      DateTime            @default(now())
   drop           PunchlineDrop       @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  grants         PunchlineUnlockGrant[]
 
   @@index([dropId])
+}
+
+// Exactly-once reward grant per collector per unlock (#488). The unique pair
+// makes double-granting impossible at the database level — same philosophy as
+// edition scarcity on PunchlineCollectible.
+model PunchlineUnlockGrant {
+  id              String          @id @default(uuid())
+  unlockId        String
+  collectorUserId String
+  grantedAt       DateTime        @default(now())
+  unlock          PunchlineUnlock @relation(fields: [unlockId], references: [id], onDelete: Cascade)
+  collector       User            @relation(fields: [collectorUserId], references: [id])
+
+  @@unique([unlockId, collectorUserId])
+  @@index([collectorUserId])
 }
