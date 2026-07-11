@@ -1,4 +1,5 @@
 import { MODULE_METADATA } from "@nestjs/common/constants";
+import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
 import { ConfigService } from "@nestjs/config";
 import { EventBus } from "../modules/shared/event_bus";
 import { SharedModule } from "../modules/shared/shared.module";
@@ -24,6 +25,12 @@ jest.mock("../db/prisma", () => ({
   prisma: {
     session: {
       create: jest.fn(),
+    },
+    // #1448: preferences are durable now; this unit spec only needs the
+    // upsert to resolve so the preferences_updated event fires.
+    recommendationProfile: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      upsert: jest.fn().mockResolvedValue({}),
     },
   },
 }));
@@ -93,8 +100,8 @@ describe("shared EventBus wiring", () => {
         amountUsd: 1,
       });
 
-      const recommendations = new RecommendationsService(eventBus);
-      recommendations.setPreferences("user_shared_bus", { genres: ["ambient"] });
+      const recommendations = new RecommendationsService(eventBus, new DiscoveryRankingService());
+      await recommendations.setPreferences("user_shared_bus", { genres: ["ambient"] });
 
       const remix = new RemixService(eventBus);
       remix.createRemix({

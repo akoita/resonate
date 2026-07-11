@@ -8,6 +8,7 @@
  */
 
 import { prisma } from '../db/prisma';
+import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
 import { EventBus } from '../modules/shared/event_bus';
 import { AgentMixerService } from '../modules/agents/agent_mixer.service';
 import { AgentNegotiatorService } from '../modules/agents/agent_negotiator.service';
@@ -51,7 +52,7 @@ describe('AgentOrchestratorService (integration)', () => {
 
   it('orchestrates selection, mix, negotiation', async () => {
     const tools = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
-    const selector = new AgentSelectorService(tools);
+    const selector = new AgentSelectorService(tools, new DiscoveryRankingService());
     const orchestrator = new AgentOrchestratorService(
       new AgentRecommendationService(new DeterministicRecommendationAdapter(selector)),
       new AgentMixerService(mockGenerationService),
