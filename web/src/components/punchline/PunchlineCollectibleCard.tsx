@@ -17,6 +17,18 @@ export function hueFromSeed(seed: string): number {
 }
 
 /**
+ * On the no-artwork card the lyric IS the poster, so type scales inversely with
+ * length — a short slogan fills the canvas, a long verse steps down to stay
+ * readable. Sized by trimmed length. Exported for tests.
+ */
+export function lyricPosterClass(lyric: string): string {
+  const length = lyric.trim().length;
+  if (length <= 70) return "punchline-card-art-lyric--xl";
+  if (length <= 130) return "punchline-card-art-lyric--lg";
+  return "punchline-card-art-lyric--md";
+}
+
+/**
  * Live preview of a collectible moment card (#484).
  *
  * Pure presentational — the same card renders from the editor's live fields
@@ -70,9 +82,11 @@ export function PunchlineCollectibleCard({
         ) : (
           <div className="punchline-card-art-placeholder" aria-hidden="true">
             <span className="punchline-card-quote">“</span>
-            <span className="punchline-card-art-lyric">
-              {displayLyric.length > 90
-                ? `${displayLyric.slice(0, 90)}…`
+            <span
+              className={`punchline-card-art-lyric ${lyricPosterClass(displayLyric)}`}
+            >
+              {displayLyric.length > 180
+                ? `${displayLyric.slice(0, 180)}…`
                 : displayLyric || "…"}
             </span>
           </div>

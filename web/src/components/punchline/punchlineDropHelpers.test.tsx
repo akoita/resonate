@@ -13,7 +13,10 @@ import {
   validateMomentInput,
   type MomentInputFields,
 } from "./punchlineDropHelpers";
-import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
+import {
+  PunchlineCollectibleCard,
+  lyricPosterClass,
+} from "./PunchlineCollectibleCard";
 import { PunchlinePublishReviewContent } from "./PunchlinePublishReviewDialog";
 import type { PunchlineDrop, PunchlineMoment } from "../../lib/api";
 
@@ -259,6 +262,64 @@ describe("PunchlineCollectibleCard", () => {
     );
     expect(html).toContain("Free to claim");
     expect(html).toContain("https://example.com/art.png");
+  });
+
+  it("scales the poster lyric to xl for a short slogan", () => {
+    const html = renderToStaticMarkup(
+      <PunchlineCollectibleCard
+        title="Hook"
+        lyricText="Every word counts"
+        artworkUrl={null}
+        durationMs={5000}
+        editionSize={100}
+        priceCents={150}
+        rightsLabel="NON_COMMERCIAL_COLLECTIBLE"
+      />,
+    );
+    expect(html).toContain("punchline-card-art-lyric--xl");
+  });
+
+  it("truncates an over-long lyric to 180 chars plus an ellipsis", () => {
+    const longLyric = "a".repeat(200);
+    const html = renderToStaticMarkup(
+      <PunchlineCollectibleCard
+        title="Hook"
+        lyricText={longLyric}
+        artworkUrl={null}
+        durationMs={5000}
+        editionSize={100}
+        priceCents={150}
+        rightsLabel="NON_COMMERCIAL_COLLECTIBLE"
+      />,
+    );
+    expect(html).toContain(`${"a".repeat(180)}…`);
+    expect(html).not.toContain("a".repeat(181));
+  });
+});
+
+describe("lyricPosterClass", () => {
+  it("returns xl at and below 70 trimmed chars", () => {
+    expect(lyricPosterClass("a".repeat(70))).toBe(
+      "punchline-card-art-lyric--xl",
+    );
+    expect(lyricPosterClass(`  ${"a".repeat(70)}  `)).toBe(
+      "punchline-card-art-lyric--xl",
+    );
+  });
+
+  it("returns lg between 71 and 130 trimmed chars", () => {
+    expect(lyricPosterClass("a".repeat(71))).toBe(
+      "punchline-card-art-lyric--lg",
+    );
+    expect(lyricPosterClass("a".repeat(130))).toBe(
+      "punchline-card-art-lyric--lg",
+    );
+  });
+
+  it("returns md above 130 trimmed chars", () => {
+    expect(lyricPosterClass("a".repeat(131))).toBe(
+      "punchline-card-art-lyric--md",
+    );
   });
 });
 

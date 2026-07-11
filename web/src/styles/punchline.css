@@ -805,7 +805,7 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  justify-content: flex-end;
+  justify-content: center;
   width: 100%;
   height: 100%;
   /* Bottom padding clears the waveform ribbon (top edge ~30px from the bottom)
@@ -825,17 +825,30 @@
   pointer-events: none;
 }
 
+/* The lyric is the poster: bold, large, and it owns the canvas. Size steps
+   with length via the --xl/--lg/--md modifiers set by lyricPosterClass(). */
 .punchline-card-art-lyric {
-  font-size: 1.1rem;
-  line-height: 1.45;
-  font-weight: 600;
+  font-weight: 700;
+  line-height: 1.3;
   font-style: italic;
   color: rgba(255, 255, 255, 0.92);
   text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.punchline-card-art-lyric--xl {
+  font-size: 1.65rem;
+}
+
+.punchline-card-art-lyric--lg {
+  font-size: 1.35rem;
+}
+
+.punchline-card-art-lyric--md {
+  font-size: 1.15rem;
 }
 
 .punchline-card-duration {
