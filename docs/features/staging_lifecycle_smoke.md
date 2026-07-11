@@ -28,6 +28,11 @@ Each run:
    on-chain campaign, and asserts the hydration response: `paymentTokenAddress`
    equals the configured token, `onChainStatus` is `Active`, `feeBps` equals the
    on-chain fee (600). Every API response is parsed as JSON (covers #1386).
+   Because the backend hydrates from its own RPC replica (which can lag behind
+   the replica that confirmed our tx — observed 2026-07-11, #1399), stale
+   hydration triggers up to 5 `POST …/resync-chain` polls (4s apart) before
+   failing — which also gives the #1364 resync correction path nightly
+   coverage.
 6. **pledge** — creates a pledge intent as the smoke user (its wallet row was
    bound at `/auth/verify`, satisfying the #1221 rule), then on-chain `approve` +
    `pledge` from the smoke EOA.
@@ -126,6 +131,9 @@ node lifecycle-smoke.mjs            # add --dry-run to stop after auth
     `OPERATOR_ADDRESSES` in the staging backend config.
   - `SMOKE_FAIL api-authority: paymentTokenAddress is …` → a #1364/#1391-class
     chain-truth regression.
+  - `SMOKE_FAIL api-authority: onChainStatus is "Draft" … (after 5 resync
+    attempts — not replica lag)` → hydration is persistently wrong, not lagging:
+    check the backend RPC endpoint health and the escrow read path.
   - `SMOKE_FAIL indexer-confirm: campaign not funded within …` → the escrow
     indexer is not confirming pledges.
   - `SMOKE_FAIL claim-refund: smoke wallet USDC … != pre-run balance …` → the
