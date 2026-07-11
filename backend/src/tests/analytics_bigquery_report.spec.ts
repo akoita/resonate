@@ -92,6 +92,11 @@ describe("analytics BigQuery report source", () => {
     expect(client.requests[0].query).toContain("FROM `analytics-project.analytics_dev.analytics_facts`");
     expect(client.requests[0].query).toContain("artistId = @artistId");
     expect(client.requests[0].query).toContain("occurredAt >= TIMESTAMP(@from)");
+    // Streaming-insert duplicates (overlapping loads / backfills) must be
+    // collapsed by the unique factId, or every +1-per-fact metric over-counts.
+    expect(client.requests[0].query).toContain(
+      "QUALIFY ROW_NUMBER() OVER (PARTITION BY factId ORDER BY occurredAt) = 1",
+    );
     expect(client.requests[0].parameters.artistId).toBe("artist-1");
     expect(client.requests[1].parameters.toExclusiveDate).toBe("2026-05-22");
     expect(client.requests[0].maximumBytesBilled).toBe("123456");
