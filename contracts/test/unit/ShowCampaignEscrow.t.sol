@@ -3,10 +3,12 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
+import {EscrowProxyDeployer} from "../utils/EscrowProxyDeployer.sol";
 
 contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     ShowCampaignEscrow public escrow;
@@ -19,6 +21,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public feeRecipient = makeAddr("feeRecipient");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
@@ -28,7 +31,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
@@ -324,16 +327,33 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     }
 
     function test_FeeConfigValidation() public {
+        // The fee/recipient validation now runs inside initialize, so a bad config
+        // reverts the ERC1967 proxy construction (the proxy calls initialize).
+        ShowCampaignEscrow impl = new ShowCampaignEscrow();
+
         vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFeeBps.selector, 1001, uint256(1000)));
-        new ShowCampaignEscrow(owner, 1001, feeRecipient);
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 1001, feeRecipient, upgradeAuthority))
+        );
 
         vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
-        new ShowCampaignEscrow(owner, 600, address(0));
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 600, address(0), upgradeAuthority))
+        );
 
         // The recipient is required even at 0 bps: releases read it at charge time and
         // in-flight campaigns may carry a non-zero snapshotted rate.
         vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
-        new ShowCampaignEscrow(owner, 0, address(0));
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, address(0), upgradeAuthority))
+        );
+
+        // The upgrade authority is likewise required at initialization.
+        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, feeRecipient, address(0)))
+        );
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFeeBps.selector, 1001, uint256(1000)));
@@ -1020,7 +1040,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     }
 
     function _useFeeEscrow(uint256 feeBps) internal {
-        escrow = new ShowCampaignEscrow(owner, feeBps, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, feeBps, feeRecipient, upgradeAuthority);
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
 

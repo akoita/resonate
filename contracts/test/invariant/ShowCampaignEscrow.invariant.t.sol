@@ -5,6 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {EscrowProxyDeployer} from "../utils/EscrowProxyDeployer.sol";
 
 /**
  * @title ShowCampaignEscrow Invariant Tests
@@ -19,12 +20,13 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
     address public artist = makeAddr("artist");
     address public confirmer = makeAddr("confirmer");
     address public feeRecipient = makeAddr("feeRecipient");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
 
     uint256 public campaignId;
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner, 600, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, 600, feeRecipient, upgradeAuthority);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);

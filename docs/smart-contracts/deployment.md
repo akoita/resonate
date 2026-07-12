@@ -113,28 +113,79 @@ the same chain.
 
 ### ShowCampaignEscrow deployment handoff
 
-`make deploy-show-campaign-escrow` deploys the standalone Shows escrow and then
-runs
+As of **#1497**, `ShowCampaignEscrow` is a **UUPS implementation behind an
+ERC1967 proxy**, and its upgrade authority is a **`TimelockController`** (default
+48h delay) with the ops owner as proposer/executor and an independent **guardian
+holding `CANCELLER_ROLE`**. `DeployShowCampaignEscrow.s.sol` deploys the
+implementation, the timelock (granting the guardian CANCELLER and renouncing the
+transient deployer admin), and the proxy, then initializes the proxy binding the
+ops owner, fee config, and the timelock as `upgradeAuthority`.
+
+Deploy env (in addition to the existing owner/fee vars):
+
+| Env | Meaning | Default |
+| --- | --- | --- |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Ops owner / multisig (proposer + executor) | deployer |
+| `SHOW_CAMPAIGN_FEE_BPS` | Success-only campaign fee (bps) | 600 |
+| `SHOW_CAMPAIGN_FEE_RECIPIENT` | Platform fee wallet | required remote; local → owner |
+| `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` | Upgrade delay (seconds) | 172800 (48h) |
+| `SHOW_CAMPAIGN_GUARDIAN` | Guardian `CANCELLER` | required remote; local → owner |
+
+`make deploy-show-campaign-escrow` deploys the escrow graph and then runs
 [`contracts/scripts/write-show-campaign-escrow-handoff.sh`](../../contracts/scripts/write-show-campaign-escrow-handoff.sh).
 That parser turns the Foundry broadcast into:
 
-- `contracts/deployments/show-campaign-escrow.<network>.json`
+- `contracts/deployments/show-campaign-escrow.<network>.json` — records the
+  **proxy** (app-facing), **implementation**, and **timelock** addresses under
+  `contracts` + `upgradeability`.
 - `contracts/deployments/show-campaign-escrow.<network>.remote.env`
 - `contracts/deployments/show-campaign-escrow.abi.json`
 
-The `.remote.env` file contains only non-secret app configuration:
+The `.remote.env` file contains only non-secret app configuration. The
+app-facing `SHOW_CAMPAIGN_ESCROW_ADDRESS` is the **proxy** (stable across
+upgrades):
 
 ```bash
 NEXT_PUBLIC_CHAIN_ID=<chain-id>
-SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
-NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=<deployed-escrow>
+SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy>
+NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy>
+SHOW_CAMPAIGN_TIMELOCK_ADDRESS=<timelock>
+SHOW_CAMPAIGN_ESCROW_IMPLEMENTATION=<implementation>
 ```
 
 Promote those values through the reviewed `resonate-iac`/GCP environment path
 instead of copying console output into Cloud Run or GitHub variables by hand.
 The backend still links individual campaigns with `contractAddress` and
 `contractCampaignId`; the global escrow address is the deployment/runtime
-default used by operators and future reconciliation jobs.
+default used by operators and future reconciliation jobs. Because the proxy
+address is stable, **an upgrade requires no app/ABI address change** — the ABI
+handoff regenerates only if the contract surface changed.
+
+#### Upgrading the implementation (timelocked)
+
+Upgrades go through the timelock in two phases (signer must be the ops owner /
+timelock proposer+executor):
+
+```bash
+cd contracts
+# Phase 1 — schedule (deploys a new impl, schedules upgradeToAndCall, logs op id + ETA)
+UPGRADE_ACTION=schedule \
+  SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy> \
+  SHOW_CAMPAIGN_TIMELOCK_ADDRESS=<timelock> \
+  forge script script/UpgradeShowCampaignEscrow.s.sol --rpc-url $RPC_URL --broadcast
+
+# ... wait out SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY ...
+
+# Phase 2 — execute (NEW_IMPLEMENTATION = the address logged in phase 1)
+UPGRADE_ACTION=execute NEW_IMPLEMENTATION=<new-impl> \
+  SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy> \
+  SHOW_CAMPAIGN_TIMELOCK_ADDRESS=<timelock> \
+  forge script script/UpgradeShowCampaignEscrow.s.sol --rpc-url $RPC_URL --broadcast
+```
+
+The guardian can abort a scheduled upgrade before the ETA with
+`timelock.cancel(<operationId>)`. See the emergency-response runbook in
+[`docs/rfc/contract-upgradeability-and-recovery.md`](../rfc/contract-upgradeability-and-recovery.md).
 
 #### Local Anvil deploy + smoke check
 
