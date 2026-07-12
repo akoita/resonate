@@ -27,6 +27,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { prisma } from "../../db/prisma";
 import { UploadRightsRoutingService } from "../rights/upload-rights-routing.service";
 import { RemixEligibilityService } from "../remix/remix-eligibility.service";
+import { PayoutEligibilityService } from "../trust/payout-eligibility.service";
 
 const MINT_AUTHORIZATION_DOMAIN = {
   name: "Resonate StemNFT",
@@ -204,6 +205,7 @@ export class MintAuthorizationService {
     private readonly config: ConfigService,
     private readonly uploadRightsRoutingService: UploadRightsRoutingService,
     private readonly remixEligibilityService: RemixEligibilityService,
+    private readonly payoutEligibilityService: PayoutEligibilityService = new PayoutEligibilityService(),
   ) {}
 
   async createAuthorization(
@@ -262,6 +264,7 @@ export class MintAuthorizationService {
               include: {
                 artist: {
                   select: {
+                    id: true,
                     userId: true,
                     payoutAddress: true,
                   },
@@ -293,6 +296,18 @@ export class MintAuthorizationService {
       throw new ForbiddenException("You do not own this stem");
     }
     await this.uploadRightsRoutingService.assertMarketplaceAllowedForStem(input.stemId);
+    // #1498 (ADR-BM-5): minting lists the stem for sale, so its proceeds flow to
+    // the stem/release owner. Gate the payout destination fail-closed alongside
+    // the marketplace-route check — an artist who is not human-verified with a
+    // payout-eligible rights state cannot mint a saleable stem to themselves.
+    const sellerArtistId = stem.track?.release?.artist?.id;
+    if (!sellerArtistId) {
+      throw new ForbiddenException("Stem is not linked to an artist payout profile");
+    }
+    await this.payoutEligibilityService.assertEligible(
+      sellerArtistId,
+      "marketplace_mint",
+    );
     // Rights hole (#1413): the check above only enforces the upload rights
     // *route*. Selling a remix (minting its master stem) additionally
     // requires the eligibility engine's `export` (commercial) action on

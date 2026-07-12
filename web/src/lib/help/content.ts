@@ -544,7 +544,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "marketplace"],
+    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -567,6 +567,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Remix-tier listings power Remix Studio",
             text: "When you list a stem at the remix tier, buyers of that listing can open it in Remix Studio.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Payouts need a verified-human account",
+            text: "Because a sale sends money to you, minting a stem for sale requires your account to be human-verified and your catalog rights to allow payouts. Run the human-verification check on your artist profile first; if you're not eligible yet, the app tells you exactly what's missing.",
           },
         ],
       },
@@ -1171,7 +1177,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["artist", "operator"],
     status: "partial",
-    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee"],
+    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee", "payout", "verified human", "human verification", "eligible for payouts", "get paid"],
     sections: [
       {
         id: "create",
@@ -1210,6 +1216,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Admin and operator accounts can use the Shows list filter to switch from the default actionable campaign view to all campaigns or to a specific status such as cancelled, refunds, or released. If a linked escrow campaign looks stale, operators can re-sync it from the chain to refresh the fee and escrow status shown to fans.",
+          },
+        ],
+      },
+      {
+        id: "payout-eligibility",
+        heading: "Getting paid: verified-human check",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Before your account can be the destination for campaign money, it has to be eligible for payouts. This protects fans and keeps payouts going to real people.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Your account must pass the human-verification (personhood) check.",
+              "Your catalog must have a release whose rights review allows payouts.",
+              "There must be no open rights restriction on your catalog.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Where to verify",
+            text: "Run the human-verification check on your artist profile (artist onboarding). If you open a campaign before you're eligible, the form shows exactly what's missing and the single step that unblocks it — so a submit never fails silently.",
           },
         ],
       },

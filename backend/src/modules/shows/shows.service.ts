@@ -20,6 +20,7 @@ import {
 import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
 import { StorageProvider } from "../storage/storage_provider";
+import { PayoutEligibilityService } from "../trust/payout-eligibility.service";
 import {
   assertShowArtistAuthorityStatus,
   assertShowCampaignBeneficiaryType,
@@ -862,10 +863,28 @@ function visualExtension(mimeType: string) {
 export class ShowsService {
   private readonly logger = new Logger(ShowsService.name);
 
+  private lazyPayoutEligibilityService?: PayoutEligibilityService;
+
   constructor(
     @Optional() private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService,
     @Optional() private readonly storageProvider?: StorageProvider,
+    @Optional() private readonly payoutEligibilityService?: PayoutEligibilityService,
   ) {}
+
+  /**
+   * Fail-closed access to the payout-eligibility gate (#1498). Prefers the
+   * DI-provided singleton, but always resolves a working instance so the gate
+   * can never silently no-op — even when ShowsService is `new`'d in a test.
+   */
+  private getPayoutEligibilityService(): PayoutEligibilityService {
+    if (this.payoutEligibilityService) {
+      return this.payoutEligibilityService;
+    }
+    if (!this.lazyPayoutEligibilityService) {
+      this.lazyPayoutEligibilityService = new PayoutEligibilityService();
+    }
+    return this.lazyPayoutEligibilityService;
+  }
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string; scope?: string } = {}) {
     const includeSignals = query.includeSignals === true;
@@ -1008,7 +1027,7 @@ export class ShowsService {
     if (AUTHORIZED_STATUSES.includes(authorityStatus) && !isPrivilegedActor(actor)) {
       throw new ForbiddenException("Authority approval must be performed by an operator");
     }
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
@@ -1119,7 +1138,7 @@ export class ShowsService {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
     }
 
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input, {
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
     });
@@ -1551,7 +1570,7 @@ export class ShowsService {
     const artistIdentity = isPrivilegedActor(actor)
       ? await this.campaignArtistIdentity(campaign.artistId)
       : await this.resolveActorArtistProfile(actor);
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
     });
@@ -3097,7 +3116,7 @@ export class ShowsService {
     };
   }
 
-  private normalizeCampaignBeneficiary(
+  private async normalizeCampaignBeneficiary(
     actor: Actor,
     artist: Artist | null,
     input: {
@@ -3124,6 +3143,13 @@ export class ShowsService {
           "beneficiaryAddress must match the authenticated artist payout address; update the artist profile or ask an operator to review an override",
         );
       }
+      // #1498 (ADR-BM-5): this is the self-serve branch that binds the artist's
+      // own payout wallet as the money destination. Gate it fail-closed — an
+      // artist who is not human-verified with a payout-eligible rights state
+      // cannot reach an authorized, activatable campaign with themselves as
+      // beneficiary. Operator/admin-designated beneficiaries (privileged actor,
+      // handled below) are intentionally NOT gated here.
+      await this.getPayoutEligibilityService().assertEligible(artist.id, "shows_beneficiary");
       return {
         address: payoutAddress,
         type: "wallet" as ShowCampaignBeneficiaryType,

@@ -4006,6 +4006,55 @@ export async function createBatchStemMintAuthorizations(
   );
 }
 
+// ========== Payout Eligibility API (#1498, ADR-BM-5) ==========
+
+/** Stable machine codes for why an artist can/can't receive payouts. */
+export type PayoutEligibilityReasonCode =
+  | "human_verification_required"
+  | "rights_review_required"
+  | "payout_release_blocked"
+  | "payouts_restricted"
+  | "artist_profile_required";
+
+export type PayoutEligibilityReason = {
+  code: PayoutEligibilityReasonCode;
+  /** Plain-language explanation. */
+  message: string;
+  /** The exact next step that unblocks this reason. */
+  resolution: string;
+};
+
+/** The input states the gate evaluated, surfaced for honest display. */
+export type PayoutEligibilityInputs = {
+  humanVerificationState: "unverified" | "human_verified";
+  rightsReviewState: string;
+  payoutRelease: "none" | "held" | "standard" | "trusted";
+  rightsFlags: string[];
+  rightsRoute: string | null;
+  hasReleases: boolean;
+};
+
+export type PayoutEligibility = {
+  artistId: string | null;
+  eligible: boolean;
+  reasons: PayoutEligibilityReason[];
+  inputs: PayoutEligibilityInputs | null;
+};
+
+/**
+ * Self-serve payout eligibility for the signed-in caller's artist profile.
+ * Never 404s: a user with no artist profile returns `eligible:false` with an
+ * `artist_profile_required` reason. The backend gate remains authoritative —
+ * this is for showing an honest "why + how to fix" before a paid action.
+ */
+export async function fetchPayoutEligibility(token: string) {
+  return apiRequest<PayoutEligibility>(
+    "/api/trust/me/payout-eligibility",
+    {},
+    token,
+  );
+}
+
 // ========== Agent Config API ==========
 
 export type AgentIdentityStatus = "local" | "pending" | "minted" | "attested";
