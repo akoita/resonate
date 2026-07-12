@@ -29,12 +29,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-          submodules: true
 
-      # kernel's pinned .gitmodules omits an entry for its (unused) lib/ExcessivelySafeCall
-      # gitlink, so ANY recursive submodule init hard-fails. Init the valid nested deps by name.
-      - name: Init kernel nested submodules
-        run: git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
+      # Explicit, deterministic submodule init. actions/checkout's submodule support is
+      # unusable here: it always runs a recursive pass, and kernel's pinned .gitmodules
+      # omits an entry for its (unused, empty) lib/ExcessivelySafeCall gitlink, so any
+      # recursive walk hard-fails. Init top-level deps, then kernel's valid nested deps by name.
+      - name: Init contract submodules
+        run: |
+          git submodule update --init
+          git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
 
       - name: Check CERTORAKEY secret
         id: key
