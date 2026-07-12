@@ -929,11 +929,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "punchline-drops",
     title: "Drops: turn your track's best moments into collectibles",
     summary:
-      "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans will soon be able to own.",
+      "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans can own, free or paid.",
     category: "artists",
     audiences: ["artist", "listener"],
     status: "partial",
-    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free"],
+    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
     sections: [
       {
         id: "what",
@@ -990,7 +990,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Free moments can be collected right now — sign in, tap Collect, and the edition number is yours. Each fan can collect one edition per moment, and when they are gone, they are gone.',
+            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Sign in, tap Collect, and the edition number is yours. Free moments are claimed instantly; priced moments show their price and check out with your Resonate passkey wallet — you pay in USDC and the edition is granted the moment the payment clears. Each fan can collect one edition per moment, and when they are gone, they are gone.',
           },
           {
             kind: "paragraph",
@@ -1003,8 +1003,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "callout",
             tone: "note",
-            title: 'Priced moments say "Coming soon"',
-            text: "Artists can set a price on a moment today, but paid collecting has not opened yet — those cards show their price with a Coming soon button until payments arrive.",
+            title: "Priced moments (paid collecting)",
+            text: "Artists set each moment's price — free, or between $0.50 and $9.99 per edition. Priced moments check out in USDC from your Resonate passkey wallet; the artist keeps at least 85% of every sale. If a payment clears but the edition just sold out or you already own it, no edition is granted and support will refund you.",
           },
         ],
       },
@@ -1014,7 +1014,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward each set. Complete a whole set and the artist's bonus unlocks instantly: a hidden extra clip and a personal note, shown right on the release page and in your Library. Still ahead: paid collecting.",
+            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward each set. Complete a whole set and the artist's bonus unlocks instantly: a hidden extra clip and a personal note, shown right on the release page and in your Library.",
           },
         ],
       },

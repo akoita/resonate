@@ -208,7 +208,11 @@ export class RemixEligibilityService {
       }
     }
     for (const settlement of settlements) {
-      licensed.add(settlement.stemId);
+      // stemId is nullable since #1462 (moment settlements); the query filters
+      // to stem rows, but guard the type to keep only stem licenses.
+      if (settlement.stemId) {
+        licensed.add(settlement.stemId);
+      }
     }
     return licensed;
   }
@@ -267,7 +271,11 @@ export class RemixEligibilityService {
       }
     }
     for (const settlement of settlements) {
-      licensed.add(settlement.stemId);
+      // stemId is nullable since #1462 (moment settlements); the query filters
+      // to stem rows, but guard the type to keep only stem licenses.
+      if (settlement.stemId) {
+        licensed.add(settlement.stemId);
+      }
     }
     return licensed;
   }

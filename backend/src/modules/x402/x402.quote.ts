@@ -24,7 +24,18 @@ export function formatUsdcAmount(value: number): string {
   return value.toFixed(6).replace(/\.?0+$/, "");
 }
 
-function toUsdBreakdown(amount: number, feeBps: number) {
+/**
+ * Convert a USD amount into the token's smallest-unit integer string (e.g.
+ * 0.50 → "500000" at 6 decimals). Shared by every x402 resource so stem and
+ * moment challenges encode amounts identically.
+ */
+export function toX402TokenAmount(amount: number, decimals: number): string {
+  const [intPart, decPart = ""] = String(amount).split(".");
+  const paddedDec = decPart.padEnd(decimals, "0").slice(0, decimals);
+  return (intPart + paddedDec).replace(/^0+/, "") || "0";
+}
+
+export function toUsdBreakdown(amount: number, feeBps: number) {
   const feeUsd = amount * feeBps / 10_000;
   const netToSellerUsd = Math.max(0, amount - feeUsd);
   return {

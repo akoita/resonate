@@ -246,9 +246,9 @@ describe("Punchline collect + ownership grant (integration)", () => {
     );
   });
 
-  it("(e) denies paid moments with payment_rail_pending (no rail in this slice)", async () => {
+  it("(e) rejects priced moments on the free endpoint with payment_required", async () => {
     await expect(codeOf(service.collectMoment(FANS[1], MOMENT_PAID))).resolves.toBe(
-      "payment_rail_pending",
+      "payment_required",
     );
     const grants = await prisma.punchlineCollectible.count({
       where: { momentId: MOMENT_PAID },

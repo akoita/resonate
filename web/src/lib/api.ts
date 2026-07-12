@@ -2121,6 +2121,64 @@ export async function collectPunchlineMoment(
   );
 }
 
+/** x402 quote for a priced moment (#1462): amount, take breakdown, USDC asset. */
+export type PunchlineMomentQuote = {
+  momentId: string;
+  resourceKind: "punchline_moment";
+  priceCents: number;
+  amountUsd: number;
+  currency: string;
+  displayPrice: string;
+  breakdown: {
+    feeBps: number;
+    platformFee: { currency: string; amount: string; usd: number };
+    netToSeller: { currency: string; amount: string; usd: number };
+  };
+  network: string;
+  chainId: number;
+  payTo: string;
+  asset: {
+    assetId: string;
+    address: string;
+    symbol: string;
+    name: string;
+    version: string;
+    decimals: number;
+  };
+  amountUnits: string;
+  editionSize: number;
+  collected: number;
+  editionsRemaining: number;
+  collectEndpoint: string;
+};
+
+/**
+ * Fetch the x402 quote for a priced moment. Public (no auth). Throws an
+ * ApiError carrying the backend `{ code }` for free / sold-out / not-published.
+ */
+export async function fetchPunchlineMomentQuote(momentId: string) {
+  return apiRequest<PunchlineMomentQuote>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect/quote`,
+  );
+}
+
+/**
+ * Paid collect (#1462): the passkey wallet already sent USDC; this verifies the
+ * on-chain payment and grants the edition. Idempotent on txHash. Errors carry a
+ * `{ code }` (payment_verification_failed, paid_but_unfulfilled, …).
+ */
+export async function collectPunchlineMomentWithSmartAccount(
+  momentId: string,
+  body: { txHash: string; payer: string; collectorWallet?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineCollectResult>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect/smart-account`,
+    { method: "POST", body: JSON.stringify(body) },
+    token,
+  );
+}
+
 /** The caller's owned collectibles — the inventory read (#485/#487). */
 export async function listMyPunchlineCollectibles(token: string) {
   return apiRequest<{

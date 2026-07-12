@@ -3,6 +3,8 @@ import { ConfigService } from "@nestjs/config";
 import { EncryptionService } from "../encryption/encryption.service";
 import { RightsModule } from "../rights/rights.module";
 import { StorageProvider } from "../storage/storage_provider";
+import { X402Module } from "../x402/x402.module";
+import { PaymentsModule } from "../payments/payments.module";
 import { PunchlineController } from "./punchline.controller";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import { PunchlineClipService } from "./punchline-clip.service";
@@ -10,6 +12,7 @@ import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
 import { PunchlineUnlockService } from "./punchline-unlock.service";
 import { PunchlineMetricsService } from "./punchline-metrics.service";
+import { PunchlineX402Service } from "./punchline-x402.service";
 
 /**
  * Punchline Drops (#480, #481, #482, #485). Leaf module: it consumes the shared
@@ -29,7 +32,7 @@ import { PunchlineMetricsService } from "./punchline-metrics.service";
  * primitive behind the mutation boundary.
  */
 @Module({
-  imports: [RightsModule],
+  imports: [RightsModule, X402Module, PaymentsModule],
   controllers: [PunchlineController],
   providers: [
     PunchlineEligibilityService,
@@ -51,6 +54,7 @@ import { PunchlineMetricsService } from "./punchline-metrics.service";
     PunchlineCollectService,
     PunchlineUnlockService,
     PunchlineMetricsService,
+    PunchlineX402Service,
   ],
   exports: [
     PunchlineEligibilityService,
@@ -59,6 +63,7 @@ import { PunchlineMetricsService } from "./punchline-metrics.service";
     PunchlineCollectService,
     PunchlineUnlockService,
     PunchlineMetricsService,
+    PunchlineX402Service,
   ],
 })
 export class PunchlineModule {}

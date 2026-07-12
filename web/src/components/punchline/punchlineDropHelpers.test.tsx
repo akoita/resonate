@@ -74,11 +74,12 @@ function drop(overrides: Partial<PunchlineDrop> = {}): PunchlineDrop {
 }
 
 describe("parsePriceDollarsToCents", () => {
-  it("parses dollars and cents", () => {
+  it("parses dollars and cents inside the band", () => {
     expect(parsePriceDollarsToCents("1.50")).toEqual({ ok: true, cents: 150 });
-    expect(parsePriceDollarsToCents("12")).toEqual({ ok: true, cents: 1200 });
     expect(parsePriceDollarsToCents(" 0 ")).toEqual({ ok: true, cents: 0 });
-    expect(parsePriceDollarsToCents("0.05")).toEqual({ ok: true, cents: 5 });
+    // Band endpoints: $0.50 and $9.99.
+    expect(parsePriceDollarsToCents("0.50")).toEqual({ ok: true, cents: 50 });
+    expect(parsePriceDollarsToCents("9.99")).toEqual({ ok: true, cents: 999 });
   });
 
   it("rejects blank, malformed, negative, and over-precise input", () => {
@@ -88,9 +89,16 @@ describe("parsePriceDollarsToCents", () => {
     }
   });
 
-  it("rejects prices above the backend maximum", () => {
-    expect(parsePriceDollarsToCents("10000.01").ok).toBe(false);
-    expect(parsePriceDollarsToCents("10000").ok).toBe(true);
+  it("enforces the canonical $0.50–$9.99 price band (#1462), free excepted", () => {
+    // Below the band (but non-zero) and above it are both rejected.
+    expect(parsePriceDollarsToCents("0.05").ok).toBe(false);
+    expect(parsePriceDollarsToCents("0.49").ok).toBe(false);
+    expect(parsePriceDollarsToCents("10.00").ok).toBe(false);
+    expect(parsePriceDollarsToCents("12").ok).toBe(false);
+    // Free and the band endpoints are allowed.
+    expect(parsePriceDollarsToCents("0").ok).toBe(true);
+    expect(parsePriceDollarsToCents("0.50").ok).toBe(true);
+    expect(parsePriceDollarsToCents("9.99").ok).toBe(true);
   });
 });
 

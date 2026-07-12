@@ -31,14 +31,13 @@ import { resolveCreditedArtistName } from "../shared/artist_attribution";
  *     fan per moment (set-completion mechanics (#488) count owned moments, and
  *     free claims must not be sweepable by a single account).
  *
- * Payment: this slice ships the **free_claim rail only** (priceCents = 0).
- * Paid collects intentionally return `payment_rail_pending`: the existing x402
- * machinery is stem-keyed end-to-end (X402Settlement.stemId, the middleware's
- * /api/stems route match, stem receipts) and generalizing it to moments is its
- * own tracked slice — and canonical moment pricing is still a pending operator
- * decision (docs/rfc/business-model.md rule: no new fee/price without
- * reconciliation). The `paymentRail`/`pricePaidCents`/`paymentRef` columns are
- * already in place for that rail to fill.
+ * Payment rails:
+ *   - **free_claim** (priceCents = 0): granted immediately by `collectMoment`.
+ *   - **x402** (priceCents > 0): settled on the x402 personal rail by
+ *     `PunchlineX402Service`, which verifies the on-chain USDC payment and then
+ *     calls `allocatePaidEditionWithSettlement` to grant the edition and record
+ *     the settlement in a single transaction (#1462). Priced moments routed to
+ *     the free endpoint are rejected with `payment_required`.
  */
 
 export type PunchlineCollectErrorCode =
@@ -46,7 +45,8 @@ export type PunchlineCollectErrorCode =
   | "drop_not_published"
   | "sold_out"
   | "already_collected"
-  | "payment_rail_pending"
+  | "payment_required"
+  | "paid_but_unfulfilled"
   | "collect_failed";
 
 export class PunchlineCollectException extends BadRequestException {
@@ -63,6 +63,7 @@ export class PunchlineCollectException extends BadRequestException {
 const EDITION_RACE_RETRIES = 5;
 
 const FREE_CLAIM_RAIL = "free_claim";
+const PAID_RAIL = "x402";
 
 @Injectable()
 export class PunchlineCollectService {
@@ -104,11 +105,12 @@ export class PunchlineCollectService {
       );
     }
 
-    // Paid rail is a tracked follow-up — see the service doc comment.
+    // Priced moments settle on the x402 rail via PunchlineX402Service; the free
+    // endpoint must never grant a paid edition for free.
     if (moment.priceCents > 0) {
       throw new PunchlineCollectException(
-        "payment_rail_pending",
-        "Paid collecting is not available yet — this moment can be collected once payments open.",
+        "payment_required",
+        "This moment is priced — collect it through the paid checkout.",
       );
     }
 
@@ -122,6 +124,31 @@ export class PunchlineCollectService {
       paymentRef: null,
     });
 
+    return this.finalizeCollect(userId, moment, collectible);
+  }
+
+  /**
+   * Shared post-allocation finalize for both rails: emit the collected event
+   * with the real amounts recorded on the grant, evaluate set completion, grant
+   * the complete-set reward once (#488), and shape the collect response. Called
+   * by the free path and by `PunchlineX402Service` after a paid grant.
+   */
+  async finalizeCollect(
+    userId: string,
+    moment: {
+      id: string;
+      editionSize: number;
+      drop: { id: string; trackId: string; artistId: string };
+    },
+    collectible: {
+      id: string;
+      editionNumber: number;
+      status: string;
+      paymentRail: string;
+      pricePaidCents: number;
+      acquiredAt: Date | null;
+    },
+  ) {
     const collectedEvent: PunchlineMomentCollectedEvent = {
       eventName: "punchline.moment_collected",
       eventVersion: 1,
@@ -132,8 +159,8 @@ export class PunchlineCollectService {
       artistId: moment.drop.artistId,
       collectorUserId: userId,
       editionNumber: collectible.editionNumber,
-      pricePaidCents: 0,
-      paymentRail: FREE_CLAIM_RAIL,
+      pricePaidCents: collectible.pricePaidCents,
+      paymentRail: collectible.paymentRail,
     };
     this.eventBus.publish(collectedEvent);
 
@@ -189,6 +216,51 @@ export class PunchlineCollectService {
       },
       setCompleted,
       unlock,
+      rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
+    };
+  }
+
+  /**
+   * Shape an ALREADY-granted collect response without emitting events — the
+   * idempotent replay surface for the paid rail (#1462). Returns null when the
+   * fan holds no edition of the moment.
+   */
+  async describeExistingCollect(userId: string, momentId: string) {
+    const collectible = await prisma.punchlineCollectible.findUnique({
+      where: {
+        momentId_collectorUserId: { momentId, collectorUserId: userId },
+      },
+      include: {
+        moment: {
+          select: {
+            id: true,
+            editionSize: true,
+            drop: { select: { id: true, trackId: true, artistId: true } },
+          },
+        },
+      },
+    });
+    if (!collectible) {
+      return null;
+    }
+    const setCompleted = await this.evaluateSetCompletion(
+      userId,
+      collectible.moment.drop.id,
+    );
+    return {
+      collectible: {
+        id: collectible.id,
+        momentId: collectible.moment.id,
+        dropId: collectible.moment.drop.id,
+        editionNumber: collectible.editionNumber,
+        editionSize: collectible.moment.editionSize,
+        status: collectible.status,
+        paymentRail: collectible.paymentRail,
+        pricePaidCents: collectible.pricePaidCents,
+        acquiredAt: collectible.acquiredAt,
+      },
+      setCompleted,
+      unlock: null,
       rightsSummary: PUNCHLINE_RIGHTS_SUMMARY,
     };
   }
@@ -348,6 +420,115 @@ export class PunchlineCollectService {
 
     this.logger.warn(
       `Edition allocation exhausted retries for moment ${momentId}`,
+    );
+    throw new PunchlineCollectException(
+      "collect_failed",
+      "This moment is being collected quickly — please try again.",
+    );
+  }
+
+  /**
+   * Paid-rail allocation (#1462). Grants the next edition AND records the x402
+   * settlement in a SINGLE transaction, so a settlement can never exist without
+   * its edition and vice-versa. A lost edition-number race rolls the whole
+   * transaction back (settlement included) and retries with a fresh count —
+   * never double-settling. Terminal failures (`sold_out`, `already_collected`)
+   * throw a typed exception the caller turns into a `refund_due` record: the
+   * fan paid but no edition could be granted.
+   *
+   * `settlementData` must be a fully-built settlement row (the caller owns
+   * amounts, proof hash, receipt); `receiptId`/txHash uniqueness is stable
+   * across retries because rolled-back attempts commit nothing.
+   */
+  async allocatePaidEditionWithSettlement(
+    userId: string,
+    momentId: string,
+    input: {
+      editionSize: number;
+      collectorWallet: string | null;
+      pricePaidCents: number;
+      paymentRef: string;
+    },
+    settlementData: Prisma.X402SettlementUncheckedCreateInput,
+  ) {
+    // Fast fail before touching money if the fan already owns an edition.
+    const existing = await prisma.punchlineCollectible.findUnique({
+      where: {
+        momentId_collectorUserId: { momentId, collectorUserId: userId },
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new PunchlineCollectException(
+        "already_collected",
+        "You already own an edition of this moment.",
+      );
+    }
+
+    for (let attempt = 0; attempt <= EDITION_RACE_RETRIES; attempt++) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const taken = await tx.punchlineCollectible.count({
+            where: { momentId },
+          });
+          if (taken >= input.editionSize) {
+            throw new PunchlineCollectException(
+              "sold_out",
+              "All editions of this moment have been collected.",
+            );
+          }
+
+          const collectible = await tx.punchlineCollectible.create({
+            data: {
+              momentId,
+              collectorUserId: userId,
+              collectorWallet: input.collectorWallet,
+              editionNumber: taken + 1,
+              status: "owned",
+              paymentRail: PAID_RAIL,
+              pricePaidCents: input.pricePaidCents,
+              paymentRef: input.paymentRef,
+              acquiredAt: new Date(),
+            },
+          });
+
+          await tx.x402Settlement.create({ data: settlementData });
+
+          return collectible;
+        });
+      } catch (error) {
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === "P2002"
+        ) {
+          const target = Array.isArray(error.meta?.target)
+            ? (error.meta?.target as string[]).join(",")
+            : String(error.meta?.target ?? "");
+          if (target.includes("collectorUserId")) {
+            throw new PunchlineCollectException(
+              "already_collected",
+              "You already own an edition of this moment.",
+            );
+          }
+          if (target.includes("editionNumber")) {
+            // Lost the edition-number race — the whole tx (settlement too)
+            // rolled back; recount and retry.
+            continue;
+          }
+          // A settlement-uniqueness collision means this exact payment was
+          // already recorded concurrently — the caller's replay check owns the
+          // idempotent response; surface it rather than double-granting.
+          throw new PunchlineCollectException(
+            "already_collected",
+            "This payment has already been recorded.",
+          );
+        }
+        throw error;
+      }
+    }
+
+    this.logger.warn(
+      `Paid edition allocation exhausted retries for moment ${momentId}`,
     );
     throw new PunchlineCollectException(
       "collect_failed",
