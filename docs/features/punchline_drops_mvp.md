@@ -12,8 +12,7 @@ depends_on:
 
 > **Status:** `in-progress`. The backend (Sprint 7, #479–#482, #485) and the
 > artist UI (#483–#484) are shipped — an artist can build + publish a drop and
-> fans can discover, play, and collect free moments right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collects (#1462) and analytics (#489) are still
-> pending. The [Implementation Status](#implementation-status-sprint-7) section
+> fans can discover, play, and collect moments — free or paid — right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collecting is live on the x402 personal rail (#1462); analytics (#489) shipped too. The [Implementation Status](#implementation-status-sprint-7) section
 > below is the practical, current-state reference for what works today and how
 > to exercise it. The rest of this page is the product design/RFC intent that
 > the slices implement toward.
@@ -41,8 +40,9 @@ This section tracks what is actually built.
 | Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
 | Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | ✅ done | Owner-only release-page panel: pick a vocals-stem track, see explainable eligibility, drag a `[startMs,endMs]` clip range, and preview exactly that range in-browser. Eligibility now also returns the server's `clipBoundsMs` so the client never hardcodes them. |
 | Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | ✅ done | Full drop builder on the release page: create/resume a draft, moment editor (clip range + title/lyric/artwork/edition/price) with a live collectible-card preview, publish behind a review dialog with the verbatim non-commercial rights warning. Owner draft resume via `GET /punchline/me/track-drops`. |
-| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done (free_claim rail) | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Paid collects return `payment_rail_pending` until the x402 rail generalizes beyond stems ([#1462](https://github.com/akoita/resonate/issues/1462)). |
-| Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA (free moments collect end-to-end; paid show an honest "Coming soon" until [#1462](https://github.com/akoita/resonate/issues/1462); signed-out visitors get a working sign-in CTA). |
+| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Free moments grant via `free_claim`; priced moments now settle on the x402 rail ([#1462](https://github.com/akoita/resonate/issues/1462)). |
+| Paid moment collects (x402 rail) | [#1462](https://github.com/akoita/resonate/issues/1462) | ✅ done | Generalized the x402 personal rail beyond stems so priced moments charge for real. Artist-set band $0.50–$9.99 per edition (free still allowed), settled in USDC at the existing 15% personal take (`personal.feeBps=1500`, artist ≥85% per ADR-BM-4). Public quote endpoint, JWT smart-account collect that verifies the on-chain USDC transfer then grants the edition **and** records the `X402Settlement` in one transaction, idempotent on txHash. A verified payment that can't be fulfilled (sold out / already owned) is recorded `refund_due` and returns `paid_but_unfulfilled` — **automatic refunds are out of scope**; the settlement row is the operator's reconciliation record. |
+| Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA. Free moments collect end-to-end; priced moments show their price and check out with the Resonate passkey wallet on the x402 rail ([#1462](https://github.com/akoita/resonate/issues/1462)); signed-out visitors get a working sign-in CTA. |
 | Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | ✅ done | "🎤 Moments" tab in the Library: owned moments grouped by drop with set progress ("you own N of M" / "Set complete"), edition number, acquisition date, clip playback, and a link back to the release. Deep-linkable via `/library?tab=moments`. |
 | Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | ✅ done | Artist attaches an optional set bonus (bonus vocal clip + note, extracted at publish with the #481 primitive); completing the set grants it **exactly once** (DB-unique `PunchlineUnlockGrant`), emits `punchline.unlock_granted`, and reveals it in the collect module + Moments tab. Reward content is gated: public payloads carry existence only. |
 | Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | ✅ done | Full funnel instrumentation: the 4 domain events registered + bridged into the analytics fact store, 4 client funnel events (`drop_viewed` → `preview_played` → `collect_started` → `collect_completed`) through the product-analytics rail, and an owner metrics endpoint + builder strip (views/previews/collected/conversion/sets completed, per drop and per moment). |
@@ -67,10 +67,10 @@ grants access and display, never income or a revenue share (ADR-BM-4).
 Ownership is an off-chain DB grant by design in Phase 1; the staged path to
 optional on-chain claims (ERC-1155 editions) and its hard triggers are recorded
 in [#1467](https://github.com/akoita/resonate/issues/1467). The
-artist keeps 85%+ of every transaction; the marketplace 10% take-rate is reused
-from the existing rails and is wired with the paid rail
-([#1462](https://github.com/akoita/resonate/issues/1462)) — the shipped #485
-slice grants free moments only, so no fee applies yet.
+artist keeps 85%+ of every transaction. Paid collects settle on the x402
+personal rail at the 15% personal take (`personal.feeBps=1500`), wired in
+[#1462](https://github.com/akoita/resonate/issues/1462); free moments carry no
+fee.
 
 ### Backend API surface (implemented)
 
@@ -84,7 +84,9 @@ slice grants free moments only, so no fee applies yet.
 | `DELETE` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Remove a moment from a draft. |
 | `POST` | `/punchline/drops/:dropId/publish` | JWT (owner) | Re-run the gate, extract each clip, persist, emit the event. |
 | `GET` | `/punchline/me/track-drops?trackId=` | JWT (owner) | The caller's drops on a track, any status, newest first — powers the builder's draft resume + published summaries (#484). |
-| `POST` | `/punchline/moments/:momentId/collect` | JWT | Collect one edition of a published moment (#485). Free moments grant immediately (`free_claim`); paid moments return `payment_rail_pending` ([#1462](https://github.com/akoita/resonate/issues/1462)). Codes: `moment_not_found`, `drop_not_published`, `sold_out`, `already_collected`, `payment_rail_pending`, `collect_failed`. |
+| `POST` | `/punchline/moments/:momentId/collect` | JWT | Collect one edition of a **free** published moment (#485, `free_claim`). Priced moments are rejected here with `payment_required` and must use the paid checkout below. Codes: `moment_not_found`, `drop_not_published`, `sold_out`, `already_collected`, `payment_required`, `collect_failed`. |
+| `GET` | `/punchline/moments/:momentId/collect/quote` | Public | x402 quote for a priced moment (#1462): USD amount, 15% personal-take breakdown, USDC asset, payout address, amount in token units, editions remaining. Honest 4xx: `moment_not_found`, `drop_not_published`, `free_moment`, `sold_out`. |
+| `POST` | `/punchline/moments/:momentId/collect/smart-account` | JWT | Paid collect (#1462): body `{ txHash, payer, collectorWallet? }`. Verifies the on-chain USDC transfer to the payout address, then grants the edition **and** records the `X402Settlement` in one transaction; idempotent on `txHash`. Codes: `payment_verification_failed` (402), `paid_but_unfulfilled` (409, verified but sold out / already owned — support refund), `payment_redeemed_elsewhere`, `payments_unavailable`, plus the shared collect codes. |
 | `GET` | `/punchline/me/collectibles` | JWT | The caller's owned collectibles with moment/drop/track context — the inventory read (#485/#487). |
 | `PUT` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Create/replace the drop's single `complete_set` bonus: clip range (same bounds as moments) + optional note ≤500 chars (#488). |
 | `DELETE` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Remove the set bonus. |
@@ -157,7 +159,11 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   product-analytics taxonomy is #489.
 - `punchline.moment_collected` (v1) — emitted on every successful collect with
   identifiers, the edition number, and payment provenance
-  (`pricePaidCents`, `paymentRail`).
+  (`pricePaidCents`, `paymentRail`) — real amounts for paid collects (#1462).
+- `x402.purchase` / `x402.purchase_failed` (v1) — the shared x402 rail events,
+  generalized in #1462 with optional `resourceKind`/`momentId` so a paid moment
+  emits `purchase` on grant and `purchase_failed` (`refund_due`) when a verified
+  payment can't be fulfilled. Stems are unchanged.
 - `punchline.set_completed` (v1) — emitted when a collector now owns every
   moment in a drop.
 - `punchline.unlock_granted` (v1) — the complete-set reward was granted (#488),
@@ -175,9 +181,13 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 - Services: `backend/src/modules/punchline/punchline-eligibility.service.ts`,
   `punchline-clip.service.ts`, `punchline-drop.service.ts`,
   `punchline-collect.service.ts` (#485: race-safe edition allocation, free_claim
-  rail, set-completion hook).
+  rail, set-completion hook; #1462: transactional paid allocation + settlement),
+  `punchline-x402.service.ts` (#1462: quote + smart-account verify + settle,
+  reusing the x402 config/asset/verification primitives in
+  `backend/src/modules/x402/x402.smart-account.ts`).
 - Controller: `backend/src/modules/punchline/punchline.controller.ts`.
-- Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`).
+- Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`,
+  and the widened `X402Purchase*Event` types).
 - Artist UI (#483 + #484): `web/src/components/punchline/` —
   `PunchlineDropsPanel.tsx` (release-page owner panel + view state machine),
   `PunchlineDropBuilder.tsx` (draft builder), `PunchlineMomentEditor.tsx`,
@@ -193,7 +203,10 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 - Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
   `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`,
   `punchline-collect.integration.spec.ts` (#485: incl. a concurrent-collect race
-  proving editions can never oversell);
+  proving editions can never oversell),
+  `punchline-collect-paid.integration.spec.ts` (#1462: verified paid collect
+  grants + records settlement, quote shapes, txHash replay idempotency,
+  post-payment race → `refund_due` + honest error, price-band validation);
   frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx`,
   `PunchlineDropsPanel.test.tsx`, and `punchlineDropHelpers.test.tsx`.
   Run backend: `npm run test:integration -- --testPathPattern='punchline'`
@@ -203,10 +216,14 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 ### Business-model note
 
 Revenue line (3) marketplace take-rate. Phase per ADR-BM-6: MVP/experiment.
-Canonical fee/split numbers live in `docs/rfc/business-model.md`; the 10%
-primary-sale take-rate is reused from existing marketplace rails and is wired at
-purchase in #485. Concrete collectible pricing is left to operator input and is
-reconciled there rather than hardcoded in code.
+Canonical fee/split numbers live in `docs/rfc/business-model.md`. Paid moment
+collects (#1462) settle on the **x402 personal rail** in facilitator mode at the
+existing **15% personal take** (`personal.feeBps=1500`) — no new fee class — so
+the artist keeps **≥85%** of every sale (ADR-BM-4). Collectible pricing is an
+artist-set band of **$0.50–$9.99 per edition** (free still allowed), enforced
+server-side (`punchline-drop.service.ts`) and mirrored in the builder. Automatic
+refunds for verified-but-unfulfillable payments are out of scope; the
+`refund_due` `X402Settlement` row is the operator's reconciliation record.
 
 ## Goal
 

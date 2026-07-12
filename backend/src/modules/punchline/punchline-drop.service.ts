@@ -60,7 +60,10 @@ const MAX_MOMENT_LYRIC_LEN = 500;
 const MAX_ARTWORK_URL_LEN = 2048;
 const MAX_MOMENTS_PER_DROP = 20;
 const MAX_EDITION_SIZE = 10_000;
-const MAX_PRICE_CENTS = 1_000_000;
+// Canonical artist-set moment price band (docs/rfc/business-model.md, #1462):
+// free is always allowed; a priced moment must be $0.50–$9.99 per edition.
+const MIN_PRICED_CENTS = 50;
+const MAX_PRICED_CENTS = 999;
 
 const ARTWORK_URL_PATTERN = /^(https?:\/\/|ipfs:\/\/)/i;
 
@@ -859,13 +862,20 @@ export class PunchlineDropService {
       );
     }
 
+    if (!Number.isInteger(input.priceCents) || (input.priceCents as number) < 0) {
+      throw new BadRequestException(
+        "Moment priceCents must be a non-negative integer.",
+      );
+    }
+    const priceCents = input.priceCents as number;
+    // Free (0) is always allowed; a priced moment must sit inside the canonical
+    // $0.50–$9.99 band (#1462) so the x402 personal rail can settle it.
     if (
-      !Number.isInteger(input.priceCents) ||
-      (input.priceCents as number) < 0 ||
-      (input.priceCents as number) > MAX_PRICE_CENTS
+      priceCents !== 0 &&
+      (priceCents < MIN_PRICED_CENTS || priceCents > MAX_PRICED_CENTS)
     ) {
       throw new BadRequestException(
-        `Moment priceCents must be an integer between 0 and ${MAX_PRICE_CENTS}.`,
+        `Moment price must be $0 (free) or between $${(MIN_PRICED_CENTS / 100).toFixed(2)} and $${(MAX_PRICED_CENTS / 100).toFixed(2)} per edition.`,
       );
     }
 

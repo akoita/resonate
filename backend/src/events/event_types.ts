@@ -1258,7 +1258,12 @@ export interface AgentPurchaseFailedEvent extends BaseEvent {
 
 export interface X402PurchaseEvent extends BaseEvent {
   eventName: "x402.purchase";
-  stemId: string;
+  /** Resource discriminator; defaults to "stem" for the original rail (#1462). */
+  resourceKind?: "stem" | "punchline_moment";
+  /** Set for stem purchases; optional now that moments settle on the same rail. */
+  stemId?: string;
+  /** Set for Punchline moment purchases (#1462). */
+  momentId?: string;
   trackId?: string;
   releaseId?: string;
   artistId?: string;
@@ -1282,7 +1287,12 @@ export interface X402PurchaseEvent extends BaseEvent {
 
 export interface X402PurchaseFailedEvent extends BaseEvent {
   eventName: "x402.purchase_failed";
-  stemId: string;
+  /** Resource discriminator; defaults to "stem" for the original rail (#1462). */
+  resourceKind?: "stem" | "punchline_moment";
+  /** Set for stem failures; optional now that moments settle on the same rail. */
+  stemId?: string;
+  /** Set for Punchline moment failures (#1462), incl. post-payment refund_due. */
+  momentId?: string;
   trackId?: string;
   releaseId?: string;
   artistId?: string;

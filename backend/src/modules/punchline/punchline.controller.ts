@@ -15,6 +15,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { PunchlineCollectService } from "./punchline-collect.service";
 import { PunchlineDropService } from "./punchline-drop.service";
+import { PunchlineX402Service } from "./punchline-x402.service";
 import { PunchlineMetricsService } from "./punchline-metrics.service";
 import { PunchlineEligibilityService } from "./punchline-eligibility.service";
 import {
@@ -29,6 +30,7 @@ export class PunchlineController {
     private readonly eligibilityService: PunchlineEligibilityService,
     private readonly dropService: PunchlineDropService,
     private readonly collectService: PunchlineCollectService,
+    private readonly x402Service: PunchlineX402Service,
     private readonly unlockService: PunchlineUnlockService,
     private readonly metricsService: PunchlineMetricsService,
   ) {}
@@ -220,9 +222,9 @@ export class PunchlineController {
 
   /**
    * Collect one edition of a published moment (#485). Free moments grant
-   * immediately (rail "free_claim"); paid moments return the structured
-   * `payment_rail_pending` denial until the x402 rail is generalized beyond
-   * stems. Edition scarcity and the one-per-fan cap are DB-enforced.
+   * immediately (rail "free_claim"); priced moments are rejected here with
+   * `payment_required` and must go through the paid x402 checkout below.
+   * Edition scarcity and the one-per-fan cap are DB-enforced.
    */
   @UseGuards(AuthGuard("jwt"))
   @Post("moments/:momentId/collect")
@@ -234,6 +236,33 @@ export class PunchlineController {
     return this.collectService.collectMoment(req.user.userId, momentId, {
       collectorWallet: body?.collectorWallet ?? null,
     });
+  }
+
+  /**
+   * Public x402 quote for a priced moment (#1462): the USD amount, 15% personal
+   * take breakdown, USDC asset, and payout address the fan's passkey wallet
+   * pays. Honest 4xx for free / sold-out / not-published moments.
+   */
+  @Get("moments/:momentId/collect/quote")
+  getCollectQuote(@Param("momentId") momentId: string) {
+    return this.x402Service.buildMomentQuote(momentId);
+  }
+
+  /**
+   * Paid collect (#1462): the fan's Resonate passkey wallet has already sent
+   * USDC to the payout address; this verifies the on-chain payment, grants the
+   * edition, and records the settlement in one transaction. Re-posting the same
+   * txHash is idempotent. A verified-but-unfulfillable payment returns
+   * `paid_but_unfulfilled` (support refund; no edition granted).
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("moments/:momentId/collect/smart-account")
+  collectMomentWithSmartAccount(
+    @Req() req: any,
+    @Param("momentId") momentId: string,
+    @Body() body: { txHash?: string; payer?: string; collectorWallet?: string | null },
+  ) {
+    return this.x402Service.collectWithSmartAccount(req.user.userId, momentId, body ?? {});
   }
 
   /** The caller's owned collectibles — the inventory read (#485/#487). */
