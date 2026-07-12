@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { createPublicClient, createWalletClient, http, keccak256, stringToHex } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, stringToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { prisma } from "../db/prisma";
@@ -24,6 +24,42 @@ const SHOW_ESCROW_ARTIFACT =
     abi: any[];
     bytecode: { object: `0x${string}` };
   };
+const ERC1967_PROXY_ARTIFACT =
+  require("../../../contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json") as {
+    abi: any[];
+    bytecode: { object: `0x${string}` };
+  };
+
+/**
+ * #1497: ShowCampaignEscrow is UUPS — the implementation's constructor takes no
+ * args and disables initializers, so on-chain tests deploy impl + ERC1967 proxy
+ * and initialize(owner, feeBps, feeRecipient, upgradeAuthority) through it.
+ * Interactions use the escrow ABI at the PROXY address.
+ */
+async function deployEscrowProxy(
+  walletClient: any,
+  publicClient: any,
+  owner: `0x${string}`,
+): Promise<`0x${string}`> {
+  const implHash = await walletClient.deployContract({
+    abi: SHOW_ESCROW_ARTIFACT.abi,
+    bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
+    args: [],
+  });
+  const implReceipt = await publicClient.waitForTransactionReceipt({ hash: implHash });
+  const initData = encodeFunctionData({
+    abi: SHOW_ESCROW_ARTIFACT.abi,
+    functionName: "initialize",
+    args: [owner, 600n, owner, owner],
+  });
+  const proxyHash = await walletClient.deployContract({
+    abi: ERC1967_PROXY_ARTIFACT.abi,
+    bytecode: ERC1967_PROXY_ARTIFACT.bytecode.object,
+    args: [implReceipt.contractAddress!, initData],
+  });
+  const proxyReceipt = await publicClient.waitForTransactionReceipt({ hash: proxyHash });
+  return proxyReceipt.contractAddress!;
+}
 
 const futureIso = (days: number) => {
   const date = new Date();
@@ -713,13 +749,7 @@ describe("ShowsService integration", () => {
       chain,
       transport: http(anvilUrl()),
     });
-    const deployHash = await walletClient.deployContract({
-      abi: SHOW_ESCROW_ARTIFACT.abi,
-      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
-      args: [account.address, 600n, account.address],
-    });
-    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
-    const escrowAddress = deployReceipt.contractAddress;
+    const escrowAddress = await deployEscrowProxy(walletClient, publicClient, account.address);
     expect(escrowAddress).toBeTruthy();
 
     const block = await publicClient.getBlock({ blockTag: "latest" });
@@ -855,13 +885,7 @@ describe("ShowsService integration", () => {
     const publicClient = createPublicClient({ chain, transport: http(anvilUrl()) });
     const walletClient = createWalletClient({ account, chain, transport: http(anvilUrl()) });
 
-    const deployHash = await walletClient.deployContract({
-      abi: SHOW_ESCROW_ARTIFACT.abi,
-      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
-      args: [account.address, 600n, account.address],
-    });
-    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
-    const escrowAddress = deployReceipt.contractAddress!;
+    const escrowAddress = await deployEscrowProxy(walletClient, publicClient, account.address);
     expect(escrowAddress).toBeTruthy();
 
     const block = await publicClient.getBlock({ blockTag: "latest" });
