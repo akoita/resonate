@@ -176,6 +176,18 @@ describe("ShowsService integration", () => {
         claimStatus: "unclaimed",
       },
     });
+    // #1498: self-serve campaign creation now runs the payout-eligibility gate
+    // when binding the artist's own payout wallet as beneficiary. Human-verify
+    // the acting artist and give their release a payout-eligible rights route so
+    // these Shows lifecycle tests exercise the flow they intend, not the gate.
+    await prisma.curatorReputation.create({
+      data: {
+        walletAddress: userId.toLowerCase(),
+        humanVerificationStatus: "human_verified",
+        verifiedHuman: true,
+        humanVerifiedAt: new Date(),
+      },
+    });
     await prisma.release.create({
       data: {
         id: releaseId,
@@ -183,6 +195,7 @@ describe("ShowsService integration", () => {
         title: `${TEST_PREFIX}Ready Release`,
         status: "ready",
         primaryArtist: `${TEST_PREFIX}Artist`,
+        rightsRoute: "STANDARD_ESCROW",
       },
     });
     await prisma.release.create({
@@ -225,6 +238,7 @@ describe("ShowsService integration", () => {
     }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId, creditedArtistId] } } }).catch(() => {});
+    await prisma.curatorReputation.deleteMany({ where: { walletAddress: userId.toLowerCase() } }).catch(() => {});
     await prisma.wallet.deleteMany({ where: { userId: { in: [listenerId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },

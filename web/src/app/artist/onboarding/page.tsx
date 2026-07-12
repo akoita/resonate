@@ -1,14 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { createArtist, getArtistMe } from "../../../lib/api";
+import {
+  createArtist,
+  getArtistMe,
+  fetchPayoutEligibility,
+  type PayoutEligibility,
+} from "../../../lib/api";
 import { Button } from "../../../components/ui/Button";
 import { Input } from "../../../components/ui/Input";
 import { useToast } from "../../../components/ui/Toast";
 import AuthGate from "../../../components/auth/AuthGate";
 import HumanVerificationCard from "../../../components/disputes/HumanVerificationCard";
+import { PayoutEligibilityNotice } from "../../../components/payments/PayoutEligibilityNotice";
 import { recordProductAnalytics } from "../../../lib/productAnalytics";
 
 export default function ArtistOnboardingPage() {
@@ -24,6 +30,9 @@ export default function ArtistOnboardingPage() {
     displayName: "",
     payoutAddress: address || "",
   });
+  const [payoutEligibility, setPayoutEligibility] =
+    useState<PayoutEligibility | null>(null);
+  const humanVerificationRef = useRef<HTMLDivElement | null>(null);
 
   // Check if user already has an artist profile
   useEffect(() => {
@@ -72,6 +81,30 @@ export default function ArtistOnboardingPage() {
       },
     });
   }, [isLoading, token]);
+
+  // #1498: honest payout-eligibility preview so the artist knows the
+  // verified-human requirement up front, with a direct link to the check.
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    fetchPayoutEligibility(token)
+      .then((result) => {
+        if (active) setPayoutEligibility(result);
+      })
+      .catch(() => {
+        if (active) setPayoutEligibility(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  const scrollToHumanVerification = () => {
+    humanVerificationRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -246,6 +279,13 @@ export default function ArtistOnboardingPage() {
               <p className="input-hint">
                 Earnings will be sent here. Defaults to your connected wallet.
               </p>
+              {payoutEligibility ? (
+                <PayoutEligibilityNotice
+                  eligibility={payoutEligibility}
+                  onVerifyHuman={scrollToHumanVerification}
+                  className="onboarding-payout-eligibility"
+                />
+              ) : null}
             </div>
 
             {/* What you'll get section */}
@@ -307,14 +347,14 @@ export default function ArtistOnboardingPage() {
 
           {/* Divider */}
           {address && (
-            <>
+            <div ref={humanVerificationRef}>
               <div className="section-divider">
                 <div className="divider-line" />
-                <span className="divider-label">Optional</span>
+                <span className="divider-label">Verify you&rsquo;re human</span>
                 <div className="divider-line" />
               </div>
               <HumanVerificationCard walletAddress={address} compact />
-            </>
+            </div>
           )}
         </div>
 

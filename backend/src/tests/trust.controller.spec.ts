@@ -6,8 +6,17 @@ const mockTrustService = {
   setVerified: jest.fn(),
 };
 
+const mockPayoutEligibilityService = {
+  checkForUser: jest.fn(),
+  checkForArtist: jest.fn(),
+  assertEligible: jest.fn(),
+};
+
 function makeController() {
-  return new TrustController(mockTrustService as any);
+  return new TrustController(
+    mockTrustService as any,
+    mockPayoutEligibilityService as any,
+  );
 }
 
 beforeEach(() => jest.clearAllMocks());
