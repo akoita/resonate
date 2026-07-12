@@ -9,8 +9,11 @@ import {
   getArtistMe,
   listMyReleases,
   listPublishedReleases,
+  fetchPayoutEligibility,
   type ArtistProfile,
+  type PayoutEligibility,
 } from "../../lib/api";
+import { PayoutEligibilityNotice } from "../payments/PayoutEligibilityNotice";
 import { formatPaymentAmountWithSymbol } from "../../lib/payments";
 import {
   createShowCampaignDraft,
@@ -162,6 +165,7 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
   const [deletedGalleryVisualIds, setDeletedGalleryVisualIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payoutEligibility, setPayoutEligibility] = useState<PayoutEligibility | null>(null);
 
   // #1356: inline client-side mirror of the escrow's deadline rules so the
   // operator sees booking-after-funding / future-deadline problems before
@@ -304,6 +308,27 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
     const selected = artistCandidates.find((candidate) => candidate.optionId === selectedArtistId);
     if (selected) setArtistDisplayName(selected.name);
   }, [artistCandidates, selectedArtistId]);
+
+  // #1498: a self-serve artist funds the campaign to their own payout wallet, so
+  // preview the payout-eligibility gate before submit (the server gate remains
+  // authoritative). Operators/admins designate a beneficiary and are not gated.
+  useEffect(() => {
+    if (status !== "authenticated" || !token || isPrivileged) {
+      setPayoutEligibility(null);
+      return;
+    }
+    let active = true;
+    fetchPayoutEligibility(token)
+      .then((result) => {
+        if (active) setPayoutEligibility(result);
+      })
+      .catch(() => {
+        if (active) setPayoutEligibility(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isPrivileged, status, token]);
 
   useEffect(() => {
     if (!heroVisualFile) {
@@ -788,6 +813,12 @@ export function CampaignDraftForm({ campaign }: { campaign?: Campaign }) {
 
       <div className="shows-create__panel">
         <h2>Authority</h2>
+        {!isPrivileged && payoutEligibility ? (
+          <PayoutEligibilityNotice
+            eligibility={payoutEligibility}
+            className="shows-create__payout-eligibility"
+          />
+        ) : null}
         <label>
           Beneficiary wallet {!isPrivileged ? "(from your payout profile)" : ""}
           <input
