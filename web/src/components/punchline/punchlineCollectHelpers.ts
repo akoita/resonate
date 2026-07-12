@@ -30,15 +30,17 @@ export function resolveClipUrl(clipAssetUri: string | null): string | null {
 
 export type MomentCollectState =
   | "collectable" // free, editions remain, signed in, not owned yet
-  | "sign_in" // free, editions remain, not signed in
+  | "collectable_paid" // priced, editions remain, signed in — buy on the x402 rail (#1462)
+  | "sign_in" // editions remain, not signed in
   | "owned" // the viewer already owns an edition
-  | "sold_out" // no editions remain
-  | "paid_pending"; // priced moment — the paid rail is #1462
+  | "sold_out"; // no editions remain
 
 /**
  * Decide the CTA state for one moment. Owned wins over sold-out (owning an
  * edition of a sold-out moment should read as success, not scarcity), and
  * sold-out wins over payment (an unbuyable moment is out regardless of price).
+ * Priced moments now collect on the live x402 rail (#1462); signed-out fans get
+ * the sign-in CTA whether the moment is free or priced.
  */
 export function momentCollectState(input: {
   moment: Pick<PunchlineMoment, "editionSize" | "priceCents" | "collectedCount">;
@@ -52,10 +54,10 @@ export function momentCollectState(input: {
   if (input.moment.collectedCount >= input.moment.editionSize) {
     return "sold_out";
   }
-  if (input.moment.priceCents > 0) {
-    return "paid_pending";
+  if (!input.signedIn) {
+    return "sign_in";
   }
-  return input.signedIn ? "collectable" : "sign_in";
+  return input.moment.priceCents > 0 ? "collectable_paid" : "collectable";
 }
 
 /** "97 of 100 left" / "Sold out" — the scarcity line under each card. */
@@ -94,28 +96,46 @@ export function dropSetProgress(
   return { owned, total, complete: total > 0 && owned >= total };
 }
 
-/** Map a collect API error payload onto a readable message + a state nudge. */
+/**
+ * Map a collect API error onto a readable message + a state nudge. Prefers a
+ * structured backend `code` (set on PunchlineCheckoutError for the paid rail),
+ * falling back to substring matching for free-path errors.
+ */
 export function describeCollectError(error: unknown): {
   message: string;
   becameState: MomentCollectState | null;
 } {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
   const text = error instanceof Error ? error.message : String(error);
-  if (text.includes("sold_out")) {
+  const has = (token: string) => code === token || text.includes(token);
+
+  if (has("paid_but_unfulfilled")) {
+    return {
+      // The payment cleared but no edition could be granted — be honest.
+      message:
+        "Your payment went through, but this edition could no longer be collected. Support will refund you — no edition was granted.",
+      becameState: null,
+    };
+  }
+  if (has("payment_verification_failed")) {
+    return {
+      message: "We couldn't verify the payment. If you were charged, contact support — no edition was granted.",
+      becameState: null,
+    };
+  }
+  if (has("sold_out")) {
     return {
       message: "Just sold out — all editions are gone.",
       becameState: "sold_out",
     };
   }
-  if (text.includes("already_collected")) {
+  if (has("already_collected")) {
     return {
       message: "You already own an edition of this moment.",
       becameState: "owned",
-    };
-  }
-  if (text.includes("payment_rail_pending")) {
-    return {
-      message: "Paid collecting isn't open yet — this one will be collectable soon.",
-      becameState: "paid_pending",
     };
   }
   return {

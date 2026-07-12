@@ -1091,10 +1091,13 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     eventName: "x402.purchase",
     producer: "x402-controller",
     subjectType: "stem",
-    subjectIdKeys: ["stemId"],
+    // Moments settle on the same rail (#1462); fall back to momentId as subject.
+    subjectIdKeys: ["stemId", "momentId"],
     actorIdKeys: ["payer"],
     payloadKeys: [
+      "resourceKind",
       "stemId",
+      "momentId",
       "trackId",
       "releaseId",
       "artistId",
@@ -1114,15 +1117,18 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "settlementStatus",
       "entitlement",
     ],
-    sourceRefKeys: ["stemId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
+    sourceRefKeys: ["stemId", "momentId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
   },
   {
     eventName: "x402.purchase_failed",
     producer: "x402-controller",
     subjectType: "stem",
-    subjectIdKeys: ["stemId"],
+    // Moments settle on the same rail (#1462); fall back to momentId as subject.
+    subjectIdKeys: ["stemId", "momentId"],
     payloadKeys: [
+      "resourceKind",
       "stemId",
+      "momentId",
       "trackId",
       "releaseId",
       "artistId",
@@ -1133,7 +1139,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "status",
       "reason",
     ],
-    sourceRefKeys: ["stemId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
+    sourceRefKeys: ["stemId", "momentId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
   },
   {
     eventName: "curator.staked",

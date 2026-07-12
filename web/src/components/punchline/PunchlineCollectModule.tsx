@@ -3,19 +3,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collectPunchlineMoment,
+  fetchPunchlineMomentQuote,
   listMyPunchlineCollectibles,
   listMyPunchlineUnlocks,
   listTrackPunchlineDrops,
+  type PunchlineCollectResult,
   type PunchlineDrop,
   type PunchlineMoment,
   type PunchlineUnlockReward,
   type Track,
 } from "../../lib/api";
 import { useAuth } from "../auth/AuthProvider";
+import { payMomentWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
-import { DROP_KIND_LABEL } from "./punchlineDropHelpers";
+import { DROP_KIND_LABEL, formatPriceCents } from "./punchlineDropHelpers";
 import {
   collectableDrops,
   describeCollectError,
@@ -56,7 +59,7 @@ export interface PunchlineCollectModuleProps {
 type DropsByTrack = Map<string, PunchlineDrop[]>;
 
 export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectModuleProps) {
-  const { token, login } = useAuth();
+  const { token, login, webAuthnKey, status: authStatus } = useAuth();
   const { addToast } = useToast();
 
   const [dropsByTrack, setDropsByTrack] = useState<DropsByTrack | null>(null);
@@ -79,6 +82,8 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     new Map(),
   );
   const [collectingId, setCollectingId] = useState<string | null>(null);
+  // Wallet-checkout phase label for the in-flight paid collect (#1462).
+  const [paidPhase, setPaidPhase] = useState<string | null>(null);
   const [playingMomentId, setPlayingMomentId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -229,6 +234,34 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
     [collectedCounts],
   );
 
+  // Paid checkout (#1462): fetch the x402 quote, pay from the passkey wallet,
+  // then collect through the JWT-guarded verify endpoint. Returns the same
+  // collect result shape as the free path so success handling is shared.
+  const runPaidCollect = useCallback(
+    async (moment: PunchlineMoment): Promise<PunchlineCollectResult> => {
+      let key = webAuthnKey;
+      if (!key || authStatus !== "authenticated") {
+        const result = await login();
+        key = result?.webAuthnKey;
+      }
+      const activeToken = token;
+      if (!key || !activeToken) {
+        throw new Error(
+          "Sign in with your Resonate passkey to collect this moment.",
+        );
+      }
+      const quote = await fetchPunchlineMomentQuote(moment.id);
+      return payMomentWithX402SmartAccount({
+        quote,
+        token: activeToken,
+        webAuthnKey: key,
+        chainId: quote.chainId,
+        onStatus: (phase) => setPaidPhase(phase),
+      });
+    },
+    [webAuthnKey, authStatus, login, token],
+  );
+
   const collect = useCallback(
     async (drop: PunchlineDrop, moment: PunchlineMoment) => {
       if (!token) {
@@ -241,6 +274,7 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         return;
       }
       setCollectingId(moment.id);
+      setPaidPhase(null);
       void recordProductAnalytics(token, "punchline.collect_started", {
         payload: {
           dropId: drop.id,
@@ -251,7 +285,10 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         },
       });
       try {
-        const result = await collectPunchlineMoment(moment.id, token);
+        const result =
+          moment.priceCents > 0
+            ? await runPaidCollect(moment)
+            : await collectPunchlineMoment(moment.id, token);
         setOwnedMomentIds((prev) => new Set([...prev, moment.id]));
         setCollectedCounts((prev) => {
           const next = new Map(prev);
@@ -265,6 +302,8 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
             trackId: drop.trackId,
             editionNumber: result.collectible.editionNumber,
             setCompleted: result.setCompleted,
+            pricePaidCents: result.collectible.pricePaidCents,
+            paymentRail: result.collectible.paymentRail,
             source: "release_page",
           },
         });
@@ -312,9 +351,10 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
         });
       } finally {
         setCollectingId(null);
+        setPaidPhase(null);
       }
     },
-    [token, login, addToast, effectiveCollectedCount],
+    [token, login, addToast, effectiveCollectedCount, runPaidCollect],
   );
 
   const tracksWithDrops = useMemo(() => {
@@ -482,7 +522,11 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                             <CollectButton
                               state={state}
                               editionNumber={null}
+                              priceCents={moment.priceCents}
                               busy={collectingId === moment.id}
+                              phase={
+                                collectingId === moment.id ? paidPhase : null
+                              }
                               onCollect={() => collect(drop, moment)}
                             />
                           </div>
@@ -500,18 +544,30 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
   );
 }
 
+/** Phase → label while a paid x402 collect is in flight (#1462). */
+const PAID_PHASE_LABEL: Record<string, string> = {
+  signing: "Confirm in wallet…",
+  settling: "Verifying payment…",
+  downloading: "Finishing…",
+};
+
 /**
- * The Collect CTA in each of its five states. Exported for static-markup
- * tests. Disabled states are honest: visible label + title explain why.
+ * The Collect CTA in each of its states. Exported for static-markup tests.
+ * Disabled states are honest: visible label + title explain why. Priced moments
+ * collect on the live x402 rail (#1462) — the button shows the price.
  */
 export function CollectButton({
   state,
+  priceCents,
   busy,
+  phase,
   onCollect,
 }: {
   state: MomentCollectState;
   editionNumber: number | null;
+  priceCents?: number;
   busy: boolean;
+  phase?: string | null;
   onCollect: () => void;
 }) {
   switch (state) {
@@ -532,16 +588,19 @@ export function CollectButton({
           Sold out
         </button>
       );
-    case "paid_pending":
+    case "collectable_paid":
       return (
         <button
           type="button"
-          className="punchline-btn-secondary"
-          disabled
-          aria-disabled="true"
-          title="Paid collecting opens soon — free moments can be collected today."
+          className="punchline-btn-primary"
+          onClick={onCollect}
+          disabled={busy}
+          aria-disabled={busy}
+          title="Buy this edition with your Resonate passkey wallet (USDC)."
         >
-          Coming soon
+          {busy
+            ? (phase && PAID_PHASE_LABEL[phase]) || "Collecting…"
+            : `Collect · ${formatPriceCents(priceCents ?? 0)}`}
         </button>
       );
     case "sign_in":

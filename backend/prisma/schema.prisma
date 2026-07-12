@@ -819,21 +819,31 @@ model ContractEvent {
   @@index([contractAddress, chainId])
 }
 
+// Off-chain x402 settlement record. Originally stem-keyed (#705); generalized
+// (#1462) so any priced resource can settle on the x402 personal rail.
+// `resourceKind` discriminates the union: "stem" (stemId set) or
+// "punchline_moment" (momentId set). Exactly one resource id is populated per
+// row. `status` values include "download_granted"/"contract_settlement_failed"
+// (stems), "collected" (a moment edition was granted), and "refund_due" (a
+// moment payment verified on-chain but the edition could not be allocated —
+// sold out or already owned — so the fan is owed an out-of-band refund).
 model X402Settlement {
-  id                          String       @id @default(uuid())
-  stemId                      String
+  id                          String           @id @default(uuid())
+  resourceKind                String           @default("stem")
+  stemId                      String?
+  momentId                    String?
   listingId                   String?
   listingChainId              Int?
   listingContractAddress      String?
   listingTokenId              BigInt?
   payerAddress                String?
-  paymentRail                 String       @default("facilitator")
-  paymentProofSha256          String?      @unique
-  paymentTransactionHash      String?      @unique
-  receiptId                   String       @unique
+  paymentRail                 String           @default("facilitator")
+  paymentProofSha256          String?          @unique
+  paymentTransactionHash      String?          @unique
+  receiptId                   String           @unique
   receipt                     Json
-  status                      String       @default("download_granted")
-  contractSettlementStatus    String       @default("not_applicable")
+  status                      String           @default("download_granted")
+  contractSettlementStatus    String           @default("not_applicable")
   contractSettlementTxHash    String?
   contractSettlementEventName String?
   contractSettlementReason    String?
@@ -845,12 +855,15 @@ model X402Settlement {
   settlementAmountUnits       String
   canonicalAmountUsd          String?
   purchasedAt                 DateTime
-  createdAt                   DateTime     @default(now())
-  updatedAt                   DateTime     @updatedAt
-  stem                        Stem         @relation(fields: [stemId], references: [id])
-  listing                     StemListing? @relation(fields: [listingId], references: [id])
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  stem                        Stem?            @relation(fields: [stemId], references: [id])
+  moment                      PunchlineMoment? @relation(fields: [momentId], references: [id])
+  listing                     StemListing?     @relation(fields: [listingId], references: [id])
 
   @@index([stemId])
+  @@index([momentId])
+  @@index([resourceKind])
   @@index([status])
   @@index([contractSettlementStatus])
 }
@@ -2146,6 +2159,7 @@ model PunchlineMoment {
   updatedAt      DateTime               @updatedAt
   drop           PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
   collectibles   PunchlineCollectible[]
+  x402Settlements X402Settlement[]
 
   @@index([dropId])
 }

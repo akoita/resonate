@@ -15,7 +15,10 @@ export const MOMENT_LYRIC_MAX = 500;
 export const ARTWORK_URL_MAX = 2048;
 export const EDITION_MIN = 1;
 export const EDITION_MAX = 10_000;
-export const PRICE_CENTS_MAX = 1_000_000;
+// Canonical artist-set moment price band (#1462): free, or $0.50–$9.99 per
+// edition. Mirrors the backend validation in punchline-drop.service.ts.
+export const MIN_PRICED_CENTS = 50;
+export const MAX_PRICED_CENTS = 999;
 
 const ARTWORK_URL_PATTERN = /^(https?:\/\/|ipfs:\/\/)/i;
 
@@ -80,10 +83,11 @@ export function parsePriceDollarsToCents(input: string): PriceParseResult {
   if (!Number.isFinite(cents) || cents < 0) {
     return { ok: false, error: "Price can’t be negative." };
   }
-  if (cents > PRICE_CENTS_MAX) {
+  // Free is always allowed; a priced moment must sit inside the canonical band.
+  if (cents !== 0 && (cents < MIN_PRICED_CENTS || cents > MAX_PRICED_CENTS)) {
     return {
       ok: false,
-      error: `Price is too high (maximum $${(PRICE_CENTS_MAX / 100).toLocaleString()}).`,
+      error: `Price must be $0 (free) or between $${(MIN_PRICED_CENTS / 100).toFixed(2)} and $${(MAX_PRICED_CENTS / 100).toFixed(2)}.`,
     };
   }
   return { ok: true, cents };

@@ -10,6 +10,7 @@ import { INestApplication } from '@nestjs/common';
 import { PunchlineController } from '../modules/punchline/punchline.controller';
 import { PunchlineCollectService } from '../modules/punchline/punchline-collect.service';
 import { PunchlineDropService } from '../modules/punchline/punchline-drop.service';
+import { PunchlineX402Service } from '../modules/punchline/punchline-x402.service';
 import { PunchlineEligibilityService } from '../modules/punchline/punchline-eligibility.service';
 import { PunchlineMetricsService } from '../modules/punchline/punchline-metrics.service';
 import { PunchlineUnlockService } from '../modules/punchline/punchline-unlock.service';
@@ -38,6 +39,7 @@ describe('PunchlineController featured (e2e)', () => {
     app = await createControllerTestApp(PunchlineController, [
       { provide: PunchlineDropService, useValue: mockDropService },
       { provide: PunchlineCollectService, useValue: {} },
+      { provide: PunchlineX402Service, useValue: {} },
       { provide: PunchlineEligibilityService, useValue: {} },
       { provide: PunchlineMetricsService, useValue: {} },
       { provide: PunchlineUnlockService, useValue: {} },

@@ -99,15 +99,23 @@ describe("momentCollectState", () => {
     ).toBe("sold_out");
   });
 
-  it("paid moments are pending; free moments collect or ask to sign in", () => {
+  it("priced moments are collectable_paid; free collect; signed-out asks to sign in", () => {
     expect(
       momentCollectState({ ...base, moment: moment({ priceCents: 150 }) }),
-    ).toBe("paid_pending");
+    ).toBe("collectable_paid");
     expect(momentCollectState({ ...base, moment: moment() })).toBe(
       "collectable",
     );
+    // Signed-out fans get the sign-in CTA whether the moment is free or priced.
     expect(
       momentCollectState({ ...base, signedIn: false, moment: moment() }),
+    ).toBe("sign_in");
+    expect(
+      momentCollectState({
+        ...base,
+        signedIn: false,
+        moment: moment({ priceCents: 150 }),
+      }),
     ).toBe("sign_in");
   });
 });
@@ -156,12 +164,24 @@ describe("describeCollectError", () => {
     expect(
       describeCollectError(new Error("already_collected")),
     ).toMatchObject({ becameState: "owned" });
-    expect(
-      describeCollectError(new Error("payment_rail_pending")),
-    ).toMatchObject({ becameState: "paid_pending" });
     expect(describeCollectError(new Error("boom"))).toMatchObject({
       becameState: null,
     });
+  });
+
+  it("honestly explains a verified-but-unfulfilled paid collect", () => {
+    const described = describeCollectError({
+      code: "paid_but_unfulfilled",
+      message: "server message",
+    });
+    expect(described.becameState).toBeNull();
+    expect(described.message).toContain("refund");
+  });
+
+  it("prefers a structured code over message text", () => {
+    expect(
+      describeCollectError({ code: "sold_out", message: "generic" }),
+    ).toMatchObject({ becameState: "sold_out" });
   });
 });
 
@@ -171,6 +191,7 @@ describe("CollectButton states", () => {
       <CollectButton
         state={state}
         editionNumber={null}
+        priceCents={150}
         busy={false}
         onCollect={() => undefined}
       />,
@@ -181,9 +202,10 @@ describe("CollectButton states", () => {
     expect(render("sign_in")).toContain("Sign in to collect");
     expect(render("owned")).toContain("Owned");
     expect(render("sold_out")).toContain("Sold out");
-    const paid = render("paid_pending");
-    expect(paid).toContain("Coming soon");
-    expect(paid).toContain("aria-disabled");
+    // Priced moments collect on the live x402 rail and show their price (#1462).
+    const paid = render("collectable_paid");
+    expect(paid).toContain("Collect");
+    expect(paid).toContain("$1.50");
   });
 });
 
