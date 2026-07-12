@@ -14,7 +14,7 @@
 set -uo pipefail
 
 MODE="${1:-check}"
-CONTRACTS=(ContentProtection)
+CONTRACTS=(ContentProtection ShowCampaignEscrow)
 DIR="storage-layout"
 mkdir -p "$DIR"
 

@@ -68,7 +68,7 @@ those merges will not show `sweepBurned`/`claimFailedPayment`.
 | --- | --- | --- | --- | --- |
 | `ContentProtection` | yes (stakes) | **UUPS upgradeable** | upgrade; `blacklist`; `sweepBurned`; **`refundStake` is `onlyOwner`** | **No** — refund is owner-only |
 | `RevenueEscrow` | yes (per-token revenue) | immutable `Ownable` | `freeze`/`unfreeze`/`redirect`; `claimFailedPayment` | **Only** once unfrozen **and** past `escrowEndTime` (`release` reverts otherwise) |
-| `ShowCampaignEscrow` | yes (fan pledges) | immutable `Ownable` | `setPaused` (gates `pledge` **only** — releases still run); `cancelCampaign` → pro-rata refunds | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
+| `ShowCampaignEscrow` | yes (fan pledges) | **UUPS + timelock** (guardian CANCELLER) as of #1497 — was immutable `Ownable` | `setPaused` now **freezes every money-movement / lifecycle transition** (not just `pledge`); `cancelCampaign` → pro-rata refunds; upgrade via 48h timelock, guardian veto | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
 | `StemMarketplaceV2` | flow-through (per-tx) | immutable `Ownable`; `paymentAssetRegistry` is `immutable` (no setter) | `setProtocolFee`/`setFeeRecipient`; `claimFailedPayment`; `withdrawTrappedETH` | n/a (no standing deposits) |
 | `StemNFT` | yes (the assets) | immutable | `setTransferValidator` / `setContentProtection` (swap the hooks) | holders own their tokens directly |
 | `TransferValidator` | no (a hook) | immutable, but **swap-able** via `StemNFT.setTransferValidator` | replace the address | n/a |
@@ -225,7 +225,7 @@ broad upgradeability lowers security. With them, it raises it.
 | Contract | Proposed posture |
 | --- | --- |
 | `RevenueEscrow` | **UUPS + timelock + multisig + re-verify**, keep `freeze`/`redirect` and add a fast `pause`. Strongest custody case. |
-| `ShowCampaignEscrow` | **UUPS + timelock + multisig + re-verify**; **extend the fast pause to the payout/release path.** `setPaused` today gates only `pledge`, so `releaseDeposit`/`releaseFunds` still run while paused — the main custody outflow is *not* stopped. Add `whenNotPaused` (or an equivalent gate) to the release/confirm transitions. |
+| `ShowCampaignEscrow` | ✅ **IMPLEMENTED (#1497, slice 1 of #1300).** Converted to UUPS behind an ERC1967 proxy; `upgradeAuthority` is a `TimelockController` (48h default delay) with the ops owner as proposer/executor and an independent **guardian holding `CANCELLER_ROLE`**. The operational `owner` runs campaigns + the instant pause but **cannot upgrade**. The fast pause now gates **every fund-outflow and lifecycle transition** (`pledge`, `markFailed`, `cancelCampaign`, `openRefundsAfterMissedBooking`, `confirmBooking`, `releaseDeposit`, `confirmFulfillment`, `releaseFunds`, `claimRefund`) — only config setters and `setPaused`/`setUpgradeAuthority` stay callable. Storage-layout gate, unit/fuzz/invariant/Halmos suites all extended and green. |
 | `StemMarketplaceV2` | **UUPS + timelock + multisig + re-verify**, plus a fast `pause` on `buy`/`list`. |
 | `ContentProtection` | Already UUPS — **add the timelock + multisig + a fast pause**; bring it under the same re-verification gate. |
 | `StemNFT` | **Default: stay immutable** (collector/asset trust), rely on the swappable `TransferValidator`/`ContentProtection` seams + a marketplace-level pause. Revisit only if a core-logic patch need is identified. |
@@ -275,6 +275,51 @@ gates, with pause as the universal fast lever.**
 - **StemNFT immutability vs. a future need to patch transfer/royalty logic** — left
   open; revisit if such a need is identified.
 - **Governance product, signer set, and delay values** — deferred to #1300.
+
+## Emergency-response runbook — `ShowCampaignEscrow` (implemented #1497)
+
+This is the concrete runbook for the first custody contract brought under the
+posture above. The same shape generalises to the other value contracts as they
+convert.
+
+**Authority map**
+
+- **Ops owner** (`owner`): create/activate/cancel campaigns, confirm booking/
+  fulfillment, set fees/confirmers, and the **instant `setPaused` lever**. It is
+  the timelock's proposer + executor. It **cannot** upgrade the implementation.
+- **Upgrade authority** (`upgradeAuthority` = `TimelockController`): the only
+  account that can `upgradeToAndCall` the proxy or reassign the authority. All
+  upgrades wait out the timelock delay (default **48h**, `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY`).
+- **Guardian** (`CANCELLER_ROLE` on the timelock): can `cancel` any scheduled
+  operation during the delay window — the veto. Independent from the ops owner.
+
+**Incident playbook**
+
+1. **Contain immediately — freeze all money movement.** The ops owner calls
+   `setPaused(true)` (script: `SetShowCampaignPaused`, `PAUSED=true`). This is a
+   full freeze: every fund-outflow and lifecycle transition reverts with `Paused`
+   — pledges, refunds, deposit/final releases, and all confirm/cancel/mark
+   transitions. Views are unaffected; the pause lever and `setUpgradeAuthority`
+   remain callable. No timelock delay — it is instant.
+2. **Diagnose** while frozen. Balances and campaign state are readable.
+3. **Fix via a timelocked upgrade.** Schedule a new implementation through the
+   timelock: `UpgradeShowCampaignEscrow` with `UPGRADE_ACTION=schedule` (deploys
+   the new impl and schedules `upgradeToAndCall(newImpl, "")`; logs the operation
+   id + ETA). After the delay elapses, `UPGRADE_ACTION=execute` with
+   `NEW_IMPLEMENTATION` set to the logged address.
+4. **Veto a bad/mistaken upgrade.** If a scheduled upgrade is wrong or malicious,
+   the guardian calls `timelock.cancel(operationId)` before the ETA. Nothing ships.
+5. **Recover / resume.** Once safe, the ops owner `setPaused(false)`. If refunds
+   are the right resolution for stuck campaigns, `cancelCampaign` opens pro-rata
+   refunds (unpause first — cancel is frozen while paused).
+6. **Rotate governance** if the timelock itself must change: the current timelock
+   (only) calls `setUpgradeAuthority(newAuthority)`.
+
+**Invariants preserved across an upgrade** (asserted by the #1497 integration
+test): campaign state, pledged balances, `owner`, and `upgradeAuthority` all
+survive the implementation swap; the ERC1967 proxy address is stable, so the app
+and ABI handoff need no address change (the ABI regenerates only if the surface
+changed).
 
 ## References
 

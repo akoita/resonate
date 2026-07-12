@@ -12,7 +12,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
 | **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest, stake, slash (60/30/10), blacklist.     |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | Per-token escrow. Deposit, freeze, release, redirect.       |
-| **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release. |
+| **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
 ## Shared Interfaces
@@ -122,7 +122,8 @@ forge script script/DeployProtocol.s.sol \
 | ------------------------------- | -------------------------------------------------------------------- |
 | `DeployProtocol.s.sol`          | Full protocol from scratch (NFT + Marketplace + Protection + Escrow) |
 | `DeployContentProtection.s.sol` | Phase 2 only — add ContentProtection + Escrow to existing deployment |
-| `DeployShowCampaignEscrow.s.sol` | Shows only — deploy standalone campaign funding escrow |
+| `DeployShowCampaignEscrow.s.sol` | Shows only — deploy the UUPS escrow proxy + TimelockController upgrade authority (+ guardian CANCELLER) |
+| `UpgradeShowCampaignEscrow.s.sol` | Timelocked UUPS upgrade of the escrow: `UPGRADE_ACTION=schedule` then `execute` |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
 
 ### Add to Existing Deployment (Phase 2 only)
