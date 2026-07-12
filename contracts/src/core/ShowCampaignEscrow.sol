@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -15,8 +17,27 @@ import {IShowCampaignEscrow} from "../interfaces/IShowCampaignEscrow.sol";
  * booking confirmation, optional disclosed deposit release, fulfillment, and
  * the dispute window complete. Failed, cancelled, or booking-expired campaigns
  * expose permissionless refunds.
+ *
+ * Upgradeability & authority split (issue #1497, RFC contract-upgradeability-and-recovery):
+ *   - Deployed behind an ERC1967 proxy; the implementation is UUPS-upgradeable.
+ *   - The `owner` runs day-to-day operations (create/activate/cancel campaigns,
+ *     confirm bookings, set fees/confirmers, and the emergency pause).
+ *   - A SEPARATE `upgradeAuthority` — a TimelockController with a guardian
+ *     CANCELLER — is the ONLY account allowed to upgrade the implementation or
+ *     reassign the upgrade authority. The operational owner cannot upgrade.
+ *
+ * Emergency freeze:
+ *   - {setPaused} is the instant, owner-controlled lever. When paused, EVERY
+ *     function that moves funds out (pledge in, deposit/final release, refund)
+ *     or advances a campaign's lifecycle status reverts with {Paused}. Only
+ *     configuration setters and {setPaused}/{setUpgradeAuthority} stay callable
+ *     so the emergency lever and governance path always work. Views are never
+ *     affected. A code fix ships as a new implementation through the timelock;
+ *     the guardian can cancel a scheduled upgrade.
+ *
+ * @custom:version 2.0.0
  */
-contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
+contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant MAX_DEPOSIT_RELEASE_BPS = 3000;
@@ -29,7 +50,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     uint256 public constant MIN_DISPUTE_WINDOW = 1 hours;
     uint256 public constant MAX_DISPUTE_WINDOW = 90 days;
 
-    uint256 public nextCampaignId = 1;
+    uint256 public nextCampaignId;
     bool public paused;
     /// @notice Default fee rate snapshotted into each campaign at creation: the rate is a
     /// backer-facing term and never changes for an existing campaign. The recipient is
@@ -48,6 +69,17 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
     ///      partial deposit release can leave a few wei of dust).
     mapping(uint256 => uint256) public refundedBackers;
 
+    /// @notice The sole account authorized to upgrade the implementation (via UUPS
+    /// {upgradeToAndCall}) or reassign this authority. In production this is a
+    /// TimelockController; the operational {owner} deliberately cannot upgrade.
+    address public upgradeAuthority;
+
+    /// @dev Reserved storage to allow appending new state in future upgrades without
+    /// shifting the layout of inheriting/composed code. 8 pre-existing slots +
+    /// `upgradeAuthority` + 41 = 50 reserved. Shrink this array by exactly the number
+    /// of slots any appended variable consumes.
+    uint256[41] private __gap;
+
     modifier whenNotPaused() {
         if (paused) revert Paused();
         _;
@@ -58,9 +90,46 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor(address _owner, uint256 _feeBps, address _feeRecipient) Ownable(_owner) {
-        _setFeeConfig(_feeBps, _feeRecipient);
+    modifier onlyUpgradeAuthority() {
+        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        _;
     }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
+     * @notice Initializes the proxy state. Callable exactly once.
+     * @param _owner Operational owner (create/activate/cancel, confirm, fees, pause).
+     * @param _feeBps Default success-only campaign fee, snapshotted per campaign.
+     * @param _feeRecipient Platform fee wallet (rotatable; read at charge time).
+     * @param _upgradeAuthority TimelockController that governs implementation upgrades.
+     */
+    function initialize(address _owner, uint256 _feeBps, address _feeRecipient, address _upgradeAuthority)
+        external
+        initializer
+    {
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        __Ownable_init(_owner);
+        nextCampaignId = 1;
+        _setFeeConfig(_feeBps, _feeRecipient);
+        upgradeAuthority = _upgradeAuthority;
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
+    }
+
+    /// @notice Reassigns the upgrade authority. Callable ONLY by the current authority
+    /// (e.g. the timelock handing off to a new timelock/governor), never by the owner.
+    function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        address previous = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityUpdated(previous, newAuthority);
+    }
+
+    /// @dev UUPS upgrade gate: only the {upgradeAuthority} (timelock) may upgrade.
+    function _authorizeUpgrade(address newImplementation) internal view override onlyUpgradeAuthority {}
 
     function setFeeConfig(uint256 _feeBps, address _feeRecipient) external onlyOwner {
         _setFeeConfig(_feeBps, _feeRecipient);
@@ -167,7 +236,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         }
     }
 
-    function markFailed(uint256 campaignId) external {
+    function markFailed(uint256 campaignId) external whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Active) revert InvalidStatus(campaignId, campaign.status);
         if (block.timestamp < campaign.deadline) {
@@ -183,7 +252,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit RefundAvailable(campaignId);
     }
 
-    function cancelCampaign(uint256 campaignId) external onlyOwner {
+    function cancelCampaign(uint256 campaignId) external onlyOwner whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (!_canCancel(campaign.status)) revert InvalidStatus(campaignId, campaign.status);
         // A Fulfilled campaign is only cancellable (for dispute resolution) while its
@@ -205,7 +274,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit RefundAvailable(campaignId);
     }
 
-    function openRefundsAfterMissedBooking(uint256 campaignId) external {
+    function openRefundsAfterMissedBooking(uint256 campaignId) external whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Funded) revert InvalidStatus(campaignId, campaign.status);
         // Exclusive boundary: the deadline second belongs to confirmBooking, so refunds
@@ -217,7 +286,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit RefundAvailable(campaignId);
     }
 
-    function confirmBooking(uint256 campaignId) external onlyConfirmer {
+    function confirmBooking(uint256 campaignId) external onlyConfirmer whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Funded) revert InvalidStatus(campaignId, campaign.status);
         if (block.timestamp > campaign.bookingDeadline) {
@@ -227,7 +296,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit BookingConfirmed(campaignId, msg.sender);
     }
 
-    function releaseDeposit(uint256 campaignId) external nonReentrant onlyConfirmer {
+    function releaseDeposit(uint256 campaignId) external nonReentrant onlyConfirmer whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.BookingConfirmed) revert InvalidStatus(campaignId, campaign.status);
         if (campaign.depositReleaseBps == 0) revert DepositUnavailable(campaignId, campaign.depositReleaseBps, 0);
@@ -248,7 +317,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit DepositReleased(campaignId, campaign.beneficiary, net);
     }
 
-    function confirmFulfillment(uint256 campaignId) external onlyConfirmer {
+    function confirmFulfillment(uint256 campaignId) external onlyConfirmer whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased) {
             revert InvalidStatus(campaignId, campaign.status);
@@ -258,7 +327,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit FulfillmentConfirmed(campaignId, msg.sender);
     }
 
-    function releaseFunds(uint256 campaignId) external nonReentrant {
+    function releaseFunds(uint256 campaignId) external nonReentrant whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.Fulfilled) revert InvalidStatus(campaignId, campaign.status);
         if (block.timestamp < campaign.fulfilledAt + campaign.disputeWindowSeconds) {
@@ -283,7 +352,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Ownable, ReentrancyGuard {
         emit FundsReleased(campaignId, campaign.beneficiary, net);
     }
 
-    function claimRefund(uint256 campaignId) external nonReentrant {
+    function claimRefund(uint256 campaignId) external nonReentrant whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.RefundAvailable) revert RefundUnavailable(campaignId, campaign.status);
 

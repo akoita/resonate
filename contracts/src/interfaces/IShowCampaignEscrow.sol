@@ -63,8 +63,14 @@ interface IShowCampaignEscrow {
     event CampaignPaused(bool paused);
     event ConfirmerUpdated(address indexed confirmer, bool allowed);
     event FeeConfigUpdated(uint256 feeBps, address feeRecipient);
+    /// @notice Emitted when the upgrade authority (the TimelockController that governs
+    /// implementation upgrades) is set at initialization or handed to a new authority.
+    event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
 
     error NotConfirmer(address caller);
+    /// @notice Raised when an account other than the current {upgradeAuthority} attempts
+    /// to upgrade the implementation or reassign the upgrade authority.
+    error UnauthorizedUpgrade(address caller);
     error Paused();
     error ZeroAddress();
     error ZeroAmount();
