@@ -932,7 +932,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans can own, free or paid.",
     category: "artists",
     audiences: ["artist", "listener"],
-    status: "implemented",
+    status: "partial",
     keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
     sections: [
       {
