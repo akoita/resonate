@@ -29,6 +29,18 @@ const ARTWORK_URL_PATTERN = /^(https?:\/\/|ipfs:\/\/)/i;
  */
 export const DROP_KIND_LABEL = "Punchline";
 
+/**
+ * Clip length label ("9.9s"). Lives in this PURE module (not the "use client"
+ * clip selector) because the collectible card renders inside React Server
+ * Components (public profile showcase, /moments permalink) — importing a
+ * client-module export there makes it a client reference and CALLING it
+ * during server render crashes the page (#1477 staging regression).
+ */
+export function formatClipDuration(ms: number): string {
+  const seconds = Math.max(0, ms) / 1000;
+  return `${seconds.toFixed(1)}s`;
+}
+
 // ---------------------------------------------------------------------------
 // Display masking for socially-weighted words (operator decision 2026-07-11)
 // ---------------------------------------------------------------------------

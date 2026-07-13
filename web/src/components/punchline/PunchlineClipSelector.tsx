@@ -148,10 +148,10 @@ export function formatClipTime(ms: number): string {
 }
 
 /** Compact duration badge, e.g. 6000 → "6.0s". */
-export function formatClipDuration(ms: number): string {
-  const seconds = Math.max(0, ms) / 1000;
-  return `${seconds.toFixed(1)}s`;
-}
+// Moved to punchlineDropHelpers (pure module) so Server Components can call it;
+// imported for internal use and re-exported for existing client-side importers.
+import { formatClipDuration } from "./punchlineDropHelpers";
+export { formatClipDuration };
 
 export interface PunchlineClipSelectorProps {
   /** Vocals stem id — the preview source. */
