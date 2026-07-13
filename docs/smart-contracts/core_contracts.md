@@ -137,7 +137,17 @@ validator.setContentProtection(address(contentProtection));
 
 UUPS-upgradeable contract for anti-piracy enforcement:
 
-- **Attestation** — Creators register release / content provenance on-chain
+- **Attestation** — Creators register release / content provenance on-chain.
+  `attest` / `attestRelease` are open entrypoints, but tokenIds are predictable, so
+  a caller must present an **EIP-712 authorization voucher signed by a registered
+  registrar** that binds `(attester = msg.sender, tokenId, deadline)` — this stops an
+  attacker front-running a creator to squat the single-use attester slot (CP-1,
+  #1271). The artist stays `msg.sender` = attester = staker; attestation is **not**
+  moved server-side. The EIP-712 domain is `("ContentProtection", "1")` and includes
+  `chainId` + contract address, so a voucher cannot be replayed cross-chain,
+  cross-contract, or by a different caller. Invalid, expired, wrong-signer, or
+  wrong-caller vouchers revert `InvalidAttestationSignature` /
+  `AttestationAuthorizationExpired`.
 - **Staking** — fixed ETH or ERC-20 deposit required per tokenId (anti-spam
   deterrent). The contract records and holds only the configured required stake:
   a native overpayment is refunded at stake time, and the ERC-20 path pulls only
@@ -153,12 +163,17 @@ UUPS-upgradeable contract for anti-piracy enforcement:
 - **Stake-to-price proportionality** — `maxPriceMultiplier` (default 10×) caps listing price relative to staked amount, preventing high-price listings with minimal stakes
 
 ```solidity
-// 1. Attest the release root / protected content record
+// 1. Attest the release root / protected content record. `deadline` + `signature`
+//    are a registrar-signed EIP-712 AttestationAuthorization voucher bound to
+//    (msg.sender, releaseId, deadline); the backend registrar signs it after the
+//    off-chain ownership check (CP-1, #1271).
 contentProtection.attestRelease(
     releaseId,
     contentHash,      // keccak256 of audio
     fingerprintHash,  // acoustic fingerprint hash
-    "ipfs://Qm..."    // metadata URI
+    "ipfs://Qm...",   // metadata URI
+    deadline,         // voucher expiry (unix seconds)
+    signature         // registrar EIP-712 signature (r,s,v)
 );
 
 // 2. Stake ETH for the protected release root

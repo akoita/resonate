@@ -43,7 +43,9 @@ interface IContentProtection is IContentProtectionEvents {
         uint256 releaseId,
         bytes32 contentHash,
         bytes32 fingerprintHash,
-        string calldata metadataURI
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
     ) external;
 
     function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory);

@@ -9,6 +9,7 @@ import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title RevenueEscrow Unit Tests
@@ -29,12 +30,24 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
     uint256 constant STAKE_AMOUNT = 0.01 ether;
     uint256 constant USDC_AMOUNT = 25_000000;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
+    function _voucher(address attester, uint256 tokenId) internal view returns (bytes memory) {
+        return AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
+    }
+
     function setUp() public {
         ContentProtection impl = new ContentProtection();
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
         usdc = new MockUSDC();
+
+        // Register the voucher-signing registrar (CP-1, #1271).
+        vm.prank(admin);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
 
         vm.prank(admin);
         escrow = new RevenueEscrow(admin, ESCROW_PERIOD);
@@ -479,10 +492,14 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
     }
 
     function test_FreezeByTrack_FreezesTrackAndRegisteredStemEscrows() public {
+        // Build vouchers before pranking: signing reads the domain via
+        // cp.eip712Domain(), which would otherwise consume the prank.
+        bytes memory sig10 = _voucher(alice, 10);
+        bytes memory sig20 = _voucher(alice, 20);
         vm.prank(alice);
-        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release");
+        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release", AUTH_DEADLINE, sig10);
         vm.prank(alice);
-        cp.attest(20, keccak256("track"), keccak256("track-fp"), "track");
+        cp.attest(20, keccak256("track"), keccak256("track-fp"), "track", AUTH_DEADLINE, sig20);
 
         vm.startPrank(admin);
         cp.registerTrack(10, 20);

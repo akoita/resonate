@@ -9,6 +9,7 @@ import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Unit Tests
@@ -29,12 +30,45 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_USDC = keccak256("local:usdc");
 
+    // Registrar that signs attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    // Non-expiring deadline for the happy-path vouchers used throughout the suite.
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     function setUp() public {
         // Deploy implementation + proxy
         ContentProtection impl = new ContentProtection();
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
+
+        // Register the voucher-signing registrar so attest / attestRelease can verify.
+        vm.prank(admin);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
+    }
+
+    // ── Attestation voucher helpers (CP-1, #1271) ──────────────────────────
+
+    function _voucher(address attester, uint256 tokenId) internal view returns (bytes memory) {
+        return AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
+    }
+
+    function _attestAs(address caller, uint256 tokenId, bytes32 contentHash, bytes32 fpHash, string memory uri)
+        internal
+    {
+        // Build the voucher BEFORE pranking: signing reads the domain via an external
+        // cp.eip712Domain() call, which would otherwise consume the prank.
+        bytes memory sig = _voucher(caller, tokenId);
+        vm.prank(caller);
+        cp.attest(tokenId, contentHash, fpHash, uri, AUTH_DEADLINE, sig);
+    }
+
+    function _attestReleaseAs(address caller, uint256 tokenId, bytes32 contentHash, bytes32 fpHash, string memory uri)
+        internal
+    {
+        bytes memory sig = _voucher(caller, tokenId);
+        vm.prank(caller);
+        cp.attestRelease(tokenId, contentHash, fpHash, uri, AUTH_DEADLINE, sig);
     }
 
     // ============ Initialization ============
@@ -72,11 +106,12 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_Attest() public {
         bytes32 contentHash = keccak256("audio_content");
         bytes32 fpHash = keccak256("fingerprint");
+        bytes memory sig = _voucher(alice, 1);
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, true);
         emit ContentAttested(1, alice, contentHash, fpHash, "ipfs://meta");
-        cp.attest(1, contentHash, fpHash, "ipfs://meta");
+        cp.attest(1, contentHash, fpHash, "ipfs://meta", AUTH_DEADLINE, sig);
 
         assertTrue(cp.isAttested(1));
     }
@@ -84,40 +119,118 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_AttestRelease() public {
         bytes32 contentHash = keccak256("release_audio_content");
         bytes32 fpHash = keccak256("release_fingerprint");
+        bytes memory sig = _voucher(alice, 100);
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, true);
         emit ContentAttested(100, alice, contentHash, fpHash, "ipfs://release-meta");
-        cp.attestRelease(100, contentHash, fpHash, "ipfs://release-meta");
+        cp.attestRelease(100, contentHash, fpHash, "ipfs://release-meta", AUTH_DEADLINE, sig);
 
         assertTrue(cp.isAttested(100));
         assertTrue(cp.isReleaseVerified(100));
     }
 
     function test_Attest_RevertAlreadyAttested() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
+        // bob presents a valid voucher for himself, so verification passes and the
+        // AlreadyAttested precondition is what rejects the second claim.
+        bytes memory bobSig = _voucher(bob, 1);
         vm.prank(bob);
         vm.expectRevert(IContentProtectionEvents.AlreadyAttested.selector);
-        cp.attest(1, keccak256("c"), keccak256("d"), "uri2");
+        cp.attest(1, keccak256("c"), keccak256("d"), "uri2", AUTH_DEADLINE, bobSig);
     }
 
     function test_Attest_RevertBlacklisted() public {
         vm.prank(admin);
         cp.blacklist(alice);
 
+        bytes memory sig = _voucher(alice, 1);
         vm.prank(alice);
         vm.expectRevert(IContentProtectionEvents.IsBlacklisted.selector);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        cp.attest(1, keccak256("a"), keccak256("b"), "uri", AUTH_DEADLINE, sig);
+    }
+
+    // ── Attestation authorization voucher gate (CP-1, #1271) ───────────────
+
+    function test_Attest_ValidVoucherSucceeds() public {
+        // Any caller with a registrar-signed voucher bound to them can attest and
+        // becomes the attester — attestation does not move server-side.
+        address randomArtist = makeAddr("randomArtist");
+        bytes memory sig = _voucher(randomArtist, 42);
+
+        vm.prank(randomArtist);
+        cp.attest(42, keccak256("c"), keccak256("f"), "uri", AUTH_DEADLINE, sig);
+
+        assertTrue(cp.isAttested(42));
+        (,,, address attester,,) = cp.attestations(42);
+        assertEq(attester, randomArtist, "voucher caller becomes the attester");
+    }
+
+    function test_Attest_SquattingRejectedWithoutVoucher() public {
+        // An attacker front-running with no registrar voucher (empty signature) is
+        // rejected before any attestation slot is seized.
+        address attacker = makeAddr("attacker");
+        vm.prank(attacker);
+        vm.expectRevert(IContentProtectionEvents.InvalidAttestationSignature.selector);
+        cp.attest(7, keccak256("c"), keccak256("f"), "uri", AUTH_DEADLINE, "");
+    }
+
+    function test_Attest_WrongSignerRejected() public {
+        // Voucher signed by a key that is NOT a registered registrar.
+        uint256 rogueKey = 0xB0B;
+        bytes memory sig = AttestationVoucher.sign(address(cp), rogueKey, alice, 7, AUTH_DEADLINE);
+
+        vm.prank(alice);
+        vm.expectRevert(IContentProtectionEvents.InvalidAttestationSignature.selector);
+        cp.attest(7, keccak256("c"), keccak256("f"), "uri", AUTH_DEADLINE, sig);
+    }
+
+    function test_Attest_VoucherForDifferentCallerRejected() public {
+        // The struct hashes msg.sender, so a voucher issued to alice is useless to bob.
+        bytes memory aliceSig = _voucher(alice, 7);
+
+        vm.prank(bob);
+        vm.expectRevert(IContentProtectionEvents.InvalidAttestationSignature.selector);
+        cp.attest(7, keccak256("c"), keccak256("f"), "uri", AUTH_DEADLINE, aliceSig);
+    }
+
+    function test_Attest_ExpiredVoucherReverts() public {
+        vm.warp(1_000_000);
+        uint256 deadline = block.timestamp - 1;
+        bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, alice, 7, deadline);
+
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IContentProtectionEvents.AttestationAuthorizationExpired.selector, deadline, block.timestamp
+            )
+        );
+        cp.attest(7, keccak256("c"), keccak256("f"), "uri", deadline, sig);
+    }
+
+    function test_Attest_ArtistRemainsStaker() public {
+        // The voucher gates WHO may attest, but the attester is still msg.sender and is
+        // the only address that can stake the record — proving _recordStake is unchanged.
+        _attestReleaseAs(alice, 100, keccak256("release"), keccak256("release-fp"), "release-uri");
+
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(100);
+        assertTrue(cp.isStaked(100));
+
+        // A different party cannot stake for alice's attested record (attester != caller).
+        vm.deal(bob, 1 ether);
+        vm.prank(bob);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(100);
     }
 
     // ============ Staking ============
 
     function test_Stake() public {
         // Attest first
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         // Stake
         vm.deal(alice, 1 ether);
@@ -130,8 +243,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_StakeForRelease() public {
-        vm.prank(alice);
-        cp.attestRelease(100, keccak256("release"), keccak256("release-fp"), "release-uri");
+        _attestReleaseAs(alice, 100, keccak256("release"), keccak256("release-fp"), "release-uri");
 
         vm.deal(alice, 1 ether);
         vm.prank(alice);
@@ -145,8 +257,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_StakeWithAsset_USDC() public {
         MockUSDC usdc = _configureUsdcStakeAsset();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         usdc.mint(alice, USDC_STAKE_AMOUNT);
         vm.startPrank(alice);
@@ -166,8 +277,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_StakeForReleaseWithAsset_USDC() public {
         MockUSDC usdc = _configureUsdcStakeAsset();
 
-        vm.prank(alice);
-        cp.attestRelease(100, keccak256("release"), keccak256("release-fp"), "release-uri");
+        _attestReleaseAs(alice, 100, keccak256("release"), keccak256("release-fp"), "release-uri");
 
         usdc.mint(alice, USDC_STAKE_AMOUNT);
         vm.startPrank(alice);
@@ -185,8 +295,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     // ── #1280: stake records the canonical required amount, not the overpayment ──
 
     function test_Stake_RecordsRequiredAndRefundsNativeSurplus() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         uint256 overpay = STAKE_AMOUNT + 0.05 ether;
         vm.deal(alice, overpay);
@@ -205,8 +314,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_StakeWithAsset_RecordsRequiredNotExcess() public {
         MockUSDC usdc = _configureUsdcStakeAsset();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         uint256 overpay = USDC_STAKE_AMOUNT * 3;
         usdc.mint(alice, overpay);
@@ -225,8 +333,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_Slash_OnOverpaidStakeUsesRequiredNotOverpayment() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT + 0.5 ether}(1); // large overpayment, refunded
@@ -251,8 +358,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         cp.setStakeAmountForAsset(address(feeToken), USDC_STAKE_AMOUNT);
         vm.stopPrank();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         feeToken.mint(alice, USDC_STAKE_AMOUNT * 2);
         vm.startPrank(alice);
@@ -272,8 +378,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_Slash_EscrowsOnRevertingReporter() public {
         RevertingReceiver receiver = new RevertingReceiver();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -300,8 +405,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_Stake_RevertInsufficientAmount() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         vm.deal(alice, 1 ether);
         vm.prank(alice);
@@ -310,8 +414,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_Stake_RevertNotAttester() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
 
         vm.deal(bob, 1 ether);
         vm.prank(bob);
@@ -323,8 +426,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
 
     function test_Slash() public {
         // Setup: attest + stake
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -350,8 +452,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_Slash_USDCStake() public {
         MockUSDC usdc = _configureUsdcStakeAsset();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         usdc.mint(alice, USDC_STAKE_AMOUNT);
         vm.startPrank(alice);
         usdc.approve(address(cp), USDC_STAKE_AMOUNT);
@@ -375,8 +476,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     // ── #1282: the retained slash remainder is sweepable to the treasury ────
 
     function test_Slash_AccumulatesAndSweepsBurned() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -409,8 +509,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_Slash_RevertNotOwner() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -423,8 +522,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     // ============ Refund ============
 
     function test_RefundStake() public {
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         vm.deal(alice, 1 ether);
         vm.prank(alice);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -440,8 +538,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_RefundStake_USDCStake() public {
         MockUSDC usdc = _configureUsdcStakeAsset();
 
-        vm.prank(alice);
-        cp.attest(1, keccak256("a"), keccak256("b"), "uri");
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
         usdc.mint(alice, USDC_STAKE_AMOUNT);
         vm.startPrank(alice);
         usdc.approve(address(cp), USDC_STAKE_AMOUNT);
@@ -605,8 +702,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_RegisterTrack_RevertConflict() public {
         _attestReleaseAndTrack(100, 200);
 
-        vm.prank(alice);
-        cp.attest(101, keccak256("release2"), keccak256("fp2"), "release-2");
+        _attestAs(alice, 101, keccak256("release2"), keccak256("fp2"), "release-2");
 
         vm.prank(admin);
         cp.registerTrack(100, 200);
@@ -644,8 +740,8 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_RegisterStemProtectionRoot_ByRegistrar() public {
-        vm.prank(alice);
-        cp.attestRelease(
+        _attestReleaseAs(
+            alice,
             100,
             keccak256(abi.encodePacked("release", uint256(100))),
             keccak256(abi.encodePacked("release-fp", uint256(100))),
@@ -680,8 +776,8 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_ResolveStakeRoot_ViaDirectStemRoot() public {
-        vm.prank(alice);
-        cp.attestRelease(
+        _attestReleaseAs(
+            alice,
             100,
             keccak256(abi.encodePacked("release", uint256(100))),
             keccak256(abi.encodePacked("release-fp", uint256(100))),
@@ -708,8 +804,8 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function test_GetMaxListingPrice_UsesReleaseStake() public {
-        vm.prank(alice);
-        cp.attestRelease(
+        _attestReleaseAs(
+            alice,
             100,
             keccak256(abi.encodePacked("release", uint256(100))),
             keccak256(abi.encodePacked("release-fp", uint256(100))),
@@ -768,8 +864,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function test_RevokeRelease_CascadesToTracksAndStems() public {
         _attestReleaseAndTrack(100, 200);
 
-        vm.prank(bob);
-        cp.attest(201, keccak256("track2"), keccak256("tfp2"), "track-2");
+        _attestAs(bob, 201, keccak256("track2"), keccak256("tfp2"), "track-2");
 
         vm.startPrank(admin);
         cp.registerTrack(100, 200);
@@ -789,16 +884,16 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     }
 
     function _attestReleaseAndTrack(uint256 releaseId, uint256 trackId) internal {
-        vm.prank(alice);
-        cp.attestRelease(
+        _attestReleaseAs(
+            alice,
             releaseId,
             keccak256(abi.encodePacked("release", releaseId)),
             keccak256(abi.encodePacked("release-fp", releaseId)),
             "release"
         );
 
-        vm.prank(alice);
-        cp.attest(
+        _attestAs(
+            alice,
             trackId,
             keccak256(abi.encodePacked("track", trackId)),
             keccak256(abi.encodePacked("track-fp", trackId)),
