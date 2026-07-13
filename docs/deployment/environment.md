@@ -206,6 +206,8 @@ When adding a new environment variable:
 | `INTERNAL_SERVICE_KEY` | Backend + internal workers | Shared secret for backend-originated privileged requests and Demucs callback authentication; required in production for internal worker callbacks |
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
+| `X402_REFUND_DUE_ALERT_INTERVAL_MS` | Backend | Optional sweep interval for the x402 `refund_due` reconciliation watchdog (#1506); defaults to `900000` (15 min) |
+| `X402_REFUND_DUE_ALERT_AFTER_HOURS` | Backend | Optional age threshold before an unresolved `refund_due` x402 settlement alerts operators via `x402.refund_due_stale`; defaults to `2` hours. Alerts fan out to `OPERATOR_ADDRESSES` / `ADMIN_ADDRESSES` |
 | `ENABLE_CONTRACT_INDEXER` | Backend | Enables background contract event indexing when set to `true`; deployed environments should only enable it when contract addresses are configured |
 | `INDEXER_POLL_INTERVAL_MS` | Backend | Optional contract indexer poll interval in milliseconds; defaults to `5000` |
 | `ENABLE_SHOWS_ESCROW_INDEXER` | Backend | Enables the `ShowCampaignEscrow` event indexer + on-chain campaign/pledge reconciliation (#948) when `true`; only enable once `SHOW_CAMPAIGN_ESCROW_ADDRESS` (or a per-chain override) is configured. Watches the chain from `INDEXER_CHAIN_ID`/`CHAIN_ID` |
