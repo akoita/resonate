@@ -77,6 +77,79 @@ describe("PublicCommunityProfile", () => {
     expect(html).toContain("Ready for future showcase cards");
   });
 
+  it("renders the owned-moments showcase with edition, artist, and release link", () => {
+    const visibleProfile: PublicCommunityProfileResponse = {
+      ...profile,
+      showcase: {
+        ...profile.showcase,
+        ownedItemsVisible: true,
+        ownedMoments: [
+          {
+            collectibleId: "collectible-1",
+            editionNumber: 3,
+            editionSize: 50,
+            acquiredAt: "2026-05-31T00:00:00.000Z",
+            moment: {
+              id: "moment-1",
+              title: "Golden hour",
+              lyricText: "we ride till the sun comes up",
+              artworkUrl: null,
+              startMs: 1000,
+              endMs: 9000,
+              clipAssetUri: null,
+              rightsLabel: "NON_COMMERCIAL_COLLECTIBLE",
+              priceCents: 0,
+              collectedCount: 12,
+            },
+            drop: {
+              id: "drop-1",
+              title: "Golden Hour Drop",
+              trackId: "track-1",
+              trackTitle: "Golden Hour",
+              releaseId: "release-1",
+              artistName: "Nova",
+            },
+          },
+        ],
+      },
+    };
+    const items = publicCommunityShowcaseItems(visibleProfile);
+    const html = renderToStaticMarkup(
+      <PublicCommunityProfile profile={visibleProfile} requestedUserId="listener-1" />,
+    );
+
+    expect(items.find((item) => item.key === "owned-items")).toMatchObject({
+      status: "visible",
+      value: "1 owned moment on show",
+    });
+    expect(html).toContain("Moments showcase");
+    expect(html).toContain("Golden hour");
+    expect(html).toContain("Edition #3 of 50");
+    expect(html).toContain("Nova — Golden Hour");
+    expect(html).toContain("Collected May 31, 2026");
+    expect(html).toContain("/release/release-1?focus=moments");
+    // Public showcase must never leak payment provenance or a wallet.
+    expect(html).not.toContain("paymentRail");
+    expect(html).not.toContain("pricePaidCents");
+  });
+
+  it("keeps the placeholder wording when owned items are visible but empty", () => {
+    const emptyVisible: PublicCommunityProfileResponse = {
+      ...profile,
+      showcase: { ...profile.showcase, ownedItemsVisible: true, ownedMoments: [] },
+    };
+    const items = publicCommunityShowcaseItems(emptyVisible);
+    const html = renderToStaticMarkup(
+      <PublicCommunityProfile profile={emptyVisible} requestedUserId="listener-1" />,
+    );
+
+    expect(items.find((item) => item.key === "owned-items")).toMatchObject({
+      status: "visible",
+      value: "Ready for future showcase cards",
+    });
+    expect(html).not.toContain("Moments showcase");
+  });
+
   it("renders opt-in campaign support badges without pledge or wallet details", () => {
     const visibleProfile: PublicCommunityProfileResponse = {
       ...profile,

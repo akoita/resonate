@@ -1,5 +1,8 @@
 import Link from "next/link";
 import type { PublicCommunityProfileResponse } from "../../lib/api";
+import { PunchlineCollectibleCard } from "../punchline/PunchlineCollectibleCard";
+
+type OwnedMoment = NonNullable<PublicCommunityProfileResponse["showcase"]["ownedMoments"]>[number];
 
 type ShowcaseItem = {
   key: string;
@@ -20,7 +23,9 @@ export function publicCommunityShowcaseItems(profile: PublicCommunityProfileResp
       key: "owned-items",
       label: "Owned items",
       status: profile.showcase.ownedItemsVisible ? "visible" : "hidden",
-      value: profile.showcase.ownedItemsVisible ? "Ready for future showcase cards" : "Hidden by listener",
+      value: profile.showcase.ownedItemsVisible
+        ? ownedMomentsSummary(profile.showcase.ownedMoments?.length ?? 0)
+        : "Hidden by listener",
     },
     {
       key: "taste-badges",
@@ -111,6 +116,51 @@ export function PublicCommunityProfile({
         ))}
       </section>
 
+      {profile.showcase.ownedMoments && profile.showcase.ownedMoments.length > 0 ? (
+        <section className="community-profile-support" aria-label="Owned moments showcase">
+          <span className="community-profile-kicker">Moments showcase</span>
+          <div className="punchline-collect-grid">
+            {profile.showcase.ownedMoments.map((owned) => (
+              <div key={owned.collectibleId} className="punchline-collect-item">
+                <PunchlineCollectibleCard
+                  title={owned.moment.title}
+                  lyricText={owned.moment.lyricText}
+                  artworkUrl={owned.moment.artworkUrl}
+                  durationMs={Math.max(0, owned.moment.endMs - owned.moment.startMs)}
+                  editionSize={owned.editionSize}
+                  priceCents={owned.moment.priceCents}
+                  rightsLabel={owned.moment.rightsLabel}
+                  collectedCount={owned.moment.collectedCount}
+                />
+                <div className="punchline-collect-item-footer">
+                  <div className="punchline-inventory-meta">
+                    <span className="punchline-inventory-edition">
+                      Edition #{owned.editionNumber} of {owned.editionSize}
+                    </span>
+                    {ownedMomentArtist(owned) ? (
+                      <span className="punchline-inventory-acquired">{ownedMomentArtist(owned)}</span>
+                    ) : null}
+                    {formatAcquiredDate(owned.acquiredAt) ? (
+                      <span className="punchline-inventory-acquired">
+                        {formatAcquiredDate(owned.acquiredAt)}
+                      </span>
+                    ) : null}
+                    {owned.drop.releaseId ? (
+                      <Link
+                        href={`/release/${owned.drop.releaseId}?focus=moments`}
+                        className="punchline-inventory-release-link"
+                      >
+                        View release
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {profile.showcase.campaignSupportVisible && profile.showcase.campaignSupport.length > 0 ? (
         <section className="community-profile-support" aria-label="Campaign support badges">
           <span className="community-profile-kicker">Campaign support</span>
@@ -132,4 +182,32 @@ export function PublicCommunityProfile({
 function campaignSupportSummary(count: number) {
   if (count === 0) return "No public campaign support badges yet";
   return `${count} public campaign supporter badge${count === 1 ? "" : "s"}`;
+}
+
+function ownedMomentsSummary(count: number) {
+  // Empty-but-visible keeps the original placeholder wording so the seam still
+  // reads as "on, nothing to show yet" rather than implying zero is a state.
+  if (count === 0) return "Ready for future showcase cards";
+  return `${count} owned moment${count === 1 ? "" : "s"} on show`;
+}
+
+function ownedMomentArtist(owned: OwnedMoment): string | null {
+  const name = owned.drop.artistName?.trim();
+  if (!name) return null;
+  const track = owned.drop.trackTitle?.trim();
+  return track ? `${name} — ${track}` : name;
+}
+
+// Deterministic, locale-independent acquired date for the public showcase so the
+// server-rendered markup is stable across environments (UTC, en-US).
+function formatAcquiredDate(acquiredAt: string | null): string | null {
+  if (!acquiredAt) return null;
+  const date = new Date(acquiredAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return `Collected ${new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(date)}`;
 }
