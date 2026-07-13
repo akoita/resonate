@@ -160,11 +160,19 @@
     "type": "mapping(address => uint256)"
   },
   {
-    "bytes": "1600",
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "pendingOwner",
+    "offset": 0,
+    "slot": "20",
+    "type": "address"
+  },
+  {
+    "bytes": "1568",
     "encoding": "inplace",
     "label": "__gap",
     "offset": 0,
-    "slot": "20",
-    "type": "uint256[50]"
+    "slot": "21",
+    "type": "uint256[49]"
   }
 ]

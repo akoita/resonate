@@ -244,6 +244,41 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
         }
     }
 
+    /// @notice Paginated emergency freeze for a track with many stems (RE-1, #1271).
+    /// `freezeByTrack` copies and iterates the entire stem array in one call, which can
+    /// exceed the block gas limit for very large tracks. This variant freezes only the
+    /// stem slice `[startIndex, startIndex + maxStems)` and returns how many stems it
+    /// processed, so an operator can loop (advancing `startIndex` by the returned count)
+    /// until it returns 0. The root track's own escrows are frozen only on the first
+    /// page (`startIndex == 0`) so a multi-page sweep does not re-emit the root freeze.
+    /// @param trackId The track whose escrows (and stem escrows) to freeze.
+    /// @param startIndex Index into the track's stem array to start from.
+    /// @param maxStems Maximum number of stems to process this call; must be non-zero.
+    /// @return processed Number of stems processed this call. `0` means `startIndex` is
+    /// at or beyond the stem count — the sweep is complete.
+    function freezeByTrackRange(uint256 trackId, uint256 startIndex, uint256 maxStems)
+        external
+        onlyOwner
+        returns (uint256 processed)
+    {
+        if (address(contentProtection) == address(0)) {
+            revert ContentProtectionNotSet();
+        }
+        if (maxStems == 0) revert ZeroMaxStems();
+
+        // Freeze the root track's own escrows only once, on the first page.
+        if (startIndex == 0) {
+            _freezeKnownEscrows(trackId);
+        }
+
+        uint256[] memory stemIds = contentProtection.getTrackStemsSlice(trackId, startIndex, maxStems);
+        for (uint256 i; i < stemIds.length; ++i) {
+            _freezeKnownEscrows(stemIds[i]);
+        }
+
+        return stemIds.length;
+    }
+
     // ============ Views ============
 
     function getEscrow(uint256 tokenId)

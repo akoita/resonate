@@ -315,6 +315,60 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         assertEq(listing.pricePerUnit, 1 ether);
     }
 
+    // ── CP-4 (#1271): stake-backed price cap re-enforced at purchase ────────
+
+    function test_Buy_RevertWhenCapLoweredAfterListing() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        // The cap moves below the listed price after listing (e.g. the owner lowers
+        // maxPriceMultiplier). The listing-time check alone would let this transact.
+        contentProtection.setMaxListingPrice(1, 0.5 ether);
+
+        vm.prank(buyer);
+        vm.expectRevert(IStemMarketplaceV2.PriceExceedsStakeCap.selector);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+    }
+
+    function test_Buy_RelistWithinLoweredCapSucceeds() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 oldListingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        contentProtection.setMaxListingPrice(1, 0.5 ether);
+
+        // The seller can cancel and relist within the new cap; the purchase succeeds.
+        vm.startPrank(seller);
+        marketplace.cancel(oldListingId);
+        uint256 listingId = marketplace.list(1, 1, 0.5 ether, address(0), LISTING_DURATION);
+        vm.stopPrank();
+
+        vm.prank(buyer);
+        marketplace.buy{value: 0.5 ether}(listingId, 1);
+        assertEq(stemNFT.balanceOf(buyer, 1), 1);
+    }
+
+    function test_Buy_AllowedWhenStakeNoLongerActive() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        // Stake refunded => getMaxListingPrice returns type(uint256).max (the mock
+        // treats 0 as unset), so the existing listing stays purchasable by design.
+        contentProtection.setMaxListingPrice(1, 0);
+
+        vm.prank(buyer);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+        assertEq(stemNFT.balanceOf(buyer, 1), 1);
+    }
+
     function test_List_ProtectedMint_RevertPriceExceedsStakeCapWithoutManualRootRegistration() public {
         uint256[] memory parentIds = new uint256[](0);
         uint256 releaseId = 77;

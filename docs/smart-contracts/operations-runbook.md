@@ -103,6 +103,66 @@ cast send "$CONTENT_PROTECTION_ADDRESS" "setRegistrar(address,bool)" "$VOUCHER_S
   backend secret. Vouchers already signed by the old signer stay valid until their
   `ATTESTATION_VOUCHER_TTL_SECONDS` deadline passes.
 
+## ContentProtection Ownership Handoff (two-step, CP-3)
+
+`ContentProtection.transferOwnership(newOwner)` no longer transfers ownership in one
+step (CP-3, #1271). It only **stages** `newOwner` as `pendingOwner` and emits
+`OwnershipTransferStarted`; the current owner keeps full authority — including UUPS
+upgrade authorization — until the new owner completes the handoff. This prevents a
+mistyped or unusable address from irreversibly bricking upgrade and admin control.
+
+Procedure (per chain / per proxy):
+
+```bash
+# 1. Current owner stages the new owner.
+cast send "$CONTENT_PROTECTION_ADDRESS" "transferOwnership(address)" "$NEW_OWNER" \
+  --rpc-url "$RPC_URL" --private-key "$CURRENT_OWNER_KEY"
+
+# 2. Verify the staging took effect.
+cast call "$CONTENT_PROTECTION_ADDRESS" "pendingOwner()(address)" --rpc-url "$RPC_URL"
+
+# 3. The NEW owner accepts — this is the step that actually moves ownership
+#    (emits OwnershipTransferred and clears pendingOwner).
+cast send "$CONTENT_PROTECTION_ADDRESS" "acceptOwnership()" \
+  --rpc-url "$RPC_URL" --private-key "$NEW_OWNER_KEY"
+
+# 4. Confirm.
+cast call "$CONTENT_PROTECTION_ADDRESS" "owner()(address)" --rpc-url "$RPC_URL"
+```
+
+- A pending handoff can be **replaced or cancelled** at any time before acceptance by
+  the current owner calling `transferOwnership` again (a different address replaces the
+  pending owner; there is no separate cancel — staging an owner-controlled address is
+  the cancel path).
+- Treat an unaccepted `pendingOwner` as an open operational task: the handoff is not
+  done, and the old key must stay secured until `acceptOwnership` has confirmed.
+- `PaymentAssetRegistry` still uses single-step `transferOwnership`; double-check the
+  address before any handoff there.
+
+## Emergency Freeze for Large Tracks (RE-1)
+
+`RevenueEscrow.freezeByTrack(trackId)` freezes the track's escrows and every registered
+stem's escrows in a single transaction. For tracks with very many stems this single
+unbounded loop can exceed the block gas limit. Use the paginated variant
+`freezeByTrackRange(trackId, startIndex, maxStems)` (RE-1, #1271) in that case:
+
+```bash
+# Page through the stems until the call reports 0 processed.
+# Page 0 (startIndex = 0) also freezes the root track's own escrows.
+cast send "$REVENUE_ESCROW_ADDRESS" "freezeByTrackRange(uint256,uint256,uint256)" \
+  "$TRACK_ID" 0 100 --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+cast send "$REVENUE_ESCROW_ADDRESS" "freezeByTrackRange(uint256,uint256,uint256)" \
+  "$TRACK_ID" 100 100 --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+# ... advance startIndex by the page size until the returned `processed` is 0.
+```
+
+- The function returns the number of stems processed; `0` means the sweep is complete.
+- `ContentProtection.getTrackStemCount(trackId)` tells you the total stem count up
+  front so you can size the loop.
+- Freezing is idempotent per escrow — re-running a page is safe.
+- `maxStems` must be non-zero (`ZeroMaxStems`); `type(uint256).max` means
+  "everything from startIndex" in one page when gas allows.
+
 ## Staging Lifecycle Smoke
 
 The **Staging Lifecycle Smoke** (`.github/workflows/staging-lifecycle-smoke.yml`,

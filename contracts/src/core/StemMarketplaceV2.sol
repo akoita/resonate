@@ -196,6 +196,15 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         if (stemNFT.balanceOf(seller, tokenId) < amount) revert InsufficientAmount();
         if (!stemNFT.isApprovedForAll(seller, address(this))) revert MarketplaceNotApproved();
 
+        // CP-4 (#1271): re-enforce the stake-backed price cap at purchase time, not only
+        // at listing time. The cap can move down after a listing is created (e.g. the
+        // owner lowers maxPriceMultiplier), so a listing priced under the old cap could
+        // otherwise still transact above the new one. An inactive stake yields
+        // type(uint256).max here, so unstaked/refunded/slashed roots are uncapped by
+        // design (blacklist + TransferValidator gate slashed actors elsewhere).
+        uint256 maxPrice = contentProtection.getMaxListingPrice(tokenId);
+        if (listing.pricePerUnit > maxPrice) revert PriceExceedsStakeCap();
+
         // Calculate fees
         (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(tokenId, totalPrice);
         uint256 protocolFee = (totalPrice * protocolFeeBps) / BPS;

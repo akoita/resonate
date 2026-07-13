@@ -654,10 +654,108 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         assertEq(cp.treasury(), newTreasury);
     }
 
-    function test_TransferOwnership() public {
+    // ── CP-3 (#1271): two-step ownership transfer ───────────────────────────
+
+    function test_TransferOwnership_TwoStep() public {
+        vm.prank(admin);
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferStarted(admin, bob);
+        cp.transferOwnership(bob);
+
+        // Staging only: owner is unchanged until acceptance.
+        assertEq(cp.owner(), admin);
+        assertEq(cp.pendingOwner(), bob);
+
+        vm.prank(bob);
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferred(admin, bob);
+        cp.acceptOwnership();
+
+        assertEq(cp.owner(), bob);
+        assertEq(cp.pendingOwner(), address(0));
+    }
+
+    function test_TransferOwnership_RevertNotOwner() public {
+        vm.prank(bob);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
+        cp.transferOwnership(bob);
+    }
+
+    function test_TransferOwnership_RevertZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(IContentProtectionEvents.ZeroAddress.selector);
+        cp.transferOwnership(address(0));
+    }
+
+    function test_AcceptOwnership_RevertNotPendingOwner() public {
         vm.prank(admin);
         cp.transferOwnership(bob);
-        assertEq(cp.owner(), bob);
+
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(IContentProtectionEvents.NotPendingOwner.selector, alice));
+        cp.acceptOwnership();
+    }
+
+    function test_AcceptOwnership_RevertNoPendingTransfer() public {
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(IContentProtectionEvents.NotPendingOwner.selector, bob));
+        cp.acceptOwnership();
+    }
+
+    function test_TransferOwnership_OwnerCanReplacePendingBeforeAcceptance() public {
+        vm.prank(admin);
+        cp.transferOwnership(bob);
+
+        vm.prank(admin);
+        cp.transferOwnership(alice);
+        assertEq(cp.pendingOwner(), alice);
+
+        // The replaced pending owner can no longer accept.
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(IContentProtectionEvents.NotPendingOwner.selector, bob));
+        cp.acceptOwnership();
+
+        vm.prank(alice);
+        cp.acceptOwnership();
+        assertEq(cp.owner(), alice);
+    }
+
+    function test_TransferOwnership_OldOwnerRetainsAuthorityUntilAcceptance() public {
+        vm.prank(admin);
+        cp.transferOwnership(bob);
+
+        // Old owner still has full admin authority while the transfer is pending.
+        address newTreasury = makeAddr("pendingPhaseTreasury");
+        vm.prank(admin);
+        cp.setTreasury(newTreasury);
+        assertEq(cp.treasury(), newTreasury);
+
+        // The pending owner has none until acceptance.
+        vm.prank(bob);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
+        cp.setTreasury(bob);
+    }
+
+    function test_UpgradeAuthority_FollowsCompletedTransfer() public {
+        ContentProtection newImpl = new ContentProtection();
+
+        // While pending, the old owner keeps upgrade authority.
+        vm.prank(admin);
+        cp.transferOwnership(bob);
+        vm.prank(bob);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
+        cp.upgradeToAndCall(address(newImpl), "");
+
+        vm.prank(bob);
+        cp.acceptOwnership();
+
+        // After acceptance, upgrade authority follows the completed transfer.
+        vm.prank(admin);
+        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
+        cp.upgradeToAndCall(address(newImpl), "");
+
+        vm.prank(bob);
+        cp.upgradeToAndCall(address(newImpl), "");
     }
 
     function test_SetRegistrar() public {
@@ -883,6 +981,90 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         assertFalse(cp.isStemVerified(301));
     }
 
+    // ── CP-2 (#1271): blacklist effect completes before payout interactions ──
+
+    function test_Slash_BlacklistEffectPrecedesPayoutInteractions() public {
+        BlacklistObservingReporter observer = new BlacklistObservingReporter(cp);
+        observer.setAttester(alice);
+
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT}(1);
+
+        vm.prank(admin);
+        cp.slash(1, address(observer));
+
+        assertTrue(observer.observedPayout(), "reporter payout delivered");
+        assertTrue(
+            observer.attesterBlacklistedAtPayout(),
+            "attester must already be blacklisted when the reporter payout interaction runs"
+        );
+        assertTrue(cp.isBlacklisted(alice));
+    }
+
+    // ── RE-1 (#1271): paginated stem views ──────────────────────────────────
+
+    function _registerTrackWithStems(uint256 releaseId, uint256 trackId, uint256 stemCount) internal {
+        _attestReleaseAndTrack(releaseId, trackId);
+        vm.startPrank(admin);
+        cp.registerTrack(releaseId, trackId);
+        for (uint256 i; i < stemCount; ++i) {
+            cp.registerStem(trackId, 1000 + i);
+        }
+        vm.stopPrank();
+    }
+
+    function test_GetTrackStemCount() public {
+        _registerTrackWithStems(100, 200, 3);
+        assertEq(cp.getTrackStemCount(200), 3);
+        assertEq(cp.getTrackStemCount(999), 0);
+    }
+
+    function test_GetTrackStemsSlice_Pagination() public {
+        _registerTrackWithStems(100, 200, 5);
+
+        uint256[] memory page = cp.getTrackStemsSlice(200, 0, 2);
+        assertEq(page.length, 2);
+        assertEq(page[0], 1000);
+        assertEq(page[1], 1001);
+
+        page = cp.getTrackStemsSlice(200, 2, 2);
+        assertEq(page.length, 2);
+        assertEq(page[0], 1002);
+        assertEq(page[1], 1003);
+
+        // Clamped to the array end.
+        page = cp.getTrackStemsSlice(200, 4, 10);
+        assertEq(page.length, 1);
+        assertEq(page[0], 1004);
+    }
+
+    function test_GetTrackStemsSlice_EmptyCases() public {
+        _registerTrackWithStems(100, 200, 2);
+
+        assertEq(cp.getTrackStemsSlice(200, 2, 5).length, 0, "start == length");
+        assertEq(cp.getTrackStemsSlice(200, 10, 5).length, 0, "start beyond length");
+        assertEq(cp.getTrackStemsSlice(200, 0, 0).length, 0, "zero count");
+        assertEq(cp.getTrackStemsSlice(999, 0, 5).length, 0, "unknown track");
+    }
+
+    function test_GetTrackStemsSlice_MaxCountReturnsFullArray() public {
+        _registerTrackWithStems(100, 200, 4);
+
+        // A natural "everything from start" input must not overflow-revert.
+        uint256[] memory all = cp.getTrackStemsSlice(200, 0, type(uint256).max);
+        assertEq(all.length, 4);
+        for (uint256 i; i < 4; ++i) {
+            assertEq(all[i], 1000 + i);
+        }
+
+        uint256[] memory tail = cp.getTrackStemsSlice(200, 1, type(uint256).max);
+        assertEq(tail.length, 3);
+        assertEq(tail[0], 1001);
+        assertEq(tail[2], 1003);
+    }
+
     function _attestReleaseAndTrack(uint256 releaseId, uint256 trackId) internal {
         _attestReleaseAs(
             alice,
@@ -911,5 +1093,28 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         cp.setPaymentAssetRegistry(address(registry));
         cp.setStakeAmountForAsset(address(usdc), USDC_STAKE_AMOUNT);
         vm.stopPrank();
+    }
+}
+
+/// @notice CP-2 (#1271) test helper: a reporter contract whose receive() observes
+/// whether the slashed attester is already blacklisted at the moment the payout
+/// interaction runs, proving the blacklist effect precedes interactions (CEI).
+contract BlacklistObservingReporter {
+    ContentProtection public immutable cp;
+    address public attester;
+    bool public observedPayout;
+    bool public attesterBlacklistedAtPayout;
+
+    constructor(ContentProtection _cp) {
+        cp = _cp;
+    }
+
+    function setAttester(address _attester) external {
+        attester = _attester;
+    }
+
+    receive() external payable {
+        observedPayout = true;
+        attesterBlacklistedAtPayout = cp.isBlacklisted(attester);
     }
 }

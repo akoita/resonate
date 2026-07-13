@@ -122,10 +122,16 @@ contract ContentProtection is
     /// separately so a sweep never touches active stakes or escrowed failedPayments.
     mapping(address => uint256) public totalBurned;
 
+    /// @notice Pending owner for the two-step ownership handoff (CP-3, #1271). Set by
+    /// `transferOwnership`; promoted to `owner` when that address calls `acceptOwnership`.
+    /// @dev Appended after existing storage (before the gap) to preserve the UUPS layout.
+    address public pendingOwner;
+
     /// @dev Reserved storage slots so future upgrades can add state without shifting
     /// the existing layout. Must remain the last storage variable; shrink it by the
-    /// number of slots any newly-added state occupies.
-    uint256[50] private __gap;
+    /// number of slots any newly-added state occupies. Shrunk 50 -> 49 when
+    /// `pendingOwner` was added (CP-3, #1271).
+    uint256[49] private __gap;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -354,15 +360,18 @@ contract ContentProtection is
         // interactions below (CEI).
         totalBurned[token] += burnedAmount;
 
-        // Transfer (Interactions last — CEI pattern)
-        _pay(token, reporter, reporterAmount);
-        _pay(token, treasury, treasuryAmount);
-
-        // Auto-blacklist the attester
+        // Auto-blacklist the attester (Effect). CP-2 (#1271): this state change must
+        // complete BEFORE the payout interactions below, so a reentrant/observing
+        // reporter or treasury contract already sees the attester blacklisted and can
+        // never observe a window where the slashed attester is still un-blacklisted.
         if (!_blacklisted[attester]) {
             _blacklisted[attester] = true;
             emit Blacklisted(attester);
         }
+
+        // Transfer (Interactions last — CEI pattern)
+        _pay(token, reporter, reporterAmount);
+        _pay(token, treasury, treasuryAmount);
 
         emit StakeSlashed(tokenId, reporter, reporterAmount, treasuryAmount, burnedAmount);
         emit StakeSlashedWithAsset(tokenId, reporter, token, reporterAmount, treasuryAmount, burnedAmount);
@@ -470,10 +479,27 @@ contract ContentProtection is
         treasury = newTreasury;
     }
 
+    /// @notice Start a two-step ownership handoff (CP-3, #1271). Records `newOwner` as
+    /// the pending owner; the current owner keeps full authority (including
+    /// `_authorizeUpgrade`) until `newOwner` calls {acceptOwnership}. This prevents an
+    /// accidental one-step transfer to an unusable or mistyped address from bricking
+    /// upgrade and admin control. Re-calling replaces any prior pending owner.
+    /// @param newOwner The address that must call {acceptOwnership} to complete the handoff.
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Complete a two-step ownership handoff (CP-3, #1271). Only the address
+    /// staged by {transferOwnership} may promote itself to owner. Clears the pending
+    /// slot and emits {OwnershipTransferred}.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner(msg.sender);
+        address previousOwner = owner;
+        owner = pendingOwner;
+        delete pendingOwner;
+        emit OwnershipTransferred(previousOwner, msg.sender);
     }
 
     // ============ UUPS ============
@@ -594,6 +620,40 @@ contract ContentProtection is
 
     function getTrackStems(uint256 trackId) external view returns (uint256[] memory) {
         return _trackToStems[trackId];
+    }
+
+    /// @notice Number of stems registered under a track (RE-1, #1271). Lets callers
+    /// paginate over a track's stems without materializing the whole array.
+    function getTrackStemCount(uint256 trackId) external view returns (uint256) {
+        return _trackToStems[trackId].length;
+    }
+
+    /// @notice A bounded slice of a track's stem ids (RE-1, #1271). Enables paginated
+    /// consumers (e.g. RevenueEscrow.freezeByTrackRange) to process very large tracks
+    /// without an unbounded single-call copy that could exceed the block gas limit.
+    /// @param trackId The track whose stems to slice.
+    /// @param start Index of the first stem to return; `start >= length` yields an empty array.
+    /// @param count Max number of stems to return; the slice is clamped to the array end.
+    /// @return slice Stem ids in `[start, min(start + count, length))`.
+    function getTrackStemsSlice(uint256 trackId, uint256 start, uint256 count)
+        external
+        view
+        returns (uint256[] memory slice)
+    {
+        uint256[] storage stems = _trackToStems[trackId];
+        uint256 length = stems.length;
+        if (start >= length || count == 0) {
+            return new uint256[](0);
+        }
+        // Overflow-safe clamp: `start + count` could overflow for a natural
+        // "everything from start" input like count = type(uint256).max.
+        uint256 remaining = length - start; // safe: start < length checked above
+        uint256 take = count < remaining ? count : remaining;
+        uint256 end = start + take;
+        slice = new uint256[](take);
+        for (uint256 i = start; i < end; ++i) {
+            slice[i - start] = stems[i];
+        }
     }
 
     function isAttested(uint256 tokenId) external view returns (bool) {
