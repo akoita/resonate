@@ -762,6 +762,15 @@
     }
   },
   {
+    "eventName": "punchline.moment_shared",
+    "payload": {
+      "momentId": "moment-1",
+      "dropId": "drop-1",
+      "context": "inventory",
+      "method": "web_share"
+    }
+  },
+  {
     "eventName": "playback.skipped",
     "payload": {
       "trackId": "track-1",

@@ -471,6 +471,167 @@ export class PunchlineDropService {
   }
 
   // ---------------------------------------------------------------------------
+  // Public share surfaces (#1477 slice 2): permalink + OG card data
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Public single-moment payload for a share permalink / OG card (#1477).
+   * Only moments on a PUBLISHED drop are visible — anything else 404s so an
+   * unpublished/draft moment never leaks through a guessed id. Carries exactly
+   * what a branded card needs (masked-lyric rendering happens client-side) plus
+   * the credited artist and drop/track/release context for the CTA. Never
+   * exposes wallet or payment provenance.
+   */
+  async getPublicMomentShare(momentId: string) {
+    const moment = await prisma.punchlineMoment.findUnique({
+      where: { id: momentId },
+      include: this.publicMomentShareInclude(),
+    });
+    if (!moment || moment.drop.status !== "published") {
+      throw new NotFoundException(`Moment ${momentId} not found`);
+    }
+    return this.serializePublicMomentShare(moment);
+  }
+
+  /**
+   * Public edition-pride payload (#1477): the same moment card PLUS the edition
+   * number and the collector's display name — but ONLY when the collector has
+   * chosen to make it public (community profile is publicly readable AND the
+   * "show owned items" showcase toggle is on). Otherwise this 404s exactly like
+   * a missing collectible, so the response never reveals that an edition (or a
+   * private collector) exists. Never returns wallet or payment provenance.
+   */
+  async getPublicCollectibleShare(collectibleId: string) {
+    const collectible = await prisma.punchlineCollectible.findUnique({
+      where: { id: collectibleId },
+      include: {
+        moment: { include: this.publicMomentShareInclude() },
+        collector: {
+          select: {
+            communityProfile: {
+              select: { displayName: true, profileVisibility: true },
+            },
+            communityVisibilitySettings: { select: { showOwnedItems: true } },
+          },
+        },
+      },
+    });
+
+    // Indistinguishable-from-not-found on every negative branch: unknown id,
+    // unowned/pending grant, unpublished drop, no public profile, or the
+    // showcase toggle off. The caller can never tell these apart.
+    if (
+      !collectible ||
+      collectible.status !== "owned" ||
+      collectible.moment.drop.status !== "published"
+    ) {
+      throw new NotFoundException(`Collectible ${collectibleId} not found`);
+    }
+    const profile = collectible.collector.communityProfile;
+    const visibility = collectible.collector.communityVisibilitySettings;
+    if (
+      !profile ||
+      profile.profileVisibility !== "public" ||
+      !visibility?.showOwnedItems
+    ) {
+      throw new NotFoundException(`Collectible ${collectibleId} not found`);
+    }
+
+    return {
+      ...this.serializePublicMomentShare(collectible.moment),
+      edition: {
+        editionNumber: collectible.editionNumber,
+        collectorDisplayName: profile.displayName,
+        acquiredAt: collectible.acquiredAt,
+      },
+    };
+  }
+
+  /** Shared prisma include for the public share serializers. */
+  private publicMomentShareInclude() {
+    return {
+      drop: {
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          track: {
+            select: {
+              id: true,
+              title: true,
+              artist: true,
+              release: {
+                select: {
+                  id: true,
+                  title: true,
+                  artworkMimeType: true,
+                  primaryArtist: true,
+                  artist: { select: { displayName: true } },
+                  artistCredits: {
+                    select: { role: true, displayName: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      _count: { select: { collectibles: true } },
+    } as const;
+  }
+
+  private serializePublicMomentShare(moment: {
+    id: string;
+    title: string;
+    lyricText: string;
+    artworkUrl: string | null;
+    sourceStemType: string;
+    startMs: number;
+    endMs: number;
+    clipAssetUri: string | null;
+    editionSize: number;
+    priceCents: number;
+    rightsLabel: string;
+    _count?: { collectibles: number };
+    drop: {
+      id: string;
+      title: string | null;
+      track: {
+        id: string;
+        title: string;
+        artist: string | null;
+        release: {
+          id: string;
+          title: string;
+          artworkMimeType: string | null;
+          primaryArtist: string | null;
+          artist: { displayName: string | null } | null;
+          artistCredits: Array<{ role: string; displayName: string }>;
+        };
+      };
+    };
+  }) {
+    const release = moment.drop.track.release;
+    const artistName = resolveCreditedArtistName({
+      trackArtist: moment.drop.track.artist,
+      credits: release.artistCredits,
+      primaryArtist: release.primaryArtist,
+      accountDisplayName: release.artist?.displayName,
+    });
+    return {
+      moment: this.serializeMoment(moment),
+      drop: { id: moment.drop.id, title: moment.drop.title },
+      track: { id: moment.drop.track.id, title: moment.drop.track.title },
+      release: {
+        id: release.id,
+        title: release.title,
+        artworkMimeType: release.artworkMimeType,
+      },
+      artistName,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Internal helpers
   // ---------------------------------------------------------------------------
 

@@ -8,6 +8,8 @@ import type {
 } from "../../lib/api";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
 import { resolveClipUrl } from "./punchlineCollectHelpers";
+import { MomentShareButton } from "./MomentShareButton";
+import { momentShareText } from "../../lib/momentShare";
 import "../../styles/punchline.css";
 
 /**
@@ -294,20 +296,35 @@ export function PunchlineInventory({
                       </span>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    className="punchline-btn-secondary punchline-collect-play"
-                    onClick={
-                      playingId === item.id ? stopClip : () => playClip(item)
-                    }
-                    aria-label={
-                      playingId === item.id
-                        ? `Stop ${item.moment.title}`
-                        : `Play ${item.moment.title}`
-                    }
-                  >
-                    {playingId === item.id ? "■" : "▶"}
-                  </button>
+                  <div className="punchline-collect-actions">
+                    <button
+                      type="button"
+                      className="punchline-btn-secondary punchline-collect-play"
+                      onClick={
+                        playingId === item.id ? stopClip : () => playClip(item)
+                      }
+                      aria-label={
+                        playingId === item.id
+                          ? `Stop ${item.moment.title}`
+                          : `Play ${item.moment.title}`
+                      }
+                    >
+                      {playingId === item.id ? "■" : "▶"}
+                    </button>
+                    <MomentShareButton
+                      momentId={item.moment.id}
+                      dropId={item.drop.id}
+                      collectibleId={item.id}
+                      context="inventory"
+                      shareTitle="A moment I collected on Resonate"
+                      shareText={momentShareText({
+                        lyricText: item.moment.lyricText,
+                        artistName: item.drop.artistName,
+                      })}
+                      className="punchline-btn-secondary punchline-collect-play"
+                      label="Share"
+                    />
+                  </div>
                 </div>
               </div>
             ))}

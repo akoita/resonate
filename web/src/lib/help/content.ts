@@ -1005,6 +1005,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Want to show off what you own? Turn on \"Show owned items\" in your community profile settings and your newest collected moments appear on your public listener profile — never your wallet or what you paid.",
           },
           {
+            kind: "paragraph",
+            text: "Collected a moment you love? Every moment has its own shareable link — open it from the \u201cMoments\u201d tab in your Library (or the Collect section on the release) and tap Share. Whoever opens the link sees a branded preview card with the lyric, the artist, and how many editions are left, and can jump straight to collecting one. If you have made your community profile and collection public, your edition number and name ride along on the card; otherwise the link just shows the moment.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: "Priced moments (paid collecting)",

@@ -62,6 +62,7 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "punchline.preview_played",
   "punchline.collect_started",
   "punchline.collect_completed",
+  "punchline.moment_shared",
   "recommendation.served",
   "recommendation.clicked",
 ] as const;

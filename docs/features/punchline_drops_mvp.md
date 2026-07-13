@@ -93,6 +93,8 @@ fee.
 | `DELETE` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Remove the set bonus. |
 | `GET` | `/punchline/me/unlocks` | JWT | The caller's granted set rewards, revealed, with drop/track context (#488). |
 | `GET` | `/punchline/me/drops/:dropId/metrics` | JWT (owner) | Funnel metrics for one drop (#489): views → previews → collect starts (analytics facts) joined with collected editions + set completions (DB truth), per drop and per moment; server-computed conversion. |
+| `GET` | `/punchline/moments/:momentId/public` | Public | Single-moment share payload for the permalink + OG card (#1477): moment card fields (masked client-side), credited artist, and drop/track/release context. Published-drop moments only; anything else 404s. |
+| `GET` | `/punchline/collectibles/:collectibleId/public` | Public | Edition-pride share (#1477): the moment card **plus** `{ editionNumber, collectorDisplayName, acquiredAt }`, but only when the collector opted in (public community profile **and** `showOwnedItems`). Otherwise 404, indistinguishable from not-found. Never returns wallet or payment provenance. |
 | `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
 | `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
 
@@ -101,6 +103,30 @@ create; only draft drops can be mutated; create **and** publish both run the
 #480 gate; moment ranges are validated against the same clip-length bounds the
 extractor enforces (so publish can't fail on a range the draft accepted); at
 most 20 moments per drop.
+
+### Public share surfaces (#1477 slice 2)
+
+Every published moment has a public permalink at `/moments/[momentId]` — a
+server component that renders the same collectible card (lyric masked exactly
+like the in-app cards), the credited artist · track footer, editions-left +
+price, the rights label, and a **Collect this moment** CTA to
+`/release/[id]?focus=moments`. `generateMetadata` sets the title/description and
+the sibling `opengraph-image.tsx` route renders a 1200×630 branded OG card
+(`next/og` `ImageResponse`, the repo's first) with a seeded-hue gradient, the
+masked lyric as slogan-scale poster text, a serial chip, the artist · track
+line, the `RESONATE · DROPS` wordmark, and the rights label. `metadataBase`
+(from `NEXT_PUBLIC_SITE_URL`) makes the image URL absolute for crawlers.
+
+`?c=<collectibleId>` upgrades the page to the edition-pride view
+(“№ N of M — collected by <name>”) when the consent-gated collectible endpoint
+returns 200; it silently falls back to the plain moment view on 404. **Share**
+buttons on the Library Moments tab (edition link) and the release collect
+module's owned state (plain link) use the Web Share sheet with a clipboard
+fallback and emit `punchline.moment_shared`; the shared link's
+`drop_viewed(source:"share")` closes the #489 funnel loop. The masked-lyric,
+OG-ingredient, and share helpers live in `web/src/lib/momentShare.ts` (unit
+tested), and the OG image never broadcasts a socially-weighted word the in-app
+card masks.
 
 ### Artist UI (so far)
 
@@ -151,6 +177,7 @@ All builder validation mirrors the backend limits exactly (shared helpers in
 | --- | --- | --- |
 | `PUNCHLINE_CLIP_MIN_MS` | `2000` | Minimum moment/clip length. |
 | `PUNCHLINE_CLIP_MAX_MS` | `15000` | Maximum moment/clip length (keeps a collectible a punchline, not a song). |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Absolute public origin; sets Next `metadataBase` so the moment OG image URL resolves for crawlers, and the server-side base for shareable moment permalinks (#1477). |
 
 ### Events
 
@@ -175,7 +202,10 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   `punchline.preview_played`, `punchline.collect_started`, and
   `punchline.collect_completed` flow through the product-analytics rail
   (allowlisted + declared; pseudonymous tier); the `punchline` event family is
-  registered in the warehouse export matrix.
+  registered in the warehouse export matrix. The share event
+  `punchline.moment_shared` `{ momentId, dropId, context, method }` (#1477 slice 2)
+  is declared, allowlisted, and covered by the shared fixture on both the TS
+  warehouse and Python dataflow sides.
 
 ### Services, code, and tests
 
