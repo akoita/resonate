@@ -2,10 +2,16 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { resolveCreditedArtistName } from "../shared/artist_attribution";
 import {
   ACTIVE_CAMPAIGN_SUPPORT_CAMPAIGN_STATUSES,
   ACTIVE_CAMPAIGN_SUPPORT_PLEDGE_STATUSES,
 } from "./community_eligibility.service";
+
+// The public owned-moments showcase (#1477 slice 1) surfaces at most this many
+// of the collector's newest owned moments — a curated highlight, not the full
+// inventory. Kept small so a large collection never balloons the public payload.
+const OWNED_MOMENTS_SHOWCASE_CAP = 12;
 
 export const COMMUNITY_PROFILE_VISIBILITIES = ["private", "community", "followers", "public"] as const;
 
@@ -51,6 +57,7 @@ type PublicProfileRecord = {
   visibility: VisibilityRecord | null;
   wallet?: { address: string | null } | null;
   campaignSupport?: PublicCampaignSupportRecord[];
+  ownedMoments?: PublicOwnedMomentRecord[];
 };
 
 type PublicCampaignSupportRecord = {
@@ -61,6 +68,37 @@ type PublicCampaignSupportRecord = {
   city: string;
   country: string;
   grantedAt: Date;
+};
+
+// A single owned collectible shaped for public display. This is the AUTHED
+// serializer shape (punchline-collect `me/collectibles`) MINUS all payment
+// provenance (paymentRail, pricePaidCents, paymentRef) and any wallet — those
+// must never cross onto a public surface (#1477).
+type PublicOwnedMomentRecord = {
+  collectibleId: string;
+  editionNumber: number;
+  editionSize: number;
+  acquiredAt: Date | null;
+  moment: {
+    id: string;
+    title: string;
+    lyricText: string;
+    artworkUrl: string | null;
+    startMs: number;
+    endMs: number;
+    clipAssetUri: string | null;
+    rightsLabel: string;
+    priceCents: number;
+    collectedCount: number;
+  };
+  drop: {
+    id: string;
+    title: string | null;
+    trackId: string;
+    trackTitle: string | null;
+    releaseId: string | null;
+    artistName: string | null;
+  };
 };
 
 const DEFAULT_VISIBILITY_SETTINGS: CommunityVisibilitySettingsDto = {
@@ -177,15 +215,21 @@ export class CommunityService {
       throw new NotFoundException("Community profile is not public");
     }
     const visibility = visibilityDto(record.user.communityVisibilitySettings);
-    const campaignSupport = visibility.showCampaignSupport
-      ? await this.publicCampaignSupportFromPledges(userId, record.user.wallet?.address ?? null)
-      : [];
+    const [campaignSupport, ownedMoments] = await Promise.all([
+      visibility.showCampaignSupport
+        ? this.publicCampaignSupportFromPledges(userId, record.user.wallet?.address ?? null)
+        : Promise.resolve([]),
+      visibility.showOwnedItems
+        ? this.publicOwnedMoments(userId)
+        : Promise.resolve([]),
+    ]);
 
     return publicProfileDto({
       profile: record,
       visibility,
       wallet: record.user.wallet,
       campaignSupport,
+      ownedMoments,
     });
   }
 
@@ -284,6 +328,79 @@ export class CommunityService {
     }
     return [...supportByCampaignId.values()];
   }
+
+  /**
+   * The collector's newest owned moments for the PUBLIC showcase (#1477 slice 1).
+   * Only reached when `showOwnedItems` consent is on. Payment provenance and
+   * wallet are deliberately never selected here — the public shape carries the
+   * collectible + moment + credited drop context, nothing that reveals how it
+   * was paid for or which wallet holds it.
+   */
+  private async publicOwnedMoments(userId: string): Promise<PublicOwnedMomentRecord[]> {
+    const rows = await prisma.punchlineCollectible.findMany({
+      where: { collectorUserId: userId, status: "owned" },
+      orderBy: [{ acquiredAt: "desc" }, { createdAt: "desc" }],
+      take: OWNED_MOMENTS_SHOWCASE_CAP,
+      include: {
+        moment: {
+          include: {
+            // Total editions claimed for this moment — the card's "N collected"
+            // line, without a second query.
+            _count: { select: { collectibles: true } },
+            drop: {
+              select: {
+                id: true,
+                title: true,
+                trackId: true,
+                track: {
+                  select: {
+                    title: true,
+                    releaseId: true,
+                    // Credited-artist inputs (#1492) so the showcase names the
+                    // real artist, never the uploader/manager account label.
+                    artist: true,
+                    release: { select: { primaryArtist: true } },
+                  },
+                },
+                artist: { select: { displayName: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => ({
+      collectibleId: row.id,
+      editionNumber: row.editionNumber,
+      editionSize: row.moment.editionSize,
+      acquiredAt: row.acquiredAt,
+      moment: {
+        id: row.moment.id,
+        title: row.moment.title,
+        lyricText: row.moment.lyricText,
+        artworkUrl: row.moment.artworkUrl,
+        startMs: row.moment.startMs,
+        endMs: row.moment.endMs,
+        clipAssetUri: row.moment.clipAssetUri,
+        rightsLabel: row.moment.rightsLabel,
+        priceCents: row.moment.priceCents,
+        collectedCount: row.moment._count?.collectibles ?? 0,
+      },
+      drop: {
+        id: row.moment.drop.id,
+        title: row.moment.drop.title,
+        trackId: row.moment.drop.trackId,
+        trackTitle: row.moment.drop.track?.title ?? null,
+        releaseId: row.moment.drop.track?.releaseId ?? null,
+        artistName: resolveCreditedArtistName({
+          trackArtist: row.moment.drop.track?.artist,
+          primaryArtist: row.moment.drop.track?.release?.primaryArtist,
+          accountDisplayName: row.moment.drop.artist?.displayName,
+        }),
+      },
+    }));
+  }
 }
 
 export function normalizeCommunityProfileVisibility(input: unknown): CommunityProfileVisibility | undefined {
@@ -328,6 +445,39 @@ export function publicProfileDto(record: PublicProfileRecord) {
     showcase: {
       tasteBadgesVisible: visibility.showTasteBadges,
       ownedItemsVisible: visibility.showOwnedItems,
+      // Owned moments are emitted only under consent; when hidden the key is
+      // absent entirely (the `owned_items_hidden` redaction is the signal),
+      // so nothing ownership-related ever leaks on a redacted profile.
+      ...(visibility.showOwnedItems
+        ? {
+          ownedMoments: (record.ownedMoments ?? []).map((owned) => ({
+            collectibleId: owned.collectibleId,
+            editionNumber: owned.editionNumber,
+            editionSize: owned.editionSize,
+            acquiredAt: owned.acquiredAt ? owned.acquiredAt.toISOString() : null,
+            moment: {
+              id: owned.moment.id,
+              title: owned.moment.title,
+              lyricText: owned.moment.lyricText,
+              artworkUrl: owned.moment.artworkUrl,
+              startMs: owned.moment.startMs,
+              endMs: owned.moment.endMs,
+              clipAssetUri: owned.moment.clipAssetUri,
+              rightsLabel: owned.moment.rightsLabel,
+              priceCents: owned.moment.priceCents,
+              collectedCount: owned.moment.collectedCount,
+            },
+            drop: {
+              id: owned.drop.id,
+              title: owned.drop.title,
+              trackId: owned.drop.trackId,
+              trackTitle: owned.drop.trackTitle,
+              releaseId: owned.drop.releaseId,
+              artistName: owned.drop.artistName,
+            },
+          })),
+        }
+        : {}),
       campaignSupportVisible: visibility.showCampaignSupport,
       campaignSupport: visibility.showCampaignSupport
         ? (record.campaignSupport ?? []).map((support) => ({

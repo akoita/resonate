@@ -1001,6 +1001,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "One note on lyrics: cards mask a small set of socially weighted words with asterisks on screen. The audio and the artist's original text are untouched — the card display just doesn't spell them out.",
           },
           {
+            kind: "paragraph",
+            text: "Want to show off what you own? Turn on \"Show owned items\" in your community profile settings and your newest collected moments appear on your public listener profile — never your wallet or what you paid.",
+          },
+          {
             kind: "callout",
             tone: "note",
             title: "Priced moments (paid collecting)",

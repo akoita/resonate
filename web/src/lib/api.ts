@@ -2822,6 +2822,35 @@ export type PublicCommunityProfileResponse = {
   showcase: {
     tasteBadgesVisible: boolean;
     ownedItemsVisible: boolean;
+    // Present only when the collector opted in (showOwnedItems). Absent — not
+    // `[]` — when hidden; the `owned_items_hidden` redaction is the signal.
+    // Never carries payment provenance or a wallet (#1477 slice 1).
+    ownedMoments?: Array<{
+      collectibleId: string;
+      editionNumber: number;
+      editionSize: number;
+      acquiredAt: string | null;
+      moment: {
+        id: string;
+        title: string;
+        lyricText: string;
+        artworkUrl: string | null;
+        startMs: number;
+        endMs: number;
+        clipAssetUri: string | null;
+        rightsLabel: string;
+        priceCents: number;
+        collectedCount: number;
+      };
+      drop: {
+        id: string;
+        title: string | null;
+        trackId: string;
+        trackTitle: string | null;
+        releaseId: string | null;
+        artistName: string | null;
+      };
+    }>;
     campaignSupportVisible: boolean;
     campaignSupport: Array<{
       campaignId: string;
