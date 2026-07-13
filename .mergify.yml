@@ -32,9 +32,6 @@ pull_request_rules:
       queue:
         name: main-batch
 
-  # Post-merge hygiene: no manually deleted branches ever again.
-  - name: delete head branch after merge
-    conditions:
-      - merged
-    actions:
-      delete_head_branch: {}
+# Post-merge branch deletion is handled by GitHub's native repo setting
+# (`delete_branch_on_merge`, enabled 2026-07-13) — Mergify's
+# `delete_head_branch` action is deprecated in favor of it.
