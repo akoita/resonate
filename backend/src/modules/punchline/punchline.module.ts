@@ -13,6 +13,9 @@ import { PunchlineDropService } from "./punchline-drop.service";
 import { PunchlineUnlockService } from "./punchline-unlock.service";
 import { PunchlineMetricsService } from "./punchline-metrics.service";
 import { PunchlineX402Service } from "./punchline-x402.service";
+import { X402RefundReconciliationController } from "./x402-refund-reconciliation.controller";
+import { X402RefundReconciliationService } from "./x402-refund-reconciliation.service";
+import { X402RefundWatchdogService } from "./x402-refund-watchdog.service";
 
 /**
  * Punchline Drops (#480, #481, #482, #485). Leaf module: it consumes the shared
@@ -33,7 +36,7 @@ import { PunchlineX402Service } from "./punchline-x402.service";
  */
 @Module({
   imports: [RightsModule, X402Module, PaymentsModule],
-  controllers: [PunchlineController],
+  controllers: [PunchlineController, X402RefundReconciliationController],
   providers: [
     PunchlineEligibilityService,
     {
@@ -55,6 +58,8 @@ import { PunchlineX402Service } from "./punchline-x402.service";
     PunchlineUnlockService,
     PunchlineMetricsService,
     PunchlineX402Service,
+    X402RefundReconciliationService,
+    X402RefundWatchdogService,
   ],
   exports: [
     PunchlineEligibilityService,
@@ -64,6 +69,7 @@ import { PunchlineX402Service } from "./punchline-x402.service";
     PunchlineUnlockService,
     PunchlineMetricsService,
     PunchlineX402Service,
+    X402RefundReconciliationService,
   ],
 })
 export class PunchlineModule {}

@@ -854,6 +854,12 @@ model X402Settlement {
   settlementAmount            String
   settlementAmountUnits       String
   canonicalAmountUsd          String?
+  // Refund reconciliation (#1506): when a verified payment lands `refund_due`
+  // (moment sold out / already owned in the race window) an operator sends the
+  // out-of-band refund and records it here — the on-chain refund tx and the
+  // moment the settlement flipped to "refunded". Both null until reconciled.
+  refundTxHash                String?
+  refundedAt                  DateTime?
   purchasedAt                 DateTime
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
