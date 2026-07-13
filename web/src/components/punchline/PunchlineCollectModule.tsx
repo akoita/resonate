@@ -18,7 +18,9 @@ import { payMomentWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import { useToast } from "../ui/Toast";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
+import { MomentShareButton } from "./MomentShareButton";
 import { DROP_KIND_LABEL, formatPriceCents } from "./punchlineDropHelpers";
+import { momentShareText } from "../../lib/momentShare";
 import {
   collectableDrops,
   describeCollectError,
@@ -529,6 +531,18 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
                               }
                               onCollect={() => collect(drop, moment)}
                             />
+                            {state === "owned" && (
+                              <MomentShareButton
+                                momentId={moment.id}
+                                dropId={drop.id}
+                                context="collect_module"
+                                shareTitle="A moment I collected on Resonate"
+                                shareText={momentShareText({
+                                  lyricText: moment.lyricText,
+                                })}
+                                label="Share"
+                              />
+                            )}
                           </div>
                         </div>
                       </div>

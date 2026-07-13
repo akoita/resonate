@@ -358,6 +358,16 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["dropId", "momentId", "trackId", "editionNumber", "setCompleted", "source"],
   },
   {
+    // #1477 slice 2: a fan shared a moment permalink from their inventory or
+    // the release collect module, attributable back into the #489 funnel via
+    // the share URL's drop_viewed(source:"share").
+    eventName: "punchline.moment_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["momentId", "dropId", "context", "method"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",

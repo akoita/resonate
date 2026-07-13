@@ -54,6 +54,12 @@ const SITE_TAGLINE =
   "Discover, remix, and own music on-chain. Stems, royalties, and an AI DJ — all in one studio.";
 
 export const metadata: Metadata = {
+  // Absolute base for resolving relative Open Graph / Twitter image URLs (e.g.
+  // the per-moment `opengraph-image` route, #1477). Partial groundwork for the
+  // canonical public site URL (#1101). Defaults to local dev.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001",
+  ),
   // `template` lets per-route pages set their own title via
   // `export const metadata = { title: "Library" }` and get
   // "Library · Resonate" automatically.

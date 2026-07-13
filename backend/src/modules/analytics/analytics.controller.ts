@@ -83,6 +83,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "punchline.preview_played",
   "punchline.collect_started",
   "punchline.collect_completed",
+  "punchline.moment_shared",
   "recommendation.served",
   "recommendation.clicked",
 ]);

@@ -12,6 +12,7 @@ import {
   summarizeCollectableDrops,
 } from "./punchlineCollectHelpers";
 import { CollectButton, PunchlineBonusReveal } from "./PunchlineCollectModule";
+import { ToastProvider } from "../ui/Toast";
 import {
   PunchlineInventory,
   formatAcquiredAt,
@@ -313,11 +314,13 @@ describe("PunchlineInventory states", () => {
 
   it("renders owned cards with edition, set progress, and release link", () => {
     const html = renderToStaticMarkup(
-      <PunchlineInventory
-        items={[collectible()]}
-        loading={false}
-        signedIn={true}
-      />,
+      <ToastProvider>
+        <PunchlineInventory
+          items={[collectible()]}
+          loading={false}
+          signedIn={true}
+        />
+      </ToastProvider>,
     );
     expect(html).toContain("Edition #4 of 100");
     expect(html).toContain("You own 1 of 2");

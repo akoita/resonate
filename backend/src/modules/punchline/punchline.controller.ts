@@ -287,6 +287,27 @@ export class PunchlineController {
     return this.dropService.getDropDetail(dropId, req.user?.userId);
   }
 
+  /**
+   * Public single-moment share payload (#1477 slice 2): powers the moment
+   * permalink and its server-rendered OG card. Published-drop moments only;
+   * anything else 404s. No auth — this is a public share surface.
+   */
+  @Get("moments/:momentId/public")
+  getPublicMoment(@Param("momentId") momentId: string) {
+    return this.dropService.getPublicMomentShare(momentId);
+  }
+
+  /**
+   * Public edition-pride share (#1477 slice 2): the moment card plus edition
+   * number and collector display name — ONLY when the collector opted in
+   * (public community profile + "show owned items"). Otherwise 404, so the
+   * response never reveals that the edition or a private collector exists.
+   */
+  @Get("collectibles/:collectibleId/public")
+  getPublicCollectible(@Param("collectibleId") collectibleId: string) {
+    return this.dropService.getPublicCollectibleShare(collectibleId);
+  }
+
   /** Public featured drops for the Home shelf (#1479) — momentum-ranked. */
   @Get("featured")
   listFeatured(@Query("limit") limit?: string) {

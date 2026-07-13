@@ -18,6 +18,7 @@ When adding a new environment variable:
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows. This is the only browser API base URL: `NEXT_PUBLIC_BACKEND_URL` is not a Resonate variable (removed from code in #1145 after it silently broke browser metadata fetches on deployed environments) |
 | `NEXT_PUBLIC_X402_RPC_URL` | Frontend | Optional browser RPC URL for x402 wallet network switching when using a non-default x402 chain |
+| `NEXT_PUBLIC_SITE_URL` | Frontend | Absolute public origin of the web app (e.g. `https://app.resonate.example`). Sets Next's `metadataBase` so relative Open Graph / Twitter image URLs — including the per-moment share OG card at `/moments/[momentId]/opengraph-image` (#1477) — resolve to absolute URLs for social crawlers, and is the server-side base for building shareable moment permalinks. Defaults to `http://localhost:3001`. Partial groundwork for the canonical public site URL (#1101) |
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional block explorer base URL used for address and transaction links. Leave unset for local Anvil. |
