@@ -7,6 +7,7 @@ import {
   ContractDisputeResolvedEvent,
   ContractDisputeAppealedEvent,
   GenerationCreditsRequestedEvent,
+  X402RefundDueStaleEvent,
 } from "../../events/event_types";
 import { parseEnvList } from "../../config/env";
 
@@ -35,7 +36,10 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     this.subscribeToDisputeEvents();
     this.subscribeToCreditRequests();
-    this.logger.log("Notification service initialized — listening for dispute + credit-request events");
+    this.subscribeToRefundDueAlerts();
+    this.logger.log(
+      "Notification service initialized — listening for dispute + credit-request + refund-due events",
+    );
   }
 
   onModuleDestroy() {
@@ -181,6 +185,46 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
             });
           }
           this.logger.log(`Credit request from ${requesterId} → notified ${operators.length} operator(s)`);
+        },
+      ),
+    );
+  }
+
+  private subscribeToRefundDueAlerts() {
+    // Stale `refund_due` x402 settlements (#1506) → notify every configured
+    // operator/admin so a paid fan awaiting a manual refund is never left
+    // waiting silently. The watchdog publishes one aggregate event per sweep, so
+    // this fans it out once to the same in-app NotificationBell operators use.
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "x402.refund_due_stale",
+        async (event: X402RefundDueStaleEvent) => {
+          const operators = this.resolveOperatorWallets();
+          if (operators.length === 0) {
+            this.logger.warn(
+              "Stale refund_due alert received but no OPERATOR_ADDRESSES/ADMIN_ADDRESSES configured — nobody to notify",
+            );
+            return;
+          }
+
+          const count = event.outstandingCount;
+          const oldest = Math.round(event.oldestAgeHours);
+          const message =
+            `${count} paid collect${count === 1 ? "" : "s"} awaiting manual refund — ` +
+            `oldest ${oldest}h. See the x402 refund runbook ` +
+            `(docs/operations/x402_refund_due_runbook.md).`;
+
+          for (const walletAddress of operators) {
+            await this.createNotification({
+              walletAddress,
+              type: "x402_refund_due",
+              title: "Refunds awaiting reconciliation",
+              message,
+            });
+          }
+          this.logger.log(
+            `Stale refund_due alert (${count} outstanding) → notified ${operators.length} operator(s)`,
+          );
         },
       ),
     );

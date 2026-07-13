@@ -252,9 +252,23 @@ collects (#1462) settle on the **x402 personal rail** in facilitator mode at the
 existing **15% personal take** (`personal.feeBps=1500`) — no new fee class — so
 the artist keeps **≥85%** of every sale (ADR-BM-4). Collectible pricing is an
 artist-set band of **$0.50–$9.99 per edition** (free still allowed), enforced
-server-side (`punchline-drop.service.ts`) and mirrored in the builder. Automatic
-refunds for verified-but-unfulfillable payments are out of scope; the
-`refund_due` `X402Settlement` row is the operator's reconciliation record.
+server-side (`punchline-drop.service.ts`) and mirrored in the builder.
+
+A verified payment that cannot be fulfilled (moment sold out / already owned in
+the race window) fails closed: no edition is granted and the settlement is
+recorded `refund_due`. Refunds are still sent **manually** — Resonate never
+auto-moves funds here — but that debt is no longer terminal or invisible (#1506).
+Operators reconcile it through:
+
+- an operator/admin-only surface — `GET /admin/x402-refunds` lists outstanding
+  `refund_due` settlements (payer, amount, moment, age); `POST
+  /admin/x402-refunds/:id/mark-refunded` records the refund tx hash and flips the
+  row to `refunded` (immutable receipt untouched);
+- a watchdog that publishes the aggregate `x402.refund_due_stale` domain event
+  when a `refund_due` row ages past `X402_REFUND_DUE_ALERT_AFTER_HOURS` (default
+  `2`), fanned out to `OPERATOR_ADDRESSES` / `ADMIN_ADDRESSES` via the in-app
+  NotificationBell;
+- the step-by-step [x402 refund runbook](../operations/x402_refund_due_runbook.md).
 
 ## Goal
 

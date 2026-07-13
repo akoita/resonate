@@ -1304,6 +1304,28 @@ export interface X402PurchaseFailedEvent extends BaseEvent {
   reason: string;
 }
 
+/**
+ * Ops/audit alert (#1506): one or more `refund_due` x402 settlements have sat
+ * unresolved past the watchdog threshold. A verified paid collect that could
+ * not be fulfilled owes the fan an out-of-band refund; this fires when that debt
+ * ages so operators can reconcile it (see the x402 refund runbook). Aggregate —
+ * one event per sweep, not one per row. Identifiers and coarse counts only, no
+ * payer PII beyond settlement ids. Not wired into product analytics.
+ */
+export interface X402RefundDueStaleEvent extends BaseEvent {
+  eventName: "x402.refund_due_stale";
+  /** Total `refund_due` settlements older than the threshold. */
+  outstandingCount: number;
+  /** Age of the oldest outstanding refund, in hours. */
+  oldestAgeHours: number;
+  /** The configured staleness threshold, in hours. */
+  thresholdHours: number;
+  /** Up to 20 outstanding settlement ids for quick operator lookup. */
+  settlementIds: string[];
+  /** Sum of `canonicalAmountUsd` across outstanding rows, when all are known. */
+  totalAmountUsd?: number;
+}
+
 // ============ Generation Events ============
 
 export interface GenerationStartedEvent extends BaseEvent {
@@ -1524,6 +1546,7 @@ export type ResonateEvent =
   | AgentPurchaseFailedEvent
   | X402PurchaseEvent
   | X402PurchaseFailedEvent
+  | X402RefundDueStaleEvent
   | AgentGenerationTriggeredEvent
   | GenerationStartedEvent
   | GenerationProgressEvent
