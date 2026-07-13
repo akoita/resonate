@@ -63,4 +63,8 @@ interface IRevenueEscrow {
     error TooManyEscrowAssets(uint256 tokenId);
     error NothingToClaim();
     error OnlySelf();
+
+    /// @notice `freezeByTrackRange` was called with a zero page size (RE-1, #1271); a
+    /// zero-length page would make no progress and could loop forever.
+    error ZeroMaxStems();
 }

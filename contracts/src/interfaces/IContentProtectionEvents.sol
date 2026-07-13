@@ -70,6 +70,11 @@ interface IContentProtectionEvents {
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+
+    /// @notice A two-step ownership handoff was started: `newOwner` must call
+    /// `acceptOwnership` to complete it (CP-3, #1271). `OwnershipTransferred` is emitted
+    /// on acceptance.
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
     event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
     event BurnedSwept(address indexed token, address indexed treasury, uint256 amount);
@@ -97,6 +102,10 @@ interface IContentProtectionEvents {
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error NothingToClaim();
     error OnlySelf();
+
+    /// @notice `acceptOwnership` was called by an address that is not the staged
+    /// pending owner (CP-3, #1271).
+    error NotPendingOwner(address caller);
 
     /// @notice The attestation authorization voucher was not signed by a registered
     /// registrar for this exact caller and tokenId (CP-1, #1271).

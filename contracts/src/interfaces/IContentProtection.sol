@@ -52,6 +52,19 @@ interface IContentProtection is IContentProtectionEvents {
 
     function getTrackStems(uint256 trackId) external view returns (uint256[] memory);
 
+    function getTrackStemCount(uint256 trackId) external view returns (uint256);
+
+    function getTrackStemsSlice(uint256 trackId, uint256 start, uint256 count)
+        external
+        view
+        returns (uint256[] memory);
+
+    function owner() external view returns (address);
+
+    function pendingOwner() external view returns (address);
+
+    function acceptOwnership() external;
+
     function isAttested(uint256 tokenId) external view returns (bool);
 
     function isReleaseVerified(uint256 releaseId) external view returns (bool);

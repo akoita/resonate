@@ -529,6 +529,126 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
         assertFalse(stem32Frozen);
     }
 
+    // ── RE-1 (#1271): bounded / paginated emergency freeze ──────────────────
+
+    /// @dev Attests release 10 + track 20, registers `stemCount` stems (30, 31, ...)
+    /// and funds an ETH escrow on the track and on every stem.
+    function _setupTrackWithStemEscrows(uint256 stemCount) internal {
+        bytes memory sig10 = _voucher(alice, 10);
+        bytes memory sig20 = _voucher(alice, 20);
+        vm.prank(alice);
+        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release", AUTH_DEADLINE, sig10);
+        vm.prank(alice);
+        cp.attest(20, keccak256("track"), keccak256("track-fp"), "track", AUTH_DEADLINE, sig20);
+
+        vm.startPrank(admin);
+        cp.registerTrack(10, 20);
+        for (uint256 i; i < stemCount; ++i) {
+            cp.registerStem(20, 30 + i);
+        }
+        vm.stopPrank();
+
+        vm.deal(address(this), 10 ether);
+        escrow.deposit{value: 0.4 ether}(20, alice);
+        for (uint256 i; i < stemCount; ++i) {
+            escrow.deposit{value: 0.1 ether}(30 + i, alice);
+        }
+    }
+
+    function _assertFrozen(uint256 tokenId, bool expected) internal view {
+        (,,, bool frozen) = escrow.getEscrow(tokenId);
+        assertEq(frozen, expected);
+    }
+
+    function test_FreezeByTrackRange_TwoPagesEqualFullFreeze() public {
+        _setupTrackWithStemEscrows(4);
+
+        // Page 0: root + first two stems.
+        vm.prank(admin);
+        uint256 processed = escrow.freezeByTrackRange(20, 0, 2);
+        assertEq(processed, 2);
+        _assertFrozen(20, true);
+        _assertFrozen(30, true);
+        _assertFrozen(31, true);
+        _assertFrozen(32, false);
+        _assertFrozen(33, false);
+
+        // Page 1: remaining stems.
+        vm.prank(admin);
+        processed = escrow.freezeByTrackRange(20, 2, 2);
+        assertEq(processed, 2);
+        _assertFrozen(32, true);
+        _assertFrozen(33, true);
+
+        // Next page: nothing left — the operator loop terminates on 0.
+        vm.prank(admin);
+        processed = escrow.freezeByTrackRange(20, 4, 2);
+        assertEq(processed, 0);
+    }
+
+    function test_FreezeByTrackRange_StartBeyondLengthProcessesZeroWithoutRevert() public {
+        _setupTrackWithStemEscrows(2);
+
+        vm.prank(admin);
+        uint256 processed = escrow.freezeByTrackRange(20, 100, 5);
+        assertEq(processed, 0);
+        // Not page 0, so the root track is untouched too.
+        _assertFrozen(20, false);
+    }
+
+    function test_FreezeByTrackRange_RootFrozenOnlyOnPageZero() public {
+        _setupTrackWithStemEscrows(2);
+
+        vm.prank(admin);
+        escrow.freezeByTrackRange(20, 1, 1);
+        _assertFrozen(20, false);
+        _assertFrozen(30, false);
+        _assertFrozen(31, true);
+
+        vm.prank(admin);
+        escrow.freezeByTrackRange(20, 0, 1);
+        _assertFrozen(20, true);
+        _assertFrozen(30, true);
+    }
+
+    function test_FreezeByTrackRange_MaxStemsUintMaxProcessesAllInOnePage() public {
+        _setupTrackWithStemEscrows(3);
+
+        // A natural "freeze everything" page size must not overflow-revert.
+        vm.prank(admin);
+        uint256 processed = escrow.freezeByTrackRange(20, 0, type(uint256).max);
+        assertEq(processed, 3);
+        _assertFrozen(20, true);
+        _assertFrozen(30, true);
+        _assertFrozen(31, true);
+        _assertFrozen(32, true);
+    }
+
+    function test_FreezeByTrackRange_RevertZeroMaxStems() public {
+        _setupTrackWithStemEscrows(1);
+
+        vm.prank(admin);
+        vm.expectRevert(IRevenueEscrow.ZeroMaxStems.selector);
+        escrow.freezeByTrackRange(20, 0, 0);
+    }
+
+    function test_FreezeByTrackRange_RevertNotOwner() public {
+        _setupTrackWithStemEscrows(1);
+
+        vm.prank(alice);
+        vm.expectRevert();
+        escrow.freezeByTrackRange(20, 0, 1);
+    }
+
+    function test_FreezeByTrackRange_RevertContentProtectionNotSet() public {
+        vm.prank(admin);
+        RevenueEscrow bare = new RevenueEscrow(admin, ESCROW_PERIOD);
+
+        vm.prank(admin);
+        vm.expectRevert(IRevenueEscrow.ContentProtectionNotSet.selector);
+        bare.freezeByTrackRange(20, 0, 1);
+    }
+
     function _depositUsdc(uint256 tokenId, address beneficiary, uint256 amount) internal {
         usdc.mint(address(this), amount);
         usdc.approve(address(escrow), amount);
