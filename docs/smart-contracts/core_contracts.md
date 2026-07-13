@@ -147,7 +147,13 @@ UUPS-upgradeable contract for anti-piracy enforcement:
   `chainId` + contract address, so a voucher cannot be replayed cross-chain,
   cross-contract, or by a different caller. Invalid, expired, wrong-signer, or
   wrong-caller vouchers revert `InvalidAttestationSignature` /
-  `AttestationAuthorizationExpired`.
+  `AttestationAuthorizationExpired`. The voucher is issued by the backend
+  `POST /contracts/attestation-vouchers` endpoint (CP-1, body `{ releaseId, attester,
+  contentHash, metadataURI, chainId? }`), which signs only after verifying the caller
+  controls `attester` and that `releaseId` re-derives from that attester — so a foreign
+  creator's predictable id can never be squatted, and no persisted release is required
+  for the first attestation. The signer must be registered via `setRegistrar` — see the
+  [operations runbook](operations-runbook.md#cp-1-attestation-registrar-backend-voucher-signer).
 - **Staking** — fixed ETH or ERC-20 deposit required per tokenId (anti-spam
   deterrent). The contract records and holds only the configured required stake:
   a native overpayment is refunded at stake time, and the ERC-20 path pulls only

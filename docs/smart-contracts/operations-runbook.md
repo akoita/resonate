@@ -71,6 +71,38 @@ Core GitHub environment variables:
 | `verify-base-sepolia` | Retry BaseScan/Etherscan verification from a prior Base Sepolia broadcast. | Workflow: `operation=verify-base-sepolia`, `target_network=base-sepolia`. Secrets: `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, retry/API URL vars. | Explorer verification logs. No deploy. | If verification fails because the wrong broadcast was selected, set `BROADCAST_FILE` to the exact `contracts/broadcast/.../run-*.json` artifact and rerun. |
 | `verify-base-sepolia-sourcify` | Verify contracts through Sourcify without an explorer API key. Preferred retry path when a broadcast artifact exists. | Workflow: `operation=verify-base-sepolia-sourcify`, `target_network=base-sepolia`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, Sourcify retry/API URL vars. | Sourcify verification logs. No deploy. | Keep the broadcast artifact with the deployment record. Sourcify reads the broadcast's creation transactions and rebuilt compiler input. |
 
+## CP-1 Attestation Registrar (backend voucher signer)
+
+The backend `POST /contracts/attestation-vouchers` endpoint (CP-1, #1271) signs the
+EIP-712 `AttestationAuthorization` voucher that `ContentProtection.attest` /
+`attestRelease` now require before an artist can attest. Its JWT-authenticated request
+body is `{ releaseId, attester, contentHash, metadataURI, chainId? }` (`releaseId` is
+the on-chain uint256 token id as a decimal string; `contentHash` is the 0x bytes32 of
+the audio; `metadataURI` is `resonate://release/<slug>`). It signs only after verifying
+(a) `attester` is a wallet the caller controls and (b) `releaseId ==
+uint256(keccak256(abi.encodePacked(attester, contentHash, keccak256(bytes(metadataURI)))))`
+— i.e. the id sits in the caller's own address partition, which is what prevents
+squatting a foreign creator's predictable id and works for the first-ever attestation
+(no `Release` row exists yet). It signs with the **same key
+`POST /contracts/mint-authorizations` uses** — `MINT_AUTHORIZER_PRIVATE_KEY` (falling
+back to `PRIVATE_KEY`). No new key is introduced.
+
+That signer address **must be a registered ContentProtection registrar**, or every
+voucher reverts `InvalidAttestationSignature` on-chain and no artist can attest.
+Register it once per ContentProtection proxy, as the proxy owner:
+
+```bash
+cast send "$CONTENT_PROTECTION_ADDRESS" "setRegistrar(address,bool)" "$VOUCHER_SIGNER" true \
+  --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+```
+
+- `$VOUCHER_SIGNER` = the address of `MINT_AUTHORIZER_PRIVATE_KEY` (the backend voucher signer).
+- Run **per chain** — each ContentProtection proxy keeps its own `registrars[]` set — after
+  every fresh ContentProtection deploy or `reinitializeV5` domain migration.
+- Rotation: `setRegistrar(oldSigner, false)`, register the new signer, then rotate the
+  backend secret. Vouchers already signed by the old signer stay valid until their
+  `ATTESTATION_VOUCHER_TTL_SECONDS` deadline passes.
+
 ## Staging Lifecycle Smoke
 
 The **Staging Lifecycle Smoke** (`.github/workflows/staging-lifecycle-smoke.yml`,
