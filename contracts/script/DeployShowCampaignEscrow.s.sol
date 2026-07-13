@@ -54,9 +54,14 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  *   SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY - upgrade delay in seconds; defaults to 172800 (48h)
  *   SHOW_CAMPAIGN_GUARDIAN        - independent recovery key (proposer+executor+canceller);
  *                                   required on remote, local defaults to owner
+ *   SHOW_CAMPAIGN_FULFILLMENT_WINDOW - seconds after booking confirmation before the
+ *                                   permissionless refund escape opens (issue #1271);
+ *                                   defaults to 2592000 (30 days); bounded on-chain to
+ *                                   [1 day, 180 days]
  */
 contract DeployShowCampaignEscrow is DeploymentKey {
     uint256 internal constant DEFAULT_TIMELOCK_MIN_DELAY = 172_800; // 48 hours
+    uint256 internal constant DEFAULT_FULFILLMENT_WINDOW = 30 days;
 
     function run() external {
         uint256 deployerKey = _deploymentPrivateKey();
@@ -64,6 +69,7 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         address owner = vm.envOr("SHOW_CAMPAIGN_ESCROW_OWNER", deployer);
         uint256 feeBps = vm.envOr("SHOW_CAMPAIGN_FEE_BPS", uint256(600));
         uint256 minDelay = vm.envOr("SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY", DEFAULT_TIMELOCK_MIN_DELAY);
+        uint256 fulfillmentWindow = vm.envOr("SHOW_CAMPAIGN_FULFILLMENT_WINDOW", DEFAULT_FULFILLMENT_WINDOW);
 
         bool isLocal = block.chainid == 31337 || block.chainid == 1337;
         address feeRecipient = isLocal ? vm.envOr("SHOW_CAMPAIGN_FEE_RECIPIENT", owner) : vm.envAddress("SHOW_CAMPAIGN_FEE_RECIPIENT");
@@ -100,6 +106,11 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         ShowCampaignEscrow escrow = ShowCampaignEscrow(address(proxy));
 
+        // 4. Run the 2.1.0 reinitializer so a fresh deploy has a non-zero fulfillment
+        //    window (issue #1271). initializeV2 has no owner gate (guarded by reinitializer)
+        //    and runs atomically here, so the ops owner needn't be the deployer.
+        escrow.initializeV2(fulfillmentWindow);
+
         vm.stopBroadcast();
 
         console.log("=== ShowCampaignEscrow (UUPS) Deployment Complete ===");
@@ -112,5 +123,6 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         console.log("Upgrade authority (timelock):", address(timelock));
         console.log("Timelock min delay (s):", minDelay);
         console.log("Guardian (PROPOSER + EXECUTOR + CANCELLER):", guardian);
+        console.log("Fulfillment window (s):", fulfillmentWindow);
     }
 }

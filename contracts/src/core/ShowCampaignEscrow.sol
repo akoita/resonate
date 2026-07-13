@@ -35,7 +35,25 @@ import {IShowCampaignEscrow} from "../interfaces/IShowCampaignEscrow.sol";
  *     affected. A code fix ships as a new implementation through the timelock;
  *     the guardian can cancel a scheduled upgrade.
  *
- * @custom:version 2.0.0
+ * Permissionless fulfillment escape (issue #1271, SCE-1):
+ *   - A booking confirmation captures a `fulfillmentDeadline`
+ *     (`block.timestamp + fulfillmentWindow`). Once it passes, ANYONE may call
+ *     {openRefundsAfterMissedFulfillment} to move a stalled `BookingConfirmed` or
+ *     `DepositReleased` campaign to `RefundAvailable` — mirroring the existing
+ *     {openRefundsAfterMissedBooking} escape for `Funded`. This removes the trust
+ *     assumption that the operator's confirmer keys AND the ops owner both stay
+ *     live after booking; backers can always reclaim their remaining escrow.
+ *   - The window is a global, owner-tunable value (bounded by
+ *     {MIN_FULFILLMENT_WINDOW}/{MAX_FULFILLMENT_WINDOW}), NOT a per-campaign
+ *     creation input, so `createCampaign`'s ABI is unchanged.
+ *   - Inert when `fulfillmentWindow == 0`: the deadline stays 0 and the escape
+ *     reverts, so the contract never regresses if the window is unset. Legacy
+ *     campaigns already in `BookingConfirmed`/`DepositReleased` at the 2.1.0
+ *     upgrade carry `fulfillmentDeadline == 0` and are therefore NOT retro-covered
+ *     by this escape (they remain governed by the owner/confirmer exits); this is
+ *     accepted and not backfilled.
+ *
+ * @custom:version 2.1.0
  */
 contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeable, OwnableUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -49,6 +67,13 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
     /// that would brick `releaseFunds`.
     uint256 public constant MIN_DISPUTE_WINDOW = 1 hours;
     uint256 public constant MAX_DISPUTE_WINDOW = 90 days;
+
+    /// @notice Bounds for the global `fulfillmentWindow` (issue #1271): a non-zero floor
+    /// keeps the operator a realistic window to actually deliver the show before the
+    /// permissionless refund escape opens, and the ceiling both bounds how long backer
+    /// funds can be trapped and avoids a `block.timestamp + fulfillmentWindow` overflow.
+    uint256 public constant MIN_FULFILLMENT_WINDOW = 1 days;
+    uint256 public constant MAX_FULFILLMENT_WINDOW = 180 days;
 
     uint256 public nextCampaignId;
     bool public paused;
@@ -74,11 +99,18 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
     /// TimelockController; the operational {owner} deliberately cannot upgrade.
     address public upgradeAuthority;
 
+    /// @notice Global window (seconds) added to `block.timestamp` at booking confirmation
+    /// to derive each campaign's `fulfillmentDeadline`. After that deadline anyone may open
+    /// refunds via {openRefundsAfterMissedFulfillment} (issue #1271). Owner-tunable within
+    /// [{MIN_FULFILLMENT_WINDOW}, {MAX_FULFILLMENT_WINDOW}]; 0 leaves the escape inert.
+    /// Appended after `upgradeAuthority` (old `__gap[0]` slot) — no existing slot moves.
+    uint256 public fulfillmentWindow;
+
     /// @dev Reserved storage to allow appending new state in future upgrades without
     /// shifting the layout of inheriting/composed code. 8 pre-existing slots +
-    /// `upgradeAuthority` + 41 = 50 reserved. Shrink this array by exactly the number
-    /// of slots any appended variable consumes.
-    uint256[41] private __gap;
+    /// `upgradeAuthority` + `fulfillmentWindow` + 40 = 50 reserved. Shrink this array by
+    /// exactly the number of slots any appended variable consumes.
+    uint256[40] private __gap;
 
     modifier whenNotPaused() {
         if (paused) revert Paused();
@@ -119,6 +151,19 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
+    /// @notice 2.1.0 reinitializer (issue #1271). Sets the global {fulfillmentWindow} on
+    /// BOTH already-deployed proxies (called via the timelock `upgradeToAndCall` during the
+    /// 2.0.0→2.1.0 upgrade) and fresh deploys (called right after {initialize}). Runs once.
+    /// @param _fulfillmentWindow Seconds between booking confirmation and when anyone may
+    /// force refunds; must be within [{MIN_FULFILLMENT_WINDOW}, {MAX_FULFILLMENT_WINDOW}].
+    function initializeV2(uint256 _fulfillmentWindow) external reinitializer(2) {
+        if (_fulfillmentWindow < MIN_FULFILLMENT_WINDOW || _fulfillmentWindow > MAX_FULFILLMENT_WINDOW) {
+            revert InvalidFulfillmentWindow(_fulfillmentWindow, MIN_FULFILLMENT_WINDOW, MAX_FULFILLMENT_WINDOW);
+        }
+        fulfillmentWindow = _fulfillmentWindow;
+        emit FulfillmentWindowUpdated(0, _fulfillmentWindow);
+    }
+
     /// @notice Reassigns the upgrade authority. Callable ONLY by the current authority
     /// (e.g. the timelock handing off to a new timelock/governor), never by the owner.
     function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
@@ -133,6 +178,19 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
 
     function setFeeConfig(uint256 _feeBps, address _feeRecipient) external onlyOwner {
         _setFeeConfig(_feeBps, _feeRecipient);
+    }
+
+    /// @notice Updates the global fulfillment window (issue #1271). Only affects campaigns
+    /// booked AFTER the change — an in-flight campaign's `fulfillmentDeadline` is snapshotted
+    /// at its booking confirmation and never revised. Bounded so backers always get a real
+    /// delivery window and funds can never be trapped past the ceiling.
+    function setFulfillmentWindow(uint256 _fulfillmentWindow) external onlyOwner {
+        if (_fulfillmentWindow < MIN_FULFILLMENT_WINDOW || _fulfillmentWindow > MAX_FULFILLMENT_WINDOW) {
+            revert InvalidFulfillmentWindow(_fulfillmentWindow, MIN_FULFILLMENT_WINDOW, MAX_FULFILLMENT_WINDOW);
+        }
+        uint256 previous = fulfillmentWindow;
+        fulfillmentWindow = _fulfillmentWindow;
+        emit FulfillmentWindowUpdated(previous, _fulfillmentWindow);
     }
 
     function createCampaign(
@@ -182,7 +240,8 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
             fulfilledAt: 0,
             status: CampaignStatus.Draft,
             feeBps: campaignFeeBps,
-            totalFeePaid: 0
+            totalFeePaid: 0,
+            fulfillmentDeadline: 0
         });
 
         emit CampaignCreated(
@@ -293,6 +352,12 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
             revert BookingDeadlinePassed(campaignId, campaign.bookingDeadline, block.timestamp);
         }
         campaign.status = CampaignStatus.BookingConfirmed;
+        // Capture the fulfillment deadline for the permissionless escape (issue #1271).
+        // Only when the global window is configured — a 0 window leaves the deadline 0
+        // (escape inert), so the feature never activates unless deliberately enabled.
+        if (fulfillmentWindow != 0) {
+            campaign.fulfillmentDeadline = block.timestamp + fulfillmentWindow;
+        }
         emit BookingConfirmed(campaignId, msg.sender);
     }
 
@@ -325,6 +390,34 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         campaign.status = CampaignStatus.Fulfilled;
         campaign.fulfilledAt = block.timestamp;
         emit FulfillmentConfirmed(campaignId, msg.sender);
+    }
+
+    /// @notice Permissionless escape (issue #1271, SCE-1): once a confirmed booking's
+    /// fulfillment deadline passes without the operator advancing the campaign to
+    /// `Fulfilled`, ANYONE can move it to `RefundAvailable` so backers reclaim their
+    /// remaining escrow. Mirrors {openRefundsAfterMissedBooking} for the `Funded` state.
+    ///
+    /// Callable from `BookingConfirmed` OR `DepositReleased`. For `DepositReleased`,
+    /// {claimRefund} distributes the pro-rata share of the *outstanding* balance
+    /// (`totalPledged - totalReleased`), so the already-released deposit is untouched and
+    /// only the un-released remainder is refunded.
+    ///
+    /// Inert when `fulfillmentDeadline == 0` (global window unset, or a legacy campaign
+    /// booked before the 2.1.0 upgrade): the call reverts {FulfillmentDeadlineNotPassed}.
+    function openRefundsAfterMissedFulfillment(uint256 campaignId) external whenNotPaused {
+        Campaign storage campaign = _campaign(campaignId);
+        if (
+            campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased
+        ) {
+            revert InvalidStatus(campaignId, campaign.status);
+        }
+        // A 0 deadline (window unset / legacy campaign) never elapses: the `!= 0` guard
+        // keeps the escape inert rather than opening refunds the instant a booking is made.
+        if (campaign.fulfillmentDeadline == 0 || block.timestamp <= campaign.fulfillmentDeadline) {
+            revert FulfillmentDeadlineNotPassed(campaignId, campaign.fulfillmentDeadline, block.timestamp);
+        }
+        campaign.status = CampaignStatus.RefundAvailable;
+        emit RefundAvailable(campaignId);
     }
 
     function releaseFunds(uint256 campaignId) external nonReentrant whenNotPaused {

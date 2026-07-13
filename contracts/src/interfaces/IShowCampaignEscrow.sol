@@ -34,6 +34,12 @@ interface IShowCampaignEscrow {
         CampaignStatus status;
         uint256 feeBps;
         uint256 totalFeePaid;
+        /// @notice Timestamp after which anyone can force `BookingConfirmed`/`DepositReleased`
+        /// into `RefundAvailable` via {openRefundsAfterMissedFulfillment}. Set at booking
+        /// confirmation to `block.timestamp + fulfillmentWindow`. Stays 0 (feature inert)
+        /// when the global `fulfillmentWindow` is unset, or for legacy campaigns already
+        /// booked at the 2.1.0 upgrade — see the contract docstring.
+        uint256 fulfillmentDeadline;
     }
 
     event CampaignCreated(
@@ -66,6 +72,10 @@ interface IShowCampaignEscrow {
     /// @notice Emitted when the upgrade authority (the TimelockController that governs
     /// implementation upgrades) is set at initialization or handed to a new authority.
     event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
+    /// @notice Emitted when the global fulfillment window is set at the 2.1.0 reinitializer
+    /// or updated by the owner. The window is captured into each campaign's
+    /// `fulfillmentDeadline` at booking confirmation.
+    event FulfillmentWindowUpdated(uint256 previous, uint256 next);
 
     error NotConfirmer(address caller);
     /// @notice Raised when an account other than the current {upgradeAuthority} attempts
@@ -96,4 +106,10 @@ interface IShowCampaignEscrow {
     error BookingDeadlinePassed(uint256 campaignId, uint256 bookingDeadline, uint256 currentTime);
     error InvalidDisputeWindow(uint256 provided, uint256 min, uint256 max);
     error InvalidMinimumBackers();
+    /// @notice Raised by {openRefundsAfterMissedFulfillment} when the campaign's
+    /// fulfillment deadline has not elapsed (or was never set — deadline 0).
+    error FulfillmentDeadlineNotPassed(uint256 campaignId, uint256 fulfillmentDeadline, uint256 currentTime);
+    /// @notice Raised when a proposed fulfillment window is outside
+    /// `[MIN_FULFILLMENT_WINDOW, MAX_FULFILLMENT_WINDOW]`.
+    error InvalidFulfillmentWindow(uint256 provided, uint256 min, uint256 max);
 }

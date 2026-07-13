@@ -31,6 +31,11 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
 
+        // Enable the permissionless fulfillment escape (issue #1271) so the handler can
+        // drive BookingConfirmed/DepositReleased → RefundAvailable after the deadline.
+        vm.prank(owner);
+        escrow.setFulfillmentWindow(20 days);
+
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(
             keccak256("artist:sennarin"),
@@ -50,7 +55,7 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
         handler = new ShowCampaignEscrowHandler(escrow, usdc, campaignId, confirmer, owner, artist, feeRecipient);
         targetContract(address(handler));
 
-        bytes4[] memory selectors = new bytes4[](11);
+        bytes4[] memory selectors = new bytes4[](12);
         selectors[0] = ShowCampaignEscrowHandler.advanceTime.selector;
         selectors[1] = ShowCampaignEscrowHandler.pledge.selector;
         selectors[2] = ShowCampaignEscrowHandler.markFailed.selector;
@@ -62,6 +67,7 @@ contract ShowCampaignEscrowInvariantTest is Test, IShowCampaignEscrow {
         selectors[8] = ShowCampaignEscrowHandler.cancelCampaign.selector;
         selectors[9] = ShowCampaignEscrowHandler.claimRefund.selector;
         selectors[10] = ShowCampaignEscrowHandler.setFeeConfig.selector;
+        selectors[11] = ShowCampaignEscrowHandler.openRefundsAfterMissedFulfillment.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
@@ -193,6 +199,15 @@ contract ShowCampaignEscrowHandler is Test, IShowCampaignEscrow {
         try escrow.confirmBooking(campaignId) {
             bookingCalls++;
         } catch {}
+    }
+
+    function openRefundsAfterMissedFulfillment() external {
+        CampaignStatus status = escrow.campaignStatus(campaignId);
+        if (status != CampaignStatus.BookingConfirmed && status != CampaignStatus.DepositReleased) return;
+
+        // Permissionless: any actor may call it (here the handler itself). Reverts before
+        // the fulfillment deadline are swallowed — the invariants must hold regardless.
+        try escrow.openRefundsAfterMissedFulfillment(campaignId) {} catch {}
     }
 
     function releaseDeposit() external {

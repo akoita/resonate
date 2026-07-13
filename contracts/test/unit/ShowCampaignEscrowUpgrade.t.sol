@@ -139,6 +139,44 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         assertEq(ShowCampaignEscrowV2(address(escrow)).version(), 2);
     }
 
+    // ── initializeV2 reinitializer (issue #1271) ────────────────────────────
+
+    /// @notice initializeV2 sets the fulfillment window, emits, and can only run once.
+    function test_InitializeV2SetsFulfillmentWindowAndRunsOnce() public {
+        // Fresh proxy: initialize (v1) ran in the deployer; fulfillmentWindow is still 0.
+        ShowCampaignEscrow fresh = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
+        assertEq(fresh.fulfillmentWindow(), 0);
+
+        vm.expectEmit(false, false, false, true);
+        emit FulfillmentWindowUpdated(0, 30 days);
+        fresh.initializeV2(30 days);
+        assertEq(fresh.fulfillmentWindow(), 30 days);
+
+        // The reinitializer is one-shot — a replay reverts.
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        fresh.initializeV2(45 days);
+    }
+
+    function test_InitializeV2RejectsOutOfBoundsWindow() public {
+        uint256 minW = escrow.MIN_FULFILLMENT_WINDOW();
+        uint256 maxW = escrow.MAX_FULFILLMENT_WINDOW();
+
+        ShowCampaignEscrow fresh = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
+
+        // Below the floor (0 included) reverts; the revert rolls back the reinitializer,
+        // so a subsequent in-bounds call still succeeds.
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFulfillmentWindow.selector, 0, minW, maxW));
+        fresh.initializeV2(0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidFulfillmentWindow.selector, maxW + 1, minW, maxW)
+        );
+        fresh.initializeV2(maxW + 1);
+
+        fresh.initializeV2(minW);
+        assertEq(fresh.fulfillmentWindow(), minW);
+    }
+
     // ── Extended pause: every fund-outflow / lifecycle fn is frozen ──────────
 
     function test_PauseBlocksMarkFailed() public {
