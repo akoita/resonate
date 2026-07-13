@@ -8,8 +8,8 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
 /**
  * @title UpgradeContentProtection
  * @notice Deploys a new ContentProtection implementation and upgrades the
- *         existing UUPS proxy, running reinitializeV4() to reserve the
- *         asset-aware staking storage version.
+ *         existing UUPS proxy, running reinitializeV5() to initialize the EIP-712
+ *         domain so registrar-signed attestation vouchers verify (CP-1, #1271).
  *
  * Run:
  *   CONTENT_PROTECTION_PROXY=0x... forge script script/UpgradeContentProtection.s.sol \
@@ -23,7 +23,7 @@ contract UpgradeContentProtection is DeploymentKey {
         vm.startBroadcast(deployerKey);
 
         ContentProtection newImplementation = new ContentProtection();
-        bytes memory initCall = abi.encodeCall(ContentProtection.reinitializeV4, ());
+        bytes memory initCall = abi.encodeCall(ContentProtection.reinitializeV5, ());
 
         ContentProtection(proxyAddress).upgradeToAndCall(address(newImplementation), initCall);
 
@@ -31,6 +31,6 @@ contract UpgradeContentProtection is DeploymentKey {
 
         console.log("ContentProtection proxy:", proxyAddress);
         console.log("New implementation:", address(newImplementation));
-        console.log("Upgrade complete with reinitializeV4()");
+        console.log("Upgrade complete with reinitializeV5()");
     }
 }

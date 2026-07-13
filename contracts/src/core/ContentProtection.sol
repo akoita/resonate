@@ -6,6 +6,8 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {PaymentAssetRegistry} from "../payments/PaymentAssetRegistry.sol";
 import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.sol";
 
@@ -19,10 +21,49 @@ import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.s
  *   - Slash split: 60% reporter · 30% treasury · 10% burned
  *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
  *
- * @custom:version 1.0.0
+ * Attestation authorization (CP-1, #1271):
+ *   `attest` / `attestRelease` are open entrypoints, but the tokenIds they claim are
+ *   predictable, so an attacker could otherwise front-run a creator and seize the
+ *   attester slot (the slot is single-use — `AlreadyAttested`). To prevent squatting
+ *   WITHOUT moving attestation server-side, each call must present an EIP-712
+ *   authorization voucher signed by a registered `registrars[]` signer that binds the
+ *   voucher to the exact `(attester = msg.sender, tokenId, deadline)`. The artist
+ *   remains `msg.sender` = attester = staker, so `_recordStake`'s
+ *   `attester == msg.sender` check is unchanged.
+ *
+ *   Replay / threat model:
+ *     - The struct hashes `msg.sender`, so a voucher issued to artist A cannot be
+ *       replayed by a different party B (B's structHash recovers a non-registrar).
+ *     - The EIP-712 domain includes `chainId` + this contract's address, so a voucher
+ *       cannot be replayed cross-chain or against a different contract.
+ *     - A voucher is single-use in practice: once the slot is attested a second attest
+ *       reverts `AlreadyAttested`, so re-presenting a still-valid voucher is a no-op.
+ *     - A still-valid voucher after an admin `revoke`/blacklist only lets the SAME
+ *       authorized artist re-attest — benign, because squatting requires a DIFFERENT
+ *       party, who cannot forge the registrar's signature.
+ *
+ * Upgrade / migration:
+ *   V5 (`reinitializeV5`) initializes the EIP-712 domain ("ContentProtection", "1") on
+ *   already-deployed proxies so vouchers verify after upgrade. Fresh deploys also set
+ *   the domain in `initialize`. (Versions 2–4 were already consumed by earlier
+ *   reinitializers, so this migration uses reinitializer version 5.)
+ *
+ * @custom:version 1.1.0
  */
-contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgradeable, ReentrancyGuard {
+contract ContentProtection is
+    IContentProtectionEvents,
+    Initializable,
+    EIP712Upgradeable,
+    UUPSUpgradeable,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
+
+    /// @dev EIP-712 typehash for the registrar-signed attestation authorization voucher.
+    /// Binds a specific caller (`attester`), `tokenId`, and `deadline`; only a signature
+    /// from a registered registrar authorizes the attestation.
+    bytes32 private constant ATTESTATION_AUTHORIZATION_TYPEHASH =
+        keccak256("AttestationAuthorization(address attester,uint256 tokenId,uint256 deadline)");
 
     // ============ Structs ============
 
@@ -117,6 +158,10 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
 
+        // Fresh deploys get the EIP-712 domain here; already-deployed proxies get it via
+        // reinitializeV5() (they never re-run this v1 initializer). See CP-1 (#1271).
+        __EIP712_init("ContentProtection", "1");
+
         owner = _owner;
         treasury = _treasury;
         stakeAmount = _stakeAmount;
@@ -128,28 +173,61 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
 
     /**
      * @notice Attest ownership of protected content for staking / provenance.
+     * @dev Requires a registrar-signed EIP-712 authorization voucher bound to
+     *      `(msg.sender, tokenId, deadline)` to prevent attester-slot squatting on
+     *      predictable tokenIds (CP-1, #1271). The caller (artist) stays the attester.
      * @param tokenId Identifier for the protected asset or release record
      * @param contentHash SHA-256 hash of the audio content
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
+     * @param deadline Unix timestamp after which the authorization voucher is invalid
+     * @param signature Registrar's EIP-712 signature over the authorization voucher
      */
-    function attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
-        external
-    {
+    function attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
+    ) external {
+        _verifyAttestationAuthorization(tokenId, deadline, signature);
         _attest(tokenId, contentHash, fingerprintHash, metadataURI);
     }
 
     /**
      * @notice Canonical release-first attestation entrypoint.
      * @dev Wraps the generic attestation flow while making the protected root explicit.
+     *      Requires the same registrar-signed authorization voucher as {attest}.
      */
     function attestRelease(
         uint256 releaseId,
         bytes32 contentHash,
         bytes32 fingerprintHash,
-        string calldata metadataURI
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
     ) external {
+        _verifyAttestationAuthorization(releaseId, deadline, signature);
         _attest(releaseId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    /// @dev Verify the registrar-signed EIP-712 authorization voucher for this call.
+    /// The struct binds `msg.sender` (the attester), so a voucher issued to one artist
+    /// cannot be used by another party — the only way to seize a slot is a valid
+    /// registrar signature for THIS caller. Any malformed/empty/wrong-signer signature
+    /// reverts `InvalidAttestationSignature`.
+    function _verifyAttestationAuthorization(uint256 tokenId, uint256 deadline, bytes calldata signature)
+        internal
+        view
+    {
+        if (block.timestamp > deadline) revert AttestationAuthorizationExpired(deadline, block.timestamp);
+
+        bytes32 structHash = keccak256(abi.encode(ATTESTATION_AUTHORIZATION_TYPEHASH, msg.sender, tokenId, deadline));
+        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(_hashTypedDataV4(structHash), signature);
+        if (err != ECDSA.RecoverError.NoError || !registrars[signer]) {
+            revert InvalidAttestationSignature();
+        }
     }
 
     function _attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
@@ -415,6 +493,14 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
     }
 
     function reinitializeV4() external reinitializer(4) {}
+
+    /// @notice V5 migration (CP-1, #1271): initialize the EIP-712 domain on an
+    /// already-deployed proxy so registrar-signed attestation vouchers verify after the
+    /// upgrade. Fresh deploys already set the domain in `initialize`; this runs once per
+    /// existing proxy. Versions 2–4 were consumed by earlier reinitializers.
+    function reinitializeV5() external reinitializer(5) {
+        __EIP712_init("ContentProtection", "1");
+    }
 
     // ============ Views ============
 

@@ -4069,6 +4069,38 @@ export async function createStemMintAuthorization(
   );
 }
 
+/**
+ * EIP-712 voucher authorizing a ContentProtection `attestRelease`/`attest`
+ * call. The backend (which holds the attestation-signer key) verifies the
+ * caller's right to attest the release and returns a signed `(deadline,
+ * signature)` pair the on-chain contract checks against `msg.sender`.
+ */
+export type AttestationVoucher = {
+  attester: `0x${string}`;
+  tokenId: string;
+  deadline: number;
+  signature: `0x${string}`;
+};
+
+export async function createAttestationVoucher(
+  token: string,
+  input: {
+    releaseId: string;
+    attester: string;
+    /** keccak256 of the audio content — lets the backend re-derive releaseId. */
+    contentHash: string;
+    /** Release metadata URI — part of the releaseId derivation. */
+    metadataURI: string;
+    chainId?: number;
+  }
+) {
+  return apiRequest<AttestationVoucher>(
+    "/contracts/attestation-vouchers",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
 export async function createBatchStemMintAuthorizations(
   token: string,
   input: {

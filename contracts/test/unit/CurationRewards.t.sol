@@ -11,6 +11,7 @@ import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {IDisputeResolution} from "../../src/interfaces/IDisputeResolution.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title CurationRewards Unit Tests
@@ -33,6 +34,14 @@ contract CurationRewardsTest is Test, ICurationRewards {
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_USDC = keccak256("local:usdc");
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
+    function _voucher(address attester, uint256 tokenId) internal view returns (bytes memory) {
+        return AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
+    }
+
     function setUp() public {
         // Deploy ContentProtection (UUPS proxy)
         ContentProtection impl = new ContentProtection();
@@ -40,15 +49,21 @@ contract CurationRewardsTest is Test, ICurationRewards {
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
 
+        // Register the voucher-signing registrar (CP-1, #1271).
+        vm.prank(admin);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
+
         // Deploy DisputeResolution
         dr = new DisputeResolution(admin);
 
         // Deploy CurationRewards
         cr = new CurationRewards(admin, address(cp), address(dr), treasury);
 
-        // Setup: creator attests + stakes token #1
+        // Setup: creator attests + stakes token #1. Build the voucher before pranking:
+        // signing reads the domain via cp.eip712Domain(), which would consume the prank.
+        bytes memory sig1 = _voucher(creator, 1);
         vm.prank(creator);
-        cp.attest(1, keccak256("audio"), keccak256("fp"), "ipfs://meta");
+        cp.attest(1, keccak256("audio"), keccak256("fp"), "ipfs://meta", AUTH_DEADLINE, sig1);
         vm.deal(creator, 1 ether);
         vm.prank(creator);
         cp.stake{value: STAKE_AMOUNT}(1);
@@ -114,8 +129,9 @@ contract CurationRewardsTest is Test, ICurationRewards {
     }
 
     function test_ReportContent_TrustedCuratorGetsReducedStake() public {
+        bytes memory sig = _voucher(creator, 2);
         vm.prank(creator);
-        cp.attest(2, keccak256("audio-2"), keccak256("fp-2"), "ipfs://meta-2");
+        cp.attest(2, keccak256("audio-2"), keccak256("fp-2"), "ipfs://meta-2", AUTH_DEADLINE, sig);
         vm.deal(creator, 1 ether);
         vm.prank(creator);
         cp.stake{value: STAKE_AMOUNT}(2);
@@ -153,8 +169,9 @@ contract CurationRewardsTest is Test, ICurationRewards {
     }
 
     function test_ReportContent_StemResolvesToCanonicalTrack() public {
+        bytes memory sig = _voucher(creator, 10);
         vm.prank(creator);
-        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release");
+        cp.attest(10, keccak256("release"), keccak256("release-fp"), "release", AUTH_DEADLINE, sig);
 
         vm.prank(admin);
         cp.registerTrack(10, 1);
@@ -392,8 +409,9 @@ contract CurationRewardsTest is Test, ICurationRewards {
 
     function test_ReputationAccumulates() public {
         // Two reports on different tokens — need token #2
+        bytes memory sig = _voucher(creator, 2);
         vm.prank(creator);
-        cp.attest(2, keccak256("audio2"), keccak256("fp2"), "ipfs://meta2");
+        cp.attest(2, keccak256("audio2"), keccak256("fp2"), "ipfs://meta2", AUTH_DEADLINE, sig);
         vm.deal(creator, 1 ether);
         vm.prank(creator);
         cp.stake{value: STAKE_AMOUNT}(2);
@@ -431,12 +449,15 @@ contract CurationRewardsTest is Test, ICurationRewards {
         cp.setStakeAmountForAsset(address(usdc), USDC_STAKE_AMOUNT);
         vm.stopPrank();
 
+        bytes memory sig = _voucher(creator, tokenId);
         vm.prank(creator);
         cp.attest(
             tokenId,
             keccak256(abi.encodePacked("audio", tokenId)),
             keccak256(abi.encodePacked("fp", tokenId)),
-            "ipfs://usdc-meta"
+            "ipfs://usdc-meta",
+            AUTH_DEADLINE,
+            sig
         );
 
         usdc.mint(creator, USDC_STAKE_AMOUNT);
