@@ -1,7 +1,6 @@
 import React from "react";
 import "../../styles/punchline.css";
-import { formatClipDuration } from "./PunchlineClipSelector";
-import { formatEditionLabel, formatPriceCents, maskSensitiveLyric } from "./punchlineDropHelpers";
+import { formatClipDuration, formatEditionLabel, formatPriceCents, maskSensitiveLyric } from "./punchlineDropHelpers";
 
 /**
  * Deterministic hue (0-359) from a seed string, so every moment gets its own
