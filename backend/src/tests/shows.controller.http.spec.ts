@@ -23,6 +23,7 @@ const mockShowsService = {
   activateCampaign: jest.fn(),
   resyncCampaignFromChain: jest.fn(),
   discoverOnChainCampaign: jest.fn(),
+  listReconciliationMismatches: jest.fn(),
   createPledgeIntent: jest.fn(),
   confirmPledge: jest.fn(),
   confirmPledgeRefund: jest.fn(),
@@ -209,5 +210,64 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockShowsService.discoverOnChainCampaign).not.toHaveBeenCalled();
+  });
+
+  // #1271: operator reconciliation-mismatch read (drill assertion surface).
+  it("lists reconciliation mismatches for operators with parsed query params", async () => {
+    mockShowsService.listReconciliationMismatches.mockResolvedValue([
+      {
+        occurredAt: "2026-07-13T00:00:00.000Z",
+        contractCampaignId: "42",
+        escrowEventName: "Pledged",
+        transactionHash: "0x" + "a".repeat(64),
+        blockNumber: "1000",
+        reason: "on-chain pledge from 0xabc (99) has no matching backend intent",
+      },
+    ]);
+
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches?contractCampaignId=42&sinceMinutes=60&limit=10")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0].reason).toContain("no matching backend intent");
+      });
+
+    expect(mockShowsService.listReconciliationMismatches).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      { contractCampaignId: "42", sinceMinutes: 60, limit: 10 },
+    );
+  });
+
+  it("allows admin role for reconciliation mismatches", async () => {
+    mockShowsService.listReconciliationMismatches.mockResolvedValue([]);
+
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200);
+
+    expect(mockShowsService.listReconciliationMismatches).toHaveBeenCalledWith(
+      { userId: "admin-1", role: "admin" },
+      { contractCampaignId: undefined, sinceMinutes: undefined, limit: undefined },
+    );
+  });
+
+  it("requires JWT for reconciliation mismatches", async () => {
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .expect(401);
+
+    expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
+  });
+
+  it("rejects listener role for reconciliation mismatches", async () => {
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
   });
 });

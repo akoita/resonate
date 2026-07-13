@@ -17,6 +17,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import type { ShowCampaignSettledEvent } from "../../events/event_types";
 import { EventBus } from "../shared/event_bus";
+import { writeStructuredLog } from "../shared/structured_logging";
 import { resolveIndexerChainId } from "../contracts/indexer.service";
 import { configuredShowCampaignEscrowAddress } from "./shows.service";
 
@@ -811,6 +812,20 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     this.logger.warn(
       `Reconciliation mismatch (${input.eventName}, campaign ${input.contractCampaignId}): ${input.reason}`,
     );
+    // Structured app-event line the iac log-based metric parses
+    // (jsonPayload.event="shows.campaign_reconciliation_mismatch"). This is the
+    // surface Cloud Monitoring alerts on — keep the event name identical to the
+    // domain event and the iac local.backend_app_event_names entry.
+    writeStructuredLog({
+      level: "warn",
+      event: "shows.campaign_reconciliation_mismatch",
+      message: "Show campaign reconciliation mismatch detected",
+      contractCampaignId: input.contractCampaignId,
+      escrowEventName: input.eventName,
+      transactionHash: input.transactionHash,
+      blockNumber: input.blockNumber.toString(),
+      reason: input.reason,
+    });
     this.eventBus.publish({
       eventName: "shows.campaign_reconciliation_mismatch",
       eventVersion: 1,
