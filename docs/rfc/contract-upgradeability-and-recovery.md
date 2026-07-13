@@ -225,7 +225,7 @@ broad upgradeability lowers security. With them, it raises it.
 | Contract | Proposed posture |
 | --- | --- |
 | `RevenueEscrow` | **UUPS + timelock + multisig + re-verify**, keep `freeze`/`redirect` and add a fast `pause`. Strongest custody case. |
-| `ShowCampaignEscrow` | ✅ **IMPLEMENTED (#1497, slice 1 of #1300; recovery hardening SCE-2/#1271).** Converted to UUPS behind an ERC1967 proxy; `upgradeAuthority` is a `TimelockController` (48h default delay) with the ops owner as proposer/executor/canceller and an independent **guardian holding `PROPOSER_ROLE` + `EXECUTOR_ROLE` + `CANCELLER_ROLE`**. The operational `owner` runs campaigns + the instant pause but **cannot upgrade** directly. The guardian is a full, independent recovery path: it can schedule + execute a recovery upgrade on its own (still behind the 48h delay) if the owner key is lost/compromised while paused — closing SCE-2, where the frozen-refund pause + `onlyOwner` `setPaused` would otherwise strand fan funds. Owner and guardian both hold `CANCELLER_ROLE`, so they mutually veto each other's scheduled upgrades during the delay. The fast pause now gates **every fund-outflow and lifecycle transition** (`pledge`, `markFailed`, `cancelCampaign`, `openRefundsAfterMissedBooking`, `confirmBooking`, `releaseDeposit`, `confirmFulfillment`, `releaseFunds`, `claimRefund`) — only config setters and `setPaused`/`setUpgradeAuthority` stay callable. Storage-layout gate, unit/fuzz/invariant/Halmos suites all extended and green. |
+| `ShowCampaignEscrow` | ✅ **IMPLEMENTED (#1497, slice 1 of #1300; recovery hardening SCE-2/#1271, liveness SCE-1/#1271).** Converted to UUPS behind an ERC1967 proxy; `upgradeAuthority` is a `TimelockController` (48h default delay) with the ops owner as proposer/executor/canceller and an independent **guardian holding `PROPOSER_ROLE` + `EXECUTOR_ROLE` + `CANCELLER_ROLE`**. The operational `owner` runs campaigns + the instant pause but **cannot upgrade** directly. The guardian is a full, independent recovery path: it can schedule + execute a recovery upgrade on its own (still behind the 48h delay) if the owner key is lost/compromised while paused — closing SCE-2, where the frozen-refund pause + `onlyOwner` `setPaused` would otherwise strand fan funds. Owner and guardian both hold `CANCELLER_ROLE`, so they mutually veto each other's scheduled upgrades during the delay. The fast pause now gates **every fund-outflow and lifecycle transition** (`pledge`, `markFailed`, `cancelCampaign`, `openRefundsAfterMissedBooking`, `openRefundsAfterMissedFulfillment`, `confirmBooking`, `releaseDeposit`, `confirmFulfillment`, `releaseFunds`, `claimRefund`) — only config setters and `setPaused`/`setUpgradeAuthority` stay callable. Storage-layout gate, unit/fuzz/invariant/Halmos suites all extended and green. **v2.1.0 (#1271 / SCE-1):** adds a permissionless `openRefundsAfterMissedFulfillment` escape so a stalled `BookingConfirmed`/`DepositReleased` campaign can be forced to `RefundAvailable` after a per-campaign `fulfillmentDeadline` (captured at booking from the global, owner-tunable `fulfillmentWindow`), closing the "confirmer keys + ops owner both go silent after booking" lockup. Shipped as an appended `Campaign.fulfillmentDeadline` field + one new top-level slot `fulfillmentWindow` (gap `41→40`, no existing slot moved), plus an `initializeV2(fulfillmentWindow)` **`reinitializer(2)`** run via the timelock `upgradeToAndCall` — legacy campaigns already booked at the upgrade keep `fulfillmentDeadline == 0` (escape inert) and are not backfilled. |
 | `StemMarketplaceV2` | **UUPS + timelock + multisig + re-verify**, plus a fast `pause` on `buy`/`list`. |
 | `ContentProtection` | Already UUPS — **add the timelock + multisig + a fast pause**; bring it under the same re-verification gate. |
 | `StemNFT` | **Default: stay immutable** (collector/asset trust), rely on the swappable `TransferValidator`/`ContentProtection` seams + a marketplace-level pause. Revisit only if a core-logic patch need is identified. |
@@ -318,9 +318,14 @@ convert.
 2. **Diagnose** while frozen. Balances and campaign state are readable.
 3. **Fix via a timelocked upgrade.** Schedule a new implementation through the
    timelock: `UpgradeShowCampaignEscrow` with `UPGRADE_ACTION=schedule` (deploys
-   the new impl and schedules `upgradeToAndCall(newImpl, "")`; logs the operation
-   id + ETA). After the delay elapses, `UPGRADE_ACTION=execute` with
-   `NEW_IMPLEMENTATION` set to the logged address.
+   the new impl and schedules `upgradeToAndCall(newImpl, initCall)`; logs the
+   operation id + ETA). After the delay elapses, `UPGRADE_ACTION=execute` with
+   `NEW_IMPLEMENTATION` set to the logged address. For the **v2.0.0→v2.1.0**
+   migration (#1271) `initCall` is `initializeV2(SHOW_CAMPAIGN_FULFILLMENT_WINDOW)`
+   (default 30d) so the deployed proxy gains a non-zero fulfillment window in the
+   same atomic upgrade; `initializeV2` is a one-time `reinitializer(2)`, so later
+   upgrades must set `SHOW_CAMPAIGN_FULFILLMENT_WINDOW=0` to send an empty
+   `initCall` and avoid replay (`InvalidInitialization`).
 4. **Veto a bad/mistaken upgrade.** If a scheduled upgrade is wrong or malicious,
    the guardian **or** the ops owner calls `timelock.cancel(operationId)` before
    the ETA. Nothing ships. Because both hold `CANCELLER_ROLE`, either can veto
@@ -335,7 +340,13 @@ convert.
    signature is required at any step, so frozen fan funds are always recoverable.
 6. **Recover / resume.** Once safe, the ops owner `setPaused(false)`. If refunds
    are the right resolution for stuck campaigns, `cancelCampaign` opens pro-rata
-   refunds (unpause first — cancel is frozen while paused).
+   refunds (unpause first — cancel is frozen while paused). **If the ops owner and
+   confirmers themselves go silent** after a booking is confirmed, backers do not
+   depend on any operator action: once the campaign's `fulfillmentDeadline` passes,
+   anyone can call `openRefundsAfterMissedFulfillment` to move a
+   `BookingConfirmed`/`DepositReleased` campaign to `RefundAvailable` and reclaim
+   the remaining escrow (the permissionless SCE-1 escape, #1271). This only covers
+   campaigns booked with a non-zero `fulfillmentWindow` in effect.
 7. **Rotate governance** if the timelock itself must change: the current timelock
    (only) calls `setUpgradeAuthority(newAuthority)`.
 

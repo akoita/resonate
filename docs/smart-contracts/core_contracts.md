@@ -246,6 +246,22 @@ Core behavior:
   but does not release funds;
 - anyone can open refunds when an active campaign misses its deadline or a
   funded campaign misses its booking deadline;
+- **anyone can also open refunds when a confirmed booking misses its fulfillment
+  deadline** (`openRefundsAfterMissedFulfillment`, issue #1271 / SCE-1). Booking
+  confirmation snapshots `fulfillmentDeadline = block.timestamp +
+  fulfillmentWindow`; once it passes, a stalled `BookingConfirmed` or
+  `DepositReleased` campaign can be forced to `RefundAvailable` by any caller, so
+  backers are never trapped if the operator's confirmer keys **and** the ops owner
+  both go silent after booking. The window is a global, owner-tunable value
+  (`setFulfillmentWindow`, bounded `MIN_FULFILLMENT_WINDOW (1d) …
+  MAX_FULFILLMENT_WINDOW (180d)`) — **not** a `createCampaign` parameter, so the
+  creation ABI is unchanged. It is inert while `fulfillmentWindow == 0` (the
+  deadline stays 0 and the escape reverts `FulfillmentDeadlineNotPassed`).
+  Campaigns already in `BookingConfirmed`/`DepositReleased` at the 2.1.0 upgrade
+  carry `fulfillmentDeadline == 0` and are **not** retro-covered (they remain
+  governed by the owner/confirmer exits); this is accepted, not backfilled. From
+  `DepositReleased`, `claimRefund` distributes only the un-released remainder
+  (`totalPledged − totalReleased`), so the released deposit stays with the artist;
 - owner or authorized confirmers can confirm booking and fulfillment;
 - optional deposit release is capped at 30% and only available after booking
   confirmation when disclosed in campaign terms;

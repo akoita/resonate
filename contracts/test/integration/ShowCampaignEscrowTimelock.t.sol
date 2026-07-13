@@ -159,6 +159,53 @@ contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
         timelock.execute(address(escrow), 0, data, bytes32(0), salt);
     }
 
+    /// @notice The real 2.0.0→2.1.0 migration (issue #1271): the timelock upgrade carries
+    /// `initializeV2(window)` so an already-deployed proxy gains a non-zero fulfillment
+    /// window atomically. A campaign booked BEFORE the upgrade keeps `fulfillmentDeadline
+    /// == 0` (escape inert), while a campaign booked AFTER gets a live deadline.
+    function test_UpgradeThroughTimelockRunsInitializeV2AndLegacyBookingStaysInert() public {
+        // Legacy campaign: booked while the window is still 0 (pre-upgrade).
+        uint256 legacy = _fundCampaign();
+        vm.prank(confirmer);
+        escrow.confirmBooking(legacy);
+        assertEq(escrow.fulfillmentWindow(), 0);
+
+        // Schedule + execute upgradeToAndCall(v2, initializeV2(30 days)) through the timelock.
+        ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
+        bytes memory initV2 = abi.encodeCall(ShowCampaignEscrow.initializeV2, (uint256(30 days)));
+        bytes memory data = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(v2), initV2));
+        bytes32 salt = keccak256("upgrade-v2.1.0");
+
+        vm.prank(owner);
+        timelock.schedule(address(escrow), 0, data, bytes32(0), salt, MIN_DELAY);
+        vm.warp(block.timestamp + MIN_DELAY);
+        vm.prank(owner);
+        timelock.execute(address(escrow), 0, data, bytes32(0), salt);
+
+        // The reinitializer ran in the same upgrade: the window is now live.
+        assertEq(ShowCampaignEscrowV2(address(escrow)).version(), 2);
+        assertEq(escrow.fulfillmentWindow(), 30 days);
+
+        // Legacy campaign booked pre-upgrade has deadline 0 → escape stays inert forever.
+        vm.warp(block.timestamp + 365 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.FulfillmentDeadlineNotPassed.selector, legacy, 0, block.timestamp
+            )
+        );
+        escrow.openRefundsAfterMissedFulfillment(legacy);
+
+        // A NEW campaign booked post-upgrade gets a live deadline and the escape works.
+        _mintAndApprove(alice, 2_000e6);
+        _mintAndApprove(bob, 2_000e6);
+        uint256 fresh = _fundCampaign();
+        vm.prank(confirmer);
+        escrow.confirmBooking(fresh);
+        vm.warp(block.timestamp + 30 days + 1);
+        escrow.openRefundsAfterMissedFulfillment(fresh);
+        assertEq(uint8(escrow.campaignStatus(fresh)), uint8(CampaignStatus.RefundAvailable));
+    }
+
     function test_DirectUpgradeBypassingTimelockReverts() public {
         ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
         // The ops owner is NOT the upgrade authority; only the timelock is.
