@@ -25,6 +25,7 @@ import {
   StemMarketplaceABI,
 } from "../lib/contracts";
 import {
+  createAttestationVoucher,
   createBatchStemMintAuthorizations,
   createStemMintAuthorization,
   type StemMintAuthorization,
@@ -888,7 +889,7 @@ export function useMintStem() {
  */
 export function useAttestAndStake() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
+  const { address, status, token, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1042,12 +1043,43 @@ export function useAttestAndStake() {
         const calls: { to: Address; data: Hex; value?: bigint }[] = [];
 
         if (!attestationValid) {
+          // attestRelease is gated by an EIP-712 voucher the backend signs
+          // (CP-1, #1271). The contract checks the signature against the
+          // calling smart account (msg.sender === callerAddress), so the
+          // voucher must be fetched for this exact attester before batching.
+          if (!token) {
+            throw new Error("Not authenticated");
+          }
+          let voucher;
+          try {
+            voucher = await createAttestationVoucher(token, {
+              releaseId: releaseId.toString(),
+              attester: callerAddress,
+              contentHash: params.contentHash,
+              metadataURI: params.metadataURI,
+              chainId,
+            });
+          } catch (voucherErr) {
+            const detail =
+              voucherErr instanceof Error ? voucherErr.message : String(voucherErr);
+            throw new Error(
+              `Could not obtain the attestation authorization required to publish. ${detail}`
+            );
+          }
+
           calls.push({
             to: cpAddress,
             data: encodeFunctionData({
               abi: ContentProtectionABI,
               functionName: "attestRelease",
-              args: [releaseId, params.contentHash, params.fingerprintHash, params.metadataURI],
+              args: [
+                releaseId,
+                params.contentHash,
+                params.fingerprintHash,
+                params.metadataURI,
+                BigInt(voucher.deadline),
+                voucher.signature as Hex,
+              ],
             }),
           });
         }
@@ -1139,7 +1171,7 @@ export function useAttestAndStake() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount, smartAccountAddress]
+    [publicClient, address, status, token, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { attestAndStake, pending, error, txHash };

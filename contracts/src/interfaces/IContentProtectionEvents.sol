@@ -97,4 +97,11 @@ interface IContentProtectionEvents {
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error NothingToClaim();
     error OnlySelf();
+
+    /// @notice The attestation authorization voucher was not signed by a registered
+    /// registrar for this exact caller and tokenId (CP-1, #1271).
+    error InvalidAttestationSignature();
+
+    /// @notice The attestation authorization voucher deadline has passed (CP-1, #1271).
+    error AttestationAuthorizationExpired(uint256 deadline, uint256 currentTime);
 }

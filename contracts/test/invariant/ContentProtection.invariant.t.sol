@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Invariant Handler
@@ -29,6 +30,10 @@ contract ContentProtectionHandler is Test {
     uint256[5] internal tokens = [uint256(1), 2, 3, 4, 5];
     address[5] internal attesters;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     // Ghost accounting
     uint256 public gDeposited;
     uint256 public gRefunded;
@@ -40,10 +45,14 @@ contract ContentProtectionHandler is Test {
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (address(this), treasury, STAKE_AMOUNT));
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
 
+        // The handler is the owner, so it can register the voucher-signing registrar.
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
+
         for (uint256 i; i < tokens.length; ++i) {
             attesters[i] = makeAddr(string(abi.encodePacked("cp_attester_", vm.toString(i))));
+            bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attesters[i], tokens[i], AUTH_DEADLINE);
             vm.prank(attesters[i]);
-            cp.attest(tokens[i], keccak256("content"), keccak256("fingerprint"), "ipfs://meta");
+            cp.attest(tokens[i], keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
         }
     }
 

@@ -10,7 +10,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | --------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
-| **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest, stake, slash (60/30/10), blacklist.     |
+| **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist. |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | Per-token escrow. Deposit, freeze, release, redirect.       |
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
@@ -295,6 +295,14 @@ cast send $REVENUE_ESCROW "release(uint256)" 1 --rpc-url $RPC_URL
 ContentProtection newImpl = new ContentProtection();
 contentProtection.upgradeToAndCall(address(newImpl), "");
 ```
+
+**Reinitializer migrations.** New logic that needs one-time state setup on already
+deployed proxies runs through a versioned `reinitializer`. The CP-1 attestation-voucher
+change (#1271) initializes the EIP-712 domain via `reinitializeV5()` (versions 2–4 were
+consumed by earlier upgrades). `script/UpgradeContentProtection.s.sol` deploys the new
+implementation and calls `reinitializeV5()` in the same `upgradeToAndCall`, so existing
+`base-sepolia` / `sepolia` proxies get the domain and can verify vouchers. Fresh deploys
+set the domain in `initialize`.
 
 ### Storage-layout safety
 

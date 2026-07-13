@@ -7,6 +7,7 @@ import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol"
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Formal Verification Tests
@@ -35,6 +36,10 @@ contract ContentProtectionFormalTest is Test, SymTest {
     uint256 public constant TREASURY_BPS = 3000;
     uint256 public constant BPS = 10000;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     function setUp() public {
         ContentProtection impl = new ContentProtection();
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (owner, treasury, 0.01 ether));
@@ -47,12 +52,14 @@ contract ContentProtectionFormalTest is Test, SymTest {
         registry.configureAsset(keccak256("local:usdc"), address(usdc), "USDC", 6, true, true);
         cp.setPaymentAssetRegistry(address(registry));
         cp.setStakeAmountForAsset(address(usdc), MIN_STAKE);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
         vm.stopPrank();
     }
 
     function _attestAndStakeAsset(uint256 tokenId, uint256 amount) internal {
+        bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
         vm.prank(attester);
-        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta");
+        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
 
         usdc.mint(attester, amount);
         vm.startPrank(attester);

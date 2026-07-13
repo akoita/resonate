@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {IContentProtectionEvents} from "../../src/interfaces/IContentProtectionEvents.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Fuzz Tests
@@ -33,15 +34,23 @@ contract ContentProtectionFuzzTest is Test {
     uint256 internal constant TREASURY_BPS = 3000;
     uint256 internal constant BPS = 10000;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     function setUp() public {
         ContentProtection impl = new ContentProtection();
         bytes memory initData = abi.encodeCall(ContentProtection.initialize, (owner, treasury, STAKE_AMOUNT));
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
+
+        vm.prank(owner);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
     }
 
     function _attest(uint256 tokenId) internal {
+        bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
         vm.prank(attester);
-        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta");
+        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
     }
 
     function _attestAndStake(uint256 tokenId, uint256 amount) internal {
