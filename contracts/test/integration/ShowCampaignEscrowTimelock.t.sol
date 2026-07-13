@@ -11,19 +11,24 @@ import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol"
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 
 /**
- * @title ShowCampaignEscrow ⇄ TimelockController integration (issue #1497)
+ * @title ShowCampaignEscrow ⇄ TimelockController integration (issue #1497, SCE-2/#1271)
  * @notice Exercises the real production authority path: an ERC1967 proxy whose
- *         upgradeAuthority is a TimelockController with a guardian CANCELLER.
- *         Funds are escrowed, an upgrade is scheduled + executed through the
- *         timelock, and the migrated state / post-upgrade settlement are asserted.
+ *         upgradeAuthority is a TimelockController. The ops owner and an
+ *         independent guardian each hold PROPOSER + EXECUTOR + CANCELLER on the
+ *         timelock, so recovery does not depend on a single key. Funds are
+ *         escrowed, an upgrade is scheduled + executed through the timelock, and
+ *         the migrated state / post-upgrade settlement are asserted. Also verifies
+ *         the SCE-2 recovery model: the guardian can independently drive a
+ *         recovery upgrade, and owner/guardian can mutually cancel each other's
+ *         scheduled upgrades during the 48h delay.
  */
 contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
     ShowCampaignEscrow public escrow; // proxy
     TimelockController public timelock;
     MockUSDC public usdc;
 
-    address public owner = makeAddr("owner"); // ops owner = proposer + executor
-    address public guardian = makeAddr("guardian"); // CANCELLER only
+    address public owner = makeAddr("owner"); // ops owner = proposer + executor + canceller
+    address public guardian = makeAddr("guardian"); // independent recovery: proposer + executor + canceller
     address public artist = makeAddr("artist");
     address public confirmer = makeAddr("confirmer");
     address public alice = makeAddr("alice");
@@ -38,13 +43,16 @@ contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
     function setUp() public {
         usdc = new MockUSDC();
 
-        // Mirror DeployShowCampaignEscrow: timelock with ops owner as proposer/executor,
-        // this test as transient admin to grant the guardian CANCELLER, then renounce.
+        // Mirror DeployShowCampaignEscrow: timelock with ops owner as proposer/executor
+        // (and canceller, via the OZ 5.x constructor), this test as transient admin to grant
+        // the guardian an independent proposer + executor + canceller recovery path, then renounce.
         address[] memory proposers = new address[](1);
         proposers[0] = owner;
         address[] memory executors = new address[](1);
         executors[0] = owner;
         timelock = new TimelockController(MIN_DELAY, proposers, executors, address(this));
+        timelock.grantRole(timelock.PROPOSER_ROLE(), guardian);
+        timelock.grantRole(timelock.EXECUTOR_ROLE(), guardian);
         timelock.grantRole(timelock.CANCELLER_ROLE(), guardian);
         timelock.renounceRole(timelock.DEFAULT_ADMIN_ROLE(), address(this));
 
@@ -157,6 +165,92 @@ contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, owner));
         escrow.upgradeToAndCall(address(v2), "");
+    }
+
+    /// SCE-2 (#1271): assert the governance role wiring that guarantees an
+    /// independent recovery path. Both owner and guardian must be full
+    /// proposer + executor + canceller, and no EOA may retain admin.
+    function test_TimelockRoleWiringGivesGuardianIndependentRecoveryPath() public view {
+        bytes32 proposer = timelock.PROPOSER_ROLE();
+        bytes32 executor = timelock.EXECUTOR_ROLE();
+        bytes32 canceller = timelock.CANCELLER_ROLE();
+        bytes32 admin = timelock.DEFAULT_ADMIN_ROLE();
+
+        // Ops owner: proposer + executor + canceller (canceller granted by the OZ constructor).
+        assertTrue(timelock.hasRole(proposer, owner), "owner PROPOSER");
+        assertTrue(timelock.hasRole(executor, owner), "owner EXECUTOR");
+        assertTrue(timelock.hasRole(canceller, owner), "owner CANCELLER");
+
+        // Guardian: an independent proposer + executor + canceller recovery key.
+        assertTrue(timelock.hasRole(proposer, guardian), "guardian PROPOSER");
+        assertTrue(timelock.hasRole(executor, guardian), "guardian EXECUTOR");
+        assertTrue(timelock.hasRole(canceller, guardian), "guardian CANCELLER");
+
+        // No EOA admin remains; the timelock is self-administered.
+        assertFalse(timelock.hasRole(admin, address(this)), "deployer renounced ADMIN");
+        assertFalse(timelock.hasRole(admin, owner), "owner has no ADMIN");
+        assertFalse(timelock.hasRole(admin, guardian), "guardian has no ADMIN");
+        assertTrue(timelock.hasRole(admin, address(timelock)), "timelock self-administers");
+    }
+
+    /// SCE-2 (#1271): the guardian can drive a recovery upgrade end-to-end with
+    /// NO owner involvement — schedule, wait out the 48h delay, then execute.
+    /// This is the frozen-funds recovery path when the owner key is lost.
+    function test_GuardianCanScheduleAndExecuteRecoveryUpgrade() public {
+        // Fund a campaign so we prove escrow survives a guardian-driven recovery.
+        uint256 id = _fundCampaign();
+        assertEq(usdc.balanceOf(address(escrow)), 1_100e6);
+
+        ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
+        bytes memory data = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(v2), ""));
+        bytes32 salt = keccak256("guardian-recovery");
+
+        // Guardian schedules independently of the owner.
+        vm.prank(guardian);
+        timelock.schedule(address(escrow), 0, data, bytes32(0), salt, MIN_DELAY);
+        bytes32 opId = timelock.hashOperation(address(escrow), 0, data, bytes32(0), salt);
+        assertTrue(timelock.isOperationPending(opId));
+
+        // Cannot execute before the delay elapses — safety is preserved.
+        vm.prank(guardian);
+        vm.expectRevert();
+        timelock.execute(address(escrow), 0, data, bytes32(0), salt);
+
+        // Warp past the 48h delay and let the guardian execute the recovery.
+        vm.warp(block.timestamp + MIN_DELAY);
+        vm.prank(guardian);
+        timelock.execute(address(escrow), 0, data, bytes32(0), salt);
+        assertTrue(timelock.isOperationDone(opId));
+
+        // Recovery upgrade is live and escrow state survived.
+        assertEq(ShowCampaignEscrowV2(address(escrow)).version(), 2);
+        assertEq(escrow.owner(), owner);
+        assertEq(usdc.balanceOf(address(escrow)), 1_100e6);
+    }
+
+    /// SCE-2 (#1271): the owner can cancel a guardian-scheduled upgrade during
+    /// the delay — the mutual-cancel check that keeps a compromised guardian
+    /// from forcing a malicious upgrade.
+    function test_OwnerCanCancelGuardianScheduledUpgrade() public {
+        ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
+        bytes memory data = abi.encodeCall(UUPSUpgradeable.upgradeToAndCall, (address(v2), ""));
+        bytes32 salt = keccak256("guardian-cancel-me");
+
+        vm.prank(guardian);
+        timelock.schedule(address(escrow), 0, data, bytes32(0), salt, MIN_DELAY);
+        bytes32 opId = timelock.hashOperation(address(escrow), 0, data, bytes32(0), salt);
+        assertTrue(timelock.isOperationPending(opId));
+
+        // Owner aborts the guardian-scheduled upgrade.
+        vm.prank(owner);
+        timelock.cancel(opId);
+        assertFalse(timelock.isOperation(opId));
+
+        // A cancelled operation cannot be executed even after the delay.
+        vm.warp(block.timestamp + MIN_DELAY);
+        vm.prank(guardian);
+        vm.expectRevert();
+        timelock.execute(address(escrow), 0, data, bytes32(0), salt);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────

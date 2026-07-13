@@ -113,13 +113,22 @@ the same chain.
 
 ### ShowCampaignEscrow deployment handoff
 
-As of **#1497**, `ShowCampaignEscrow` is a **UUPS implementation behind an
-ERC1967 proxy**, and its upgrade authority is a **`TimelockController`** (default
-48h delay) with the ops owner as proposer/executor and an independent **guardian
-holding `CANCELLER_ROLE`**. `DeployShowCampaignEscrow.s.sol` deploys the
-implementation, the timelock (granting the guardian CANCELLER and renouncing the
-transient deployer admin), and the proxy, then initializes the proxy binding the
-ops owner, fee config, and the timelock as `upgradeAuthority`.
+As of **#1497** (recovery hardened by **SCE-2/#1271**), `ShowCampaignEscrow` is a
+**UUPS implementation behind an ERC1967 proxy**, and its upgrade authority is a
+**`TimelockController`** (default 48h delay) with the ops owner as
+proposer/executor/canceller and an independent **guardian holding `PROPOSER_ROLE`
++ `EXECUTOR_ROLE` + `CANCELLER_ROLE`**. `DeployShowCampaignEscrow.s.sol` deploys
+the implementation, the timelock (granting the guardian all three roles and
+renouncing the transient deployer admin), and the proxy, then initializes the
+proxy binding the ops owner, fee config, and the timelock as `upgradeAuthority`.
+
+The guardian's proposer + executor roles give an **independent recovery path**:
+the escrow freezes every backer refund path while paused and `setPaused` is
+`onlyOwner`, so a lost/compromised owner key while paused could otherwise strand
+fan funds permanently. The guardian can schedule + execute a recovery upgrade on
+its own (still behind the 48h delay) to restore control. Safety is unchanged —
+the delay still applies, and owner and guardian both hold `CANCELLER_ROLE`, so
+each can veto the other's scheduled upgrade during the delay.
 
 Deploy env (in addition to the existing owner/fee vars):
 
@@ -129,7 +138,7 @@ Deploy env (in addition to the existing owner/fee vars):
 | `SHOW_CAMPAIGN_FEE_BPS` | Success-only campaign fee (bps) | 600 |
 | `SHOW_CAMPAIGN_FEE_RECIPIENT` | Platform fee wallet | required remote; local → owner |
 | `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` | Upgrade delay (seconds) | 172800 (48h) |
-| `SHOW_CAMPAIGN_GUARDIAN` | Guardian `CANCELLER` | required remote; local → owner |
+| `SHOW_CAMPAIGN_GUARDIAN` | Independent recovery key (`PROPOSER` + `EXECUTOR` + `CANCELLER`) | required remote; local → owner |
 
 `make deploy-show-campaign-escrow` deploys the escrow graph and then runs
 [`contracts/scripts/write-show-campaign-escrow-handoff.sh`](../../contracts/scripts/write-show-campaign-escrow-handoff.sh).
@@ -163,8 +172,9 @@ handoff regenerates only if the contract surface changed.
 
 #### Upgrading the implementation (timelocked)
 
-Upgrades go through the timelock in two phases (signer must be the ops owner /
-timelock proposer+executor):
+Upgrades go through the timelock in two phases (signer must be a timelock
+proposer+executor — normally the ops owner, or the guardian when driving an
+owner-key-loss recovery per SCE-2/#1271):
 
 ```bash
 cd contracts
@@ -183,8 +193,10 @@ UPGRADE_ACTION=execute NEW_IMPLEMENTATION=<new-impl> \
   forge script script/UpgradeShowCampaignEscrow.s.sol --rpc-url $RPC_URL --broadcast
 ```
 
-The guardian can abort a scheduled upgrade before the ETA with
-`timelock.cancel(<operationId>)`. See the emergency-response runbook in
+The guardian **or** the ops owner can abort a scheduled upgrade before the ETA
+with `timelock.cancel(<operationId>)` (both hold `CANCELLER_ROLE`), and the
+guardian can independently run both phases above to recover a lost/compromised
+owner key while paused. See the emergency-response runbook in
 [`docs/rfc/contract-upgradeability-and-recovery.md`](../rfc/contract-upgradeability-and-recovery.md).
 
 #### Local Anvil deploy + smoke check
