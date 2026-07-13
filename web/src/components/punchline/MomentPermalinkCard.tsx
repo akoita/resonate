@@ -2,6 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { PunchlineCollectibleCard } from "./PunchlineCollectibleCard";
+// Client component, so the client-module export is fine here; #1518 moves the
+// canonical definition to punchlineDropHelpers and keeps this path re-exported.
+import { formatClipDuration } from "./PunchlineClipSelector";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import type { PublicMomentShare } from "../../lib/momentShare";
 import "../../styles/punchline.css";
@@ -79,7 +82,7 @@ export function MomentPermalinkCard({
       {clipUrl ? (
         <button
           type="button"
-          className="punchline-btn-secondary punchline-collect-play"
+          className={`punchline-permalink-preview ${playing ? "is-playing" : ""}`}
           onClick={playing ? stopClip : playClip}
           aria-label={
             playing
@@ -87,7 +90,13 @@ export function MomentPermalinkCard({
               : `Preview ${share.moment.title}`
           }
         >
-          {playing ? "■ Stop preview" : "▶ Preview"}
+          <span className="punchline-permalink-preview__icon" aria-hidden>
+            {playing ? "■" : "▶"}
+          </span>
+          <span>{playing ? "Playing — tap to stop" : "Play preview"}</span>
+          <span className="punchline-permalink-preview__duration" aria-hidden>
+            {formatClipDuration(share.moment.endMs - share.moment.startMs)}
+          </span>
         </button>
       ) : null}
     </div>

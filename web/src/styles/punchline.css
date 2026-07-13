@@ -1244,6 +1244,77 @@
 }
 
 /* Circular icon button for clip preview. */
+/* Moment permalink preview (#1477): a full pill, not the collect module's
+   42px icon circle — this page has room and the preview IS the product. */
+.punchline-permalink-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px 9px 10px;
+  border-radius: var(--r-radius-full, 999px);
+  border: 1px solid var(--r-chrome-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary, #fff);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+
+.punchline-permalink-preview:hover {
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.18);
+  transform: translateY(-1px);
+}
+
+.punchline-permalink-preview__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(167, 139, 250, 0.16);
+  color: var(--r-primary, #a78bfa);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.punchline-permalink-preview__duration {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 0.74rem;
+  padding: 2px 8px;
+  border-radius: var(--r-radius-full, 999px);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-secondary, #94a3b8);
+}
+
+.punchline-permalink-preview.is-playing .punchline-permalink-preview__icon {
+  background: var(--r-primary, #a78bfa);
+  color: #0d0b14;
+  animation: punchline-preview-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes punchline-preview-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(167, 139, 250, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 7px rgba(167, 139, 250, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .punchline-permalink-preview.is-playing .punchline-permalink-preview__icon {
+    animation: none;
+  }
+}
+
 .punchline-collect-play {
   width: 42px;
   height: 42px;
