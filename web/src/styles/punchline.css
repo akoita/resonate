@@ -1674,6 +1674,9 @@
 .punchline-collect-module {
   position: relative;
   overflow: hidden;
+  /* Match every sibling release-page panel (e.g. .punchline-panel): the module
+     was the only square-cornered section on the page. */
+  border-radius: 20px;
 }
 
 .punchline-collect-module::before {
