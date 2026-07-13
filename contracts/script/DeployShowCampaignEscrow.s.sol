@@ -10,20 +10,37 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
 /**
  * @title DeployShowCampaignEscrow
  * @notice Deploys the Shows campaign escrow as a UUPS implementation behind an
- *         ERC1967 proxy, with a TimelockController as the upgrade authority and a
- *         guardian holding the CANCELLER role (issue #1497,
+ *         ERC1967 proxy, with a TimelockController as the upgrade authority. Both
+ *         the ops owner and an independent guardian hold PROPOSER + EXECUTOR +
+ *         CANCELLER roles on the timelock (issue #1497 + SCE-2/#1271,
  *         RFC contract-upgradeability-and-recovery).
  *
  * Authority model:
  *   - `owner` (ops multisig): day-to-day operations + the instant emergency pause.
- *     It CANNOT upgrade the implementation.
+ *     It CANNOT upgrade the implementation directly. On the timelock it is a
+ *     proposer + executor + canceller.
+ *   - `guardian` (independent recovery key): a SECOND, fully independent
+ *     proposer + executor + canceller on the timelock. It has no operational
+ *     authority over the escrow itself, but it can schedule + execute a recovery
+ *     upgrade through the timelock without the owner, and can cancel an
+ *     owner-scheduled upgrade.
  *   - `TimelockController`: the escrow's `upgradeAuthority`. Only a scheduled,
- *     delay-elapsed operation through the timelock can upgrade the proxy. The ops
- *     owner is the timelock's proposer+executor; the guardian is a CANCELLER that
- *     can abort a scheduled malicious/mistaken upgrade before it executes.
+ *     delay-elapsed operation through the timelock can upgrade the proxy.
+ *
+ * Recovery rationale (SCE-2, #1271):
+ *   The escrow freezes ALL backer refund paths while paused, and `setPaused` is
+ *   `onlyOwner`. If the owner key is lost or compromised while paused, the only
+ *   recovery is a UUPS upgrade through the timelock. Recovery must therefore NOT
+ *   depend on a single key: the guardian is a fully independent proposer +
+ *   executor so it can drive a recovery upgrade on its own. Safety is preserved
+ *   because that recovery upgrade is still gated by the same `minDelay` (48h)
+ *   timelock, and the owner — also a canceller — can cancel a malicious
+ *   guardian-initiated upgrade during the delay (and vice-versa). The two
+ *   authorities thus check each other without weakening the 48h protection
+ *   against a malicious upgrade.
  *
  * The deployer takes DEFAULT_ADMIN_ROLE on the timelock only transiently — long
- * enough to grant the guardian CANCELLER — then renounces it, leaving the timelock
+ * enough to grant the guardian its roles — then renounces it, leaving the timelock
  * self-administered (no EOA admin). This is the canonical OZ TimelockController
  * bootstrap; the alternative (admin=address(0)) makes the guardian grant impossible.
  *
@@ -35,7 +52,8 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  *   SHOW_CAMPAIGN_FEE_BPS         - success-only campaign fee in bps; defaults to 600
  *   SHOW_CAMPAIGN_FEE_RECIPIENT   - fee recipient; required on remote, local defaults to owner
  *   SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY - upgrade delay in seconds; defaults to 172800 (48h)
- *   SHOW_CAMPAIGN_GUARDIAN        - guardian CANCELLER; required on remote, local defaults to owner
+ *   SHOW_CAMPAIGN_GUARDIAN        - independent recovery key (proposer+executor+canceller);
+ *                                   required on remote, local defaults to owner
  */
 contract DeployShowCampaignEscrow is DeploymentKey {
     uint256 internal constant DEFAULT_TIMELOCK_MIN_DELAY = 172_800; // 48 hours
@@ -57,13 +75,22 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         ShowCampaignEscrow impl = new ShowCampaignEscrow();
 
         // 2. Upgrade-authority timelock. Ops owner is proposer + executor (and, per the
-        //    OZ constructor, a canceller). Deployer is a transient admin so it can add
-        //    the guardian as a canceller, then renounces.
+        //    OZ 5.x constructor, a canceller — it grants CANCELLER_ROLE to every proposer).
+        //    Deployer is a transient admin so it can also make the guardian an independent
+        //    proposer + executor + canceller, then renounces.
         address[] memory proposers = new address[](1);
         proposers[0] = owner;
         address[] memory executors = new address[](1);
         executors[0] = owner;
         TimelockController timelock = new TimelockController(minDelay, proposers, executors, deployer);
+        // SCE-2 (#1271): recovery must not depend on a single key. Grant the guardian a
+        // fully independent recovery path — PROPOSER + EXECUTOR + CANCELLER — so it can
+        // schedule and execute a recovery upgrade on its own if the owner key is lost or
+        // compromised while the escrow is paused. Safety is unchanged: the recovery upgrade
+        // is still gated by `minDelay` (48h), and the owner (also a canceller) can cancel a
+        // malicious guardian-initiated upgrade during the delay, and vice-versa.
+        timelock.grantRole(timelock.PROPOSER_ROLE(), guardian);
+        timelock.grantRole(timelock.EXECUTOR_ROLE(), guardian);
         timelock.grantRole(timelock.CANCELLER_ROLE(), guardian);
         timelock.renounceRole(timelock.DEFAULT_ADMIN_ROLE(), deployer);
 
@@ -84,6 +111,6 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         console.log("ShowCampaignEscrow (proxy):", address(escrow));
         console.log("Upgrade authority (timelock):", address(timelock));
         console.log("Timelock min delay (s):", minDelay);
-        console.log("Guardian (CANCELLER):", guardian);
+        console.log("Guardian (PROPOSER + EXECUTOR + CANCELLER):", guardian);
     }
 }
