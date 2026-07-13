@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "mergify/merge-queue/**"]
+    # NOTE: no "mergify/merge-queue/**" here — Mergify opens a draft PR for its
+    # queue branch, so the pull_request trigger already runs CI on the exact
+    # queue SHA; a push trigger too ran the SAME commit twice (operator-reported).
+    branches: [main, develop]
   pull_request:
     branches: [main, develop, "feat/*", "fix/*", "docs/*"]
   merge_group:
