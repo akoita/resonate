@@ -6357,6 +6357,12 @@ a.listener-cohort-detail__action:focus-visible {
   margin-top: var(--space-3);
 }
 
+/* The moments showcase reuses the punchline collect grid inside this panel;
+   give it the same breathing room under the section kicker as the grid above. */
+.community-profile-support .punchline-collect-grid {
+  margin-top: var(--space-3);
+}
+
 .community-profile-support-card {
   min-height: 124px;
   padding: var(--space-4);
