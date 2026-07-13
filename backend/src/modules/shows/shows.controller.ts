@@ -277,6 +277,25 @@ export class ShowsController {
     return this.showsService.resyncCampaignFromChain(this.actorFromRequest(req), id);
   }
 
+  // #1271 ops tool + drift-drill assertion surface: list reconciliation
+  // mismatches the escrow indexer detected (durable analytics facts), newest
+  // first. Operator/admin only.
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Get("operator/reconciliation-mismatches")
+  listReconciliationMismatches(
+    @Request() req: any,
+    @Query("contractCampaignId") contractCampaignId?: string,
+    @Query("sinceMinutes") sinceMinutes?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.showsService.listReconciliationMismatches(this.actorFromRequest(req), {
+      contractCampaignId,
+      sinceMinutes: sinceMinutes !== undefined ? Number(sinceMinutes) : undefined,
+      limit: limit !== undefined ? Number(limit) : undefined,
+    });
+  }
+
   // #1390 Tier 2: operator-only, read-only on-chain discovery of the contract
   // campaign id by matching the draft's deterministic escrow terms.
   @UseGuards(AuthGuard("jwt"), RolesGuard)

@@ -190,6 +190,66 @@ runbook: [`docs/features/staging_lifecycle_smoke.md`](../features/staging_lifecy
 On failure it opens/comments a `smoke-failure`-labeled issue linking the run;
 look for the `SMOKE_FAIL <step>: <reason>` line in the run log.
 
+## Reconciliation-Mismatch Alert (Shows drift)
+
+The escrow indexer reconciles on-chain truth against backend state. When it
+finds drift — an on-chain event on a campaign with **no bound backend row**, or
+an **on-chain pledge with no matching backend intent** — it emits
+`shows.campaign_reconciliation_mismatch` (#1271). This is a **fan-safety** signal:
+a real pledge (or fund movement) the backend didn't originate, or can't match.
+
+**How the alert reaches you.** The indexer writes a structured app-event log
+line (`jsonPayload.event = "shows.campaign_reconciliation_mismatch"`,
+`service = "resonate-backend"`). `resonate-iac`'s log-based metric
+(`backend_app_events{event="shows.campaign_reconciliation_mismatch"}`) turns any
+occurrence into a **Cloud Monitoring email alert** to the ops channel. The same
+drift is also written as a durable analytics fact.
+
+**Responding to an alert:**
+
+1. **Inspect the drift.** Call the operator endpoint (admin/operator JWT):
+
+   ```bash
+   curl -s -H "Authorization: Bearer $OPERATOR_JWT" \
+     "$API_BASE/shows/operator/reconciliation-mismatches?sinceMinutes=120&limit=50" | jq .
+   # Optionally filter to one campaign: &contractCampaignId=<id>
+   ```
+
+   Each row is `{ occurredAt, contractCampaignId, escrowEventName,
+   transactionHash, blockNumber, reason }`. The `reason` tells you which drift
+   variety it is.
+
+2. **If the reason is "no matching backend intent"** — a pledge landed on-chain
+   without a backend intent (an out-of-band pledge, a client that never called
+   `/pledges/intent`, or a lost intent write). Confirm the on-chain pledge
+   (`transactionHash`) is real, then `POST /shows/campaigns/:id/resync-chain` to
+   re-hydrate the campaign from chain. The pledge amount is authoritative from
+   chain; the fan's on-chain funds are safe in escrow. Reconcile the backer
+   record manually if needed.
+
+3. **If the reason is "no backend campaign bound…"** — an on-chain campaign has
+   no linked backend row. Bind/activate the campaign (operator activation with
+   the `contractCampaignId`) or, if it is not ours, record and ignore.
+
+4. **If the reason is "funds released … while an off-chain dispute is open"** —
+   chain released despite an open dispute (release is time-locked, not
+   dispute-blocked on-chain). Escalate: this is a governance/dispute-window gap,
+   not an indexer bug.
+
+5. **Escalate** any drift you cannot explain from chain data — treat unexplained
+   fund movement as a security event.
+
+**Proving the alert works.** The **Staging Reconciliation Drill**
+(`.github/workflows/staging-reconciliation-drill.yml`, `workflow_dispatch` only)
+provokes a genuine pledge-without-intent drift on staging and asserts the
+operator endpoint surfaces it. Run it after any deploy that touches the escrow
+indexer. Full guide:
+[`docs/features/staging_reconciliation_drill.md`](../features/staging_reconciliation_drill.md).
+
+The same structured-app-event + log-based-metric + email-alert path also covers
+`x402.refund_due_stale` (#1506) — a paid Punchline collect that could not be
+fulfilled and owes an out-of-band refund; respond via the x402 refund runbook.
+
 ## Address Promotion Through IaC
 
 Do not copy console output straight into Cloud Run or GitHub variables by hand.

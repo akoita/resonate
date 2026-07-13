@@ -231,7 +231,19 @@ describe("x402 refund_due reconciliation (integration)", () => {
     });
 
     it("publishes one aggregate alert while a stale refund_due row exists", async () => {
-      await watchdog.runSweepOnce();
+      // writeStructuredLog defaults to console.info; capture the structured
+      // app-event line the iac log-based metric parses (#1271).
+      const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
+      let structuredLines: string[] = [];
+      try {
+        await watchdog.runSweepOnce();
+      } finally {
+        structuredLines = infoSpy.mock.calls
+          .map((call) => String(call[0]))
+          .filter((line) => line.includes('"event":"x402.refund_due_stale"'));
+        infoSpy.mockRestore();
+      }
+
       const alerts = events.filter(
         (e) => e.eventName === "x402.refund_due_stale",
       ) as X402RefundDueStaleEvent[];
@@ -241,6 +253,20 @@ describe("x402 refund_due reconciliation (integration)", () => {
       expect(alert.oldestAgeHours).toBeGreaterThanOrEqual(5);
       expect(alert.thresholdHours).toBe(2);
       expect(alert.settlementIds.length).toBeGreaterThanOrEqual(1);
+
+      // The structured app-event line drives the stale-refund Cloud Monitoring
+      // alert: it must carry service=resonate-backend, the event name, and the
+      // aggregate counts.
+      expect(structuredLines.length).toBeGreaterThanOrEqual(1);
+      const structured = JSON.parse(structuredLines[0]);
+      expect(structured).toMatchObject({
+        service: "resonate-backend",
+        level: "warn",
+        event: "x402.refund_due_stale",
+        thresholdHours: 2,
+      });
+      expect(structured.outstandingCount).toBeGreaterThanOrEqual(1);
+      expect(Array.isArray(structured.settlementIds)).toBe(true);
     });
 
     it("publishes nothing once the stale row is refunded", async () => {

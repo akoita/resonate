@@ -128,6 +128,24 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["campaignId", "contractCampaignId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
   },
   {
+    // #1271 ops/audit: durable, queryable record of every reconciliation
+    // mismatch the escrow indexer detects. Powers the operator endpoint
+    // GET /shows/operator/reconciliation-mismatches and the drift drill's
+    // assertion surface. Identifiers + coarse reason only — never PII/secrets.
+    eventName: "shows.campaign_reconciliation_mismatch",
+    producer: "shows-escrow-indexer",
+    subjectType: "show_campaign",
+    subjectIdKeys: ["contractCampaignId"],
+    payloadKeys: [
+      "contractCampaignId",
+      "escrowEventName",
+      "transactionHash",
+      "blockNumber",
+      "reason",
+    ],
+    sourceRefKeys: ["contractCampaignId", "transactionHash", "blockNumber"],
+  },
+  {
     eventName: "taste_memory.settings_updated",
     producer: "taste-memory-service",
     subjectType: "taste_memory",

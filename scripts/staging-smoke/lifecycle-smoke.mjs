@@ -53,169 +53,41 @@ import {
   http,
   keccak256,
   toHex,
-  parseAbi,
-  decodeEventLog,
   getAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
+import {
+  RUN_ID,
+  FAUCET_URL,
+  SmokeError,
+  req,
+  num,
+  int,
+  sleep,
+  writeWithLagRetry,
+  readStatusUntil,
+  fetchJson,
+  authHeaders,
+  decodeJwtRole,
+  ESCROW_ABI,
+  ERC20_ABI,
+  STATUS_NAMES,
+  normalizeKey,
+  extractCampaignId,
+  assertAddressEqual,
+  assertUnits,
+  createRun,
+  failAndExit,
+} from "./lib.mjs";
 
 // ---------------------------------------------------------------------------
-// Config + tiny helpers
+// Run state + config
 // ---------------------------------------------------------------------------
 
 const DRY_RUN = process.argv.includes("--dry-run");
-const RUN_ID = process.env.GITHUB_RUN_ID
-  ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`
-  : `${Date.now()}`;
-const FAUCET_URL = "https://faucet.circle.com";
-
-function req(name) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new SmokeError("preflight", `missing required env ${name}`);
-  return value;
-}
-function num(name, fallback) {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const parsed = BigInt(raw);
-  return parsed;
-}
-function int(name, fallback) {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  return Number.parseInt(raw, 10);
-}
-
-class SmokeError extends Error {
-  constructor(step, reason) {
-    super(reason);
-    this.step = step;
-  }
-}
-
-const started = Date.now();
-const timings = [];
-const txHashes = {};
-
-function ok(step, since, extra) {
-  const ms = Date.now() - since;
-  timings.push({ step, ms });
-  console.log(`[smoke] ${step} OK (${ms}ms)${extra ? ` — ${extra}` : ""}`);
-}
-function info(step, message) {
-  console.log(`[smoke] ${step} … ${message}`);
-}
-
-// The public RPC endpoint is load-balanced: a receipt from one replica does
-// not guarantee the next call's simulation (eth_call on another replica) sees
-// that block yet. Retry writes whose SIMULATION reverts, briefly — real
-// contract reverts keep failing and surface after the last attempt.
-async function writeWithLagRetry(wallet, params, step, attempts = 5, delayMs = 3000) {
-  let lastError;
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      return await wallet.writeContract(params);
-    } catch (error) {
-      lastError = error;
-      const message = String(error?.message ?? error);
-      const simulationRevert = message.includes("reverted") || message.includes("execution reverted");
-      if (!simulationRevert || i === attempts - 1) throw error;
-      info(step, `simulation reverted (possible replica lag), retry ${i + 1}/${attempts - 1} in ${delayMs}ms`);
-      await sleep(delayMs);
-    }
-  }
-  throw lastError;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// A tx receipt does not guarantee the next read (on another load-balanced RPC
-// replica) reflects the new block yet. Poll a fresh campaignStatus read until
-// it reaches one of `wanted`, or throw after the bound. Used for post-write
-// state assertions so read lag can't fail a step whose write succeeded.
-async function readStatusUntil(publicClient, escrow, abi, campaignId, wanted, statusNames, step, timeoutMs = 60000, delayMs = 3000) {
-  const wantSet = new Set(wanted);
-  const deadline = Date.now() + timeoutMs;
-  let last;
-  for (;;) {
-    const code = Number(await publicClient.readContract({
-      address: escrow, abi, functionName: "campaignStatus", args: [campaignId],
-    }));
-    last = statusNames[code] ?? code;
-    if (wantSet.has(last)) return last;
-    if (Date.now() >= deadline) {
-      throw new SmokeError(step, `on-chain status is ${last} after ${Math.round(timeoutMs / 1000)}s, expected one of ${wanted.join("/")}`);
-    }
-    await sleep(delayMs);
-  }
-}
-
-async function fetchJson(url, init, step) {
-  let res;
-  try {
-    res = await fetch(url, init);
-  } catch (err) {
-    throw new SmokeError(step, `request to ${url} failed: ${err.message}`);
-  }
-  const text = await res.text();
-  if (!res.ok) {
-    throw new SmokeError(step, `${init?.method ?? "GET"} ${url} -> ${res.status}: ${text.slice(0, 300)}`);
-  }
-  // #1386 regression is implicitly covered: every API response must parse as JSON.
-  try {
-    return text ? JSON.parse(text) : {};
-  } catch {
-    throw new SmokeError(step, `${url} returned non-JSON body: ${text.slice(0, 200)}`);
-  }
-}
-
-function authHeaders(token) {
-  return { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
-}
-
-function decodeJwtRole(token) {
-  const parts = token.split(".");
-  if (parts.length !== 3) throw new SmokeError("auth", "JWT is not a well-formed token");
-  const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
-  return payload.role;
-}
-
-// ---------------------------------------------------------------------------
-// Minimal escrow + ERC-20 ABIs (fragments from
-// contracts/src/core/ShowCampaignEscrow.sol + IShowCampaignEscrow.sol).
-// ---------------------------------------------------------------------------
-
-const ESCROW_ABI = parseAbi([
-  "function createCampaign(bytes32 artistIdHash, bytes32 authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline, uint256 depositReleaseBps, uint256 disputeWindowSeconds) returns (uint256 campaignId)",
-  "function activateCampaign(uint256 campaignId)",
-  "function pledge(uint256 campaignId, uint256 amount)",
-  "function confirmBooking(uint256 campaignId)",
-  "function confirmFulfillment(uint256 campaignId)",
-  "function releaseFunds(uint256 campaignId)",
-  "function cancelCampaign(uint256 campaignId)",
-  "function claimRefund(uint256 campaignId)",
-  "function campaigns(uint256) view returns (bytes32 artistIdHash, bytes32 authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline, uint256 depositReleaseBps, uint256 disputeWindowSeconds, uint256 totalPledged, uint256 totalRefunded, uint256 totalReleased, uint256 uniqueBackers, uint256 fulfilledAt, uint8 status, uint256 feeBps, uint256 totalFeePaid)",
-  "function campaignFees(uint256 campaignId) view returns (uint256 feeBps, uint256 totalFeePaid)",
-  "function campaignStatus(uint256 campaignId) view returns (uint8)",
-  "function feeRecipient() view returns (address)",
-  "event CampaignCreated(uint256 indexed campaignId, bytes32 indexed artistIdHash, bytes32 indexed authorityHash, address beneficiary, address paymentToken, uint256 goalAmount, uint256 minimumBackers, uint256 deadline, uint256 bookingDeadline)",
-]);
-
-const ERC20_ABI = parseAbi([
-  "function balanceOf(address owner) view returns (uint256)",
-  "function decimals() view returns (uint8)",
-  "function approve(address spender, uint256 amount) returns (bool)",
-  "function allowance(address owner, address spender) view returns (uint256)",
-]);
-
-// Escrow CampaignStatus enum order (IShowCampaignEscrow.sol).
-const STATUS_NAMES = [
-  "Draft", "Active", "Funded", "BookingConfirmed", "DepositReleased",
-  "Fulfilled", "Released", "Cancelled", "RefundAvailable", "Refunded",
-];
+const run = createRun("smoke");
+const { ok, info, txHashes } = run;
 
 // ---------------------------------------------------------------------------
 // Main
@@ -319,7 +191,7 @@ async function main() {
 
   if (DRY_RUN) {
     console.log("[smoke] --dry-run: stopped cleanly after preflight + auth");
-    report({ mode: RELEASE_MODE, skipped: ["chain-create", "api-draft", "api-authority", "pledge", "indexer-confirm", "terminal leg"] });
+    run.report({ mode: RELEASE_MODE, skipped: ["chain-create", "api-draft", "api-authority", "pledge", "indexer-confirm", "terminal leg"] });
     return;
   }
 
@@ -349,7 +221,7 @@ async function main() {
 
     const activateHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "activateCampaign", args: [contractCampaignId],
-    }, "chain-create");
+    }, "chain-create", run);
     txHashes.activateCampaignChain = activateHash;
     const activateReceipt = await publicClient.waitForTransactionReceipt({ hash: activateHash });
     if (activateReceipt.status !== "success") throw new SmokeError("chain-create", `activateCampaign tx reverted (${activateHash})`);
@@ -465,7 +337,7 @@ async function main() {
     }
     const pledgeHash = await writeWithLagRetry(smokeWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "pledge", args: [contractCampaignId, PLEDGE_UNITS],
-    }, "pledge");
+    }, "pledge", run);
     txHashes.pledge = pledgeHash;
     const pledgeReceipt = await publicClient.waitForTransactionReceipt({ hash: pledgeHash });
     if (pledgeReceipt.status !== "success") throw new SmokeError("pledge", `pledge tx reverted (${pledgeHash})`);
@@ -519,7 +391,7 @@ async function main() {
       `[smoke]   release path: Actions -> Smart Contract Deployment -> operation=confirm-show-campaign-booking, ` +
       `then confirm-show-campaign-fulfillment, then (after the dispute window) release-show-campaign-funds, each with campaign_id=${contractCampaignId}`,
     );
-    report({ mode: RELEASE_MODE, skipped: ["cancel", "claim-refund", "backend-refund-state", "confirm+fulfill", "release", "backend-settled"], contractCampaignId, backendId, slug });
+    run.report({ mode: RELEASE_MODE, skipped: ["cancel", "claim-refund", "backend-refund-state", "confirm+fulfill", "release", "backend-settled"], contractCampaignId, backendId, slug });
     return;
   }
 
@@ -529,7 +401,7 @@ async function main() {
       const t = Date.now();
       const cancelHash = await writeWithLagRetry(deployerWallet, {
         address: ESCROW, abi: ESCROW_ABI, functionName: "cancelCampaign", args: [contractCampaignId],
-      }, "cancel");
+      }, "cancel", run);
       txHashes.cancelCampaign = cancelHash;
       const receipt = await publicClient.waitForTransactionReceipt({ hash: cancelHash });
       if (receipt.status !== "success") throw new SmokeError("cancel", `cancelCampaign tx reverted (${cancelHash})`);
@@ -546,7 +418,7 @@ async function main() {
       const t = Date.now();
       const claimHash = await writeWithLagRetry(smokeWallet, {
         address: ESCROW, abi: ESCROW_ABI, functionName: "claimRefund", args: [contractCampaignId],
-      }, "claim-refund");
+      }, "claim-refund", run);
       txHashes.claimRefund = claimHash;
       const receipt = await publicClient.waitForTransactionReceipt({ hash: claimHash });
       if (receipt.status !== "success") throw new SmokeError("claim-refund", `claimRefund tx reverted (${claimHash})`);
@@ -600,7 +472,7 @@ async function main() {
       }
     }
 
-    report({
+    run.report({
       mode: RELEASE_MODE,
       note: "refund loop complete — USDC recycled, campaign discovery-excluded; fee/release leg is covered by the weekly full run",
       contractCampaignId, backendId, slug,
@@ -616,14 +488,14 @@ async function main() {
     const t = Date.now();
     const bookingHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "confirmBooking", args: [contractCampaignId],
-    }, "confirm-booking");
+    }, "confirm-booking", run);
     txHashes.confirmBooking = bookingHash;
     const bookingReceipt = await publicClient.waitForTransactionReceipt({ hash: bookingHash });
     if (bookingReceipt.status !== "success") throw new SmokeError("confirm+fulfill", `confirmBooking reverted (${bookingHash})`);
 
     const fulfillHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "confirmFulfillment", args: [contractCampaignId],
-    }, "confirm-fulfillment");
+    }, "confirm-fulfillment", run);
     txHashes.confirmFulfillment = fulfillHash;
     const fulfillReceipt = await publicClient.waitForTransactionReceipt({ hash: fulfillHash });
     if (fulfillReceipt.status !== "success") throw new SmokeError("confirm+fulfill", `confirmFulfillment reverted (${fulfillHash})`);
@@ -651,7 +523,7 @@ async function main() {
     }
     const releaseHash = await writeWithLagRetry(deployerWallet, {
       address: ESCROW, abi: ESCROW_ABI, functionName: "releaseFunds", args: [contractCampaignId],
-    }, "release");
+    }, "release", run);
     txHashes.releaseFunds = releaseHash;
     const releaseReceipt = await publicClient.waitForTransactionReceipt({ hash: releaseHash });
     if (releaseReceipt.status !== "success") throw new SmokeError("release", `releaseFunds reverted (${releaseHash})`);
@@ -702,7 +574,7 @@ async function main() {
         assertUnits("backend-settled", "grossReleasedUnits", b.grossReleasedUnits, PLEDGE_UNITS);
         assertUnits("backend-settled", "netReleasedToArtistUnits", b.netReleasedToArtistUnits, expectedNetUnits);
         ok("backend-settled", t, `status released, fee ${b.totalFeePaidUnits}, net ${b.netReleasedToArtistUnits}`);
-        report({ mode: RELEASE_MODE, contractCampaignId, backendId, slug, expectedFeeUnits, expectedNetUnits, BENEFICIARY });
+        run.report({ mode: RELEASE_MODE, contractCampaignId, backendId, slug, expectedFeeUnits, expectedNetUnits, BENEFICIARY });
         return;
       }
       if (Date.now() + 6000 >= deadlineMs) {
@@ -713,68 +585,4 @@ async function main() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Assertion + report helpers
-// ---------------------------------------------------------------------------
-
-function normalizeKey(key) {
-  const k = key.startsWith("0x") ? key : `0x${key}`;
-  return k;
-}
-
-function extractCampaignId(logs) {
-  for (const log of logs) {
-    try {
-      const decoded = decodeEventLog({ abi: ESCROW_ABI, data: log.data, topics: log.topics });
-      if (decoded.eventName === "CampaignCreated") return decoded.args.campaignId;
-    } catch {
-      // not our event
-    }
-  }
-  return null;
-}
-
-function assertAddressEqual(step, field, actual, expected) {
-  if (!actual) throw new SmokeError(step, `${field} is missing on the API response`);
-  if (getAddress(actual) !== getAddress(expected)) {
-    throw new SmokeError(step, `${field} is ${actual}, expected ${expected}`);
-  }
-}
-
-function assertUnits(step, field, actual, expected) {
-  if (actual === undefined || actual === null) throw new SmokeError(step, `${field} is missing`);
-  if (BigInt(actual) !== expected) {
-    throw new SmokeError(step, `${field} is ${actual}, expected ${expected}`);
-  }
-}
-
-function report(summary) {
-  console.log("\n[smoke] ===== summary =====");
-  console.log(`[smoke] run ${RUN_ID}, mode ${summary.mode ?? "n/a"}, total ${Date.now() - started}ms`);
-  if (summary.contractCampaignId !== undefined) {
-    console.log(`[smoke] contractCampaignId ${summary.contractCampaignId}, backendId ${summary.backendId}, slug ${summary.slug}`);
-  }
-  for (const { step, ms } of timings) console.log(`[smoke]   ${step.padEnd(20)} ${ms}ms`);
-  if (Object.keys(txHashes).length) {
-    console.log("[smoke] tx hashes:");
-    for (const [k, v] of Object.entries(txHashes)) console.log(`[smoke]   ${k.padEnd(20)} ${v}`);
-  }
-  if (summary.expectedFeeUnits !== undefined) {
-    console.log(`[smoke] fee split: fee ${summary.expectedFeeUnits}, net ${summary.expectedNetUnits} -> ${summary.BENEFICIARY}`);
-  }
-  if (summary.note) {
-    console.log(`[smoke] note: ${summary.note}`);
-  }
-  if (summary.skipped?.length) {
-    console.log(`[smoke] skipped steps: ${summary.skipped.join(", ")}`);
-  }
-  console.log("[smoke] ===================");
-}
-
-main().catch((err) => {
-  const step = err instanceof SmokeError ? err.step : "unknown";
-  const reason = err?.message ?? String(err);
-  console.error(`SMOKE_FAIL ${step}: ${reason}`);
-  if (!(err instanceof SmokeError)) console.error(err.stack);
-  process.exit(1);
-});
+main().catch(failAndExit);

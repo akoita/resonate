@@ -196,6 +196,9 @@ and the faucet URL.
 
 - Implementation plan: `docs/issue-1392-implementation-plan.md`
 - Script: `scripts/staging-smoke/lifecycle-smoke.mjs`
+- Shared helpers: `scripts/staging-smoke/lib.mjs` (also used by the drill)
+- Companion drill: [Staging Reconciliation Drill](staging_reconciliation_drill.md)
+  (`workflow_dispatch`-only proof that the reconciliation-mismatch alert fires)
 - Workflow: `.github/workflows/staging-lifecycle-smoke.yml`
 - Escrow contract: `contracts/src/core/ShowCampaignEscrow.sol`,
   interface `contracts/src/interfaces/IShowCampaignEscrow.sol`

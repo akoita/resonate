@@ -320,16 +320,27 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     await seedCampaign("mismatch", "4");
     mismatches.length = 0;
 
-    await service.processLog(
-      buildLog("Pledged", {
-        campaignId: 4n,
-        backer: OTHER_BACKER as `0x${string}`,
-        amount: 99n,
-        totalPledged: 99n,
-      }),
-      CHAIN_ID,
-      ESCROW,
-    );
+    // writeStructuredLog defaults to console.info; capture the structured
+    // app-event line the iac log-based metric parses (#1271).
+    const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
+    let structuredLines: string[] = [];
+    try {
+      await service.processLog(
+        buildLog("Pledged", {
+          campaignId: 4n,
+          backer: OTHER_BACKER as `0x${string}`,
+          amount: 99n,
+          totalPledged: 99n,
+        }),
+        CHAIN_ID,
+        ESCROW,
+      );
+    } finally {
+      structuredLines = infoSpy.mock.calls
+        .map((call) => String(call[0]))
+        .filter((line) => line.includes('"event":"shows.campaign_reconciliation_mismatch"'));
+      infoSpy.mockRestore();
+    }
 
     expect(mismatches.length).toBeGreaterThanOrEqual(1);
     expect(mismatches[0]).toMatchObject({
@@ -338,6 +349,19 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     });
     // No secret leakage in the audit event.
     expect(JSON.stringify(mismatches[0])).not.toContain(ESCROW);
+
+    // The structured app-event line drives the Cloud Monitoring alert: it must
+    // carry service=resonate-backend, the event name, and the drift reason.
+    expect(structuredLines.length).toBeGreaterThanOrEqual(1);
+    const structured = JSON.parse(structuredLines[0]);
+    expect(structured).toMatchObject({
+      service: "resonate-backend",
+      level: "warn",
+      event: "shows.campaign_reconciliation_mismatch",
+      escrowEventName: "Pledged",
+      contractCampaignId: "4",
+    });
+    expect(String(structured.reason)).toContain("no matching backend intent");
   });
 
   it("alerts when funds are released on-chain while an off-chain dispute is open (#950)", async () => {

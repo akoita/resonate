@@ -35,6 +35,21 @@ type Actor = {
   role?: string;
 };
 
+type ReconciliationMismatchQuery = {
+  contractCampaignId?: string | number | null;
+  sinceMinutes?: number | null;
+  limit?: number | null;
+};
+
+type ReconciliationMismatchRecord = {
+  occurredAt: string;
+  contractCampaignId: string | null;
+  escrowEventName: string | null;
+  transactionHash: string | null;
+  blockNumber: string | null;
+  reason: string | null;
+};
+
 type CampaignBaseInput = {
   artistId?: string | null;
   artistDisplayName: string;
@@ -583,6 +598,37 @@ function campaignTitle(input: Pick<CampaignBaseInput, "title">, artistDisplayNam
 
 function isPrivilegedActor(actor: Actor) {
   return ["admin", "operator"].includes(actor.role ?? "");
+}
+
+/** Clamp an optional numeric query param to [min, max], falling back on invalid input. */
+function clampInteger(
+  value: number | null | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.trunc(parsed);
+  if (rounded < min) return min;
+  if (rounded > max) return max;
+  return rounded;
+}
+
+/** Normalize a contractCampaignId filter to the canonical string the bridge stores. */
+function normalizeContractCampaignId(
+  value: string | number | null | undefined,
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function stringOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
 }
 
 function configuredNumber(keys: string[], fallback: number) {
@@ -1866,6 +1912,58 @@ export class ShowsService {
     const campaign = await this.findCampaignOrThrow(campaignId);
     const hydrated = await this.hydrateLinkedCampaignFromChain(campaign);
     return serializeManagedShowCampaign(hydrated);
+  }
+
+  /**
+   * #1271 ops tool + drill assertion surface: list reconciliation mismatches the
+   * escrow indexer detected, newest first. Reads the durable analytics facts the
+   * domain-event bridge writes for `shows.campaign_reconciliation_mismatch`, so
+   * an operator (or the staging drift drill) can confirm a specific on-chain
+   * drift was observed without tailing Cloud Logging. Operator/admin only.
+   */
+  async listReconciliationMismatches(
+    actor: Actor,
+    query: ReconciliationMismatchQuery = {},
+  ): Promise<ReconciliationMismatchRecord[]> {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can read reconciliation mismatches");
+    }
+    const sinceMinutes = clampInteger(query.sinceMinutes, 1440, 1, 10080);
+    const limit = clampInteger(query.limit, 50, 1, 200);
+    const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
+
+    const where: Prisma.AnalyticsEventWhereInput = {
+      eventName: "shows.campaign_reconciliation_mismatch",
+      occurredAt: { gte: since },
+    };
+    const contractCampaignId = normalizeContractCampaignId(query.contractCampaignId);
+    if (contractCampaignId !== undefined) {
+      // Bridge stores contractCampaignId as the subjectId (string). Fall back to
+      // a payload match so a record is never missed if the subject is absent.
+      where.OR = [
+        { subjectId: contractCampaignId },
+        { payload: { path: ["contractCampaignId"], equals: contractCampaignId } },
+      ];
+    }
+
+    const rows = await prisma.analyticsEvent.findMany({
+      where,
+      orderBy: { occurredAt: "desc" },
+      take: limit,
+      select: { occurredAt: true, subjectId: true, payload: true },
+    });
+
+    return rows.map((row) => {
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      return {
+        occurredAt: row.occurredAt.toISOString(),
+        contractCampaignId: stringOrNull(payload.contractCampaignId ?? row.subjectId),
+        escrowEventName: stringOrNull(payload.escrowEventName),
+        transactionHash: stringOrNull(payload.transactionHash),
+        blockNumber: stringOrNull(payload.blockNumber),
+        reason: stringOrNull(payload.reason),
+      };
+    });
   }
 
   /**

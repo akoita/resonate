@@ -1,0 +1,109 @@
+name: Staging Reconciliation Drill
+
+# Provokes a genuine on-chain-pledge-without-backend-intent drift against the
+# REAL staging deployment and asserts the escrow indexer detects it and surfaces
+# it on the operator endpoint (#1271). This proves the reconciliation-mismatch
+# alert is real end to end — the last implementation gap in the #1271 go-live
+# gate.
+#
+# workflow_dispatch ONLY — NO schedule. Each run burns a campaign and relies on
+# indexer timing; operators run it after deploys that touch the indexer and for
+# the #1271 gate proof. On failure it opens (or comments on) a
+# `smoke-failure`-labeled issue linking the run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Stop cleanly after preflight + auth (no campaign burned).
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    environment: contracts-staging
+    # Detection polling is bounded to a few minutes; cleanup is the refund loop.
+    timeout-minutes: 20
+    env:
+      API_BASE: ${{ vars.STAGING_API_BASE }}
+      RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || vars.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
+      SHOW_CAMPAIGN_ESCROW_ADDRESS: ${{ vars.SHOW_CAMPAIGN_ESCROW_ADDRESS }}
+      PAYMENT_TOKEN: ${{ vars.PAYMENT_TOKEN }}
+      SMOKE_BENEFICIARY: ${{ vars.SMOKE_BENEFICIARY || '0xa5369569fd24b019923bae45db8f9c0e6bf482cb' }}
+      SMOKE_ARTIST_DISPLAY_NAME: ${{ vars.SMOKE_ARTIST_DISPLAY_NAME }}
+      SMOKE_ARTIST_ID: ${{ vars.SMOKE_ARTIST_ID }}
+      CONTRACT_DEPLOYER_PRIVATE_KEY: ${{ secrets.CONTRACT_DEPLOYER_PRIVATE_KEY }}
+      SMOKE_WALLET_PRIVATE_KEY: ${{ secrets.SMOKE_WALLET_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: scripts/staging-smoke/package-lock.json
+
+      - name: Install drill dependencies
+        working-directory: scripts/staging-smoke
+        run: npm ci
+
+      - name: Validate required config
+        run: |
+          missing=""
+          for v in API_BASE SHOW_CAMPAIGN_ESCROW_ADDRESS PAYMENT_TOKEN; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          for s in CONTRACT_DEPLOYER_PRIVATE_KEY SMOKE_WALLET_PRIVATE_KEY; do
+            if [ -z "${!s}" ]; then missing="$missing $s"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required config in contracts-staging environment:$missing"
+            exit 1
+          fi
+
+      - name: Run reconciliation drill
+        id: drill
+        working-directory: scripts/staging-smoke
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            node reconciliation-drill.mjs --dry-run
+          else
+            node reconciliation-drill.mjs
+          fi
+
+      - name: Open or update failure issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Staging reconciliation drill failed"
+          LABEL="smoke-failure"
+
+          # Ensure the label exists (ignore "already exists").
+          gh label create "$LABEL" --color "d73a4a" \
+            --description "Staging smoke/drill (#1392/#1271) failure" 2>/dev/null || true
+
+          BODY=$(printf '## Staging reconciliation drill failed\n\nThe automated reconciliation drift drill (#1271) failed — a provoked on-chain-pledge-without-intent drift was NOT detected, or setup/cleanup broke.\n\n- Run: %s\n- Attempt: %s\n- Trigger: %s\n\nCheck the `Run reconciliation drill` step logs for the `SMOKE_FAIL <step>: <reason>` line, then follow the runbook in `docs/features/staging_reconciliation_drill.md` and `docs/smart-contracts/operations-runbook.md`.' \
+            "$RUN_URL" "${{ github.run_attempt }}" "${{ github.event_name }}")
+
+          # Reuse the most recent open failure issue when present.
+          EXISTING=$(gh issue list --state open --label "$LABEL" \
+            --search "$TITLE in:title" --json number --jq '.[0].number' || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            echo "Commenting on existing issue #$EXISTING"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "Opening new failure issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi

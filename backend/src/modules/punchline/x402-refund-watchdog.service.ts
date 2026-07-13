@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { writeStructuredLog } from "../shared/structured_logging";
 
 /**
  * Stale `refund_due` watchdog (#1506).
@@ -96,6 +97,21 @@ export class X402RefundWatchdogService implements OnModuleInit, OnModuleDestroy 
         `${stale.length} x402 refund_due settlement(s) unresolved past ${thresholdHours}h ` +
           `(oldest ${oldestAgeHours}h). Reconcile via the x402 refund runbook.`,
       );
+
+      // Structured app-event line the iac log-based metric parses
+      // (jsonPayload.event="x402.refund_due_stale"). Cloud Monitoring alerts on
+      // any occurrence — keep the event name identical to the domain event and
+      // the iac local.backend_app_event_names entry.
+      writeStructuredLog({
+        level: "warn",
+        event: "x402.refund_due_stale",
+        message: "Stale x402 refund_due settlements detected",
+        outstandingCount: stale.length,
+        oldestAgeHours,
+        thresholdHours,
+        settlementIds,
+        ...(totalAmountUsd !== undefined ? { totalAmountUsd } : {}),
+      });
 
       this.eventBus.publish({
         eventName: "x402.refund_due_stale",
