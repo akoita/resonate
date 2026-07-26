@@ -183,11 +183,11 @@ make local-aa-down   # Stop Anvil + Alto
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js 15, TanStack Query, Viem/Wagmi |
+| Frontend | Next.js 16, React 19, Zustand, Viem, ZeroDev (ERC-4337 passkeys) |
 | Backend | NestJS, Prisma, BullMQ, GCP Pub/Sub, PostgreSQL |
-| Blockchain | Solidity, Foundry, ERC-4337, ZeroDev |
-| AI | Demucs (htdemucs_6s), Vertex AI |
-| Infrastructure | Docker, Redis, GCP Pub/Sub, GitHub Actions |
+| Blockchain | Solidity, Foundry, ERC-4337, ZeroDev, x402 |
+| AI | Demucs (htdemucs_6s), Vertex AI (Lyria, Gemini) |
+| Infrastructure | Docker, Redis, GCP Pub/Sub, Cloud Run, Terraform, GitHub Actions |
 
 ---
 
