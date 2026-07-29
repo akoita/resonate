@@ -7,6 +7,11 @@ Current surface:
 - Endpoint: `POST /mcp`
 - Curl-friendly capability check: `GET /mcp`
 - Discovery metadata: `GET /.well-known/mcp.json`
+- Protocol revision: `2025-11-25`, pinned as an explicit literal in
+  `mcp.constants.ts` (`MCP_PROTOCOL_VERSION`) and reused by
+  `/.well-known/mcp.json` and the ERC-8004 agent registration file. Raising it
+  is a protocol change, not an SDK bump — see
+  [issue #1536](https://github.com/akoita/resonate/issues/1536).
 - Tools:
   - `catalog.search(query, limit)`
   - `stem.quote(stemId, licenseType)`

@@ -7,6 +7,7 @@ import {
   McpStemService,
   McpToolError,
 } from "../modules/mcp/mcp-stem.service";
+import { MCP_PROTOCOL_VERSION } from "../modules/mcp/mcp.constants";
 import { createControllerTestApp } from "./e2e-helpers";
 
 const mockCatalogService = {
@@ -127,7 +128,7 @@ describe("McpController (HTTP)", () => {
 
     expect(res.body).toEqual(expect.objectContaining({
       schemaVersion: "resonate-mcp-capabilities/v1",
-      protocolVersion: expect.any(String),
+      protocolVersion: MCP_PROTOCOL_VERSION,
       serverInfo: {
         name: "resonate-mcp",
         version: "0.1.0",
@@ -168,6 +169,11 @@ describe("McpController (HTTP)", () => {
         publicRouter: false,
       }),
     }));
+
+    // Pinned deliberately: raising the advertised MCP revision is a protocol
+    // change (published to agents and to on-chain identity records), not a side
+    // effect of an SDK bump. See issue #1536.
+    expect(MCP_PROTOCOL_VERSION).toBe("2025-11-25");
   });
 
   it("serves catalog.search through Streamable HTTP MCP", async () => {

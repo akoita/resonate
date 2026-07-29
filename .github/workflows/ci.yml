@@ -131,6 +131,14 @@ jobs:
                     backend=true
                     backend_generation=true
                     ;;
+                  backend/src/modules/mcp/*|backend/src/tests/mcp.*)
+                    backend=true
+                    backend_marketplace=true
+                    # MCP constants are also consumed by the OpenAPI
+                    # well-known document and the ERC-8004 agent registration
+                    # file, both covered by the generation group.
+                    backend_generation=true
+                    ;;
                   backend/src/modules/analytics/*|backend/src/modules/artist/*|backend/src/modules/curation/*|backend/src/modules/dmca/*|backend/src/modules/notifications/*|backend/src/modules/payments/*|backend/src/modules/playlist/*|backend/src/modules/pricing/*|backend/src/modules/recommendations/*|backend/src/modules/remix/*|backend/src/modules/rights/*|backend/src/modules/storefront/*|backend/src/modules/trust/*|backend/src/modules/x402/*|backend/src/tests/analytics.spec.ts|backend/src/tests/artist.*|backend/src/tests/curation.spec.ts|backend/src/tests/curator-reputation.integration.spec.ts|backend/src/tests/dmca.service.integration.spec.ts|backend/src/tests/payments.spec.ts|backend/src/tests/playlist.*|backend/src/tests/pricing.spec.ts|backend/src/tests/recommendations.*|backend/src/tests/remix.spec.ts|backend/src/tests/rights-evidence.spec.ts|backend/src/tests/storefront.service.spec.ts|backend/src/tests/trust-*|backend/src/tests/trust.controller.spec.ts|backend/src/tests/verification-semantics.spec.ts|backend/src/tests/x402.*)
                     backend=true
                     backend_marketplace=true

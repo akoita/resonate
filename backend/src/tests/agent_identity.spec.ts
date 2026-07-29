@@ -15,6 +15,7 @@ import {
   defaultErc8004IdentityRegistry,
   toDataUriJson,
 } from "../modules/agents/erc8004_identity";
+import { MCP_PROTOCOL_VERSION } from "../modules/mcp/mcp.constants";
 
 describe("agent identity reputation scoring", () => {
   it("keeps a new agent at the new tier with no activity", () => {
@@ -275,8 +276,15 @@ describe("agent identity reputation scoring", () => {
     expect(file.name).toBe("Koita DJ");
     expect(file.services).toEqual([
       { name: "web", endpoint: "https://app.example.com" },
-      { name: "MCP", endpoint: "https://app.example.com/mcp", version: "2025-06-18" },
+      {
+        name: "MCP",
+        endpoint: "https://app.example.com/mcp",
+        version: MCP_PROTOCOL_VERSION,
+      },
     ]);
+    // The registration file is published on-chain: it must never advertise a
+    // revision the MCP server does not actually speak (issue #1536).
+    expect(MCP_PROTOCOL_VERSION).toBe("2025-11-25");
     expect(file.registrations).toEqual([{
       agentId: "42",
       agentRegistry: "eip155:84532:0x1234567890123456789012345678901234567890",

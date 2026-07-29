@@ -1,5 +1,9 @@
 import { Injectable, Optional } from '@nestjs/common';
 import {
+  buildMcpAgentUx,
+  buildMcpPaymentCapabilities,
+} from '../mcp/mcp.capabilities';
+import {
   MCP_CAPABILITY_SCHEMA_VERSION,
   MCP_ERROR_DETAILS,
   MCP_LICENSE_TIERS,
@@ -804,7 +808,6 @@ export class OpenApiService {
 
   buildMcpWellKnownDocument(baseUrl: string): WellKnownDocument {
     const endpoint = `${baseUrl}/mcp`;
-    const x402Asset = this.resolveX402Asset();
 
     return {
       schemaVersion: 1,
@@ -829,34 +832,16 @@ export class OpenApiService {
         resources: false,
         prompts: false,
       },
-      payment: {
-        protocol: 'x402',
-        enabled: this.x402Config.enabled,
-        network: this.x402Config.network,
-        chainId: this.x402Config.chainId,
-        facilitatorUrl: this.x402Config.facilitatorUrl,
-        retryHeaders: [...X402_RETRY_HEADERS],
-        contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
-        asset: x402Asset,
-      },
+      payment: buildMcpPaymentCapabilities(
+        this.x402Config,
+        this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
+      ),
       authentication: {
         type: 'none',
         note: 'Public MCP tools do not require a Resonate user JWT. Paid stem downloads require an x402 payment proof at the tool layer.',
       },
       errors: [...MCP_ERROR_DETAILS],
-      agentUx: {
-        recommendedFlow: [
-          'catalog.search',
-          'GET /api/storefront/stems or GET /api/storefront/stems/{stemId}',
-          'stem.quote or GET /api/stems/{stemId}/x402/info',
-          'satisfy x402 challenge',
-          'stem.download or GET /api/stems/{stemId}/x402 with proof',
-          'store receipt and retry idempotently on transient failures',
-        ],
-        publicRouter: false,
-        note:
-          'PaymentRouterService is a trusted backend boundary; external agents use storefront, MCP, x402, and OpenAPI surfaces.',
-      },
+      agentUx: buildMcpAgentUx(),
       discovery: {
         convention: '/.well-known/mcp.json',
         authoritativeSource:
