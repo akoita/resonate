@@ -76,7 +76,7 @@ CI wiring.
 
 | Plugin                | What it does                      | When to use                                                                     |
 | --------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
-| `planning-with-files` | Structured file-based planning    | Complex multi-phase features (we partially cover this with `.agents/workflows/`) |
+| `planning-with-files` | Structured file-based planning    | Complex multi-phase features (we cover this with `.agents/skills/`) |
 | `openai-playwright`   | Playwright test generation        | When writing new E2E tests (we already use Playwright)                          |
 | `ffuf-web-fuzzing`    | Web fuzzing with ffuf             | Security audits on API endpoints                                                |
 | `humanizer`           | Humanize AI-generated text        | Documentation and content writing                                               |

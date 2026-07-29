@@ -14,10 +14,59 @@ skill, workflow, or security gate.
 | --- | --- | --- |
 | `AGENTS.md` | Single source of truth for project coding standards. | Yes |
 | `CLAUDE.md`, `GEMINI.md` | Symlinks to `AGENTS.md` so each runtime finds it under the name it expects. | Yes |
-| `.agents/skills/` | Resonate-specific skills — knowledge that only makes sense in this repository. | Yes |
-| `.agents/workflows/` | The `start-issue` and `finish-issue` procedures. | Yes |
+| `.agents/skills/<name>/SKILL.md` | Every Resonate-specific capability, including the `start-issue` and `finish-issue` procedures. | Yes |
 | `.claude/skills` | Symlink to `.agents/skills` so Claude Code discovers them. | Yes — the symlink is tracked; `.claude/worktrees/` and `settings.local.json` stay ignored |
 | `.gemini/commands/*.toml` | Command shims that point Gemini CLI at the canonical files above. | Yes |
+| `.codex/`, `.codex-tmp/` | Per-developer Codex state. Nothing project-shared lives here. | No — gitignored |
+
+`.agents/` is not a Claude convention we bolted a shim onto; it is the
+**runtime-neutral root**, and specifically the one Codex already understands.
+Codex resolves plugin marketplaces from `.agents/plugins/marketplace.json`, and
+the [skills CLI](https://www.skills.sh/docs) installs Codex skills to
+`~/.agents/skills/` globally or `.agents/skills/` per project. `.claude/` and
+`.gemini/` are the shims; `.agents/` is the source.
+
+### Conform to the spec
+
+The [Agent Skills specification](https://agentskills.io/specification) defines a
+skill as a directory containing `SKILL.md` plus optional `scripts/`,
+`references/`, and `assets/`. Nothing else is standard. Two rules are easy to get
+wrong and are worth checking on every new skill:
+
+- **`name` must equal the parent directory name**, and may contain only
+  `a-z`, `0-9`, and single non-leading, non-trailing hyphens. A snake_case
+  directory with a kebab-case `name:` is non-conformant, even though several
+  published skill collections ship exactly that.
+- **`version` is not a top-level field.** The only recognized top-level keys are
+  `name`, `description`, `license`, `compatibility`, `metadata`, and
+  `allowed-tools`. Put a version under `metadata`.
+
+This is why there is no `.agents/workflows/` directory: it was never part of the
+spec, and it bought nothing — with no `.claude/commands/` in this repository,
+`/start-issue` was never a real slash command, just prose that `AGENTS.md`
+pointed at. Both procedures are now ordinary skills, so they are discoverable by
+the same mechanism as every other capability. **If an agent can invoke it, it is
+a skill.** Validate with
+[`skills-ref`](https://github.com/agentskills/agentskills/tree/main/skills-ref):
+
+```bash
+skills-ref validate .agents/skills/finish-issue
+```
+
+### How each runtime finds a skill
+
+| Runtime | Mechanism | Auto-discovered |
+| --- | --- | --- |
+| Claude Code | `.claude/skills` → `.agents/skills` symlink | Yes |
+| Codex | Installed plugins provide skills; **project-local skills are not auto-discovered**. `AGENTS.md` — which Codex always reads — names the skill path explicitly. | No — via `AGENTS.md` |
+| Gemini / Antigravity | `.gemini/commands/*.toml` with `@{...}` file includes | Yes, as slash commands |
+
+This asymmetry is why `AGENTS.md` explicitly instructs agents to read
+`.agents/skills/auditing-resonate-security/SKILL.md` before security work rather
+than assuming the runtime surfaced it. Verified against `codex-cli 0.144.1`: the
+plugin system loads skills from a plugin's `skills/` directory, and `config.toml`
+exposes no project-skills path. If a future Codex release adds project-skill
+discovery, the pointer becomes redundant but stays harmless.
 
 **The rule: anything project-agnostic belongs in `agent-toolkit`, not here.**
 A skill that would read the same in any TypeScript or Solidity repository is a
@@ -26,7 +75,7 @@ released, and maintained once. `.agents/skills/` is reserved for knowledge that
 depends on Resonate's own architecture, contracts, business model, or
 conventions.
 
-The one project skill today is `auditing_resonate_security`: a **router plus
+The one project skill today is `auditing-resonate-security`: a **router plus
 project context**, deliberately containing no methodology. It maps a situation
 to one of the seven shared skills below, then hands that skill Resonate's stack,
 threat surface, house rules for findings, and report conventions. If you find
@@ -90,7 +139,7 @@ but produces the wrong kind of output.
 ## Local lifecycle
 
 When to reach for which skill during day-to-day development. Agents should
-enter through the `auditing_resonate_security` project skill, which routes to
+enter through the `auditing-resonate-security` project skill, which routes to
 the shared skill and supplies the Resonate context it needs.
 
 | Moment | Skill | Notes |

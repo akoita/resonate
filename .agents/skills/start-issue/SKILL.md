@@ -1,8 +1,21 @@
 ---
-description: Start working on a GitHub issue — create branch, track work, open PR
+name: start-issue
+description: >-
+  Start work on a Resonate GitHub issue — read the issue, create a correctly
+  named feature branch off main, track the work, and open the PR scaffold. Use
+  when the user says "start issue #N", "work on #N", "let's build #N", or
+  otherwise begins work on an issue or a new task. Also use for a task with no
+  issue, skipping the issue-dependent steps. Do not use to finish or ship work
+  (use finish-issue), and do not use for a small follow-up on a branch that is
+  already open — keep iterating there instead.
+license: MIT
+metadata:
+  author: akoita
+  project: resonate
+  version: "1.0.0"
 ---
 
-# Start Issue Workflow
+# Start Issue
 
 When the user says "start issue #N", "work on #N", or references working on a specific GitHub issue, follow these steps:
 

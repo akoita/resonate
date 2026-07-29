@@ -1,8 +1,21 @@
 ---
-description: Finish working on a GitHub issue — verify, test, commit, push, and open/update a PR
+name: finish-issue
+description: >-
+  Finish work on a Resonate branch — verify the branch, run the selected local
+  gates, route the security review, update docs and the feature catalog, then
+  commit, push, and open or update the pull request. Use when the user says
+  "finish issue", "close issue", "wrap up", "ship it", or wants to finalize the
+  current branch. Merging, branch cleanup, and aligning local main happen only
+  when the user explicitly says "merge". Do not use to begin work (use
+  start-issue).
+license: MIT
+metadata:
+  author: akoita
+  project: resonate
+  version: "1.0.0"
 ---
 
-# Finish Issue Workflow
+# Finish Issue
 
 When the user says "finish issue", "close issue", "wrap up", or wants to
 finalize work on the current branch, follow these steps.
@@ -127,7 +140,7 @@ the PR body.
 ## 5. Run security review (if applicable)
 
 Check the changed files (`git diff --name-only main`) and route to the right security
-skill. The project skill `.agents/skills/auditing_resonate_security/SKILL.md` carries the
+skill. The project skill `.agents/skills/auditing-resonate-security/SKILL.md` carries the
 Resonate stack, threat surface, and house rules; the methodology lives in the shared
 `agent-toolkit` security skills (`security@agent-toolkit`).
 

@@ -5,5 +5,5 @@ Use the auditing-resonate-security skill to pick the correct agent-toolkit secur
 for what the user asked, then apply it with the Resonate stack, threat surface, and house
 rules below. The methodology lives in agent-toolkit — do not reconstruct it from memory.
 
-@{.agents/skills/auditing_resonate_security/SKILL.md}
+@{.agents/skills/auditing-resonate-security/SKILL.md}
 """

@@ -9,12 +9,13 @@ description: |
   and before running the security step of `/finish-issue`. Do NOT use it as a methodology
   source — it deliberately contains no procedure — and do not use it for functional code
   review, performance work, or legal/compliance sign-off.
-version: 1.0.0
 license: MIT
+compatibility: Requires the agent-toolkit security plugin (security@agent-toolkit on Claude Code, codex-security@agent-toolkit on Codex)
 allowed-tools: Read Grep Glob Bash
 metadata:
   author: akoita
   project: resonate
+  version: "1.0.0"
 ---
 
 # Auditing Resonate security
@@ -26,10 +27,18 @@ intentionally **not** duplicated here: a fork of the procedure in this repo woul
 from the maintained one within a release or two. Pick the target skill from the routing
 table, then hand it the Resonate context below.
 
-If the `security@agent-toolkit` plugin is not installed, install it
-(`claude plugin marketplace add akoita/agent-toolkit` then
-`claude plugin install security@agent-toolkit`) rather than reconstructing the procedure
-from memory.
+If the security plugin is not installed, install it rather than reconstructing the
+procedure from memory. The skill names below are identical on both platforms:
+
+```bash
+# Claude Code
+claude plugin marketplace add akoita/agent-toolkit
+claude plugin install security@agent-toolkit
+
+# Codex
+codex plugin marketplace add akoita/agent-toolkit
+codex plugin add codex-security@agent-toolkit
+```
 
 ## Routing table
 
@@ -106,7 +115,7 @@ These override generic scanner defaults and prevent recurring false positives:
   (`references/severity-and-reporting.md`, `references/triage-and-false-positives.md`) —
   use those definitions verbatim rather than inventing a local scale.
 - After any fix, run `npm run lint` in both `backend/` and `web/`, and the focused tests
-  for the touched area (see `.agents/workflows/finish-issue.md` §4).
+  for the touched area (see `.agents/skills/finish-issue/SKILL.md` §4).
 
 ## Anti-patterns
 

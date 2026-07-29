@@ -4,5 +4,5 @@ prompt = """
 Follow the Resonate finish-issue workflow below. Run the steps in order, honour the
 security routing in section 5, and never merge without an explicit request from the user.
 
-@{.agents/workflows/finish-issue.md}
+@{.agents/skills/finish-issue/SKILL.md}
 """
