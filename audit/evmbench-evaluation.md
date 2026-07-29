@@ -433,4 +433,4 @@ Use the `prepare-evmbench-contracts.sh` script in `scripts/`:
 - [evmbench Research Paper](https://cdn.openai.com/evmbench/evmbench.pdf)
 - [Paradigm Interactive UI](https://paradigm.xyz/evmbench)
 - [Resonate scv-scan Report (2026-03-02)](scv-scan-report.md)
-- [Trail of Bits scv-scan Workflow](../.agents/workflows/smart-contract-scan.md)
+- [`security-smart-contracts` skill](https://github.com/akoita/agent-toolkit/tree/main/plugins/claude/security/skills/security-smart-contracts) — replaced the local scv-scan workflow this evaluation was run against (see [Agent Skills](../docs/engineering/agent-skills.md))

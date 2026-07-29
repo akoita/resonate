@@ -237,6 +237,24 @@ only in memory, chat history, or vague PR prose.
 
 ---
 
+## 🧰 Agent Skills & Workflows
+
+Project skills live in `.agents/skills/<snake_case>/SKILL.md` (the `name` field is
+kebab-case). `.claude/skills` symlinks that directory and `.gemini/commands/*.toml`
+adapts the same files, so there is one source per skill. Workflows stay in
+`.agents/workflows/`. `CLAUDE.md` and `GEMINI.md` are symlinks to this file.
+
+Security methodology is **not** kept in this repo: it lives in the shared
+[`agent-toolkit`](https://github.com/akoita/agent-toolkit) security plugin
+(`security@agent-toolkit`). Start from `.agents/skills/auditing_resonate_security/`,
+which carries the Resonate stack, threat surface, and house rules and routes to the
+right upstream skill.
+
+Full model, install commands, and the local/CI lifecycle:
+[`docs/engineering/agent-skills.md`](docs/engineering/agent-skills.md).
+
+---
+
 ## Architecture Conventions
 
 ### Backend (NestJS)
@@ -402,7 +420,7 @@ payments, enforce royalties, or control upgrades.
 | Invariant tests | Any stateful protocol, escrow, marketplace, token supply, role/permission, or multi-step lifecycle | Foundry invariant tests in `contracts/test/invariant/` |
 | Symbolic/formal tests | Asset custody, release/refund logic, upgrade authorization, royalty/payment conservation, or subtle state-machine rules | Halmos/Kontrol/Certora Prover, or a documented deferral |
 | Mutation testing | High-value contracts, new formal specs, or contract suites where test strength is uncertain | Certora Gambit, or a documented deferral |
-| Static/security scan | Before PR completion for material contract changes | Existing `/finish-issue` smart-contract scan workflow |
+| Static/security scan | Before PR completion for material contract changes | `security-smart-contracts` via `/finish-issue` §5 (see `.agents/skills/auditing_resonate_security/`) |
 
 For a new contract that holds or routes funds, the default expectation is:
 

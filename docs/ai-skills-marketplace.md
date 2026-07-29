@@ -3,6 +3,25 @@
 > Vetted Claude Code plugins from [Trail of Bits' Curated Skills](https://github.com/trailofbits/skills-curated).
 > Every skill is code-reviewed by Trail of Bits staff to prevent backdoors and malicious hooks.
 
+> [!IMPORTANT]
+> **Superseded for security work.** Resonate used to carry three of these
+> prompts as local slash commands under `.agents/workflows/`. They have been
+> deleted: they were one-time ports that drifted from upstream and duplicated
+> skills we now maintain in [`agent-toolkit`](https://github.com/akoita/agent-toolkit).
+> Use the shared skills instead — see
+> [Agent Skills](engineering/agent-skills.md) for install, per-skill scope, and
+> the local/CI lifecycle.
+>
+> | Old command (deleted) | Use instead |
+> | --- | --- |
+> | `/smart-contract-scan` | `security-smart-contracts` |
+> | `/security-best-practices` | `security-review` (diff) or `security-audit` (repository) |
+> | `/security-threat-model` | `security-threat-model` |
+>
+> The plugin recommendations below are still a useful survey of what is
+> available in the Trail of Bits marketplace; they are not a description of what
+> Resonate has installed.
+
 ## Installation
 
 > [!NOTE]
@@ -17,15 +36,19 @@ After adding the marketplace, use `/plugin menu` to browse and install individua
 
 ---
 
-## Antigravity Workflows (Agent-Agnostic)
+## Agent-agnostic security skills
 
-The three highest-priority security skills have been ported to `.agents/workflows/` and work with **any** AI coding agent (Antigravity, Copilot, etc.):
+Resonate no longer keeps ported security prompts in this repository. The seven
+maintained security skills — repository audit, diff review, the deterministic
+toolchain, supply chain, threat modeling, smart contracts, and AI systems —
+live in [`agent-toolkit`](https://github.com/akoita/agent-toolkit) and ship as
+one plugin per platform (`security@agent-toolkit` for Claude Code,
+`codex-security@agent-toolkit` for Codex). The skill bodies are identical on
+both, so the coverage stays agent-agnostic.
 
-| Slash command              | What it does                                                  | Source                           |
-| -------------------------- | ------------------------------------------------------------- | -------------------------------- |
-| `/smart-contract-scan`     | 4-phase Solidity vulnerability audit of `contracts/`          | `scv-scan`                       |
-| `/security-best-practices` | Security review of backend + frontend with prioritized report | `openai-security-best-practices` |
-| `/security-threat-model`   | AppSec-grade threat model anchored to actual code             | `openai-security-threat-model`   |
+See [Agent Skills](engineering/agent-skills.md) for the install commands, what
+each skill is (and is not) for, when to run each one locally, and the proposed
+CI wiring.
 
 ---
 
@@ -37,8 +60,8 @@ The three highest-priority security skills have been ported to `.agents/workflow
 | -------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `scv-scan`                       | Smart contract vulnerability scanning | Directly scans our Solidity contracts (`StemNFT`, `StemMarketplaceV2`) for known vulnerability patterns                                |
 | `evmbench`                       | AI-driven smart contract auditing     | OpenAI × Paradigm benchmark — deep semantic analysis complementing pattern-based scans ([evaluation](../audit/evmbench-evaluation.md)) |
-| `openai-security-best-practices` | General security best practices       | Enforces secure coding patterns across backend and frontend                                                                            |
-| `openai-security-threat-model`   | Threat modeling assistance            | Valuable for our account abstraction layer, agent-owned keys, and wallet security                                                      |
+| `openai-security-best-practices` | General security best practices       | Superseded for us by `security-review` / `security-audit` in `agent-toolkit`                                                          |
+| `openai-security-threat-model`   | Threat modeling assistance            | Superseded for us by `security-threat-model` in `agent-toolkit`                                                                        |
 
 ### 👍 Recommended — Development Workflow
 

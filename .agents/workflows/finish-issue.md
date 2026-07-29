@@ -124,14 +124,29 @@ the failed gate. Do not proceed until the selected local gates pass. Document
 the exact selected gates and any intentionally deferred full-suite coverage in
 the PR body.
 
-## 5. Run security scans (if applicable)
+## 5. Run security review (if applicable)
 
-Check the changed files (`git diff --name-only main`) and run the appropriate security scans:
+Check the changed files (`git diff --name-only main`) and route to the right security
+skill. The project skill `.agents/skills/auditing_resonate_security/SKILL.md` carries the
+Resonate stack, threat surface, and house rules; the methodology lives in the shared
+`agent-toolkit` security skills (`security@agent-toolkit`).
 
-- **If `contracts/` files changed:** Run the `/smart-contract-scan` workflow. This produces `scv-scan-report.md`. If any High or Critical findings are reported, fix them before proceeding.
-- **If `backend/` files changed:** Run the `/security-best-practices` workflow. This produces `security_best_practices_report.md`. If any Critical or High findings are reported, fix them before proceeding.
-- **If neither changed**, skip this step.
-- Commit the updated scan reports alongside the code changes.
+- **If `contracts/` files changed:** run `security-smart-contracts` over the changed
+  contracts and their call chains.
+- **If `backend/` or `web/` files changed:** run `security-review` on the diff
+  (`origin/main...HEAD`).
+- **If the MCP server (`backend/src/modules/mcp/`), the agent runtime
+  (`backend/src/modules/agents/`, `backend/src/agent-worker.ts`), AI DJ/generation, or
+  `.agents/skills/` changed:** run `security-ai`.
+- **If CI workflows, dependency manifests/lockfiles, or release plumbing changed:** run
+  `security-supply-chain`.
+- **If none of the above changed**, skip this step.
+- **Severity gate:** fix every High or Critical finding before proceeding. Medium and
+  below may be deferred with a note in the PR body. `security-review` is advisory by
+  design, so use judgment on its output rather than treating it as a machine gate.
+- Only commit a report file when the run actually produced one under `audit/` (a
+  repo-wide `security-audit` or a contract scan). Diff-scoped reviews return inline
+  findings — summarize them in the PR body instead of committing a report.
 
 ## 6. Update documentation
 

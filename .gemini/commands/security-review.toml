@@ -1,0 +1,9 @@
+# Gemini CLI / Antigravity custom command. Adapts the shared Agent Skill (single source).
+description = "Route a Resonate security request (audit, diff review, threat model, contract scan) to the right agent-toolkit skill."
+prompt = """
+Use the auditing-resonate-security skill to pick the correct agent-toolkit security skill
+for what the user asked, then apply it with the Resonate stack, threat surface, and house
+rules below. The methodology lives in agent-toolkit — do not reconstruct it from memory.
+
+@{.agents/skills/auditing_resonate_security/SKILL.md}
+"""
