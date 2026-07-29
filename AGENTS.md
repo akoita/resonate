@@ -231,9 +231,37 @@ only in memory, chat history, or vague PR prose.
 
 5. **Clean up after merge** — delete the feature branch (local + remote) and align local `main`.
 
-6. **Use the `/start-issue` workflow** when beginning work on any issue or task (features, fixes, improvements, etc.). Run the steps in `.agents/workflows/start-issue.md` to create the branch, track work, and open the PR scaffold.
+6. **Use the `/start-issue` workflow** when beginning work on any issue or task (features, fixes, improvements, etc.). Run the steps in `.agents/skills/start-issue/SKILL.md` to create the branch, track work, and open the PR scaffold.
 
-7. **Use the `/finish-issue` workflow** when completing work on an issue. Run the steps in `.agents/workflows/finish-issue.md` to verify, test, commit, push, create PR, merge, and clean up. This ensures security scans are executed and no steps are skipped.
+7. **Use the `/finish-issue` workflow** when completing work on an issue. Run the steps in `.agents/skills/finish-issue/SKILL.md` to verify, test, commit, push, create PR, merge, and clean up. This ensures security scans are executed and no steps are skipped.
+
+---
+
+## 🧰 Agent Skills & Workflows
+
+Everything an agent can invoke is a skill: `.agents/skills/<name>/SKILL.md`, where
+`<name>` is kebab-case and **must equal** the `name:` field
+([Agent Skills spec](https://agentskills.io/specification)). That includes the
+`start-issue` and `finish-issue` procedures. There is one source per skill; each
+runtime reaches it differently:
+
+- **Claude Code** — `.claude/skills` symlinks `.agents/skills`, so skills auto-load.
+- **Codex** — no project-skill auto-discovery. `AGENTS.md` is the file Codex always
+  reads, so it must name the skill path: for any security request, read
+  `.agents/skills/auditing-resonate-security/SKILL.md` first and follow its routing.
+- **Gemini / Antigravity** — `.gemini/commands/*.toml` `@{...}`-include the same files.
+
+`CLAUDE.md` and `GEMINI.md` are symlinks to this file.
+
+Security methodology is **not** kept in this repo: it lives in the shared
+[`agent-toolkit`](https://github.com/akoita/agent-toolkit) security plugin
+(`security@agent-toolkit` on Claude Code, `codex-security@agent-toolkit` on Codex).
+Start from `.agents/skills/auditing-resonate-security/`,
+which carries the Resonate stack, threat surface, and house rules and routes to the
+right upstream skill.
+
+Full model, install commands, and the local/CI lifecycle:
+[`docs/engineering/agent-skills.md`](docs/engineering/agent-skills.md).
 
 ---
 
@@ -402,7 +430,7 @@ payments, enforce royalties, or control upgrades.
 | Invariant tests | Any stateful protocol, escrow, marketplace, token supply, role/permission, or multi-step lifecycle | Foundry invariant tests in `contracts/test/invariant/` |
 | Symbolic/formal tests | Asset custody, release/refund logic, upgrade authorization, royalty/payment conservation, or subtle state-machine rules | Halmos/Kontrol/Certora Prover, or a documented deferral |
 | Mutation testing | High-value contracts, new formal specs, or contract suites where test strength is uncertain | Certora Gambit, or a documented deferral |
-| Static/security scan | Before PR completion for material contract changes | Existing `/finish-issue` smart-contract scan workflow |
+| Static/security scan | Before PR completion for material contract changes | `security-smart-contracts` via `/finish-issue` §5 (see `.agents/skills/auditing-resonate-security/`) |
 
 For a new contract that holds or routes funds, the default expectation is:
 
