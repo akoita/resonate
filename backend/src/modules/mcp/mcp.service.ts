@@ -9,7 +9,10 @@ import { CatalogService } from "../catalog/catalog.service";
 import { AgentObservabilityService } from "../agents/agent_observability.service";
 import { PaymentsService } from "../payments/payments.service";
 import { X402Config } from "../x402/x402.config";
-import { resolveX402AssetInfo, X402_RETRY_HEADERS } from "../x402/x402.public";
+import {
+  buildMcpAgentUx,
+  buildMcpPaymentCapabilities,
+} from "./mcp.capabilities";
 import {
   MCP_CAPABILITY_SCHEMA_VERSION,
   MCP_ERROR_DETAILS,
@@ -72,7 +75,12 @@ export class McpService implements OnModuleDestroy {
   }
 
   getCapabilities() {
-    const payment = this.buildPaymentCapabilities();
+    const payment = buildMcpPaymentCapabilities(
+      this.x402Config,
+      this.x402Config
+        ? this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets
+        : undefined,
+    );
     return {
       schemaVersion: MCP_CAPABILITY_SCHEMA_VERSION,
       protocolVersion: MCP_PROTOCOL_VERSION,
@@ -97,19 +105,7 @@ export class McpService implements OnModuleDestroy {
         registry: "docs/architecture/x402_registry_registration.md",
       },
       errors: [...MCP_ERROR_DETAILS],
-      agentUx: {
-        recommendedFlow: [
-          "catalog.search",
-          "GET /api/storefront/stems or GET /api/storefront/stems/{stemId}",
-          "stem.quote or GET /api/stems/{stemId}/x402/info",
-          "satisfy x402 challenge",
-          "stem.download or GET /api/stems/{stemId}/x402 with proof",
-          "store receipt and retry idempotently on transient failures",
-        ],
-        publicRouter: false,
-        note:
-          "PaymentRouterService is a trusted backend boundary; external agents use storefront, MCP, x402, and OpenAPI surfaces.",
-      },
+      agentUx: buildMcpAgentUx(),
     };
   }
 
@@ -604,32 +600,6 @@ export class McpService implements OnModuleDestroy {
         message,
       },
       id,
-    };
-  }
-
-  private buildPaymentCapabilities() {
-    if (!this.x402Config) {
-      return {
-        protocol: "x402",
-        enabled: false,
-        retryHeaders: [...X402_RETRY_HEADERS],
-      };
-    }
-
-    const asset = resolveX402AssetInfo(
-      this.x402Config.network,
-      this.paymentsService?.getPaymentAssets(this.x402Config.chainId).assets,
-    );
-
-    return {
-      protocol: "x402",
-      enabled: this.x402Config.enabled,
-      network: this.x402Config.network,
-      chainId: this.x402Config.chainId,
-      facilitatorUrl: this.x402Config.facilitatorUrl,
-      retryHeaders: [...X402_RETRY_HEADERS],
-      contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
-      asset,
     };
   }
 }

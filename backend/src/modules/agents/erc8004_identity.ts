@@ -1,5 +1,6 @@
 import { Buffer } from "node:buffer";
 import { type AgentConfig, Prisma } from "@prisma/client";
+import { MCP_PROTOCOL_VERSION } from "../mcp/mcp.constants";
 
 export type AgentRegistrationFile = Prisma.InputJsonObject & {
   type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
@@ -179,7 +180,14 @@ export function buildAgentRegistrationFile(input: {
   if (publicBaseUrl) {
     services.push(
       { name: "web", endpoint: publicBaseUrl },
-      { name: "MCP", endpoint: `${publicBaseUrl}/mcp`, version: "2025-06-18" },
+      {
+        name: "MCP",
+        endpoint: `${publicBaseUrl}/mcp`,
+        // Must match what the MCP server actually advertises on GET /mcp and
+        // /.well-known/mcp.json — this value is published in an on-chain agent
+        // identity record.
+        version: MCP_PROTOCOL_VERSION,
+      },
     );
   }
 

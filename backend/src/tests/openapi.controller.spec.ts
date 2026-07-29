@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { OpenApiController, WellKnownController } from '../modules/openapi/openapi.controller';
 import { OpenApiService } from '../modules/openapi/openapi.service';
+import { MCP_PROTOCOL_VERSION } from '../modules/mcp/mcp.constants';
 import { X402Config } from '../modules/x402/x402.config';
 
 function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
@@ -132,6 +133,10 @@ describe('OpenApiService', () => {
     expect(doc.schemaVersion).toBe(1);
     expect(doc.capabilitySchemaVersion).toBe('resonate-mcp-capabilities/v1');
     expect(doc.protocol).toBe('mcp');
+    // Pinned deliberately: raising the advertised MCP revision is a protocol
+    // change, not a side effect of an SDK bump. See issue #1536.
+    expect(doc.protocolVersion).toBe(MCP_PROTOCOL_VERSION);
+    expect(doc.protocolVersion).toBe('2025-11-25');
     expect(doc.serverInfo).toEqual({
       name: 'resonate-mcp',
       version: '0.1.0',
@@ -242,6 +247,7 @@ describe('OpenApiController', () => {
     expect(res.body).toEqual(
       expect.objectContaining({
         protocol: 'mcp',
+        protocolVersion: MCP_PROTOCOL_VERSION,
         transport: {
           type: 'streamable-http',
           endpoint: 'http://public.example.test/mcp',
