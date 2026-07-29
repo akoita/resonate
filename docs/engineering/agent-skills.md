@@ -147,48 +147,98 @@ the shared skill and supplies the Resonate context it needs.
 | Designing a feature or a new subsystem | `security-threat-model` | Do this before the code exists, while trust boundaries are still cheap to move. Especially relevant for custody, escrow, payouts, and agent-owned keys. |
 | Implementing agent, MCP, or LLM-facing code | `security-ai` | Applies to the agent commerce runtime, storefront MCP, recommendation adapters, and any skill or plugin this repo itself ships. |
 | Editing `contracts/` | `security-smart-contracts` | The doctrine behind the contract test ladder in `AGENTS.md` (unit → fuzz → invariant → symbolic → mutation). |
-| Pre-commit | `security-scan` (fast subset) | Secrets plus quick SAST only. Budget under five seconds — `gitleaks dir .` on the working tree, `detect-private-key`, `actionlint` on changed workflow files. A secret that reaches the remote is unrecoverable, which is the one thing worth blocking a commit for. |
+| Pre-commit | `security-scan` (fast subset) | Secrets plus quick SAST only. Budget under five seconds — `gitleaks` on the staged diff, `detect-private-key`, `actionlint` on changed workflow files. A secret that reaches the remote is unrecoverable, which is the one thing worth blocking a commit for. Wired in `.pre-commit-config.yaml`, **opt-in** — see [Pre-commit (opt-in)](#pre-commit-opt-in). |
 | Before opening a PR | `security-review` on the diff | This is what `/finish-issue` §5 now calls for `backend/` and `web/` changes (with `security-smart-contracts`, `security-ai`, and `security-supply-chain` routed by changed path). Advisory by construction: it reports, a human decides — but §5 still requires fixing High and Critical findings before proceeding. |
 | Sprint boundary or release | `security-audit` + `security-supply-chain` | The unbounded pass — full-tree findings, workflow/action pinning, SBOM, provenance. Also the right cadence for reviewing accumulated baselines and suppressions. |
 
 ## GitHub CI
 
 > [!IMPORTANT]
-> **Not yet implemented.** The table below is the proposed target state. Today
-> Resonate has **no `.github/workflows/security.yml`** and **no
-> `.pre-commit-config.yaml`** — security scanning happens only when an agent
-> runs it during `/finish-issue`. Wiring the deterministic gate and the nightly
-> job is Phase 3 of
-> [issue #1537](https://github.com/akoita/resonate/issues/1537).
+> **Advisory, not a gate.** `.github/workflows/security.yml` and
+> `.pre-commit-config.yaml` now exist (#1537 Phase 3), but nothing they report
+> can fail a merge. Every scan step is `continue-on-error: true` under the
+> ratchet rule, and **pre-commit is opt-in** — it is not installed for you (see
+> [Pre-commit](#pre-commit-opt-in) below). Two constraints shape the workflow:
+> GitHub code scanning is **disabled** on this repository
+> ([#1539](https://github.com/akoita/resonate/issues/1539)), so reports go to
+> workflow artifacts and the job summary rather than to `upload-sarif`; and no
+> new check has been added to the `main` ruleset.
 
 | Job | Skill | Trigger | Blocking | Status |
 | --- | --- | --- | --- | --- |
-| `security.yml` | `security-scan` | Pull request, diff-scoped against `git merge-base origin/main HEAD` | **Yes** — new High/Critical only | Proposed (#1537 Phase 3) |
+| `security.yml` → `Security Scan (PR, advisory)` | `security-scan` | Pull request, diff-scoped against `git merge-base origin/main HEAD` | No — advisory during the soak period | Implemented (#1537 Phase 3) |
+| `security.yml` → `Nightly Security Scan (advisory)` | `security-scan` | Schedule (02:30 UTC) + `workflow_dispatch`, full tree and full history | No — digest only | Implemented (#1537 Phase 3) |
 | `code-review.yml` | `security-review` | Pull request (existing workflow, extended) | No — advisory inline comments | Proposed (#1537 Phase 3) |
-| Nightly security | `security-audit` + `security-supply-chain` | Scheduled, full tree | No — digest only | Proposed (#1537 Phase 3) |
 | `certora.yml`, `formal.yml`, `mutation.yml` | `security-smart-contracts` (doctrine) | Nightly / weekly / per-PR on `contracts/**` | `formal.yml` blocks; `certora.yml` and `mutation.yml` are scheduled-only | Implemented |
 
 Notes on each:
 
-- **`security.yml`** would run the deterministic toolchain and gate on new High
-  and Critical findings only. Pre-existing findings must never block a pull
-  request that did not introduce them — that is what a baseline is for, and a
-  pipeline that fails on inherited debt trains people to ignore it.
+- **`Security Scan (PR, advisory)`** runs the deterministic toolchain inside a
+  five-minute budget, everything diff-scoped: `gitleaks dir .` for secrets,
+  `opengrep` with `--baseline-commit "$(git merge-base origin/main HEAD)"` for
+  SAST, `osv-scanner` over the npm and pip manifests, `trivy config` over the
+  Dockerfiles and other config, and `actionlint` plus `zizmor` over the
+  workflows. Scanners are installed as **pinned CLI downloads**, not marketplace
+  actions — this is the security workflow, so it is where third-party action
+  supply-chain exposure matters most. Terraform is not scanned here because it
+  is not in this repository; it lives in the private `resonate-iac` repo.
+  Pre-existing findings must never block a pull request that did not introduce
+  them — that is what a baseline is for, and a pipeline that fails on inherited
+  debt trains people to ignore it.
+- **`Nightly Security Scan (advisory)`** covers what diff-scoped scanning
+  structurally cannot: full-tree SAST with no baseline, and
+  `trufflehog --results=verified` over the whole git history. That second one is
+  the direct answer to the open question in #1539 — whether a secret has already
+  leaked through this repository's history. A verified hit is a real,
+  currently-valid credential: **rotate first**, then clean up. Output goes to a
+  digest and an artifact, not to a pull request.
 - **`code-review.yml`** already exists and already states in its header that
-  "the check never blocks merging". Adding `security-review` to it preserves
-  that policy exactly: security findings arrive as inline comments on the PR,
-  never as a red required check.
-- **Nightly** covers what diff-scoped scanning structurally cannot: findings
-  that predate the baseline, verified secret scanning over full history, and
-  supply-chain posture. Output goes to a digest, not to a pull request.
+  "the check never blocks merging". Extending it with `security-review` is still
+  proposed and deliberately deferred: its `anthropics/claude-code-action@v1` step
+  is currently erroring on every pull request, and adding a second responsibility
+  to a failing action buys nothing. Fix the action first.
 - **`certora.yml` / `formal.yml` / `mutation.yml`** are already wired and do not
   change. They implement the formal and mutation layers of the contract test
   ladder; `security-smart-contracts` is the doctrine they cite, not a step they
   execute.
 
-New checks should land under the ratchet rule: `continue-on-error: true` for two
-to four weeks, tuned against real pull requests, and promoted to required only
-once the false-positive rate on this repository is known and small.
+### Promotion criteria
+
+The ratchet rule: a new check never lands as required. `security.yml` stays
+fully advisory for **two to four weeks** from landing, tuned against real pull
+requests. A step may be proposed for promotion to a required check only when all
+of the following hold:
+
+1. its false-positive rate **on this repository** has been measured over real
+   pull requests and is small;
+2. the existing findings it reports are baselined or fixed, so it fails only on
+   what a branch introduces — the first `gitleaks dir .` run over this working
+   tree returned **24 findings**, all test fixtures, well-known Anvil keys, and
+   mock JWTs, which is exactly the inherited debt a baseline exists for;
+3. a human makes the ruleset change deliberately — adding a required check
+   edits the `main` branch protection ruleset and is never done by a workflow.
+
+Secrets are the first candidate for promotion, because they are the near-zero
+false-positive class and a secret that reaches the remote is unrecoverable.
+
+### Pre-commit (opt-in)
+
+`.pre-commit-config.yaml` exists but is **not installed for you** and is not
+enforced anywhere. It holds only what fits a five-second budget: `gitleaks` on
+the staged diff, `detect-private-key`, and `actionlint` on changed workflow
+files. Formatters are deliberately excluded — this repo has no enforced
+repo-wide formatter config, and adding one would mean a mass reformat; per-package
+`eslint` via `lint-staged` keeps that job.
+
+Husky owns `core.hooksPath` for `lint-staged`, so plain `pre-commit install`
+refuses to run. Use it on demand:
+
+```bash
+pre-commit run --all-files
+```
+
+or chain it from the existing husky hook by adding
+`pre-commit run --hook-stage pre-commit` to `.husky/pre-commit`.
 
 ## The split rule
 

@@ -1,0 +1,48 @@
+# Pre-commit security hooks — OPT-IN, not enforced.
+#
+# This file is not installed automatically. Husky owns `core.hooksPath`
+# (`.husky/_`) for `lint-staged`, so `pre-commit install` refuses to write
+# `.git/hooks/pre-commit` while that is set. Two supported ways to use this:
+#
+#   # 1. run it on demand (no install, no conflict with husky)
+#   pre-commit run --all-files
+#
+#   # 2. chain it from the existing husky hook (add to .husky/pre-commit)
+#   pre-commit run --hook-stage pre-commit
+#
+# Budget: under 5 seconds (agent-toolkit `security-scan` skill,
+# references/sequencing.md). The only thing worth blocking a commit for is a
+# secret — a secret that reaches the remote is unrecoverable and rotation costs
+# far more than five seconds. Everything slower (SAST, SCA, IaC) runs in
+# .github/workflows/security.yml, where there is a budget for it.
+#
+# Deliberately NOT here: formatters. The skill recommends them, but this repo
+# has no enforced repo-wide prettier config and adding one would trigger a mass
+# reformat far outside the scope of issue #1537. Formatting stays with
+# `lint-staged` -> eslint per package.
+#
+# Versions are pinned; bump them deliberately (`pre-commit autoupdate` proposes
+# the bump, a human reviews it).
+
+repos:
+  # Secrets in the staged diff. Scans what this commit adds (working-tree
+  # content), never the whole history — history is trufflehog's job in the
+  # nightly workflow. `--redact` keeps matched values out of the hook output.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Catches a private key pasted into any staged file, including formats
+  # gitleaks' regexes do not cover.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: detect-private-key
+
+  # Workflow syntax, expression, and shell errors — only on changed files under
+  # .github/workflows/ (the hook carries that `files:` filter itself).
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint

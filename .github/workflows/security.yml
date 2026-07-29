@@ -1,0 +1,449 @@
+name: Security Scan
+
+# Deterministic security toolchain — issue #1537 Phase 3.
+#
+# Wired from the `security-scan` skill in akoita/agent-toolkit:
+#   references/sequencing.md                 cadence + per-stage latency budgets
+#   references/toolchain.md                  tool choice, versions, invocations
+#   references/exit-codes-and-suppression.md per-tool exit-code semantics
+#
+# RATCHET RULE (sequencing.md). A new check never lands as required. Every scan
+# step here is `continue-on-error: true` and stays ADVISORY for two to four
+# weeks while we measure this repository's false-positive rate on real pull
+# requests. Promotion of any subset (secrets first — it is the near-zero
+# false-positive class) to a required check is a change to the `main` branch
+# ruleset, made deliberately by a human, and is NOT part of this workflow.
+# Baseline observation to beat: `gitleaks dir .` reported 24 findings on the
+# working tree at the time this landed, all test fixtures / well-known Anvil
+# keys / mock JWTs — i.e. the secrets gate needs a `.gitleaksignore` baseline
+# before it can ever block anything.
+#
+# NO SARIF UPLOAD. GitHub code scanning is disabled on this repository (tracked
+# in #1539), so `github/codeql-action/upload-sarif` would fail the job. Reports
+# go to workflow artifacts and a digest goes to the job summary instead. Once
+# #1539 enables code scanning, the artifact upload can be swapped for
+# `upload-sarif` and the digest kept as a convenience.
+#
+# Scanners are installed as pinned CLI downloads rather than marketplace
+# actions: this is the security workflow, so it is where third-party action
+# supply-chain exposure matters most. Only `actions/checkout` and
+# `actions/upload-artifact` are used, at the repo's existing tag convention.
+
+on:
+  pull_request:
+  schedule:
+    # 02:30 UTC — clear of certora.yml (03:00) and staging-lifecycle-smoke (05:00).
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+# One run per PR; superseded runs are cancelled (same shape as code-review.yml).
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+# Read-only. Nothing here comments on PRs, writes checks, or needs OIDC.
+permissions:
+  contents: read
+
+env:
+  # Pinned tool versions — the releases named in toolchain.md (observed
+  # 2026-07-29). Bump deliberately; a version bump is a reviewable change.
+  GITLEAKS_VERSION: "8.30.1"
+  OSV_SCANNER_VERSION: "2.4.0"
+  TRIVY_VERSION: "0.72.0"
+  ACTIONLINT_VERSION: "1.7.12"
+  OPENGREP_VERSION: "1.26.0"
+  TRUFFLEHOG_VERSION: "3.96.0"
+  ZIZMOR_VERSION: "1.28.0"
+  SARIF_TOOLS_VERSION: "3.0.5"
+  # Redistributable opengrep rule packs, pinned by commit SHA.
+  # opengrep/opengrep-rules is Commons Clause + LGPL-2.1; AikidoSec/opengrep-rules
+  # is MIT. Semgrep registry `p/…` packs are deliberately NOT used: they are
+  # licensed for internal business purposes only and are not redistributable.
+  OPENGREP_RULES_SHA: "f1d2b562b414783763fd02a6ed2736eaed622efa"
+  AIKIDO_RULES_SHA: "7ac79affecf709eb7263a243b518a417cd7e0ab2"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Pull request — budget under 5 minutes, everything diff-scoped.
+  # Job name is intentionally distinct from every required check in ci.yml.
+  # ---------------------------------------------------------------------------
+  pr-scan:
+    name: Security Scan (PR, advisory)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: `git merge-base origin/main HEAD` is what makes the
+          # SAST diff-scoped, and a shallow clone cannot compute it.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare report directory and helpers
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/security-reports" "$RUNNER_TEMP/security-bin"
+          chmod 700 "$RUNNER_TEMP/security-reports"
+          echo "OUT=$RUNNER_TEMP/security-reports" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/security-bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          # scan-summary <tool> <exit-code> [sarif] -> one row in the job summary.
+          cat > "$RUNNER_TEMP/security-bin/scan-summary" <<'HELPER'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          tool="$1"; status="$2"; report="${3:-}"
+          findings="n/a"
+          if [ -n "$report" ] && [ -s "$report" ]; then
+            case "$report" in
+              *.sarif) findings="$(jq '[.runs[].results[]] | length' "$report" 2>/dev/null || echo '?')" ;;
+              *)       findings="$(wc -l < "$report" | tr -d ' ')" ;;
+            esac
+          fi
+          printf '| %s | %s | %s |\n' "$tool" "$status" "$findings" >> "$GITHUB_STEP_SUMMARY"
+          HELPER
+          chmod +x "$RUNNER_TEMP/security-bin/scan-summary"
+          {
+            echo "## Security scan — advisory (ratchet rule: not a required check)"
+            echo
+            echo "| Tool | Exit | Findings |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned scanners
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/security-bin"
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$bin" gitleaks
+          curl -fsSL -o "$bin/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+            | tar -xz -C "$bin" trivy
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C "$bin" actionlint
+          curl -fsSL -o "$bin/opengrep" \
+            "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86"
+          chmod +x "$bin/osv-scanner" "$bin/opengrep"
+          # zizmor and sarif-tools have no single-binary release; pipx is
+          # preinstalled on the runner image and keeps them off the system python.
+          pipx install "zizmor==${ZIZMOR_VERSION}"
+          pipx install "sarif-tools==${SARIF_TOOLS_VERSION}"
+
+      - name: Fetch pinned opengrep rule packs
+        run: |
+          set -euo pipefail
+          fetch_rules() {
+            dest="$1"; url="$2"; sha="$3"
+            mkdir -p "$dest"
+            git -C "$dest" init --quiet
+            git -C "$dest" remote add origin "$url"
+            git -C "$dest" fetch --quiet --depth 1 origin "$sha"
+            git -C "$dest" checkout --quiet FETCH_HEAD
+          }
+          fetch_rules "$RUNNER_TEMP/rules/opengrep" \
+            "https://github.com/opengrep/opengrep-rules" "$OPENGREP_RULES_SHA"
+          fetch_rules "$RUNNER_TEMP/rules/aikido" \
+            "https://github.com/AikidoSec/opengrep-rules" "$AIKIDO_RULES_SHA"
+          # Point -f at the per-language rule directories, NOT at a pack root:
+          # opengrep-rules ships its own .pre-commit-config.yaml and template.yaml
+          # at the root, which opengrep tries to load as rules and then aborts
+          # with "invalid configuration file found (1 configs were invalid)".
+          # The language list is this repo's actual stack — see AGENTS.md.
+          rule_args=""
+          for lang in javascript typescript python dockerfile solidity yaml bash; do
+            rule_args="$rule_args -f $RUNNER_TEMP/rules/opengrep/$lang"
+          done
+          rule_args="$rule_args -f $RUNNER_TEMP/rules/aikido/rules"
+          echo "RULE_ARGS=$rule_args" >> "$GITHUB_ENV"
+
+      # --- secrets ------------------------------------------------------------
+      # Advisory until the false-positive rate is known (#1537). Secrets are the
+      # first candidate for promotion to required, but only after a
+      # `.gitleaksignore` baseline covers the existing test-fixture matches.
+      - name: Secrets — gitleaks (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          gitleaks dir . --report-format sarif --report-path "$OUT/gitleaks.sarif" --redact
+          status=$?
+          scan-summary gitleaks "$status" "$OUT/gitleaks.sarif"
+          # gitleaks exits 1 when leaks are found.
+          [ "$status" -le 1 ] || echo "::warning::gitleaks failed to run (exit $status)"
+          exit "$status"
+
+      # --- SAST, diff-scoped --------------------------------------------------
+      # `--baseline-commit` restricts results to what this branch introduced.
+      # Pre-existing findings must never fail a PR that did not introduce them.
+      - name: SAST — opengrep, diff-scoped (advisory)
+        continue-on-error: true
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -uo pipefail
+          base="$(git merge-base origin/main HEAD 2>/dev/null || true)"
+          [ -n "$base" ] || base="$BASE_SHA"
+          echo "baseline commit: $base"
+          # shellcheck disable=SC2086 # RULE_ARGS is a deliberately split flag list
+          opengrep scan $RULE_ARGS \
+            --baseline-commit "$base" \
+            --exclude node_modules --exclude dist --exclude .next \
+            --exclude out --exclude coverage --exclude '*.lock' \
+            --sarif-output="$OUT/opengrep.sarif" \
+            .
+          status=$?
+          scan-summary opengrep "$status" "$OUT/opengrep.sarif"
+          exit "$status"
+
+      # --- dependencies -------------------------------------------------------
+      # npm + pip manifests (backend/, web/, desktop/, workers/*). Exit 128 means
+      # NO PACKAGES FOUND: a green scan that did nothing, which is worse than a
+      # red one. Surface it loudly.
+      #
+      # Gotcha for local reproduction: osv-scanner honours .gitignore, and this
+      # repo ignores `.claude/worktrees/`. Running it from a git worktree created
+      # under that path makes the walker ignore the entire tree and return 128.
+      # CI checks out at the repository root, so it is unaffected.
+      #
+      # `--output` is deprecated in v2.4.0 in favour of `--output-file`.
+      - name: Dependencies — osv-scanner (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          osv-scanner scan source -r ./ --format sarif --output-file "$OUT/osv.sarif"
+          status=$?
+          scan-summary osv-scanner "$status" "$OUT/osv.sarif"
+          case "$status" in
+            0)   echo "osv-scanner: clean" ;;
+            1)   echo "osv-scanner: vulnerabilities found" ;;
+            127) echo "::warning::osv-scanner: general error" ;;
+            128) echo "::warning::osv-scanner: NO PACKAGES FOUND — the scan did nothing" ;;
+            *)   echo "::warning::osv-scanner: error ($status)" ;;
+          esac
+          exit "$status"
+
+      # --- IaC / containers ---------------------------------------------------
+      # Covers every Dockerfile in the tree (backend/, web/, workers/*) plus any
+      # other config format trivy recognises. Terraform is NOT in this repo — it
+      # lives in the private resonate-iac repo and is scanned there.
+      - name: Containers and config — trivy config (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          trivy config . \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format sarif \
+            --output "$OUT/trivy-config.sarif" \
+            --skip-dirs node_modules \
+            --skip-dirs '**/node_modules'
+          status=$?
+          scan-summary trivy-config "$status" "$OUT/trivy-config.sarif"
+          exit "$status"
+
+      # --- CI supply chain ----------------------------------------------------
+      # actionlint: workflow schema, expression, and embedded-shell errors.
+      # zizmor: workflow security audits (template injection, excessive
+      # permissions, unpinned actions). Recommended by the sibling
+      # `security-supply-chain` skill; its exit codes are severity-graded
+      # (11/12/13/14), so a nonzero status is a finding, not a failure.
+      - name: Workflows — actionlint (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          actionlint -color
+          status=$?
+          scan-summary actionlint "$status"
+          exit "$status"
+
+      - name: Workflows — zizmor (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          zizmor --format sarif .github/workflows/ > "$OUT/zizmor.sarif"
+          status=$?
+          scan-summary zizmor "$status" "$OUT/zizmor.sarif"
+          case "$status" in
+            0)             echo "zizmor: clean" ;;
+            11|12|13|14)   echo "zizmor: findings (severity-graded exit $status)" ;;
+            *)             echo "::warning::zizmor: error ($status)" ;;
+          esac
+          exit "$status"
+
+      # --- digest -------------------------------------------------------------
+      - name: Digest
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          {
+            echo
+            echo "<details><summary>sarif summary</summary>"
+            echo
+            echo '```'
+            sarif summary "$OUT" 2>&1 || echo "(no SARIF reports produced)"
+            echo '```'
+            echo
+            echo "</details>"
+            echo
+            echo "Every step above is advisory (\`continue-on-error: true\`). A red"
+            echo "step is a lead to triage, not a failed build — see #1537."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: security-reports-pr-${{ github.run_id }}
+          path: ${{ runner.temp }}/security-reports
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Nightly — unbounded budget, never blocking. Finds what diff-scoped scanning
+  # structurally cannot: findings that predate any baseline, and secrets that
+  # are already in git history.
+  # ---------------------------------------------------------------------------
+  nightly:
+    name: Nightly Security Scan (advisory)
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history is the point of this job — trufflehog scans every commit.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare report directory and helpers
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/security-reports" "$RUNNER_TEMP/security-bin"
+          chmod 700 "$RUNNER_TEMP/security-reports"
+          echo "OUT=$RUNNER_TEMP/security-reports" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/security-bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          cat > "$RUNNER_TEMP/security-bin/scan-summary" <<'HELPER'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          tool="$1"; status="$2"; report="${3:-}"
+          findings="n/a"
+          if [ -n "$report" ] && [ -s "$report" ]; then
+            case "$report" in
+              *.sarif) findings="$(jq '[.runs[].results[]] | length' "$report" 2>/dev/null || echo '?')" ;;
+              *)       findings="$(wc -l < "$report" | tr -d ' ')" ;;
+            esac
+          fi
+          printf '| %s | %s | %s |\n' "$tool" "$status" "$findings" >> "$GITHUB_STEP_SUMMARY"
+          HELPER
+          chmod +x "$RUNNER_TEMP/security-bin/scan-summary"
+          {
+            echo "## Nightly security scan — advisory, never blocking"
+            echo
+            echo "| Tool | Exit | Findings |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned scanners
+        run: |
+          set -euo pipefail
+          bin="$RUNNER_TEMP/security-bin"
+          curl -fsSL -o "$bin/opengrep" \
+            "https://github.com/opengrep/opengrep/releases/download/v${OPENGREP_VERSION}/opengrep_manylinux_x86"
+          chmod +x "$bin/opengrep"
+          curl -fsSL "https://github.com/trufflesecurity/trufflehog/releases/download/v${TRUFFLEHOG_VERSION}/trufflehog_${TRUFFLEHOG_VERSION}_linux_amd64.tar.gz" \
+            | tar -xz -C "$bin" trufflehog
+          pipx install "sarif-tools==${SARIF_TOOLS_VERSION}"
+
+      - name: Fetch pinned opengrep rule packs
+        run: |
+          set -euo pipefail
+          fetch_rules() {
+            dest="$1"; url="$2"; sha="$3"
+            mkdir -p "$dest"
+            git -C "$dest" init --quiet
+            git -C "$dest" remote add origin "$url"
+            git -C "$dest" fetch --quiet --depth 1 origin "$sha"
+            git -C "$dest" checkout --quiet FETCH_HEAD
+          }
+          fetch_rules "$RUNNER_TEMP/rules/opengrep" \
+            "https://github.com/opengrep/opengrep-rules" "$OPENGREP_RULES_SHA"
+          fetch_rules "$RUNNER_TEMP/rules/aikido" \
+            "https://github.com/AikidoSec/opengrep-rules" "$AIKIDO_RULES_SHA"
+          # Point -f at the per-language rule directories, NOT at a pack root:
+          # opengrep-rules ships its own .pre-commit-config.yaml and template.yaml
+          # at the root, which opengrep tries to load as rules and then aborts
+          # with "invalid configuration file found (1 configs were invalid)".
+          # The language list is this repo's actual stack — see AGENTS.md.
+          rule_args=""
+          for lang in javascript typescript python dockerfile solidity yaml bash; do
+            rule_args="$rule_args -f $RUNNER_TEMP/rules/opengrep/$lang"
+          done
+          rule_args="$rule_args -f $RUNNER_TEMP/rules/aikido/rules"
+          echo "RULE_ARGS=$rule_args" >> "$GITHUB_ENV"
+
+      # Full tree, no baseline: this is the pass that sees inherited debt.
+      - name: SAST — opengrep, full tree (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # shellcheck disable=SC2086 # RULE_ARGS is a deliberately split flag list
+          opengrep scan $RULE_ARGS \
+            --exclude node_modules --exclude dist --exclude .next \
+            --exclude out --exclude coverage --exclude '*.lock' \
+            --sarif-output="$OUT/opengrep-full.sarif" \
+            .
+          status=$?
+          scan-summary opengrep-full "$status" "$OUT/opengrep-full.sarif"
+          exit "$status"
+
+      # Verified secrets over the whole history. `--results=verified` means
+      # TruffleHog authenticated the credential against the live service, so a
+      # verified hit is a real, currently-valid secret and needs rotation now —
+      # history rewriting is cleanup, not remediation.
+      #
+      # This job is the direct answer to the open question in #1539: whether any
+      # secret has ALREADY leaked through this repository's history. Read the
+      # first few runs deliberately rather than waiting for a red check; the
+      # step is advisory and will not fail the workflow.
+      - name: Secrets — trufflehog over git history (advisory)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          trufflehog git file://. --results=verified --json --fail --no-update \
+            > "$OUT/trufflehog-history.json"
+          status=$?
+          scan-summary trufflehog "$status" "$OUT/trufflehog-history.json"
+          case "$status" in
+            0)   echo "trufflehog: no verified secrets in history" ;;
+            183) echo "::warning::trufflehog: VERIFIED secret found in history — rotate first, then clean up" ;;
+            *)   echo "::warning::trufflehog: error ($status)" ;;
+          esac
+          exit "$status"
+
+      - name: Digest
+        if: always()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          {
+            echo
+            echo "<details><summary>sarif summary</summary>"
+            echo
+            echo '```'
+            sarif summary "$OUT" 2>&1 || echo "(no SARIF reports produced)"
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload scan reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: security-reports-nightly-${{ github.run_id }}
+          path: ${{ runner.temp }}/security-reports
+          retention-days: 30
+          if-no-files-found: warn
