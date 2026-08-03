@@ -267,10 +267,15 @@ Full model, install commands, and the local/CI lifecycle:
 
 ## Scoped Standards
 
+Standards that only apply inside one directory live there, so they load when
+an agent works in that directory instead of in every session. Each follows the
+same convention as this file: `AGENTS.md` is the real file, with `CLAUDE.md`
+alongside it as a symlink.
+
 - Backend testing standards (Testcontainers, file naming, seeding rules):
-  [`backend/CLAUDE.md`](backend/CLAUDE.md) — loads when working under `backend/`.
+  [`backend/AGENTS.md`](backend/AGENTS.md).
 - Smart contract testing, verification, and deployment-handoff standards:
-  [`contracts/CLAUDE.md`](contracts/CLAUDE.md) — loads when working under `contracts/`.
+  [`contracts/AGENTS.md`](contracts/AGENTS.md).
 
 ---
 
