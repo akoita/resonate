@@ -58,10 +58,12 @@ jobs:
       RELEASE_MODE: ${{ inputs.release_mode || (github.event.schedule == '0 4 * * 0' && 'full') || 'auto' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "24"
           cache: npm
@@ -69,7 +71,7 @@ jobs:
 
       - name: Install smoke dependencies
         working-directory: scripts/staging-smoke
-        run: npm ci
+        run: node ../../scripts/hardened-npm-install.mjs --project scripts/staging-smoke
 
       - name: Validate required config
         run: |

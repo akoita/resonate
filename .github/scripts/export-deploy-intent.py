@@ -1,21 +1,37 @@
 #!/usr/bin/env python3
 
-import json
 import shlex
 import sys
 from pathlib import Path
 
+from image_evidence import ManifestError, load_manifest
+
 
 EXPECTED_KEYS = (
+    "schema_version",
     "environment",
+    "source_repository",
     "source_ref",
     "services",
     "trigger_branch",
     "release_sha",
     "release_id",
     "backend_image",
+    "backend_image_tag",
+    "backend_image_digest",
+    "backend_image_ref",
     "frontend_image",
+    "frontend_image_tag",
+    "frontend_image_digest",
+    "frontend_image_ref",
     "demucs_image",
+    "demucs_image_tag",
+    "demucs_image_digest",
+    "demucs_image_ref",
+    "stable_audio_image",
+    "stable_audio_image_tag",
+    "stable_audio_image_digest",
+    "stable_audio_image_ref",
 )
 
 
@@ -29,8 +45,11 @@ def main() -> int:
         return 1
 
     manifest_path = Path(sys.argv[1])
-    with manifest_path.open("r", encoding="utf-8") as fh:
-        manifest = json.load(fh)
+    try:
+        manifest = load_manifest(manifest_path)
+    except ManifestError as error:
+        print(f"Invalid deploy manifest: {error}", file=sys.stderr)
+        return 1
 
     for key in EXPECTED_KEYS:
         emit(key, str(manifest.get(key, "")))

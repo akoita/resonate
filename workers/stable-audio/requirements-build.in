@@ -1,0 +1,8 @@
+# PEP 517 backend declared by the reviewed Stable Audio source archive plus
+# setup tools imported by the reviewed flash-attn sdist.
+hatchling==1.31.0
+ninja==1.13.0
+packaging==26.2
+psutil==7.2.2
+setuptools==83.0.0
+wheel==0.47.0

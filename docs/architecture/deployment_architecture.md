@@ -18,8 +18,11 @@ module diagram. It follows a C4-style container/deployment view:
   stable-audio GPU remix service, Pub/Sub, selectable analytics execution with
   Dataflow streaming or batch BigQuery landing/materialization, BigQuery, Cloud
   SQL, Redis, GCS, Secret Manager, IAM, Artifact Registry, and Monitoring
-- Delivery control plane: `resonate` CI creates immutable images and
-  `resonate-iac` applies Terraform-managed Cloud Run releases
+- Delivery control plane: `resonate` CI resolves built images to registry
+  digests, emits SBOM/signature evidence, and hands a versioned digest contract
+  to private `resonate-iac`; private reconciliation must verify the declared,
+  registry, attestation, and live-revision identity before a release is treated
+  as complete
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
   session keys, and Resonate protocol contracts
 - Payment layer: x402 challenge/verification flow and USDC settlement
@@ -74,7 +77,7 @@ flowchart LR
   Kernel --> Contracts["Resonate protocol contracts"]
   Backend --> Contracts
 
-  CI["resonate CI"] --> Images["Artifact Registry<br>immutable images"]
+  CI["resonate CI"] --> Images["Artifact Registry<br>digest-bound images + attestations"]
   Images --> IaC["resonate-iac Terraform<br>GCS state + WIF"]
   IaC --> Edge
   IaC --> Frontend
@@ -184,9 +187,11 @@ human app.
 ### Delivery
 
 GitHub Actions, Workload Identity Federation, Artifact Registry, Terraform,
-remote GCS state, and Cloud Run image overrides. App CI produces immutable
-images; `resonate-iac` owns environment deploys, edge changes, and Terraform
-state.
+remote GCS state, and Cloud Run image overrides. App CI resolves every built
+image to an immutable digest, produces CycloneDX plus source/build-metadata
+attestations and signer-verification evidence, and dispatches the digest
+contract; `resonate-iac` owns environment deploys, live digest reconciliation,
+edge changes, and Terraform state.
 
 ### Observability
 
@@ -218,3 +223,4 @@ with the batch materializer implementation.
 - IaC delivery model: `resonate-iac/docs/deployment-operating-model.md`
 - IaC edge model: `resonate-iac/docs/cloud-edge-architecture.md`
 - Cross-repo deploy contract: `resonate-iac/docs/cross-repo-deploy-contract.md`
+- Supply-chain incident response: [supply_chain_incident_response.md](../operations/supply_chain_incident_response.md)

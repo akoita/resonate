@@ -4,6 +4,14 @@
 > question on a GPU and then be deleted (or graduated into a real provider).
 > Findings go into `docs/rfc/` per #1193; the code does not.
 
+> **Archived dependency disposition:** this harness is retained only as the
+> evidence-producing spike for #1193 and is excluded from production image
+> publication and the worker lock-update matrix. Its historical Dockerfile and
+> notebook are not reproducible deployment inputs. Use
+> `workers/stable-audio/` for the maintained, hash-locked implementation. Any
+> future spike rerun must first create a fresh, separately reviewed lock for
+> the target CUDA image; do not publish this archived image as a service.
+
 The license gate (gate 2) is settled in
 [`docs/rfc/stable-audio-3-license-review.md`](../../docs/rfc/stable-audio-3-license-review.md)
 (**GO** for a pre-revenue self-hosted adoption, two pre-launch obligations

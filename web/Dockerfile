@@ -1,13 +1,23 @@
 # ---- Stage 1: Dependencies ----
-FROM node:20-alpine AS deps
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json .npmrc ./
 RUN npm install -g npm@11.14.1
-RUN npm ci --legacy-peer-deps
+RUN npm ci --ignore-scripts --legacy-peer-deps && \
+    for package in \
+      node_modules/esbuild \
+      node_modules/fsevents \
+      node_modules/sharp \
+      node_modules/unrs-resolver \
+      node_modules/vite/node_modules/fsevents; do \
+      if [ -f "${package}/package.json" ]; then \
+        npm rebuild --offline --ignore-scripts=false --foreground-scripts -- "file:./${package}"; \
+      fi; \
+    done
 
 # ---- Stage 2: Build ----
-FROM node:20-alpine AS build
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS build
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -53,7 +63,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ---- Stage 3: Production Runtime ----
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 WORKDIR /app
 
 ENV NODE_ENV=production
