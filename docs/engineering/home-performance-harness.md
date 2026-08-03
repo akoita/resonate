@@ -43,6 +43,8 @@ script to point at a deployment.
 | `PERF_MAX_RETRIES`| `3`                            | Extra attempts allowed to replace discarded runs     |
 | `PERF_OUT_DIR`    | `web/build/perf`               | JSON output directory                               |
 | `PERF_HEADED`     | unset                          | `true` to watch the browser                         |
+| `PERF_TOP_RESPONSES` | `15`                        | How many heaviest responses to list                  |
+| `PERF_IMAGE_BUDGET_BYTES` | `204800` (200 KB)      | Threshold for "heavy image" / `next/image` candidate |
 
 Requires a Chromium for Playwright (`npx playwright install chromium`). Against
 a local target, run `npm run build && npm run start` first if you care about
@@ -116,6 +118,51 @@ How to read it:
   is exactly the Home-composition work #1491 tracks.
 - **CLS above ~0.1 means visible reflow**; the cold/warm gap shows how much of it
   is data arriving late rather than layout being wrong.
+
+## Per-resource breakdown
+
+Aggregates tell you Home is heavy; they do not tell you what to fix. Below the
+metric table the harness prints three more blocks, all describing the **cold**
+load of a **single representative run** — the run whose cold payload is closest
+to the median. Averaging URLs across runs would describe a page that never
+rendered, and the warm reload is almost entirely cache hits reporting ~0 bytes,
+so neither is a useful basis.
+
+1. **Bytes by resource type** — `image`, `script`, `stylesheet`, `font`,
+   `media`, `fetch/xhr`, `document`, `other`, with count, wire bytes, and share
+   of the cold payload. `media` is broken out rather than folded into `other`:
+   on a music app, an audio response hiding in a catch-all bucket is exactly
+   what this is meant to surface.
+2. **Top N heaviest cold responses** (default 15) — bytes, type, URL. URLs are
+   elided in the middle for the table and stored complete in the JSON.
+3. **Image summary** — total image bytes, response count, distinct URL count,
+   duplicate requests, median and max image size, and how many *distinct* images
+   exceed `PERF_IMAGE_BUDGET_BYTES`. That last number is the `next/image`
+   worklist; the full list of offenders is in the JSON under
+   `breakdown.images.heavy`.
+
+Example (staging, 2026-08-03) — note that the headline is **not** images:
+
+```
+Cold bytes by resource type — run 3 of 3, closest to median cold bytes
+type        count  bytes      share
+----------  -----  ---------  -----
+font        10     4087.1 KB  53.9%
+image       25     2697.9 KB  35.6%
+script      48     528.5 KB   7.0%
+fetch/xhr   76     160.6 KB   2.1%
+stylesheet  9      96.1 KB    1.3%
+document    1      10.0 KB    0.1%
+
+Images (cold)
+  2697.9 KB across 25 response(s), 25 distinct URL(s)
+  median 89.8 KB · max 555.6 KB
+  2 distinct image(s) over 200.0 KB = 927.7 KB — the next/image candidates
+```
+
+The JSON carries the same data under `breakdown` (`byType`, `topResponses`,
+`images`) plus `coldResources`, the complete per-response list for the
+representative run, so you can re-slice it without re-measuring.
 
 ## Rate limiting and discarded runs
 

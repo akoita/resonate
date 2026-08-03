@@ -13,6 +13,11 @@
  *   - TBT proxy — sum of max(0, longtask.duration - 50) after FCP
  *   - transferred bytes (total + JS) and request count
  *
+ * It then prints a per-resource breakdown of one representative COLD load —
+ * bytes by resource type, the heaviest individual responses, and an image
+ * summary including how many distinct images exceed the heavy-image budget —
+ * because aggregates say Home is heavy but not which assets to fix.
+ *
  * Each iteration measures COLD (fresh browser context, empty cache) and then
  * WARM (a reload in that same context, so HTTP/disk cache is primed).
  *
@@ -46,6 +51,8 @@
  *   PERF_MAX_RETRIES extra attempts allowed for discarded runs (default 3)
  *   PERF_OUT_DIR    JSON output directory (default web/build/perf, gitignored)
  *   PERF_HEADED     set to "true" to watch the run
+ *   PERF_TOP_RESPONSES       heaviest responses to list (default 15)
+ *   PERF_IMAGE_BUDGET_BYTES  heavy-image threshold (default 204800 = 200 KB)
  *
  * Requirements: a Chromium browser for Playwright
  *   npx playwright install chromium
@@ -141,7 +148,7 @@ const READER = () => {
 const isOkStatus = (status) => status >= 200 && status < 300;
 
 function newBucket() {
-  return { pending: [], totalBytes: 0, jsBytes: 0, requests: 0 };
+  return { pending: [], totalBytes: 0, jsBytes: 0, requests: 0, resources: [] };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -150,9 +157,12 @@ async function drainBucket(bucket) {
   await Promise.all(bucket.pending);
   bucket.pending = [];
   return {
-    totalBytes: bucket.totalBytes,
-    jsBytes: bucket.jsBytes,
-    requests: bucket.requests,
+    totals: {
+      totalBytes: bucket.totalBytes,
+      jsBytes: bucket.jsBytes,
+      requests: bucket.requests,
+    },
+    resources: bucket.resources,
   };
 }
 
@@ -179,8 +189,12 @@ async function measureOnce(browser, attempt) {
         .sizes()
         .then((sizes) => {
           const bytes = (sizes.responseBodySize ?? 0) + (sizes.responseHeadersSize ?? 0);
+          const type = request.resourceType();
           active.totalBytes += bytes;
-          if (request.resourceType() === "script") active.jsBytes += bytes;
+          if (type === "script") active.jsBytes += bytes;
+          // Per-response record; feeds the breakdown that tells us WHICH assets
+          // are heavy, not just how many bytes there are in total.
+          active.resources.push({ url: request.url(), type, bytes });
         })
         .catch(() => {
           // Request torn down before sizes resolved — skip it rather than fail.
@@ -193,16 +207,16 @@ async function measureOnce(browser, attempt) {
 
   const coldResponse = await page.goto(TARGET, { waitUntil: "load", timeout: TIMEOUT_MS });
   const coldTiming = await settleAndRead(page);
-  const coldBytes = await drainBucket(bucket);
-  const cold = { ...coldTiming, ...coldBytes };
+  const coldDrain = await drainBucket(bucket);
+  const cold = { ...coldTiming, ...coldDrain.totals };
 
   // Swap the accounting bucket so warm bytes are counted separately, then
   // reload in the same context — cache, connections and origin state stay hot.
   bucket = newBucket();
   const warmResponse = await page.reload({ waitUntil: "load", timeout: TIMEOUT_MS });
   const warmTiming = await settleAndRead(page);
-  const warmBytes = await drainBucket(bucket);
-  const warm = { ...warmTiming, ...warmBytes };
+  const warmDrain = await drainBucket(bucket);
+  const warm = { ...warmTiming, ...warmDrain.totals };
 
   await context.close();
 
@@ -225,7 +239,10 @@ async function measureOnce(browser, attempt) {
     );
   }
 
-  return { cold, warm, coldStatus, warmStatus, ok };
+  // Only cold resources are kept: on the warm reload nearly every static asset
+  // is a cache hit reporting ~0 bytes, so a warm breakdown would be a list of
+  // zeroes plus whatever the API refetched — noise, not signal.
+  return { cold, warm, coldStatus, warmStatus, ok, coldResources: coldDrain.resources };
 }
 
 function median(values) {
@@ -291,6 +308,152 @@ function printTable(cold, warm) {
   rows.forEach((row) => console.log(line(row)));
 }
 
+// Playwright resourceType -> reporting group. `media` is kept separate rather
+// than folded into "other": on a music app an audio response hiding in "other"
+// would be exactly the kind of thing this breakdown exists to surface.
+const TYPE_GROUPS = {
+  image: "image",
+  script: "script",
+  stylesheet: "stylesheet",
+  font: "font",
+  media: "media",
+  xhr: "fetch/xhr",
+  fetch: "fetch/xhr",
+  document: "document",
+};
+const GROUP_ORDER = [
+  "image",
+  "script",
+  "stylesheet",
+  "font",
+  "media",
+  "fetch/xhr",
+  "document",
+  "other",
+];
+const IMAGE_HEAVY_BYTES = Number(process.env.PERF_IMAGE_BUDGET_BYTES ?? 200 * 1024);
+const TOP_RESPONSES = Math.max(1, Number(process.env.PERF_TOP_RESPONSES ?? 15));
+
+const groupOf = (type) => TYPE_GROUPS[type] ?? "other";
+
+/** Shorten a URL for the table while keeping both ends recognisable. */
+function shortenUrl(url, max = 78) {
+  if (url.length <= max) return url;
+  const head = Math.ceil((max - 1) * 0.62);
+  const tail = max - 1 - head;
+  return `${url.slice(0, head)}…${url.slice(-tail)}`;
+}
+
+/**
+ * Per-resource breakdown for one cold load: bytes by type, the heaviest
+ * individual responses, and an image-specific summary. Aggregates are useless
+ * for targeting a fix — this says WHICH assets to go after.
+ */
+function buildBreakdown(resources) {
+  const byType = GROUP_ORDER.map((group) => {
+    const items = resources.filter((r) => groupOf(r.type) === group);
+    return {
+      group,
+      count: items.length,
+      bytes: items.reduce((sum, r) => sum + r.bytes, 0),
+    };
+  }).filter((row) => row.count > 0);
+
+  const topResponses = [...resources]
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, TOP_RESPONSES)
+    .map((r) => ({ url: r.url, type: r.type, bytes: r.bytes }));
+
+  const imageResponses = resources.filter((r) => groupOf(r.type) === "image");
+  // Distinct by URL: the same artwork requested twice is one asset to fix, but
+  // the duplicate request is itself worth seeing, so both numbers are reported.
+  const distinctImages = new Map();
+  for (const r of imageResponses) {
+    const previous = distinctImages.get(r.url);
+    if (!previous || r.bytes > previous) distinctImages.set(r.url, r.bytes);
+  }
+  const distinctSizes = [...distinctImages.values()];
+  const overBudget = [...distinctImages.entries()]
+    .filter(([, bytes]) => bytes > IMAGE_HEAVY_BYTES)
+    .sort((a, b) => b[1] - a[1])
+    .map(([url, bytes]) => ({ url, bytes }));
+
+  return {
+    byType,
+    topResponses,
+    images: {
+      totalBytes: imageResponses.reduce((sum, r) => sum + r.bytes, 0),
+      responseCount: imageResponses.length,
+      distinctCount: distinctImages.size,
+      duplicateRequests: imageResponses.length - distinctImages.size,
+      medianBytes: distinctSizes.length ? median(distinctSizes) : 0,
+      maxBytes: distinctSizes.length ? Math.max(...distinctSizes) : 0,
+      heavyThresholdBytes: IMAGE_HEAVY_BYTES,
+      heavyCount: overBudget.length,
+      heavyBytes: overBudget.reduce((sum, r) => sum + r.bytes, 0),
+      heavy: overBudget,
+    },
+  };
+}
+
+const kb = (bytes) => `${(bytes / 1024).toFixed(1)} KB`;
+
+function printRows(header, rows) {
+  const widths = header.map((_, col) =>
+    Math.max(header[col].length, ...rows.map((row) => row[col].length)),
+  );
+  const line = (cells) =>
+    cells.map((cell, col) => cell.padEnd(widths[col])).join("  ").trimEnd();
+  console.log(line(header));
+  console.log(widths.map((width) => "-".repeat(width)).join("  "));
+  rows.forEach((row) => console.log(line(row)));
+}
+
+function printBreakdown(breakdown, runLabel) {
+  const total = breakdown.byType.reduce((sum, row) => sum + row.bytes, 0);
+
+  console.log("");
+  console.log(`Cold bytes by resource type — ${runLabel}`);
+  printRows(
+    ["type", "count", "bytes", "share"],
+    breakdown.byType
+      .slice()
+      .sort((a, b) => b.bytes - a.bytes)
+      .map((row) => [
+        row.group,
+        String(row.count),
+        kb(row.bytes),
+        total ? `${((row.bytes / total) * 100).toFixed(1)}%` : "—",
+      ]),
+  );
+
+  console.log("");
+  console.log(`Top ${breakdown.topResponses.length} heaviest cold responses`);
+  printRows(
+    ["#", "bytes", "type", "url"],
+    breakdown.topResponses.map((r, index) => [
+      String(index + 1),
+      kb(r.bytes),
+      r.type,
+      shortenUrl(r.url),
+    ]),
+  );
+
+  const img = breakdown.images;
+  console.log("");
+  console.log("Images (cold)");
+  console.log(
+    `  ${kb(img.totalBytes)} across ${img.responseCount} response(s), ` +
+      `${img.distinctCount} distinct URL(s)` +
+      (img.duplicateRequests ? `, ${img.duplicateRequests} duplicate request(s)` : ""),
+  );
+  console.log(`  median ${kb(img.medianBytes)} · max ${kb(img.maxBytes)}`);
+  console.log(
+    `  ${img.heavyCount} distinct image(s) over ${kb(img.heavyThresholdBytes)} ` +
+      `= ${kb(img.heavyBytes)} — the next/image candidates (full list in the JSON)`,
+  );
+}
+
 async function main() {
   console.log(`Resonate Home performance — ${TARGET}`);
   console.log(
@@ -327,6 +490,24 @@ async function main() {
   const warm = summarize(runs.map((run) => run.warm));
   printTable(cold, warm);
 
+  // The breakdown describes one concrete load, so averaging URLs across runs
+  // would invent a page that never rendered. Use the run whose cold payload is
+  // closest to the median instead — a real, representative load.
+  const medianColdBytes = cold.totalBytes.median;
+  const representativeIndex = runs.reduce(
+    (best, run, index) =>
+      Math.abs(run.cold.totalBytes - medianColdBytes) <
+      Math.abs(runs[best].cold.totalBytes - medianColdBytes)
+        ? index
+        : best,
+    0,
+  );
+  const breakdown = buildBreakdown(runs[representativeIndex].coldResources);
+  printBreakdown(
+    breakdown,
+    `run ${representativeIndex + 1} of ${runs.length}, closest to median cold bytes`,
+  );
+
   console.log("");
   console.log("INP is not reported: it requires real user interaction and cannot be");
   console.log("measured on a passive load. 'TBT proxy' is the responsiveness stand-in.");
@@ -354,10 +535,23 @@ async function main() {
       tbtProxyMs: "sum of max(0, longtask.duration - 50) for long tasks after FCP",
       bytes: "Playwright request.sizes(): responseBodySize + responseHeadersSize",
       comparability: "only comparable across runs on the same machine/network/target",
+      breakdown:
+        "cold load only, from a single representative run (warm is cache hits at ~0 bytes)",
     },
     cold,
     warm,
-    rawRuns: runs,
+    breakdown: {
+      basis: "cold",
+      representativeRun: representativeIndex + 1,
+      ...breakdown,
+    },
+    coldResources: runs[representativeIndex].coldResources,
+    rawRuns: runs.map(({ cold: c, warm: w, coldStatus, warmStatus }) => ({
+      cold: c,
+      warm: w,
+      coldStatus,
+      warmStatus,
+    })),
   };
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
