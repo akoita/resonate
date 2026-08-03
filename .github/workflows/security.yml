@@ -7,8 +7,8 @@ name: Security Scan
 #   references/toolchain.md                  tool choice, versions, invocations
 #   references/exit-codes-and-suppression.md per-tool exit-code semantics
 #
-# RATCHET RULE (sequencing.md). A new check never lands as required. Every scan
-# step here is `continue-on-error: true` and stays ADVISORY for two to four
+# RATCHET RULE (sequencing.md). A new heuristic scanner never lands as required.
+# Every scanner step here is `continue-on-error: true` and stays ADVISORY for two to four
 # weeks while we measure this repository's false-positive rate on real pull
 # requests. Promotion of any subset (secrets first — it is the near-zero
 # false-positive class) to a required check is a change to the `main` branch
@@ -27,7 +27,7 @@ name: Security Scan
 # Scanners are installed as pinned CLI downloads rather than marketplace
 # actions: this is the security workflow, so it is where third-party action
 # supply-chain exposure matters most. Only `actions/checkout` and
-# `actions/upload-artifact` are used, at the repo's existing tag convention.
+# `actions/upload-artifact` are used here, both pinned to reviewed commits.
 
 on:
   pull_request:
@@ -56,6 +56,8 @@ env:
   TRUFFLEHOG_VERSION: "3.96.0"
   ZIZMOR_VERSION: "1.28.0"
   SARIF_TOOLS_VERSION: "3.0.5"
+  # Immutable canonical profile/ABOM generator reviewed in agent-toolkit#25.
+  AGENT_TOOLKIT_COMMIT: "e077296a7e46a40132006de581190f244649c8cc"
   # Redistributable opengrep rule packs, pinned by commit SHA.
   # opengrep/opengrep-rules is Commons Clause + LGPL-2.1; AikidoSec/opengrep-rules
   # is MIT. Semgrep registry `p/…` packs are deliberately NOT used: they are
@@ -64,6 +66,159 @@ env:
   AIKIDO_RULES_SHA: "7ac79affecf709eb7263a243b518a417cd7e0ab2"
 
 jobs:
+  # Schema and immutability checks are deterministic configuration contracts,
+  # not heuristic scanner verdicts, so failures are intentionally blocking.
+  supply-chain-baseline:
+    name: Supply Chain Baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch pinned agent-toolkit validator
+        run: |
+          set -euo pipefail
+          toolkit="${RUNNER_TEMP}/agent-toolkit"
+          git init --quiet "${toolkit}"
+          git -C "${toolkit}" remote add origin https://github.com/akoita/agent-toolkit.git
+          git -C "${toolkit}" fetch --quiet --no-tags --depth=1 origin "${AGENT_TOOLKIT_COMMIT}"
+          git -C "${toolkit}" checkout --quiet --detach FETCH_HEAD
+          if [[ "$(git -C "${toolkit}" rev-parse HEAD)" != "${AGENT_TOOLKIT_COMMIT}" ]]; then
+            echo "Fetched agent-toolkit revision did not match the reviewed commit." >&2
+            exit 1
+          fi
+          echo "TOOLKIT=${toolkit}" >> "${GITHUB_ENV}"
+
+      - name: Validate T4 profile and generate revision-bound ABOM
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/security-reports"
+          mkdir -p "${out}"
+          validator="${TOOLKIT}/plugins/claude/security/skills/security-supply-chain/scripts/validate_security_profile.py"
+          generator="${TOOLKIT}/plugins/claude/security/skills/security-supply-chain/scripts/generate_action_bom.py"
+
+          python3 "${validator}" audit/supply-chain/repository-security-profile.json
+          node scripts/check-docker-base-digests.mjs
+          python3 scripts/check-python-worker-locks.py
+          python3 "${generator}" "${GITHUB_WORKSPACE}" \
+            --output "${out}/action-bom.json" \
+            --minimum-age-days 7 \
+            --build-utility "agent-toolkit=${AGENT_TOOLKIT_COMMIT}" \
+            --build-utility "npm=pkg:npm/npm@11.14.1#sha256=bddc8ec2a698d283674cf0a798ef444ba7332497f330dd166056281fcafaca7a" \
+            --build-utility "syft=pkg:github/anchore/syft@v1.50.0#sha256=bf7b29ff57f06da30918266a0e1c2885a8f99784798d1bdb1628886aa015d788" \
+            --build-utility "cosign=pkg:github/sigstore/cosign@v3.1.2#sha256=f7622ed3cf22e55e1ae6377c080979ff77a22da9981c11df222a2e444991e7cf" \
+            --build-utility "foundry=pkg:github/foundry-rs/foundry@v1.4.3#sha256=325ba04dc5cb41c110723b00ac291f8269f8cd785028299aad8252ef980961a7"
+          python3 "${validator}" "${out}/action-bom.json"
+          sha256sum "${out}/action-bom.json" | tee "${out}/action-bom.sha256"
+          {
+            echo "## Supply-chain baseline"
+            echo
+            echo "- source revision: \`${GITHUB_SHA}\`"
+            echo "- agent-toolkit: \`${AGENT_TOOLKIT_COMMIT}\`"
+            echo "- ABOM SHA-256: \`$(cut -d' ' -f1 "${out}/action-bom.sha256")\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload revision-bound ABOM
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: action-bom-${{ github.sha }}
+          path: ${{ runner.temp }}/security-reports/action-bom.*
+          retention-days: 90
+          if-no-files-found: error
+
+  release-plane-evidence:
+    name: Release Plane Evidence
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 100
+          persist-credentials: false
+
+      - name: Inventory privileged workflow runs and changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/release-plane-evidence"
+          mkdir -p "${out}"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" > "${out}/workflow-runs.raw.json"
+          git log -100 --date=iso-strict --format='%H%x09%aI%x09%an%x09%s' -- \
+            .github/workflows .github/actions .github/scripts \
+            > "${out}/release-plane-changes.tsv"
+
+          RAW="${out}/workflow-runs.raw.json" OUTPUT="${out}/privileged-workflow-runs.json" python3 - <<'PY'
+          import json
+          import os
+
+          allowed = {
+              ".github/workflows/ci.yml": {"pull_request", "push"},
+              ".github/workflows/code-review.yml": {"pull_request"},
+              ".github/workflows/contracts-deploy.yml": {"workflow_dispatch"},
+              ".github/workflows/deploy-handoff.yml": {"workflow_dispatch", "workflow_run"},
+              ".github/workflows/desktop-release.yml": {"workflow_dispatch"},
+              ".github/workflows/publish-analytics-dataflow-flex-template.yml": {"push", "workflow_dispatch"},
+              ".github/workflows/staging-lifecycle-smoke.yml": {"schedule", "workflow_dispatch"},
+              ".github/workflows/staging-reconciliation-drill.yml": {"workflow_dispatch"},
+          }
+          raw = json.load(open(os.environ["RAW"], encoding="utf-8"))
+          evidence = []
+          unexpected = []
+          for run in raw.get("workflow_runs", []):
+              path = run.get("path", "")
+              if path not in allowed:
+                  continue
+              record = {
+                  "actor": (run.get("actor") or {}).get("login", ""),
+                  "conclusion": run.get("conclusion"),
+                  "event": run.get("event", ""),
+                  "head_branch": run.get("head_branch", ""),
+                  "head_sha": run.get("head_sha", ""),
+                  "id": run.get("id"),
+                  "path": path,
+                  "run_started_at": run.get("run_started_at"),
+                  "status": run.get("status"),
+                  "url": run.get("html_url", ""),
+              }
+              evidence.append(record)
+              if record["event"] not in allowed[path]:
+                  unexpected.append({**record, "unexpected_reason": "event"})
+              elif record["event"] != "pull_request" and record["head_branch"] not in {"main", "develop"}:
+                  unexpected.append({**record, "unexpected_reason": "ref"})
+          document = {
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "reviewed_at_run": os.environ["GITHUB_RUN_ID"],
+              "runs": evidence,
+              "unexpected": unexpected,
+          }
+          with open(os.environ["OUTPUT"], "w", encoding="utf-8") as handle:
+              json.dump(document, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          if unexpected:
+              for record in unexpected:
+                  print(f"::warning file={record['path']}::Unexpected privileged workflow {record['unexpected_reason']} in run {record['id']}: event={record['event']} ref={record['head_branch']}")
+              raise SystemExit("unexpected privileged workflow events or refs require review")
+          PY
+
+      - name: Upload release-plane evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: release-plane-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-plane-evidence
+          retention-days: 90
+          if-no-files-found: error
+
   # ---------------------------------------------------------------------------
   # Pull request — budget under 5 minutes, everything diff-scoped.
   # Job name is intentionally distinct from every required check in ci.yml.
@@ -74,7 +229,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # Full history: `git merge-base origin/main HEAD` is what makes the
           # SAST diff-scoped, and a shallow clone cannot compute it.
@@ -293,7 +448,7 @@ jobs:
 
       - name: Upload scan reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: security-reports-pr-${{ github.run_id }}
           path: ${{ runner.temp }}/security-reports
@@ -311,7 +466,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           # Full history is the point of this job — trufflehog scans every commit.
           fetch-depth: 0
@@ -441,7 +596,7 @@ jobs:
 
       - name: Upload scan reports
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: security-reports-nightly-${{ github.run_id }}
           path: ${{ runner.temp }}/security-reports

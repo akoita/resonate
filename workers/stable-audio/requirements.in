@@ -1,0 +1,7 @@
+# Python 3.11/Linux x86_64 input for the digest-pinned CUDA 12.6 base.
+# torch and torchaudio are excluded from the compiled graph and constrained to
+# the versions already supplied by the image.
+stable-audio-3 @ https://github.com/Stability-AI/stable-audio-3/archive/8b920425b033e4dea477991ca07dc8b1ef5784e1.tar.gz#sha256=4bf3a1d05641ff8431cc89ba158006da17d53eec1d6d139c9e6d721a83d9129a
+fastapi
+uvicorn[standard]
+python-multipart

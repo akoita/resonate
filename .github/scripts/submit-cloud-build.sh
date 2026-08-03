@@ -8,6 +8,7 @@ Usage: submit-cloud-build.sh \
   --image <image-ref> \
   --context <context-dir> \
   --dockerfile <dockerfile-relative-to-context> \
+  --metadata-output <path> \
   [--build-args-file <path>] \
   [--git-source-url <https-repo-url>] \
   [--git-source-revision <git-revision>] \
@@ -24,6 +25,7 @@ EOF
 image=""
 context_dir=""
 dockerfile=""
+metadata_output=""
 build_args_file=""
 git_source_url=""
 git_source_revision=""
@@ -46,6 +48,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dockerfile)
       dockerfile="${2:-}"
+      shift 2
+      ;;
+    --metadata-output)
+      metadata_output="${2:-}"
       shift 2
       ;;
     --build-args-file)
@@ -91,7 +97,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "${image}" || -z "${context_dir}" || -z "${dockerfile}" || -z "${project_id}" ]]; then
+if [[ -z "${image}" || -z "${context_dir}" || -z "${dockerfile}" || -z "${metadata_output}" || -z "${project_id}" ]]; then
   usage
 fi
 
@@ -133,8 +139,9 @@ if [[ -n "${service_account}" ]]; then
 fi
 
 config_file="$(mktemp)"
+build_result_file="$(mktemp)"
 cleanup() {
-  rm -f "${config_file}"
+  rm -f "${config_file}" "${build_result_file}"
 }
 trap cleanup EXIT
 
@@ -224,4 +231,79 @@ if [[ -n "${normalized_service_account}" ]]; then
   submit_args+=(--service-account "${normalized_service_account}")
 fi
 
-gcloud "${submit_args[@]}"
+gcloud "${submit_args[@]}" --format=json | tee "${build_result_file}"
+
+build_id="$({ BUILD_RESULT_FILE="${build_result_file}" python3 - <<'PY'
+import json
+import os
+import sys
+
+with open(os.environ["BUILD_RESULT_FILE"], "r", encoding="utf-8") as handle:
+    result = json.load(handle)
+
+build_id = result.get("id", "")
+status = result.get("status", "")
+if not build_id:
+    raise SystemExit("Cloud Build result did not include a build id")
+if status != "SUCCESS":
+    raise SystemExit(f"Cloud Build did not finish successfully: {status or 'missing status'}")
+print(build_id)
+PY
+})"
+
+digest=""
+for attempt in 1 2 3 4 5 6; do
+  digest="$(gcloud artifacts docker images describe "${image}" \
+    --project "${project_id}" \
+    --format='value(image_summary.digest)' 2>/dev/null || true)"
+  digest="${digest//$'\r'/}"
+  digest="${digest//$'\n'/}"
+  if [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    break
+  fi
+  digest=""
+  if [[ "${attempt}" != "6" ]]; then
+    sleep 5
+  fi
+done
+
+if [[ -z "${digest}" ]]; then
+  echo "Artifact Registry did not return one valid sha256 digest for ${image}." >&2
+  exit 1
+fi
+
+IMAGE="${image}" \
+DIGEST="${digest}" \
+BUILD_ID="${build_id}" \
+SOURCE_SHA="${git_source_revision:-${GITHUB_SHA:-}}" \
+METADATA_OUTPUT="${metadata_output}" \
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+image = os.environ["IMAGE"]
+digest = os.environ["DIGEST"]
+repository, separator, tag = image.rpartition(":")
+if not separator or not repository or not tag or "@" in image.rsplit("/", 1)[-1]:
+    raise SystemExit(f"Expected an explicitly tagged image reference, got: {image}")
+
+metadata = {
+    "cloud_build_id": os.environ["BUILD_ID"],
+    "digest": digest,
+    "immutable_ref": f"{repository}@{digest}",
+    "source_sha": os.environ["SOURCE_SHA"],
+    "tag": image,
+}
+output = Path(os.environ["METADATA_OUTPUT"])
+output.parent.mkdir(parents=True, exist_ok=True)
+output.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+github_output = os.environ.get("GITHUB_OUTPUT")
+if github_output:
+    with open(github_output, "a", encoding="utf-8") as handle:
+        handle.write(f"image_digest={digest}\n")
+        handle.write(f"image_ref={metadata['immutable_ref']}\n")
+        handle.write(f"build_id={metadata['cloud_build_id']}\n")
+        handle.write(f"evidence_path={output}\n")
+PY

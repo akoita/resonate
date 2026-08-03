@@ -59,6 +59,33 @@ IMAGE_URI="$IMAGE_URI" TEMPLATE_GCS_PATH="$TEMPLATE_GCS_PATH" ./build-flex-templ
 `resonate-iac` should set `analytics_dataflow_flex_template_gcs_path` to the
 same `TEMPLATE_GCS_PATH` when `analytics_dataflow_launch_enabled=true`.
 
+### Dependency lock maintenance
+
+`requirements.in` is the reviewed top-level input and `requirements.lock` is
+the generated Python 3.12/Linux x86_64 graph. The image installs it with
+pip's `--require-hashes`; do not edit the generated versions or hashes by hand.
+
+The current lock was generated with `uv 0.11.24` for the exact launcher base's
+Python 3.12.13 and glibc 2.36 target:
+
+```bash
+cd workers/analytics-dataflow
+uv pip compile requirements.in \
+  --python-version 3.12 \
+  --python-platform x86_64-manylinux_2_36 \
+  --generate-hashes --no-emit-index-url \
+  --output-file requirements.lock \
+  --custom-compile-command 'uv pip compile requirements.in --python-version 3.12 --python-platform x86_64-manylinux_2_36 --generate-hashes --no-emit-index-url --output-file requirements.lock'
+```
+
+Validate updates in the digest-pinned launcher image, then run the repository
+lock check:
+
+```bash
+docker build -t resonate-analytics-dataflow:lock-test workers/analytics-dataflow
+python scripts/check-python-worker-locks.py
+```
+
 ## Publish From GitHub Actions
 
 Use the **Publish Analytics Dataflow Flex Template** workflow in this repository

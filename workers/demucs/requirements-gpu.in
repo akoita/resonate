@@ -1,0 +1,16 @@
+# Python 3.10/Linux x86_64 input for the digest-pinned CUDA 12.1 base.
+# torch/torchaudio/torchvision are excluded from this compiled graph and held
+# to the image-provided ABI by constraints-gpu.txt.
+demucs @ https://github.com/adefossez/demucs/archive/eeac1d15891af95b1288d2884b95baa3e5baa96c.tar.gz#sha256=36495e8e8e869749b7722bc79be9cbf18a7bed7c5921e417b54c3023e2bde825
+fastapi
+uvicorn
+python-multipart
+numpy<2.0.0
+httpx
+google-cloud-storage
+google-cloud-pubsub
+pyacoustid
+librosa==0.10.2.post1
+# Required audio I/O backend for torchaudio 2.x; formerly installed ad hoc in
+# Dockerfile.gpu.
+soundfile

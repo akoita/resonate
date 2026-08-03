@@ -154,9 +154,9 @@ the shared skill and supplies the Resonate context it needs.
 ## GitHub CI
 
 > [!IMPORTANT]
-> **Advisory, not a gate.** `.github/workflows/security.yml` and
+> **Heuristic scanners are advisory.** `.github/workflows/security.yml` and
 > `.pre-commit-config.yaml` now exist (#1537 Phase 3), but nothing they report
-> can fail a merge. Every scan step is `continue-on-error: true` under the
+> can fail a merge. Every heuristic scan step is `continue-on-error: true` under the
 > ratchet rule, and **pre-commit is opt-in** — it is not installed for you (see
 > [Pre-commit](#pre-commit-opt-in) below). Two constraints shape the workflow:
 > GitHub code scanning is **disabled** on this repository
@@ -168,10 +168,15 @@ the shared skill and supplies the Resonate context it needs.
 | --- | --- | --- | --- | --- |
 | `security.yml` → `Security Scan (PR, advisory)` | `security-scan` | Pull request, diff-scoped against `git merge-base origin/main HEAD` | No — advisory during the soak period | Implemented (#1537 Phase 3) |
 | `security.yml` → `Nightly Security Scan (advisory)` | `security-scan` | Schedule (02:30 UTC) + `workflow_dispatch`, full tree and full history | No — digest only | Implemented (#1537 Phase 3) |
+| `security.yml` → `Supply Chain Baseline` | `security-supply-chain` | Pull request, schedule, and `workflow_dispatch`; validates the T4 profile and revision-bound ABOM | Deterministic job fails on schema or mutable build inputs; branch-required status remains #1539 | Implemented (#1551) |
+| `security.yml` → `Release Plane Evidence` | `security-supply-chain` | Schedule and `workflow_dispatch`; inventories privileged runs and delivery-path changes | Flags unexpected trigger classes; alert routing remains private/live evidence | Implemented (#1551) |
 | `code-review.yml` | `security-review` | Pull request (existing workflow, extended) | No — advisory inline comments | Proposed (#1537 Phase 3) |
 | `certora.yml`, `formal.yml`, `mutation.yml` | `security-smart-contracts` (doctrine) | Nightly / weekly / per-PR on `contracts/**` | `formal.yml` blocks; `certora.yml` and `mutation.yml` are scheduled-only | Implemented |
 
 Notes on each:
+
+- Supply-chain containment and recovery procedures are in the
+  [supply-chain incident-response playbook](../operations/supply_chain_incident_response.md).
 
 - **`Security Scan (PR, advisory)`** runs the deterministic toolchain inside a
   five-minute budget, everything diff-scoped: `gitleaks dir .` for secrets,

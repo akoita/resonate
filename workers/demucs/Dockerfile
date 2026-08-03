@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.10-slim@sha256:c1e4e6c01eb489c422288b2de34b0761ca316f7a2d98e2c33f47659a73ed108a
 
 # Build argument to control model pre-caching (set to 0 to skip for faster builds)
 ARG CACHE_MODEL=1
@@ -13,9 +13,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install the Python 3.10/Linux CPU graph, including reviewed CPU-only Torch
+# wheels. The CUDA-base graph is intentionally separate in Dockerfile.gpu.
+COPY requirements-build.lock requirements-cpu.lock ./
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements-build.lock \
+    && python -m pip install --no-cache-dir --require-hashes \
+        --no-build-isolation -r requirements-cpu.lock
 
 # Create models directory with proper permissions
 RUN mkdir -p /root/.cache/torch/hub/checkpoints

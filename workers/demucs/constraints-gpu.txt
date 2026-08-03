@@ -1,0 +1,6 @@
+# Packages supplied by pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime.
+# Keep these exact constraints in the install command so a transitive
+# requirement cannot silently replace the base image's CUDA/Torch ABI.
+torch==2.1.0
+torchaudio==2.1.0
+torchvision==0.16.0

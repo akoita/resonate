@@ -1,0 +1,153 @@
+name: Publish image evidence
+description: Generate, sign, verify, and retain evidence for one immutable image.
+
+inputs:
+  image-name:
+    description: Stable service name used for evidence filenames and artifacts.
+    required: true
+  image-ref:
+    description: Immutable Artifact Registry image reference using @sha256.
+    required: true
+  registry:
+    description: Artifact Registry repository path; its host is configured for Docker authentication.
+    required: true
+  build-metadata:
+    description: Cloud Build metadata JSON emitted by submit-cloud-build.sh.
+    required: true
+  evidence-dir:
+    description: Directory in which evidence files are assembled.
+    required: true
+  workflow-identity:
+    description: Exact Sigstore certificate identity expected for this workflow and ref.
+    required: true
+  source-sha:
+    description: Full source commit expected in the build metadata.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Validate build evidence
+      shell: bash
+      env:
+        BUILD_METADATA: ${{ inputs.build-metadata }}
+        EVIDENCE_DIR: ${{ inputs.evidence-dir }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        IMAGE_REF: ${{ inputs.image-ref }}
+        SOURCE_SHA: ${{ inputs.source-sha }}
+      run: |
+        set -euo pipefail
+        mkdir -p "${EVIDENCE_DIR}"
+        BUILD_METADATA="${BUILD_METADATA}" \
+        EVIDENCE_DIR="${EVIDENCE_DIR}" \
+        IMAGE_NAME="${IMAGE_NAME}" \
+        IMAGE_REF="${IMAGE_REF}" \
+        SOURCE_SHA="${SOURCE_SHA}" \
+        python3 - <<'PY'
+        import json
+        import os
+        import re
+        import shutil
+        from pathlib import Path
+
+        source_sha = os.environ["SOURCE_SHA"]
+        image_ref = os.environ["IMAGE_REF"]
+        if not re.fullmatch(r"[0-9a-f]{40}", source_sha):
+            raise SystemExit("source SHA must be 40 lowercase hexadecimal characters")
+        if not re.fullmatch(r"[^@\s]+@sha256:[0-9a-f]{64}", image_ref):
+            raise SystemExit("image reference must be immutable and sha256-bound")
+
+        metadata_path = Path(os.environ["BUILD_METADATA"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("immutable_ref") != image_ref:
+            raise SystemExit("Cloud Build metadata image reference mismatch")
+        if metadata.get("source_sha") != source_sha:
+            raise SystemExit("Cloud Build metadata source SHA mismatch")
+        if metadata.get("digest") != image_ref.rsplit("@", 1)[1]:
+            raise SystemExit("Cloud Build metadata digest mismatch")
+        if not metadata.get("cloud_build_id"):
+            raise SystemExit("Cloud Build metadata is missing the build id")
+
+        destination = Path(os.environ["EVIDENCE_DIR"]) / f"{os.environ['IMAGE_NAME']}.build.json"
+        shutil.copyfile(metadata_path, destination)
+        PY
+
+    - name: Configure Artifact Registry authentication
+      shell: bash
+      env:
+        REGISTRY: ${{ inputs.registry }}
+      run: |
+        set -euo pipefail
+        registry_host="${REGISTRY%%/*}"
+        if [[ -z "${registry_host}" || "${registry_host}" == "${REGISTRY}" ]]; then
+          echo "Expected a registry repository path, got: ${REGISTRY}" >&2
+          exit 1
+        fi
+        gcloud auth configure-docker "${registry_host}" --quiet
+
+    - name: Generate CycloneDX SBOM from immutable image
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ inputs.image-ref }}
+        format: cyclonedx-json
+        output-file: ${{ inputs.evidence-dir }}/${{ inputs.image-name }}.sbom.cdx.json
+        syft-version: v1.50.0
+        dependency-snapshot: false
+        upload-artifact: false
+        upload-release-assets: false
+
+    - name: Install cosign
+      uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      with:
+        cosign-release: v3.1.2
+
+    - name: Sign, attest, and verify immutable image
+      shell: bash
+      env:
+        COSIGN_YES: "true"
+        EVIDENCE_DIR: ${{ inputs.evidence-dir }}
+        IMAGE_NAME: ${{ inputs.image-name }}
+        IMAGE_REF: ${{ inputs.image-ref }}
+        WORKFLOW_IDENTITY: ${{ inputs.workflow-identity }}
+      run: |
+        set -euo pipefail
+        sbom="${EVIDENCE_DIR}/${IMAGE_NAME}.sbom.cdx.json"
+        build_evidence="${EVIDENCE_DIR}/${IMAGE_NAME}.build.json"
+        issuer="https://token.actions.githubusercontent.com"
+        build_predicate_type="https://resonate.co/attestations/cloud-build/v1"
+
+        python3 - "${sbom}" <<'PY'
+        import json
+        import sys
+
+        with open(sys.argv[1], "r", encoding="utf-8") as handle:
+            document = json.load(handle)
+        if document.get("bomFormat") != "CycloneDX" or not document.get("components"):
+            raise SystemExit("generated SBOM is not a non-empty CycloneDX document")
+        PY
+
+        cosign sign --yes "${IMAGE_REF}"
+        cosign attest --yes --predicate "${sbom}" --type cyclonedx "${IMAGE_REF}"
+        cosign attest --yes --predicate "${build_evidence}" --type "${build_predicate_type}" "${IMAGE_REF}"
+        cosign verify "${IMAGE_REF}" \
+          --certificate-identity "${WORKFLOW_IDENTITY}" \
+          --certificate-oidc-issuer "${issuer}" \
+          --output json > "${EVIDENCE_DIR}/${IMAGE_NAME}.signature-verification.json"
+        cosign verify-attestation "${IMAGE_REF}" \
+          --type cyclonedx \
+          --certificate-identity "${WORKFLOW_IDENTITY}" \
+          --certificate-oidc-issuer "${issuer}" \
+          --output json > "${EVIDENCE_DIR}/${IMAGE_NAME}.attestation-verification.json"
+        cosign verify-attestation "${IMAGE_REF}" \
+          --type "${build_predicate_type}" \
+          --certificate-identity "${WORKFLOW_IDENTITY}" \
+          --certificate-oidc-issuer "${issuer}" \
+          --output json > "${EVIDENCE_DIR}/${IMAGE_NAME}.build-attestation-verification.json"
+
+    - name: Upload image evidence
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      with:
+        name: image-evidence-${{ inputs.image-name }}-${{ inputs.source-sha }}
+        path: ${{ inputs.evidence-dir }}/
+        if-no-files-found: error
+        retention-days: 90

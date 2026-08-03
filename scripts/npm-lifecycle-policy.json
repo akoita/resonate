@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "projects": {
+    ".": {
+      "lockfile": "package-lock.json",
+      "packageLifecycles": {},
+      "projectLifecycles": {
+        "prepare": {
+          "command": "husky",
+          "disposition": "execute",
+          "rationale": "First-party setup that installs the repository's reviewed Git hooks; the hardened root install opts into it explicitly after dependency rebuilds."
+        }
+      }
+    },
+    "backend": {
+      "lockfile": "backend/package-lock.json",
+      "packageLifecycles": {
+        "node_modules/@google/genai/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/@grpc/proto-loader/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/@nestjs/core@10.4.22": {
+          "disposition": "deny",
+          "rationale": "The NestJS postinstall invokes Open Collective messaging and does not create runtime artifacts."
+        },
+        "node_modules/@opentelemetry/otlp-transformer/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/@prisma/client@5.22.0": {
+          "disposition": "execute",
+          "executionOrder": 30,
+          "rationale": "Prisma Client postinstall prepares its generated client fallback; application schema generation remains an explicit separate command."
+        },
+        "node_modules/@prisma/engines@5.22.0": {
+          "disposition": "execute",
+          "executionOrder": 10,
+          "rationale": "Prisma validates and prepares the platform-specific query engines required by backend tooling."
+        },
+        "node_modules/bufferutil@4.1.0": {
+          "disposition": "execute",
+          "rationale": "Optional native WebSocket acceleration must retain its platform build/install behavior when available."
+        },
+        "node_modules/cpu-features@0.0.10": {
+          "disposition": "execute",
+          "rationale": "Optional native CPU feature detection requires a platform build on supported developer and CI hosts."
+        },
+        "node_modules/dockerode/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/fsevents@2.3.3": {
+          "disposition": "execute",
+          "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
+        },
+        "node_modules/google-gax/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/msgpackr-extract@3.0.3": {
+          "disposition": "execute",
+          "rationale": "Optional native MessagePack acceleration selects or builds a platform binary during installation."
+        },
+        "node_modules/prisma@5.22.0": {
+          "disposition": "execute",
+          "executionOrder": 20,
+          "rationale": "The Prisma CLI performs a supported-platform preinstall check needed before explicit prisma generate invocations."
+        },
+        "node_modules/proto3-json-serializer/node_modules/protobufjs@7.5.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/protobufjs@6.11.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/ssh2@1.17.0": {
+          "disposition": "execute",
+          "rationale": "SSH2 may build its optional native crypto binding and needs platform coverage before that install path can be denied."
+        },
+        "node_modules/utf-8-validate@6.0.6": {
+          "disposition": "execute",
+          "rationale": "Optional native WebSocket UTF-8 validation must retain its platform build/install behavior when available."
+        }
+      },
+      "projectLifecycles": {}
+    },
+    "web": {
+      "lockfile": "web/package-lock.json",
+      "packageLifecycles": {
+        "node_modules/esbuild@0.27.3": {
+          "disposition": "execute",
+          "rationale": "esbuild verifies and links the platform-specific executable used by the frontend toolchain."
+        },
+        "node_modules/fsevents@2.3.2": {
+          "disposition": "execute",
+          "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
+        },
+        "node_modules/protobufjs@6.11.4": {
+          "disposition": "deny",
+          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
+        },
+        "node_modules/sharp@0.34.5": {
+          "disposition": "execute",
+          "rationale": "Next.js image processing depends on sharp validating its platform-specific native binary."
+        },
+        "node_modules/unrs-resolver@1.11.1": {
+          "disposition": "execute",
+          "rationale": "The resolver validates its N-API platform binding for the frontend build toolchain."
+        },
+        "node_modules/vite/node_modules/fsevents@2.3.3": {
+          "disposition": "execute",
+          "rationale": "Vite's optional macOS filesystem event binding requires platform installation and must not be disabled without macOS coverage."
+        }
+      },
+      "projectLifecycles": {}
+    },
+    "desktop": {
+      "lockfile": "desktop/package-lock.json",
+      "packageLifecycles": {
+        "node_modules/electron@40.9.3": {
+          "disposition": "execute",
+          "rationale": "Electron installs the pinned runtime binary required to run and package the desktop application."
+        },
+        "node_modules/electron-winstaller@5.4.0": {
+          "disposition": "execute",
+          "rationale": "The Windows installer tooling selects the bundled 7-Zip executable for the current architecture."
+        }
+      },
+      "projectLifecycles": {}
+    },
+    "scripts/staging-smoke": {
+      "lockfile": "scripts/staging-smoke/package-lock.json",
+      "packageLifecycles": {},
+      "projectLifecycles": {}
+    },
+    "examples/mcp-client": {
+      "lockfile": "examples/mcp-client/package-lock.json",
+      "packageLifecycles": {
+        "node_modules/esbuild@0.28.1": {
+          "disposition": "execute",
+          "rationale": "tsx depends on esbuild verifying and linking its platform-specific executable."
+        },
+        "node_modules/fsevents@2.3.3": {
+          "disposition": "execute",
+          "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
+        }
+      },
+      "projectLifecycles": {}
+    }
+  }
+}

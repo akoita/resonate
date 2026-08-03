@@ -1,8 +1,10 @@
-# Stable Audio 3 spike — Cloud Run GPU job image (#1193). Throwaway.
+# ARCHIVED/NON-PRODUCTION: Stable Audio 3 spike Cloud Run GPU job (#1193).
+# This historical harness is deliberately excluded from the production worker
+# lock policy. Use workers/stable-audio for maintained, hash-locked builds.
 # Base matches the torch stable_audio_3 wants (2.7.1 / cu12.6), so flash-attn
 # builds against the SAME torch ABI — the first build pinned an older torch and
 # hit an undefined-symbol load error.
-FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel
+FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel@sha256:639b8229ccfd8a3aa803cf49c33d6d6fe406750d79aaf723fe8c0eb1060d8cff
 
 ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends git build-essential ffmpeg \
