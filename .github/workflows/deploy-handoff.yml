@@ -256,11 +256,18 @@ jobs:
               "stable_audio_image_digest",
               "stable_audio_image_ref",
           )
-          client_payload = {field: os.environ[field.upper()] for field in fields}
-          client_payload["action"] = "apply"
+          manifest = {field: os.environ[field.upper()] for field in fields}
+          manifest["action"] = "apply"
+          # repository_dispatch allows at most 10 top-level client_payload
+          # properties; the v2 manifest has 25, which returned a hard 422 and
+          # silently blocked every staging deploy. Send it as one JSON string
+          # instead. resonate-iac unwraps "manifest" and still accepts the flat
+          # shape, so this side can change without a lockstep deploy.
           document = {
               "event_type": os.environ["RESONATE_DEPLOY_EVENT"],
-              "client_payload": client_payload,
+              "client_payload": {
+                  "manifest": json.dumps(manifest, separators=(",", ":"), sort_keys=True),
+              },
           }
           with open(sys.argv[1], "w", encoding="utf-8") as handle:
               json.dump(document, handle, separators=(",", ":"), sort_keys=True)
