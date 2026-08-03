@@ -54,6 +54,7 @@ test('npm command resolution launches the Windows CLI through Node', () => {
   assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, {
     platform: 'win32',
     nodeExecutable: '/node/node.exe',
+    npmCliPath: null,
     pathEnvironment: '/old;/current',
     fileExists,
   }), {
@@ -67,6 +68,7 @@ test('npm command resolution launches the Windows CLI through Node', () => {
   assert.throws(
     () => resolveInvocation({ command: 'npm', args: ['ci'] }, {
       platform: 'win32',
+      npmCliPath: null,
       pathEnvironment: '/missing',
       fileExists: () => false,
     }),
