@@ -170,7 +170,7 @@ the shared skill and supplies the Resonate context it needs.
 | `security.yml` → `Nightly Security Scan (advisory)` | `security-scan` | Schedule (02:30 UTC) + `workflow_dispatch`, full tree and full history | No — digest only | Implemented (#1537 Phase 3) |
 | `security.yml` → `Supply Chain Baseline` | `security-supply-chain` | Pull request, schedule, and `workflow_dispatch`; validates the T4 profile and revision-bound ABOM | Deterministic job fails on schema or mutable build inputs; branch-required status remains #1539 | Implemented (#1551) |
 | `security.yml` → `Release Plane Evidence` | `security-supply-chain` | Schedule and `workflow_dispatch`; inventories privileged runs and delivery-path changes | Flags unexpected trigger classes; alert routing remains private/live evidence | Implemented (#1551) |
-| `code-review.yml` | `security-review` | Pull request (existing workflow, extended) | No — advisory inline comments | Proposed (#1537 Phase 3) |
+| ~~`code-review.yml`~~ | `security-review` | — | — | Retired (#1547). The hosted review needed its own paid `ANTHROPIC_API_KEY`; run `/code-review` locally instead. |
 | `certora.yml`, `formal.yml`, `mutation.yml` | `security-smart-contracts` (doctrine) | Nightly / weekly / per-PR on `contracts/**` | `formal.yml` blocks; `certora.yml` and `mutation.yml` are scheduled-only | Implemented |
 
 Notes on each:
@@ -197,11 +197,15 @@ Notes on each:
   leaked through this repository's history. A verified hit is a real,
   currently-valid credential: **rotate first**, then clean up. Output goes to a
   digest and an artifact, not to a pull request.
-- **`code-review.yml`** already exists and already states in its header that
-  "the check never blocks merging". Extending it with `security-review` is still
-  proposed and deliberately deferred: its `anthropics/claude-code-action@v1` step
-  is currently erroring on every pull request, and adding a second responsibility
-  to a failing action buys nothing. Fix the action first.
+- **`code-review.yml`** was **retired** (#1547). It ran
+  `anthropics/claude-code-action@v1` against a repository `ANTHROPIC_API_KEY`,
+  which is billed separately from a Claude subscription. It had also been
+  failing on every pull request since 2026-07-19 — rejected before any review
+  ran — so for three weeks it produced a red check and no review at all.
+  Reviews now run locally with `/code-review`, which uses the developer's own
+  Claude Code session rather than a hosted key. Extending a hosted review with
+  `security-review` is off the table while there is no key to run it with; the
+  security scans in `security.yml` are unaffected and still run in CI.
 - **`certora.yml` / `formal.yml` / `mutation.yml`** are already wired and do not
   change. They implement the formal and mutation layers of the contract test
   ladder; `security-smart-contracts` is the doctrine they cite, not a step they
