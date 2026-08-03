@@ -1099,27 +1099,27 @@ const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71
 // Real, recent artist photos — Getty editorial, all rights reserved, demo use only.
 // Committed locally (mirrors the backend fixture assets) instead of hot-linking
 // Getty comp URLs, whose signed tokens expire and 404 in the browser.
-const AYA_PORTRAIT_IMAGE = "/shows/aya-nakamura-portrait.jpg";
+const AYA_PORTRAIT_IMAGE = "/shows/aya-nakamura-portrait.webp";
 // Aya performing at Vogue World: Paris (June 2024) — editorial press photo via RTL.fr,
 // all rights reserved, demo use only; locally committed.
-const AYA_HERO_IMAGE = "/shows/aya-nakamura-montreal-hero.jpg";
-const AYA_LIVE_IMAGE = "/shows/aya-nakamura-live.jpg";
-const AYA_STAGE_IMAGE = "/shows/aya-nakamura-stage.jpg";
-const LEONA_LIVE_IMAGE = "/shows/leona-lewis-live.jpg";
-const LEONA_HERO_IMAGE = "/shows/leona-lewis-lagos-hero.jpg";
-const LEONA_VEGAS_IMAGE = "/shows/leona-lewis-vegas.jpg";
-const LEONA_WIMBLEDON_IMAGE = "/shows/leona-lewis-wimbledon.jpg";
-const SENNARIN_PORTRAIT_IMAGE = "/shows/sennarin-portrait.jpg";
-const SENNARIN_EDITORIAL_IMAGE = "/shows/sennarin-editorial.jpg";
-const SENNARIN_BAND_IMAGE = "/shows/sennarin-band.jpg";
+const AYA_HERO_IMAGE = "/shows/aya-nakamura-montreal-hero.webp";
+const AYA_LIVE_IMAGE = "/shows/aya-nakamura-live.webp";
+const AYA_STAGE_IMAGE = "/shows/aya-nakamura-stage.webp";
+const LEONA_LIVE_IMAGE = "/shows/leona-lewis-live.webp";
+const LEONA_HERO_IMAGE = "/shows/leona-lewis-lagos-hero.webp";
+const LEONA_VEGAS_IMAGE = "/shows/leona-lewis-vegas.webp";
+const LEONA_WIMBLEDON_IMAGE = "/shows/leona-lewis-wimbledon.webp";
+const SENNARIN_PORTRAIT_IMAGE = "/shows/sennarin-portrait.webp";
+const SENNARIN_EDITORIAL_IMAGE = "/shows/sennarin-editorial.webp";
+const SENNARIN_BAND_IMAGE = "/shows/sennarin-band.webp";
 // Wide hero composed from her cinematic @senna_rin editorial portrait, locally committed.
-const SENNARIN_HERO_IMAGE = "/shows/sennarin-paris-hero.jpg";
+const SENNARIN_HERO_IMAGE = "/shows/sennarin-paris-hero.webp";
 // "After Rain" single cover art (locally committed, demo use only) — replaces the prior press photo.
-const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.jpg";
+const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.webp";
 // Wide hero composed from her "After Rain" cover (locally committed, demo use only).
-const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.jpg";
-const FELICIA_STUDIO_IMAGE = "/shows/felicia-farerre-studio.jpg";
-const FELICIA_ANGELS_IMAGE = "/shows/felicia-angels-cover.jpg";
+const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.webp";
+const FELICIA_STUDIO_IMAGE = "/shows/felicia-farerre-studio.webp";
+const FELICIA_ANGELS_IMAGE = "/shows/felicia-angels-cover.webp";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
