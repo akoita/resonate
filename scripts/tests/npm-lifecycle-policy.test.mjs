@@ -41,14 +41,28 @@ test('checked-in policy exactly matches the first-party lifecycle inventory', ()
 });
 
 test('npm command resolution launches the Windows CLI through Node', () => {
-  assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, 'win32', '/node/node.exe'), {
+  const fileExists = (candidate) => candidate.startsWith('/current/');
+  assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, {
+    platform: 'win32',
+    nodeExecutable: '/node/node.exe',
+    pathEnvironment: '/old;/current',
+    fileExists,
+  }), {
     command: '/node/node.exe',
-    args: ['/node/node_modules/npm/bin/npm-cli.js', 'ci'],
+    args: ['/current/node_modules/npm/bin/npm-cli.js', 'ci'],
   });
-  assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, 'linux', '/usr/bin/node'), {
+  assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, { platform: 'linux' }), {
     command: 'npm',
     args: ['ci'],
   });
+  assert.throws(
+    () => resolveInvocation({ command: 'npm', args: ['ci'] }, {
+      platform: 'win32',
+      pathEnvironment: '/missing',
+      fileExists: () => false,
+    }),
+    /Unable to locate npm\.cmd and its npm CLI on PATH/,
+  );
 });
 
 test('an unreviewed lockfile lifecycle tuple fails closed', (t) => {

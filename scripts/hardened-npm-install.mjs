@@ -101,12 +101,25 @@ export function createInstallPlan({
   };
 }
 
-export function resolveInvocation(step, platform = process.platform, nodeExecutable = process.execPath) {
+export function resolveInvocation(step, {
+  platform = process.platform,
+  nodeExecutable = process.execPath,
+  pathEnvironment = process.env.PATH ?? '',
+  fileExists = fs.existsSync,
+} = {}) {
   if (platform === 'win32' && step.command === 'npm') {
-    return {
-      command: nodeExecutable,
-      args: [path.join(path.dirname(nodeExecutable), 'node_modules/npm/bin/npm-cli.js'), ...step.args],
-    };
+    const directories = pathEnvironment
+      .split(';')
+      .map((entry) => entry.replace(/^"|"$/g, ''))
+      .filter(Boolean);
+    for (const directory of directories) {
+      const npmShim = path.join(directory, 'npm.cmd');
+      const npmCli = path.join(directory, 'node_modules/npm/bin/npm-cli.js');
+      if (fileExists(npmShim) && fileExists(npmCli)) {
+        return { command: nodeExecutable, args: [npmCli, ...step.args] };
+      }
+    }
+    throw new Error('Unable to locate npm.cmd and its npm CLI on PATH');
   }
   return { command: step.command, args: step.args };
 }
