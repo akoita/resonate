@@ -52,26 +52,26 @@ Each campaign gallery mixes three kinds of image:
 
 | File | Creator/source | License | Source |
 | --- | --- | --- | --- |
-| `sennarin-paris-hero.jpg` | SennaRin / staff | All rights reserved — demo use only | Wide hero composed from her editorial portrait (blurred-fill background + portrait) via [@senna_rin on X](https://x.com/senna_rin/media) |
-| `sennarin-portrait.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
-| `sennarin-editorial.jpg` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
-| `sennarin-band.jpg` | SennaRin / staff | All rights reserved — demo use only | Official group photo (SennaRin centre) via [@senna_rin on X](https://x.com/senna_rin/media) |
-| `sennarin-paris-venue.jpg` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
-| `felicia-farerre-dublin-hero.jpg` | Felicia Farerre | All rights reserved — demo use only | Wide hero composed from her studio press photo (vignette-feathered portrait + blurred-fill background) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
-| `felicia-farerre-portrait.jpg` | Felicia Farerre | All rights reserved — demo use only | “After Rain” single cover art via [her official site](https://www.feliciafarerre.com/) |
-| `felicia-farerre-studio.jpg` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
-| `felicia-angels-cover.jpg` | Felicia Farerre | All rights reserved — demo use only | “In the Company of Angels” album cover art (extracted from the release) |
-| `felicia-farerre-dublin-venue.jpg` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
-| `leona-lewis-lagos-hero.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Abu Dhabi ([Getty Images](https://www.gettyimages.fr/)) |
-| `leona-lewis-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
-| `leona-lewis-vegas.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Las Vegas Christmas show ([Getty Images](https://www.gettyimages.fr/)) |
-| `leona-lewis-wimbledon.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, Wimbledon ([Getty Images](https://www.gettyimages.fr/)) |
-| `leona-lewis-lagos-city.jpg` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
-| `aya-nakamura-montreal-hero.jpg` | Editorial press photo (via RTL.fr) | All rights reserved — demo use only | Aya Nakamura performing at Vogue World: Paris, June 2024 ([RTL.fr](https://images.rtl.fr/~c/1200v800/rtl/www/1762247-la-chanteuse-aya-nakamura-a-paris-en-juin-2024.jpg)) |
-| `aya-nakamura-portrait.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
-| `aya-nakamura-live.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
-| `aya-nakamura-stage.jpg` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
-| `aya-nakamura-montreal-city.jpg` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
+| `sennarin-paris-hero.webp` | SennaRin / staff | All rights reserved — demo use only | Wide hero composed from her editorial portrait (blurred-fill background + portrait) via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-portrait.webp` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-editorial.webp` | SennaRin / staff | All rights reserved — demo use only | Official photo via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-band.webp` | SennaRin / staff | All rights reserved — demo use only | Official group photo (SennaRin centre) via [@senna_rin on X](https://x.com/senna_rin/media) |
+| `sennarin-paris-venue.webp` | Celette | CC BY-SA 4.0 | [Le Trianon, Paris](https://commons.wikimedia.org/wiki/File:Le_Trianon,_80_boulevard_de_Rochechouart,_Paris_18e.jpg) |
+| `felicia-farerre-dublin-hero.webp` | Felicia Farerre | All rights reserved — demo use only | Wide hero composed from her studio press photo (vignette-feathered portrait + blurred-fill background) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
+| `felicia-farerre-portrait.webp` | Felicia Farerre | All rights reserved — demo use only | “After Rain” single cover art via [her official site](https://www.feliciafarerre.com/) |
+| `felicia-farerre-studio.webp` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
+| `felicia-angels-cover.webp` | Felicia Farerre | All rights reserved — demo use only | “In the Company of Angels” album cover art (extracted from the release) |
+| `felicia-farerre-dublin-venue.webp` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
+| `leona-lewis-lagos-hero.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Abu Dhabi ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-live.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-vegas.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Las Vegas Christmas show ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-wimbledon.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, Wimbledon ([Getty Images](https://www.gettyimages.fr/)) |
+| `leona-lewis-lagos-city.webp` | SmartAfricanBoy | CC BY-SA 4.0 | [Eko Atlantic skyline](https://commons.wikimedia.org/wiki/File:Eko_Atlantic_(Lagos)_Skyline.jpg) |
+| `aya-nakamura-montreal-hero.webp` | Editorial press photo (via RTL.fr) | All rights reserved — demo use only | Aya Nakamura performing at Vogue World: Paris, June 2024 ([RTL.fr](https://images.rtl.fr/~c/1200v800/rtl/www/1762247-la-chanteuse-aya-nakamura-a-paris-en-juin-2024.webp)) |
+| `aya-nakamura-portrait.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, 2024 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-live.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-stage.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
+| `aya-nakamura-montreal-city.webp` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
 
 CC venue/city assets retrieved from Wikimedia Commons; real artist photos
 retrieved from public press/official sources on 2026-06-24. Preserve this table
