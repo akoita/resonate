@@ -92,11 +92,23 @@ export default function RootLayout({
       <head>
         {/* Material Symbols icon font — used by the Stitch-designed home.
          * Lives in the root layout so it applies app-wide; the lint rule
-         * flags page-scoped font links, not root-layout ones. */}
+         * flags page-scoped font links, not root-layout ones.
+         *
+         * SUBSETTED (#1491): `&icon_names=` restricts the download to the
+         * glyphs we actually render. The unsubsetted variable font is
+         * ~3.96 MB (51% of a cold Home page); this subset is ~25 KB.
+         *
+         * IMPORTANT: if you add `<span className="ms-icon">some_icon</span>` to any
+         * component, you MUST add `some_icon` to the sorted list below.
+         * Material Symbols icons are ligatures, so a missing glyph does not
+         * fall back gracefully — the literal text ("some_icon") renders in
+         * the UI instead of an icon. The guard test at
+         * web/src/lib/iconFontSubset.test.ts scans src/ for `.ms-icon`
+         * ligature names and fails when one is missing from this URL. */}
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=album,arrow_forward,close,error,graphic_eq,hourglass_top,library_add,library_music,lock,person_add,person_search,play_arrow,play_circle,playlist_add,progress_activity,public,queue_music,rocket_launch,search,search_off,table_rows,upload_file&display=swap"
         />
       </head>
       <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable} ${jetbrainsMono.variable}`}>
