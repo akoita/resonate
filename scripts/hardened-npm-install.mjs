@@ -101,13 +101,20 @@ export function createInstallPlan({
   };
 }
 
-export function resolveCommand(command, platform = process.platform) {
-  return platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
+export function resolveInvocation(step, platform = process.platform, nodeExecutable = process.execPath) {
+  if (platform === 'win32' && step.command === 'npm') {
+    return {
+      command: nodeExecutable,
+      args: [path.join(path.dirname(nodeExecutable), 'node_modules/npm/bin/npm-cli.js'), ...step.args],
+    };
+  }
+  return { command: step.command, args: step.args };
 }
 
 function runCommand(step, extraEnvironment = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(resolveCommand(step.command), step.args, {
+    const invocation = resolveInvocation(step);
+    const child = spawn(invocation.command, invocation.args, {
       cwd: step.cwd,
       env: { ...process.env, ...extraEnvironment },
       stdio: 'inherit',
