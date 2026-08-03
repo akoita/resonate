@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
@@ -40,9 +41,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
-import { DropsShelf } from "../components/home/DropsShelf";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
-import { TopArtistsRail, TrendingNowRail } from "../components/home/PopularityRails";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -59,7 +58,6 @@ import {
   progressRatio,
   type Campaign,
 } from "../lib/shows";
-import AgentSessionPresets from "../components/agent/AgentSessionPresets";
 import { recordProductAnalytics } from "../lib/productAnalytics";
 
 /*
@@ -115,6 +113,202 @@ const FILTERS: FilterOption[] = [
   { id: "chill", label: "Chill", kind: "mood", value: "Chill", energy: "low" },
   { id: "late-night", label: "Late Night", kind: "mood", value: "Late Night", energy: "medium" },
 ];
+
+/* ---------------------------------------------------------------------------
+ * Below-the-fold sections are code-split (#1491).
+ *
+ * Above the fold — the `ng-hero` block and <HomeFeedRails> — stays statically
+ * imported so first paint never waits on an extra chunk. Everything below the
+ * fold (Trending Now, Drops, AI DJ presets, Top Artists) loads lazily, and each
+ * one ships a `loading` skeleton built from the *same* layout primitives as the
+ * real section so deferring the chunk does not collapse the box (no CLS).
+ * ------------------------------------------------------------------------- */
+
+/** Header skeleton — same DOM/typography as the real `ng-section-header`. */
+function SectionHeaderSkeleton({
+  kickerClass,
+  kicker,
+  title,
+}: {
+  kickerClass: string;
+  kicker: string;
+  title: string;
+}) {
+  return (
+    <header className="ng-section-header">
+      <div>
+        <span className={`ng-kicker ${kickerClass}`}>{kicker}</span>
+        <h3 className="ng-section-title">{title}</h3>
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Trending Now placeholder: header + one `ng-grid-4` row of play cards. The
+ * card art is `aspect-ratio: 1`, so the reserved height tracks the real rail
+ * exactly at every breakpoint. The rail requests `limit: 8` (up to two desktop
+ * rows); one row is the reserve because the rail is only mounted once its data
+ * has resolved (see the call site), and short catalogs return fewer than four.
+ */
+function TrendingNowRailSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--tertiary"
+        kicker="What listeners play"
+        title="Trending Now"
+      />
+      <div className="ng-grid-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="ng-play-card ng-glass" style={{ borderRadius: 20 }}>
+            <div className="ng-play-card__art" />
+            <h4 className="ng-play-card__title">&nbsp;</h4>
+            <p className="ng-play-card__artist">&nbsp;</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Top Artists placeholder: header + a row of pill blanks. A real
+ * `.ng-artist-pill` is 50px tall (40px avatar + 4px padding + 1px border), so
+ * the blanks reserve the exact row height; six of them approximate the
+ * `limit: 8` pill row before it wraps.
+ */
+function TopArtistsRailSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--violet"
+        kicker="Most listened, last 7 days"
+        title="Top Artists"
+      />
+      <div className="ng-artist-pills">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            style={{
+              width: 150,
+              height: 50,
+              borderRadius: 999,
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+            }}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Drops placeholder: header + one `ng-grid-3` row of collectible-card blanks.
+ * A shelf card is a 14px-padded `ng-glass` tile wrapping the square collectible
+ * art plus a body/footer strip, which is what the blank mirrors.
+ */
+function DropsShelfSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--violet"
+        kicker="Own a piece of the hook"
+        title="Drops"
+      />
+      <div className="ng-grid-3" style={{ alignItems: "stretch" }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="ng-glass" style={{ borderRadius: 20, padding: 14 }}>
+            <div
+              style={{
+                aspectRatio: "1 / 1",
+                borderRadius: 14,
+                background: "rgba(255, 255, 255, 0.04)",
+              }}
+            />
+            <div style={{ height: 96, marginTop: 8 }} />
+            <p className="ng-play-card__artist" style={{ marginTop: 10 }}>
+              &nbsp;
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * AI DJ presets placeholder: the panel chrome plus the 5-up preset grid whose
+ * cards are `min-height: 214px` in the real component, so the reserved box
+ * matches the desktop layout (the narrow-viewport 3-up / swipe variants are
+ * approximated, since the real breakpoints live in the component's styled-jsx).
+ */
+function AgentSessionPresetsSkeleton() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        borderRadius: 20,
+        padding: 22,
+        background:
+          "linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018))",
+      }}
+    >
+      <div style={{ height: 130, marginBottom: 22 }} />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            style={{
+              minHeight: 214,
+              borderRadius: 16,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "rgba(8, 8, 15, 0.74)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Both rails are named exports of the same module; each dynamic import selects
+// its own export. `ssr: false` costs no crawlable content: the rails render
+// `null` until the client-side /catalog/trending + /catalog/top-artists fetches
+// resolve, so their server output is empty today either way.
+const TrendingNowRail = dynamic(
+  () => import("../components/home/PopularityRails").then((m) => m.TrendingNowRail),
+  { ssr: false, loading: () => <TrendingNowRailSkeleton /> },
+);
+
+const TopArtistsRail = dynamic(
+  () => import("../components/home/PopularityRails").then((m) => m.TopArtistsRail),
+  { ssr: false, loading: () => <TopArtistsRailSkeleton /> },
+);
+
+// Client-only by construction: it fetches featured drops on mount and emits
+// `punchline.drop_viewed` analytics with the viewer's token, so it never
+// contributes server-rendered content.
+const DropsShelf = dynamic(
+  () => import("../components/home/DropsShelf").then((m) => m.DropsShelf),
+  { ssr: false, loading: () => <DropsShelfSkeleton /> },
+);
+
+// Kept server-rendered (default `ssr: true`): the presets are static, crawlable
+// product copy (intent, tempo, licensing posture) with no client data
+// dependency — only the chunk is deferred, not the content.
+const AgentSessionPresets = dynamic(
+  () => import("../components/agent/AgentSessionPresets"),
+  { loading: () => <AgentSessionPresetsSkeleton /> },
+);
 
 export default function Home() {
   const router = useRouter();
@@ -1173,7 +1367,13 @@ export default function Home() {
         )}
 
         {/* 5b. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
-        <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
+        {/* The rail itself renders null while `items === null`, so gating the
+            lazy mount on resolved data is behaviour-identical — it just keeps
+            the loading skeleton from reserving a box the rail would not fill
+            yet (#1491). */}
+        {trendingTracks !== null && (
+          <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
+        )}
 
         {/* 6. TRENDING STEMS ———————————————————————————————————— */}
         {stemRow.length > 0 && (
@@ -1228,7 +1428,9 @@ export default function Home() {
         </section>
 
         {/* 9. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
-        <TopArtistsRail items={topArtists} genreLabel={popularityGenre} />
+        {topArtists !== null && (
+          <TopArtistsRail items={topArtists} genreLabel={popularityGenre} />
+        )}
       </main>
       <AddToPlaylistModal
         tracks={tracksToAddToPlaylist}
