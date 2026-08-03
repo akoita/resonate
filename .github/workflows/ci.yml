@@ -44,6 +44,7 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       contracts: ${{ steps.detect.outputs.contracts }}
       shared: ${{ steps.detect.outputs.shared }}
+      shared_image: ${{ steps.detect.outputs.shared_image }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
       run_all: ${{ steps.detect.outputs.run_all }}
       main_deploy_only: ${{ steps.detect.outputs.main_deploy_only }}
@@ -73,6 +74,7 @@ jobs:
           web=false
           contracts=false
           shared=false
+          shared_image=false
           docs=false
           infra=false
           run_all=false
@@ -116,6 +118,9 @@ jobs:
 
               # Keep this mapping conservative: ambiguous changes should land in
               # "shared" so the full cross-module safety net still runs.
+              # "shared_image" is the narrower subset of "shared" that can
+              # actually change what ends up inside a container image; it gates
+              # the image-publish fan-out only (see the publish-plan job).
               for file in "${changed_files[@]}"; do
                 case "${file}" in
                   backend/src/modules/auth/*|backend/src/modules/identity/*|backend/src/modules/sessions/*|backend/src/modules/webauthn/*|backend/src/tests/auth.*|backend/src/tests/sessions.*|backend/src/tests/wallet.*|backend/src/tests/session_key.spec.ts|backend/src/tests/erc4337_client.integration.spec.ts|backend/src/tests/erc6492.spec.ts|backend/src/tests/roles.guard.spec.ts|backend/src/tests/social_recovery.spec.ts)
@@ -170,7 +175,11 @@ jobs:
                     web=true
                     ;;
                   .npmrc|.github/actions/*|scripts/*)
+                    # Composite actions are used by the image build jobs
+                    # (publish-image-evidence) and scripts/.npmrc feed the
+                    # Docker builds, so these do affect image contents.
                     shared=true
+                    shared_image=true
                     ;;
                   contracts/*)
                     contracts=true
@@ -181,11 +190,31 @@ jobs:
                   infra/*|terraform/*)
                     infra=true
                     ;;
-                  .github/workflows/*|.github/actions/*|scripts/*|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|tsconfig*.json|eslint.config.*|.eslintrc*|turbo.json|Makefile|docker-compose*.yml|docker-compose*.yaml)
+                  .github/workflows/ci.yml)
+                    # This workflow owns the image build contexts, Dockerfile
+                    # paths and build args, so editing it can change what is
+                    # baked into an image.
+                    shared=true
+                    shared_image=true
+                    ;;
+                  .github/workflows/*)
+                    # Every other workflow (deploy dispatch, security, formal,
+                    # mutation, desktop release, staging drills, …) only changes
+                    # how CI/CD runs, never the contents of a container image.
+                    # They keep the conservative "shared" test fan-out but must
+                    # NOT force an image rebuild: the stable-audio ML worker
+                    # image alone takes ~29 minutes to build, and a one-line edit
+                    # to e.g. deploy-handoff.yml used to rebuild all four images.
                     shared=true
                     ;;
-                  *)
+                  .github/actions/*|scripts/*|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|tsconfig*.json|eslint.config.*|.eslintrc*|turbo.json|Makefile|docker-compose*.yml|docker-compose*.yaml)
                     shared=true
+                    shared_image=true
+                    ;;
+                  *)
+                    # Unknown files stay conservative on both flags.
+                    shared=true
+                    shared_image=true
                     ;;
                 esac
               done
@@ -218,6 +247,7 @@ jobs:
           echo "web=${web}" >> "${GITHUB_OUTPUT}"
           echo "contracts=${contracts}" >> "${GITHUB_OUTPUT}"
           echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
+          echo "shared_image=${shared_image}" >> "${GITHUB_OUTPUT}"
           echo "docs_only=${docs_only}" >> "${GITHUB_OUTPUT}"
           echo "run_all=${run_all}" >> "${GITHUB_OUTPUT}"
           echo "main_deploy_only=${main_deploy_only}" >> "${GITHUB_OUTPUT}"
@@ -239,6 +269,7 @@ jobs:
             echo "- web: ${web}"
             echo "- contracts: ${contracts}"
             echo "- shared: ${shared}"
+            echo "- shared_image: ${shared_image}"
             echo "- docs_only: ${docs_only}"
             echo "- run_all: ${run_all}"
             echo "- main_deploy_only: ${main_deploy_only}"
@@ -903,7 +934,10 @@ jobs:
           # Keep the backend ingestion path and Demucs worker deployed together.
           # Upload regressions can otherwise persist in staging when only backend
           # ingestion code changes on later commits and the worker image stays stale.
-          if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared }}" == "true" ]]; then
+          # Use shared_image (not shared): a change to a non-ci.yml workflow file
+          # still triggers the full test fan-out but cannot alter image contents,
+          # so it must not rebuild all four images (~29 min for stable-audio).
+          if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared_image }}" == "true" ]]; then
             services+=(backend frontend demucs stable-audio)
           else
             [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && services+=(backend)
