@@ -36,7 +36,7 @@ on:
     - cron: "30 2 * * *"
   workflow_dispatch:
 
-# One run per PR; superseded runs are cancelled (same shape as code-review.yml).
+# One run per PR; superseded runs are cancelled.
 concurrency:
   group: security-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -163,7 +163,6 @@ jobs:
 
           allowed = {
               ".github/workflows/ci.yml": {"pull_request", "push"},
-              ".github/workflows/code-review.yml": {"pull_request"},
               ".github/workflows/contracts-deploy.yml": {"workflow_dispatch"},
               ".github/workflows/deploy-handoff.yml": {"workflow_dispatch", "workflow_run"},
               ".github/workflows/desktop-release.yml": {"workflow_dispatch"},
