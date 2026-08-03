@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { validateNpmLockSources } from '../check-npm-lock-sources.mjs';
-import { createInstallPlan } from '../hardened-npm-install.mjs';
+import { createInstallPlan, resolveCommand } from '../hardened-npm-install.mjs';
 import {
   FIRST_PARTY_PROJECTS,
   POLICY_PATH,
@@ -38,6 +38,12 @@ function fixtureRepository(t) {
 
 test('checked-in policy exactly matches the first-party lifecycle inventory', () => {
   assert.deepEqual(validateLifecyclePolicy(), []);
+});
+
+test('npm command resolution uses the Windows command shim', () => {
+  assert.equal(resolveCommand('npm', 'win32'), 'npm.cmd');
+  assert.equal(resolveCommand('npm', 'linux'), 'npm');
+  assert.equal(resolveCommand('node', 'win32'), 'node');
 });
 
 test('an unreviewed lockfile lifecycle tuple fails closed', (t) => {

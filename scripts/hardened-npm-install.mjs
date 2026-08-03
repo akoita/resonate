@@ -101,9 +101,13 @@ export function createInstallPlan({
   };
 }
 
+export function resolveCommand(command, platform = process.platform) {
+  return platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
+}
+
 function runCommand(step, extraEnvironment = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(step.command, step.args, {
+    const child = spawn(resolveCommand(step.command), step.args, {
       cwd: step.cwd,
       env: { ...process.env, ...extraEnvironment },
       stdio: 'inherit',
