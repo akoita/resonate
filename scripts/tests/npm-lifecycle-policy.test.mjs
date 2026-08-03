@@ -45,6 +45,15 @@ test('npm command resolution launches the Windows CLI through Node', () => {
   assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, {
     platform: 'win32',
     nodeExecutable: '/node/node.exe',
+    npmCliPath: '/current/node_modules/npm/bin/npm-cli.js',
+    fileExists,
+  }), {
+    command: '/node/node.exe',
+    args: ['/current/node_modules/npm/bin/npm-cli.js', 'ci'],
+  });
+  assert.deepEqual(resolveInvocation({ command: 'npm', args: ['ci'] }, {
+    platform: 'win32',
+    nodeExecutable: '/node/node.exe',
     pathEnvironment: '/old;/current',
     fileExists,
   }), {
@@ -62,6 +71,14 @@ test('npm command resolution launches the Windows CLI through Node', () => {
       fileExists: () => false,
     }),
     /Unable to locate npm\.cmd and its npm CLI on PATH/,
+  );
+  assert.throws(
+    () => resolveInvocation({ command: 'npm', args: ['ci'] }, {
+      platform: 'win32',
+      npmCliPath: '/missing/npm-cli.js',
+      fileExists: () => false,
+    }),
+    /Pinned npm CLI does not exist/,
   );
 });
 

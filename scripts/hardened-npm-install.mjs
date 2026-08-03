@@ -104,10 +104,17 @@ export function createInstallPlan({
 export function resolveInvocation(step, {
   platform = process.platform,
   nodeExecutable = process.execPath,
+  npmCliPath = process.env.HARDENED_NPM_CLI_PATH,
   pathEnvironment = process.env.PATH ?? '',
   fileExists = fs.existsSync,
 } = {}) {
   if (platform === 'win32' && step.command === 'npm') {
+    if (npmCliPath) {
+      if (!fileExists(npmCliPath)) {
+        throw new Error(`Pinned npm CLI does not exist: ${npmCliPath}`);
+      }
+      return { command: nodeExecutable, args: [npmCliPath, ...step.args] };
+    }
     const directories = pathEnvironment
       .split(';')
       .map((entry) => entry.replace(/^"|"$/g, ''))

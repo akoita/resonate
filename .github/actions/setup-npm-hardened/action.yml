@@ -24,3 +24,6 @@ runs:
         set -euo pipefail
         npm install -g npm@11.14.1
         npm --version
+        npm_cli_path="$(npm root --global)/npm/bin/npm-cli.js"
+        test -f "$npm_cli_path"
+        echo "HARDENED_NPM_CLI_PATH=$npm_cli_path" >> "$GITHUB_ENV"
