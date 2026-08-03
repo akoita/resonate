@@ -727,6 +727,18 @@
     transform 0.25s ease,
     border-color 0.25s ease,
     box-shadow 0.25s ease;
+  /* Off-screen cards cost nothing (#1491): several sit below the fold on Home,
+     each painting a holo sheen, seeded gradients and an endless aurora.
+     `content-visibility: auto` lets the browser skip a card's layout, paint and
+     animation until it nears the viewport, where it renders exactly as before.
+     The intrinsic size is only the placeholder box used while skipped, so the
+     shelf keeps its height instead of collapsing: the art panel is a 1:1 square
+     of the card width and the body measures 112–157px, so 300×430 is the middle
+     of the sizes this card actually renders at (home shelf columns 224–438px
+     wide, collect grid 250–300px). `auto` replaces the estimate with each
+     card's real last-rendered size, so it only ever matters on first load. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px auto 430px;
 }
 
 .punchline-collect-item:hover .punchline-card,
