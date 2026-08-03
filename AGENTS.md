@@ -272,6 +272,22 @@ an agent works in that directory instead of in every session. Each follows the
 same convention as this file: `AGENTS.md` is the real file, with `CLAUDE.md`
 alongside it as a symlink.
 
+<!--
+Maintainer note: use a symlink here, NOT an `@AGENTS.md` import.
+
+Claude Code expands `@path` imports only for memory files loaded at launch.
+Subdirectory CLAUDE.md files load on demand when Claude reads a file in that
+directory, and that path injects the file verbatim — an import line arrives as
+the literal text "@AGENTS.md" and the standards are silently never loaded.
+Verified empirically 2026-08-03. The root CLAUDE.md/GEMINI.md symlinks are a
+separate case: those DO load at launch, so an import would work there.
+
+Tradeoff accepted: symlinks need Developer Mode or Administrator on a native
+Windows checkout. This repo is WSL-only on Windows hosts (see the PreToolUse
+guard in .claude/settings.json), so that path is already unsupported.
+-->
+
+
 - Backend testing standards (Testcontainers, file naming, seeding rules):
   [`backend/AGENTS.md`](backend/AGENTS.md).
 - Smart contract testing, verification, and deployment-handoff standards:
