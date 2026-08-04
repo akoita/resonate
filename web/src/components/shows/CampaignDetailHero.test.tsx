@@ -54,7 +54,7 @@ const campaign = {
   featured: false,
   contractAddress: "0xescrow",
   contractCampaignId: "1",
-  etherscanUrl: "https://sepolia.basescan.org/address/0xescrow",
+  etherscanUrl: "https://base-sepolia.blockscout.com/address/0xescrow?tab=contract",
   tagline: "A live demand signal.",
   tiers,
 } satisfies Campaign;

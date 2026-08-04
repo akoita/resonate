@@ -20,6 +20,7 @@ required_vars=(
 # when NEXT_PUBLIC_ENV is unset.
 optional_vars=(
   NEXT_PUBLIC_ENV
+  NEXT_PUBLIC_EXPLORER_URL
   NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS
 )
 

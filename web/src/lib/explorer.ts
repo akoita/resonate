@@ -1,7 +1,5 @@
 import { arbitrumSepolia, base, baseSepolia, mainnet, sepolia } from "viem/chains";
 
-const EXPLORER_BASE_URL = process.env.NEXT_PUBLIC_EXPLORER_URL?.replace(/\/$/, "") ?? null;
-
 const CHAIN_EXPLORERS = new Map<number, string>(
   [mainnet, sepolia, base, baseSepolia, arbitrumSepolia].map((chain) => [
     chain.id,
@@ -9,6 +7,14 @@ const CHAIN_EXPLORERS = new Map<number, string>(
   ]),
 );
 const LOCAL_CHAIN_IDS = new Set([31337, 1337]);
+
+function configuredChainId(value: string | null | undefined) {
+  const normalized = value?.trim();
+  if (!normalized || !/^\d+$/.test(normalized)) return undefined;
+
+  const chainId = Number(normalized);
+  return Number.isSafeInteger(chainId) && chainId > 0 ? chainId : undefined;
+}
 
 function normalizeExplorerAddressBase(baseUrl: string | null | undefined) {
   const value = baseUrl?.trim();
@@ -42,8 +48,9 @@ export function getNetworkLabel(chainId: number | null | undefined) {
 }
 
 export function getExplorerAddressUrl(address: string | null | undefined) {
-  if (!EXPLORER_BASE_URL || !address) return undefined;
-  return `${EXPLORER_BASE_URL}/address/${address}`;
+  if (!address) return undefined;
+  const addressBase = normalizeExplorerAddressBase(process.env.NEXT_PUBLIC_EXPLORER_URL);
+  return addressBase ? `${addressBase}/${address}` : undefined;
 }
 
 export function getChainExplorerAddressUrl(
@@ -53,13 +60,37 @@ export function getChainExplorerAddressUrl(
 ) {
   if (!address || (chainId != null && LOCAL_CHAIN_IDS.has(chainId))) return undefined;
 
+  const configuredExplorer =
+    chainId != null && chainId === configuredChainId(process.env.NEXT_PUBLIC_CHAIN_ID)
+      ? normalizeExplorerAddressBase(process.env.NEXT_PUBLIC_EXPLORER_URL)
+      : undefined;
   const addressBase = normalizeExplorerAddressBase(
-    chainId == null ? fallbackBaseUrl : CHAIN_EXPLORERS.get(chainId) ?? fallbackBaseUrl,
+    configuredExplorer ??
+      (chainId == null ? fallbackBaseUrl : CHAIN_EXPLORERS.get(chainId) ?? fallbackBaseUrl),
   );
   return addressBase ? `${addressBase}/${address}` : undefined;
 }
 
+export function getChainExplorerContractUrl(
+  chainId: number | null | undefined,
+  address: string | null | undefined,
+  fallbackBaseUrl?: string | null,
+) {
+  const addressUrl = getChainExplorerAddressUrl(chainId, address, fallbackBaseUrl);
+  if (!addressUrl) return undefined;
+
+  const url = new URL(addressUrl);
+  const hostname = url.hostname.toLowerCase();
+  if (hostname === "blockscout.com" || hostname.endsWith(".blockscout.com")) {
+    url.searchParams.set("tab", "contract");
+  }
+  return url.toString();
+}
+
 export function getExplorerTxUrl(txHash: string | null | undefined) {
-  if (!EXPLORER_BASE_URL || !txHash) return undefined;
-  return `${EXPLORER_BASE_URL}/tx/${txHash}`;
+  if (!txHash) return undefined;
+
+  const addressBase = normalizeExplorerAddressBase(process.env.NEXT_PUBLIC_EXPLORER_URL);
+  if (!addressBase) return undefined;
+  return `${addressBase.replace(/\/address$/, "")}/tx/${txHash}`;
 }
