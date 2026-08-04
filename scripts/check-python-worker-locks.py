@@ -17,7 +17,8 @@ LOCKS = (
     Path("workers/demucs/requirements-test.lock"),
     Path("workers/stable-audio/requirements.lock"),
     Path("workers/stable-audio/requirements-build.lock"),
-    Path("workers/stable-audio/flash-attn.lock"),
+    Path("workers/stable-audio/flash-attn-cxx11abi-false.lock"),
+    Path("workers/stable-audio/flash-attn-cxx11abi-true.lock"),
 )
 INPUTS = (
     Path("workers/analytics-dataflow/requirements.in"),
@@ -130,13 +131,15 @@ def main() -> int:
             "--constraint constraints-gpu.txt -r requirements-gpu.lock",
         ),
         Path("workers/stable-audio/Dockerfile"): (
-            "COPY requirements-build.lock requirements.lock constraints-gpu.txt flash-attn.lock /app/",
+            "COPY requirements-build.lock requirements.lock constraints-gpu.txt",
+            "flash-attn-cxx11abi-false.lock flash-attn-cxx11abi-true.lock /app/",
             "--require-hashes -r requirements-build.lock",
             "--require-hashes --no-build-isolation",
             "--constraint constraints-gpu.txt -r requirements.lock",
-            "--require-hashes --no-build-isolation --no-deps",
-            "FLASH_ATTENTION_FORCE_BUILD=TRUE",
-            "-r flash-attn.lock",
+            "torch._C._GLIBCXX_USE_CXX11_ABI",
+            "--require-hashes --no-deps",
+            '-r "flash-attn-cxx11abi-${torch_cxx11_abi}.lock"',
+            "import flash_attn",
         ),
     }
     for path, needles in docker_contract.items():
@@ -160,11 +163,21 @@ def main() -> int:
     for pin in ("torch==2.7.1", "torchaudio==2.7.1"):
         require(stable_constraints, pin, Path("workers/stable-audio/constraints-gpu.txt"), errors)
 
+    for abi in ("false", "true"):
+        path = Path(f"workers/stable-audio/flash-attn-cxx11abi-{abi}.lock")
+        text = (ROOT / path).read_text()
+        require(text, "cu12torch2.7", path, errors)
+        require(
+            text, f"cxx11abi{abi.upper()}-cp311-cp311-linux_x86_64.whl", path, errors
+        )
+
     gpu_input = (ROOT / "workers/demucs/requirements-gpu.in").read_text()
     require(gpu_input, "soundfile", Path("workers/demucs/requirements-gpu.in"), errors)
 
     stable_docker = (ROOT / "workers/stable-audio/Dockerfile").read_text()
-    if stable_docker.find("-r flash-attn.lock") < stable_docker.find("-r requirements.lock"):
+    if stable_docker.find("flash-attn-cxx11abi-${torch_cxx11_abi}.lock") < stable_docker.find(
+        "-r requirements.lock"
+    ):
         errors.append("workers/stable-audio/Dockerfile: flash-attn must install after the runtime lock")
 
     spike_docker = (ROOT / "experiments/stable-audio-3-spike/Dockerfile").read_text()

@@ -1,3 +1,0 @@
-# PyPI sdist downloaded and independently SHA-256 verified on 2026-08-03.
-flash-attn==2.8.3.post1 \
-    --hash=sha256:55d5103ed846da8b56e0797acf4bde07dee4b1c7e8907fcfc6699c203030c348
