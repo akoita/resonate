@@ -7,7 +7,7 @@
  */
 
 import { API_BASE, type Release } from "./api";
-import { getChainExplorerAddressUrl } from "./explorer";
+import { getChainExplorerContractUrl } from "./explorer";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
 export type CampaignListScope = "all";
@@ -871,9 +871,6 @@ export type ShowCampaignDraftInput = {
   authorityEvidenceBundleId?: string | null;
   tiers: ShowCampaignDraftTierInput[];
 };
-
-const SHOWS_EXPLORER_BASE_URL =
-  process.env.NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL;
 
 type BackendShowCampaign = {
   id: string;
@@ -1912,10 +1909,10 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     escrowContractAddress: campaign.contractAddress ?? null,
     contractCampaignId: campaign.contractCampaignId ?? null,
     paymentTokenAddress: campaign.paymentTokenAddress ?? null,
-    etherscanUrl: getChainExplorerAddressUrl(
+    etherscanUrl: getChainExplorerContractUrl(
       campaign.chainId,
       contractAddress,
-      SHOWS_EXPLORER_BASE_URL,
+      process.env.NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL,
     ),
     tagline: campaign.description || campaign.title,
     tiers: (campaign.tiers ?? []).map((tier) => ({

@@ -204,6 +204,7 @@ describe("Shows campaign explorer mapping", () => {
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -228,15 +229,17 @@ describe("Shows campaign explorer mapping", () => {
     })) as unknown as typeof fetch;
   }
 
-  it("maps a backend campaign to the explorer for its recorded chain", async () => {
+  it("maps a backend campaign to the configured Blockscout contract view for its chain", async () => {
     const contractAddress = "0xd7035cf620c09653542b75a9b95bbec1514d8b23";
+    vi.stubEnv("NEXT_PUBLIC_CHAIN_ID", "84532");
+    vi.stubEnv("NEXT_PUBLIC_EXPLORER_URL", "https://base-sepolia.blockscout.com");
     mockCampaignResponse({ ...backendCampaign, chainId: 84532, contractAddress });
 
     const campaign = await getCampaign(backendCampaign.slug);
 
     expect(campaign?.contractAddress).toBe(contractAddress);
     expect(campaign?.etherscanUrl).toBe(
-      `https://sepolia.basescan.org/address/${contractAddress}`,
+      `https://base-sepolia.blockscout.com/address/${contractAddress}?tab=contract`,
     );
   });
 
