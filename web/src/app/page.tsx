@@ -42,6 +42,7 @@ import {
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
+import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -1345,8 +1346,12 @@ export default function Home() {
                 >
                   <div className="ng-play-card__art">
                     {r.artworkUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.artworkUrl} alt={r.title} />
+                      <HomeReleaseArtwork
+                        releaseId={r.id}
+                        mimeType={r.artworkMimeType ?? ""}
+                        alt={r.title}
+                        sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
+                      />
                     ) : (
                       <span className="ng-monogram" aria-hidden>
                         {(r.title?.[0] ?? "?").toUpperCase()}
@@ -1444,8 +1449,12 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
   return (
     <span className={small ? "ng-release-thumb ng-release-thumb--small" : "ng-release-thumb"}>
       {release.artworkUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={release.artworkUrl} alt="" />
+        <HomeReleaseArtwork
+          releaseId={release.id}
+          mimeType={release.artworkMimeType ?? ""}
+          alt=""
+          sizes={small ? "(max-width: 767px) 46px, 48px" : "(max-width: 767px) 56px, 72px"}
+        />
       ) : (
         <span aria-hidden>{(release.title?.[0] ?? "?").toUpperCase()}</span>
       )}
@@ -1761,10 +1770,12 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
         aria-label={`Open ${release.title} in the mixer`}
       >
         {release.artworkUrl ? (
-          <span
+          <HomeReleaseArtwork
+            releaseId={release.id}
+            mimeType={release.artworkMimeType ?? ""}
+            alt=""
             className="ng-stem-card__image"
-            style={{ backgroundImage: `url(${JSON.stringify(release.artworkUrl)})` }}
-            aria-hidden
+            sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 64px), (max-width: 1279px) calc(33vw - 64px), calc((100vw - 460px) / 3)"
           />
         ) : (
           <span className="ng-monogram" aria-hidden>
