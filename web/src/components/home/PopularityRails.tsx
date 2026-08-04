@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { getReleaseArtworkUrl, type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
+import { type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
+import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
 
 /*
  * Home popularity rails (#1451 WS-4) — engagement-ranked Trending Now and
@@ -55,12 +56,16 @@ export function TrendingNowRail({
               style={{ borderRadius: 20, position: "relative" }}
             >
               <div className="ng-play-card__art">
-                {item.artworkUrl || item.artworkMimeType ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.artworkUrl ?? getReleaseArtworkUrl(item.releaseId)}
+                {item.artworkMimeType ? (
+                  <HomeReleaseArtwork
+                    releaseId={item.releaseId}
+                    mimeType={item.artworkMimeType}
                     alt={item.title}
+                    sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
                   />
+                ) : item.artworkUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- URL-only legacy artwork is not trusted by the optimizer
+                  <img src={item.artworkUrl} alt={item.title} />
                 ) : (
                   <span className="ng-monogram" aria-hidden>
                     {(item.title?.[0] ?? "?").toUpperCase()}

@@ -123,4 +123,18 @@ describe("HomeFeedRails", () => {
     const withoutHandler = renderToStaticMarkup(<HomeFeedRails feed={feed([rail()])} />);
     expect(withoutHandler).not.toContain("Start session"); // no dead buttons
   });
+
+  it("uses optimized canonical release artwork and preserves the monogram fallback", () => {
+    const withArtwork = renderToStaticMarkup(
+      <HomeFeedRails
+        feed={feed([rail({ items: [item({ artworkMimeType: "image/jpeg" })] })])}
+      />,
+    );
+    expect(withArtwork).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+    expect(withArtwork).toContain("/_next/image");
+
+    const withoutArtwork = renderToStaticMarkup(<HomeFeedRails feed={feed([rail()])} />);
+    expect(withoutArtwork).toContain("ng-monogram");
+    expect(withoutArtwork).not.toContain("/_next/image");
+  });
 });

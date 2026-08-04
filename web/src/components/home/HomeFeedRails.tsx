@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import {
-  getReleaseArtworkUrl,
   type HomeFeedItem,
   type HomeFeedRail,
   type HomeFeedResponse,
 } from "../../lib/api";
+import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
 
 /*
  * Home feed v2 (#1454 WS-7) — multi-rail personalized feed.
@@ -114,8 +114,12 @@ export function HomeFeedRails({
                       onClick={() => onOpen?.(item, rail.id, position)}
                     >
                       {item.artworkMimeType ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={getReleaseArtworkUrl(item.releaseId)} alt="" />
+                        <HomeReleaseArtwork
+                          releaseId={item.releaseId}
+                          mimeType={item.artworkMimeType}
+                          alt=""
+                          sizes="(max-width: 767px) 96px, 112px"
+                        />
                       ) : (
                         <span className="ng-monogram" aria-hidden>
                           {(item.title[0] ?? "?").toUpperCase()}

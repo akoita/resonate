@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const apiOrigin = new URL(apiUrl);
+const apiBasePath = apiOrigin.pathname.replace(/\/+$/, "");
+const localImageOptimizerHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+// Accommodate high-resolution square cover art while bounding Sharp decompression.
+const MAX_RELEASE_ARTWORK_INPUT_PIXELS = 4096 * 4096;
 
 // Build-time identity exposed in the in-app About modal. Prefer the
 // CI-provided SHA (GitHub Actions / Vercel) so container builds without
@@ -31,12 +36,28 @@ const commitSha = readCommitSha();
 
 const nextConfig = {
   output: "standalone",
+  images: {
+    remotePatterns: [
+      {
+        protocol: apiOrigin.protocol.slice(0, -1),
+        hostname: apiOrigin.hostname,
+        port: apiOrigin.port,
+        pathname: `${apiBasePath}/catalog/releases/*/artwork`,
+        search: "",
+      },
+    ],
+    dangerouslyAllowLocalIP: localImageOptimizerHosts.has(apiOrigin.hostname),
+    minimumCacheTTL: 0,
+    maximumRedirects: 0,
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
     NEXT_PUBLIC_COMMIT_SHA: commitSha,
   },
   experimental: {
     cssChunking: 'strict',  // Only load CSS for components actually rendered
+    imgOptMaxInputPixels: MAX_RELEASE_ARTWORK_INPUT_PIXELS,
+    imgOptConcurrency: 1,
   },
   turbopack: {
     root: __dirname,

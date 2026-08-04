@@ -70,6 +70,44 @@ describe("TrendingNowRail", () => {
     expect(html).toContain("Not enough listening yet in Jazz");
     expect(html).not.toContain("ng-play-card__title");
   });
+
+  it("uses the canonical optimized source instead of a supplied artwork URL", () => {
+    const html = renderToStaticMarkup(
+      <TrendingNowRail
+        items={[
+          trendingItem({
+            artworkUrl: "https://untrusted.example/cover.jpg",
+            artworkMimeType: "image/jpeg",
+          }),
+        ]}
+      />,
+    );
+    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+    expect(html).toContain("/_next/image");
+    expect(html).not.toContain("untrusted.example");
+  });
+
+  it("keeps URL-only legacy artwork raw and outside the optimizer", () => {
+    const html = renderToStaticMarkup(
+      <TrendingNowRail
+        items={[
+          trendingItem({
+            artworkUrl: "https://legacy.example/cover.jpg",
+            artworkMimeType: null,
+          }),
+        ]}
+      />,
+    );
+    expect(html).toContain('src="https://legacy.example/cover.jpg"');
+    expect(html).not.toContain("/_next/image");
+    expect(html).not.toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+  });
+
+  it("preserves the monogram fallback when artwork is absent", () => {
+    const html = renderToStaticMarkup(<TrendingNowRail items={[trendingItem()]} />);
+    expect(html).toContain("ng-monogram");
+    expect(html).not.toContain("/_next/image");
+  });
 });
 
 describe("TopArtistsRail", () => {
