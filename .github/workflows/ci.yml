@@ -1075,6 +1075,23 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
+      # The backend image is built from the self-contained "backend" context, so
+      # the git tree hash of that directory is a complete key for its inputs:
+      # Docker cannot see anything outside the context and no --build-arg is
+      # passed. An identical key means an identical image, so the build is
+      # skipped and the existing image reused.
+      - name: Resolve backend image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: backend
+          IMAGE_DOCKERFILE: Dockerfile
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+          echo "Content key for ${IMAGE_CONTEXT}/${IMAGE_DOCKERFILE}: ${content_tag}"
+
       - name: Build and push backend image
         id: build
         env:
@@ -1082,11 +1099,16 @@ jobs:
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          # Set the CI_FORCE_IMAGE_REBUILD repository/environment variable to
+          # "true" to bypass content-addressed reuse for one or more runs.
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context backend \
             --dockerfile Dockerfile \
+            --content-tag "${CONTENT_TAG}" \
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
@@ -1194,6 +1216,21 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
+      # workers/demucs is a self-contained build context, so its git tree hash is
+      # a complete key for the image inputs. The Dockerfile name is folded into
+      # the key because this context holds both Dockerfile and Dockerfile.gpu.
+      - name: Resolve Demucs image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: workers/demucs
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.demucs_dockerfile }}
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+          echo "Content key for ${IMAGE_CONTEXT}/${IMAGE_DOCKERFILE}: ${content_tag}"
+
       - name: Build and push Demucs image
         id: build
         env:
@@ -1201,11 +1238,16 @@ jobs:
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          # Set the CI_FORCE_IMAGE_REBUILD repository/environment variable to
+          # "true" to bypass content-addressed reuse for one or more runs.
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context workers/demucs \
             --dockerfile "${{ needs.publish-plan.outputs.demucs_dockerfile }}" \
+            --content-tag "${CONTENT_TAG}" \
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
@@ -1249,6 +1291,21 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
 
+      # workers/stable-audio is a self-contained build context, so its git tree
+      # hash is a complete key for the image inputs. This build compiles
+      # flash-attn from CUDA source (~29 min), so reuse matters most here.
+      - name: Resolve Stable Audio image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: workers/stable-audio
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.stable_audio_dockerfile }}
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+          echo "Content key for ${IMAGE_CONTEXT}/${IMAGE_DOCKERFILE}: ${content_tag}"
+
       - name: Build and push Stable Audio image
         id: build
         env:
@@ -1256,11 +1313,16 @@ jobs:
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_SHA: ${{ github.sha }}
+          # Set the CI_FORCE_IMAGE_REBUILD repository/environment variable to
+          # "true" to bypass content-addressed reuse for one or more runs.
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
             --project "${GCP_PROJECT_ID}" \
             --context workers/stable-audio \
             --dockerfile "${{ needs.publish-plan.outputs.stable_audio_dockerfile }}" \
+            --content-tag "${CONTENT_TAG}" \
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
