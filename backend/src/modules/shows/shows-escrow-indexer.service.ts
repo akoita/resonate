@@ -105,6 +105,93 @@ const CHAIN_CONFIGS: Record<number, { chain: any; rpcUrl: string }> = {
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+type EscrowIndexerTarget = { address: string; deploymentBlock: bigint | null };
+
+const SHOW_ESCROW_INDEXER_TARGET_ENVS: Record<number, string[]> = {
+  31337: ["SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS"],
+  11155111: ["SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS", "SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS"],
+  84532: ["BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS", "SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS"],
+  421614: ["ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS", "SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS"],
+};
+
+const SHOW_ESCROW_DEPLOYMENT_BLOCK_ENVS: Record<number, string[]> = {
+  31337: ["SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK"],
+  11155111: ["SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK", "SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK"],
+  84532: ["BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK", "SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK"],
+  421614: ["ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK", "SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK"],
+};
+
+function firstConfiguredEnv(keys: string[]): string | null {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) return value;
+  }
+  return null;
+}
+
+function parseDeploymentBlock(raw: string | null): bigint | null {
+  if (raw === null) return null;
+  if (!/^[0-9]+$/.test(raw)) {
+    throw new Error(`Invalid Shows escrow deployment block "${raw}"; expected an unsigned integer`);
+  }
+  return BigInt(raw);
+}
+
+/**
+ * Index targets are independent from the single current escrow used for new
+ * campaigns. During a cutover this lets the backend keep reconciling unsettled
+ * campaigns on legacy escrows while indexing the replacement from its exact
+ * deployment block.
+ *
+ * Format: `0xaddress:deploymentBlock,0xaddress:deploymentBlock`.
+ */
+export function configuredShowEscrowIndexerTargets(chainId: number): EscrowIndexerTarget[] {
+  const targetKeys = SHOW_ESCROW_INDEXER_TARGET_ENVS[chainId] ?? ["SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS"];
+  const rawTargets = firstConfiguredEnv(targetKeys);
+  const seen = new Map<string, bigint>();
+  const targets: EscrowIndexerTarget[] = [];
+
+  if (rawTargets) {
+    for (const entry of rawTargets.split(",")) {
+      const [rawAddress, rawBlock, ...extra] = entry.trim().split(":");
+      const address = rawAddress?.toLowerCase();
+      if (
+        extra.length > 0 ||
+        !address ||
+        !/^0x[0-9a-f]{40}$/.test(address) ||
+        address === ZERO_ADDRESS ||
+        !rawBlock ||
+        !/^[0-9]+$/.test(rawBlock)
+      ) {
+        throw new Error(`Invalid Shows escrow indexer target "${entry.trim()}"; expected 0xaddress:deploymentBlock`);
+      }
+      const deploymentBlock = BigInt(rawBlock);
+      const priorBlock = seen.get(address);
+      if (priorBlock !== undefined) {
+        if (priorBlock !== deploymentBlock) {
+          throw new Error(`Conflicting deployment blocks configured for Shows escrow ${address}`);
+        }
+        continue;
+      }
+      seen.set(address, deploymentBlock);
+      targets.push({ address, deploymentBlock });
+    }
+    const currentAddress = configuredShowCampaignEscrowAddress(chainId)?.toLowerCase();
+    if (currentAddress && !seen.has(currentAddress)) {
+      throw new Error(`Current Shows escrow ${currentAddress} is missing from the configured indexer targets`);
+    }
+    return targets;
+  }
+
+  const currentAddress = configuredShowCampaignEscrowAddress(chainId);
+  if (!currentAddress) return [];
+  const deploymentBlockKeys = SHOW_ESCROW_DEPLOYMENT_BLOCK_ENVS[chainId] ?? ["SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK"];
+  return [{
+    address: currentAddress.toLowerCase(),
+    deploymentBlock: parseDeploymentBlock(firstConfiguredEnv(deploymentBlockKeys)),
+  }];
+}
+
 type MismatchInput = {
   chainId?: number;
   contractCampaignId: string;
@@ -214,10 +301,10 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     this.isIndexing = true;
     try {
       const chainId = resolveIndexerChainId();
-      const escrowAddress = configuredShowCampaignEscrowAddress(chainId);
-      if (!escrowAddress) {
+      const targets = configuredShowEscrowIndexerTargets(chainId);
+      if (targets.length === 0) {
         this.logger.debug(
-          `No ShowCampaignEscrow address configured for chain ${chainId}; skipping`,
+          `No ShowCampaignEscrow index targets configured for chain ${chainId}; skipping`,
         );
         return;
       }
@@ -227,64 +314,15 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         return;
       }
 
-      let state = await prisma.showEscrowIndexerState.findUnique({ where: { chainId } });
       const currentBlock: bigint = await client.getBlockNumber();
-      if (!state) {
-        const startBlock = currentBlock > 100n ? currentBlock - 100n : 0n;
-        state = await prisma.showEscrowIndexerState.create({
-          data: { chainId, contractAddress: escrowAddress, lastBlockNumber: startBlock },
-        });
-        this.logger.log(`First run: escrow indexer starting at block ${startBlock}`);
-      }
-
-      let fromBlock = state.lastBlockNumber + 1n;
-      if (fromBlock > currentBlock) {
-        if (currentBlock === 0n) return;
-        const gap = state.lastBlockNumber - currentBlock;
-        if (gap > 10n) {
-          // Chain reset (e.g. Anvil restarted): jump near tip and reprocess.
-          const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
-          this.logger.warn(
-            `Chain reset detected (last ${state.lastBlockNumber} >> current ${currentBlock}); resetting to ${safeBlock}`,
+      for (const target of targets) {
+        try {
+          await this.indexTarget(client, chainId, target, currentBlock);
+        } catch (error) {
+          this.logger.error(
+            `Escrow indexing error for ${target.address}: ${error instanceof Error ? error.message : String(error)}`,
           );
-          await prisma.showEscrowIndexerState.update({
-            where: { chainId },
-            data: { lastBlockNumber: safeBlock, contractAddress: escrowAddress },
-          });
-        } else {
-          // Caught up: heartbeat the cursor row.
-          await prisma.showEscrowIndexerState.update({
-            where: { chainId },
-            data: { lastBlockNumber: state.lastBlockNumber, contractAddress: escrowAddress },
-          });
         }
-        return;
-      }
-
-      let batches = 0;
-      while (fromBlock <= currentBlock && batches < this.maxBatchesPerCycle) {
-        const toBlock = fromBlock + BigInt(this.blocksPerBatch) - 1n;
-        const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
-        const logs = await client.getLogs({
-          address: escrowAddress as Address,
-          fromBlock,
-          toBlock: effectiveToBlock,
-        });
-        // Deterministic order so status transitions apply chronologically.
-        logs.sort((a: Log, b: Log) =>
-          a.blockNumber === b.blockNumber
-            ? (a.logIndex ?? 0) - (b.logIndex ?? 0)
-            : Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)),
-        );
-        for (const log of logs) {
-          await this.processLog(log, chainId, escrowAddress);
-        }
-        await prisma.showEscrowIndexerState.update({
-          where: { chainId },
-          data: { lastBlockNumber: effectiveToBlock, contractAddress: escrowAddress },
-        });
-        fromBlock = effectiveToBlock + 1n;
-        batches++;
       }
     } catch (error) {
       this.logger.error(
@@ -292,6 +330,84 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       );
     } finally {
       this.isIndexing = false;
+    }
+  }
+
+  private async indexTarget(
+    client: any,
+    chainId: number,
+    target: EscrowIndexerTarget,
+    currentBlock: bigint,
+  ) {
+    const escrowAddress = target.address;
+    let state = await prisma.showEscrowIndexerState.findUnique({
+      where: { chainId_contractAddress: { chainId, contractAddress: escrowAddress } },
+    });
+    if (!state) {
+      const startBlock =
+        target.deploymentBlock ?? (currentBlock > 100n ? currentBlock - 100n : 0n);
+      if (startBlock > currentBlock) {
+        throw new Error(
+          `Shows escrow ${escrowAddress} deployment block ${startBlock} is ahead of chain tip ${currentBlock}`,
+        );
+      }
+      const initialCursor = startBlock > 0n ? startBlock - 1n : 0n;
+      state = await prisma.showEscrowIndexerState.create({
+        data: { chainId, contractAddress: escrowAddress, lastBlockNumber: initialCursor },
+      });
+      this.logger.log(
+        `First run: escrow ${escrowAddress} indexer starting at block ${startBlock}`,
+      );
+    }
+
+    let fromBlock = state.lastBlockNumber + 1n;
+    if (fromBlock > currentBlock) {
+      if (currentBlock === 0n) return;
+      const gap = state.lastBlockNumber - currentBlock;
+      if (gap > 10n) {
+        // Chain reset (e.g. Anvil restarted): jump near tip and reprocess.
+        const safeBlock = currentBlock > 50n ? currentBlock - 50n : 0n;
+        this.logger.warn(
+          `Chain reset detected (last ${state.lastBlockNumber} >> current ${currentBlock}); resetting to ${safeBlock}`,
+        );
+        await prisma.showEscrowIndexerState.update({
+          where: { id: state.id },
+          data: { lastBlockNumber: safeBlock, contractAddress: escrowAddress },
+        });
+      } else {
+        // Caught up: heartbeat the cursor row.
+        await prisma.showEscrowIndexerState.update({
+          where: { id: state.id },
+          data: { lastBlockNumber: state.lastBlockNumber, contractAddress: escrowAddress },
+        });
+      }
+      return;
+    }
+
+    let batches = 0;
+    while (fromBlock <= currentBlock && batches < this.maxBatchesPerCycle) {
+      const toBlock = fromBlock + BigInt(this.blocksPerBatch) - 1n;
+      const effectiveToBlock = toBlock > currentBlock ? currentBlock : toBlock;
+      const logs = await client.getLogs({
+        address: escrowAddress as Address,
+        fromBlock,
+        toBlock: effectiveToBlock,
+      });
+      // Deterministic order so status transitions apply chronologically.
+      logs.sort((a: Log, b: Log) =>
+        a.blockNumber === b.blockNumber
+          ? (a.logIndex ?? 0) - (b.logIndex ?? 0)
+          : Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)),
+      );
+      for (const log of logs) {
+        await this.processLog(log, chainId, escrowAddress);
+      }
+      await prisma.showEscrowIndexerState.update({
+        where: { id: state.id },
+        data: { lastBlockNumber: effectiveToBlock, contractAddress: escrowAddress },
+      });
+      fromBlock = effectiveToBlock + 1n;
+      batches++;
     }
   }
 
@@ -371,6 +487,9 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      // Propagate to the target loop so its cursor is not advanced past an
+      // event that failed reconciliation. Other escrow targets still proceed.
+      throw error;
     }
   }
 
@@ -402,15 +521,19 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     // Contract-only events with no campaign mapping: recorded, not reconciled.
     if (eventName === "FeeConfigUpdated") {
       await tx.showEscrowIndexerState.upsert({
-        where: { chainId: ctx.chainId },
+        where: {
+          chainId_contractAddress: {
+            chainId: ctx.chainId,
+            contractAddress: ctx.escrowAddress.toLowerCase(),
+          },
+        },
         create: {
           chainId: ctx.chainId,
-          contractAddress: ctx.escrowAddress,
+          contractAddress: ctx.escrowAddress.toLowerCase(),
           currentFeeBps: Number(args.feeBps),
           feeRecipient: String(args.feeRecipient),
         },
         update: {
-          contractAddress: ctx.escrowAddress,
           currentFeeBps: Number(args.feeBps),
           feeRecipient: String(args.feeRecipient),
         },
@@ -484,7 +607,12 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       case "CampaignCreated": {
         data.onChainStatus = "Draft";
         const feeState = await tx.showEscrowIndexerState.findUnique({
-          where: { chainId: ctx.chainId },
+          where: {
+            chainId_contractAddress: {
+              chainId: ctx.chainId,
+              contractAddress: ctx.escrowAddress.toLowerCase(),
+            },
+          },
           select: { currentFeeBps: true },
         });
         if (feeState?.currentFeeBps !== null && feeState?.currentFeeBps !== undefined) {
@@ -552,7 +680,7 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
         break;
       case "DepositReleased":
       case "FundsReleased": {
-        const feeAmount = await this.feeChargedInSameTransaction(tx, contractCampaignId, ctx.transactionHash);
+        const feeAmount = await this.feeChargedInSameTransaction(tx, contractCampaignId, ctx);
         const netAmount = BigInt(String(args.amount));
         const grossAmount = netAmount + feeAmount;
         if (campaign.feeBps === null || campaign.feeBps === undefined) {
@@ -654,11 +782,17 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
   private async feeChargedInSameTransaction(
     tx: Prisma.TransactionClient,
     contractCampaignId: string,
-    transactionHash: string,
+    ctx: {
+      chainId: number;
+      escrowAddress: string;
+      transactionHash: string;
+    },
   ): Promise<bigint> {
     const feeEvents = await tx.showCampaignEscrowEvent.findMany({
       where: {
-        transactionHash,
+        chainId: ctx.chainId,
+        contractAddress: { equals: ctx.escrowAddress, mode: "insensitive" },
+        transactionHash: ctx.transactionHash,
         eventName: "FeeCharged",
         contractCampaignId,
       },

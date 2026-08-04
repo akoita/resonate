@@ -48,7 +48,8 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  *   PRIVATE_KEY - deployer private key (see DeploymentKey for local override rules)
  *
  * Optional env:
- *   SHOW_CAMPAIGN_ESCROW_OWNER    - ops owner/multisig; defaults to deployer
+ *   SHOW_CAMPAIGN_ESCROW_OWNER    - ops owner/multisig; required on remote,
+ *                                   local defaults to deployer
  *   SHOW_CAMPAIGN_FEE_BPS         - success-only campaign fee in bps; defaults to 600
  *   SHOW_CAMPAIGN_FEE_RECIPIENT   - fee recipient; required on remote, local defaults to owner
  *   SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY - upgrade delay in seconds; defaults to 172800 (48h)
@@ -66,14 +67,23 @@ contract DeployShowCampaignEscrow is DeploymentKey {
     function run() external {
         uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
-        address owner = vm.envOr("SHOW_CAMPAIGN_ESCROW_OWNER", deployer);
+        bool isLocal = block.chainid == 31337 || block.chainid == 1337;
+        address owner =
+            isLocal ? vm.envOr("SHOW_CAMPAIGN_ESCROW_OWNER", deployer) : vm.envAddress("SHOW_CAMPAIGN_ESCROW_OWNER");
         uint256 feeBps = vm.envOr("SHOW_CAMPAIGN_FEE_BPS", uint256(600));
         uint256 minDelay = vm.envOr("SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY", DEFAULT_TIMELOCK_MIN_DELAY);
         uint256 fulfillmentWindow = vm.envOr("SHOW_CAMPAIGN_FULFILLMENT_WINDOW", DEFAULT_FULFILLMENT_WINDOW);
 
-        bool isLocal = block.chainid == 31337 || block.chainid == 1337;
-        address feeRecipient = isLocal ? vm.envOr("SHOW_CAMPAIGN_FEE_RECIPIENT", owner) : vm.envAddress("SHOW_CAMPAIGN_FEE_RECIPIENT");
+        address feeRecipient =
+            isLocal ? vm.envOr("SHOW_CAMPAIGN_FEE_RECIPIENT", owner) : vm.envAddress("SHOW_CAMPAIGN_FEE_RECIPIENT");
         address guardian = isLocal ? vm.envOr("SHOW_CAMPAIGN_GUARDIAN", owner) : vm.envAddress("SHOW_CAMPAIGN_GUARDIAN");
+
+        require(owner != address(0), "SHOW_CAMPAIGN_ESCROW_OWNER cannot be zero");
+        require(feeRecipient != address(0), "SHOW_CAMPAIGN_FEE_RECIPIENT cannot be zero");
+        require(guardian != address(0), "SHOW_CAMPAIGN_GUARDIAN cannot be zero");
+        require(isLocal || guardian != owner, "remote guardian must be independent from owner");
+        require(isLocal || guardian != deployer, "remote guardian must be independent from deployer");
+        require(isLocal || minDelay >= DEFAULT_TIMELOCK_MIN_DELAY, "remote timelock delay must be at least 48h");
 
         vm.startBroadcast(deployerKey);
 
@@ -100,16 +110,14 @@ contract DeployShowCampaignEscrow is DeploymentKey {
         timelock.grantRole(timelock.CANCELLER_ROLE(), guardian);
         timelock.renounceRole(timelock.DEFAULT_ADMIN_ROLE(), deployer);
 
-        // 3. Proxy — initialize binds ops owner, fee config, and the timelock as upgradeAuthority.
-        bytes memory initData =
-            abi.encodeCall(ShowCampaignEscrow.initialize, (owner, feeBps, feeRecipient, address(timelock)));
+        // 3. Proxy — atomically bind ops owner, fee config, timelock authority, and
+        //    the v2 fulfillment window in the constructor delegatecall. A separate
+        //    initializeV2 transaction would leave a public reinitializer front-runnable.
+        bytes memory initData = abi.encodeCall(
+            ShowCampaignEscrow.initializeFresh, (owner, feeBps, feeRecipient, address(timelock), fulfillmentWindow)
+        );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         ShowCampaignEscrow escrow = ShowCampaignEscrow(address(proxy));
-
-        // 4. Run the 2.1.0 reinitializer so a fresh deploy has a non-zero fulfillment
-        //    window (issue #1271). initializeV2 has no owner gate (guarded by reinitializer)
-        //    and runs atomically here, so the ops owner needn't be the deployer.
-        escrow.initializeV2(fulfillmentWindow);
 
         vm.stopBroadcast();
 

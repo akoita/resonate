@@ -43,7 +43,6 @@ Core GitHub environment variables:
 
 | Variable | Used by |
 | --- | --- |
-| `BROADCAST_FILE` | Optional verification broadcast override. |
 | `VERIFY_ONLY` | Optional contract-name filter for verification scripts. |
 | `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | BaseScan/Etherscan retry tuning. |
 | `SOURCIFY_API_URL`, `SOURCIFY_RETRIES`, `SOURCIFY_DELAY_SECONDS` | Sourcify endpoint and retry tuning. |
@@ -56,7 +55,7 @@ Core GitHub environment variables:
 | `preflight` | Always run before a write operation after changing env vars, RPCs, or signer keys. | Workflow: `environment`, `target_network`, `operation=preflight`. Secrets: deployer key and target RPC. | Step summary with chain ID, signer address, ETH balance, and selected operation. | If signer, chain ID, or balance is wrong, fix the GitHub environment before running a write op. |
 | `deploy-protocol` | Fresh full protocol graph deployment when constructor immutables or tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify via Sourcify or BaseScan as needed. |
 | `deploy-content-protection` | Add or replace ContentProtection for an existing `StemNFT` and `TransferValidator` without replacing the whole graph. | Workflow: `operation=deploy-content-protection`. Vars: `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`; optional `MARKETPLACE_ADDRESS`, `EXISTING_ADMIN`. Secret: owner/admin signer. | Forge broadcast files and console summary. | Promote any changed ContentProtection/RevenueEscrow references through IaC and app config if downstream code consumes them. |
-| `deploy-show-campaign-escrow` | Deploy the standalone Shows escrow for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Vars: optional `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_BPS`, required remote `SHOW_CAMPAIGN_FEE_RECIPIENT`. Secret: deployer key. | `contracts/deployments/show-campaign-escrow.<network>.json`, `.remote.env`, `show-campaign-escrow.abi.json`, broadcast files. | Promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` and `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac`. |
+| `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + new backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, wait both cursors reach tip, and only then promote the proxy as the current backend/frontend address through `resonate-iac`. |
 | `deploy-stem-marketplace` | Surgically deploy a new `StemMarketplaceV2` against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Vars: `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`. Secret: owner/admin signer. | `contracts/deployments/stem-marketplace.<network>.json`, `.remote.env`, `stem-marketplace.abi.json`, broadcast files. | Promote `MARKETPLACE_ADDRESS` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS` through `resonate-iac`; confirm ContentProtection registrar and validator whitelist effects. |
 | `upgrade-content-protection` | Upgrade the UUPS implementation behind an existing ContentProtection proxy. | Workflow: `operation=upgrade-content-protection`. Vars: `CONTENT_PROTECTION_PROXY`. Secret: proxy owner/admin signer. | Forge broadcast files and console summary. Proxy address stays the same. | No address promotion unless implementation metadata is tracked elsewhere. Keep the broadcast artifact for audit. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
@@ -68,8 +67,6 @@ Core GitHub environment variables:
 | `confirm-show-campaign-booking` | Move a funded Shows campaign to booked after the venue/show booking is confirmed. | Workflow: `operation=confirm-show-campaign-booking`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | Confirm the campaign id matches the backend/admin tracking source before running. If the transaction reverts, check campaign status, booking deadline, and confirmer allowlist. |
 | `confirm-show-campaign-fulfillment` | Mark a booked Shows campaign fulfilled after the show has happened or the operator has accepted fulfillment evidence. | Workflow: `operation=confirm-show-campaign-fulfillment`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | This starts the campaign's dispute window. Do not release funds until the window has elapsed. |
 | `release-show-campaign-funds` | Release the remaining fulfilled campaign balance after the dispute window has elapsed. | Workflow: `operation=release-show-campaign-funds`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: deployment-safe signer key. The contract call is permissionless. | Console summary and workflow summary. Forge logs campaign status before and after the call, plus total released and total fee paid before and after so the run log shows net/fee movement. | Reconcile the Forge log with the campaign ledger/admin record. No address promotion. |
-| `verify-base-sepolia` | Retry BaseScan/Etherscan verification from a prior Base Sepolia broadcast. | Workflow: `operation=verify-base-sepolia`, `target_network=base-sepolia`. Secrets: `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, retry/API URL vars. | Explorer verification logs. No deploy. | If verification fails because the wrong broadcast was selected, set `BROADCAST_FILE` to the exact `contracts/broadcast/.../run-*.json` artifact and rerun. |
-| `verify-base-sepolia-sourcify` | Verify contracts through Sourcify without an explorer API key. Preferred retry path when a broadcast artifact exists. | Workflow: `operation=verify-base-sepolia-sourcify`, `target_network=base-sepolia`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, Sourcify retry/API URL vars. | Sourcify verification logs. No deploy. | Keep the broadcast artifact with the deployment record. Sourcify reads the broadcast's creation transactions and rebuilt compiler input. |
 
 ## CP-1 Attestation Registrar (backend voucher signer)
 
@@ -276,7 +273,7 @@ handoffs, especially:
 | Handoff | Promote |
 | --- | --- |
 | `contracts/deployments/base-sepolia.remote.env` | Protocol graph addresses, chain ID, x402 network values. |
-| `contracts/deployments/show-campaign-escrow.<network>.remote.env` | `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS`. |
+| `contracts/deployments/show-campaign-escrow.<network>.remote.env` | Proxy/current app addresses, exact deployment block, one-entry indexer target, implementation/timelock governance metadata, and fee/lifecycle config. Merge—not replace—the target entry with legacy escrow targets during a replacement cutover. |
 | `contracts/deployments/stem-marketplace.<network>.remote.env` | `MARKETPLACE_ADDRESS`, `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. |
 
 Admin/config operations normally do not need IaC promotion because they do not
@@ -288,21 +285,26 @@ runbook updates when they change visible product terms.
 Foundry writes broadcast JSON under `contracts/broadcast/<Script>/<chain-id>/`.
 The workflow uploads those files as artifacts after deploy/update operations.
 
-Sourcify verification is broadcast-driven:
+Sourcify verification is broadcast-driven. The Shows deployment operation runs
+it automatically against the broadcast created in that same job. For a later
+retry:
 
-1. Identify the exact broadcast file for the deployment, for example
-   `contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json`.
-2. Set `BROADCAST_FILE` in the GitHub environment if the default is not the
-   correct file.
-3. Optionally set `VERIFY_ONLY=<ContractName>` to verify one contract from the
-   broadcast.
-4. Dispatch `verify-base-sepolia-sourcify`.
+1. Read the deployment run's `headSha` and use a clean worktree at that exact
+   revision; verification rebuilds compiler input from the checked-out source.
+2. Download `contract-deployment-base-sepolia-<run-id>` into a new isolated
+   directory outside the checkout. Never extract a workflow artifact over
+   executable repository files.
+3. Select the timestamped broadcast, not `run-latest.json`, for example
+   `<artifact-dir>/broadcast/DeployShowCampaignEscrow.s.sol/84532/run-<timestamp>.json`.
+4. Optionally set `VERIFY_ONLY=<ContractName>`, then run
+   `BROADCAST_FILE=<exact-path> make verify-base-sepolia-sourcify`.
 
 The Sourcify script rebuilds the compiler input from local Foundry metadata and
 submits each broadcast creation transaction to Sourcify. It does not need an API
 key.
 
-BaseScan/Etherscan verification also reads the broadcast file, but it uses the
-CI explorer key from `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Use
-`verify-base-sepolia` when explorer verification is required or when a deploy's
-automatic `verify_contracts=auto` step could not complete.
+BaseScan/Etherscan verification uses the same local procedure with
+`ETHERSCAN_API_KEY` or `BASESCAN_API_KEY` and `make verify-base-sepolia`.
+Cross-run artifacts are deliberately not accepted as executable GitHub workflow
+inputs; this prevents an untrusted artifact from overwriting source or scripts
+in a deployment job that holds a signing key.

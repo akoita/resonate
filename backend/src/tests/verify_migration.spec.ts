@@ -85,6 +85,33 @@ describe("compareSnapshots", () => {
     expect(failures.some((f) => f.includes("showEscrowIndexerState cursor for chain 84532 regressed"))).toBe(true);
   });
 
+  it("matches Shows escrow cursors by chain and contract address", () => {
+    const source = clone();
+    source.cursors.showEscrowIndexerState = [{
+      chainId: 84532,
+      contractAddress: "0x1111111111111111111111111111111111111111",
+      lastBlockNumber: "900",
+    }];
+    const target = clone();
+    target.cursors.showEscrowIndexerState = [{
+      chainId: 84532,
+      contractAddress: "0x2222222222222222222222222222222222222222",
+      lastBlockNumber: "1000",
+    }];
+    const { failures } = compareSnapshots(source, target);
+    expect(failures.some((f) => f.includes("contract 0x1111111111111111111111111111111111111111 missing"))).toBe(true);
+  });
+
+  it("rejects an old address-less Shows cursor snapshot when target has multiple contracts", () => {
+    const target = clone();
+    target.cursors.showEscrowIndexerState = [
+      { chainId: 84532, contractAddress: "0x1111111111111111111111111111111111111111", lastBlockNumber: "900" },
+      { chainId: 84532, contractAddress: "0x2222222222222222222222222222222222222222", lastBlockNumber: "900" },
+    ];
+    const { failures } = compareSnapshots(clone(), target);
+    expect(failures.some((f) => f.includes("ambiguous on target"))).toBe(true);
+  });
+
   it("BLOCKS when source had content but target has none", () => {
     const target = clone();
     target.sampleContent.tracks = false;

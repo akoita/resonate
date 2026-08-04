@@ -40,15 +40,13 @@ on:
           - confirm-show-campaign-booking
           - confirm-show-campaign-fulfillment
           - release-show-campaign-funds
-          - verify-base-sepolia
-          - verify-base-sepolia-sourcify
       campaign_id:
         description: Campaign id for lifecycle operations
         required: false
         default: ""
         type: string
       verify_contracts:
-        description: BaseScan verification mode for Base Sepolia deploys.
+        description: Source verification mode for Base Sepolia deploys.
         required: true
         default: auto
         type: choice
@@ -56,10 +54,11 @@ on:
           - auto
           - "true"
           - "false"
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
   FOUNDRY_PROFILE: ci
+
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ inputs.environment }}-${{ inputs.target_network }}
@@ -82,15 +81,13 @@ jobs:
     steps:
       - name: Validate selected operation
         shell: bash
+        env:
+          INPUT_CAMPAIGN_ID: ${{ inputs.campaign_id }}
         run: |
           set -euo pipefail
-          if [[ "${{ inputs.target_network }}" == "sepolia" && "${{ inputs.operation }}" == verify-base-sepolia* ]]; then
-            echo "::error::Base Sepolia verification operations require target_network=base-sepolia."
-            exit 1
-          fi
           case "${{ inputs.operation }}" in
             confirm-show-campaign-booking|confirm-show-campaign-fulfillment|release-show-campaign-funds)
-              if [[ -z "${{ inputs.campaign_id }}" ]]; then
+              if [[ -z "${INPUT_CAMPAIGN_ID}" ]]; then
                 echo "::error::${{ inputs.operation }} requires campaign_id."
                 exit 1
               fi
@@ -115,7 +112,6 @@ jobs:
         shell: bash
         env:
           INPUT_BASESCAN_API_URL: ${{ vars.BASESCAN_API_URL }}
-          INPUT_BROADCAST_FILE: ${{ vars.BROADCAST_FILE }}
           INPUT_VERIFY_ONLY: ${{ vars.VERIFY_ONLY }}
           INPUT_VERIFY_RETRIES: ${{ vars.VERIFY_RETRIES }}
           INPUT_VERIFY_DELAY_SECONDS: ${{ vars.VERIFY_DELAY_SECONDS }}
@@ -144,6 +140,9 @@ jobs:
           INPUT_SHOW_CAMPAIGN_ESCROW_ADDRESS: ${{ vars.SHOW_CAMPAIGN_ESCROW_ADDRESS }}
           INPUT_SHOW_CAMPAIGN_FEE_BPS: ${{ vars.SHOW_CAMPAIGN_FEE_BPS }}
           INPUT_SHOW_CAMPAIGN_FEE_RECIPIENT: ${{ vars.SHOW_CAMPAIGN_FEE_RECIPIENT }}
+          INPUT_SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY: ${{ vars.SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY }}
+          INPUT_SHOW_CAMPAIGN_GUARDIAN: ${{ vars.SHOW_CAMPAIGN_GUARDIAN }}
+          INPUT_SHOW_CAMPAIGN_FULFILLMENT_WINDOW: ${{ vars.SHOW_CAMPAIGN_FULFILLMENT_WINDOW }}
           INPUT_FEE_RECIPIENT: ${{ vars.FEE_RECIPIENT }}
           INPUT_PROTOCOL_FEE_BPS: ${{ vars.PROTOCOL_FEE_BPS }}
           INPUT_NEW_PROTOCOL_FEE_BPS: ${{ vars.NEW_PROTOCOL_FEE_BPS }}
@@ -175,7 +174,6 @@ jobs:
 
           optional_names=(
             BASESCAN_API_URL
-            BROADCAST_FILE
             VERIFY_ONLY
             VERIFY_RETRIES
             VERIFY_DELAY_SECONDS
@@ -204,6 +202,9 @@ jobs:
             SHOW_CAMPAIGN_ESCROW_ADDRESS
             SHOW_CAMPAIGN_FEE_BPS
             SHOW_CAMPAIGN_FEE_RECIPIENT
+            SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY
+            SHOW_CAMPAIGN_GUARDIAN
+            SHOW_CAMPAIGN_FULFILLMENT_WINDOW
             FEE_RECIPIENT
             PROTOCOL_FEE_BPS
             NEW_PROTOCOL_FEE_BPS
@@ -236,9 +237,11 @@ jobs:
           case "${{ inputs.target_network }}" in
             base-sepolia)
               echo "RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}" >> "${GITHUB_ENV}"
+              echo "EXPECTED_CHAIN_ID=84532" >> "${GITHUB_ENV}"
               ;;
             sepolia)
               echo "RPC_URL=${SEPOLIA_RPC_URL:-https://sepolia.drpc.org}" >> "${GITHUB_ENV}"
+              echo "EXPECTED_CHAIN_ID=11155111" >> "${GITHUB_ENV}"
               ;;
           esac
 
@@ -260,7 +263,6 @@ jobs:
         working-directory: contracts
 
       - name: Preflight deployer and network
-        if: inputs.operation != 'verify-base-sepolia' && inputs.operation != 'verify-base-sepolia-sourcify'
         shell: bash
         run: |
           set -euo pipefail
@@ -280,6 +282,8 @@ jobs:
             fi
             [[ "${left}" < "${right}" ]]
           }
+
+          deployer="$(cast wallet address "${PRIVATE_KEY}")"
 
           case "${{ inputs.operation }}" in
             deploy-content-protection)
@@ -319,6 +323,32 @@ jobs:
               fi
               if [[ -z "${FEE_RECIPIENT:-}" ]]; then
                 echo "::error::deploy-stem-marketplace requires FEE_RECIPIENT on shared networks."
+                exit 1
+              fi
+              ;;
+            deploy-show-campaign-escrow)
+              required_names=(
+                SHOW_CAMPAIGN_ESCROW_OWNER
+                SHOW_CAMPAIGN_FEE_RECIPIENT
+                SHOW_CAMPAIGN_GUARDIAN
+              )
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "::error::deploy-show-campaign-escrow requires ${name} on shared networks."
+                  exit 1
+                fi
+              done
+              if [[ "${SHOW_CAMPAIGN_ESCROW_OWNER,,}" == "${SHOW_CAMPAIGN_GUARDIAN,,}" ]]; then
+                echo "::error::SHOW_CAMPAIGN_GUARDIAN must be independent from SHOW_CAMPAIGN_ESCROW_OWNER."
+                exit 1
+              fi
+              if [[ "${deployer,,}" == "${SHOW_CAMPAIGN_GUARDIAN,,}" ]]; then
+                echo "::error::SHOW_CAMPAIGN_GUARDIAN must be independent from the deployer."
+                exit 1
+              fi
+              timelock_delay="${SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY:-172800}"
+              if [[ ! "${timelock_delay}" =~ ^[0-9]+$ ]] || lt_uint "${timelock_delay}" "172800"; then
+                echo "::error::SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY must be at least 172800 seconds (48h)."
                 exit 1
               fi
               ;;
@@ -413,7 +443,6 @@ jobs:
             exit 1
           fi
 
-          deployer="$(cast wallet address "${PRIVATE_KEY}")"
           balance_wei="$(cast balance "${deployer}" --rpc-url "${rpc_url}")"
           balance_eth="$(cast from-wei "${balance_wei}")"
           if lt_uint "${balance_wei}" "${minimum_wei}"; then
@@ -455,6 +484,24 @@ jobs:
       - name: Deploy show campaign escrow
         if: inputs.operation == 'deploy-show-campaign-escrow'
         run: make deploy-show-campaign-escrow
+
+      - name: Verify deployed ShowCampaignEscrow authority graph
+        if: inputs.operation == 'deploy-show-campaign-escrow'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "contracts/deployments/show-campaign-escrow.${{ inputs.target_network }}.remote.env"
+          set +a
+          cd contracts
+          SMOKE_VERIFY_UPGRADE_GRAPH=true \
+            forge script script/SmokeShowCampaignEscrow.s.sol --rpc-url "${RPC_URL}"
+
+      - name: Verify deployed ShowCampaignEscrow graph on Sourcify
+        if: inputs.operation == 'deploy-show-campaign-escrow' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/DeployShowCampaignEscrow.s.sol/84532/run-latest.json
+        run: make verify-base-sepolia-sourcify
 
       - name: Deploy stem marketplace
         if: inputs.operation == 'deploy-stem-marketplace'
@@ -545,14 +592,6 @@ jobs:
           fi
           export CAMPAIGN_ID="${INPUT_CAMPAIGN_ID}"
           make release-show-campaign-funds
-
-      - name: Verify Base Sepolia contracts on BaseScan
-        if: inputs.operation == 'verify-base-sepolia'
-        run: make verify-base-sepolia
-
-      - name: Verify Base Sepolia contracts on Sourcify
-        if: inputs.operation == 'verify-base-sepolia-sourcify'
-        run: make verify-base-sepolia-sourcify
 
       - name: Summarize admin/config operation
         if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'

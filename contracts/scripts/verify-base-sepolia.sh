@@ -99,6 +99,12 @@ contract_id_for() {
         StemMarketplaceV2)
             echo "src/core/StemMarketplaceV2.sol:StemMarketplaceV2"
             ;;
+        ShowCampaignEscrow)
+            echo "src/core/ShowCampaignEscrow.sol:ShowCampaignEscrow"
+            ;;
+        TimelockController)
+            echo "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController"
+            ;;
         *)
             return 1
             ;;
@@ -280,7 +286,7 @@ constructor_args_for() {
     )
 
     case "$contract_name" in
-        TransferValidator|ContentProtection)
+        TransferValidator|ContentProtection|ShowCampaignEscrow)
             echo ""
             ;;
         ERC1967Proxy)
@@ -303,6 +309,9 @@ constructor_args_for() {
             ;;
         StemMarketplaceV2)
             cast abi-encode "constructor(address,address,address,address,uint256)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" "${args[4]}" | sed 's/^0x//'
+            ;;
+        TimelockController)
+            cast abi-encode "constructor(uint256,address[],address[],address)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'
             ;;
         *)
             echo ""
@@ -355,17 +364,14 @@ poll_verification() {
 cd "$CONTRACTS_DIR"
 
 FAILED=()
-CONTRACTS=(
-    TransferValidator
-    ContentProtection
-    ERC1967Proxy
-    DisputeResolution
-    CurationRewards
-    RevenueEscrow
-    StemNFT
-    PaymentAssetRegistry
-    StemMarketplaceV2
-)
+# Derive the contract list from the selected broadcast so protocol, Shows, and
+# surgical marketplace deployments all retry the exact graph they created.
+mapfile -t CONTRACTS < <(jq -r '[.transactions[] | select(.transactionType == "CREATE") | .contractName] | unique | .[]' "$BROADCAST_FILE")
+
+if [[ "${#CONTRACTS[@]}" -eq 0 ]]; then
+    echo -e "${RED}No CREATE transactions found in broadcast.${NC}"
+    exit 1
+fi
 
 if [[ -n "${VERIFY_ONLY:-}" ]]; then
     CONTRACTS=("$VERIFY_ONLY")
