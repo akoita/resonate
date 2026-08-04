@@ -1,0 +1,34 @@
+# Stable Audio 3 remix worker — dependency BASE image (#1182 slice 4).
+#
+# This holds every expensive, slow-changing layer of the worker image: the
+# CUDA base, the apt packages, and the three pip install steps (the last of
+# which compiles flash-attn from source, ~25 min). It is published separately
+# by .github/workflows/publish-stable-audio-base-image.yml and consumed by
+# workers/stable-audio/Dockerfile through a pinned sha256 digest, so an
+# application-only change (main.py) no longer recompiles flash-attn.
+#
+# Rebuild this image ONLY when its inputs change: this file, the three lock
+# files, or constraints-gpu.txt. See README.md ("Dependency base image").
+#
+# Base matches the torch stable_audio_3 wants (2.7.1 / cu12.6) so flash-attn
+# builds against the SAME torch ABI. Deps pinned to the versions the #1193
+# adopt-gate validated.
+FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel@sha256:639b8229ccfd8a3aa803cf49c33d6d6fe406750d79aaf723fe8c0eb1060d8cff
+
+ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
+RUN apt-get update && apt-get install -y --no-install-recommends git build-essential ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements-build.lock requirements.lock constraints-gpu.txt flash-attn.lock /app/
+# requirements.lock includes the immutable stable-audio-3 archive. Exact
+# constraints preserve the CUDA/Torch ABI supplied by the base image.
+RUN python -m pip install --require-hashes -r requirements-build.lock \
+    && python -m pip install --require-hashes --no-build-isolation \
+        --constraint constraints-gpu.txt -r requirements.lock
+# Build flash-attn last, against the final base-provided Torch ABI. FORCE_BUILD
+# prevents its setup command from downloading an unverified GitHub wheel.
+RUN FLASH_ATTENTION_FORCE_BUILD=TRUE \
+    python -m pip install --require-hashes --no-build-isolation --no-deps \
+        -r flash-attn.lock

@@ -1,0 +1,205 @@
+name: Publish Stable Audio Base Image
+
+# Builds the expensive, slow-changing dependency layers of the Stable Audio
+# worker (CUDA base, apt packages, the three hashed pip installs including the
+# ~25-minute flash-attn source build) into a separately published base image.
+#
+# workers/stable-audio/Dockerfile consumes it by sha256 digest, so this
+# workflow must run — and a human must repin the digest — whenever the base
+# inputs change. The resulting digest is printed in the job summary.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: GitHub environment supplying GCP_PROJECT_ID/GCP_REGION.
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - dev
+      artifact_registry_repository:
+        description: Optional Artifact Registry repo name. Defaults to the environment repo.
+        required: false
+        default: ""
+        type: string
+      image_tag:
+        description: Optional tag. Defaults to locks-<hash of the base inputs>.
+        required: false
+        default: ""
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-stable-audio-base-image.yml"
+      - "workers/stable-audio/Dockerfile.base"
+      - "workers/stable-audio/requirements-build.lock"
+      - "workers/stable-audio/requirements.lock"
+      - "workers/stable-audio/flash-attn.lock"
+      - "workers/stable-audio/constraints-gpu.txt"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish Stable Audio Base Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+    outputs:
+      image_uri: ${{ steps.coordinates.outputs.image_uri }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
+      image_digest: ${{ steps.build.outputs.image_digest }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+
+      - name: Resolve artifact coordinates
+        id: coordinates
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          INPUT_ARTIFACT_REGISTRY_REPOSITORY: ${{ inputs.artifact_registry_repository }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          DEFAULT_ARTIFACT_REGISTRY_REPOSITORY: ${{ vars.STABLE_AUDIO_BASE_ARTIFACT_REGISTRY_REPOSITORY }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            environment="${INPUT_ENVIRONMENT}"
+          else
+            environment="staging"
+          fi
+
+          if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
+            echo "Missing required GitHub environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
+            exit 1
+          fi
+
+          # Same registry convention as ci.yml's publish-plan job.
+          repository="${INPUT_ARTIFACT_REGISTRY_REPOSITORY:-${DEFAULT_ARTIFACT_REGISTRY_REPOSITORY:-resonate-${environment}}}"
+          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${repository}"
+
+          # The base image is a pure function of its build inputs, so tag it by
+          # their content rather than by commit: rebuilding an unchanged base
+          # lands on the same tag instead of littering the repo with identical
+          # images, and the tag says which lock set an image came from.
+          # Consumption is by digest either way.
+          inputs_hash="$(
+            sha256sum \
+              workers/stable-audio/Dockerfile.base \
+              workers/stable-audio/requirements-build.lock \
+              workers/stable-audio/requirements.lock \
+              workers/stable-audio/flash-attn.lock \
+              workers/stable-audio/constraints-gpu.txt \
+            | sha256sum | cut -c1-12
+          )"
+          tag="${INPUT_IMAGE_TAG:-locks-${inputs_hash}}"
+
+          image_uri="${registry}/stable-audio-worker-base:${tag}"
+
+          {
+            echo "environment=${environment}"
+            echo "registry=${registry}"
+            echo "inputs_hash=${inputs_hash}"
+            echo "tag=${tag}"
+            echo "image_uri=${image_uri}"
+            echo "repository_path=${registry}/stable-audio-worker-base"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "### Stable Audio dependency base image"
+            echo ""
+            echo "- environment: \`${environment}\`"
+            echo "- image: \`${image_uri}\`"
+            echo "- base inputs hash: \`${inputs_hash}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Build and push Stable Audio base image
+        id: build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
+        run: |
+          # 45 min: the flash-attn source build alone takes ~25 min and the
+          # helper's 30-minute default leaves no headroom on a cold builder.
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context workers/stable-audio \
+            --dockerfile Dockerfile.base \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE_URI}" \
+            --timeout 2700s \
+            --metadata-output "${RUNNER_TEMP}/stable-audio-base-build.json"
+
+      # Runs before the (slower, failure-prone) evidence step on purpose: the
+      # digest is this workflow's product and a human needs it even if signing
+      # or SBOM generation later fails.
+      - name: Report base image digest
+        if: steps.build.outputs.image_digest != ''
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.image_digest }}
+          IMAGE_REF: ${{ steps.build.outputs.image_ref }}
+          IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
+          REPOSITORY_PATH: ${{ steps.coordinates.outputs.repository_path }}
+          INPUTS_HASH: ${{ steps.coordinates.outputs.inputs_hash }}
+        run: |
+          set -euo pipefail
+
+          echo "::notice title=Stable Audio base image digest::${IMAGE_DIGEST}"
+
+          {
+            echo ""
+            echo "## ACTION REQUIRED — pin this digest"
+            echo ""
+            echo "\`workers/stable-audio/Dockerfile\` must \`FROM\` this exact digest."
+            echo "Copy the block below into it, replacing the existing \`FROM\` line,"
+            echo "then open a PR (see \`workers/stable-audio/README.md\`)."
+            echo ""
+            echo "\`\`\`dockerfile"
+            echo "# Built by .github/workflows/publish-stable-audio-base-image.yml"
+            echo "# from base inputs ${INPUTS_HASH} (tag ${IMAGE_URI##*:})."
+            echo "FROM ${REPOSITORY_PATH}@${IMAGE_DIGEST}"
+            echo "\`\`\`"
+            echo ""
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| digest | \`${IMAGE_DIGEST}\` |"
+            echo "| immutable ref | \`${IMAGE_REF}\` |"
+            echo "| tagged ref | \`${IMAGE_URI}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Publish Stable Audio base image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: stable-audio-base
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ steps.coordinates.outputs.registry }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/stable-audio-base
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-stable-audio-base-image.yml@${{ github.ref }}
+          source-sha: ${{ github.sha }}

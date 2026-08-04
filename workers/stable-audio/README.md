@@ -42,6 +42,91 @@ Manager (the HF account must have accepted the gated model license).
 Image deps are pinned to the spike-validated versions
 (`stable-audio-3@8b92042`, `flash-attn==2.8.3.post1`).
 
+### Dependency base image
+
+Compiling flash-attn from CUDA source takes ~25 of the worker image's ~29-minute
+build, and Cloud Build runs an uncached `docker build`, so that cost is paid on
+every publish — including publishes where only `main.py` changed.
+
+`Dockerfile.base` therefore holds every expensive, slow-changing layer (the
+digest-pinned `pytorch/pytorch` base, apt packages, and the three hashed pip
+installs including the flash-attn source build). It is published on its own by
+[`.github/workflows/publish-stable-audio-base-image.yml`](../../.github/workflows/publish-stable-audio-base-image.yml)
+and consumed by `Dockerfile` through a sha256 digest, so flash-attn only
+recompiles when the dependency inputs change.
+
+**Rollout status: phase 1 (base image published, worker not yet repinned).**
+`Dockerfile` still builds everything itself, because the base image must exist
+in Artifact Registry before anything can `FROM` its digest. Phase 2 is the
+repin described below.
+
+#### When a base rebuild is needed
+
+Rebuild whenever any *base input* changes — that is exactly the `paths:` filter
+of the publish workflow:
+
+- `Dockerfile.base`
+- `requirements-build.lock`, `requirements.lock`, `flash-attn.lock`
+- `constraints-gpu.txt`
+- the publish workflow itself
+
+`main.py` is **not** a base input: application changes must never trigger a base
+rebuild, which is the entire point of the split.
+
+A push to `main` that touches one of those files rebuilds the base
+automatically, but the worker keeps building against the previously pinned
+digest until a human repins it. Treat the rebuild as *step one of two*.
+
+#### Running the workflow
+
+1. Actions -> **Publish Stable Audio Base Image** -> **Run workflow**.
+2. Pick the `environment` (`staging` by default; it supplies `GCP_PROJECT_ID`
+   and `GCP_REGION`). Leave `artifact_registry_repository` and `image_tag`
+   empty unless you are deliberately targeting another repo or tag.
+3. Wait for the build (~30 min; flash-attn dominates).
+4. Read the job summary. Under **ACTION REQUIRED — pin this digest** it prints a
+   ready-to-paste `FROM` block; the digest is also emitted as a job annotation.
+
+The image is tagged `locks-<hash of the base inputs>` rather than by commit SHA:
+the base is a pure function of those files, so an unchanged base re-lands on the
+same tag instead of accumulating identical images, and the tag names the lock
+set an image came from. Nothing consumes the tag — the worker consumes the
+digest.
+
+#### Phase 2 — repin the worker (manual, one PR)
+
+After a base build, on a branch:
+
+1. Copy the `FROM ...@sha256:...` line from the job summary.
+2. Replace the `FROM` line at the top of `workers/stable-audio/Dockerfile` with
+   it, and delete from that Dockerfile everything `Dockerfile.base` already
+   does: the `ENV DEBIAN_FRONTEND`/`PIP_NO_CACHE_DIR` line, the `apt-get` step,
+   the lock `COPY`, and both `pip install` steps. What stays is the `FROM`, the
+   `WORKDIR /app`, `COPY main.py`, `ENV PORT`, and `CMD`.
+3. Run `node scripts/check-docker-base-digests.mjs` (the `FROM` must carry a
+   `sha256:` digest, and the same source must be pinned to the same digest
+   everywhere) and `python3 scripts/check-python-worker-locks.py`. That second
+   script asserts the hashed-install contract *in `Dockerfile`*; moving those
+   installs to `Dockerfile.base` requires moving the corresponding
+   `docker_contract` entry in the script to `workers/stable-audio/Dockerfile.base`
+   in the same PR.
+4. Validate the composed image before merging — a base image is invisible to the
+   local `docker build .` unless it is pulled:
+
+   ```bash
+   gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
+   docker build -t stable-audio-worker workers/stable-audio
+   docker run --rm --gpus all stable-audio-worker python -c "import flash_attn; print(flash_attn.__version__)"
+   ```
+
+The base image lives in the deploy environment's Artifact Registry repo
+(`resonate-staging` by default), while a Dockerfile `FROM` is a single fixed
+string. Any other environment that builds this worker must therefore be able to
+pull from that repo, or get its own copy of the base and its own pin. Setting
+the GitHub Actions variable `STABLE_AUDIO_BASE_ARTIFACT_REGISTRY_REPOSITORY` (or
+passing `artifact_registry_repository` on dispatch) publishes into a shared,
+environment-independent repo instead, without a code change.
+
 ### Dependency lock maintenance
 
 `requirements.in` includes the SHA-256-bound Stable Audio source archive.
