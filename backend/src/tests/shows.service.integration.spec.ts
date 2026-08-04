@@ -1617,6 +1617,27 @@ describe("ShowsService integration", () => {
 
     const { campaign, tier } = await createActiveCampaignWithTier("Bordeaux");
 
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { contractAddress: null, contractCampaignId: null },
+    });
+    await expect(service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      {
+        tierId: tier.id,
+        walletAddress: listenerWallet,
+      },
+    )).rejects.toThrow(/escrow must be linked/);
+
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        contractAddress: campaign.contractAddress,
+        contractCampaignId: campaign.contractCampaignId,
+      },
+    });
+
     await expect(service.createPledgeIntent(
       { userId: listenerId, role: "listener" },
       campaign.id,

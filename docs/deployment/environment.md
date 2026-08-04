@@ -22,7 +22,7 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
 | `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional block explorer base URL used for address and transaction links. Leave unset for local Anvil. |
-| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional block explorer address base URL used by Shows campaign contract links. Defaults to Sepolia Etherscan for local seeded demos. |
+| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional legacy fallback for Shows campaign contract links when a campaign has an unknown or missing chain ID. Known chains use their authoritative explorer metadata, and local chains have no explorer link. Accepts either an explorer root or a base ending in `/address`. Seeded offline samples do not expose a live escrow link. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
 | `NEXT_PUBLIC_AA_PAYMASTER_ENABLED` | Frontend | Optional flag (`true` / `1` / `yes`) to attach a ZeroDev paymaster client to browser UserOps. Leave unset when wallet gas sponsorship is not configured so transactions self-pay from the smart account ETH balance |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |

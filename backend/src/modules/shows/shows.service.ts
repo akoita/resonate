@@ -2834,6 +2834,8 @@ export class ShowsService {
     artistAuthorityStatus: ShowArtistAuthorityStatus;
     beneficiaryAddress: string | null;
     beneficiaryType: ShowCampaignBeneficiaryType | null;
+    contractAddress: string | null;
+    contractCampaignId: string | null;
     deadline: Date;
   }) {
     if (campaign.campaignLevel !== "active_escrow_campaign") {
@@ -2847,6 +2849,9 @@ export class ShowsService {
     }
     if (!campaign.beneficiaryAddress || !campaign.beneficiaryType) {
       throw new BadRequestException("Campaign beneficiary must be bound before pledges can be created");
+    }
+    if (!campaign.contractAddress || !campaign.contractCampaignId) {
+      throw new BadRequestException("Campaign escrow must be linked before pledges can be created");
     }
     if (campaign.deadline.getTime() <= Date.now()) {
       throw new BadRequestException("Campaign deadline has passed");

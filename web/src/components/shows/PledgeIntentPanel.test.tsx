@@ -75,6 +75,7 @@ const campaign = {
   status: "active",
   featured: false,
   contractAddress: "0xescrow",
+  contractCampaignId: "1",
   etherscanUrl: "",
   tagline: "",
   tiers,

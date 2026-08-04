@@ -20,6 +20,7 @@ import {
   pledgeConfirmSummary,
   showsCampaignListPath,
   validateCampaignDeadlines,
+  getCampaign,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -198,6 +199,58 @@ describe("Shows campaign presentation", () => {
   });
 });
 
+describe("Shows campaign explorer mapping", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const backendCampaign = {
+    id: "campaign-1",
+    slug: "base-sepolia-show",
+    artistDisplayName: "Test Artist",
+    title: "Test Artist in Paris",
+    city: "Paris",
+    country: "FR",
+    deadline: "2026-09-01T00:00:00.000Z",
+    goalAmountUnits: "1000000",
+    raisedAmountUnits: "0",
+    currency: "EUR",
+    status: "active",
+  };
+
+  function mockCampaignResponse(campaign: Record<string, unknown>) {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => campaign,
+    })) as unknown as typeof fetch;
+  }
+
+  it("maps a backend campaign to the explorer for its recorded chain", async () => {
+    const contractAddress = "0xd7035cf620c09653542b75a9b95bbec1514d8b23";
+    mockCampaignResponse({ ...backendCampaign, chainId: 84532, contractAddress });
+
+    const campaign = await getCampaign(backendCampaign.slug);
+
+    expect(campaign?.contractAddress).toBe(contractAddress);
+    expect(campaign?.etherscanUrl).toBe(
+      `https://sepolia.basescan.org/address/${contractAddress}`,
+    );
+  });
+
+  it("does not substitute a contract or explorer link when the backend address is absent", async () => {
+    mockCampaignResponse({ ...backendCampaign, chainId: 84532 });
+
+    const campaign = await getCampaign(backendCampaign.slug);
+
+    expect(campaign?.contractAddress).toBeNull();
+    expect(campaign?.escrowContractAddress).toBeNull();
+    expect(campaign?.etherscanUrl).toBeUndefined();
+  });
+});
+
 describe("Shows trust / terms / pledge helpers (#949)", () => {
   const baseCampaign = {
     campaignLevel: "active_escrow_campaign",
@@ -331,6 +384,8 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
     artistAuthorityStatus: "artist_authorized",
     beneficiaryAddress: "0x1234567890abcdef1234567890abcdef12345678",
     beneficiaryType: "wallet",
+    contractAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+    contractCampaignId: "1",
   } as unknown as Campaign;
 
   it("opens pledging only when the campaign mirrors the server's pledgeable gate", () => {
@@ -357,6 +412,17 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
       beneficiaryType: null,
     } as unknown as Campaign);
     expect(result.key).toBe("pending_authority");
+  });
+
+  it("keeps pledging closed until the on-chain escrow is linked", () => {
+    const result = campaignPledgeAvailability({
+      ...openCampaign,
+      contractAddress: null,
+      contractCampaignId: null,
+    } as unknown as Campaign);
+    expect(result.open).toBe(false);
+    expect(result.key).toBe("escrow_unavailable");
+    expect(result.message).toContain("on-chain escrow");
   });
 
   it("flags revoked / rejected / expired authority as not authorized", () => {
@@ -523,7 +589,7 @@ describe("discoverShowCampaignOnChain (#1390 Tier 2)", () => {
     expect(result.matches[0].contractCampaignId).toBe("2");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("/shows/campaigns/camp-1/discover-onchain");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer tok");
