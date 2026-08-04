@@ -47,13 +47,16 @@ Image deps are pinned to the spike-validated versions
 `requirements.in` includes the SHA-256-bound Stable Audio source archive.
 `requirements.lock` is resolved for the digest-pinned Python 3.11/Linux CUDA
 base while `constraints-gpu.txt` preserves its preinstalled Torch/torchaudio
-2.7.1 ABI. `flash-attn.lock` is separate so its verified PyPI sdist builds
-last, with build isolation disabled, against that final ABI.
-`requirements-build.lock` installs the source archive's hashed Hatchling build
-backend and flash-attn's declared setup tools first, so disabling PEP 517
-isolation does not create a hidden download. The Docker build also sets
-`FLASH_ATTENTION_FORCE_BUILD=TRUE`: without it, flash-attn's setup command tries
-to fetch a guessed, unverified wheel from a GitHub release.
+2.7.1 ABI. The two `flash-attn-cxx11abi-*.lock` files pin the official upstream
+Torch 2.7 / CUDA 12 / CPython 3.11 wheels for both possible C++ ABIs by immutable
+release URL and SHA-256. The Docker build reads Torch's actual ABI, installs only
+the matching wheel, and imports the native extension as a build-time check. This
+avoids compiling flash-attn from source on every clean Cloud Build while keeping
+the dependency hash-enforced. `requirements-build.lock` installs the source
+archive's hashed Hatchling build backend before the runtime graph.
+Because every native dependency now comes from a verified wheel, the image uses
+the digest-pinned PyTorch runtime base rather than its roughly 4 GB larger
+compiler/development variant.
 
 Refresh the runtime graph with `uv 0.11.24`:
 
@@ -72,14 +75,15 @@ uv pip compile requirements.in \
   --custom-compile-command 'uv pip compile requirements.in --python-version 3.11 --python-platform x86_64-manylinux_2_35 --constraints constraints-gpu.txt --excludes constraints-gpu.txt --generate-hashes --no-emit-index-url --output-file requirements.lock'
 ```
 
-For a flash-attn update, obtain the sdist URL and digest from the PyPI JSON API,
-download that exact URL, and compare `sha256sum` before changing
-`flash-attn.lock`. Do not use pip's metadata preparation to obtain the sdist:
-flash-attn imports Torch during setup and must be built in the CUDA base.
+For a flash-attn update, inspect the official GitHub release assets and select
+the `cu12torch2.7`, `cp311`, `linux_x86_64` wheels for both C++ ABI values. Copy
+GitHub's published SHA-256 digests into the URL fragment and pip hash in the two
+lock files, then independently download and hash both exact assets. Do not fall
+back to flash-attn's setup-time wheel guessing: it is not pip hash-enforced.
 
 ```bash
-curl -fsSL https://pypi.org/pypi/flash-attn/2.8.3.post1/json
-sha256sum flash_attn-2.8.3.post1.tar.gz
+gh api repos/Dao-AILab/flash-attention/releases/tags/v2.8.3.post1 \
+  --jq '.assets[] | select(.name | contains("cu12torch2.7")) | {name, digest, browser_download_url}'
 docker build -t resonate-stable-audio:lock-test workers/stable-audio
 python scripts/check-python-worker-locks.py
 ```
