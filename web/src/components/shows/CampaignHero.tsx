@@ -36,6 +36,7 @@ export function CampaignHero({ campaign }: Props) {
   const routeCode = campaignRouteCode(campaign);
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
+  const hasLinkedEscrow = Boolean(campaign.contractAddress && campaign.contractCampaignId);
   const denseCopy = displayTitle.length > 54
     || (campaign.venue?.length ?? 0) > 72;
   const titleParts = denseCopy && displayTitle.includes(":")
@@ -86,21 +87,25 @@ export function CampaignHero({ campaign }: Props) {
           >
             Send Your Signal →
           </Link>
-          <a
-            href={campaign.etherscanUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="campaign-hero__cta-secondary"
-            aria-label="View the escrow contract on the block explorer"
-          >
-            View escrow contract ↗
-          </a>
+          {hasLinkedEscrow && campaign.etherscanUrl ? (
+            <a
+              href={campaign.etherscanUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="campaign-hero__cta-secondary"
+              aria-label="View the escrow contract on the block explorer"
+            >
+              View escrow contract ↗
+            </a>
+          ) : null}
         </div>
 
         <p className="campaign-hero__trust">
           {campaign.isSample
             ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
-            : "Funds held in a smart contract, not a company bank account. If the threshold isn't met, every pledge is refunded automatically — enforced by code."}
+            : hasLinkedEscrow
+              ? "Funds held in a smart contract, not a company bank account. If the threshold isn't met, every pledge is refunded automatically — enforced by code."
+              : "Escrow is not linked yet, so this campaign is not accepting pledges."}
         </p>
       </div>
 

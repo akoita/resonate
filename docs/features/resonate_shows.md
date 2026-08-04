@@ -27,7 +27,9 @@ time-lock.
 Surfaces: home campaign hero, `/shows`, `/shows/create`, `/shows/:slug/edit`,
 and the campaign detail page (for example `/shows/sennarin-paris`). The web app
 reads the backend Shows API as the source of truth and keeps seeded sample data
-only as a local/offline fallback. The campaign trust model and fund-release
+only as a local/offline fallback. Contract explorer links follow each
+campaign's recorded chain; campaigns without a linked on-chain escrow show no
+explorer action and cannot accept pledges. The campaign trust model and fund-release
 policy are defined in
 [Show Campaign Trust And Escrow Policy](../rfc/show-campaign-trust-escrow.md);
 show attendance credential boundaries are defined in

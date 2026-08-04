@@ -24,6 +24,7 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
   const initial = campaignDisplayInitial(campaign);
   const heroVisual = campaign.heroImage || campaign.cardImage;
   const hasHeroImage = Boolean(heroVisual);
+  const hasLinkedEscrow = Boolean(campaign.contractAddress && campaign.contractCampaignId);
   // Derive a hue from the initial letter for per-artist colour variety
   const hue = (initial.charCodeAt(0) * 47) % 360;
 
@@ -116,10 +117,12 @@ export function FeaturedCampaignHero({ campaign }: FeaturedCampaignHeroProps) {
         </div>
 
         {/* Web3 trust */}
-        <a href={campaign.etherscanUrl} target="_blank" rel="noopener noreferrer" className="fch-trust">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-          Funds locked in smart contract · View on Etherscan ↗
-        </a>
+        {hasLinkedEscrow && campaign.etherscanUrl ? (
+          <a href={campaign.etherscanUrl} target="_blank" rel="noopener noreferrer" className="fch-trust">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Funds locked in smart contract · View on explorer ↗
+          </a>
+        ) : null}
       </div>
 
       {/* ── Right art column ── */}

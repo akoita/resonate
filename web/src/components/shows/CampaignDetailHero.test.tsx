@@ -53,6 +53,7 @@ const campaign = {
   status: "active",
   featured: false,
   contractAddress: "0xescrow",
+  contractCampaignId: "1",
   etherscanUrl: "https://sepolia.basescan.org/address/0xescrow",
   tagline: "A live demand signal.",
   tiers,
@@ -85,5 +86,25 @@ describe("CampaignDetailHero", () => {
     // No dead or self-linking CTAs.
     expect(html).not.toContain("Send Your Signal");
     expect(html).not.toContain(`href="/shows/${campaign.id}"`);
+  });
+
+  it("omits the explorer anchor when the campaign has no contract link", () => {
+    const campaignWithoutContract = {
+      ...campaign,
+      contractAddress: null,
+      etherscanUrl: undefined,
+    };
+
+    const html = renderToStaticMarkup(
+      <CampaignDetailHero campaign={campaignWithoutContract}>
+        <div>pledge module</div>
+      </CampaignDetailHero>,
+    );
+
+    expect(html).not.toContain("View escrow contract");
+    expect(html).not.toContain('aria-label="View the escrow contract on the block explorer"');
+    expect(html).not.toContain('href=""');
+    expect(html).toContain("Escrow is not linked yet");
+    expect(html).not.toContain("Funds held in a smart contract");
   });
 });

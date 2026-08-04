@@ -7,6 +7,7 @@
  */
 
 import { API_BASE, type Release } from "./api";
+import { getChainExplorerAddressUrl } from "./explorer";
 
 export type CampaignStatus = "active" | "funded" | "refunded" | "booked";
 export type CampaignListScope = "all";
@@ -123,14 +124,13 @@ export interface Campaign {
   visuals: CampaignVisual[];
   status: CampaignStatus;
   featured: boolean;
-  // Sepolia escrow contract. Until Campaign.sol ships, we link to the
-  // already-deployed RevenueEscrow.sol as an honest stand-in so the
-  // "Trust the code" link leads to a real contract, not a fake address.
-  contractAddress: string;
+  // Campaign-specific escrow identity and chain-aware explorer link. Backend
+  // campaigns without a deployed escrow intentionally leave these absent.
+  contractAddress?: string | null;
   escrowContractAddress?: string | null;
   contractCampaignId?: string | null;
   paymentTokenAddress?: string | null;
-  etherscanUrl: string;
+  etherscanUrl?: string;
   // Short pitch shown on the hero + detail page.
   tagline: string;
   tiers: CampaignTier[];
@@ -297,6 +297,7 @@ export type CampaignPledgeAvailability = {
     | "pending_authority"
     | "not_authorized"
     | "signal"
+    | "escrow_unavailable"
     | "closed_refund"
     | "cancelled"
     | "closed";
@@ -322,6 +323,8 @@ export function campaignPledgeAvailability(
     | "artistAuthorityStatus"
     | "beneficiaryAddress"
     | "beneficiaryType"
+    | "contractAddress"
+    | "contractCampaignId"
   >,
 ): CampaignPledgeAvailability {
   const status = campaign.rawStatus;
@@ -377,6 +380,15 @@ export function campaignPledgeAvailability(
       title: "Awaiting artist authority",
       message:
         "This campaign is provisional. Pledging opens once an operator verifies the artist's authority and the escrow terms are locked.",
+    };
+  }
+  if (!campaign.contractAddress || !campaign.contractCampaignId) {
+    return {
+      open: false,
+      key: "escrow_unavailable",
+      title: "Escrow not ready",
+      message:
+        "This campaign is not accepting pledges until its on-chain escrow is linked and verified.",
     };
   }
   if (status !== "active") {
@@ -860,10 +872,8 @@ export type ShowCampaignDraftInput = {
   tiers: ShowCampaignDraftTierInput[];
 };
 
-const SEPOLIA_REVENUE_ESCROW = "0x411e121a97b6901b2e81f67a795e8063c1b8d472";
 const SHOWS_EXPLORER_BASE_URL =
-  process.env.NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL ?? "https://sepolia.etherscan.io/address";
-const SEPOLIA_ETHERSCAN = `${SHOWS_EXPLORER_BASE_URL}/${SEPOLIA_REVENUE_ESCROW}`;
+  process.env.NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL;
 
 type BackendShowCampaign = {
   id: string;
@@ -1139,11 +1149,12 @@ const sampleBase = {
   beneficiaryType: null,
   status: "active" as const,
   featured: false,
-  contractAddress: SEPOLIA_REVENUE_ESCROW,
+  contractAddress: null,
   escrowContractAddress: null,
   contractCampaignId: null,
   paymentTokenAddress: null,
-  etherscanUrl: SEPOLIA_ETHERSCAN,
+  etherscanUrl: undefined,
+  chainId: null,
   isSample: true,
 };
 
@@ -1834,7 +1845,7 @@ async function mutateShowCampaign(path: string, input: {
 
 function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign {
   const decimals = campaign.paymentAssetDecimals ?? 2;
-  const contractAddress = campaign.contractAddress ?? SEPOLIA_REVENUE_ESCROW;
+  const contractAddress = campaign.contractAddress ?? null;
   return {
     id: campaign.slug,
     backendId: campaign.id,
@@ -1901,7 +1912,11 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     escrowContractAddress: campaign.contractAddress ?? null,
     contractCampaignId: campaign.contractCampaignId ?? null,
     paymentTokenAddress: campaign.paymentTokenAddress ?? null,
-    etherscanUrl: `${SHOWS_EXPLORER_BASE_URL}/${contractAddress}`,
+    etherscanUrl: getChainExplorerAddressUrl(
+      campaign.chainId,
+      contractAddress,
+      SHOWS_EXPLORER_BASE_URL,
+    ),
     tagline: campaign.description || campaign.title,
     tiers: (campaign.tiers ?? []).map((tier) => ({
       id: tier.id,
