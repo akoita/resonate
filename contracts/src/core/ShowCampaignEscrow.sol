@@ -143,6 +143,41 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         external
         initializer
     {
+        _initializeBase(_owner, _feeBps, _feeRecipient, _upgradeAuthority);
+    }
+
+    /// @notice Atomically initializes a fresh proxy at storage/version 2. Existing
+    /// version-1 proxies must use {initializeV2} through `upgradeToAndCall` instead.
+    /// @dev `reinitializer(2)` consumes both initialization versions in the proxy
+    /// constructor transaction, so no account can front-run the fulfillment-window
+    /// initialization between deployment transactions. The state guard prevents this
+    /// entry point from re-running base initialization on an existing version-1 proxy.
+    function initializeFresh(
+        address _owner,
+        uint256 _feeBps,
+        address _feeRecipient,
+        address _upgradeAuthority,
+        uint256 _fulfillmentWindow
+    ) external reinitializer(2) {
+        if (owner() != address(0) || nextCampaignId != 0) revert InvalidInitialization();
+        _initializeBase(_owner, _feeBps, _feeRecipient, _upgradeAuthority);
+        _initializeFulfillmentWindow(_fulfillmentWindow);
+    }
+
+    /// @notice 2.1.0 reinitializer (issue #1271). Sets the global {fulfillmentWindow} on
+    /// already-deployed proxies via timelock `upgradeToAndCall` during the
+    /// 2.0.0→2.1.0 upgrade. Fresh proxies use {initializeFresh} so base and version-2
+    /// state are initialized atomically in the proxy constructor. Runs once.
+    /// @param _fulfillmentWindow Seconds between booking confirmation and when anyone may
+    /// force refunds; must be within [{MIN_FULFILLMENT_WINDOW}, {MAX_FULFILLMENT_WINDOW}].
+    function initializeV2(uint256 _fulfillmentWindow) external reinitializer(2) {
+        _initializeFulfillmentWindow(_fulfillmentWindow);
+    }
+
+    function _initializeBase(address _owner, uint256 _feeBps, address _feeRecipient, address _upgradeAuthority)
+        internal
+        onlyInitializing
+    {
         if (_upgradeAuthority == address(0)) revert ZeroAddress();
         __Ownable_init(_owner);
         nextCampaignId = 1;
@@ -151,12 +186,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
-    /// @notice 2.1.0 reinitializer (issue #1271). Sets the global {fulfillmentWindow} on
-    /// BOTH already-deployed proxies (called via the timelock `upgradeToAndCall` during the
-    /// 2.0.0→2.1.0 upgrade) and fresh deploys (called right after {initialize}). Runs once.
-    /// @param _fulfillmentWindow Seconds between booking confirmation and when anyone may
-    /// force refunds; must be within [{MIN_FULFILLMENT_WINDOW}, {MAX_FULFILLMENT_WINDOW}].
-    function initializeV2(uint256 _fulfillmentWindow) external reinitializer(2) {
+    function _initializeFulfillmentWindow(uint256 _fulfillmentWindow) internal {
         if (_fulfillmentWindow < MIN_FULFILLMENT_WINDOW || _fulfillmentWindow > MAX_FULFILLMENT_WINDOW) {
             revert InvalidFulfillmentWindow(_fulfillmentWindow, MIN_FULFILLMENT_WINDOW, MAX_FULFILLMENT_WINDOW);
         }
@@ -384,7 +414,9 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
 
     function confirmFulfillment(uint256 campaignId) external onlyConfirmer whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
-        if (campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased) {
+        if (
+            campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased
+        ) {
             revert InvalidStatus(campaignId, campaign.status);
         }
         campaign.status = CampaignStatus.Fulfilled;
@@ -406,9 +438,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
     /// booked before the 2.1.0 upgrade): the call reverts {FulfillmentDeadlineNotPassed}.
     function openRefundsAfterMissedFulfillment(uint256 campaignId) external whenNotPaused {
         Campaign storage campaign = _campaign(campaignId);
-        if (
-            campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased
-        ) {
+        if (campaign.status != CampaignStatus.BookingConfirmed && campaign.status != CampaignStatus.DepositReleased) {
             revert InvalidStatus(campaignId, campaign.status);
         }
         // A 0 deadline (window unset / legacy campaign) never elapses: the `!= 0` guard

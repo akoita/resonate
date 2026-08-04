@@ -23,4 +23,21 @@ library EscrowProxyDeployer {
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         escrow = ShowCampaignEscrow(address(proxy));
     }
+
+    /// @return escrow A fresh version-2 proxy whose fulfillment window is set
+    /// atomically in the proxy constructor transaction.
+    function deployFresh(
+        address owner,
+        uint256 feeBps,
+        address feeRecipient,
+        address upgradeAuthority,
+        uint256 fulfillmentWindow
+    ) internal returns (ShowCampaignEscrow escrow) {
+        ShowCampaignEscrow impl = new ShowCampaignEscrow();
+        bytes memory initData = abi.encodeCall(
+            ShowCampaignEscrow.initializeFresh, (owner, feeBps, feeRecipient, upgradeAuthority, fulfillmentWindow)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        escrow = ShowCampaignEscrow(address(proxy));
+    }
 }

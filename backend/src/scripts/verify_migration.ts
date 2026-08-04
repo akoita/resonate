@@ -28,7 +28,11 @@ interface Snapshot {
   identity: ResolvedIdentity | null;
   cursors: {
     indexerState: Array<{ chainId: number | string; lastBlockNumber: string }>;
-    showEscrowIndexerState: Array<{ chainId: number | string; lastBlockNumber: string }>;
+    showEscrowIndexerState: Array<{
+      chainId: number | string;
+      contractAddress?: string;
+      lastBlockNumber: string;
+    }>;
   };
   sampleContent: { users: boolean; tracks: boolean; releases: boolean; shows: boolean };
 }
@@ -74,7 +78,7 @@ async function snapshot(selector: IdentitySelector | null): Promise<Snapshot> {
     select: { chainId: true, lastBlockNumber: true },
   }).catch(() => []);
   const showEscrowIndexerState = await prisma.showEscrowIndexerState.findMany({
-    select: { chainId: true, lastBlockNumber: true },
+    select: { chainId: true, contractAddress: true, lastBlockNumber: true },
   }).catch(() => []);
 
   return {
@@ -82,7 +86,11 @@ async function snapshot(selector: IdentitySelector | null): Promise<Snapshot> {
     identity,
     cursors: {
       indexerState: indexerState.map((r: any) => ({ chainId: r.chainId, lastBlockNumber: String(r.lastBlockNumber) })),
-      showEscrowIndexerState: showEscrowIndexerState.map((r: any) => ({ chainId: r.chainId, lastBlockNumber: String(r.lastBlockNumber) })),
+      showEscrowIndexerState: showEscrowIndexerState.map((r: any) => ({
+        chainId: r.chainId,
+        contractAddress: r.contractAddress,
+        lastBlockNumber: String(r.lastBlockNumber),
+      })),
     },
     sampleContent: {
       users: (rowCounts["User"] ?? 0) > 0,
@@ -147,12 +155,28 @@ export function compareSnapshots(
   const cursorCheck = (
     kind: "indexerState" | "showEscrowIndexerState",
   ) => {
-    for (const src of source.cursors[kind]) {
-      const tgt = target.cursors[kind].find((t) => String(t.chainId) === String(src.chainId));
+    type Cursor = { chainId: number | string; contractAddress?: string; lastBlockNumber: string };
+    const sourceCursors = source.cursors[kind] as Cursor[];
+    const targetCursors = target.cursors[kind] as Cursor[];
+    for (const src of sourceCursors) {
+      const sourceAddress = src.contractAddress?.toLowerCase();
+      const chainMatches = targetCursors.filter((t) => String(t.chainId) === String(src.chainId));
+      if (kind === "showEscrowIndexerState" && !sourceAddress && chainMatches.length > 1) {
+        failures.push(
+          `${kind} cursor for chain ${src.chainId} is ambiguous on target; take a fresh source snapshot with contract addresses`,
+        );
+        continue;
+      }
+      const tgt = sourceAddress
+        ? chainMatches.find((t) => t.contractAddress?.toLowerCase() === sourceAddress)
+        : chainMatches[0];
+      const cursorLabel = sourceAddress
+        ? `chain ${src.chainId} contract ${sourceAddress}`
+        : `chain ${src.chainId}`;
       if (!tgt) {
-        failures.push(`${kind} cursor for chain ${src.chainId} missing on target (indexer would rescan from 0)`);
+        failures.push(`${kind} cursor for ${cursorLabel} missing on target (indexer would rescan from 0)`);
       } else if (BigInt(tgt.lastBlockNumber) < BigInt(src.lastBlockNumber)) {
-        failures.push(`${kind} cursor for chain ${src.chainId} regressed: source ${src.lastBlockNumber} → target ${tgt.lastBlockNumber}`);
+        failures.push(`${kind} cursor for ${cursorLabel} regressed: source ${src.lastBlockNumber} → target ${tgt.lastBlockNumber}`);
       }
     }
   };

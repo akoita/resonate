@@ -929,12 +929,14 @@ model IndexerState {
 // indexer advance independently on the same chain.
 model ShowEscrowIndexerState {
   id              String   @id @default(uuid())
-  chainId         Int      @unique
+  chainId         Int
   contractAddress String
   lastBlockNumber BigInt   @default(0)
   currentFeeBps   Int?
   feeRecipient    String?
   updatedAt       DateTime @updatedAt
+
+  @@unique([chainId, contractAddress])
 }
 
 // Idempotent processed-event log for ShowCampaignEscrow (#948). The

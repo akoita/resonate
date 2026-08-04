@@ -99,6 +99,15 @@ per-slug `SAMPLE_SHOWS_ESCROW_LINKS` JSON map (`contractCampaignId` +
 `active_escrow_campaign` records linked to that escrow so hydration can
 reconcile fee/terms from the contract. Unmapped slugs stay provisional.
 
+The backend indexer can reconcile more than one escrow on the same chain during
+a contract replacement. The current escrow remains the default for newly
+activated campaigns, while a backend-only `address:deploymentBlock` target list
+keeps legacy campaign events and refund claims live until that escrow is fully
+drained. Each address has an independent cursor and fee snapshot. The indexer is
+currently a single-writer service, so deployments enabling it must remain at one
+backend instance until the distributed lease tracked in
+[#1567](https://github.com/akoita/resonate/issues/1567) is implemented.
+
 ## Who It Is For
 
 - Listeners who want to bring an artist to their city.

@@ -134,11 +134,12 @@ Deploy env (in addition to the existing owner/fee vars):
 
 | Env | Meaning | Default |
 | --- | --- | --- |
-| `SHOW_CAMPAIGN_ESCROW_OWNER` | Ops owner / multisig (proposer + executor) | deployer |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Ops owner / multisig (proposer + executor) | required remote; local → deployer |
 | `SHOW_CAMPAIGN_FEE_BPS` | Success-only campaign fee (bps) | 600 |
 | `SHOW_CAMPAIGN_FEE_RECIPIENT` | Platform fee wallet | required remote; local → owner |
 | `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` | Upgrade delay (seconds) | 172800 (48h) |
 | `SHOW_CAMPAIGN_GUARDIAN` | Independent recovery key (`PROPOSER` + `EXECUTOR` + `CANCELLER`) | required remote; local → owner |
+| `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` | Booking-to-fulfillment refund escape window (seconds) | 2592000 (30 days) |
 
 `make deploy-show-campaign-escrow` deploys the escrow graph and then runs
 [`contracts/scripts/write-show-campaign-escrow-handoff.sh`](../../contracts/scripts/write-show-campaign-escrow-handoff.sh).
@@ -158,6 +159,8 @@ upgrades):
 NEXT_PUBLIC_CHAIN_ID=<chain-id>
 SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy>
 NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=<proxy>
+SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK=<proxy-deployment-block>
+SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS=<proxy>:<proxy-deployment-block>
 SHOW_CAMPAIGN_TIMELOCK_ADDRESS=<timelock>
 SHOW_CAMPAIGN_ESCROW_IMPLEMENTATION=<implementation>
 ```
@@ -166,9 +169,13 @@ Promote those values through the reviewed `resonate-iac`/GCP environment path
 instead of copying console output into Cloud Run or GitHub variables by hand.
 The backend still links individual campaigns with `contractAddress` and
 `contractCampaignId`; the global escrow address is the deployment/runtime
-default used by operators and future reconciliation jobs. Because the proxy
-address is stable, **an upgrade requires no app/ABI address change** — the ABI
-handoff regenerates only if the contract surface changed.
+default for new campaigns. The indexer target list is backend-only. During a
+replacement cutover, merge the new handoff entry with every legacy escrow that
+still has active campaigns or unclaimed refunds; do not overwrite the list with
+the handoff's single new entry. Each address has an independent cursor and fee
+snapshot. Because a UUPS upgrade keeps the proxy stable, **an implementation
+upgrade requires no app/ABI address change** — the ABI handoff regenerates only
+if the contract surface changed.
 
 #### Upgrading the implementation (timelocked)
 
@@ -247,16 +254,29 @@ It fails closed (returns no address) for unset, malformed, or zero values, and
 is used as the default `contractAddress` when a campaign is activated without an
 explicit per-campaign address.
 
+The indexer separately accepts a per-chain target list such as:
+
+```bash
+BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS=0xlegacy:43721459,0xcurrent:<deployment-block>
+```
+
+Use full 20-byte addresses in real configuration. Every target requires its
+exact deployment block, and the list must include the current address. Deploy
+the schema migration and new backend revision completely before adding a second
+target; old revisions assume one cursor per chain. Keep the backend at one
+instance while this in-process single-writer indexer is enabled.
+
 #### Verification and rollback
 
-`ShowCampaignEscrow` is a non-upgradeable `Ownable` contract, so there is no
-proxy to migrate. To "roll back" a bad deployment, deploy a fresh instance and
-re-promote the new `SHOW_CAMPAIGN_ESCROW_ADDRESS` /
-`NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before any
-live pledge execution; campaigns already bound to the prior address keep their
-`contractAddress` and must be drained/refunded on that instance. Verify the
-contract on the target explorer using the Foundry verification flow documented
-below.
+`ShowCampaignEscrow` is UUPS-upgradeable. Normal fixes deploy a reviewed
+implementation and schedule `upgradeToAndCall` through the timelock; rollback is
+another timelocked upgrade and must remain storage-compatible. A replacement
+proxy is a migration, not an upgrade: promote it only after its exact deployment
+block is recorded and both old + new proxies are in the backend indexer target
+list. Campaigns already bound to the prior address remain there and that target
+must stay indexed until all campaigns are terminal and every refundable pledge
+has been claimed. Verify the proxy, implementation, and timelock through
+Sourcify; use Blockscout for the app-facing source/transactions/events link.
 
 Frontend publish CI can validate a promoted escrow address by setting
 `FRONTEND_SHOW_CAMPAIGN_DEPLOYMENT_ENV_FILE` to the reviewed handoff file before
@@ -291,8 +311,9 @@ Recommended operator flow:
 5. Run the narrowest operation that matches the lifecycle you are changing,
    only after preflight passes and the selected GitHub environment approval is
    granted.
-6. For Base Sepolia verification retries, run `verify-base-sepolia` or
-   `verify-base-sepolia-sourcify`.
+6. Base Sepolia Shows deployments verify the full graph through Sourcify in the
+   same run. For a later retry, use the retained broadcast artifact locally from
+   the deployment commit as described below.
 
 Deployment operations:
 
@@ -307,9 +328,7 @@ Deployment operations:
 | `set-show-campaign-confirmer` | Shows confirmer allowlist update | No redeploy; calls `ShowCampaignEscrow.setConfirmer` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `CONFIRMER_ADDRESS`, and `CONFIRMER_ALLOWED`; signer must be escrow owner |
 | `pause-show-campaign-escrow` | Shows pledge pause/unpause | No redeploy; calls `ShowCampaignEscrow.setPaused` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS` and `PAUSED`; signer must be escrow owner |
 | `create-show-campaign` | Owner-managed Shows campaign creation | No redeploy; calls `ShowCampaignEscrow.createCampaign` and `activateCampaign` | Requires campaign env vars documented in the runbook; logs the resulting `CAMPAIGN_ID` prominently |
-| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Deploys standalone `ShowCampaignEscrow` with owner from `SHOW_CAMPAIGN_ESCROW_OWNER` or deployer, then writes JSON, `.remote.env`, and ABI handoffs | No existing protocol contract references need updating today; promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` / `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac` before live pledge execution |
-| `verify-base-sepolia` | BaseScan/Etherscan verification retry | No deploy | Reads the selected broadcast file |
-| `verify-base-sepolia-sourcify` | Sourcify verification retry | No deploy | Reads the selected broadcast file |
+| `deploy-show-campaign-escrow` | Resonate Shows campaign escrow | Atomically deploys the UUPS implementation, governance timelock, and ERC1967 proxy, then writes JSON, `.remote.env`, and ABI handoffs | Promote the proxy as the current app address through `resonate-iac`; merge its `address:deploymentBlock` target with legacy targets before switching new campaigns |
 
 Use a full graph deployment when constructor immutables or tightly coupled
 addresses change. Use the narrower operation when the existing address graph can
@@ -339,7 +358,6 @@ Optional GitHub environment variables:
 | Variable | Purpose |
 | --- | --- |
 | `VERIFY_CONTRACTS` | Usually set from the workflow input. `auto` verifies when an explorer API key is present. |
-| `BROADCAST_FILE` | Override the broadcast JSON used by verification retry jobs. |
 | `VERIFY_ONLY` | Optional contract-name filter for BaseScan/Etherscan or Sourcify verification retries. |
 | `BASESCAN_API_URL` | Override the BaseScan/Etherscan verification API URL. |
 | `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | Tune BaseScan verification retry behavior. |
@@ -351,8 +369,9 @@ Optional GitHub environment variables:
 | `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
-| `SHOW_CAMPAIGN_ESCROW_OWNER` | Optional owner/ops multisig for `deploy-show-campaign-escrow`; defaults to the deployer. |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Owner/ops multisig for `deploy-show-campaign-escrow`; required on shared networks, local deployments default to the deployer. |
 | `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Existing escrow address for Shows config and campaign-creation operations. |
+| `SHOW_CAMPAIGN_GUARDIAN`, `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY`, `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` | Recovery authority and lifecycle controls for `deploy-show-campaign-escrow`. Guardian is required remotely and differs from owner/deployer; remote delay is at least 48h. |
 | `NEW_PROTOCOL_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-marketplace-protocol-fee`; `NEW_FEE_RECIPIENT` is optional for marketplace recipient rotation. |
 | `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-show-campaign-fee-config`; both are required for the escrow fee config operation. |
 | `CONFIRMER_ADDRESS`, `CONFIRMER_ALLOWED` | Inputs for `set-show-campaign-confirmer`. |

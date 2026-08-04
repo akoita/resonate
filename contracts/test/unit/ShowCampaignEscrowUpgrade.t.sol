@@ -59,6 +59,54 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         ShowCampaignEscrow impl = new ShowCampaignEscrow();
         vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
         impl.initialize(owner, 0, feeRecipient, upgradeAuthority);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        impl.initializeFresh(owner, 0, feeRecipient, upgradeAuthority, 30 days);
+    }
+
+    function test_InitializeFreshAtomicallySetsVersion2StateAndRunsOnce() public {
+        ShowCampaignEscrow fresh = EscrowProxyDeployer.deployFresh(owner, 600, feeRecipient, upgradeAuthority, 30 days);
+
+        assertEq(fresh.owner(), owner);
+        assertEq(fresh.upgradeAuthority(), upgradeAuthority);
+        assertEq(fresh.campaignFeeBps(), 600);
+        assertEq(fresh.feeRecipient(), feeRecipient);
+        assertEq(fresh.fulfillmentWindow(), 30 days);
+        assertEq(fresh.nextCampaignId(), 1);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        fresh.initialize(owner, 600, feeRecipient, upgradeAuthority);
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        fresh.initializeV2(45 days);
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        fresh.initializeFresh(owner, 600, feeRecipient, upgradeAuthority, 45 days);
+    }
+
+    function test_InitializeFreshCannotReinitializeLegacyProxy() public {
+        ShowCampaignEscrow legacy = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidInitialization()"));
+        legacy.initializeFresh(alice, 600, alice, alice, 45 days);
+
+        assertEq(legacy.owner(), owner);
+        assertEq(legacy.upgradeAuthority(), upgradeAuthority);
+        assertEq(legacy.fulfillmentWindow(), 0);
+
+        // The rejected fresh initializer does not consume version 2, so the
+        // intended legacy migration remains available.
+        legacy.initializeV2(30 days);
+        assertEq(legacy.fulfillmentWindow(), 30 days);
+    }
+
+    function test_InitializeFreshRejectsInvalidWindowInsideProxyConstruction() public {
+        ShowCampaignEscrow impl = new ShowCampaignEscrow();
+        uint256 minW = impl.MIN_FULFILLMENT_WINDOW();
+        uint256 maxW = impl.MAX_FULFILLMENT_WINDOW();
+        bytes memory initData =
+            abi.encodeCall(ShowCampaignEscrow.initializeFresh, (owner, 600, feeRecipient, upgradeAuthority, 0));
+
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFulfillmentWindow.selector, 0, minW, maxW));
+        new ERC1967Proxy(address(impl), initData);
     }
 
     // ── Upgrade authorization ───────────────────────────────────────────────

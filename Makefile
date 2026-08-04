@@ -141,8 +141,17 @@ deploy-show-campaign-escrow:
 		exit 1; \
 	fi
 	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
+	if [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "EXPECTED_CHAIN_ID is required for a shared-network ShowCampaignEscrow deployment"; \
+		exit 1; \
+	fi; \
+	actual_chain_id="$$(cast chain-id --rpc-url "$$rpc_url")"; \
+	if [ "$$actual_chain_id" != "$$EXPECTED_CHAIN_ID" ]; then \
+		echo "RPC resolved chain $$actual_chain_id; expected $$EXPECTED_CHAIN_ID"; \
+		exit 1; \
+	fi; \
 	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
-	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
+	CHAIN_ID="$$actual_chain_id" RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
 
 deploy-stem-marketplace:
 	@if [ -z "$${PRIVATE_KEY:-}" ]; then \

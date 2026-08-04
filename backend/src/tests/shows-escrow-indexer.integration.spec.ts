@@ -25,6 +25,9 @@ const TEST_PREFIX = `escrowidx_${Date.now()}_`;
 const BACKER = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const OTHER_BACKER = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
 const FEE_RECIPIENT = "0x90F79bf6EB2c4f870365E785982E1f101E93b906";
+const INDEX_OLD = "0x1111111111111111111111111111111111111111";
+const INDEX_NEW = "0x2222222222222222222222222222222222222222";
+const INDEX_FAIL = "0x3333333333333333333333333333333333333333";
 
 const EVENT_ABIS = {
   CampaignCreated: parseAbiItem(
@@ -94,10 +97,12 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
   const settlements: any[] = [];
   let savedEscrowAddr: string | undefined;
   let savedChainId: string | undefined;
+  let savedIndexerTargets: string | undefined;
 
   beforeAll(async () => {
     savedEscrowAddr = process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS;
     savedChainId = process.env.INDEXER_CHAIN_ID;
+    savedIndexerTargets = process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS;
     process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS = ESCROW;
     process.env.INDEXER_CHAIN_ID = String(CHAIN_ID);
     eventBus.subscribe("shows.campaign_reconciliation_mismatch", (e) => {
@@ -109,8 +114,9 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
   });
 
   afterAll(async () => {
-    await prisma.showCampaignEscrowEvent.deleteMany({ where: { contractAddress: ESCROW } });
+    await prisma.showCampaignEscrowEvent.deleteMany({ where: { contractAddress: { in: [ESCROW, INDEX_OLD, INDEX_NEW, INDEX_FAIL] } } });
     await prisma.showEscrowIndexerState.deleteMany({ where: { contractAddress: ESCROW } });
+    await prisma.showEscrowIndexerState.deleteMany({ where: { contractAddress: { in: [INDEX_OLD, INDEX_NEW, INDEX_FAIL] } } });
     await prisma.showPledge.deleteMany({ where: { campaign: { slug: { startsWith: TEST_PREFIX } } } });
     await prisma.showCampaignEvent.deleteMany({ where: { campaign: { slug: { startsWith: TEST_PREFIX } } } });
     await prisma.showCampaign.deleteMany({ where: { slug: { startsWith: TEST_PREFIX } } });
@@ -118,11 +124,13 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     else process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS = savedEscrowAddr;
     if (savedChainId === undefined) delete process.env.INDEXER_CHAIN_ID;
     else process.env.INDEXER_CHAIN_ID = savedChainId;
+    if (savedIndexerTargets === undefined) delete process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS;
+    else process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = savedIndexerTargets;
   });
 
   // Each test uses a distinct on-chain campaign id so reconcile() binds to the
   // right backend row (it matches on chainId + contractAddress + contractCampaignId).
-  async function seedCampaign(slugSuffix: string, contractCampaignId: string) {
+  async function seedCampaign(slugSuffix: string, contractCampaignId: string, contractAddress = ESCROW) {
     return prisma.showCampaign.create({
       data: {
         slug: `${TEST_PREFIX}${slugSuffix}`,
@@ -133,13 +141,108 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
         deadline: new Date(Date.now() + 7 * 86400_000),
         goalAmountUnits: "1000",
         chainId: CHAIN_ID,
-        contractAddress: ESCROW,
+        contractAddress,
         contractCampaignId,
         status: "active",
         campaignLevel: "active_escrow_campaign",
       },
     });
   }
+
+  it("maintains independent cursors for legacy and current escrow targets", async () => {
+    process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ESCROW}:100,${INDEX_OLD}:100,${INDEX_NEW}:900`;
+    await prisma.showEscrowIndexerState.deleteMany({
+      where: { chainId: CHAIN_ID, contractAddress: { in: [INDEX_OLD, INDEX_NEW] } },
+    });
+    await prisma.showEscrowIndexerState.create({
+      data: { chainId: CHAIN_ID, contractAddress: INDEX_OLD, lastBlockNumber: 995n },
+    });
+    const getLogs = jest.fn().mockResolvedValue([]);
+    (service as any).clientCache.set(CHAIN_ID, {
+      getBlockNumber: jest.fn().mockResolvedValue(1000n),
+      getLogs,
+    });
+
+    await service.runIndexCycle();
+
+    expect(getLogs).toHaveBeenCalledWith({ address: INDEX_OLD, fromBlock: 996n, toBlock: 1000n });
+    expect(getLogs).toHaveBeenCalledWith({ address: INDEX_NEW, fromBlock: 900n, toBlock: 1000n });
+    const states = await prisma.showEscrowIndexerState.findMany({
+      where: { chainId: CHAIN_ID, contractAddress: { in: [INDEX_OLD, INDEX_NEW] } },
+      orderBy: { contractAddress: "asc" },
+    });
+    expect(states.map((state) => [state.contractAddress, state.lastBlockNumber])).toEqual([
+      [INDEX_OLD, 1000n],
+      [INDEX_NEW, 1000n],
+    ]);
+
+    delete process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS;
+  });
+
+  it("isolates fee snapshots and campaign ids by escrow address", async () => {
+    const oldCampaign = await seedCampaign("old-address", "99", INDEX_OLD);
+    const newCampaign = await seedCampaign("new-address", "99", INDEX_NEW);
+
+    await service.processLog(
+      buildLog("FeeConfigUpdated", { feeBps: 600n, feeRecipient: FEE_RECIPIENT as `0x${string}` }),
+      CHAIN_ID,
+      INDEX_OLD,
+    );
+    await service.processLog(
+      buildLog("FeeConfigUpdated", { feeBps: 300n, feeRecipient: BACKER as `0x${string}` }),
+      CHAIN_ID,
+      INDEX_NEW,
+    );
+    const createdArgs = {
+      campaignId: 99n,
+      artistIdHash: `0x${"11".repeat(32)}`,
+      authorityHash: `0x${"22".repeat(32)}`,
+      beneficiary: BACKER as `0x${string}`,
+      paymentToken: OTHER_BACKER as `0x${string}`,
+      goalAmount: 1000n,
+      minimumBackers: 2n,
+      deadline: 2000n,
+      bookingDeadline: 3000n,
+    };
+    await service.processLog(buildLog("CampaignCreated", createdArgs), CHAIN_ID, INDEX_OLD);
+    await service.processLog(buildLog("CampaignCreated", createdArgs), CHAIN_ID, INDEX_NEW);
+
+    const [oldAfter, newAfter] = await Promise.all([
+      prisma.showCampaign.findUniqueOrThrow({ where: { id: oldCampaign.id } }),
+      prisma.showCampaign.findUniqueOrThrow({ where: { id: newCampaign.id } }),
+    ]);
+    expect(oldAfter.feeBps).toBe(600);
+    expect(newAfter.feeBps).toBe(300);
+  });
+
+  it("does not advance a target cursor past a failed reconciliation", async () => {
+    process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ESCROW}:100,${INDEX_FAIL}:100`;
+    await prisma.showEscrowIndexerState.deleteMany({
+      where: { chainId: CHAIN_ID, contractAddress: INDEX_FAIL },
+    });
+    await prisma.showEscrowIndexerState.create({
+      data: { chainId: CHAIN_ID, contractAddress: INDEX_FAIL, lastBlockNumber: 995n },
+    });
+    const failedLog = buildLog("CampaignActivated", { campaignId: 404n });
+    (service as any).clientCache.set(CHAIN_ID, {
+      getBlockNumber: jest.fn().mockResolvedValue(1000n),
+      getLogs: jest.fn().mockImplementation(({ address }) =>
+        address === INDEX_FAIL ? Promise.resolve([failedLog]) : Promise.resolve([]),
+      ),
+    });
+    const processSpy = jest.spyOn(service, "processLog").mockRejectedValueOnce(new Error("db unavailable"));
+
+    try {
+      await service.runIndexCycle();
+      const failedState = await prisma.showEscrowIndexerState.findUniqueOrThrow({
+        where: { chainId_contractAddress: { chainId: CHAIN_ID, contractAddress: INDEX_FAIL } },
+      });
+      expect(failedState.lastBlockNumber).toBe(995n);
+    } finally {
+      processSpy.mockRestore();
+      delete process.env.SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS;
+    }
+  });
 
   it("confirms a pledge and reconciles funding from on-chain events (not client claims)", async () => {
     const campaign = await seedCampaign("fund", "1");
@@ -312,6 +415,52 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
       netAmountUnits: "940",
       feeBps: 600,
       totalFeePaidUnits: "60",
+      transactionHash: txHash,
+    }));
+  });
+
+  it("scopes same-transaction fees to the emitting escrow", async () => {
+    await seedCampaign("legacy-release-fee", "8", INDEX_OLD);
+    const campaign = await seedCampaign("replacement-release-fee", "8", INDEX_NEW);
+    settlements.length = 0;
+    const txHash = ("0x" + "88".repeat(32)) as `0x${string}`;
+
+    await service.processLog(
+      buildLog("FeeCharged", {
+        campaignId: 8n,
+        feeRecipient: FEE_RECIPIENT as `0x${string}`,
+        amount: 10n,
+      }, { transactionHash: txHash, logIndex: 0 }),
+      CHAIN_ID,
+      INDEX_OLD,
+    );
+    await service.processLog(
+      buildLog("FeeCharged", {
+        campaignId: 8n,
+        feeRecipient: FEE_RECIPIENT as `0x${string}`,
+        amount: 60n,
+      }, { transactionHash: txHash, logIndex: 1 }),
+      CHAIN_ID,
+      INDEX_NEW,
+    );
+    await service.processLog(
+      buildLog("FundsReleased", {
+        campaignId: 8n,
+        beneficiary: BACKER as `0x${string}`,
+        amount: 940n,
+      }, { transactionHash: txHash, logIndex: 2 }),
+      CHAIN_ID,
+      INDEX_NEW,
+    );
+
+    const released = await prisma.showCampaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(released.totalFeePaidUnits).toBe("60");
+    expect(released.totalReleasedUnits).toBe("1000");
+    expect(settlements).toContainEqual(expect.objectContaining({
+      contractAddress: INDEX_NEW,
+      grossAmountUnits: "1000",
+      feeAmountUnits: "60",
+      netAmountUnits: "940",
       transactionHash: txHash,
     }));
   });

@@ -88,6 +88,9 @@ contract_id_for() {
         ShowCampaignEscrow)
             echo "src/core/ShowCampaignEscrow.sol:ShowCampaignEscrow"
             ;;
+        TimelockController)
+            echo "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController"
+            ;;
         *)
             return 1
             ;;
