@@ -305,6 +305,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
               <span className="link-icon">{item.icon}</span>
@@ -328,6 +329,7 @@ export default function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
+              prefetch={false}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
             >
               <span className="link-icon">{item.icon}</span>
@@ -339,6 +341,7 @@ export default function Sidebar() {
           <>
             <Link
               href="/disputes/admin"
+              prefetch={false}
               className={`sidebar-link ${pathname === "/disputes/admin" ? 'active' : ''}`}
             >
               <span className="link-icon">
@@ -351,6 +354,7 @@ export default function Sidebar() {
             </Link>
             <Link
               href="/admin/community/cohorts"
+              prefetch={false}
               className={`sidebar-link ${pathname === "/admin/community/cohorts" ? 'active' : ''}`}
             >
               <span className="link-icon">
@@ -365,6 +369,7 @@ export default function Sidebar() {
             </Link>
             <Link
               href="/admin/community/moderation"
+              prefetch={false}
               className={`sidebar-link ${pathname === "/admin/community/moderation" ? 'active' : ''}`}
             >
               <span className="link-icon">
