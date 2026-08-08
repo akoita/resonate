@@ -142,9 +142,9 @@ export function CampaignDetailHero({ campaign, children }: Props) {
                   href={campaign.etherscanUrl}
                   target="_blank"
                   rel="noreferrer noopener"
-                  aria-label="View the escrow contract on the block explorer"
+                  aria-label="View the verified escrow contract on the block explorer"
                 >
-                  View escrow contract ↗
+                  View verified contract ↗
                 </a>
               </>
             ) : null}
