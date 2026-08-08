@@ -93,9 +93,9 @@ export function CampaignHero({ campaign }: Props) {
               target="_blank"
               rel="noreferrer noopener"
               className="campaign-hero__cta-secondary"
-              aria-label="View the escrow contract on the block explorer"
+              aria-label="View the verified escrow contract on the block explorer"
             >
-              View escrow contract ↗
+              View verified contract ↗
             </a>
           ) : null}
         </div>
