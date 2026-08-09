@@ -8,6 +8,10 @@ import {
 import { prisma } from "../../db/prisma";
 import { RedisCacheService } from "../shared/redis_cache.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+  toAiDisclosureRecord,
+} from "./ai-disclosure.policy";
 
 /**
  * True Trending & Top Artists serving (#1451 WS-4), on the #1450 WS-3
@@ -166,7 +170,13 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     // account id, so the Home "Top Artists" rail ranks the real artist.
     const tracks = qualifying.length
       ? await prisma.track.findMany({
-          where: { id: { in: qualifying.map((acc) => acc.trackId) } },
+          where: {
+            id: { in: qualifying.map((acc) => acc.trackId) },
+            // Popularity is a human-artist promotional surface. Engagement on
+            // fully AI-generated tracks must not create trending or top-artist
+            // rows, while direct catalog and marketplace access remain open.
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+          },
           select: {
             id: true,
             artist: true,
@@ -336,7 +346,11 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     });
     const tracks = rows.length
       ? await prisma.track.findMany({
-          where: { id: { in: rows.map((row) => row.trackId) } },
+          where: {
+            id: { in: rows.map((row) => row.trackId) },
+            // Also protect reads from stale serving rows during rollout.
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+          },
           include: {
             release: {
               select: {
@@ -378,6 +392,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
             genre: track.release.genre,
             artworkUrl: track.release.artworkUrl,
             artworkMimeType: track.release.artworkMimeType,
+            aiDisclosure: toAiDisclosureRecord(track),
             score: row.score,
             plays: row.plays,
             uniqueListeners: row.uniqueListeners,

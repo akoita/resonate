@@ -62,6 +62,10 @@ import {
   REMIX_STEM_GAIN_DB_MAX,
   REMIX_STEM_GAIN_DB_MIN,
 } from "./remix-gain";
+import {
+  AI_DISCLOSURE_VERSION,
+  deriveRemixAiDisclosure,
+} from "../catalog/ai-disclosure.policy";
 
 export const REMIX_PROJECT_MODES = ["stem_mix", "variation", "extension"] as const;
 export type RemixProjectMode = (typeof REMIX_PROJECT_MODES)[number];
@@ -1676,6 +1680,7 @@ export class RemixProjectService {
     // AI integrity (#1164): stem_audio renders contain the licensed source
     // audio itself; everything else is generated and must be disclosed.
     const aiGenerated = groundingAiGenerated(grounding);
+    const aiDisclosure = deriveRemixAiDisclosure(grounding);
 
     // Copy the draft audio into a catalog-owned object so the published
     // release never depends on the draft's working URI.
@@ -1770,6 +1775,11 @@ export class RemixProjectService {
               artist: artist.displayName,
               processingStatus: "complete",
               generationMetadata: releaseTrackMetadata as Prisma.JsonObject,
+              aiDisclosureLevel: aiDisclosure.level,
+              aiContributionFacets: aiDisclosure.facets,
+              aiDisclosureSource: "remix_derived",
+              aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+              aiDeclaredAt: new Date(publishedAt),
               ...rightsFields,
               stems: {
                 create: {
@@ -1830,6 +1840,16 @@ export class RemixProjectService {
       aiGenerated,
       creatorOwner: eligibility.creatorOwner,
       policyVersion: eligibility.policyVersion,
+    });
+    this.eventBus.publish({
+      eventName: "catalog.ai_disclosure_recorded",
+      eventVersion: 1,
+      occurredAt: publishedAt,
+      releaseId: release.id,
+      trackId,
+      level: aiDisclosure.level,
+      source: "remix_derived",
+      facets: aiDisclosure.facets,
     });
 
     const updated = (await loadProject(project.id))!;

@@ -37,6 +37,14 @@ type DomainBridgeConfig = {
 
 const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
   {
+    eventName: "catalog.ai_disclosure_recorded",
+    producer: "catalog-service",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    payloadKeys: ["releaseId", "trackId", "level", "source", "facets"],
+    sourceRefKeys: ["releaseId", "trackId"],
+  },
+  {
     eventName: "identity.authenticated",
     producer: "auth-service",
     subjectType: "user",

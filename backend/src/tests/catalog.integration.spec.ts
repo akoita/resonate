@@ -18,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
+const NO_AI_DISCLOSURE = { level: 'none' as const, facets: [] as string[] };
 
 let catalog: CatalogService;
 let eventBus: EventBus;
@@ -79,20 +80,61 @@ describe('CatalogService (integration)', () => {
       title: 'TC Test Album',
       type: 'album',
       tracks: [
-        { title: 'Track One', position: 1 },
-        { title: 'Track Two', position: 2 },
+        { title: 'Track One', position: 1, aiDisclosure: NO_AI_DISCLOSURE },
+        { title: 'Track Two', position: 2, aiDisclosure: NO_AI_DISCLOSURE },
       ],
     });
     expect(result.id).toBeDefined();
     expect(result.title).toBe('TC Test Album');
     expect(result.tracks).toHaveLength(2);
+    expect(result.aiDisclosure).toMatchObject({
+      level: 'none',
+      containsAI: 'None',
+      facets: [],
+    });
+    expect(result.tracks[0].aiDisclosure).toMatchObject({
+      level: 'none',
+      source: 'artist',
+    });
+  });
+
+  it('rejects a new track without an explicit AI disclosure', async () => {
+    await expect(catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Missing Disclosure',
+      tracks: [{ title: 'Undeclared Track', position: 1 }],
+    } as any)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('keeps fully AI-generated tracks available through direct catalog reads', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Direct AI Catalog Release',
+      tracks: [{
+        title: 'Declared AI Track',
+        position: 1,
+        aiDisclosure: { level: 'all', facets: ['production'] },
+      }],
+    });
+    await prisma.release.update({
+      where: { id: created.id },
+      data: { status: 'ready' },
+    });
+
+    const release = await catalog.getRelease(created.id);
+    expect(release?.aiDisclosure).toMatchObject({ level: 'all', containsAI: 'All' });
+    expect(release?.tracks[0].aiDisclosure).toMatchObject({
+      level: 'all',
+      facets: ['production'],
+      source: 'artist',
+    });
   });
 
   it('retrieves a release with full relations', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Retrieval Test',
-      tracks: [{ title: 'Solo Track', position: 1 }],
+      tracks: [{ title: 'Solo Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const release = await catalog.getRelease(created.id);
     expect(release).not.toBeNull();
@@ -314,7 +356,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Before Update',
-      tracks: [{ title: 'T', position: 1 }],
+      tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const updated = await catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
       title: 'After Update',
@@ -336,7 +378,7 @@ describe('CatalogService (integration)', () => {
       const created = await catalog.createRelease({
         userId: `${TEST_PREFIX}user`,
         title: 'Miscredited Release',
-        tracks: [{ title: 'T', position: 1 }],
+        tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
       });
       releaseId = created.id;
     });
@@ -503,7 +545,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Failure Capture',
-      tracks: [{ title: 'Broken Track', position: 1 }],
+      tracks: [{ title: 'Broken Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     eventBus.publish({
@@ -529,7 +571,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Delete Race Target',
-      tracks: [{ title: 'Transient Track', position: 1 }],
+      tracks: [{ title: 'Transient Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
@@ -560,7 +602,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Delete Target',
-      tracks: [{ title: 'Doomed', position: 1 }],
+      tracks: [{ title: 'Doomed', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/test.mp3' },
@@ -574,7 +616,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Library Delete Target',
-      tracks: [{ title: 'Saved Track', position: 1 }],
+      tracks: [{ title: 'Saved Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const trackId = created.tracks[0].id;
     const libraryTrackId = `${TEST_PREFIX}library_${trackId}`;
@@ -611,7 +653,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Legacy Rating Delete Target',
-      tracks: [{ title: 'Rated Stem', position: 1 }],
+      tracks: [{ title: 'Rated Stem', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const stem = await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/rated.mp3' },
@@ -647,7 +689,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Purchased Stem Delete Target',
-      tracks: [{ title: 'Sold Stem', position: 1 }],
+      tracks: [{ title: 'Sold Stem', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const stem = await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/sold.mp3' },
@@ -696,7 +738,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Failed Fingerprinted Release',
-      tracks: [{ title: 'Broken Upload', position: 1 }],
+      tracks: [{ title: 'Broken Upload', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     await prisma.audioFingerprint.create({
@@ -763,7 +805,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Protected',
-      tracks: [{ title: 'T', position: 1 }],
+      tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     await expect(catalog.deleteRelease(created.id, 'wrong')).rejects.toThrow('Not authorized');
   });

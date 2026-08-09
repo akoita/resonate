@@ -418,6 +418,13 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     privacyTier: "pseudonymous",
     payloadFields: ["releaseId", "artistId", "status", "trackIds", "trackCount", "stemCount"],
   },
+  {
+    eventName: "catalog.ai_disclosure_recorded",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "trackId", "level", "source", "facets"],
+  },
 ] as const;
 
 const analyticsEventNameSchema = z

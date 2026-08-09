@@ -228,6 +228,7 @@ describe("analytics event envelope", () => {
       "stems.processed",
       "catalog.track_status",
       "catalog.release_ready",
+      "catalog.ai_disclosure_recorded",
     ]);
   });
 });

@@ -4,6 +4,11 @@ import { prisma } from "../../db/prisma";
 import { DiscoveryPopularityService } from "../catalog/discovery-popularity.service";
 import { RecommendationsService } from "./recommendations.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import {
+  AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+  toAiDisclosureRecord,
+  type AiDisclosureRecord,
+} from "../catalog/ai-disclosure.policy";
 
 /**
  * Home feed v2 composition (#1454 WS-7).
@@ -50,6 +55,7 @@ export interface HomeFeedItem {
   genre: string | null;
   moods: string[];
   artworkMimeType: string | null;
+  aiDisclosure: AiDisclosureRecord;
   reasons: string[];
 }
 
@@ -179,6 +185,7 @@ export class HomeFeedService {
         releaseTitle: item.releaseTitle,
         genre: item.genre,
         moods: item.moods ?? [],
+        aiDisclosure: item.aiDisclosure,
         reasons: item.reasons,
       }));
     const selected = this.applyCaps(matching, used);
@@ -199,6 +206,7 @@ export class HomeFeedService {
     if (!playedArtistIds.length) return null;
     const tracks = await prisma.track.findMany({
       where: {
+        ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
         release: {
           artistId: { in: playedArtistIds },
           status: { in: ["ready", "published"] },
@@ -238,6 +246,7 @@ export class HomeFeedService {
         genre: track.release.genre,
         moods: track.release.moods ?? [],
         artworkMimeType: track.release.artworkMimeType,
+        aiDisclosure: toAiDisclosureRecord(track),
         reasons: ["artist:followed-by-plays"],
       })),
       used,
@@ -273,6 +282,7 @@ export class HomeFeedService {
         genre: (item.genre as string) ?? null,
         moods: [],
         artworkMimeType: (item.artworkMimeType as string) ?? null,
+        aiDisclosure: item.aiDisclosure as AiDisclosureRecord,
         reasons: [`trending:${dominantGenre}`],
       })),
       used,
@@ -294,6 +304,7 @@ export class HomeFeedService {
     // the items a taste-driven feed would otherwise never surface.
     const fresh = await prisma.track.findMany({
       where: {
+        ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
         release: { status: { in: ["ready", "published"] } },
         explicit: false,
         id: { notIn: [...used] },
@@ -341,6 +352,7 @@ export class HomeFeedService {
           genre: track.release.genre,
           moods: track.release.moods ?? [],
           artworkMimeType: track.release.artworkMimeType,
+          aiDisclosure: toAiDisclosureRecord(track),
           reasons: ["exploration:fresh"],
         })),
       used,
@@ -376,6 +388,7 @@ export class HomeFeedService {
         genre: (item.genre as string) ?? null,
         moods: [],
         artworkMimeType: (item.artworkMimeType as string) ?? null,
+        aiDisclosure: item.aiDisclosure as AiDisclosureRecord,
         reasons: ["catalog:trending"],
       })),
       used,

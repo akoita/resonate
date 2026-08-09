@@ -13,6 +13,10 @@ import {
   RankedDiscoveryCandidate,
 } from "./discovery-ranking.service";
 import { TasteMemoryPolicy, TasteMemoryService } from "./taste_memory.service";
+import {
+  AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+  toAiDisclosureRecord,
+} from "../catalog/ai-disclosure.policy";
 
 const PUBLIC_RELEASE_ROUTES = [
   "LIMITED_MONITORING",
@@ -180,6 +184,9 @@ export class RecommendationsService {
 
   private publicCatalogWhere(allowExplicit: boolean): Prisma.TrackWhereInput {
     return {
+      // ADR-BM-5: fully AI-generated recordings stay directly discoverable
+      // and marketplace-eligible, but never enter human-artist promotion.
+      ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
       release: {
         status: { in: ["ready", "published"] },
         OR: [
@@ -437,6 +444,7 @@ export class RecommendationsService {
         releaseTitle: source.candidate.track.release.title,
         genre: source.candidate.track.release.genre,
         moods: source.candidate.track.release.moods,
+        aiDisclosure: toAiDisclosureRecord(source.candidate.track),
         score: entry.score,
         reasons,
         /** New in WS-1: the unified core's human explanations (additive). */

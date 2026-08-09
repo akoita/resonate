@@ -557,6 +557,11 @@ model Track {
   lastProgressAt      DateTime?
   contentStatus       String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata  Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  aiDisclosureLevel   AiDisclosureLevel @default(UNDECLARED)
+  aiContributionFacets String[]          @default([])
+  aiDisclosureSource  String             @default("migration")
+  aiDisclosureVersion String?
+  aiDeclaredAt        DateTime?
   licenses            License[]
   agentSignals        AgentSignal[]
   stems               Stem[]
@@ -573,6 +578,14 @@ model Track {
   rightsEvaluatedAt   DateTime?
 
   @@index([rightsRoute])
+  @@index([aiDisclosureLevel])
+}
+
+enum AiDisclosureLevel {
+  UNDECLARED
+  NONE
+  PARTLY
+  ALL
 }
 
 model TrackEmbedding {

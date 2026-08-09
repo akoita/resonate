@@ -43,6 +43,14 @@ describe('RecommendationsService (integration)', () => {
         { id: `${TEST_PREFIX}track1`, title: 'Pulse', releaseId: release.id, position: 1 },
         { id: `${TEST_PREFIX}track2`, title: 'Glow', releaseId: release.id, position: 2 },
         { id: `${TEST_PREFIX}track3`, title: 'Drift', releaseId: release.id, position: 3 },
+        {
+          id: `${TEST_PREFIX}track_ai`,
+          title: 'Generated Pulse',
+          releaseId: release.id,
+          position: 4,
+          aiDisclosureLevel: 'ALL',
+          aiDisclosureSource: 'artist',
+        },
       ],
     });
   });
@@ -94,6 +102,16 @@ describe('RecommendationsService (integration)', () => {
     const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('excludes fully AI-generated tracks from recommendations without hiding catalog peers', async () => {
+    const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
+
+    expect(result.items.map((item) => item.id)).not.toContain(`${TEST_PREFIX}track_ai`);
+    expect(result.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([`${TEST_PREFIX}track1`]),
+    );
   });
 
   it('uses joined cohort context as a safe additive recommendation signal', async () => {

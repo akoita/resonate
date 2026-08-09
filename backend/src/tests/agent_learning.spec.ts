@@ -101,6 +101,47 @@ describe("agent learning loop", () => {
     );
   });
 
+  it("keeps fully AI-generated tracks out of AI DJ promotion", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: "human",
+            title: "Human Track",
+            aiDisclosureLevel: "NONE",
+            release: { genre: "Ambient" },
+          },
+          {
+            id: "assisted",
+            title: "Assisted Track",
+            aiDisclosureLevel: "PARTLY",
+            release: { genre: "Ambient" },
+          },
+          {
+            id: "generated",
+            title: "Generated Track",
+            aiDisclosureLevel: "ALL",
+            release: { genre: "Ambient" },
+          },
+        ],
+      }),
+    };
+    const selector = new AgentSelectorService(
+      { get: jest.fn().mockReturnValue(tool) } as any,
+      new DiscoveryRankingService(),
+    );
+
+    const result = await selector.select({
+      queries: ["Ambient"],
+      recentTrackIds: [],
+      limit: 5,
+    });
+
+    expect(result.candidates).toEqual(expect.arrayContaining(["human", "assisted"]));
+    expect(result.candidates).not.toContain("generated");
+    expect(result.selected.map((track: any) => track.id)).not.toContain("generated");
+  });
+
   it("blends precomputed BigQuery taste scores into selector ranking", async () => {
     const tool = {
       run: jest.fn().mockResolvedValue({
