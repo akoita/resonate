@@ -245,7 +245,7 @@ contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
     /// This is the frozen-funds recovery path when the owner key is lost.
     function test_GuardianCanScheduleAndExecuteRecoveryUpgrade() public {
         // Fund a campaign so we prove escrow survives a guardian-driven recovery.
-        uint256 id = _fundCampaign();
+        _fundCampaign();
         assertEq(usdc.balanceOf(address(escrow)), 1_100e6);
 
         ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();

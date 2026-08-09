@@ -51,6 +51,8 @@ contract StemMarketplaceUpgradeTest is Test, IStemMarketplaceV2 {
         assertEq(uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 4))), 1_000);
 
         uint256 authorityAndPause = uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 8)));
+        // The address occupies the low 160 bits of this explicitly decoded packed slot.
+        // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(address(uint160(authorityAndPause)), authority);
         assertEq((authorityAndPause >> 160) & 0xff, 0);
 
