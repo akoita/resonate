@@ -328,6 +328,54 @@ export async function resetPaymaster(token: string, userId: string) {
 
 // ========== Catalog API ==========
 
+export type AiDisclosureLevel = "undeclared" | "none" | "partly" | "all";
+
+export type AiDisclosureFacet =
+  | "vocals"
+  | "instruments"
+  | "composition_lyrics"
+  | "production"
+  | "post_production";
+
+export type AiDisclosureSource =
+  | "artist"
+  | "resonate_native"
+  | "remix_derived"
+  | "migration";
+
+/**
+ * Listener-safe, DDEX-aligned description of AI involvement in a track.
+ * `undeclared` represents missing legacy provenance and must not be interpreted
+ * as a verified human-made declaration.
+ */
+export type AiDisclosure = {
+  level: AiDisclosureLevel;
+  containsAI?: "None" | "Partly" | "All" | null;
+  facets: AiDisclosureFacet[];
+  source?: AiDisclosureSource | null;
+  schemaVersion?: string | null;
+  declaredAt?: string | null;
+  label?: string;
+};
+
+export type AiDisclosureValidationIssue =
+  | "declaration_required"
+  | "facets_required"
+  | "facets_not_allowed";
+
+export function getAiDisclosureValidationIssue(
+  disclosure: Pick<AiDisclosure, "level" | "facets">,
+): AiDisclosureValidationIssue | null {
+  if (disclosure.level === "undeclared") return "declaration_required";
+  if (disclosure.level === "partly" && disclosure.facets.length === 0) {
+    return "facets_required";
+  }
+  if (disclosure.level === "none" && disclosure.facets.length > 0) {
+    return "facets_not_allowed";
+  }
+  return null;
+}
+
 export type Release = {
   id: string;
   artistId: string;
@@ -351,6 +399,8 @@ export type Release = {
   rightsPolicyVersion?: string | null;
   rightsSourceType?: string | null;
   rightsEvaluatedAt?: string | null;
+  /** Derived summary across the release's tracks. */
+  aiDisclosure?: AiDisclosure | null;
   tracks?: Track[];
   artist?: {
     id: string;
@@ -416,6 +466,7 @@ export type Track = {
   rightsReason?: string | null;
   rightsPolicyVersion?: string | null;
   rightsEvaluatedAt?: string | null;
+  aiDisclosure?: AiDisclosure | null;
   stems?: Array<{
     id: string;
     trackId: string;
@@ -2509,6 +2560,7 @@ export interface TrendingTrackItem {
   genre: string | null;
   artworkUrl: string | null;
   artworkMimeType: string | null;
+  aiDisclosure?: AiDisclosure | null;
   score: number;
   plays: number;
   uniqueListeners: number;
@@ -2603,6 +2655,7 @@ export type SongRecommendationItem = {
   releaseTitle?: string;
   genre?: string | null;
   moods?: string[];
+  aiDisclosure?: AiDisclosure | null;
   score?: number;
   reasons?: string[];
 };
@@ -2647,6 +2700,7 @@ export interface HomeFeedItem {
   genre: string | null;
   moods: string[];
   artworkMimeType: string | null;
+  aiDisclosure?: AiDisclosure | null;
   reasons: string[];
 }
 

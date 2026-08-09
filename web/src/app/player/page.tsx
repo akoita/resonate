@@ -13,6 +13,7 @@ import { useToast } from "../../components/ui/Toast";
 import { MixerConsole } from "../../components/player/MixerConsole";
 import { PlayerActionPanel } from "../../components/player/PlayerActionPanel";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -244,6 +245,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     catalogTrackId: track.id,
                     artistId: release.artist?.id || release.artistId,
+                    aiDisclosure: track.aiDisclosure,
                     source: "remote",
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -264,6 +266,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     catalogTrackId: track.id,
                     artistId: release.artist?.id || release.artistId,
+                    aiDisclosure: track.aiDisclosure,
                     source: "remote",
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -341,6 +344,7 @@ function PlayerContent() {
         </div>
 
         <h1 className="hero-title">{displayTrack.title}</h1>
+        <AiDisclosureBadge disclosure={currentTrack?.aiDisclosure} />
         <p className="hero-artist">
           {displayTrack.artist} {displayTrack.album ? ` • ${displayTrack.album}` : ""}
         </p>
