@@ -29,6 +29,37 @@ contract StemMarketplaceUpgradeTest is Test, IStemMarketplaceV2 {
         implementation.initialize(stemNFT, contentProtection, registry, feeRecipient, 1_000, owner, authority);
     }
 
+    function test_UsesCanonicalERC7201NamespaceWithoutLinearState() public {
+        bytes32 namespaceRoot = 0xf3c94fb6abe0389909903f3f4216f8fe092cd4b74654cae83abd3da828d90500;
+        StemMarketplaceV2UpgradeMock implementation = new StemMarketplaceV2UpgradeMock();
+        assertEq(implementation.storageLocation(), namespaceRoot);
+
+        // OpenZeppelin v5 parents and marketplace-owned state are namespaced, so
+        // initialization must not consume the conventional slot-zero tree.
+        assertEq(vm.load(address(marketplace), bytes32(0)), bytes32(0));
+        assertEq(address(uint160(uint256(vm.load(address(marketplace), namespaceRoot)))), stemNFT);
+        assertEq(
+            address(uint160(uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 1))))),
+            contentProtection
+        );
+        assertEq(
+            address(uint160(uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 2))))), registry
+        );
+        assertEq(
+            address(uint160(uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 3))))), feeRecipient
+        );
+        assertEq(uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 4))), 1_000);
+
+        uint256 authorityAndPause = uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 8)));
+        assertEq(address(uint160(authorityAndPause)), authority);
+        assertEq((authorityAndPause >> 160) & 0xff, 0);
+
+        vm.prank(owner);
+        marketplace.setPaused(true);
+        authorityAndPause = uint256(vm.load(address(marketplace), bytes32(uint256(namespaceRoot) + 8)));
+        assertEq((authorityAndPause >> 160) & 0xff, 1);
+    }
+
     function test_InitializeRejectsZeroStemNFT() public {
         StemMarketplaceV2 implementation = new StemMarketplaceV2();
         vm.expectRevert(ZeroAddress.selector);

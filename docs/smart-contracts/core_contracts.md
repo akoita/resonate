@@ -92,6 +92,9 @@ Native marketplace with enforced royalties:
 - **Stake-to-price enforcement** — listing price per unit cannot exceed `maxPriceMultiplier × stake` (via `ContentProtection.getMaxListingPrice()`)
 - **Guarded upgrades** — the app uses a stable ERC1967 proxy; upgrades execute
   only through the owner/guardian timelock after the configured delay
+- **Namespaced storage** — marketplace-owned state lives in the ERC-7201
+  `resonate.storage.StemMarketplaceV2` namespace, isolated from inherited
+  OpenZeppelin storage; future upgrades append namespace members only
 - **Fast pause** — the operational owner can stop every listing and purchase
   entry point immediately while preserving seller cancellation and existing
   failed-payment claims

@@ -40,6 +40,20 @@ contract StemMarketplaceV2 is
 {
     using SafeERC20 for IERC20;
 
+    /// @custom:storage-location erc7201:resonate.storage.StemMarketplaceV2
+    struct StemMarketplaceStorage {
+        IERC1155 stemNFT;
+        IContentProtection contentProtection;
+        PaymentAssetRegistry paymentAssetRegistry;
+        address protocolFeeRecipient;
+        uint256 protocolFeeBps;
+        uint256 listingId;
+        mapping(uint256 => Listing) listings;
+        mapping(address => mapping(address => uint256)) failedPayments;
+        address upgradeAuthority;
+        bool paused;
+    }
+
     // ============ Constants ============
     uint256 public constant BPS = 10000;
     // ADR-BM-2 (accepted 2026-07-04): platform take is 10% (1000 bps) on
@@ -49,41 +63,25 @@ contract StemMarketplaceV2 is
     uint256 public constant MAX_PROTOCOL_FEE = 1500; // 15%
     uint256 public constant MAX_ROYALTY = 2500; // 25%
 
-    // ============ State ============
-    IERC1155 public stemNFT;
-    IContentProtection public contentProtection;
-    PaymentAssetRegistry public paymentAssetRegistry;
-    address public protocolFeeRecipient;
-    uint256 public protocolFeeBps;
+    // keccak256(abi.encode(uint256(keccak256("resonate.storage.StemMarketplaceV2")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 internal constant StemMarketplaceStorageLocation =
+        0xf3c94fb6abe0389909903f3f4216f8fe092cd4b74654cae83abd3da828d90500;
 
-    uint256 private _listingId;
-    mapping(uint256 => Listing) public listings;
-
-    /// @notice token (address(0) = native) => recipient => amount escrowed after a
-    /// failed payout. A reverting royalty receiver / fee recipient / seller cannot
-    /// brick a sale: the leg is escrowed here and reclaimed via `claimFailedPayment`.
-    mapping(address => mapping(address => uint256)) public failedPayments;
-
-    /// @notice Sole authority allowed to authorize implementation upgrades.
-    address public upgradeAuthority;
-
-    /// @notice Emergency stop for listing creation and purchases. Cancellation,
-    /// failed-payment claims, admin/recovery functions, and views stay available.
-    bool public paused;
-
-    /// @dev Fresh proxy baseline reserves fifty marketplace-owned storage slots.
-    /// The nine current slots leave forty-one for upgrade-safe extensions.
-    uint256[41] private __gap;
+    function _getStemMarketplaceStorage() private pure returns (StemMarketplaceStorage storage $) {
+        assembly {
+            $.slot := StemMarketplaceStorageLocation
+        }
+    }
 
     // ============ Initialization ============
 
     modifier whenNotPaused() {
-        if (paused) revert Paused();
+        if (_getStemMarketplaceStorage().paused) revert Paused();
         _;
     }
 
     modifier onlyUpgradeAuthority() {
-        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        if (msg.sender != _getStemMarketplaceStorage().upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
         _;
     }
 
@@ -111,12 +109,13 @@ contract StemMarketplaceV2 is
 
         __Ownable_init(_owner);
         __Ownable2Step_init();
-        stemNFT = IERC1155(_stemNFT);
-        contentProtection = IContentProtection(_contentProtection);
-        paymentAssetRegistry = PaymentAssetRegistry(_paymentAssetRegistry);
-        protocolFeeRecipient = _feeRecipient;
-        protocolFeeBps = _feeBps;
-        upgradeAuthority = _upgradeAuthority;
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        $.stemNFT = IERC1155(_stemNFT);
+        $.contentProtection = IContentProtection(_contentProtection);
+        $.paymentAssetRegistry = PaymentAssetRegistry(_paymentAssetRegistry);
+        $.protocolFeeRecipient = _feeRecipient;
+        $.protocolFeeBps = _feeBps;
+        $.upgradeAuthority = _upgradeAuthority;
         emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
@@ -137,7 +136,8 @@ contract StemMarketplaceV2 is
         uint256 duration,
         uint256 releaseId
     ) external whenNotPaused returns (uint256 listingId) {
-        IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(address(stemNFT));
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(address($.stemNFT));
         if (trackedStemNFT.lastMintedBlockByOwner(msg.sender) != block.number) {
             revert NoRecentMint();
         }
@@ -146,7 +146,7 @@ contract StemMarketplaceV2 is
         if (tokenId == 0) revert NoRecentMint();
 
         if (releaseId != 0) {
-            contentProtection.registerStemProtectionRoot(releaseId, tokenId);
+            $.contentProtection.registerStemProtectionRoot(releaseId, tokenId);
         }
 
         listingId = _createListing(msg.sender, tokenId, amount, pricePerUnit, paymentToken, duration);
@@ -160,23 +160,24 @@ contract StemMarketplaceV2 is
         address paymentToken,
         uint256 duration
     ) internal returns (uint256 listingId) {
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
         // Verify ownership
-        require(stemNFT.balanceOf(seller, tokenId) >= amount, "Insufficient balance");
+        require($.stemNFT.balanceOf(seller, tokenId) >= amount, "Insufficient balance");
         // Verify marketplace approval
-        if (!stemNFT.isApprovedForAll(seller, address(this))) {
+        if (!$.stemNFT.isApprovedForAll(seller, address(this))) {
             revert MarketplaceNotApproved();
         }
-        if (!paymentAssetRegistry.isTokenEnabled(paymentToken)) {
+        if (!$.paymentAssetRegistry.isTokenEnabled(paymentToken)) {
             revert UnsupportedPaymentAsset();
         }
 
-        uint256 maxPrice = contentProtection.getMaxListingPrice(tokenId);
+        uint256 maxPrice = $.contentProtection.getMaxListingPrice(tokenId);
         if (pricePerUnit > maxPrice) revert PriceExceedsStakeCap();
 
         uint40 expiry = _checkedListingExpiry(duration);
 
-        listingId = ++_listingId;
-        listings[listingId] = Listing({
+        listingId = ++$.listingId;
+        $.listings[listingId] = Listing({
             seller: seller,
             tokenId: tokenId,
             amount: amount,
@@ -195,9 +196,10 @@ contract StemMarketplaceV2 is
     }
 
     function cancel(uint256 listingId) external {
-        Listing storage listing = listings[listingId];
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        Listing storage listing = $.listings[listingId];
         if (listing.seller != msg.sender) revert NotSeller();
-        delete listings[listingId];
+        delete $.listings[listingId];
         emit Cancelled(listingId);
     }
 
@@ -213,7 +215,8 @@ contract StemMarketplaceV2 is
     }
 
     function _buy(uint256 listingId, uint256 amount, address recipient) internal {
-        Listing storage listing = listings[listingId];
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        Listing storage listing = $.listings[listingId];
 
         // Validate (Checks)
         if (listing.seller == address(0)) revert InvalidListing();
@@ -235,8 +238,8 @@ contract StemMarketplaceV2 is
         // a clear error before any payment work, instead of relying on the final NFT
         // transfer to revert. Note: listings persist across balance changes — a seller
         // who exits a position should cancel the listing.
-        if (stemNFT.balanceOf(seller, tokenId) < amount) revert InsufficientAmount();
-        if (!stemNFT.isApprovedForAll(seller, address(this))) revert MarketplaceNotApproved();
+        if ($.stemNFT.balanceOf(seller, tokenId) < amount) revert InsufficientAmount();
+        if (!$.stemNFT.isApprovedForAll(seller, address(this))) revert MarketplaceNotApproved();
 
         // CP-4 (#1271): re-enforce the stake-backed price cap at purchase time, not only
         // at listing time. The cap can move down after a listing is created (e.g. the
@@ -244,18 +247,18 @@ contract StemMarketplaceV2 is
         // otherwise still transact above the new one. An inactive stake yields
         // type(uint256).max here, so unstaked/refunded/slashed roots are uncapped by
         // design (blacklist + TransferValidator gate slashed actors elsewhere).
-        uint256 maxPrice = contentProtection.getMaxListingPrice(tokenId);
+        uint256 maxPrice = $.contentProtection.getMaxListingPrice(tokenId);
         if (listing.pricePerUnit > maxPrice) revert PriceExceedsStakeCap();
 
         // Calculate fees
         (address royaltyRecipient, uint256 royaltyAmount) = _getRoyalty(tokenId, totalPrice);
-        uint256 protocolFee = (totalPrice * protocolFeeBps) / BPS;
+        uint256 protocolFee = (totalPrice * $.protocolFeeBps) / BPS;
         uint256 sellerAmount = totalPrice - royaltyAmount - protocolFee;
 
         // Update listing state BEFORE external calls (Effects)
         listing.amount -= amount;
         if (listing.amount == 0) {
-            delete listings[listingId];
+            delete $.listings[listingId];
         }
 
         // Collect payment (Interactions)
@@ -267,12 +270,12 @@ contract StemMarketplaceV2 is
             emit RoyaltyPaid(tokenId, royaltyRecipient, royaltyAmount);
         }
         if (protocolFee > 0) {
-            _pay(paymentToken, protocolFeeRecipient, protocolFee);
+            _pay(paymentToken, $.protocolFeeRecipient, protocolFee);
         }
         _pay(paymentToken, seller, sellerAmount);
 
         // Transfer NFT (using cached values)
-        stemNFT.safeTransferFrom(seller, recipient, tokenId, amount, "");
+        $.stemNFT.safeTransferFrom(seller, recipient, tokenId, amount, "");
 
         emit Sold(listingId, recipient, amount, totalPrice);
     }
@@ -281,45 +284,50 @@ contract StemMarketplaceV2 is
 
     function setProtocolFee(uint256 feeBps) external onlyOwner {
         if (feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
         // V-003: Prevent setting non-zero fee when recipient is still address(0)
-        if (feeBps > 0 && protocolFeeRecipient == address(0)) {
+        if (feeBps > 0 && $.protocolFeeRecipient == address(0)) {
             revert InvalidRecipient();
         }
-        protocolFeeBps = feeBps;
+        $.protocolFeeBps = feeBps;
     }
 
     function setFeeRecipient(address recipient) external onlyOwner {
         if (recipient == address(0)) revert InvalidRecipient();
-        protocolFeeRecipient = recipient;
+        _getStemMarketplaceStorage().protocolFeeRecipient = recipient;
     }
 
     function setPaymentAssetRegistry(address newRegistry) external onlyOwner {
         if (newRegistry == address(0)) revert ZeroAddress();
-        address previous = address(paymentAssetRegistry);
-        paymentAssetRegistry = PaymentAssetRegistry(newRegistry);
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        address previous = address($.paymentAssetRegistry);
+        $.paymentAssetRegistry = PaymentAssetRegistry(newRegistry);
         emit PaymentAssetRegistryUpdated(previous, newRegistry);
     }
 
     function setPaused(bool isPaused) external onlyOwner {
-        paused = isPaused;
+        _getStemMarketplaceStorage().paused = isPaused;
         emit MarketplacePaused(isPaused);
     }
 
     function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
         if (newAuthority == address(0)) revert ZeroAddress();
         if (newAuthority == owner()) revert AuthorityMustDifferFromOwner();
-        address previous = upgradeAuthority;
-        upgradeAuthority = newAuthority;
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        address previous = $.upgradeAuthority;
+        $.upgradeAuthority = newAuthority;
         emit UpgradeAuthorityUpdated(previous, newAuthority);
     }
 
     function transferOwnership(address newOwner) public override onlyOwner {
-        if (newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        if (newOwner == _getStemMarketplaceStorage().upgradeAuthority) revert AuthorityMustDifferFromOwner();
         super.transferOwnership(newOwner);
     }
 
     function _transferOwnership(address newOwner) internal override {
-        if (newOwner != address(0) && newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        if (newOwner != address(0) && newOwner == _getStemMarketplaceStorage().upgradeAuthority) {
+            revert AuthorityMustDifferFromOwner();
+        }
         super._transferOwnership(newOwner);
     }
 
@@ -327,8 +335,66 @@ contract StemMarketplaceV2 is
 
     // ============ View ============
 
+    function stemNFT() external view returns (IERC1155) {
+        return _getStemMarketplaceStorage().stemNFT;
+    }
+
+    function contentProtection() external view returns (IContentProtection) {
+        return _getStemMarketplaceStorage().contentProtection;
+    }
+
+    function paymentAssetRegistry() external view returns (PaymentAssetRegistry) {
+        return _getStemMarketplaceStorage().paymentAssetRegistry;
+    }
+
+    function protocolFeeRecipient() external view returns (address) {
+        return _getStemMarketplaceStorage().protocolFeeRecipient;
+    }
+
+    function protocolFeeBps() external view returns (uint256) {
+        return _getStemMarketplaceStorage().protocolFeeBps;
+    }
+
+    function listings(uint256)
+        external
+        view
+        returns (
+            address seller,
+            uint256 tokenId,
+            uint256 amount,
+            uint256 pricePerUnit,
+            address paymentToken,
+            uint40 expiry
+        )
+    {
+        uint256 listingId = abi.decode(msg.data[4:], (uint256));
+        Listing storage listing = _getStemMarketplaceStorage().listings[listingId];
+        return
+            (
+                listing.seller,
+                listing.tokenId,
+                listing.amount,
+                listing.pricePerUnit,
+                listing.paymentToken,
+                listing.expiry
+            );
+    }
+
+    function failedPayments(address, address) external view returns (uint256) {
+        (address token, address recipient) = abi.decode(msg.data[4:], (address, address));
+        return _getStemMarketplaceStorage().failedPayments[token][recipient];
+    }
+
+    function upgradeAuthority() external view returns (address) {
+        return _getStemMarketplaceStorage().upgradeAuthority;
+    }
+
+    function paused() external view returns (bool) {
+        return _getStemMarketplaceStorage().paused;
+    }
+
     function getListing(uint256 listingId) external view returns (Listing memory) {
-        return listings[listingId];
+        return _getStemMarketplaceStorage().listings[listingId];
     }
 
     function quoteBuy(uint256 listingId, uint256 amount)
@@ -336,17 +402,20 @@ contract StemMarketplaceV2 is
         view
         returns (uint256 totalPrice, uint256 royaltyAmount, uint256 protocolFee, uint256 sellerAmount)
     {
-        Listing storage listing = listings[listingId];
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        Listing storage listing = $.listings[listingId];
         totalPrice = amount * listing.pricePerUnit;
         (, royaltyAmount) = _getRoyalty(listing.tokenId, totalPrice);
-        protocolFee = (totalPrice * protocolFeeBps) / BPS;
+        protocolFee = (totalPrice * $.protocolFeeBps) / BPS;
         sellerAmount = totalPrice - royaltyAmount - protocolFee;
     }
 
     // ============ Internal ============
 
     function _getRoyalty(uint256 tokenId, uint256 salePrice) internal view returns (address, uint256) {
-        try IERC2981(address(stemNFT)).royaltyInfo(tokenId, salePrice) returns (address r, uint256 a) {
+        try IERC2981(address(_getStemMarketplaceStorage().stemNFT)).royaltyInfo(tokenId, salePrice) returns (
+            address r, uint256 a
+        ) {
             // Cap royalty
             uint256 maxRoyalty = (salePrice * MAX_ROYALTY) / BPS;
             return (r, a > maxRoyalty ? maxRoyalty : a);
@@ -390,7 +459,7 @@ contract StemMarketplaceV2 is
     }
 
     function _escrowFailedPayment(address token, address to, uint256 amount) private {
-        failedPayments[token][to] += amount;
+        _getStemMarketplaceStorage().failedPayments[token][to] += amount;
         emit PaymentEscrowed(token, to, amount);
     }
 
@@ -404,9 +473,10 @@ contract StemMarketplaceV2 is
     /// @notice Reclaim funds escrowed for `msg.sender` after a failed payout leg.
     /// @param token The asset to claim (address(0) for native ETH).
     function claimFailedPayment(address token) external nonReentrant {
-        uint256 amount = failedPayments[token][msg.sender];
+        StemMarketplaceStorage storage $ = _getStemMarketplaceStorage();
+        uint256 amount = $.failedPayments[token][msg.sender];
         if (amount == 0) revert NothingToClaim();
-        failedPayments[token][msg.sender] = 0;
+        $.failedPayments[token][msg.sender] = 0;
         if (token == address(0)) {
             (bool ok,) = payable(msg.sender).call{value: amount}("");
             if (!ok) revert TransferFailed();

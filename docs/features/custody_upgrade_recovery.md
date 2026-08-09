@@ -63,11 +63,13 @@ protection, and promote the proxy address through deployment configuration.
 ### `StemMarketplaceV2`
 
 The marketplace proxy keeps listings, fee configuration, failed-payment
-liabilities, and dependency addresses in upgrade-safe storage. Its fast pause
-blocks new listings and purchases, including delegated buys, but sellers can
-still cancel listings and recipients can still claim already-owed failed
-payments. The owner can rotate the payment-asset registry without replacing the
-marketplace address.
+liabilities, and dependency addresses in the ERC-7201 namespace
+`resonate.storage.StemMarketplaceV2`. The namespace isolates marketplace-owned
+state from inherited OpenZeppelin storage; upgrades must still append fields
+without reordering or removing existing members. Its fast pause blocks new
+listings and purchases, including delegated buys, but sellers can still cancel
+listings and recipients can still claim already-owed failed payments. The owner
+can rotate the payment-asset registry without replacing the marketplace address.
 
 Historical constructor-deployed marketplace addresses cannot be upgraded in
 place. Replacement rollout deploys a fresh proxy graph, grants the proxy the

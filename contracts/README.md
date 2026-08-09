@@ -320,13 +320,20 @@ set the domain in `initialize`.
 
 ### Storage-layout safety
 
-The contract reserves a trailing `__gap` and follows append-only storage
-discipline. A CI gate (`scripts/check-storage-layout.sh`, run in the
-`Smart Contract Tests` job) diffs each upgradeable contract's layout against a
-committed baseline under `contracts/storage-layout/` and **fails on any drift**,
-so a layout-breaking change can't reach a proxy unnoticed. After an intentional,
-upgrade-safe change (append a variable, shrink `__gap`), regenerate and commit the
-baseline:
+Upgradeable contracts follow append-only storage discipline. Existing
+linear-layout proxies reserve a trailing `__gap`; the fresh
+`StemMarketplaceV2` proxy baseline instead keeps all marketplace-owned state in
+the ERC-7201 namespace `resonate.storage.StemMarketplaceV2`, isolated from
+inherited OpenZeppelin storage. A CI gate (`scripts/check-storage-layout.sh`, run
+in the `Smart Contract Tests` job) diffs each upgradeable contract's linear or
+namespace-relative layout against a committed baseline under
+`contracts/storage-layout/` and **fails on any drift**, so a layout-breaking
+change can't reach a proxy unnoticed.
+
+For a linear layout, append a variable and shrink `__gap`. For an ERC-7201
+namespace, append fields to the namespace struct; never reorder, remove, or
+change existing fields. After any intentional upgrade-safe change, regenerate
+and commit the baseline:
 
 ```bash
 forge build --extra-output storageLayout
