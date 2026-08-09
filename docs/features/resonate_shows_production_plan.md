@@ -4,9 +4,15 @@ status: planned
 owner: "@akoita"
 related:
   - "../rfc/show-campaign-trust-escrow.md"
+  - "#1583 (gated production go-live)"
 ---
 
 # Resonate Shows Production Plan
+
+> **Current state (2026-08-09):** the implementation and custody-readiness gate
+> are proven on test/staging. Production remains unscheduled and blocked pending
+> the explicit owner decision and launch package in
+> [#1583](https://github.com/akoita/resonate/issues/1583).
 
 ## Goal
 

@@ -1,5 +1,9 @@
 # Vision Sprint 9 — Custody to Production + First Paid Collects
 
+> **Outcome update (2026-08-09):** the #1271 test/staging readiness gate is
+> complete. The production-only owner decision, deployment, and cohort are
+> deliberately unscheduled and tracked in #1583.
+
 - **Milestone:** [11 — Vision Sprint 9](https://github.com/akoita/resonate/milestone/11) · label `sprint:vision-9`
 - **Window:** 2026-07-12 → 2026-07-25
 - **Selected from the whole project context** (ADR-BM-6 sequencing, backlog
@@ -16,8 +20,9 @@ fees** through the generalized x402 rail.
 
 ADR-BM-6 (accepted 2026-07-05) fixes the activation order: **(1) Shows fees →
 (2) Artist Pro/credits → (3) marketplace take-rate → (4) Listener Pro →
-(5) B2B**. The backlog's **only P0** is #1271 (Shows production-readiness +
-gated go-live), and Sprints 2–8 quietly completed its prerequisites: custody
+(5) B2B**. The sprint's **only P0** was #1271 (Shows production-readiness),
+with the owner-gated production launch now separated into #1583. Sprints 2–8
+quietly completed its prerequisites: custody
 fuzz/invariant/formal hardening (#943/#944 ✅), blocking Halmos gate
 (#1260 ✅), the nightly money-path smoke (#1392, trust restored via #1483),
 billing/credit foundations (S5–S6), and a discovery-grade Home storefront
@@ -57,8 +62,8 @@ revenue** is exactly this sprint's P0 set.
    project, or complete/lead with the #915 / iac#185 migration first?
    Going live first means migrating live custody later — decide deliberately
    before the go-decision.
-4. (End of sprint) the **go/no-go decision** itself — explicitly out of the
-   sprint's control by design (#1271 keeps go-live gated).
+4. (After the readiness sprint) the **go/no-go decision** itself — explicitly
+   out of the sprint's control by design and now tracked in #1583.
 
 ## Explicitly NOT selected (and why)
 
