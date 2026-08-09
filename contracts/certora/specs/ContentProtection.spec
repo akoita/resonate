@@ -19,6 +19,8 @@ using ContentProtection as cp;
 
 methods {
     function owner() external returns (address) envfree;
+    function upgradeAuthority() external returns (address) envfree;
+    function paused() external returns (bool) envfree;
     function stakes(uint256) external returns (uint256, uint256, bool) envfree;
     function isBlacklisted(address) external returns (bool) envfree;
 }
@@ -56,6 +58,20 @@ rule onlyOwnerCanBlacklist(env e, address account) {
     assert lastReverted, "non-owner must not blacklist";
 }
 
+/// Only the operational owner can toggle the fast pause.
+rule onlyOwnerCanSetPaused(env e, bool isPaused) {
+    require e.msg.sender != owner();
+    setPaused@withrevert(e, isPaused);
+    assert lastReverted, "non-owner must not toggle pause";
+}
+
+/// Only the current delayed authority can rotate upgrade governance.
+rule onlyUpgradeAuthorityCanRotate(env e, address newAuthority) {
+    require e.msg.sender != upgradeAuthority();
+    setUpgradeAuthority@withrevert(e, newAuthority);
+    assert lastReverted, "non-authority must not rotate upgrade governance";
+}
+
 // ============ Stake state machine ============
 
 /// Slashing requires an active stake.
@@ -82,6 +98,19 @@ rule slashDeactivatesStake(env e, uint256 tokenId, address reporter) {
 rule refundDeactivatesStake(env e, uint256 tokenId) {
     refundStake@withrevert(e, tokenId);
     assert lastReverted || !stakeActive(tokenId), "refund must deactivate the stake";
+}
+
+/// Emergency pause blocks owner-triggered custody outflows as well as deposits.
+rule pausedBlocksSlash(env e, uint256 tokenId, address reporter) {
+    require paused();
+    slash@withrevert(e, tokenId, reporter);
+    assert lastReverted, "paused slash must revert";
+}
+
+rule pausedBlocksRefund(env e, uint256 tokenId) {
+    require paused();
+    refundStake@withrevert(e, tokenId);
+    assert lastReverted, "paused refund must revert";
 }
 
 /// A blacklisted attester stays blacklisted across any single call (monotonic ban

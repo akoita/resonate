@@ -111,7 +111,17 @@ When adding a new environment variable:
 | `MARKETPLACE_OWNER` / `MARKETPLACE_GUARDIAN` / `MARKETPLACE_TIMELOCK_MIN_DELAY` | Contracts | Guarded StemMarketplaceV2 deployment authority. Shared networks require an independent guardian and a delay of at least 172800 seconds. |
 | `MARKETPLACE_IMPLEMENTATION` / `MARKETPLACE_TIMELOCK_ADDRESS` / `MARKETPLACE_DEPLOYER` / `MARKETPLACE_PAUSED` | Contracts handoff | Expected implementation, authority graph, original deployer, and pause state used by marketplace smoke checks and upgrade operations. Applications continue using the stable `MARKETPLACE_ADDRESS` proxy. |
 | `MARKETPLACE_UPGRADE_SALT` / `NEW_IMPLEMENTATION` | Contracts | Optional operation salt and reviewed candidate implementation for the schedule/execute marketplace upgrade workflow. |
-| `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
+| `CONTENT_PROTECTION_PROXY` | Contracts | Stable proxy address used by ContentProtection migration, pause, smoke, and upgrade operations |
+| `CONTENT_PROTECTION_OWNER` | Contracts | Operational owner/multisig; required for shared-network guarded deployments and migration |
+| `CONTENT_PROTECTION_LIVE_OWNER` | Contracts | Expected current on-chain owner during smoke; may be the deployer until the two-step handoff is accepted |
+| `CONTENT_PROTECTION_PENDING_OWNER` | Contracts | Expected staged owner during a two-step post-deploy handoff; zero/empty after acceptance |
+| `CONTENT_PROTECTION_GUARDIAN` | Contracts | Independent timelock proposer/executor/canceller; must differ from owner and deployer remotely |
+| `CONTENT_PROTECTION_TIMELOCK_ADDRESS` | Contracts | Sole post-V6 UUPS upgrade authority |
+| `CONTENT_PROTECTION_TIMELOCK_MIN_DELAY` | Contracts | Timelock delay in seconds; shared networks require at least `172800` (48 hours) |
+| `CONTENT_PROTECTION_IMPLEMENTATION` | Contracts | Reviewed implementation expected in the proxy's ERC-1967 slot for smoke validation |
+| `CONTENT_PROTECTION_DEPLOYER` | Contracts | Bootstrap deployer recorded for checking timelock admin renunciation |
+| `CONTENT_PROTECTION_PAUSED` | Contracts | Expected pause state for read-only smoke checks (default `false`) |
+| `CONTENT_PROTECTION_UPGRADE_SALT` / `NEW_IMPLEMENTATION` | Contracts | Optional operation salt and exact reviewed implementation used by ContentProtection schedule/execute or legacy migration execution |
 | `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
 | `MINT_AUTHORIZER_PRIVATE_KEY` | Backend secret | Registrar/authorizer signer key reused by both `POST /contracts/mint-authorizations` and the CP-1 `POST /contracts/attestation-vouchers` endpoint. Falls back to `PRIVATE_KEY`. **Its address MUST be registered on ContentProtection via `setRegistrar(signer, true)`** or every attestation voucher reverts `InvalidAttestationSignature` on-chain. Store in secret manager/GitHub environment secrets, never source. Per-chain ContentProtection proxy resolution uses `CONTENT_PROTECTION_ADDRESS` (31337) / `SEPOLIA_CONTENT_PROTECTION_ADDRESS` / `BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS` |

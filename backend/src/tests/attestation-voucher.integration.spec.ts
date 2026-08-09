@@ -6,8 +6,8 @@
  * FIRST attestation (no persisted Release row — the web attests before the
  * release is created):
  *
- *   - deploy ContentProtection (impl + ERC1967 proxy + initialize +
- *     reinitializeV5 to set the EIP-712 domain), setRegistrar(signer, true);
+ *   - deploy ContentProtection (impl + ERC1967 proxy + initializeFresh, which
+ *     sets the EIP-712 domain), setRegistrar(signer, true);
  *   - the service signs a voucher for a token id that has NO Release row and NO
  *     prior attestation; attestRelease() called FROM the attester account
  *     succeeds on-chain;
@@ -82,6 +82,7 @@ async function deployContentProtection(
   walletClient: any,
   publicClient: any,
   owner: Address,
+  upgradeAuthority: Address,
 ): Promise<Address> {
   const implHash = await walletClient.deployContract({
     abi: CP_ARTIFACT.abi,
@@ -91,8 +92,8 @@ async function deployContentProtection(
   const implReceipt = await publicClient.waitForTransactionReceipt({ hash: implHash });
   const initData = encodeFunctionData({
     abi: CP_ARTIFACT.abi,
-    functionName: "initialize",
-    args: [owner, owner, 0n], // owner, treasury, stakeAmount
+    functionName: "initializeFresh",
+    args: [owner, owner, 0n, upgradeAuthority],
   });
   const proxyHash = await walletClient.deployContract({
     abi: ERC1967_PROXY_ARTIFACT.abi,
@@ -100,18 +101,7 @@ async function deployContentProtection(
     args: [implReceipt.contractAddress!, initData],
   });
   const proxyReceipt = await publicClient.waitForTransactionReceipt({ hash: proxyHash });
-  const proxyAddress = proxyReceipt.contractAddress! as Address;
-
-  // V5 migration: initialize the EIP-712 domain on the proxy so vouchers verify.
-  const reinitHash = await walletClient.writeContract({
-    address: proxyAddress,
-    abi: CP_ARTIFACT.abi,
-    functionName: "reinitializeV5",
-    args: [],
-  });
-  await publicClient.waitForTransactionReceipt({ hash: reinitHash });
-
-  return proxyAddress;
+  return proxyReceipt.contractAddress! as Address;
 }
 
 describe("AttestationVoucherService integration (Anvil)", () => {
@@ -145,7 +135,12 @@ describe("AttestationVoucherService integration (Anvil)", () => {
     deployerWallet = createWalletClient({ account: deployer, chain, transport: http(anvilUrl()) });
     attesterWallet = createWalletClient({ account: attester, chain, transport: http(anvilUrl()) });
 
-    cpAddress = await deployContentProtection(deployerWallet, publicClient, deployer.address);
+    cpAddress = await deployContentProtection(
+      deployerWallet,
+      publicClient,
+      deployer.address,
+      stranger.address,
+    );
 
     // Register the backend signer (the deployer key, reused as the registrar).
     const setRegistrarHash = await deployerWallet.writeContract({

@@ -495,7 +495,7 @@ evaluate whether those specs or the Solidity tests kill meaningful mutants.
 4. **CEI pattern** - All contracts follow Checks-Effects-Interactions
 5. **Access control** - Role-based permissions for admin functions
 6. **Transfer validation** - Whitelist + blacklist enforcement
-7. **UUPS upgrade safety** - Only owner can authorize ContentProtection upgrades
+7. **UUPS upgrade safety** - ContentProtection upgrades are authorized only by its delayed timelock; the operational owner controls the independent fast pause
 8. **Blacklist propagation** - TransferValidator checks ContentProtection blacklist on every transfer
 9. **Stake-to-price cap** - `PriceExceedsStakeCap` revert prevents listings with price > `stake × maxPriceMultiplier`
 10. **Upgrade continuity** - `reinitializeV2()` seeds `maxPriceMultiplier = 10` on existing deployments via UUPS upgrade

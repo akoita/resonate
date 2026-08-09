@@ -10,7 +10,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | --------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | Guarded UUPS proxy for list / buy / resale with protocol fees and fast pause. |
-| **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist. |
+| **ContentProtection** | `src/core/ContentProtection.sol`    | Guarded UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist, owner pause, and delayed upgrade authority. |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | UUPS proxy (timelock + guardian). Per-token escrow with global pause, freeze, release, and redirect. |
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
@@ -127,7 +127,7 @@ forge script script/DeployProtocol.s.sol \
 ### Deployment Order (automated by script)
 
 1. **TransferValidator** — standalone module
-2. **ContentProtection** — UUPS proxy (implementation + ERC1967Proxy)
+2. **ContentProtection** — guarded UUPS graph (implementation + 48h timelock + ERC1967Proxy)
 3. **RevenueEscrow** — UUPS proxy initialized with operational owner, escrow period, and timelocked upgrade authority
 4. **StemNFT** — core NFT contract
 5. **StemMarketplaceV2** — guarded implementation + timelock + proxy linked to StemNFT
@@ -143,6 +143,11 @@ forge script script/DeployProtocol.s.sol \
 | ------------------------------- | -------------------------------------------------------------------- |
 | `DeployProtocol.s.sol`          | Full protocol from scratch (NFT + Marketplace + Protection + Escrow) |
 | `DeployContentProtection.s.sol` | Phase 2 only — add ContentProtection + Escrow to existing deployment |
+| `ContentProtectionDeployment.s.sol` | Shared guarded ContentProtection implementation/timelock/proxy deployment policy |
+| `MigrateContentProtectionV6.s.sol` | One-time legacy proxy bootstrap: prepare verified candidates, then atomic V6 execute |
+| `UpgradeContentProtection.s.sol` | Schedule/execute post-V6 upgrades through the ContentProtection timelock |
+| `SetContentProtectionPaused.s.sol` | Operational-owner ContentProtection emergency pause/unpause |
+| `SmokeContentProtection.s.sol` | Read-only ContentProtection implementation and authority-graph validation |
 | `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
 | `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
 | `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |
@@ -321,23 +326,22 @@ cast send $REVENUE_ESCROW "release(uint256)" 1 --rpc-url $RPC_URL
 ## Upgradeability
 
 **ContentProtection**, **ShowCampaignEscrow**, **RevenueEscrow**, and
-**StemMarketplaceV2** use the OpenZeppelin UUPS proxy pattern. The three
-fund-custody/routing contracts separate their operational owner from a guarded
+**StemMarketplaceV2** use the OpenZeppelin UUPS proxy pattern. All four
+custody/routing contracts separate their operational owner from a guarded
 timelock upgrade authority with an independent guardian recovery path. See
 `docs/features/custody_upgrade_recovery.md` for the current posture.
 
-```solidity
-ContentProtection newImpl = new ContentProtection();
-contentProtection.upgradeToAndCall(address(newImpl), "");
-```
+ContentProtection's existing proxies require the explicit one-time
+`MigrateContentProtectionV6.s.sol` prepare/verify/execute bootstrap. Subsequent
+upgrades use `UpgradeContentProtection.s.sol` to schedule and execute identical
+calldata through the configured timelock; the owner cannot upgrade directly.
 
 **Reinitializer migrations.** New logic that needs one-time state setup on already
 deployed proxies runs through a versioned `reinitializer`. The CP-1 attestation-voucher
-change (#1271) initializes the EIP-712 domain via `reinitializeV5()` (versions 2–4 were
-consumed by earlier upgrades). `script/UpgradeContentProtection.s.sol` deploys the new
-implementation and calls `reinitializeV5()` in the same `upgradeToAndCall`, so existing
-`base-sepolia` / `sepolia` proxies get the domain and can verify vouchers. Fresh deploys
-set the domain in `initialize`.
+change (#1271) initialized the EIP-712 domain via `reinitializeV5()` (versions 2–4 were
+consumed by earlier upgrades). The guarded-authority migration uses
+`reinitializeV6(timelock)`, which also initializes the same domain for older proxies.
+Fresh deployments consume version 6 in `initializeFresh`.
 
 ### Storage-layout safety
 

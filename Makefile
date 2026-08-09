@@ -196,6 +196,9 @@ smoke-revenue-escrow:
 verify-revenue-escrow-sourcify:
 	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployRevenueEscrow.s.sol/84532/run-latest.json}" ./contracts/scripts/verify-base-sepolia-sourcify.sh
 
+verify-content-protection-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployContentProtection.s.sol/84532/run-latest.json}" VERIFY_ONLY= ./contracts/scripts/verify-base-sepolia-sourcify.sh
+
 summary-revenue-escrow-artifacts:
 	@record="contracts/deployments/revenue-escrow.$${DEPLOYMENT_NETWORK:-base-sepolia}.json"; \
 	if [ ! -f "$$record" ]; then echo "RevenueEscrow deployment record not found: $$record"; exit 1; fi; \
@@ -435,6 +438,24 @@ deploy-local-payments:
 sync-content-protection-stablecoin-stake:
 	cd contracts && forge script script/SetContentProtectionStablecoinStake.s.sol --rpc-url $${RPC_URL:-http://localhost:8545} --broadcast
 	@echo "✓ Content Protection stablecoin stake amount synced"
+
+pause-content-protection:
+	cd contracts && forge script script/SetContentProtectionPaused.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+prepare-content-protection-v6-migration:
+	cd contracts && MIGRATION_ACTION=prepare forge script script/MigrateContentProtectionV6.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-content-protection-v6-migration:
+	cd contracts && MIGRATION_ACTION=execute forge script script/MigrateContentProtectionV6.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+schedule-content-protection-upgrade:
+	cd contracts && UPGRADE_ACTION=schedule forge script script/UpgradeContentProtection.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-content-protection-upgrade:
+	cd contracts && UPGRADE_ACTION=execute forge script script/UpgradeContentProtection.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+smoke-content-protection:
+	cd contracts && forge script script/SmokeContentProtection.s.sol --rpc-url "$${RPC_URL}" --evm-version cancun --via-ir
 
 payments-dev-up: dev-up local-aa-up
 	$(MAKE) local-aa-deploy

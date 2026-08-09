@@ -28,6 +28,7 @@ contract ContentProtectionFuzzTest is Test, IContentProtectionEvents {
     address internal treasury = makeAddr("treasury");
     address internal attester = makeAddr("attester");
     address internal reporter = makeAddr("reporter");
+    address internal upgradeAuthority = makeAddr("upgradeAuthority");
 
     uint256 internal constant STAKE_AMOUNT = 0.01 ether;
     uint256 internal constant REPORTER_BPS = 6000;
@@ -40,7 +41,8 @@ contract ContentProtectionFuzzTest is Test, IContentProtectionEvents {
 
     function setUp() public {
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (owner, treasury, STAKE_AMOUNT));
+        bytes memory initData =
+            abi.encodeCall(ContentProtection.initializeFresh, (owner, treasury, STAKE_AMOUNT, upgradeAuthority));
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
 
         vm.prank(owner);
@@ -210,5 +212,33 @@ contract ContentProtectionFuzzTest is Test, IContentProtectionEvents {
         vm.prank(owner);
         vm.expectRevert(NotStaked.selector);
         cp.slash(tokenId, reporter);
+    }
+
+    function testFuzz_PausePreservesActiveStake(uint256 tokenId, uint256 amount, bool slashInstead) public {
+        amount = bound(amount, STAKE_AMOUNT, 1000 ether);
+        _attestAndStake(tokenId, amount);
+        vm.prank(owner);
+        cp.setPaused(true);
+
+        vm.prank(owner);
+        vm.expectRevert(Paused.selector);
+        if (slashInstead) {
+            cp.slash(tokenId, reporter);
+        } else {
+            cp.refundStake(tokenId);
+        }
+
+        (uint256 recorded,, bool active) = cp.stakes(tokenId);
+        assertTrue(active);
+        assertEq(recorded, STAKE_AMOUNT);
+        assertEq(address(cp).balance, STAKE_AMOUNT);
+    }
+
+    function testFuzz_OnlyUpgradeAuthorityCanRotate(address caller, address candidate) public {
+        vm.assume(caller != upgradeAuthority);
+        vm.prank(caller);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, caller));
+        cp.setUpgradeAuthority(candidate);
+        assertEq(cp.upgradeAuthority(), upgradeAuthority);
     }
 }

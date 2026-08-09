@@ -41,7 +41,10 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
 
     function setUp() public {
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
+        bytes memory initData = abi.encodeCall(
+            ContentProtection.initializeFresh,
+            (admin, treasury, STAKE_AMOUNT, makeAddr("contentProtectionUpgradeAuthority"))
+        );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
         usdc = new MockUSDC();
@@ -197,9 +200,7 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
         feeToken.approve(address(escrow), USDC_AMOUNT);
 
         uint256 received = USDC_AMOUNT - (USDC_AMOUNT * 100) / 10_000;
-        vm.expectRevert(
-            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
-        );
+        vm.expectRevert(abi.encodeWithSelector(FeeOnTransferNotSupported.selector, USDC_AMOUNT, received));
         escrow.depositWithAsset(1, alice, address(feeToken), USDC_AMOUNT);
     }
 

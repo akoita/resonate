@@ -57,5 +57,4 @@ interface IStemMarketplaceV2 is
     error PriceExceedsStakeCap();
     error UnsupportedPaymentAsset();
     error ListingExpiryOverflow();
-    error AuthorityMustDifferFromOwner();
 }

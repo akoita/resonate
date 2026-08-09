@@ -168,11 +168,27 @@
     "type": "address"
   },
   {
-    "bytes": "1568",
+    "bytes": "20",
+    "encoding": "inplace",
+    "label": "upgradeAuthority",
+    "offset": 0,
+    "slot": "21",
+    "type": "address"
+  },
+  {
+    "bytes": "1",
+    "encoding": "inplace",
+    "label": "paused",
+    "offset": 20,
+    "slot": "21",
+    "type": "bool"
+  },
+  {
+    "bytes": "1536",
     "encoding": "inplace",
     "label": "__gap",
     "offset": 0,
-    "slot": "21",
-    "type": "uint256[49]"
+    "slot": "22",
+    "type": "uint256[48]"
   }
 ]

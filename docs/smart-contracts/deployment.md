@@ -111,6 +111,59 @@ payout address, and any service-specific secrets there. The handoff keeps
 challenges, recorded purchase events, and frontend wallet state all refer to
 the same chain.
 
+### ContentProtection guarded deployment and migration
+
+Fresh `ContentProtection` deployments create a three-contract authority graph:
+the implementation, an ERC1967 proxy, and a `TimelockController` with a minimum
+48-hour delay. The operational owner retains fast configuration, revocation,
+blacklist, and pause controls, while only the timelock can authorize UUPS
+upgrades. The configured owner and independent guardian can each propose,
+execute, or cancel delayed operations; the temporary deployer timelock admin is
+renounced before the deployment completes.
+
+Required shared-network variables are `CONTENT_PROTECTION_OWNER` and an
+independent `CONTENT_PROTECTION_GUARDIAN`. The optional
+`CONTENT_PROTECTION_TIMELOCK_MIN_DELAY` defaults to `172800` and cannot be lower
+on a shared network. During a fresh full-graph or add-on deployment, the deployer
+temporarily owns the proxy so all cross-contract links can be configured in one
+broadcast. The script then stages the configured owner with the two-step
+ownership flow; that owner must call `acceptOwnership()` before routine
+operations move to it.
+
+The deployment workflow writes and smoke-checks:
+
+- `contracts/deployments/content-protection.<network>.json`
+- `contracts/deployments/content-protection.<network>.remote.env`
+- `contracts/deployments/content-protection.abi.json`
+
+On Base Sepolia, the same deployment run verifies the broadcast graph through
+Sourcify. Retry an isolated add-on deployment without redeploying with
+`make verify-content-protection-sourcify` and the retained
+`DeployContentProtection.s.sol` broadcast.
+
+Existing V5 proxies use a deliberately separate two-run bootstrap:
+
+1. `prepare-content-protection-v6-migration` deploys the candidate implementation
+   and timelock, then writes a `content-protection-v6-migration.<network>.json`
+   record plus a clearly marked `.candidate.env` handoff. Verify both addresses
+   and their source before approval; never promote the candidate env as live app
+   configuration.
+2. `execute-content-protection-v6-migration` requires the current owner signer,
+   exact `NEW_IMPLEMENTATION`, and `CONTENT_PROTECTION_TIMELOCK_ADDRESS`; it calls
+   `upgradeToAndCall(reinitializeV6(...))` atomically, preserving the proxy and
+   existing state while installing the timelock authority.
+
+After V6, use `schedule-content-protection-upgrade` and
+`execute-content-protection-upgrade`. Scheduling deploys the candidate and
+records the exact calldata plus a clearly marked upgrade-candidate JSON/env/ABI
+handoff; execution must use the same implementation, salt, proxy, and timelock
+after the delay. Base Sepolia scheduling verifies the candidate through
+Sourcify. The owner cannot bypass the timelock.
+`pause-content-protection` remains the immediate incident control: it blocks new
+attestations, staking, slashing/refunds/sweeps, and registrations while keeping
+reads, revocations, blacklist controls, failed-payment claims, governance, and
+recovery available.
+
 ### ShowCampaignEscrow deployment handoff
 
 As of **#1497** (recovery hardened by **SCE-2/#1271**), `ShowCampaignEscrow` is a
@@ -319,15 +372,17 @@ Deployment operations:
 
 | Operation | Lifecycle | Redeploy/update behavior | Reference updates required |
 | --- | --- | --- | --- |
-| `deploy-protocol` | Full marketplace/music-rights protocol graph | Deploys `TransferValidator`, `ContentProtection` proxy, `DisputeResolution`, `CurationRewards`, guarded `RevenueEscrow` and `StemMarketplaceV2` proxy graphs, `StemNFT`, and `PaymentAssetRegistry` together | Script links `StemNFT -> TransferValidator`, `StemNFT -> ContentProtection`, `TransferValidator -> ContentProtection`, `RevenueEscrow -> ContentProtection`, and grants the marketplace proxy registrar/validator permissions |
-| `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and guarded `RevenueEscrow` proxy graph without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
+| `deploy-protocol` | Full marketplace/music-rights protocol graph | Deploys `TransferValidator`, guarded `ContentProtection`, `RevenueEscrow`, and `StemMarketplaceV2` implementation/timelock/proxy graphs, plus `DisputeResolution`, `CurationRewards`, `StemNFT`, and `PaymentAssetRegistry` | Script links the graph, stages the final ContentProtection owner, writes its dedicated handoff, smoke-checks authority, and verifies Base Sepolia through Sourcify |
+| `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys guarded `ContentProtection` and `RevenueEscrow` implementation/timelock/proxy graphs without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, owner, and independent guardian; rewires dependencies, stages final ownership, writes handoffs, smoke-checks authority, and verifies Base Sepolia through Sourcify |
 | `deploy-revenue-escrow` | Revenue escrow replacement or isolated deployment | Atomically deploys the UUPS implementation, governance timelock, and ERC1967 proxy; writes JSON, `.remote.env`, and ABI handoffs | Promote only the proxy as `REVENUE_ESCROW_ADDRESS`; re-link ContentProtection and depositors, and settle/audit any standalone predecessor before retirement |
 | `upgrade-revenue-escrow` | Delayed RevenueEscrow implementation change | `UPGRADE_ACTION=schedule` deploys and schedules; `execute` uses `NEW_IMPLEMENTATION` after the timelock delay | Proxy/app address stays stable; retain operation id and implementation evidence |
 | `pause-revenue-escrow` | Revenue custody incident containment/recovery | Owner calls the global pause without waiting for the upgrade timelock | Deposits, releases, redirects, and failed-payment claims stop; reads, dispute freeze controls, governance, and recovery remain available |
 | `deploy-stem-marketplace` | Marketplace replacement or isolated deployment | Atomically deploys the UUPS implementation, governance timelock, and ERC1967 proxy; writes JSON, `.remote.env`, and ABI handoffs | Grant registrar/validator permissions to the proxy and promote only it as `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS` |
 | `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` | Delayed marketplace implementation change | Schedule deploys a candidate implementation; execute uses the exact `NEW_IMPLEMENTATION` after the timelock delay | Proxy/app address stays stable; re-run smoke and verification before unpausing |
 | `pause-stem-marketplace` | Marketplace incident containment | Owner calls the fast pause without waiting for the upgrade timelock | New list/buy operations stop; cancellation, failed-payment claims, reads, configuration, and recovery remain available |
-| `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
+| `prepare-content-protection-v6-migration` / `execute-content-protection-v6-migration` | One-time legacy V5 governance bootstrap | Prepare deploys a verifiable implementation + timelock; execute atomically upgrades the stable proxy and consumes `reinitializeV6` | Current owner signs execute; verify exact candidate addresses first; downstream references stay stable |
+| `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Delayed post-V6 implementation change | Schedule deploys a candidate and queues exact UUPS calldata; execute uses `NEW_IMPLEMENTATION` after the timelock delay | Signer must hold the matching timelock proposer/executor role; proxy/app address stays stable |
+| `pause-content-protection` | Content-protection incident containment | Operational owner immediately pauses or resumes risk-creating writes | Existing failed-payment claims, revocations, blacklist controls, reads, governance, and recovery remain available |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
 | `set-marketplace-protocol-fee` | Marketplace fee config update | No redeploy; calls `StemMarketplaceV2.setProtocolFee` and optionally `setFeeRecipient` | Requires `MARKETPLACE_ADDRESS` and `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`; signer must be marketplace owner |
 | `set-show-campaign-fee-config` | Shows campaign fee config update | No redeploy; calls `ShowCampaignEscrow.setFeeConfig` | Requires `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, and `NEW_FEE_RECIPIENT`; fee rate applies to future campaigns only, recipient rotates at charge time |

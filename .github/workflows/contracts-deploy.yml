@@ -31,7 +31,12 @@ on:
           - deploy-revenue-escrow
           - deploy-show-campaign-escrow
           - deploy-stem-marketplace
-          - upgrade-content-protection
+          - prepare-content-protection-v6-migration
+          - execute-content-protection-v6-migration
+          - schedule-content-protection-upgrade
+          - execute-content-protection-upgrade
+          - pause-content-protection
+          - smoke-content-protection
           - set-content-protection-stake
           - set-marketplace-protocol-fee
           - set-show-campaign-fee-config
@@ -157,6 +162,16 @@ jobs:
           INPUT_EXISTING_ADMIN: ${{ vars.EXISTING_ADMIN }}
           INPUT_CONTENT_PROTECTION_PROXY: ${{ vars.CONTENT_PROTECTION_PROXY }}
           INPUT_CONTENT_PROTECTION_ADDRESS: ${{ vars.CONTENT_PROTECTION_ADDRESS }}
+          INPUT_CONTENT_PROTECTION_OWNER: ${{ vars.CONTENT_PROTECTION_OWNER }}
+          INPUT_CONTENT_PROTECTION_LIVE_OWNER: ${{ vars.CONTENT_PROTECTION_LIVE_OWNER }}
+          INPUT_CONTENT_PROTECTION_PENDING_OWNER: ${{ vars.CONTENT_PROTECTION_PENDING_OWNER }}
+          INPUT_CONTENT_PROTECTION_DEPLOYER: ${{ vars.CONTENT_PROTECTION_DEPLOYER }}
+          INPUT_CONTENT_PROTECTION_IMPLEMENTATION: ${{ vars.CONTENT_PROTECTION_IMPLEMENTATION }}
+          INPUT_CONTENT_PROTECTION_TIMELOCK_ADDRESS: ${{ vars.CONTENT_PROTECTION_TIMELOCK_ADDRESS }}
+          INPUT_CONTENT_PROTECTION_GUARDIAN: ${{ vars.CONTENT_PROTECTION_GUARDIAN }}
+          INPUT_CONTENT_PROTECTION_TIMELOCK_MIN_DELAY: ${{ vars.CONTENT_PROTECTION_TIMELOCK_MIN_DELAY }}
+          INPUT_CONTENT_PROTECTION_PAUSED: ${{ vars.CONTENT_PROTECTION_PAUSED }}
+          INPUT_CONTENT_PROTECTION_UPGRADE_SALT: ${{ vars.CONTENT_PROTECTION_UPGRADE_SALT }}
           INPUT_STAKE_ASSET_ADDRESS: ${{ vars.STAKE_ASSET_ADDRESS }}
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
           INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
@@ -238,6 +253,16 @@ jobs:
             EXISTING_ADMIN
             CONTENT_PROTECTION_PROXY
             CONTENT_PROTECTION_ADDRESS
+            CONTENT_PROTECTION_OWNER
+            CONTENT_PROTECTION_LIVE_OWNER
+            CONTENT_PROTECTION_PENDING_OWNER
+            CONTENT_PROTECTION_DEPLOYER
+            CONTENT_PROTECTION_IMPLEMENTATION
+            CONTENT_PROTECTION_TIMELOCK_ADDRESS
+            CONTENT_PROTECTION_GUARDIAN
+            CONTENT_PROTECTION_TIMELOCK_MIN_DELAY
+            CONTENT_PROTECTION_PAUSED
+            CONTENT_PROTECTION_UPGRADE_SALT
             STAKE_ASSET_ADDRESS
             STAKE_ASSET_AMOUNT
             STAKE_ASSET_SYMBOL
@@ -322,7 +347,7 @@ jobs:
           set -euo pipefail
           requires_signer=true
           case "${{ inputs.operation }}" in
-            smoke-revenue-escrow|verify-revenue-escrow-sourcify|smoke-stem-marketplace) requires_signer=false ;;
+            smoke-revenue-escrow|verify-revenue-escrow-sourcify|smoke-stem-marketplace|smoke-content-protection) requires_signer=false ;;
           esac
           if [[ "${requires_signer}" == "true" && -z "${PRIVATE_KEY:-}" ]]; then
             echo "::error::Set CONTRACT_DEPLOYER_PRIVATE_KEY in the contracts-${{ inputs.environment }} GitHub environment."
@@ -346,6 +371,26 @@ jobs:
           else
             deployer="read-only"
           fi
+
+          case "${{ inputs.operation }}" in
+            deploy-protocol|deploy-content-protection|prepare-content-protection-v6-migration|execute-content-protection-v6-migration)
+              for name in CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_GUARDIAN; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "::error::${{ inputs.operation }} requires ${name} on shared networks."
+                  exit 1
+                fi
+              done
+              if [[ "${CONTENT_PROTECTION_OWNER,,}" == "${CONTENT_PROTECTION_GUARDIAN,,}" || "${deployer,,}" == "${CONTENT_PROTECTION_GUARDIAN,,}" ]]; then
+                echo "::error::CONTENT_PROTECTION_GUARDIAN must be independent from owner and deployer."
+                exit 1
+              fi
+              content_protection_delay="${CONTENT_PROTECTION_TIMELOCK_MIN_DELAY:-172800}"
+              if [[ ! "${content_protection_delay}" =~ ^[0-9]+$ ]] || lt_uint "${content_protection_delay}" "172800"; then
+                echo "::error::CONTENT_PROTECTION_TIMELOCK_MIN_DELAY must be at least 172800 seconds (48h)."
+                exit 1
+              fi
+              ;;
+          esac
 
           case "${{ inputs.operation }}" in
             deploy-protocol|deploy-content-protection|deploy-revenue-escrow)
@@ -403,11 +448,33 @@ jobs:
                 exit 1
               fi
               ;;
-            upgrade-content-protection)
+            prepare-content-protection-v6-migration)
               if [[ -z "${CONTENT_PROTECTION_PROXY:-}" ]]; then
-                echo "::error::upgrade-content-protection requires CONTENT_PROTECTION_PROXY."
+                echo "::error::${{ inputs.operation }} requires CONTENT_PROTECTION_PROXY."
                 exit 1
               fi
+              ;;
+            execute-content-protection-v6-migration|execute-content-protection-upgrade)
+              for name in CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_TIMELOCK_ADDRESS NEW_IMPLEMENTATION; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::${{ inputs.operation }} requires ${name}."; exit 1; fi
+              done
+              ;;
+            schedule-content-protection-upgrade)
+              for name in CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_TIMELOCK_ADDRESS CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_GUARDIAN; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::${{ inputs.operation }} requires ${name}."; exit 1; fi
+              done
+              ;;
+            pause-content-protection)
+              if [[ -z "${CONTENT_PROTECTION_PROXY:-}" || -z "${CONTENT_PROTECTION_PAUSED:-}" ]]; then
+                echo "::error::pause-content-protection requires CONTENT_PROTECTION_PROXY and CONTENT_PROTECTION_PAUSED."
+                exit 1
+              fi
+              ;;
+            smoke-content-protection)
+              required_names=(CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_DEPLOYER CONTENT_PROTECTION_IMPLEMENTATION CONTENT_PROTECTION_TIMELOCK_ADDRESS CONTENT_PROTECTION_GUARDIAN CONTENT_PROTECTION_TIMELOCK_MIN_DELAY)
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::smoke-content-protection requires ${name}."; exit 1; fi
+              done
               ;;
             set-content-protection-stake)
               if [[ -z "${CONTENT_PROTECTION_ADDRESS:-}" ]]; then
@@ -614,6 +681,30 @@ jobs:
           fi
 
           case "${{ inputs.operation }}" in
+            execute-content-protection-v6-migration|pause-content-protection)
+              live_owner="$(cast call "${CONTENT_PROTECTION_PROXY}" 'owner()(address)' --rpc-url "${rpc_url}")"
+              if [[ "${live_owner,,}" != "${deployer,,}" ]]; then
+                echo "::error::ContentProtection signer ${deployer} is not current owner ${live_owner}."
+                exit 1
+              fi
+              ;;
+            schedule-content-protection-upgrade|execute-content-protection-upgrade)
+              live_delay="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'getMinDelay()(uint256)' --rpc-url "${rpc_url}")"
+              if [[ ! "${live_delay}" =~ ^[0-9]+$ ]] || lt_uint "${live_delay}" "172800"; then
+                echo "::error::ContentProtection timelock delay ${live_delay} is below 172800 seconds."
+                exit 1
+              fi
+              if [[ "${{ inputs.operation }}" == "schedule-content-protection-upgrade" ]]; then
+                role="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'PROPOSER_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              else
+                role="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'EXECUTOR_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              fi
+              allowed="$(cast call "${CONTENT_PROTECTION_TIMELOCK_ADDRESS}" 'hasRole(bytes32,address)(bool)' "${role}" "${deployer}" --rpc-url "${rpc_url}")"
+              if [[ "${allowed}" != "true" ]]; then
+                echo "::error::Signer ${deployer} does not hold the required ContentProtection timelock role."
+                exit 1
+              fi
+              ;;
             pause-revenue-escrow)
               live_owner="$(cast call "${REVENUE_ESCROW_ADDRESS}" 'owner()(address)' --rpc-url "${rpc_url}")"
               if [[ "${live_owner,,}" != "${deployer,,}" ]]; then
@@ -685,6 +776,31 @@ jobs:
             --via-ir \
             --slow
 
+      - name: Write and validate ContentProtection deployment handoff
+        if: inputs.operation == 'deploy-content-protection' || inputs.operation == 'deploy-protocol'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CHAIN_ID="${EXPECTED_CHAIN_ID}"
+          if [ "${{ inputs.operation }}" = "deploy-protocol" ]; then
+            export BROADCAST_FILE="contracts/broadcast/DeployProtocol.s.sol/${EXPECTED_CHAIN_ID}/run-latest.json"
+          else
+            export BROADCAST_FILE="contracts/broadcast/DeployContentProtection.s.sol/${EXPECTED_CHAIN_ID}/run-latest.json"
+          fi
+          contracts/scripts/write-content-protection-handoff.sh
+          set -a
+          source "contracts/deployments/content-protection.${{ inputs.target_network }}.remote.env"
+          set +a
+          make smoke-content-protection
+
+      - name: Verify deployed ContentProtection graph on Sourcify
+        if: inputs.operation == 'deploy-content-protection' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export BROADCAST_FILE="contracts/broadcast/DeployContentProtection.s.sol/84532/run-latest.json"
+          make verify-content-protection-sourcify
+
       - name: Deploy RevenueEscrow UUPS graph
         if: inputs.operation == 'deploy-revenue-escrow'
         run: make deploy-revenue-escrow
@@ -747,17 +863,78 @@ jobs:
           BROADCAST_FILE: contracts/broadcast/DeployStemMarketplace.s.sol/84532/run-latest.json
         run: make verify-stem-marketplace-sourcify
 
-      - name: Upgrade content protection proxy
-        if: inputs.operation == 'upgrade-content-protection'
+      - name: Prepare or execute ContentProtection V6 migration
+        if: inputs.operation == 'prepare-content-protection-v6-migration' || inputs.operation == 'execute-content-protection-v6-migration'
         run: |
           set -euo pipefail
           cd contracts
-          forge script script/UpgradeContentProtection.s.sol \
+          if [ "${{ inputs.operation }}" = "prepare-content-protection-v6-migration" ]; then
+            export MIGRATION_ACTION=prepare
+          else
+            export MIGRATION_ACTION=execute
+          fi
+          forge script script/MigrateContentProtectionV6.s.sol \
             --rpc-url "${RPC_URL}" \
             --broadcast \
             --evm-version cancun \
             --via-ir \
             --slow
+
+      - name: Write ContentProtection V6 migration candidate handoff
+        if: inputs.operation == 'prepare-content-protection-v6-migration'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CHAIN_ID="${EXPECTED_CHAIN_ID}"
+          export BROADCAST_FILE="contracts/broadcast/MigrateContentProtectionV6.s.sol/${EXPECTED_CHAIN_ID}/run-latest.json"
+          CONTENT_PROTECTION_CANDIDATE_KIND=migration contracts/scripts/write-content-protection-candidate-handoff.sh
+
+      - name: Verify prepared ContentProtection V6 candidates on Sourcify
+        if: inputs.operation == 'prepare-content-protection-v6-migration' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/MigrateContentProtectionV6.s.sol/84532/run-latest.json
+        run: make verify-content-protection-sourcify
+
+      - name: Schedule or execute ContentProtection upgrade
+        if: inputs.operation == 'schedule-content-protection-upgrade' || inputs.operation == 'execute-content-protection-upgrade'
+        run: |
+          set -euo pipefail
+          cd contracts
+          if [ "${{ inputs.operation }}" = "schedule-content-protection-upgrade" ]; then
+            export UPGRADE_ACTION=schedule
+          else
+            export UPGRADE_ACTION=execute
+          fi
+          forge script script/UpgradeContentProtection.s.sol --rpc-url "${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+      - name: Write ContentProtection upgrade candidate handoff
+        if: inputs.operation == 'schedule-content-protection-upgrade'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CHAIN_ID="${EXPECTED_CHAIN_ID}"
+          export BROADCAST_FILE="contracts/broadcast/UpgradeContentProtection.s.sol/${EXPECTED_CHAIN_ID}/run-latest.json"
+          CONTENT_PROTECTION_CANDIDATE_KIND=upgrade contracts/scripts/write-content-protection-candidate-handoff.sh
+
+      - name: Verify scheduled ContentProtection candidate on Sourcify
+        if: inputs.operation == 'schedule-content-protection-upgrade' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/UpgradeContentProtection.s.sol/84532/run-latest.json
+        run: make verify-content-protection-sourcify
+
+      - name: Pause or unpause ContentProtection
+        if: inputs.operation == 'pause-content-protection'
+        run: |
+          set -euo pipefail
+          cd contracts
+          forge script script/SetContentProtectionPaused.s.sol --rpc-url "${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+      - name: Smoke ContentProtection authority graph
+        if: inputs.operation == 'smoke-content-protection'
+        run: |
+          set -euo pipefail
+          cd contracts
+          forge script script/SmokeContentProtection.s.sol --rpc-url "${RPC_URL}" --evm-version cancun --via-ir
 
       - name: Update content protection stake policy
         if: inputs.operation == 'set-content-protection-stake'
@@ -988,6 +1165,21 @@ jobs:
             fi
             if [[ -f contracts/deployments/stem-marketplace.abi.json ]]; then
               echo "- StemMarketplaceV2 ABI handoff: \`contracts/deployments/stem-marketplace.abi.json\`"
+            fi
+            if [[ -f "contracts/deployments/content-protection.${{ inputs.target_network }}.json" ]]; then
+              echo "- ContentProtection deployment record: \`contracts/deployments/content-protection.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/content-protection.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- ContentProtection environment handoff: \`contracts/deployments/content-protection.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/content-protection.abi.json ]]; then
+              echo "- ContentProtection ABI handoff: \`contracts/deployments/content-protection.abi.json\`"
+            fi
+            if [[ -f "contracts/deployments/content-protection-v6-migration.${{ inputs.target_network }}.json" ]]; then
+              echo "- ContentProtection V6 migration candidate: \`contracts/deployments/content-protection-v6-migration.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/content-protection-upgrade.${{ inputs.target_network }}.json" ]]; then
+              echo "- ContentProtection upgrade candidate: \`contracts/deployments/content-protection-upgrade.${{ inputs.target_network }}.json\`"
             fi
             if [[ -f contracts/deployments/sepolia.json ]]; then
               echo "- Sepolia deployment record: \`contracts/deployments/sepolia.json\`"
