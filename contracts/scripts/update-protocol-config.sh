@@ -62,7 +62,12 @@ if [[ -f "$BROADCAST_FILE" ]]; then
 
     # Parse the JSON — filter to CREATE transactions only (skip CALLs)
     STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
-    MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
+    MARKETPLACE=$(jq -r '
+      .transactions as $txs
+      | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "StemMarketplaceV2")) | .key) as $implementation_index
+      | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+      | .value.contractAddress
+    ' "$BROADCAST_FILE")
     TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
     CONTENT_PROTECTION=$(jq -r '
       .transactions as $txs

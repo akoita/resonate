@@ -5,7 +5,9 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC2981} from "@openzeppelin/contracts/interfaces/IERC2981.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IContentProtection} from "../interfaces/IContentProtection.sol";
 import {IStemMarketplaceV2} from "../interfaces/IStemMarketplaceV2.sol";
@@ -27,9 +29,15 @@ interface IStemNFTWithMintTracking is IERC1155 {
  *   - Routes payments directly (use 0xSplits address as royalty receiver for splits)
  *   - ~200 lines instead of ~600
  *
- * @custom:version 2.0.0
+ * @custom:version 2.1.0
  */
-contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
+contract StemMarketplaceV2 is
+    IStemMarketplaceV2,
+    Initializable,
+    UUPSUpgradeable,
+    Ownable2StepUpgradeable,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
 
     // ============ Constants ============
@@ -42,9 +50,9 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
     uint256 public constant MAX_ROYALTY = 2500; // 25%
 
     // ============ State ============
-    IERC1155 public immutable stemNFT;
-    IContentProtection public immutable contentProtection;
-    PaymentAssetRegistry public immutable paymentAssetRegistry;
+    IERC1155 public stemNFT;
+    IContentProtection public contentProtection;
+    PaymentAssetRegistry public paymentAssetRegistry;
     address public protocolFeeRecipient;
     uint256 public protocolFeeBps;
 
@@ -56,33 +64,67 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
     /// brick a sale: the leg is escrowed here and reclaimed via `claimFailedPayment`.
     mapping(address => mapping(address => uint256)) public failedPayments;
 
-    // ============ Constructor ============
+    /// @notice Sole authority allowed to authorize implementation upgrades.
+    address public upgradeAuthority;
 
-    constructor(
+    /// @notice Emergency stop for listing creation and purchases. Cancellation,
+    /// failed-payment claims, admin/recovery functions, and views stay available.
+    bool public paused;
+
+    /// @dev Fresh proxy baseline reserves fifty marketplace-owned storage slots.
+    /// The nine current slots leave forty-one for upgrade-safe extensions.
+    uint256[41] private __gap;
+
+    // ============ Initialization ============
+
+    modifier whenNotPaused() {
+        if (paused) revert Paused();
+        _;
+    }
+
+    modifier onlyUpgradeAuthority() {
+        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
         address _stemNFT,
         address _contentProtection,
         address _paymentAssetRegistry,
         address _feeRecipient,
-        uint256 _feeBps
-    ) Ownable(msg.sender) {
-        if (_contentProtection == address(0)) revert ZeroAddress();
-        if (_paymentAssetRegistry == address(0)) revert ZeroAddress();
+        uint256 _feeBps,
+        address _owner,
+        address _upgradeAuthority
+    ) external initializer {
+        if (
+            _stemNFT == address(0) || _contentProtection == address(0) || _paymentAssetRegistry == address(0)
+                || _owner == address(0) || _upgradeAuthority == address(0)
+        ) revert ZeroAddress();
+        if (_owner == _upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        if (_feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
+        if (_feeBps > 0 && _feeRecipient == address(0)) revert InvalidRecipient();
+
+        __Ownable_init(_owner);
+        __Ownable2Step_init();
         stemNFT = IERC1155(_stemNFT);
         contentProtection = IContentProtection(_contentProtection);
         paymentAssetRegistry = PaymentAssetRegistry(_paymentAssetRegistry);
-        // V-003: Reject zero fee recipient when fees are enabled
-        if (_feeBps > 0 && _feeRecipient == address(0)) {
-            revert InvalidRecipient();
-        }
-        if (_feeBps > MAX_PROTOCOL_FEE) revert InvalidFee();
         protocolFeeRecipient = _feeRecipient;
         protocolFeeBps = _feeBps;
+        upgradeAuthority = _upgradeAuthority;
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
     // ============ Listing ============
 
     function list(uint256 tokenId, uint256 amount, uint256 pricePerUnit, address paymentToken, uint256 duration)
         external
+        whenNotPaused
         returns (uint256 listingId)
     {
         listingId = _createListing(msg.sender, tokenId, amount, pricePerUnit, paymentToken, duration);
@@ -94,7 +136,7 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         address paymentToken,
         uint256 duration,
         uint256 releaseId
-    ) external returns (uint256 listingId) {
+    ) external whenNotPaused returns (uint256 listingId) {
         IStemNFTWithMintTracking trackedStemNFT = IStemNFTWithMintTracking(address(stemNFT));
         if (trackedStemNFT.lastMintedBlockByOwner(msg.sender) != block.number) {
             revert NoRecentMint();
@@ -161,11 +203,11 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
 
     // ============ Buying (Enforced Royalties) ============
 
-    function buy(uint256 listingId, uint256 amount) external payable nonReentrant {
+    function buy(uint256 listingId, uint256 amount) external payable nonReentrant whenNotPaused {
         _buy(listingId, amount, msg.sender);
     }
 
-    function buyFor(uint256 listingId, uint256 amount, address recipient) external payable nonReentrant {
+    function buyFor(uint256 listingId, uint256 amount, address recipient) external payable nonReentrant whenNotPaused {
         if (recipient == address(0)) revert InvalidRecipient();
         _buy(listingId, amount, recipient);
     }
@@ -250,6 +292,38 @@ contract StemMarketplaceV2 is IStemMarketplaceV2, Ownable, ReentrancyGuard {
         if (recipient == address(0)) revert InvalidRecipient();
         protocolFeeRecipient = recipient;
     }
+
+    function setPaymentAssetRegistry(address newRegistry) external onlyOwner {
+        if (newRegistry == address(0)) revert ZeroAddress();
+        address previous = address(paymentAssetRegistry);
+        paymentAssetRegistry = PaymentAssetRegistry(newRegistry);
+        emit PaymentAssetRegistryUpdated(previous, newRegistry);
+    }
+
+    function setPaused(bool isPaused) external onlyOwner {
+        paused = isPaused;
+        emit MarketplacePaused(isPaused);
+    }
+
+    function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        if (newAuthority == owner()) revert AuthorityMustDifferFromOwner();
+        address previous = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityUpdated(previous, newAuthority);
+    }
+
+    function transferOwnership(address newOwner) public override onlyOwner {
+        if (newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        super.transferOwnership(newOwner);
+    }
+
+    function _transferOwnership(address newOwner) internal override {
+        if (newOwner != address(0) && newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        super._transferOwnership(newOwner);
+    }
+
+    function _authorizeUpgrade(address) internal view override onlyUpgradeAuthority {}
 
     // ============ View ============
 

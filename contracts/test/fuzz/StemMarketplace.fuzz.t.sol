@@ -8,6 +8,7 @@ import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
+import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
 
 /**
  * @title StemMarketplaceV2 Fuzz Tests
@@ -30,8 +31,14 @@ contract StemMarketplaceFuzzTest is Test {
         contentProtection = new MockContentProtectionMarketplace();
         paymentAssetRegistry = new PaymentAssetRegistry(admin);
         paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
-        marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 250
+        marketplace = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            250,
+            admin,
+            makeAddr("upgradeAuthority")
         );
 
         stemNFT.setTransferValidator(address(validator));

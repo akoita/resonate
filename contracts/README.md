@@ -9,7 +9,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | Contract              | File                                | Description                                                 |
 | --------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
-| **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
+| **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | Guarded UUPS proxy for list / buy / resale with protocol fees and fast pause. |
 | **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist. |
 | **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | UUPS proxy (timelock + guardian). Per-token escrow with global pause, freeze, release, and redirect. |
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
@@ -109,7 +109,7 @@ forge script script/DeployProtocol.s.sol \
 2. **ContentProtection** — UUPS proxy (implementation + ERC1967Proxy)
 3. **RevenueEscrow** — UUPS proxy initialized with operational owner, escrow period, and timelocked upgrade authority
 4. **StemNFT** — core NFT contract
-5. **StemMarketplaceV2** — linked to StemNFT
+5. **StemMarketplaceV2** — guarded implementation + timelock + proxy linked to StemNFT
 6. **Configure:**
    - `stemNFT.setTransferValidator(validator)`
    - `stemNFT.setContentProtection(contentProtection)`
@@ -125,6 +125,10 @@ forge script script/DeployProtocol.s.sol \
 | `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
 | `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
 | `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |
+| `StemMarketplaceDeployment.s.sol` | Shared marketplace implementation/timelock/proxy deployment policy |
+| `SetStemMarketplacePaused.s.sol` | Owner-controlled marketplace listing/purchase pause |
+| `UpgradeStemMarketplace.s.sol` | Schedule/execute marketplace upgrades through the timelock |
+| `SmokeStemMarketplace.s.sol` | Read-only marketplace dependency and authority-graph validation |
 | `DeployShowCampaignEscrow.s.sol` | Shows only — deploy the UUPS escrow proxy + TimelockController upgrade authority (+ guardian CANCELLER) |
 | `UpgradeShowCampaignEscrow.s.sol` | Timelocked UUPS upgrade of the escrow: `UPGRADE_ACTION=schedule` then `execute` |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
@@ -295,7 +299,11 @@ cast send $REVENUE_ESCROW "release(uint256)" 1 --rpc-url $RPC_URL
 
 ## Upgradeability
 
-**ContentProtection** uses the UUPS proxy pattern (OpenZeppelin). Only the owner can authorize upgrades via `_authorizeUpgrade()`.
+**ContentProtection**, **ShowCampaignEscrow**, **RevenueEscrow**, and
+**StemMarketplaceV2** use the OpenZeppelin UUPS proxy pattern. The three
+fund-custody/routing contracts separate their operational owner from a guarded
+timelock upgrade authority with an independent guardian recovery path. See
+`docs/features/custody_upgrade_recovery.md` for the current posture.
 
 ```solidity
 ContentProtection newImpl = new ContentProtection();

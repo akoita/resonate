@@ -53,13 +53,15 @@ Core GitHub environment variables:
 | Operation | When to use | Inputs and environment | Outputs | Follow-through |
 | --- | --- | --- | --- | --- |
 | `preflight` | Always run before a write operation after changing env vars, RPCs, or signer keys. | Workflow: `environment`, `target_network`, `operation=preflight`. Secrets: deployer key and target RPC. | Step summary with chain ID, signer address, ETH balance, and selected operation. | If signer, chain ID, or balance is wrong, fix the GitHub environment before running a write op. |
-| `deploy-protocol` | Fresh full protocol graph deployment when constructor immutables or tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, RevenueEscrow owner/guardian/timelock inputs, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify the guarded RevenueEscrow graph and all implementations through Sourcify or BaseScan as needed. |
+| `deploy-protocol` | Fresh full protocol graph deployment when tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, RevenueEscrow and marketplace owner/guardian/timelock inputs, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify both guarded proxy graphs and all implementations through Sourcify. |
 | `deploy-content-protection` | Add or replace ContentProtection for an existing `StemNFT` and `TransferValidator` without replacing the whole graph. | Workflow: `operation=deploy-content-protection`. Vars: `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`; optional `MARKETPLACE_ADDRESS`, `EXISTING_ADMIN`. Secret: owner/admin signer. | Forge broadcast files and console summary. | Promote any changed ContentProtection/RevenueEscrow references through IaC and app config if downstream code consumes them. |
 | `deploy-revenue-escrow` | Deploy an isolated guarded RevenueEscrow replacement graph. | Workflow: `operation=deploy-revenue-escrow`. Required remote vars: `REVENUE_ESCROW_OWNER`, independent `REVENUE_ESCROW_GUARDIAN`; optional `REVENUE_ESCROW_PERIOD` (2592000) and `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` (minimum/default 172800). Secret: deployer key. | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast files, authority smoke, and Sourcify verification. | Link ContentProtection and depositors, audit/settle any standalone predecessor, then promote only the proxy through `resonate-iac`. No state moves automatically. |
 | `upgrade-revenue-escrow` | Schedule or execute a reviewed RevenueEscrow implementation upgrade. | Vars: `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `UPGRADE_ACTION`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must be an owner/guardian timelock proposer/executor. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy address stable. | Re-run storage/formal/security gates before scheduling. Guardian or owner cancels a bad operation during the delay. |
 | `pause-revenue-escrow` | Stop or resume all RevenueEscrow fund movement during incident response. | Vars: `REVENUE_ESCROW_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Diagnose while paused. Unpause only after remediation or a timelocked recovery upgrade; coordinate deposit/release operators. |
 | `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + new backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, wait both cursors reach tip, and only then promote the proxy as the current backend/frontend address through `resonate-iac`. |
-| `deploy-stem-marketplace` | Surgically deploy a new `StemMarketplaceV2` against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Vars: `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`. Secret: owner/admin signer. | `contracts/deployments/stem-marketplace.<network>.json`, `.remote.env`, `stem-marketplace.abi.json`, broadcast files. | Promote `MARKETPLACE_ADDRESS` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS` through `resonate-iac`; confirm ContentProtection registrar and validator whitelist effects. |
+| `deploy-stem-marketplace` | Surgically deploy a guarded `StemMarketplaceV2` proxy against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Required remote vars: `MARKETPLACE_OWNER`, independent `MARKETPLACE_GUARDIAN`, `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`, `MARKETPLACE_TIMELOCK_MIN_DELAY` (minimum/default 172800). | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast, authority smoke, and Sourcify verification. | Grant the proxy ContentProtection registrar and validator whitelist permissions, then promote only it as `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. Audit any failed-payment liabilities on the standalone predecessor. |
+| `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` | Schedule or execute a reviewed marketplace implementation upgrade. | Vars: `MARKETPLACE_ADDRESS`, `MARKETPLACE_TIMELOCK_ADDRESS`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must hold the relevant timelock role. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy stable. | Run storage/formal/security gates and verify the candidate before execution; owner or guardian can cancel during the delay. |
+| `pause-stem-marketplace` | Stop or resume new marketplace listings and purchases. | Vars: `MARKETPLACE_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Sellers retain cancellation and recipients retain failed-payment claims. Unpause only after remediation and smoke verification. |
 | `upgrade-content-protection` | Upgrade the UUPS implementation behind an existing ContentProtection proxy. | Workflow: `operation=upgrade-content-protection`. Vars: `CONTENT_PROTECTION_PROXY`. Secret: proxy owner/admin signer. | Forge broadcast files and console summary. Proxy address stays the same. | No address promotion unless implementation metadata is tracked elsewhere. Keep the broadcast artifact for audit. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
 | `set-marketplace-protocol-fee` | Change marketplace protocol fee and optionally rotate the fee recipient. | Workflow: `operation=set-marketplace-protocol-fee`. Vars: `MARKETPLACE_ADDRESS`, `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`. Secret: `StemMarketplaceV2` owner signer. | Console summary, workflow summary, broadcast file. | If fee economics changed beyond accepted ADR values, update the business-model RFC first. No address promotion. |
@@ -114,6 +116,48 @@ converted in place. Before promoting a new proxy:
 - keep the old address and liability audit in durable deployment records.
 
 The deployment workflow does not migrate balances automatically.
+
+## StemMarketplaceV2 Incident And Upgrade Procedure
+
+1. **Contain:** the operational owner runs `pause-stem-marketplace` with
+   `PAUSED=true`. Every list and buy entry point stops immediately. Sellers can
+   still cancel, and recipients can still claim previously escrowed failed
+   payments.
+2. **Account:** record active listings, the listing sequence, marketplace token
+   balances, failed-payment liabilities by asset/recipient, fee configuration,
+   dependencies, owner, implementation, timelock, and role members.
+3. **Prepare and verify:** implement the smallest recovery and run marketplace
+   unit, fuzz, invariant, timelock integration, Halmos/Certora, mutation,
+   storage-layout, and diff security gates. Verify the candidate implementation
+   through Sourcify before execution when practical.
+4. **Schedule:** an owner or guardian proposer runs
+   `schedule-stem-marketplace-upgrade`; preserve the implementation, operation
+   id, salt, calldata, delay, and ETA.
+5. **Veto when needed:** either authority cancels a queued operation whose code,
+   verification, or intent is wrong.
+6. **Execute and smoke:** after the delay, an authorized executor runs
+   `execute-stem-marketplace-upgrade` with the exact implementation/salt, then
+   validates the proxy implementation slot, dependencies, fees, pause state,
+   owner, and authority graph with `smoke-stem-marketplace`.
+7. **Recover:** exercise the repaired path on the intended network and unpause
+   only when settlement and permission wiring are confirmed.
+
+If the owner is unavailable, the independent guardian can schedule and execute
+the delayed recovery. Rotating `upgradeAuthority` itself is authority-gated, so
+the operational owner cannot replace the timelock to bypass the delay.
+
+### Replacing a standalone marketplace
+
+An historical constructor-deployed `StemMarketplaceV2` cannot become a proxy in
+place. Before promoting the replacement:
+
+- enumerate active listings and failed-payment liabilities at the predecessor;
+- pause or retire new activity on the predecessor where operationally possible;
+- deploy and smoke the new implementation/timelock/proxy graph;
+- grant the proxy ContentProtection registrar access and TransferValidator
+  whitelist access, and revoke predecessor permissions only after transition;
+- promote the proxy through the reviewed infrastructure path and retain both
+  addresses and the liability audit in durable deployment records.
 
 ## CP-1 Attestation Registrar (backend voucher signer)
 

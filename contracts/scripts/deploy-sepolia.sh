@@ -111,7 +111,19 @@ if [[ ! -f "$BROADCAST_FILE" ]]; then
 fi
 
 STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
-MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
+MARKETPLACE_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE" | head -1)
+MARKETPLACE_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "StemMarketplaceV2")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
+MARKETPLACE=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "StemMarketplaceV2")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
 CONTENT_PROTECTION_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ContentProtection") | .contractAddress' "$BROADCAST_FILE" | head -1)
 CONTENT_PROTECTION=$(jq -r '
@@ -138,7 +150,10 @@ for graph_address in \
     "ContentProtection proxy:$CONTENT_PROTECTION" \
     "RevenueEscrow implementation:$REVENUE_ESCROW_IMPLEMENTATION" \
     "RevenueEscrow timelock:$REVENUE_ESCROW_TIMELOCK" \
-    "RevenueEscrow proxy:$REVENUE_ESCROW"; do
+    "RevenueEscrow proxy:$REVENUE_ESCROW" \
+    "StemMarketplaceV2 implementation:$MARKETPLACE_IMPLEMENTATION" \
+    "StemMarketplaceV2 timelock:$MARKETPLACE_TIMELOCK" \
+    "StemMarketplaceV2 proxy:$MARKETPLACE"; do
     graph_name="${graph_address%%:*}"
     graph_value="${graph_address#*:}"
     if [[ ! "$graph_value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
@@ -151,6 +166,8 @@ echo -e "${GREEN}=== Deployment Successful ===${NC}"
 echo ""
 echo -e "  StemNFT:             ${GREEN}$STEM_NFT${NC}"
 echo -e "  StemMarketplaceV2:   ${GREEN}$MARKETPLACE${NC}"
+echo -e "    implementation:    ${GREEN}$MARKETPLACE_IMPLEMENTATION${NC}"
+echo -e "    timelock:          ${GREEN}$MARKETPLACE_TIMELOCK${NC}"
 echo -e "  TransferValidator:   ${GREEN}$TRANSFER_VALIDATOR${NC}"
 echo -e "  ContentProtection:   ${GREEN}$CONTENT_PROTECTION${NC}"
 echo -e "    implementation:    ${GREEN}$CONTENT_PROTECTION_IMPLEMENTATION${NC}"
@@ -176,6 +193,8 @@ cat > "$DEPLOY_RECORD" <<EOF
   "contracts": {
     "StemNFT": "$STEM_NFT",
     "StemMarketplaceV2": "$MARKETPLACE",
+    "StemMarketplaceV2Implementation": "$MARKETPLACE_IMPLEMENTATION",
+    "StemMarketplaceV2Timelock": "$MARKETPLACE_TIMELOCK",
     "TransferValidator": "$TRANSFER_VALIDATOR",
     "ContentProtection": "$CONTENT_PROTECTION",
     "ContentProtectionImplementation": "$CONTENT_PROTECTION_IMPLEMENTATION",

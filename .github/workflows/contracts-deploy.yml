@@ -38,10 +38,14 @@ on:
           - set-show-campaign-confirmer
           - pause-show-campaign-escrow
           - pause-revenue-escrow
+          - pause-stem-marketplace
           - schedule-revenue-escrow-upgrade
           - execute-revenue-escrow-upgrade
           - smoke-revenue-escrow
           - verify-revenue-escrow-sourcify
+          - schedule-stem-marketplace-upgrade
+          - execute-stem-marketplace-upgrade
+          - smoke-stem-marketplace
           - create-show-campaign
           - confirm-show-campaign-booking
           - confirm-show-campaign-fulfillment
@@ -100,7 +104,7 @@ jobs:
               ;;
             verify-revenue-escrow-sourcify)
               if [[ "${{ inputs.target_network }}" != "base-sepolia" ]]; then
-                echo "::error::RevenueEscrow Sourcify workflow verification currently targets Base Sepolia only."
+                echo "::error::Sourcify workflow verification currently targets Base Sepolia only."
                 exit 1
               fi
               ;;
@@ -141,6 +145,14 @@ jobs:
           INPUT_PAYMENT_ASSET_REGISTRY_ADDRESS: ${{ vars.PAYMENT_ASSET_REGISTRY_ADDRESS }}
           INPUT_STEM_NFT_ADDRESS: ${{ vars.STEM_NFT_ADDRESS }}
           INPUT_MARKETPLACE_ADDRESS: ${{ vars.MARKETPLACE_ADDRESS }}
+          INPUT_MARKETPLACE_OWNER: ${{ vars.MARKETPLACE_OWNER }}
+          INPUT_MARKETPLACE_DEPLOYER: ${{ vars.MARKETPLACE_DEPLOYER }}
+          INPUT_MARKETPLACE_IMPLEMENTATION: ${{ vars.MARKETPLACE_IMPLEMENTATION }}
+          INPUT_MARKETPLACE_TIMELOCK_ADDRESS: ${{ vars.MARKETPLACE_TIMELOCK_ADDRESS }}
+          INPUT_MARKETPLACE_GUARDIAN: ${{ vars.MARKETPLACE_GUARDIAN }}
+          INPUT_MARKETPLACE_TIMELOCK_MIN_DELAY: ${{ vars.MARKETPLACE_TIMELOCK_MIN_DELAY }}
+          INPUT_MARKETPLACE_PAUSED: ${{ vars.MARKETPLACE_PAUSED }}
+          INPUT_MARKETPLACE_UPGRADE_SALT: ${{ vars.MARKETPLACE_UPGRADE_SALT }}
           INPUT_TRANSFER_VALIDATOR_ADDRESS: ${{ vars.TRANSFER_VALIDATOR_ADDRESS }}
           INPUT_EXISTING_ADMIN: ${{ vars.EXISTING_ADMIN }}
           INPUT_CONTENT_PROTECTION_PROXY: ${{ vars.CONTENT_PROTECTION_PROXY }}
@@ -214,6 +226,14 @@ jobs:
             PAYMENT_ASSET_REGISTRY_ADDRESS
             STEM_NFT_ADDRESS
             MARKETPLACE_ADDRESS
+            MARKETPLACE_OWNER
+            MARKETPLACE_DEPLOYER
+            MARKETPLACE_IMPLEMENTATION
+            MARKETPLACE_TIMELOCK_ADDRESS
+            MARKETPLACE_GUARDIAN
+            MARKETPLACE_TIMELOCK_MIN_DELAY
+            MARKETPLACE_PAUSED
+            MARKETPLACE_UPGRADE_SALT
             TRANSFER_VALIDATOR_ADDRESS
             EXISTING_ADMIN
             CONTENT_PROTECTION_PROXY
@@ -302,7 +322,7 @@ jobs:
           set -euo pipefail
           requires_signer=true
           case "${{ inputs.operation }}" in
-            smoke-revenue-escrow|verify-revenue-escrow-sourcify) requires_signer=false ;;
+            smoke-revenue-escrow|verify-revenue-escrow-sourcify|smoke-stem-marketplace) requires_signer=false ;;
           esac
           if [[ "${requires_signer}" == "true" && -z "${PRIVATE_KEY:-}" ]]; then
             echo "::error::Set CONTRACT_DEPLOYER_PRIVATE_KEY in the contracts-${{ inputs.environment }} GitHub environment."
@@ -346,6 +366,31 @@ jobs:
               revenue_delay="${REVENUE_ESCROW_TIMELOCK_MIN_DELAY:-172800}"
               if [[ ! "${revenue_delay}" =~ ^[0-9]+$ ]] || lt_uint "${revenue_delay}" "172800"; then
                 echo "::error::REVENUE_ESCROW_TIMELOCK_MIN_DELAY must be at least 172800 seconds (48h)."
+                exit 1
+              fi
+              ;;
+          esac
+
+          case "${{ inputs.operation }}" in
+            deploy-protocol|deploy-stem-marketplace)
+              required_names=(MARKETPLACE_OWNER MARKETPLACE_GUARDIAN)
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "::error::${{ inputs.operation }} requires ${name} on shared networks."
+                  exit 1
+                fi
+              done
+              if [[ "${MARKETPLACE_OWNER,,}" == "${MARKETPLACE_GUARDIAN,,}" ]]; then
+                echo "::error::MARKETPLACE_GUARDIAN must be independent from MARKETPLACE_OWNER."
+                exit 1
+              fi
+              if [[ "${deployer,,}" == "${MARKETPLACE_GUARDIAN,,}" ]]; then
+                echo "::error::MARKETPLACE_GUARDIAN must be independent from the deployer."
+                exit 1
+              fi
+              marketplace_delay="${MARKETPLACE_TIMELOCK_MIN_DELAY:-172800}"
+              if [[ ! "${marketplace_delay}" =~ ^[0-9]+$ ]] || lt_uint "${marketplace_delay}" "172800"; then
+                echo "::error::MARKETPLACE_TIMELOCK_MIN_DELAY must be at least 172800 seconds (48h)."
                 exit 1
               fi
               ;;
@@ -448,6 +493,12 @@ jobs:
                 exit 1
               fi
               ;;
+            pause-stem-marketplace)
+              if [[ -z "${MARKETPLACE_ADDRESS:-}" || -z "${PAUSED:-}" ]]; then
+                echo "::error::pause-stem-marketplace requires MARKETPLACE_ADDRESS and PAUSED."
+                exit 1
+              fi
+              ;;
             schedule-revenue-escrow-upgrade)
               if [[ -z "${REVENUE_ESCROW_ADDRESS:-}" || -z "${REVENUE_ESCROW_TIMELOCK_ADDRESS:-}" ]]; then
                 echo "::error::schedule-revenue-escrow-upgrade requires proxy and timelock addresses."
@@ -464,6 +515,24 @@ jobs:
               required_names=(REVENUE_ESCROW_ADDRESS REVENUE_ESCROW_OWNER REVENUE_ESCROW_DEPLOYER REVENUE_ESCROW_IMPLEMENTATION REVENUE_ESCROW_TIMELOCK_ADDRESS REVENUE_ESCROW_GUARDIAN REVENUE_ESCROW_PERIOD REVENUE_ESCROW_TIMELOCK_MIN_DELAY)
               for name in "${required_names[@]}"; do
                 if [[ -z "${!name:-}" ]]; then echo "::error::smoke-revenue-escrow requires ${name}."; exit 1; fi
+              done
+              ;;
+            schedule-stem-marketplace-upgrade)
+              if [[ -z "${MARKETPLACE_ADDRESS:-}" || -z "${MARKETPLACE_TIMELOCK_ADDRESS:-}" ]]; then
+                echo "::error::schedule-stem-marketplace-upgrade requires proxy and timelock addresses."
+                exit 1
+              fi
+              ;;
+            execute-stem-marketplace-upgrade)
+              if [[ -z "${MARKETPLACE_ADDRESS:-}" || -z "${MARKETPLACE_TIMELOCK_ADDRESS:-}" || -z "${NEW_IMPLEMENTATION:-}" ]]; then
+                echo "::error::execute-stem-marketplace-upgrade requires proxy, timelock, and NEW_IMPLEMENTATION."
+                exit 1
+              fi
+              ;;
+            smoke-stem-marketplace)
+              required_names=(MARKETPLACE_ADDRESS MARKETPLACE_OWNER MARKETPLACE_DEPLOYER MARKETPLACE_IMPLEMENTATION MARKETPLACE_TIMELOCK_ADDRESS MARKETPLACE_GUARDIAN MARKETPLACE_TIMELOCK_MIN_DELAY STEM_NFT_ADDRESS CONTENT_PROTECTION_ADDRESS PAYMENT_ASSET_REGISTRY_ADDRESS PROTOCOL_FEE_BPS FEE_RECIPIENT)
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::smoke-stem-marketplace requires ${name}."; exit 1; fi
               done
               ;;
             create-show-campaign)
@@ -552,6 +621,13 @@ jobs:
                 exit 1
               fi
               ;;
+            pause-stem-marketplace)
+              live_owner="$(cast call "${MARKETPLACE_ADDRESS}" 'owner()(address)' --rpc-url "${rpc_url}")"
+              if [[ "${live_owner,,}" != "${deployer,,}" ]]; then
+                echo "::error::StemMarketplaceV2 pause signer ${deployer} is not owner ${live_owner}."
+                exit 1
+              fi
+              ;;
             schedule-revenue-escrow-upgrade|execute-revenue-escrow-upgrade)
               if [[ "${{ inputs.operation }}" == "schedule-revenue-escrow-upgrade" ]]; then
                 role="$(cast call "${REVENUE_ESCROW_TIMELOCK_ADDRESS}" 'PROPOSER_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
@@ -561,6 +637,18 @@ jobs:
               allowed="$(cast call "${REVENUE_ESCROW_TIMELOCK_ADDRESS}" 'hasRole(bytes32,address)(bool)' "${role}" "${deployer}" --rpc-url "${rpc_url}")"
               if [[ "${allowed}" != "true" ]]; then
                 echo "::error::Signer ${deployer} does not hold the required RevenueEscrow timelock role."
+                exit 1
+              fi
+              ;;
+            schedule-stem-marketplace-upgrade|execute-stem-marketplace-upgrade)
+              if [[ "${{ inputs.operation }}" == "schedule-stem-marketplace-upgrade" ]]; then
+                role="$(cast call "${MARKETPLACE_TIMELOCK_ADDRESS}" 'PROPOSER_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              else
+                role="$(cast call "${MARKETPLACE_TIMELOCK_ADDRESS}" 'EXECUTOR_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              fi
+              allowed="$(cast call "${MARKETPLACE_TIMELOCK_ADDRESS}" 'hasRole(bytes32,address)(bool)' "${role}" "${deployer}" --rpc-url "${rpc_url}")"
+              if [[ "${allowed}" != "true" ]]; then
+                echo "::error::Signer ${deployer} does not hold the required StemMarketplaceV2 timelock role."
                 exit 1
               fi
               ;;
@@ -643,6 +731,22 @@ jobs:
         if: inputs.operation == 'deploy-stem-marketplace'
         run: make deploy-stem-marketplace
 
+      - name: Validate deployed StemMarketplaceV2 authority graph
+        if: inputs.operation == 'deploy-stem-marketplace'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "contracts/deployments/stem-marketplace.${{ inputs.target_network }}.remote.env"
+          set +a
+          make smoke-stem-marketplace
+
+      - name: Verify deployed StemMarketplaceV2 graph on Sourcify
+        if: inputs.operation == 'deploy-stem-marketplace' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/DeployStemMarketplace.s.sol/84532/run-latest.json
+        run: make verify-stem-marketplace-sourcify
+
       - name: Upgrade content protection proxy
         if: inputs.operation == 'upgrade-content-protection'
         run: |
@@ -687,6 +791,10 @@ jobs:
         if: inputs.operation == 'pause-revenue-escrow'
         run: make pause-revenue-escrow
 
+      - name: Pause or unpause StemMarketplaceV2
+        if: inputs.operation == 'pause-stem-marketplace'
+        run: make pause-stem-marketplace
+
       - name: Schedule RevenueEscrow upgrade
         if: inputs.operation == 'schedule-revenue-escrow-upgrade'
         run: make schedule-revenue-escrow-upgrade
@@ -704,6 +812,18 @@ jobs:
         env:
           BROADCAST_FILE: contracts/broadcast/DeployRevenueEscrow.s.sol/84532/run-latest.json
         run: make verify-revenue-escrow-sourcify
+
+      - name: Schedule StemMarketplaceV2 upgrade
+        if: inputs.operation == 'schedule-stem-marketplace-upgrade'
+        run: make schedule-stem-marketplace-upgrade
+
+      - name: Execute StemMarketplaceV2 upgrade
+        if: inputs.operation == 'execute-stem-marketplace-upgrade'
+        run: make execute-stem-marketplace-upgrade
+
+      - name: Smoke StemMarketplaceV2 authority graph
+        if: inputs.operation == 'smoke-stem-marketplace'
+        run: make smoke-stem-marketplace
 
       - name: Create and activate show campaign
         if: inputs.operation == 'create-show-campaign'
@@ -752,7 +872,7 @@ jobs:
           make release-show-campaign-funds
 
       - name: Summarize admin/config operation
-        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'pause-revenue-escrow' || inputs.operation == 'schedule-revenue-escrow-upgrade' || inputs.operation == 'execute-revenue-escrow-upgrade' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'
+        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'pause-revenue-escrow' || inputs.operation == 'pause-stem-marketplace' || inputs.operation == 'schedule-revenue-escrow-upgrade' || inputs.operation == 'execute-revenue-escrow-upgrade' || inputs.operation == 'schedule-stem-marketplace-upgrade' || inputs.operation == 'execute-stem-marketplace-upgrade' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'
         shell: bash
         run: |
           set -euo pipefail
@@ -787,9 +907,18 @@ jobs:
                 echo "- RevenueEscrow proxy: \`${REVENUE_ESCROW_ADDRESS}\`"
                 echo "- paused: \`${PAUSED}\`"
                 ;;
+              pause-stem-marketplace)
+                echo "- StemMarketplaceV2 proxy: \`${MARKETPLACE_ADDRESS}\`"
+                echo "- paused: \`${PAUSED}\`"
+                ;;
               schedule-revenue-escrow-upgrade|execute-revenue-escrow-upgrade)
                 echo "- RevenueEscrow proxy: \`${REVENUE_ESCROW_ADDRESS}\`"
                 echo "- RevenueEscrow timelock: \`${REVENUE_ESCROW_TIMELOCK_ADDRESS}\`"
+                echo "- new implementation: \`${NEW_IMPLEMENTATION:-created during schedule}\`"
+                ;;
+              schedule-stem-marketplace-upgrade|execute-stem-marketplace-upgrade)
+                echo "- StemMarketplaceV2 proxy: \`${MARKETPLACE_ADDRESS}\`"
+                echo "- StemMarketplaceV2 timelock: \`${MARKETPLACE_TIMELOCK_ADDRESS}\`"
                 echo "- new implementation: \`${NEW_IMPLEMENTATION:-created during schedule}\`"
                 ;;
               create-show-campaign)

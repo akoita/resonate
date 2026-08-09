@@ -8,11 +8,11 @@ owner: "@akoita"
 
 ## Status
 
-`partial` — `ShowCampaignEscrow` and `RevenueEscrow` use the guarded UUPS
-posture. `StemMarketplaceV2` remains immutable pending its separate issue
-[#1300](https://github.com/akoita/resonate/issues/1300) slice; `StemNFT` and
-`TransferValidator` remain intentionally swap-oriented while their final stance
-is recorded in the upgradeability RFC.
+`partial` — `ShowCampaignEscrow`, `RevenueEscrow`, and `StemMarketplaceV2`
+use the guarded UUPS posture. `StemNFT` and `TransferValidator` remain
+intentionally immutable/swap-oriented while the remaining `ContentProtection`
+governance hardening and final umbrella decisions stay tracked by
+[#1300](https://github.com/akoita/resonate/issues/1300).
 
 ## Who This Is For
 
@@ -60,6 +60,20 @@ environment replacing one must explicitly audit or settle its outstanding
 balances, deploy the new graph, update authorized depositors and linked content
 protection, and promote the proxy address through deployment configuration.
 
+### `StemMarketplaceV2`
+
+The marketplace proxy keeps listings, fee configuration, failed-payment
+liabilities, and dependency addresses in upgrade-safe storage. Its fast pause
+blocks new listings and purchases, including delegated buys, but sellers can
+still cancel listings and recipients can still claim already-owed failed
+payments. The owner can rotate the payment-asset registry without replacing the
+marketplace address.
+
+Historical constructor-deployed marketplace addresses cannot be upgraded in
+place. Replacement rollout deploys a fresh proxy graph, grants the proxy the
+ContentProtection registrar and TransferValidator whitelist permissions, and
+promotes only the proxy address to applications.
+
 ## Authority Model
 
 | Authority | Capability |
@@ -96,6 +110,22 @@ Important environment variables:
 - `UPGRADE_ACTION`
 - `NEW_IMPLEMENTATION` for the execute phase
 
+Marketplace operations:
+
+- `deploy-stem-marketplace` — deploy and verify the marketplace implementation,
+  timelock, and stable proxy against an existing protocol graph;
+- `pause-stem-marketplace` — stop or resume new listings and purchases;
+- `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` —
+  perform the two-phase timelocked recovery;
+- `smoke-stem-marketplace` — validate dependencies, fee configuration, pause
+  state, implementation slot, and guardian/owner authority graph.
+
+Marketplace governance variables use the `MARKETPLACE_OWNER`,
+`MARKETPLACE_GUARDIAN`, `MARKETPLACE_TIMELOCK_MIN_DELAY`,
+`MARKETPLACE_IMPLEMENTATION`, and `MARKETPLACE_TIMELOCK_ADDRESS` names. The app
+continues to consume `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`,
+which always point to the stable proxy.
+
 Shared-network deployment requires explicit owner and guardian addresses. The
 guardian must differ from both owner and deployer, and the delay cannot be less
 than 48 hours.
@@ -106,6 +136,8 @@ than 48 hours.
 cd contracts
 forge test --match-contract 'RevenueEscrow.*Test' -vv
 forge test --match-path 'test/integration/RevenueEscrowTimelock.t.sol' -vv
+forge test --match-contract 'StemMarketplace.*Test' -vv
+forge test --match-path 'test/integration/StemMarketplaceTimelock.t.sol' -vv
 halmos --contract RevenueEscrowFormalTest
 bash scripts/check-storage-layout.sh
 certoraRun certora/conf/revenue_escrow.conf
@@ -114,13 +146,19 @@ certoraRun certora/conf/revenue_escrow.conf
 The RevenueEscrow suites cover native and ERC-20 conservation, freeze/release/
 redirect behavior, pause coverage, access control, timelock delay, mutual veto,
 guardian recovery, and live custody state surviving an upgrade.
+The marketplace suites cover listing and payment conservation, pause coverage,
+registry rotation, authority separation, mutual veto, guardian recovery, and
+listing/failed-payment state surviving an upgrade.
 
 ## References
 
 - Contract: `contracts/src/core/RevenueEscrow.sol`
 - Interface: `contracts/src/interfaces/IRevenueEscrow.sol`
+- Marketplace contract: `contracts/src/core/StemMarketplaceV2.sol`
+- Marketplace interface: `contracts/src/interfaces/IStemMarketplaceV2.sol`
 - Deployment workflow: `.github/workflows/contracts-deploy.yml`
 - Operator runbook: `docs/smart-contracts/operations-runbook.md`
 - Deployment guide: `docs/smart-contracts/deployment.md`
 - Design rationale: `docs/rfc/contract-upgradeability-and-recovery.md`
 - Tracking: [#1300](https://github.com/akoita/resonate/issues/1300)
+- Marketplace slice: [#1575](https://github.com/akoita/resonate/issues/1575)

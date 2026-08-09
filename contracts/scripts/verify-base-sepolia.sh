@@ -283,7 +283,7 @@ constructor_args_for() {
     )
 
     case "$contract_name" in
-        TransferValidator|ContentProtection|RevenueEscrow|ShowCampaignEscrow)
+        TransferValidator|ContentProtection|RevenueEscrow|ShowCampaignEscrow|StemMarketplaceV2)
             echo ""
             ;;
         ERC1967Proxy)
@@ -300,9 +300,6 @@ constructor_args_for() {
             ;;
         PaymentAssetRegistry)
             cast abi-encode "constructor(address)" "${args[0]}" | sed 's/^0x//'
-            ;;
-        StemMarketplaceV2)
-            cast abi-encode "constructor(address,address,address,address,uint256)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" "${args[4]}" | sed 's/^0x//'
             ;;
         TimelockController)
             cast abi-encode "constructor(uint256,address[],address[],address)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'

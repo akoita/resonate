@@ -14,7 +14,7 @@
 set -uo pipefail
 
 MODE="${1:-check}"
-CONTRACTS=(ContentProtection ShowCampaignEscrow RevenueEscrow)
+CONTRACTS=(ContentProtection ShowCampaignEscrow RevenueEscrow StemMarketplaceV2)
 DIR="storage-layout"
 mkdir -p "$DIR"
 
