@@ -60,7 +60,7 @@ Each campaign gallery mixes three kinds of image:
 | `felicia-farerre-dublin-hero.webp` | Felicia Farerre | All rights reserved — demo use only | Wide hero composed from her studio press photo (vignette-feathered portrait + blurred-fill background) via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
 | `felicia-farerre-portrait.webp` | Felicia Farerre | All rights reserved — demo use only | “After Rain” single cover art via [her official site](https://www.feliciafarerre.com/) |
 | `felicia-farerre-studio.webp` | Felicia Farerre | All rights reserved — demo use only | Press photo via [Crossover Music Magazine](https://crossovermusicmagazine.com/) |
-| `felicia-angels-cover.webp` | Felicia Farerre | All rights reserved — demo use only | “In the Company of Angels” album cover art (extracted from the release) |
+| `felicia-angels-cover.webp` | Felicia Farerre | All rights reserved — demo use only | [“In the Company of Angels” album cover art](https://music.apple.com/us/album/in-the-company-of-angels/1537118138) |
 | `felicia-farerre-dublin-venue.webp` | William Murphy | CC BY-SA 2.0 | [Dame Street — The Olympia Theatre](https://commons.wikimedia.org/wiki/File:Dame_Street_-_The_Olympia_Theatre_(3433685951).jpg) |
 | `leona-lewis-lagos-hero.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, Abu Dhabi ([Getty Images](https://www.gettyimages.fr/)) |
 | `leona-lewis-live.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial photo, amfAR Venice 2023 ([Getty Images](https://www.gettyimages.fr/)) |
