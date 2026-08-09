@@ -366,6 +366,29 @@ describe('CatalogService (integration)', () => {
     expect(updated.status).toBe('published');
   });
 
+  it('does not let an owner reopen a published release to bypass disclosure locking', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Locked Disclosure',
+      tracks: [{ title: 'Locked Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    await catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+      status: 'published',
+    });
+
+    await expect(
+      catalog.updateRelease(created.id, `${TEST_PREFIX}user`, { status: 'draft' }),
+    ).rejects.toThrow('cannot return to an editable lifecycle state');
+    await expect(
+      catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+        tracks: [{
+          id: created.tracks[0].id,
+          aiDisclosure: { level: 'all', facets: [] },
+        }],
+      }),
+    ).rejects.toThrow('cannot be silently replaced');
+  });
+
   // #1492: owner-scoped post-hoc correction of the credited artist.
   describe('updateRelease primaryArtist correction (#1492)', () => {
     let releaseId: string;

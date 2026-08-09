@@ -1831,6 +1831,17 @@ export class CatalogService implements OnModuleInit {
       throw new ForbiddenException("Not authorized to update this release");
     }
 
+    if (
+      input.status !== undefined &&
+      input.status !== release.status &&
+      (release.status === "published" ||
+        (release.status === "ready" && input.status !== "published"))
+    ) {
+      throw new BadRequestException(
+        "Ready or published releases cannot return to an editable lifecycle state.",
+      );
+    }
+
     let disclosureCorrections: Array<{
       id: string;
       disclosure: ReturnType<typeof normalizeAiDisclosureInput>;
