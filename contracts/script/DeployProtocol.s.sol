@@ -165,6 +165,11 @@ contract DeployProtocol is ContentProtectionDeployment, RevenueEscrowDeployment,
         contentProtection.setRegistrar(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace granted ContentProtection registrar role");
 
+        contentProtection.setRegistrar(mintAuthorizer, true);
+        console.log(
+            "  -> Mint/attestation voucher authorizer granted ContentProtection registrar role:", mintAuthorizer
+        );
+
         validator.setWhitelist(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace whitelisted in validator");
 

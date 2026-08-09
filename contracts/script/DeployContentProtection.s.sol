@@ -40,6 +40,7 @@ contract DeployContentProtection is ContentProtectionDeployment, RevenueEscrowDe
         address stemNFTAddr = vm.envAddress("STEM_NFT_ADDRESS");
         address validatorAddr = vm.envAddress("TRANSFER_VALIDATOR_ADDRESS");
         address marketplaceAddr = vm.envOr("MARKETPLACE_ADDRESS", address(0));
+        address mintAuthorizer = vm.envOr("MINT_AUTHORIZER_ADDRESS", deployer);
 
         // Optional: existing admin address for fork impersonation
         address existingAdmin = vm.envOr("EXISTING_ADMIN", deployer);
@@ -55,6 +56,7 @@ contract DeployContentProtection is ContentProtectionDeployment, RevenueEscrowDe
         console.log("Existing StemNFT:", stemNFTAddr);
         console.log("Existing TransferValidator:", validatorAddr);
         console.log("Existing Marketplace:", marketplaceAddr);
+        console.log("Mint/attestation voucher authorizer:", mintAuthorizer);
         if (existingAdmin != deployer) {
             console.log("Existing Admin (will impersonate):", existingAdmin);
         }
@@ -75,6 +77,8 @@ contract DeployContentProtection is ContentProtectionDeployment, RevenueEscrowDe
             contentProtection.setRegistrar(marketplaceAddr, true);
             console.log("  -> Marketplace granted ContentProtection registrar role");
         }
+        contentProtection.setRegistrar(mintAuthorizer, true);
+        console.log("  -> Mint/attestation voucher authorizer granted ContentProtection registrar role");
 
         // 2. Deploy RevenueEscrow UUPS graph
         RevenueEscrowDeploymentResult memory revenueEscrowDeployment =
@@ -135,6 +139,7 @@ contract DeployContentProtection is ContentProtectionDeployment, RevenueEscrowDe
         console.log("  Stake Amount:", stakeAmountWei, "wei");
         console.log("  Escrow Period:", revenueEscrowConfig.escrowPeriod, "seconds");
         console.log("  Treasury:", feeRecipient);
+        console.log("  Mint/attestation voucher authorizer:", mintAuthorizer);
         console.log("  ContentProtection owner:", contentProtectionConfig.owner);
         console.log("  ContentProtection guardian:", contentProtectionConfig.guardian);
         console.log("  ContentProtection timelock delay:", contentProtectionConfig.timelockMinDelay, "seconds");

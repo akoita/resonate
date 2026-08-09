@@ -21,6 +21,7 @@ contract SmokeContentProtection is Script {
         address guardian = vm.envAddress("CONTENT_PROTECTION_GUARDIAN");
         address implementation = vm.envAddress("CONTENT_PROTECTION_IMPLEMENTATION");
         address timelockAddress = vm.envAddress("CONTENT_PROTECTION_TIMELOCK_ADDRESS");
+        address mintAuthorizer = vm.envAddress("MINT_AUTHORIZER_ADDRESS");
         uint256 delay = vm.envUint("CONTENT_PROTECTION_TIMELOCK_MIN_DELAY");
         bool expectedPaused = vm.envOr("CONTENT_PROTECTION_PAUSED", false);
 
@@ -29,6 +30,8 @@ contract SmokeContentProtection is Script {
         require(contentProtection.pendingOwner() == pendingOwner, "pending owner mismatch");
         require(contentProtection.upgradeAuthority() == timelockAddress, "upgrade authority mismatch");
         require(contentProtection.paused() == expectedPaused, "paused state mismatch");
+        require(mintAuthorizer != address(0), "mint authorizer is zero");
+        require(contentProtection.registrars(mintAuthorizer), "mint authorizer is not registrar");
         address liveImplementation = address(uint160(uint256(vm.load(proxy, ERC1967_IMPLEMENTATION_SLOT))));
         require(liveImplementation == implementation, "implementation slot mismatch");
 
@@ -43,6 +46,7 @@ contract SmokeContentProtection is Script {
         require(isLocal || delay >= 48 hours, "timelock delay below 48h");
 
         console.log("ContentProtection authority graph/config smoke check passed:", proxy);
+        console.log("Registered mint/attestation voucher authorizer:", mintAuthorizer);
     }
 
     function _requireRecoveryRoles(TimelockController timelock, address account) internal view {
