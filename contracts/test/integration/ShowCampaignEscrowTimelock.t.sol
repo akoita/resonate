@@ -210,7 +210,7 @@ contract ShowCampaignEscrowTimelockTest is Test, IShowCampaignEscrow {
         ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
         // The ops owner is NOT the upgrade authority; only the timelock is.
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.upgradeToAndCall(address(v2), "");
     }
 

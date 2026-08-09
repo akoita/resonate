@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IFailedPaymentRecovery} from "../common/IFailedPaymentRecovery.sol";
+import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
+import {INativePayment} from "../common/INativePayment.sol";
+import {IOwnershipTransfer} from "../common/IOwnershipTransfer.sol";
+import {IPaymentAssetRegistryConsumer} from "../common/IPaymentAssetRegistryConsumer.sol";
+import {IStakeGuards} from "../common/IStakeGuards.sol";
+
 /// @title IContentProtectionEvents
 /// @notice Canonical shared surface (events + custom errors) for ContentProtection.
 /// Kept separate from the consumer interface IContentProtection (which carries the
@@ -9,7 +17,15 @@ pragma solidity ^0.8.28;
 /// and indexers can all inherit it for `emit`/`expectEmit`/`selector` without
 /// having to implement the consumer surface. IContentProtection extends this so
 /// callers that catch ContentProtection reverts can reference the errors too.
-interface IContentProtectionEvents {
+interface IContentProtectionEvents is
+    IAddressGuard,
+    IFailedPaymentRecovery,
+    IFeeOnTransferGuard,
+    INativePayment,
+    IOwnershipTransfer,
+    IPaymentAssetRegistryConsumer,
+    IStakeGuards
+{
     // ============ Events ============
 
     event ContentAttested(
@@ -61,7 +77,6 @@ interface IContentProtectionEvents {
     );
     event MaxPriceMultiplierUpdated(uint256 oldMultiplier, uint256 newMultiplier);
     event TreasuryUpdated(address oldTreasury, address newTreasury);
-    event PaymentAssetRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
     event StakeAssetAmountUpdated(address indexed token, uint256 oldAmount, uint256 newAmount);
     event RegistrarUpdated(address indexed registrar, bool allowed);
     event TrackRegistered(uint256 indexed releaseId, uint256 indexed trackId);
@@ -69,14 +84,10 @@ interface IContentProtectionEvents {
     event StemProtectionRootRegistered(uint256 indexed releaseId, uint256 indexed stemTokenId);
     event TrackRevoked(uint256 indexed trackId);
     event ReleaseRevoked(uint256 indexed releaseId);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
     /// @notice A two-step ownership handoff was started: `newOwner` must call
     /// `acceptOwnership` to complete it (CP-3, #1271). `OwnershipTransferred` is emitted
     /// on acceptance.
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
-    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
-    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
     event BurnedSwept(address indexed token, address indexed treasury, uint256 amount);
 
     // ============ Errors ============
@@ -85,23 +96,15 @@ interface IContentProtectionEvents {
     error AlreadyAttested();
     error NotAttested();
     error AlreadyStaked();
-    error NotStaked();
     error InsufficientStake();
     error IsBlacklisted();
     error NotBlacklisted();
     error NotRegistrar();
     error InvalidParent();
     error RegistrationConflict();
-    error TransferFailed();
-    error ZeroAddress();
     error InvalidMultiplier();
     error InvalidTier();
-    error UnsupportedStakeAsset();
-    error UnexpectedETH();
     error InvalidStakeAmount();
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
-    error NothingToClaim();
-    error OnlySelf();
 
     /// @notice `acceptOwnership` was called by an address that is not the staged
     /// pending owner (CP-3, #1271).

@@ -366,7 +366,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         uint256 received = USDC_STAKE_AMOUNT - (USDC_STAKE_AMOUNT * 100) / 10_000;
         vm.expectRevert(
             abi.encodeWithSelector(
-                IContentProtectionEvents.FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received
+                FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received
             )
         );
         cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
@@ -498,7 +498,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
 
     function test_SweepBurned_RevertNothingToSweep() public {
         vm.prank(admin);
-        vm.expectRevert(IContentProtectionEvents.NothingToClaim.selector);
+        vm.expectRevert(NothingToClaim.selector);
         cp.sweepBurned(address(0));
     }
 
@@ -580,7 +580,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
 
     function test_Blacklist_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(IContentProtectionEvents.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         cp.blacklist(address(0));
     }
 
@@ -683,7 +683,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
 
     function test_TransferOwnership_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(IContentProtectionEvents.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         cp.transferOwnership(address(0));
     }
 

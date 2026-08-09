@@ -450,11 +450,23 @@ For material contract changes, Resonate expects a risk-scaled test ladder:
 - mutation testing with Certora Gambit for high-value contracts/specs when we
   need evidence that tests or formal rules catch intentionally injected faults.
 
-Shared contract surfaces such as events, errors, enums, and structs should live
-in interfaces under `contracts/src/interfaces/` so tests and production code do
-not duplicate declarations. Custom errors should include identifying parameters
-when they materially improve debugging, for example campaign id, caller,
+Shared contract surfaces use two levels. Capability interfaces under
+`contracts/src/common/` own declarations whose semantics are identical across
+multiple production contracts, such as upgrade authority, failed-payment
+recovery, and exact-transfer guards. Domain interfaces under
+`contracts/src/interfaces/` inherit those capabilities and own the remaining
+contract-specific events, errors, enums, structs, and function signatures. This
+keeps production and tests on one canonical declaration without creating a
+catch-all common module. Custom errors should include identifying parameters when
+they materially improve debugging, for example campaign id, caller,
 expected/current status, or requested/max basis points.
+
+ERC-7201 namespace structs are a separate implementation concern: the annotated
+storage struct, namespace constant, and accessor stay inside the owning contract.
+New upgradeable contracts adopt that layout from their first deployment. Existing
+deployed linear proxy state is not moved into a namespace without an explicit
+compatibility or replacement strategy, because mappings and dynamic collections
+cannot be enumerated by a normal reinitializer.
 
 Certora Prover specs use the `contracts/certora/conf/` and
 `contracts/certora/specs/` layout. Use that layer for high-value custody,

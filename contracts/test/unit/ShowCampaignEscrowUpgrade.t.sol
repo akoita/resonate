@@ -116,11 +116,11 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
 
         // Even the operational owner cannot upgrade — only the upgradeAuthority.
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.upgradeToAndCall(address(v2), "");
 
         vm.prank(alice);
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, alice));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, alice));
         escrow.upgradeToAndCall(address(v2), "");
     }
 
@@ -161,12 +161,12 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
 
         // Owner (and anyone else) cannot reassign the authority.
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.setUpgradeAuthority(newAuthority);
 
         // Zero address rejected.
         vm.prank(upgradeAuthority);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setUpgradeAuthority(address(0));
 
         // The current authority hands off.
@@ -179,7 +179,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         // Old authority can no longer upgrade; the new one can.
         ShowCampaignEscrowV2 v2 = new ShowCampaignEscrowV2();
         vm.prank(upgradeAuthority);
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.UnauthorizedUpgrade.selector, upgradeAuthority));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, upgradeAuthority));
         escrow.upgradeToAndCall(address(v2), "");
 
         vm.prank(newAuthority);
@@ -233,7 +233,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         escrow.pledge(id, 100e6);
         vm.warp(block.timestamp + 15 days);
         _pause();
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.markFailed(id);
     }
 
@@ -241,7 +241,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         uint256 id = _createAndActivate(0);
         _pause();
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.cancelCampaign(id);
     }
 
@@ -249,7 +249,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         uint256 id = _fundCampaign();
         vm.warp(block.timestamp + 31 days);
         _pause();
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.openRefundsAfterMissedBooking(id);
     }
 
@@ -257,7 +257,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         uint256 id = _fundCampaign();
         _pause();
         vm.prank(confirmer);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.confirmBooking(id);
     }
 
@@ -267,7 +267,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         escrow.confirmBooking(id);
         _pause();
         vm.prank(confirmer);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.releaseDeposit(id);
     }
 
@@ -277,7 +277,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         escrow.confirmBooking(id);
         _pause();
         vm.prank(confirmer);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.confirmFulfillment(id);
     }
 
@@ -289,7 +289,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         vm.stopPrank();
         vm.warp(block.timestamp + DISPUTE_WINDOW + 1);
         _pause();
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.releaseFunds(id);
     }
 
@@ -301,7 +301,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         escrow.markFailed(id);
         _pause();
         vm.prank(alice);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.claimRefund(id);
     }
 
@@ -312,7 +312,7 @@ contract ShowCampaignEscrowUpgradeTest is Test, IShowCampaignEscrow {
         assertTrue(escrow.paused());
 
         vm.prank(confirmer);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.confirmBooking(id);
 
         // Owner can always unpause (setPaused is never gated), then flow resumes.

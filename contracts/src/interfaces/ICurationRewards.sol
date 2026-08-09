@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IDisputeGuards} from "../common/IDisputeGuards.sol";
+import {INativePayment} from "../common/INativePayment.sol";
+import {IStakeGuards} from "../common/IStakeGuards.sol";
+
 /// @title ICurationRewards
 /// @notice Canonical shared surface (events, errors) for CurationRewards.
 /// Production code, tests, and indexers import this so the event/error contract
 /// cannot silently drift.
-interface ICurationRewards {
+interface ICurationRewards is IAddressGuard, IDisputeGuards, INativePayment, IStakeGuards {
     // ============ Events ============
 
     event ContentReported(
@@ -71,14 +76,7 @@ interface ICurationRewards {
 
     error SelfReport();
     error InsufficientCounterStake();
-    error NotStaked();
-    error DisputeNotResolved();
     error AlreadyClaimed();
     error NotUpheld();
-    error TransferFailed();
-    error ZeroAddress();
     error InsufficientAppealStake();
-    error NotDisputeParty();
-    error UnexpectedETH();
-    error UnsupportedStakeAsset();
 }

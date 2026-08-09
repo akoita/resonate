@@ -21,7 +21,7 @@ import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
  *   - slash invalidates the attestation and blacklists the attester;
  *   - only the owner can slash or refund.
  */
-contract ContentProtectionFuzzTest is Test {
+contract ContentProtectionFuzzTest is Test, IContentProtectionEvents {
     ContentProtection internal cp;
 
     address internal owner = makeAddr("owner");
@@ -208,7 +208,7 @@ contract ContentProtectionFuzzTest is Test {
     function testFuzz_SlashRequiresActiveStake(uint256 tokenId) public {
         _attest(tokenId); // attested but never staked
         vm.prank(owner);
-        vm.expectRevert(IContentProtectionEvents.NotStaked.selector);
+        vm.expectRevert(NotStaked.selector);
         cp.slash(tokenId, reporter);
     }
 }

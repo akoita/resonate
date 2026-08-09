@@ -1,11 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IAmountGuard} from "../common/IAmountGuard.sol";
+import {IFailedPaymentRecovery} from "../common/IFailedPaymentRecovery.sol";
+import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
+import {INativePayment} from "../common/INativePayment.sol";
+import {IPausableGuard} from "../common/IPausableGuard.sol";
+import {IUpgradeAuthority} from "../common/IUpgradeAuthority.sol";
+
 /// @title IRevenueEscrow
 /// @notice Canonical shared surface (struct, events, errors) for RevenueEscrow.
 /// Production code, tests, and indexers import this so the event/error contract
 /// cannot silently drift.
-interface IRevenueEscrow {
+interface IRevenueEscrow is
+    IAddressGuard,
+    IAmountGuard,
+    IFailedPaymentRecovery,
+    IFeeOnTransferGuard,
+    INativePayment,
+    IPausableGuard,
+    IUpgradeAuthority
+{
     // ============ Structs ============
 
     struct EscrowInfo {
@@ -42,11 +58,7 @@ interface IRevenueEscrow {
 
     event DepositorUpdated(address indexed depositor, bool allowed);
 
-    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
-    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
-
     event RevenueEscrowPaused(bool paused);
-    event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
 
     // ============ Errors ============
 
@@ -54,20 +66,11 @@ interface IRevenueEscrow {
     error EscrowIsFrozen();
     error EscrowNotFrozen();
     error EscrowNotExpired();
-    error ZeroAmount();
-    error ZeroAddress();
     error ContentProtectionNotSet();
-    error TransferFailed();
-    error UnexpectedETH();
     error UnsupportedAsset();
     error UnauthorizedDepositor(address caller);
     error BeneficiaryMismatch(uint256 tokenId, address expected, address provided);
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error TooManyEscrowAssets(uint256 tokenId);
-    error NothingToClaim();
-    error OnlySelf();
-    error Paused();
-    error UnauthorizedUpgrade(address caller);
 
     /// @notice `freezeByTrackRange` was called with a zero page size (RE-1, #1271); a
     /// zero-length page would make no progress and could loop forever.

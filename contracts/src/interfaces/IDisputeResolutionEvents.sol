@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IDisputeGuards} from "../common/IDisputeGuards.sol";
+
 /// @title IDisputeResolutionEvents
 /// @notice Canonical shared surface (enums, events, custom errors) for
 /// DisputeResolution. Kept separate from the consumer interface IDisputeResolution
@@ -11,7 +14,7 @@ pragma solidity ^0.8.28;
 /// because the events reference them; IDisputeResolution extends this interface.
 /// Reference the enums via IDisputeResolutionEvents (e.g. IDisputeResolutionEvents.Outcome) —
 /// an inherited enum is not reachable through the derived interface's name.
-interface IDisputeResolutionEvents {
+interface IDisputeResolutionEvents is IAddressGuard, IDisputeGuards {
     // ============ Enums ============
 
     enum DisputeStatus {
@@ -67,18 +70,15 @@ interface IDisputeResolutionEvents {
     // ============ Errors ============
 
     error DisputeNotFound();
-    error NotDisputeParty();
     error MaxEvidenceReached();
     error DisputeAlreadyResolved();
     error InvalidOutcome();
     error DisputeNotUnderReview();
     error ActiveDisputeExists();
     error AlreadyReported();
-    error DisputeNotResolved();
     error MaxAppealsReached();
     error NotLosingParty();
     error InvalidDisputeStatus();
-    error ZeroAddress();
     error JurorAlreadyRegistered();
     error JurorNotRegistered();
     error InsufficientJurors();

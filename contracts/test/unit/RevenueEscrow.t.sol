@@ -106,13 +106,13 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
     }
 
     function test_Deposit_RevertZeroAmount() public {
-        vm.expectRevert(IRevenueEscrow.ZeroAmount.selector);
+        vm.expectRevert(ZeroAmount.selector);
         escrow.deposit{value: 0}(1, alice);
     }
 
     function test_Deposit_RevertZeroAddress() public {
         vm.deal(address(this), 1 ether);
-        vm.expectRevert(IRevenueEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.deposit{value: 0.5 ether}(1, address(0));
     }
 
@@ -198,7 +198,7 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
 
         uint256 received = USDC_AMOUNT - (USDC_AMOUNT * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(IRevenueEscrow.FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
+            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, USDC_AMOUNT, received)
         );
         escrow.depositWithAsset(1, alice, address(feeToken), USDC_AMOUNT);
     }

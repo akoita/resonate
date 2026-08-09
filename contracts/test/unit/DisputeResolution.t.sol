@@ -118,7 +118,7 @@ contract DisputeResolutionTest is Test, IDisputeResolutionEvents {
 
         address outsider = makeAddr("outsider");
         vm.prank(outsider);
-        vm.expectRevert(IDisputeResolutionEvents.NotDisputeParty.selector);
+        vm.expectRevert(NotDisputeParty.selector);
         dr.submitEvidence(1, "ipfs://spam");
     }
 
@@ -405,7 +405,7 @@ contract DisputeResolutionTest is Test, IDisputeResolutionEvents {
         dr.fileDispute(42, reporter, creator, "ipfs://e1");
 
         // Can't appeal a dispute that hasn't been resolved
-        vm.expectRevert(IDisputeResolutionEvents.DisputeNotResolved.selector);
+        vm.expectRevert(DisputeNotResolved.selector);
         dr.appeal(1, creator);
     }
 
