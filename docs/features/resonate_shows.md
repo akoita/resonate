@@ -12,9 +12,12 @@ owner: "@akoita"
 
 The fan-funded campaign loop is implemented end to end and validated on
 **test/staging** (CI green on `main` across lint, contracts
-unit/fuzz/invariant, backend unit + integration, e2e, and build). It is **not
-yet in production for real users** — production (real-user) launch is a later
-phase, pending the go-live follow-ups below. A fan can discover a campaign, read its
+unit/fuzz/invariant, blocking Halmos, backend unit + integration, e2e, and
+build). The current Base Sepolia UUPS proxy has passed both the automatic
+refund path and the full 6%-fee/release path with backend indexer
+reconciliation. It is **not yet in production for real users** — production
+(real-user) launch is separately gated in
+[#1583](https://github.com/akoita/resonate/issues/1583). A fan can discover a campaign, read its
 artist-approved immutable terms, pledge on-chain into the campaign-specific
 `ShowCampaignEscrow` through their smart account, receive a durable receipt
 reconciled from the indexed `Pledged` event, and claim an automatic refund when
@@ -41,16 +44,14 @@ attendance history stay off-chain).
 
 **Before production (real-user) go-live (not feature gaps):**
 
-- promote the deployed `ShowCampaignEscrow` address into production config and
+- record the explicit owner GO and complete the application-wide launch package
+  in [#1583](https://github.com/akoita/resonate/issues/1583);
+- deploy and promote the production `ShowCampaignEscrow` proxy into production config and
   wire each campaign's `contractCampaignId` (a deploy-time step). The operator
   activation panel now removes the copy-paste from this step (#1390): the escrow
   input is prefilled from the platform-configured escrow for the campaign's
   chain, and a "Find on-chain campaign" button discovers the `contractCampaignId`
   by matching the draft's deterministic terms — see the operator controls below;
-- expand formal (Halmos/Certora) and mutation (Gambit) coverage — currently
-  outside the CI gate (`forge test --no-match-path "test/formal/*"`), tracked in
-  [#943](https://github.com/akoita/resonate/issues/943) and
-  [#944](https://github.com/akoita/resonate/issues/944);
 - optionally gate or remove the seeded `CAMPAIGNS[]` web fallback for production
   builds.
 

@@ -12,7 +12,7 @@ staging deployment and asserts the escrow indexer detects it**. Where the
 [lifecycle smoke](staging_lifecycle_smoke.md) proves the happy money path, this
 drill proves the **safety net** — the `shows.campaign_reconciliation_mismatch`
 alert (#1271) — is real end to end, not just wired in code. It is the last
-implementation gap in the #1271 production go-live gate.
+implementation gap that completed the #1271 test/staging readiness gate.
 
 The drift is deliberate: the drill **binds a campaign in the backend** (draft +
 authority + activate/link) and then **pledges on-chain WITHOUT creating the
@@ -76,8 +76,8 @@ environment.
 
 - **Operators / on-call** — the one-click proof that a real on-chain drift is
   detected and surfaced; run it after indexer changes.
-- **The #1271 go-live gate** — the artifact that closes "make the mismatch alert
-  real".
+- **The completed #1271 readiness gate** — the artifact that closed "make the
+  mismatch alert real". Production launch remains separately gated in #1583.
 
 ## How to run
 
@@ -95,7 +95,7 @@ cd scripts/staging-smoke
 npm ci
 API_BASE=https://api-staging.resonate.pydes.xyz \
 RPC_URL=<base-sepolia-rpc> \
-SHOW_CAMPAIGN_ESCROW_ADDRESS=0xd7035cf620c09653542b75a9b95bbec1514d8b23 \
+SHOW_CAMPAIGN_ESCROW_ADDRESS=0x87edc5e781cfb2052f64a142a9e8b77f58edc3eb \
 PAYMENT_TOKEN=<usdc-address> \
 CONTRACT_DEPLOYER_PRIVATE_KEY=<owner-key> \
 SMOKE_WALLET_PRIVATE_KEY=<smoke-key> \
@@ -158,3 +158,4 @@ No new **backend** or deploy env vars are introduced by this drill.
 - Feature page: [Resonate Shows](resonate_shows.md)
 - Operations pointer: [operations runbook](../smart-contracts/operations-runbook.md)
 - Issue: [#1271](https://github.com/akoita/resonate/issues/1271)
+- Production gate: [#1583](https://github.com/akoita/resonate/issues/1583)

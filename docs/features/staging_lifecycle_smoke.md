@@ -112,7 +112,7 @@ cd scripts/staging-smoke
 npm ci
 API_BASE=https://api-staging.resonate.pydes.xyz \
 RPC_URL=<base-sepolia-rpc> \
-SHOW_CAMPAIGN_ESCROW_ADDRESS=0xd7035cf620c09653542b75a9b95bbec1514d8b23 \
+SHOW_CAMPAIGN_ESCROW_ADDRESS=0x87edc5e781cfb2052f64a142a9e8b77f58edc3eb \
 PAYMENT_TOKEN=<usdc-address> \
 CONTRACT_DEPLOYER_PRIVATE_KEY=<owner-key> \
 SMOKE_WALLET_PRIVATE_KEY=<smoke-key> \

@@ -4,7 +4,8 @@ status: proposed
 owner: "@akoita"
 date: 2026-07-18
 related:
-  - "#1271 (Shows production-readiness + gated go-live)"
+  - "#1271 (completed Shows test/staging readiness gate)"
+  - "#1583 (gated Shows production go-live)"
   - "docs/roadmap/2026-07-shows-to-prod.md"
   - "docs/features/README.md (feature catalog)"
   - "docs/strategy/business-model-phase0-decisions.md (ADR-BM-1…6)"
@@ -18,10 +19,10 @@ fees) per ADR-BM-6 sequencing; the triage itself is vision-neutral
 
 ## Why this document exists
 
-The #1271 engineering gate for Shows custody is green: hardening, blocking
+The #1271 engineering gate for Shows custody is complete: hardening, blocking
 formal CI, the internal security review (all findings remediated), and the
 staging money loop with reconciliation + mismatch alerting are proven
-end-to-end. But **Shows cannot be deployed alone**. Resonate is one Next.js
+end-to-end. Production-only work now lives in #1583. But **Shows cannot be deployed alone**. Resonate is one Next.js
 app, one NestJS backend, one database, one deployment: the day Shows takes
 real money, every route in the app faces real users at whatever state it is
 in. A fan trusting us with a pledge will also open Drops, discovery, the
@@ -67,7 +68,7 @@ else is deliberately shipped, gated, hidden, or honestly labeled.
 | --- | --- | --- |
 | Onboarding + passkey auth/wallet | cross-cutting | First minutes of every cohort user; smart-account creation, session reset (#1199) exists. Full first-run QA pass needed. |
 | Home + discovery rails | shipped S8 | The storefront for Shows *and* Drops. #1491 (perf: slow/unstyled Drops cards) is open and launch-blocking for quality. |
-| Shows end-to-end | `partial` (staging-proven) | The flagship. Engineering proven; needs #1224 content (go-live cohort campaigns) + the production go-live section of #1271 (prod escrow deploy, `contractCampaignId` wiring, prod indexer verification, gate the seeded `CAMPAIGNS[]` fallback). |
+| Shows end-to-end | `partial` (staging-proven) | The flagship. Engineering proven; needs the production go-live package in #1583 (owner GO, prod escrow deploy, `contractCampaignId` wiring, prod indexer verification, fixture gating, and controlled cohort). |
 | Player / playback sessions | page still `draft` | Core listening loop. The feature page must be brought to truth and the playback path QA'd; Player Action Layer (`in-progress`) ships in its current scope (Shows chip live). |
 | Library (+ Moments tab, playlists) | shipped | Where ownership lands after collecting. Verify pass. |
 | Wallet funding + budget cap | page still `draft` | Fans fund pledges through this. Needs a truth pass on the doc and a hard QA of funding UX, low-balance, and failure states. |
@@ -116,7 +117,7 @@ alerts. Follow-ups (#1467 on-chain claims, #1470 auctions) stay deferred.
 | Desktop app artifacts | Unsigned, no auto-update; do not advertise. Web-only launch. |
 | `/sonic-radar` | Not in the feature catalog at all — undocumented surface. Audit; hide unless it earns a catalog page and a decision. |
 | `/import`, `/collection` | Same: not catalogued; audit → hide or document. |
-| Any remaining demo/seed surfaces | `CAMPAIGNS[]` fallback gating is already a #1271 go-live item; sweep for other fixture leaks. |
+| Any remaining demo/seed surfaces | `CAMPAIGNS[]` fallback gating is a #1583 go-live item; sweep for other fixture leaks. |
 
 **Catalog hygiene (violations of the "no silent partial features" rule):**
 `/sonic-radar`, `/import`, `/collection`, `/curators` exist as routes without
@@ -148,7 +149,7 @@ two of them (playback, wallet funding) are on the critical money path.
 4. **Docs truth:** six draft feature pages + four uncatalogued routes.
 5. **Cross-cutting:** legal pages, GDPR controls (or narrowed analytics),
    support channel, #1506 panel, infra-target comparison, backup/cost sweep.
-6. **Then** the #1271 go-live section itself (prod contract deploy → cohort).
+6. **Then** the #1583 gated go-live package itself (owner GO → production contract deploy → cohort).
 
 Items 1–5 are the honest distance between "custody is proven in staging" and
 "a coherent v1 in production." None of them are custody engineering — the
