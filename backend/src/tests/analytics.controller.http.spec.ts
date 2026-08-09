@@ -324,6 +324,34 @@ describe("AnalyticsController (HTTP)", () => {
     }));
   });
 
+  it.each(["wallet.connected", "wallet.faucet_requested"])(
+    "derives a privacy-safe wallet subject for %s",
+    async (eventName) => {
+      await request(app.getHttpServer())
+        .post("/analytics/product/event")
+        .set("Authorization", `Bearer ${authToken("wallet-user-1", "artist")}`)
+        .send({
+          eventName,
+          sessionId: "wallet-session-1",
+          payload: { chainId: 84532 },
+        })
+        .expect(201);
+
+      expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventName,
+          subjectType: "user_wallet",
+          subjectId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+          actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/),
+          actorUserId: "wallet-user-1",
+        }),
+      );
+      const recorded = instrumentationService.recordProductEvent.mock.calls.at(-1)?.[0];
+      expect(recorded?.subjectId).toBe(recorded?.actorId);
+      expect(JSON.stringify(recorded)).not.toContain("0xA5369569");
+    },
+  );
+
   it("accepts Session Intent product analytics events emitted by the AI DJ UI", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")
