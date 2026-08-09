@@ -121,8 +121,10 @@ export async function recordProductAnalytics(
 ) {
   if (!token) return null;
 
+  const { subjectType, subjectId, ...eventInput } = input;
   const event: ProductAnalyticsInput = {
-    ...input,
+    ...eventInput,
+    ...(subjectType && subjectId ? { subjectType, subjectId } : {}),
     eventName,
     sessionId: input.sessionId ?? getProductAnalyticsSessionId(),
     clientEventId: input.clientEventId ?? createProductAnalyticsClientEventId(),

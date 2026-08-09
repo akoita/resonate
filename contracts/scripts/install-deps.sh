@@ -40,13 +40,13 @@ install_git_dep() {
 
   if [[ -d "$path" ]] && [[ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "Using existing dependency: $path"
-    strip_git_metadata "$path"
+    "$SCRIPT_DIR/repair-kernel-submodule-metadata.sh"
     return
   fi
 
   rm -rf "$path"
   git clone --depth 1 --branch "$ref" --recurse-submodules "$repo_url" "$path"
-  strip_git_metadata "$path"
+  "$SCRIPT_DIR/repair-kernel-submodule-metadata.sh"
 }
 
 install_dep "lib/forge-std" foundry-rs/forge-std

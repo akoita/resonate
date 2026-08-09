@@ -120,13 +120,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Explicit, deterministic submodule init. actions/checkout's submodule support is
-      # unusable here: it always runs a recursive pass, and kernel's pinned .gitmodules
-      # omits an entry for its (unused, empty) lib/ExcessivelySafeCall gitlink, so any
-      # recursive walk hard-fails. Init top-level deps, then kernel's valid nested deps by name.
+      # Explicit, deterministic submodule init. The pinned Kernel commit omits
+      # metadata for one nested gitlink, so repair the runner checkout before
+      # initializing its required nested dependencies.
       - name: Init contract submodules
         run: |
           git submodule update --init
+          ./contracts/scripts/repair-kernel-submodule-metadata.sh
           git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
 
       - name: Export optional deployment variables
@@ -172,6 +172,7 @@ jobs:
           INPUT_CONTENT_PROTECTION_TIMELOCK_MIN_DELAY: ${{ vars.CONTENT_PROTECTION_TIMELOCK_MIN_DELAY }}
           INPUT_CONTENT_PROTECTION_PAUSED: ${{ vars.CONTENT_PROTECTION_PAUSED }}
           INPUT_CONTENT_PROTECTION_UPGRADE_SALT: ${{ vars.CONTENT_PROTECTION_UPGRADE_SALT }}
+          INPUT_MINT_AUTHORIZER_ADDRESS: ${{ vars.MINT_AUTHORIZER_ADDRESS }}
           INPUT_STAKE_ASSET_ADDRESS: ${{ vars.STAKE_ASSET_ADDRESS }}
           INPUT_STAKE_ASSET_AMOUNT: ${{ vars.STAKE_ASSET_AMOUNT }}
           INPUT_STAKE_ASSET_SYMBOL: ${{ vars.STAKE_ASSET_SYMBOL }}
@@ -263,6 +264,7 @@ jobs:
             CONTENT_PROTECTION_TIMELOCK_MIN_DELAY
             CONTENT_PROTECTION_PAUSED
             CONTENT_PROTECTION_UPGRADE_SALT
+            MINT_AUTHORIZER_ADDRESS
             STAKE_ASSET_ADDRESS
             STAKE_ASSET_AMOUNT
             STAKE_ASSET_SYMBOL
@@ -373,6 +375,19 @@ jobs:
           fi
 
           case "${{ inputs.operation }}" in
+            deploy-protocol|deploy-content-protection)
+              if [[ -z "${MINT_AUTHORIZER_ADDRESS:-}" ]]; then
+                MINT_AUTHORIZER_ADDRESS="${deployer}"
+                echo "MINT_AUTHORIZER_ADDRESS=${MINT_AUTHORIZER_ADDRESS}" >> "${GITHUB_ENV}"
+              fi
+              if [[ "${MINT_AUTHORIZER_ADDRESS,,}" == "0x0000000000000000000000000000000000000000" ]]; then
+                echo "::error::MINT_AUTHORIZER_ADDRESS must be non-zero."
+                exit 1
+              fi
+              ;;
+          esac
+
+          case "${{ inputs.operation }}" in
             deploy-protocol|deploy-content-protection|prepare-content-protection-v6-migration|execute-content-protection-v6-migration)
               for name in CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_GUARDIAN; do
                 if [[ -z "${!name:-}" ]]; then
@@ -458,6 +473,16 @@ jobs:
               for name in CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_TIMELOCK_ADDRESS NEW_IMPLEMENTATION; do
                 if [[ -z "${!name:-}" ]]; then echo "::error::${{ inputs.operation }} requires ${name}."; exit 1; fi
               done
+              if [[ "${{ inputs.operation }}" == "execute-content-protection-v6-migration" ]]; then
+                if [[ -z "${MINT_AUTHORIZER_ADDRESS:-}" ]]; then
+                  echo "::error::execute-content-protection-v6-migration requires MINT_AUTHORIZER_ADDRESS."
+                  exit 1
+                fi
+                if [[ "${MINT_AUTHORIZER_ADDRESS,,}" == "0x0000000000000000000000000000000000000000" ]]; then
+                  echo "::error::execute-content-protection-v6-migration requires a non-zero MINT_AUTHORIZER_ADDRESS."
+                  exit 1
+                fi
+              fi
               ;;
             schedule-content-protection-upgrade)
               for name in CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_TIMELOCK_ADDRESS CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_GUARDIAN; do
@@ -471,10 +496,14 @@ jobs:
               fi
               ;;
             smoke-content-protection)
-              required_names=(CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_DEPLOYER CONTENT_PROTECTION_IMPLEMENTATION CONTENT_PROTECTION_TIMELOCK_ADDRESS CONTENT_PROTECTION_GUARDIAN CONTENT_PROTECTION_TIMELOCK_MIN_DELAY)
+              required_names=(CONTENT_PROTECTION_PROXY CONTENT_PROTECTION_OWNER CONTENT_PROTECTION_DEPLOYER CONTENT_PROTECTION_IMPLEMENTATION CONTENT_PROTECTION_TIMELOCK_ADDRESS CONTENT_PROTECTION_GUARDIAN CONTENT_PROTECTION_TIMELOCK_MIN_DELAY MINT_AUTHORIZER_ADDRESS)
               for name in "${required_names[@]}"; do
                 if [[ -z "${!name:-}" ]]; then echo "::error::smoke-content-protection requires ${name}."; exit 1; fi
               done
+              if [[ "${MINT_AUTHORIZER_ADDRESS,,}" == "0x0000000000000000000000000000000000000000" ]]; then
+                echo "::error::smoke-content-protection requires a non-zero MINT_AUTHORIZER_ADDRESS."
+                exit 1
+              fi
               ;;
             set-content-protection-stake)
               if [[ -z "${CONTENT_PROTECTION_ADDRESS:-}" ]]; then

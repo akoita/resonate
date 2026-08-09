@@ -380,7 +380,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       void recordProductAnalytics(result.accessToken, "wallet.connected", {
         source: "auth",
-        subjectType: "wallet",
         payload: {
           authMode: mode === "register" ? "register" : "login",
           chainId,
@@ -393,7 +392,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         const { amountEth, chainId: fundedChainId } = result.signupFaucet;
         void recordProductAnalytics(result.accessToken, "wallet.faucet_requested", {
           source: "auth",
-          subjectType: "wallet",
           payload: {
             surface: "signup_faucet",
             status: "sent",

@@ -52,11 +52,13 @@ contract MigrateContentProtectionV6 is ContentProtectionDeployment {
     function _execute(uint256 signerKey, address signer, address proxy) internal {
         ContentProtection legacy = ContentProtection(payable(proxy));
         address implementation = vm.envAddress("NEW_IMPLEMENTATION");
+        address mintAuthorizer = vm.envAddress("MINT_AUTHORIZER_ADDRESS");
         TimelockController timelock = TimelockController(payable(vm.envAddress("CONTENT_PROTECTION_TIMELOCK_ADDRESS")));
         ContentProtectionConfig memory config = _contentProtectionConfig(signer);
         require(legacy.owner() == signer, "signer is not current owner");
         require(config.owner == signer, "CONTENT_PROTECTION_OWNER must be current owner");
         require(implementation.code.length != 0, "candidate implementation has no code");
+        require(mintAuthorizer != address(0), "mint authorizer is zero");
         require(address(timelock).code.length != 0, "candidate timelock has no code");
         require(
             ContentProtection(payable(implementation)).proxiableUUID() == ERC1967_IMPLEMENTATION_SLOT,
@@ -72,13 +74,16 @@ contract MigrateContentProtectionV6 is ContentProtectionDeployment {
 
         vm.startBroadcast(signerKey);
         legacy.upgradeToAndCall(implementation, abi.encodeCall(ContentProtection.reinitializeV6, (address(timelock))));
+        legacy.setRegistrar(mintAuthorizer, true);
         vm.stopBroadcast();
 
         require(legacy.upgradeAuthority() == address(timelock), "migration authority mismatch");
+        require(legacy.registrars(mintAuthorizer), "mint authorizer is not registrar");
         console.log("=== ContentProtection V6 migration EXECUTED ===");
         console.log("Proxy (unchanged):", proxy);
         console.log("Implementation:", implementation);
         console.log("Upgrade authority:", address(timelock));
+        console.log("Mint/attestation voucher authorizer:", mintAuthorizer);
     }
 
     function _requireRecoveryRoles(TimelockController timelock, address account) internal view {

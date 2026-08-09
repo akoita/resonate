@@ -17,7 +17,7 @@ import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeploye
 contract StemMarketplaceTimelockTest is Test, IStemMarketplaceV2 {
     uint256 internal constant MIN_DELAY = 48 hours;
     uint256 internal constant FEE_BPS = 1_000;
-    uint256 internal constant ROYALTY_BPS = 500;
+    uint96 internal constant ROYALTY_BPS = 500;
 
     StemNFT internal stemNFT;
     StemMarketplaceV2 internal marketplace;
@@ -69,9 +69,8 @@ contract StemMarketplaceTimelockTest is Test, IStemMarketplaceV2 {
         RevertingReceiver royaltyReceiver = new RevertingReceiver();
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(
-            seller, 10, "ipfs://upgrade-state", address(royaltyReceiver), uint96(ROYALTY_BPS), true, parentIds
-        );
+        uint256 tokenId =
+            stemNFT.mint(seller, 10, "ipfs://upgrade-state", address(royaltyReceiver), ROYALTY_BPS, true, parentIds);
         vm.startPrank(seller);
         stemNFT.setApprovalForAll(address(marketplace), true);
         uint256 listingId = marketplace.list(tokenId, 10, 1 ether, address(0), 7 days);

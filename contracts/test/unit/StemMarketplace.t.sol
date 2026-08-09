@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
@@ -40,7 +40,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     address public authorizer;
 
     uint256 constant PROTOCOL_FEE_BPS = 250; // 2.5%
-    uint256 constant ROYALTY_BPS = 500; // 5%
+    uint96 constant ROYALTY_BPS = 500; // 5%
     uint256 constant LISTING_DURATION = 7 days;
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_TEST = keccak256("local:test");
@@ -87,7 +87,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Mint NFTs for seller
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        stemNFT.mint(seller, 100, "ipfs://test", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
+        stemNFT.mint(seller, 100, "ipfs://test", royaltyReceiver, ROYALTY_BPS, true, parentIds);
 
         // Approve marketplace
         vm.prank(seller);
@@ -149,7 +149,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Seller mints a stem whose royalty receiver rejects ETH.
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://r", address(receiver), uint96(ROYALTY_BPS), true, parentIds);
+        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://r", address(receiver), ROYALTY_BPS, true, parentIds);
         vm.prank(seller);
         uint256 listingId = marketplace.list(tokenId, 10, 1 ether, address(0), LISTING_DURATION);
 
@@ -381,7 +381,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         contentProtection.setMaxListingPrice(releaseId, 1 ether);
 
         vm.startPrank(seller);
-        stemNFT.mint(seller, 1, "ipfs://latest", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
+        stemNFT.mint(seller, 1, "ipfs://latest", royaltyReceiver, ROYALTY_BPS, true, parentIds);
 
         uint256 listingId = marketplace.listLastMint(1, 0.25 ether, address(0), LISTING_DURATION, releaseId);
         vm.stopPrank();
@@ -492,7 +492,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
             "ipfs://protected-stem",
             releaseId,
             royaltyReceiver,
-            uint96(ROYALTY_BPS),
+            ROYALTY_BPS,
             true,
             parentIds,
             deadline,
@@ -508,7 +508,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
             "ipfs://protected-stem",
             releaseId,
             royaltyReceiver,
-            uint96(ROYALTY_BPS),
+            ROYALTY_BPS,
             true,
             parentIds,
             deadline,

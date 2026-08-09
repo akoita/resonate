@@ -250,9 +250,6 @@ contract Handler is Test {
         // Get quote
         (, uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace.quoteBuy(listingId, amount);
 
-        // Record balances before
-        uint256 sellerBefore = listing.seller.balance;
-
         // Buy
         marketplace.buy{value: totalPrice}(listingId, amount);
 

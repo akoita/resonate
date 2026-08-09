@@ -78,6 +78,21 @@ describe("product analytics helpers", () => {
     });
   });
 
+  it("omits incomplete subject pairs before sending", async () => {
+    await recordProductAnalytics("token-1", "wallet.connected", {
+      subjectType: "wallet",
+      payload: { chainId: 84532 },
+    });
+
+    expect(recordProductAnalyticsEvent).toHaveBeenCalledWith("token-1", {
+      eventName: "wallet.connected",
+      source: "web",
+      sessionId: "uuid-1",
+      clientEventId: "uuid-1",
+      payload: { chainId: 84532 },
+    });
+  });
+
   it("can read the browser auth token for low-level UI stores", () => {
     recordProductAnalyticsFromBrowser("settings.updated", {
       payload: { surface: "library", setting: "autoScanOnLoad", enabled: true },

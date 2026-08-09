@@ -166,10 +166,13 @@ export class AnalyticsController {
     @Body() body: ProductEventRequest,
     @Request() req: AuthenticatedRequest,
   ) {
+    const actorId = pseudonymousAnalyticsActorId(req.user?.userId);
+    const normalized = normalizeProductEventRequest(body);
     return this.analyticsInstrumentationService.recordProductEvent(
       {
-        ...normalizeProductEventRequest(body),
-        actorId: pseudonymousAnalyticsActorId(req.user?.userId),
+        ...normalized,
+        ...defaultProductEventSubject(normalized, actorId),
+        actorId,
         actorUserId: req.user?.userId,
       },
     );
@@ -339,6 +342,21 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     payload: sanitizeProductPayload(body.payload),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
+}
+
+function defaultProductEventSubject(
+  input: ProductAnalyticsInput,
+  actorId: string | undefined,
+): Pick<ProductAnalyticsInput, "subjectType" | "subjectId"> {
+  if (
+    actorId &&
+    !input.subjectType &&
+    !input.subjectId &&
+    (input.eventName === "wallet.connected" || input.eventName === "wallet.faucet_requested")
+  ) {
+    return { subjectType: "user_wallet", subjectId: actorId };
+  }
+  return { subjectType: input.subjectType, subjectId: input.subjectId };
 }
 
 function logProductAnalyticsRejection(reason: string, eventName: string) {

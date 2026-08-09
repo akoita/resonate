@@ -192,6 +192,8 @@ contract StemMarketplaceV2 is
     function _checkedListingExpiry(uint256 duration) internal view returns (uint40) {
         uint256 expiry = block.timestamp + duration;
         if (expiry > type(uint40).max) revert ListingExpiryOverflow();
+        // The explicit upper-bound check guarantees this conversion cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint40(expiry);
     }
 

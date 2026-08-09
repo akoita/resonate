@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {IContentProtectionEvents} from "../../src/interfaces/IContentProtectionEvents.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";

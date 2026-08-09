@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {IRevenueEscrow} from "../../src/interfaces/IRevenueEscrow.sol";
 import {RevenueEscrowProxyDeployer} from "../utils/RevenueEscrowProxyDeployer.sol";

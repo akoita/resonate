@@ -479,8 +479,8 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.RefundAvailable) revert RefundUnavailable(campaignId, campaign.status);
 
-        uint256 pledge = pledgedByBacker[campaignId][msg.sender];
-        if (pledge == 0) revert NoPledge(campaignId, msg.sender);
+        uint256 pledgedAmount = pledgedByBacker[campaignId][msg.sender];
+        if (pledgedAmount == 0) revert NoPledge(campaignId, msg.sender);
 
         // Refund the backer's pro-rata share of the *outstanding* balance. With no
         // deposit released (totalReleased == 0) this equals the full pledge, so the
@@ -489,7 +489,7 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
         // already-released deposit can never exceed the escrowed balance. totalPledged
         // is non-zero here because this backer's pledge is non-zero.
         uint256 outstanding = campaign.totalPledged - campaign.totalReleased;
-        uint256 amount = (pledge * outstanding) / campaign.totalPledged;
+        uint256 amount = (pledgedAmount * outstanding) / campaign.totalPledged;
 
         // Effects (CEI): clear the pledge and book the refund before transferring.
         pledgedByBacker[campaignId][msg.sender] = 0;
@@ -537,10 +537,10 @@ contract ShowCampaignEscrow is IShowCampaignEscrow, Initializable, UUPSUpgradeab
     function refundable(uint256 campaignId, address backer) external view returns (uint256) {
         Campaign storage campaign = _campaign(campaignId);
         if (campaign.status != CampaignStatus.RefundAvailable) return 0;
-        uint256 pledge = pledgedByBacker[campaignId][backer];
-        if (pledge == 0) return 0; // totalPledged is non-zero whenever a pledge is
+        uint256 pledgedAmount = pledgedByBacker[campaignId][backer];
+        if (pledgedAmount == 0) return 0; // totalPledged is non-zero whenever a pledge is
         uint256 outstanding = campaign.totalPledged - campaign.totalReleased;
-        return (pledge * outstanding) / campaign.totalPledged;
+        return (pledgedAmount * outstanding) / campaign.totalPledged;
     }
 
     function campaignStatus(uint256 campaignId) external view returns (CampaignStatus) {
