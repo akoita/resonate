@@ -45,6 +45,13 @@ const nextConfig = {
         pathname: `${apiBasePath}/catalog/releases/*/artwork`,
         search: "",
       },
+      {
+        protocol: apiOrigin.protocol.slice(0, -1),
+        hostname: apiOrigin.hostname,
+        port: apiOrigin.port,
+        pathname: `${apiBasePath}/shows/campaigns/*/visuals/*`,
+        search: "",
+      },
     ],
     dangerouslyAllowLocalIP: localImageOptimizerHosts.has(apiOrigin.hostname),
     minimumCacheTTL: 0,

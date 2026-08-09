@@ -61,6 +61,13 @@ describe("Next image configuration", () => {
         pathname: "/platform/v1/catalog/releases/*/artwork",
         search: "",
       },
+      {
+        protocol: "https",
+        hostname: "api.example.test",
+        port: "8443",
+        pathname: "/platform/v1/shows/campaigns/*/visuals/*",
+        search: "",
+      },
     ]);
     expect(config.images.dangerouslyAllowLocalIP).toBe(false);
     expect(config.images.minimumCacheTTL).toBe(0);
@@ -78,6 +85,13 @@ describe("Next image configuration", () => {
         hostname: "localhost",
         port: "3000",
         pathname: "/catalog/releases/*/artwork",
+        search: "",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "3000",
+        pathname: "/shows/campaigns/*/visuals/*",
         search: "",
       },
     ]);

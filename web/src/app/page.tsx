@@ -42,6 +42,7 @@ import {
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
+import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
@@ -852,12 +853,19 @@ export default function Home() {
         <section className="ng-section ng-section--tight">
           <div
             className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
-            style={activeHeroCampaignImage ? { "--ng-hero-image": `url(${activeHeroCampaignImage})` } as CSSProperties : undefined}
             onMouseEnter={() => setHeroPaused(true)}
             onMouseLeave={() => setHeroPaused(false)}
             onFocusCapture={() => setHeroPaused(true)}
             onBlurCapture={() => setHeroPaused(false)}
           >
+            {activeHeroCampaignImage ? (
+              <HomeCampaignVisual
+                src={activeHeroCampaignImage}
+                sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(100vw - 48px), calc(100vw - 320px)"
+                className="ng-hero__campaign-image"
+                preload={activeHeroCampaignId === ""}
+              />
+            ) : null}
             <svg
               className="ng-hero__motif"
               viewBox="0 0 600 600"
@@ -915,10 +923,16 @@ export default function Home() {
                       key={campaign.id}
                       type="button"
                       className={`ng-hero__campaign-tab ${selected ? "ng-hero__campaign-tab--active" : ""}`}
-                      style={image ? { "--ng-hero-thumb": `url(${image})` } as CSSProperties : undefined}
                       onClick={() => setActiveHeroCampaignId(campaign.id)}
                       aria-pressed={selected}
                     >
+                      {image ? (
+                        <HomeCampaignVisual
+                          src={image}
+                          sizes="(max-width: 767px) calc(100vw - 72px), (max-width: 1023px) calc(50vw - 48px), 380px"
+                          className="ng-hero__campaign-tab-image"
+                        />
+                      ) : null}
                       <span className="ng-hero__campaign-index">{String(index + 1).padStart(2, "0")}</span>
                       <span className="ng-hero__campaign-copy">
                         <strong>{campaignDisplayTitle(campaign)}</strong>
@@ -1870,14 +1884,19 @@ function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" 
     <Link href={`/shows/${campaign.id}`} className="ng-event-card">
       <div
         className={`ng-event-card__art ${hasImage ? "ng-event-card__art--image" : ""}`}
-        style={hasImage ? { "--ng-event-image": `url(${visualImage})` } as CSSProperties : undefined}
         aria-hidden
       >
-        {!hasImage ? (
+        {hasImage ? (
+          <HomeCampaignVisual
+            src={visualImage}
+            sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(50vw - 36px), calc((100vw - 368px) / 2)"
+            className="ng-event-card__image"
+          />
+        ) : (
           <span className="ng-monogram" style={{ fontSize: 72 }}>
             {initial}
           </span>
-        ) : null}
+        )}
       </div>
       <span
         className={`ng-event-card__badge ${
