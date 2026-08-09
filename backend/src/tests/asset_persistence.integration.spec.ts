@@ -51,7 +51,13 @@ describe("Asset Persistence", () => {
             .attach("files", audioBuffer, "test.mp3")
             .attach("artwork", imageBuffer, "cover.jpg")
             .field("artistId", artist.id)
-            .field("metadata", JSON.stringify({ title: "Test Release" }))
+            .field("metadata", JSON.stringify({
+                title: "Test Release",
+                tracks: [{
+                    title: "Test Release",
+                    aiDisclosure: { level: "none", facets: [] },
+                }],
+            }))
             .expect(201);
 
         const releaseId = response.body.releaseId;

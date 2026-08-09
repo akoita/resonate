@@ -57,6 +57,7 @@ import { ProcessingFailureCallout } from "../../../components/release/Processing
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
 import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
+import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
 import { DEFAULT_MARKETPLACE_LISTING_PRICE_WEI } from "../../../lib/stakeSafeListingPrice";
@@ -1432,6 +1433,7 @@ export default function ReleaseDetails() {
             <span className="release-year">{release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}</span>
           </div>
           <h1 className="release-title-lg text-gradient">{release.title}</h1>
+          <AiDisclosureBadge disclosure={release.aiDisclosure} showHumanMade />
           <div className="release-artist-row">
             <div className="artist-avatar" />
             {(() => {
@@ -2145,6 +2147,7 @@ export default function ReleaseDetails() {
                       <div className="track-title-info">
                         <span className="track-title-name">{track.title}</span>
                         {track.explicit && <span className="explicit-tag">E</span>}
+                        <AiDisclosureBadge disclosure={track.aiDisclosure} />
                       </div>
 
                       {canUseMixerPreview && track.stems && track.stems.length > 1 && (

@@ -13,6 +13,7 @@ import { estimateGenerationCostUsd, inferColdStart } from './generation-cost-mod
 import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
+import { AI_DISCLOSURE_VERSION } from '../catalog/ai-disclosure.policy';
 
 const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -359,6 +360,11 @@ export class GenerationService {
                 title: prompt.substring(0, 120),
                 processingStatus: 'complete',
                 generationMetadata: generationMetadata as any,
+                aiDisclosureLevel: 'ALL',
+                aiContributionFacets: [],
+                aiDisclosureSource: 'resonate_native',
+                aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+                aiDeclaredAt: new Date(generationMetadata.generatedAt),
                 rightsRoute: 'STANDARD_ESCROW',
                 rightsFlags: [],
                 rightsReason: AI_GENERATION_RIGHTS_REASON,
@@ -414,6 +420,16 @@ export class GenerationService {
         userId,
         trackId,
         releaseId: release.id,
+      });
+      this.eventBus.publish({
+        eventName: 'catalog.ai_disclosure_recorded',
+        eventVersion: 1,
+        occurredAt: generationMetadata.generatedAt,
+        releaseId: release.id,
+        trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+        facets: [],
       });
 
       // #1421: realized-cost telemetry for the completed generation.
@@ -905,15 +921,37 @@ export class GenerationService {
       },
     });
 
+    const disclosureChanged =
+      track.aiDisclosureLevel !== 'ALL' ||
+      track.aiDisclosureSource !== 'resonate_native';
+    const disclosedAt = new Date();
     await prisma.track.update({
       where: { id: trackId },
       data: {
         title: dto.title,
         artist: dto.artist,
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+        aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+        aiDeclaredAt: disclosedAt,
       },
     });
 
     await this.ensureAiGenerationRightsProvenance(track.releaseId);
+
+    if (disclosureChanged) {
+      this.eventBus.publish({
+        eventName: 'catalog.ai_disclosure_recorded',
+        eventVersion: 1,
+        occurredAt: disclosedAt.toISOString(),
+        releaseId: track.releaseId,
+        trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+        facets: [],
+      });
+    }
 
     return { success: true, releaseId: track.releaseId };
   }

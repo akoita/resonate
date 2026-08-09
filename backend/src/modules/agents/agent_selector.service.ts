@@ -11,6 +11,7 @@ import {
   TasteMemoryService,
 } from "../recommendations/taste_memory.service";
 import { resolveCreditedArtistName } from "../shared/artist_attribution";
+import { isPromotionEligible } from "../catalog/ai-disclosure.policy";
 
 export interface AgentSelectorInput {
   userId?: string;
@@ -84,6 +85,12 @@ export class AgentSelectorService {
       });
       const items = (result.items as any[]) ?? [];
       for (const item of items) {
+        // Defense in depth for alternate/mock catalog tools: ADR-BM-5 keeps
+        // fully generated music out of AI DJ promotion even when a candidate
+        // source forgets to apply the database filter.
+        if (!isPromotionEligible(item.aiDisclosureLevel ?? item.aiDisclosure?.level)) {
+          continue;
+        }
         const existing = byId.get(item.id);
         if (existing) {
           if (query && !existing.matchedQueries.includes(query)) {
@@ -247,5 +254,3 @@ function uniqueCaseInsensitive(values: string[]) {
   }
   return unique;
 }
-
-

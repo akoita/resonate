@@ -4,6 +4,10 @@ import { calculatePrice, PricingInput } from "../../../pricing/pricing";
 import { EmbeddingService } from "../../embeddings/embedding.service";
 import { EmbeddingStore } from "../../embeddings/embedding.store";
 import { GenerationService } from "../../generation/generation.service";
+import {
+  AI_PROMOTIONAL_ELIGIBILITY_WHERE,
+  toAiDisclosureRecord,
+} from "../../catalog/ai-disclosure.policy";
 import { AgentObservabilityService } from "../agent_observability.service";
 
 export interface ToolInput {
@@ -45,6 +49,10 @@ export class ToolRegistry {
         let items = await prisma.track.findMany({
           where: {
             ...whereBase,
+            // catalog.search is the AI DJ candidate source. Fully generated
+            // tracks remain available through direct catalog APIs, but are
+            // excluded from this promotional/agent-ranking seam (ADR-BM-5).
+            ...AI_PROMOTIONAL_ELIGIBILITY_WHERE,
             ...(query
               ? {
                 OR: [
@@ -77,8 +85,21 @@ export class ToolRegistry {
         // Annotate and sort: listed tracks first
         const annotated = items.map((t) => {
           const hasListing = (t.stems ?? []).some((s) => s.listings.length > 0);
-          const { stems, ...rest } = t;
-          return { ...rest, hasListing };
+          const {
+            stems,
+            generationMetadata: _generationMetadata,
+            aiDisclosureLevel: _aiDisclosureLevel,
+            aiContributionFacets: _aiContributionFacets,
+            aiDisclosureSource: _aiDisclosureSource,
+            aiDisclosureVersion: _aiDisclosureVersion,
+            aiDeclaredAt: _aiDeclaredAt,
+            ...rest
+          } = t;
+          return {
+            ...rest,
+            aiDisclosure: toAiDisclosureRecord(t),
+            hasListing,
+          };
         });
         annotated.sort((a, b) => (a.hasListing === b.hasListing ? 0 : a.hasListing ? -1 : 1));
 

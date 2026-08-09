@@ -20,7 +20,7 @@ import { ContractsService } from "./contracts.service";
 import { IndexerService, resolveIndexerChainId } from "./indexer.service";
 import { NotificationService } from "../notifications/notification.service";
 import { EventBus } from "../shared/event_bus";
-import { LicenseType, type Prisma } from "@prisma/client";
+import { LicenseType, type AiDisclosureLevel, type Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { createPublicClient, http, keccak256, toHex, type Address, type Chain } from "viem";
 import { foundry, sepolia, baseSepolia } from "viem/chains";
@@ -33,6 +33,7 @@ import type {
 } from "../rights/rights-evidence";
 import { RightsRouteReassessmentService } from "../rights/rights-route-reassessment.service";
 import { TrustedSourceService } from "../rights/trusted-source.service";
+import { toAiDisclosureRecord } from "../catalog/ai-disclosure.policy";
 
 const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.drpc.org";
 const DIAGNOSTIC_CHAIN_CONFIGS: Record<number, { chain: Chain; rpcUrl: string }> = {
@@ -673,6 +674,7 @@ export class MetadataController {
               uri: this.toRelativeUrl(stem.uri, stem.id),
               isAiGenerated: release?.type === 'ai_generated' || !!track?.generationMetadata,
               generationProvider: (track?.generationMetadata as any)?.provider,
+              aiDisclosure: track ? toAiDisclosureRecord(track) : undefined,
             }
             : null,
         };
@@ -839,6 +841,11 @@ export class MetadataController {
           id?: string;
           title: string;
           generationMetadata?: unknown;
+          aiDisclosureLevel: AiDisclosureLevel;
+          aiContributionFacets: string[];
+          aiDisclosureSource: string;
+          aiDisclosureVersion: string | null;
+          aiDeclaredAt: Date | null;
           release?: {
             id: string;
             title?: string;
@@ -910,6 +917,7 @@ export class MetadataController {
           uri: this.toRelativeUrl(stem.uri, stem.id),
           isAiGenerated: release?.type === "ai_generated" || !!track?.generationMetadata,
           generationProvider: (track?.generationMetadata as any)?.provider,
+          aiDisclosure: track ? toAiDisclosureRecord(track) : undefined,
         }
         : null,
     };

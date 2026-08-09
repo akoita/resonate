@@ -39,6 +39,7 @@ const TRACK_A = `${TEST_PREFIX}track_a`; // 4 listeners, full completions
 const TRACK_B = `${TEST_PREFIX}track_b`; // 3 listeners + a playlist save
 const TRACK_C = `${TEST_PREFIX}track_c`; // 2 listeners — below threshold
 const TRACK_D = `${TEST_PREFIX}track_d`; // 3 listeners — claimed artist, no primaryArtist
+const TRACK_AI = `${TEST_PREFIX}track_ai`; // fully AI-generated — never promotional
 
 let eventSeq = 0;
 async function seedEvent(
@@ -120,6 +121,15 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         { id: TRACK_B, releaseId: HOT_RELEASE, title: "Deep Cut", position: 2, explicit: false },
         { id: TRACK_C, releaseId: QUIET_RELEASE, title: "Quiet Tune", position: 1, explicit: false },
         { id: TRACK_D, releaseId: CLAIMED_RELEASE, title: "Claimed Anthem", position: 1, explicit: false },
+        {
+          id: TRACK_AI,
+          releaseId: HOT_RELEASE,
+          title: "Generated Hit",
+          position: 3,
+          explicit: false,
+          aiDisclosureLevel: "ALL",
+          aiDisclosureSource: "artist",
+        },
       ],
     });
 
@@ -146,6 +156,13 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     // name falls back to the (self-managed) account displayName.
     for (const listener of ["l1", "l2", "l3"]) {
       await seedEvent("playback.completed", TRACK_D, `${TEST_PREFIX}${listener}`, {
+        completionRatio: 1,
+      });
+    }
+    // TRACK_AI has enough engagement to trend, but ADR-BM-5 excludes it from
+    // both track and artist promotional aggregates.
+    for (const listener of ["l1", "l2", "l3", "l4", "l5"]) {
+      await seedEvent("playback.completed", TRACK_AI, `${TEST_PREFIX}ai_${listener}`, {
         completionRatio: 1,
       });
     }
@@ -194,6 +211,13 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     });
     expect(trackRows).toHaveLength(0);
     expect(artistRows).toHaveLength(0);
+  });
+
+  it("never writes popularity rows for fully AI-generated tracks", async () => {
+    const rows = await prisma.trackPopularity.findMany({
+      where: { trackId: TRACK_AI },
+    });
+    expect(rows).toHaveLength(0);
   });
 
   it("counts playlist saves into score and the saves column", async () => {

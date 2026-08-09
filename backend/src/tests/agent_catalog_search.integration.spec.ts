@@ -51,12 +51,24 @@ describe("agent catalog search tool (integration)", () => {
           title: "Boom Bap Signal",
           releaseId: `${TEST_PREFIX}match_release`,
           position: 1,
+          aiDisclosureLevel: "PARTLY",
+          aiContributionFacets: ["production"],
+          aiDisclosureSource: "artist",
+          generationMetadata: { prompt: "must not leave the tool boundary" },
         },
         {
           id: `${TEST_PREFIX}other_track`,
           title: "Glowing Pads",
           releaseId: `${TEST_PREFIX}other_release`,
           position: 1,
+        },
+        {
+          id: `${TEST_PREFIX}fully_ai_track`,
+          title: "Fully Generated Candidate",
+          releaseId: `${TEST_PREFIX}other_release`,
+          position: 2,
+          aiDisclosureLevel: "ALL",
+          aiDisclosureSource: "artist",
         },
       ],
     });
@@ -176,6 +188,16 @@ describe("agent catalog search tool (integration)", () => {
     const ids = ((result.items as Array<{ id: string }>) ?? []).map((item) => item.id);
     expect(ids).toContain(`${TEST_PREFIX}match_track`);
     expect(ids).not.toContain(`${TEST_PREFIX}other_track`);
+    const match = (result.items as Array<Record<string, unknown>>).find(
+      (item) => item.id === `${TEST_PREFIX}match_track`,
+    );
+    expect(match).not.toHaveProperty("generationMetadata");
+    expect(match).not.toHaveProperty("aiDisclosureLevel");
+    expect(match?.aiDisclosure).toMatchObject({
+      level: "partly",
+      facets: ["production"],
+      source: "artist",
+    });
   });
 
   it("returns no candidates when an explicit genre query has no matches", async () => {
@@ -198,6 +220,7 @@ describe("agent catalog search tool (integration)", () => {
     const ids = ((result.items as Array<{ id: string }>) ?? []).map((item) => item.id);
     expect(ids).toContain(`${TEST_PREFIX}match_track`);
     expect(ids).toContain(`${TEST_PREFIX}other_track`);
+    expect(ids).not.toContain(`${TEST_PREFIX}fully_ai_track`);
   });
 
   it("marks only active, remaining, unexpired listings as purchasable", async () => {

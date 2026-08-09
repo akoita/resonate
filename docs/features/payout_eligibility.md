@@ -108,11 +108,14 @@ states it evaluated. A user with no artist profile gets a 200 with
 
 ## Remaining work
 
-Tracked on [#1336](https://github.com/akoita/resonate/issues/1336) and
-[#1164](https://github.com/akoita/resonate/issues/1164):
+Tracked on [#1164](https://github.com/akoita/resonate/issues/1164) and linked
+follow-up issues:
 
 - `payoutRelease === "held"` timed escrow-days release semantics.
-- DDEX AI labeling and fully-AI payout policy inputs.
+- Any future decision to make AI disclosure a payout-policy input. The
+  [AI Music Integrity](ai_music_integrity.md) slice adds DDEX-aligned labeling
+  and fully-AI promotion exclusions, but intentionally does not change this
+  payout gate.
 - Any future money-bearing seam (new payout destinations) must call
   `PayoutEligibilityService.assertEligible` at its earliest control point.
 

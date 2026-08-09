@@ -349,6 +349,18 @@
     }
   },
   {
+    "eventName": "catalog.ai_disclosure_recorded",
+    "payload": {
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "level": "PARTLY",
+      "source": "artist",
+      "facets": [
+        "production"
+      ]
+    }
+  },
+  {
     "eventName": "license.granted",
     "payload": {
       "licenseId": "license-1",

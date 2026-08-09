@@ -175,10 +175,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "discover-music",
     title: "Discover & browse music",
     summary:
-      "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks once you start listening.",
+      "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks and clear AI-contribution labels.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists"],
+    status: "partial",
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "home",
@@ -250,6 +251,39 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "ai-disclosure",
+        heading: "Understanding AI labels",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "AI-assisted",
+                description: "The artist declared that AI contributed to part of the track, such as vocals, instruments, writing, production, or post-production.",
+              },
+              {
+                term: "AI-generated",
+                description: "The artist or Resonate's own creation tools declared that the track was fully AI-generated.",
+              },
+              {
+                term: "AI disclosure unavailable",
+                description: "The track is older or its declaration is incomplete. This does not mean Resonate verified it as human-made.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Fully AI-generated tracks stay available through the catalog, search, artist pages, playlists, direct links, playback, and the Marketplace. They are not placed in personalized recommendations, AI DJ picks, Trending, or the activity used to rank Top Artists. AI-assisted tracks remain eligible for those discovery surfaces and keep their label.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Labels are declarations",
+            text: "A label records the disclosed creative process. Automated detection, declaration disputes, enforcement, and appeals are still being developed.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Discover", href: "/", description: "Featured, trending, and recommended music." },
@@ -264,7 +298,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage your queue, inspect stems, save tracks, take licensing actions, and back live show campaigns.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync", "shows", "campaign", "support a show"],
+    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "playing",
@@ -296,6 +330,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Save the track to your library or add it to a playlist.",
               "Inspect the track's stems to hear the individual parts.",
+              "Check the AI-contribution badge without leaving the player.",
               "Open licensing actions when a stem is available to collect or license in the Marketplace.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
             ],
@@ -305,6 +340,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Live sync & AI DJ",
             text: "When the console shows it is an active device, a trusted AI DJ session can queue and start playback for you — and you always confirm before sound starts.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Fully AI-generated music",
+            text: "You can still open and play fully AI-generated tracks directly. The AI DJ does not choose them as its next promoted pick.",
           },
         ],
       },
@@ -322,7 +363,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick", "ai-generated", "ai disclosure"],
     sections: [
       {
         id: "sessions",
@@ -340,6 +381,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Choose a session intent or a mood to set the direction.",
               "Press play — use Next AI Pick to skip ahead, and your feedback shapes future picks.",
             ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What the AI DJ promotes",
+            text: "The AI DJ can recommend human-made and AI-assisted tracks. Tracks declared fully AI-generated stay available for direct listening but are not selected as promoted AI DJ picks.",
           },
           {
             kind: "figure",
@@ -780,10 +827,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "upload-music",
     title: "Upload & publish your music",
     summary:
-      "Upload a track, let Resonate split it into stems, credit the right artists, tag the mood, and publish with content protection.",
+      "Upload tracks, declare how AI contributed to each one, credit the right artists, and publish with content protection.",
     category: "artists",
     audiences: ["artist"],
-    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs"],
+    status: "partial",
+    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution"],
     sections: [
       {
         id: "upload",
@@ -807,6 +855,45 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: LOCAL,
             },
+          },
+        ],
+      },
+      {
+        id: "ai-disclosure",
+        heading: "Declare AI involvement for each track",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Before publishing a new upload, choose Human-made, AI-assisted, or Fully AI-generated for every track. For a multi-track release, you can apply one choice to all tracks and then adjust individual tracks.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Human-made",
+                description: "Choose this when you are declaring that AI did not contribute to the track.",
+              },
+              {
+                term: "AI-assisted",
+                description: "Choose this when AI contributed to part of the track, then select at least one affected area: vocals, instruments, writing, production, or post-production.",
+              },
+              {
+                term: "Fully AI-generated",
+                description: "Choose this when the whole recording was generated with AI.",
+              },
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What a fully AI-generated declaration changes",
+            text: "The track can still appear in the catalog and Marketplace and can still be opened and played directly. It will carry an AI-generated label and will not be promoted in recommendations, AI DJ, Trending, or Top Artists.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Resonate-created music is labeled automatically",
+            text: "When Resonate's own creation tools already know the track's origin, they record the AI declaration for you. Published remixes derive their label from how the remix was created.",
           },
         ],
       },

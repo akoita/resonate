@@ -114,7 +114,10 @@ describe("IngestionService metadata", () => {
       metadata: {
         title: "Correct Release",
         primaryArtist: "Correct Artist",
-        tracks: [{ title: "Correct Title" }],
+        tracks: [{
+          title: "Correct Title",
+          aiDisclosure: { level: "none", facets: [] },
+        }],
       },
     });
 
@@ -158,6 +161,7 @@ describe("IngestionService metadata", () => {
         tracks: [{
           title: "Si demain (turn around)",
           artist: "01 Si demain (turn around)",
+          aiDisclosure: { level: "none", facets: [] },
         }],
       },
     });

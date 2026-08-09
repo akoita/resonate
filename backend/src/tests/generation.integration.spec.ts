@@ -175,6 +175,7 @@ describe('GenerationService (integration)', () => {
       const events: any[] = [];
       eventBus.subscribe('generation.progress', (e: any) => events.push(e));
       eventBus.subscribe('generation.completed', (e: any) => events.push(e));
+      eventBus.subscribe('catalog.ai_disclosure_recorded', (e: any) => events.push(e));
 
       const jobResult = await service.processGenerationJob({
         jobId: 'job-1',
@@ -204,6 +205,21 @@ describe('GenerationService (integration)', () => {
       expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
       expect(release?.rightsSourceType).toBe('ai_generation');
       expect(release?.rightsFlags).toEqual([]);
+
+      const generatedTrack = await prisma.track.findUniqueOrThrow({
+        where: { id: completedEvent.trackId },
+      });
+      expect(generatedTrack).toMatchObject({
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        eventName: 'catalog.ai_disclosure_recorded',
+        trackId: completedEvent.trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+      }));
 
       await expect(service.getStatus('job-1')).resolves.toMatchObject({
         status: 'completed',
@@ -311,6 +327,14 @@ describe('GenerationService (integration)', () => {
       expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
       expect(release?.rightsSourceType).toBe('ai_generation');
       expect(release?.rightsFlags).toEqual([]);
+      const publishedTrack = await prisma.track.findUniqueOrThrow({
+        where: { id: legacyRelease.tracks[0].id },
+      });
+      expect(publishedTrack).toMatchObject({
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+      });
 
       const rightsRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
         where: {

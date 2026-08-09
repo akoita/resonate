@@ -41,6 +41,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
@@ -1087,6 +1088,7 @@ export default function Home() {
                         <ReleaseThumb release={release} />
                         <div className="ng-resource-card__body">
                           <h4>{release.title}</h4>
+                          <AiDisclosureBadge disclosure={release.aiDisclosure} />
                           <p>{getArtistName(release)}</p>
                           <div className="ng-resource-card__meta">
                             <span>{release.type || "Release"}</span>
@@ -1310,6 +1312,7 @@ export default function Home() {
                         <ReleaseThumb release={release} small />
                         <span className="ng-upload-row__main">
                           <strong>{release.title}</strong>
+                          <AiDisclosureBadge disclosure={release.aiDisclosure} />
                           <small>{getReleaseResourceCount(release)} resources · {formatRelativeTime(getCatalogSortTime(release))}</small>
                         </span>
                         <span className={`ng-status-pill ${getStatusClass(release.status)}`}>
@@ -1376,6 +1379,7 @@ export default function Home() {
                     </div>
                   </div>
                   <h4 className="ng-play-card__title">{r.title}</h4>
+                  <AiDisclosureBadge disclosure={r.aiDisclosure} />
                   <p className="ng-play-card__artist">
                     Artist: {r.primaryArtist || r.artist?.displayName || "Unknown"}
                   </p>
@@ -1530,6 +1534,7 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
     catalogTrackId: track.id,
     artistId: release.artist?.id || release.artistId,
     releaseId: release.id,
+    aiDisclosure: track.aiDisclosure,
     remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
     remoteArtworkUrl: release.artworkUrl || undefined,
     source: "remote",
@@ -1824,6 +1829,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
       </Link>
       <div className="ng-stem-card__body">
         <h5 className="ng-stem-card__title">{release.title}</h5>
+        <AiDisclosureBadge disclosure={release.aiDisclosure} />
         <p className="ng-stem-card__from">From: {artistName}</p>
         <div className="ng-stem-card__meta">
           <span>Stem layer</span>

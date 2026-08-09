@@ -187,6 +187,7 @@ when they follow the privacy and versioning rules above.
 | `stems.failed` | `ingestion-service` | `release` | `artistId` | `releaseId`, `artistId`, `status`, `error` | none |
 | `catalog.track_status` | `catalog-service` | `track` | none | `releaseId`, `trackId`, `status` | `error` |
 | `catalog.release_ready` | `catalog-service` | `release` | `artistId` | `releaseId`, `artistId`, `status`, `trackIds` | `trackCount`, `stemCount` |
+| `catalog.ai_disclosure_recorded` | `catalog-service` | `track` | none | `releaseId`, `trackId`, `level`, `source` | bounded contribution `facets`; never prompts or free text |
 | `playlist.created` | `web-app` | `playlist` | auth user | `playlistId`, `source` | `trackCount`, `clientEventId` |
 | `playlist.updated` | `web-app` | `playlist` | auth user | `playlistId`, `source` | `field`, `trackCount`, `clientEventId` |
 | `playlist.track_added` | `web-app` | `playlist` | auth user | `playlistId`, `trackId`, `source` | `position`, `releaseId`, `artistId`, `clientEventId` |

@@ -230,7 +230,15 @@ export class CatalogController {
       label?: string;
       releaseDate?: string;
       explicit?: boolean;
-      tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
+      tracks?: Array<{
+        title: string;
+        position: number;
+        explicit?: boolean;
+        aiDisclosure: {
+          level: "none" | "partly" | "all";
+          facets?: string[];
+        };
+      }>;
     },
   ) {
     return this.catalogService.createRelease({
@@ -307,7 +315,18 @@ export class CatalogController {
   @Patch("releases/:releaseId")
   updateRelease(
     @Param("releaseId") releaseId: string,
-    @Body() body: { title?: string; status?: string; primaryArtist?: string },
+    @Body() body: {
+      title?: string;
+      status?: string;
+      primaryArtist?: string;
+      tracks?: Array<{
+        id: string;
+        aiDisclosure: {
+          level: "none" | "partly" | "all";
+          facets?: string[];
+        };
+      }>;
+    },
     @Request() req: any,
   ) {
     // Owner-scoped: the service verifies release.artist.userId === userId.

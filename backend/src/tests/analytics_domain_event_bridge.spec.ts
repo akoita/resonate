@@ -141,6 +141,41 @@ describe("AnalyticsDomainEventBridgeService", () => {
     ]);
   });
 
+  it("bridges only privacy-safe AI disclosure fields", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    eventBus.publish({
+      eventName: "catalog.ai_disclosure_recorded",
+      eventVersion: 1,
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      releaseId: "release-ai-1",
+      trackId: "track-ai-1",
+      level: "PARTLY",
+      source: "artist",
+      facets: ["vocals", "production"],
+    });
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    expect((await ingest.listEvents())[0]).toEqual(
+      expect.objectContaining({
+        eventName: "catalog.ai_disclosure_recorded",
+        producer: "catalog-service",
+        subjectType: "track",
+        subjectId: "track-ai-1",
+        payload: {
+          releaseId: "release-ai-1",
+          trackId: "track-ai-1",
+          level: "PARTLY",
+          source: "artist",
+          facets: ["vocals", "production"],
+        },
+      }),
+    );
+  });
+
   it("bridges high-value domain events with compact analytics payloads", async () => {
     const ingest = new AnalyticsIngestService();
     eventBus = new EventBus();

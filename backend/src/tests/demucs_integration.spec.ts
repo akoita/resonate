@@ -211,6 +211,10 @@ describe("Demucs Integration", () => {
       metadata: {
         releaseTitle: "Integration Test Track",
         primaryArtist: "Test Artist",
+        tracks: [{
+          title: "Integration Test Track",
+          aiDisclosure: { level: "none", facets: [] },
+        }],
       },
     });
 

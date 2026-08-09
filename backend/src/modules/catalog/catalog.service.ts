@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import { LicenseType, Prisma, type ShowArtistAuthorityStatus } from "@prisma/client";
+import { LicenseType, Prisma, type AiDisclosureLevel, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
@@ -20,6 +20,14 @@ import {
   normalizeCreditName,
   resolveCreditedArtistName,
 } from "../shared/artist_attribution";
+import {
+  AI_DISCLOSURE_VERSION,
+  AiDisclosureValidationError,
+  deriveReleaseAiDisclosureSummary,
+  normalizeAiDisclosureInput,
+  toAiDisclosureRecord,
+  type AiDisclosureInput,
+} from "./ai-disclosure.policy";
 
 const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "LIMITED_MONITORING",
@@ -55,6 +63,36 @@ type ReleaseArtistCreditInput = {
   sortOrder?: number;
 };
 
+type AiDisclosureDbFields = {
+  aiDisclosureLevel: AiDisclosureLevel;
+  aiContributionFacets: string[];
+  aiDisclosureSource: string;
+  aiDisclosureVersion: string | null;
+  aiDeclaredAt: Date | null;
+};
+
+function withNormalizedAiDisclosure<T extends AiDisclosureDbFields>(track: T) {
+  const {
+    aiDisclosureLevel: _level,
+    aiContributionFacets: _facets,
+    aiDisclosureSource: _source,
+    aiDisclosureVersion: _version,
+    aiDeclaredAt: _declaredAt,
+    ...rest
+  } = track;
+  return { ...rest, aiDisclosure: toAiDisclosureRecord(track) };
+}
+
+function withReleaseAiDisclosure<
+  T extends { tracks: Array<AiDisclosureDbFields> },
+>(release: T) {
+  return {
+    ...release,
+    tracks: release.tracks.map(withNormalizedAiDisclosure),
+    aiDisclosure: deriveReleaseAiDisclosureSummary(release.tracks),
+  };
+}
+
 const RELEASE_ARTIST_CREDITS_SELECT = {
   orderBy: [{ sortOrder: "asc" as const }, { role: "asc" as const }],
   select: {
@@ -76,6 +114,14 @@ const RELEASE_ARTIST_CREDITS_SELECT = {
     },
   },
 };
+
+const AI_DISCLOSURE_SELECT = {
+  aiDisclosureLevel: true,
+  aiContributionFacets: true,
+  aiDisclosureSource: true,
+  aiDisclosureVersion: true,
+  aiDeclaredAt: true,
+} as const;
 
 function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
@@ -150,6 +196,7 @@ export type McpCatalogSearchItem = {
   artworkUrl: string | null;
   trackCount: number;
   licensable: boolean;
+  aiDisclosure: ReturnType<typeof deriveReleaseAiDisclosureSummary>;
   deeplink: string;
 };
 
@@ -184,6 +231,7 @@ export type PlayerTrackActionsResponse = {
     artistName: string | null;
     genre: string | null;
     moods: string[];
+    aiDisclosure: ReturnType<typeof toAiDisclosureRecord>;
   };
   recommendation?: {
     summary: string;
@@ -513,22 +561,34 @@ export class CatalogService implements OnModuleInit {
               artworkData: event.artworkData,
               artworkMimeType: event.artworkMimeType,
               tracks: {
-                create: event.metadata?.tracks?.map((t: any) => ({
-                  id: t.id,
-                  title: t.title,
-                  artist: t.artist,
-                  position: t.position,
-                  explicit: t.explicit ?? false,
-                  isrc: t.isrc,
-                  stems: {
-                    create: t.stems?.map((s: any) => ({
-                      id: s.id,
-                      type: s.type,
-                      uri: s.uri,
-                      storageProvider: s.storageProvider || "local"
-                    }))
-                  }
-                })),
+                create: event.metadata?.tracks?.map((t: any) => {
+                  const disclosure = normalizeAiDisclosureInput(t.aiDisclosure);
+                  return {
+                    id: t.id,
+                    title: t.title,
+                    artist: t.artist,
+                    position: t.position,
+                    explicit: t.explicit ?? false,
+                    isrc: t.isrc,
+                    aiDisclosureLevel: disclosure.level,
+                    aiContributionFacets: disclosure.facets,
+                    aiDisclosureSource:
+                      t.aiDisclosure?.source === "resonate_native" ||
+                      t.aiDisclosure?.source === "remix_derived"
+                        ? t.aiDisclosure.source
+                        : "artist",
+                    aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+                    aiDeclaredAt: new Date(event.occurredAt),
+                    stems: {
+                      create: t.stems?.map((s: any) => ({
+                        id: s.id,
+                        type: s.type,
+                        uri: s.uri,
+                        storageProvider: s.storageProvider || "local"
+                      }))
+                    }
+                  };
+                }),
               },
             },
           });
@@ -546,6 +606,19 @@ export class CatalogService implements OnModuleInit {
           primaryArtist: event.metadata?.primaryArtist,
           sourceType: event.sourceType,
         });
+        for (const track of event.metadata?.tracks ?? []) {
+          if (!track.id || !track.aiDisclosure) continue;
+          this.eventBus.publish({
+            eventName: "catalog.ai_disclosure_recorded",
+            eventVersion: 1,
+            occurredAt: event.occurredAt,
+            releaseId: event.releaseId,
+            trackId: track.id,
+            level: track.aiDisclosure.level,
+            source: track.aiDisclosure.source,
+            facets: track.aiDisclosure.facets,
+          });
+        }
         console.log(`[Catalog] Created/Updated release ${event.releaseId} with ${event.metadata?.tracks?.length} tracks`);
       } catch (err) {
         console.error(`[Catalog] Failed to create/update release ${event.releaseId}:`, err);
@@ -833,6 +906,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -868,7 +942,7 @@ export class CatalogService implements OnModuleInit {
       return this.listPublished(limit, primaryArtist);
     }
 
-    return releases;
+    return releases.map(withReleaseAiDisclosure);
   }
 
   async createRelease(input: {
@@ -883,7 +957,12 @@ export class CatalogService implements OnModuleInit {
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
-    tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
+    tracks?: Array<{
+      title: string;
+      position: number;
+      explicit?: boolean;
+      aiDisclosure: AiDisclosureInput;
+    }>;
   }) {
     const artist = await prisma.artist.findUnique({
       where: { userId: input.userId },
@@ -894,9 +973,26 @@ export class CatalogService implements OnModuleInit {
     }
 
     const primaryArtist = input.primaryArtist?.trim() || artist.displayName;
+    let normalizedTracks: Array<{
+      title: string;
+      position: number;
+      explicit?: boolean;
+      disclosure: ReturnType<typeof normalizeAiDisclosureInput>;
+    }>;
+    try {
+      normalizedTracks = (input.tracks ?? []).map((track) => ({
+        ...track,
+        disclosure: normalizeAiDisclosureInput(track.aiDisclosure),
+      }));
+    } catch (error) {
+      if (error instanceof AiDisclosureValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
 
     this.clearCache();
-    return prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       const release = await tx.release.create({
         data: {
           artistId: artist.id,
@@ -911,11 +1007,16 @@ export class CatalogService implements OnModuleInit {
           releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
           explicit: input.explicit ?? false,
           tracks: {
-            create: input.tracks?.map(t => ({
+            create: normalizedTracks.map(t => ({
               title: t.title,
               position: t.position,
               explicit: t.explicit ?? false,
               artist: primaryArtist,
+              aiDisclosureLevel: t.disclosure.level,
+              aiContributionFacets: t.disclosure.facets,
+              aiDisclosureSource: "artist",
+              aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+              aiDeclaredAt: new Date(),
             }))
           }
         },
@@ -924,7 +1025,12 @@ export class CatalogService implements OnModuleInit {
           title: true,
           status: true,
           tracks: {
-            select: { id: true, title: true, position: true }
+            select: {
+              id: true,
+              title: true,
+              position: true,
+              ...AI_DISCLOSURE_SELECT,
+            }
           }
         }
       });
@@ -937,6 +1043,19 @@ export class CatalogService implements OnModuleInit {
       });
       return release;
     });
+    for (const track of created.tracks) {
+      this.eventBus.publish({
+        eventName: "catalog.ai_disclosure_recorded",
+        eventVersion: 1,
+        occurredAt: track.aiDeclaredAt?.toISOString() ?? new Date().toISOString(),
+        releaseId: created.id,
+        trackId: track.id,
+        level: track.aiDisclosureLevel as "NONE" | "PARTLY" | "ALL",
+        source: "artist",
+        facets: track.aiContributionFacets,
+      });
+    }
+    return withReleaseAiDisclosure(created);
   }
 
   private async syncReleaseArtistCredits(
@@ -1047,6 +1166,7 @@ export class CatalogService implements OnModuleInit {
         processingStatus: true,
         processingError: true,
         contentStatus: true,
+        ...AI_DISCLOSURE_SELECT,
         rightsRoute: true,
         rightsFlags: true,
         rightsReason: true,
@@ -1095,7 +1215,7 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return track;
+    return withNormalizedAiDisclosure(track);
   }
 
   async getPlayerTrackActions(
@@ -1110,6 +1230,7 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         processingStatus: true,
         contentStatus: true,
+        ...AI_DISCLOSURE_SELECT,
         rightsRoute: true,
         stems: {
           select: {
@@ -1230,6 +1351,7 @@ export class CatalogService implements OnModuleInit {
         artistName: publicArtistCreditName(track.release),
         genre: track.release.genre,
         moods: track.release.moods,
+        aiDisclosure: toAiDisclosureRecord(track),
       },
       ...(safeRecommendationReasons.length
         ? {
@@ -1387,6 +1509,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             // Remix lineage (#1196): source attribution + AI-provenance
             // label for published remix releases.
             generationMetadata: true,
@@ -1461,6 +1584,7 @@ export class CatalogService implements OnModuleInit {
                 processingStatus: true,
                 processingError: true,
                 contentStatus: true,
+                ...AI_DISCLOSURE_SELECT,
                 // Remix lineage (#1196): keep parity with the primary select.
                 generationMetadata: true,
                 rightsRoute: true,
@@ -1501,9 +1625,12 @@ export class CatalogService implements OnModuleInit {
     // seed) that must never reach this unauthenticated public read.
     const remix = this.deriveRemixProvenance(release);
     const { tracks, ...rest } = release;
-    return {
+    const safeRelease = {
       ...rest,
-      tracks: tracks?.map(({ generationMetadata: _omit, ...track }) => track),
+      tracks: tracks.map(({ generationMetadata: _omit, ...track }) => track),
+    };
+    return {
+      ...withReleaseAiDisclosure(safeRelease),
       remix,
     };
   }
@@ -1601,7 +1728,7 @@ export class CatalogService implements OnModuleInit {
           ],
         };
 
-    return prisma.release.findMany({
+    const releases = await prisma.release.findMany({
       where: {
         ...ownershipFilter,
         ...(andFilters.length > 0 ? { AND: andFilters } : {}),
@@ -1642,6 +1769,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -1662,6 +1790,7 @@ export class CatalogService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return releases.map(withReleaseAiDisclosure);
   }
 
   async listByUserId(userId: string) {
@@ -1683,19 +1812,67 @@ export class CatalogService implements OnModuleInit {
       status: string;
       /** Post-hoc credited-artist correction (#1492). */
       primaryArtist: string;
+      tracks: Array<{ id: string; aiDisclosure: AiDisclosureInput }>;
     }>,
   ) {
     // Ownership check (same pattern as deleteRelease): only the release's
     // managing artist account can update it.
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      include: { artist: { select: { userId: true } } },
+      include: {
+        artist: { select: { userId: true } },
+        tracks: { select: { id: true } },
+      },
     });
     if (!release) {
       throw new NotFoundException("Release not found");
     }
     if (!sameUserId(release.artist?.userId, userId)) {
       throw new ForbiddenException("Not authorized to update this release");
+    }
+
+    if (
+      input.status !== undefined &&
+      input.status !== release.status &&
+      (release.status === "published" ||
+        (release.status === "ready" && input.status !== "published"))
+    ) {
+      throw new BadRequestException(
+        "Ready or published releases cannot return to an editable lifecycle state.",
+      );
+    }
+
+    let disclosureCorrections: Array<{
+      id: string;
+      disclosure: ReturnType<typeof normalizeAiDisclosureInput>;
+    }> = [];
+    try {
+      disclosureCorrections = (input.tracks ?? []).map((track) => ({
+        id: track.id,
+        disclosure: normalizeAiDisclosureInput(track.aiDisclosure),
+      }));
+    } catch (error) {
+      if (error instanceof AiDisclosureValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+    if (
+      disclosureCorrections.length > 0 &&
+      ["ready", "published"].includes(release.status)
+    ) {
+      throw new BadRequestException(
+        "Published AI disclosures cannot be silently replaced; use the audited correction workflow.",
+      );
+    }
+    const releaseTrackIds = new Set(release.tracks.map((track) => track.id));
+    const unknownTrack = disclosureCorrections.find(
+      (track) => !releaseTrackIds.has(track.id),
+    );
+    if (unknownTrack) {
+      throw new BadRequestException(
+        `Track ${unknownTrack.id} does not belong to this release.`,
+      );
     }
 
     const data: { title?: string; status?: string; primaryArtist?: string } = {};
@@ -1720,11 +1897,39 @@ export class CatalogService implements OnModuleInit {
     }
 
     this.clearCache();
-    return prisma.release.update({
-      where: { id: releaseId },
-      data,
-      include: { tracks: true },
+    const declaredAt = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const correction of disclosureCorrections) {
+        await tx.track.update({
+          where: { id: correction.id },
+          data: {
+            aiDisclosureLevel: correction.disclosure.level,
+            aiContributionFacets: correction.disclosure.facets,
+            aiDisclosureSource: "artist",
+            aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+            aiDeclaredAt: declaredAt,
+          },
+        });
+      }
+      return tx.release.update({
+        where: { id: releaseId },
+        data,
+        include: { tracks: true },
+      });
     });
+    for (const correction of disclosureCorrections) {
+      this.eventBus.publish({
+        eventName: "catalog.ai_disclosure_recorded",
+        eventVersion: 1,
+        occurredAt: declaredAt.toISOString(),
+        releaseId,
+        trackId: correction.id,
+        level: correction.disclosure.level as "NONE" | "PARTLY" | "ALL",
+        source: "artist",
+        facets: correction.disclosure.facets,
+      });
+    }
+    return withReleaseAiDisclosure(updated);
   }
 
   async deleteRelease(releaseId: string, userId: string) {
@@ -1935,6 +2140,7 @@ export class CatalogService implements OnModuleInit {
             title: true,
             position: true,
             explicit: true,
+            ...AI_DISCLOSURE_SELECT,
             stems: {
               select: {
                 id: true,
@@ -1951,8 +2157,9 @@ export class CatalogService implements OnModuleInit {
       take: cappedLimit,
     });
 
-    this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
-    return { items };
+    const normalizedItems = items.map(withReleaseAiDisclosure);
+    this.searchCache.set(cacheKey, { items: normalizedItems, cachedAt: Date.now() });
+    return { items: normalizedItems };
   }
 
   async searchMcpCatalog(
@@ -2047,6 +2254,7 @@ export class CatalogService implements OnModuleInit {
         tracks: {
           select: {
             id: true,
+            ...AI_DISCLOSURE_SELECT,
             stems: {
               select: {
                 listings: {
@@ -2080,6 +2288,7 @@ export class CatalogService implements OnModuleInit {
         licensable: release.tracks.some((track) =>
           track.stems.some((stem) => stem.listings.length > 0),
         ),
+        aiDisclosure: deriveReleaseAiDisclosureSummary(release.tracks),
         deeplink: this.buildMcpReleaseDeeplink(release.id),
       })),
     };

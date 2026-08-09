@@ -20,6 +20,7 @@ import {
     getStemPreviewUrl,
     getTrack as getCatalogTrack,
     getReleaseArtworkUrl,
+    type AiDisclosure,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
 
@@ -77,6 +78,7 @@ export interface LocalTrack {
     catalogTrackId?: string | null;
     artistId?: string | null;
     releaseId?: string | null;
+    aiDisclosure?: AiDisclosure | null;
     remoteUrl?: string; // For streaming catalog
     remoteArtworkUrl?: string; // For streaming catalog
     stems?: Array<{

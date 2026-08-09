@@ -13,9 +13,13 @@ import { useToast } from "../../../components/ui/Toast";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import {
   getArtistMe,
+  getAiDisclosureValidationIssue,
   submitReleaseRightsUpgradeRequest,
   uploadStems,
   waitForReleaseAvailability,
+  type AiDisclosure,
+  type AiDisclosureFacet,
+  type AiDisclosureLevel,
   type ArtistProfile,
   type RightsEvidenceKind,
   type RightsEvidenceStrength,
@@ -47,6 +51,34 @@ const MAX_TOTAL_SIZE_MB = 500;
 const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 const MAX_TOTAL_SIZE = MAX_TOTAL_SIZE_MB * 1024 * 1024;
 const MOOD_TAG_OPTIONS = ["Focus", "Hype", "Chill", "Dark", "Zen", "Club", "Late Night", "Warm"];
+const AI_DISCLOSURE_OPTIONS: Array<{
+  level: Exclude<AiDisclosureLevel, "undeclared">;
+  label: string;
+  description: string;
+}> = [
+  {
+    level: "none",
+    label: "Human-made",
+    description: "No AI system contributed to the music or recording.",
+  },
+  {
+    level: "partly",
+    label: "AI-assisted",
+    description: "AI contributed to one or more parts; choose them below.",
+  },
+  {
+    level: "all",
+    label: "Fully AI-generated",
+    description: "Available in the catalog, but not promoted as human-artist work.",
+  },
+];
+const AI_FACET_OPTIONS: Array<{ facet: AiDisclosureFacet; label: string }> = [
+  { facet: "vocals", label: "Vocals" },
+  { facet: "instruments", label: "Instruments" },
+  { facet: "composition_lyrics", label: "Composition or lyrics" },
+  { facet: "production", label: "Production" },
+  { facet: "post_production", label: "Post-production" },
+];
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -99,6 +131,7 @@ type Stem = {
     isrc: string;
     explicit: boolean;
     featuredArtists: string;
+    aiDisclosure: AiDisclosure;
   };
 };
 
@@ -112,6 +145,7 @@ export default function ArtistUploadPage() {
   const { chainId, publicClient } = useZeroDev();
   const [stems, setStems] = useState<Stem[]>([]);
   const [selectedStemId, setSelectedStemId] = useState<string | null>(null);
+  const [applyAllDisclosureLevel, setApplyAllDisclosureLevel] = useState<AiDisclosureLevel>("undeclared");
   const [isUploading, setIsUploading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [artistProfile, setArtistProfile] = useState<ArtistProfile | null>(null);
@@ -375,6 +409,28 @@ export default function ArtistUploadPage() {
       });
       return;
     }
+    const undeclaredTracks = stems.filter(
+      (stem) => getAiDisclosureValidationIssue(stem.metadata.aiDisclosure) === "declaration_required",
+    );
+    if (undeclaredTracks.length > 0) {
+      addToast({
+        type: "error",
+        title: "AI disclosure required",
+        message: `Choose Human-made, AI-assisted, or Fully AI-generated for every track (${undeclaredTracks.length} remaining).`,
+      });
+      return;
+    }
+    const assistedWithoutFacets = stems.filter(
+      (stem) => getAiDisclosureValidationIssue(stem.metadata.aiDisclosure) === "facets_required",
+    );
+    if (assistedWithoutFacets.length > 0) {
+      addToast({
+        type: "error",
+        title: "AI contribution details required",
+        message: `Choose at least one AI contribution for every AI-assisted track (${assistedWithoutFacets.length} remaining).`,
+      });
+      return;
+    }
     if (!formData.primaryArtist.trim()) {
       addToast({
         type: "error",
@@ -532,6 +588,10 @@ export default function ArtistUploadPage() {
           isrc: s.metadata.isrc || undefined,
           explicit: s.metadata.explicit,
           featuredArtists: s.metadata.featuredArtists ? s.metadata.featuredArtists.split(",").map((str: string) => str.trim()) : [],
+          aiDisclosure: {
+            level: s.metadata.aiDisclosure.level,
+            facets: s.metadata.aiDisclosure.facets,
+          },
         }))
       };
 
@@ -652,6 +712,7 @@ export default function ArtistUploadPage() {
 
       // Reset form
       setStems([]);
+      setApplyAllDisclosureLevel("undeclared");
       setFormData({
         releaseType: "single",
         releaseTitle: "",
@@ -839,6 +900,10 @@ export default function ArtistUploadPage() {
           isrc: "",
           explicit: false,
           featuredArtists: "",
+          aiDisclosure: {
+            level: "undeclared",
+            facets: [],
+          },
         }
       };
 
@@ -907,6 +972,57 @@ export default function ArtistUploadPage() {
       title: "Artwork updated",
       message: "Modified release cover art manually"
     });
+  };
+
+  const updateTrackDisclosureLevel = (stemId: string, level: AiDisclosureLevel) => {
+    setStems((previous) => previous.map((stem) =>
+      stem.id === stemId
+        ? {
+            ...stem,
+            metadata: {
+              ...stem.metadata,
+              aiDisclosure: {
+                level,
+                facets: level === "partly" ? stem.metadata.aiDisclosure.facets : [],
+              },
+            },
+          }
+        : stem,
+    ));
+  };
+
+  const toggleTrackDisclosureFacet = (stemId: string, facet: AiDisclosureFacet) => {
+    setStems((previous) => previous.map((stem) => {
+      if (stem.id !== stemId) return stem;
+      const facets = stem.metadata.aiDisclosure.facets.includes(facet)
+        ? stem.metadata.aiDisclosure.facets.filter((entry) => entry !== facet)
+        : [...stem.metadata.aiDisclosure.facets, facet];
+      return {
+        ...stem,
+        metadata: {
+          ...stem.metadata,
+          aiDisclosure: { ...stem.metadata.aiDisclosure, facets },
+        },
+      };
+    }));
+  };
+
+  const applyDisclosureToAllTracks = () => {
+    if (applyAllDisclosureLevel === "undeclared") return;
+    setStems((previous) => previous.map((stem) => ({
+      ...stem,
+      metadata: {
+        ...stem.metadata,
+        aiDisclosure: {
+          level: applyAllDisclosureLevel,
+          facets:
+            applyAllDisclosureLevel === "partly" &&
+            stem.metadata.aiDisclosure.level === "partly"
+              ? stem.metadata.aiDisclosure.facets
+              : [],
+        },
+      },
+    })));
   };
 
   const allReady = stems.length > 0 && stems.every(stem => stem.status === "Ready");
@@ -1057,6 +1173,47 @@ export default function ArtistUploadPage() {
                       <option value="live">Live</option>
                     </select>
                   </label>
+
+                  <div style={{
+                    padding: "14px",
+                    border: "1px solid rgba(124, 58, 237, 0.24)",
+                    borderRadius: "10px",
+                    background: "rgba(124, 58, 237, 0.06)",
+                  }}>
+                    <div className="studio-label" style={{ marginBottom: "4px" }}>
+                      Apply AI disclosure to all tracks
+                    </div>
+                    <p className="studio-field-help" style={{ margin: "0 0 10px" }}>
+                      This is a shortcut. You can still review and change each track individually.
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                      <select
+                        aria-label="AI disclosure to apply to all tracks"
+                        className="track-select-dropdown"
+                        value={applyAllDisclosureLevel}
+                        onChange={(event) => setApplyAllDisclosureLevel(event.target.value as AiDisclosureLevel)}
+                        style={{ flex: "1 1 220px" }}
+                      >
+                        <option value="undeclared">Choose a declaration…</option>
+                        {AI_DISCLOSURE_OPTIONS.map((option) => (
+                          <option key={option.level} value={option.level}>{option.label}</option>
+                        ))}
+                      </select>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={stems.length === 0 || applyAllDisclosureLevel === "undeclared"}
+                        onClick={applyDisclosureToAllTracks}
+                      >
+                        Apply to all
+                      </Button>
+                    </div>
+                    {applyAllDisclosureLevel === "partly" && (
+                      <p className="studio-field-help" style={{ margin: "8px 0 0", color: "#f59e0b" }}>
+                        After applying, open each track and identify where AI contributed.
+                      </p>
+                    )}
+                  </div>
 
                   <div className="artwork-manual-upload" style={{ marginBottom: "var(--space-3)" }}>
                     <div className="studio-label" style={{ marginBottom: "8px", display: "flex", justifyContent: "space-between" }}>
@@ -1526,6 +1683,71 @@ export default function ArtistUploadPage() {
                         />
                         Explicit content
                       </label>
+                      <fieldset style={{
+                        margin: 0,
+                        padding: "14px",
+                        border: "1px solid rgba(124, 58, 237, 0.24)",
+                        borderRadius: "10px",
+                        background: "rgba(124, 58, 237, 0.06)",
+                      }}>
+                        <legend style={{ padding: "0 5px", fontWeight: 700 }}>
+                          AI involvement <span style={{ color: "#f87171" }}>*</span>
+                        </legend>
+                        <p className="studio-field-help" style={{ margin: "0 0 10px" }}>
+                          Tell listeners how this track was made. This declaration is shown publicly.
+                        </p>
+                        <div style={{ display: "grid", gap: "8px" }}>
+                          {AI_DISCLOSURE_OPTIONS.map((option) => {
+                            const selectedStem = stems.find((stem) => stem.id === selectedStemId);
+                            return (
+                              <label key={option.level} style={{ display: "flex", alignItems: "flex-start", gap: "9px", cursor: "pointer" }}>
+                                <input
+                                  type="radio"
+                                  name={`ai-disclosure-${selectedStemId}`}
+                                  value={option.level}
+                                  checked={selectedStem?.metadata.aiDisclosure.level === option.level}
+                                  onChange={() => selectedStemId && updateTrackDisclosureLevel(selectedStemId, option.level)}
+                                  style={{ marginTop: "3px" }}
+                                />
+                                <span>
+                                  <strong>{option.label}</strong>
+                                  <span className="studio-field-help" style={{ display: "block" }}>
+                                    {option.description}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        {stems.find((stem) => stem.id === selectedStemId)?.metadata.aiDisclosure.level === "partly" && (
+                          <fieldset style={{
+                            margin: "14px 0 0",
+                            padding: "12px",
+                            border: "1px solid rgba(245, 158, 11, 0.24)",
+                            borderRadius: "8px",
+                          }}>
+                            <legend style={{ padding: "0 5px", fontSize: "12px", fontWeight: 700 }}>
+                              Where did AI contribute? <span style={{ color: "#f87171" }}>*</span>
+                            </legend>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px" }}>
+                              {AI_FACET_OPTIONS.map((option) => {
+                                const selectedStem = stems.find((stem) => stem.id === selectedStemId);
+                                return (
+                                  <label key={option.facet} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedStem?.metadata.aiDisclosure.facets.includes(option.facet) ?? false}
+                                      onChange={() => selectedStemId && toggleTrackDisclosureFacet(selectedStemId, option.facet)}
+                                    />
+                                    {option.label}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                        )}
+                      </fieldset>
                     </>
                   )}
                 </div>

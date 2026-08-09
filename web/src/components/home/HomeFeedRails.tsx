@@ -7,6 +7,7 @@ import {
   type HomeFeedResponse,
 } from "../../lib/api";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
+import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 
 /*
  * Home feed v2 (#1454 WS-7) — multi-rail personalized feed.
@@ -128,6 +129,7 @@ export function HomeFeedRails({
                     </Link>
                     <div className="ng-recommendation-card__body">
                       <h4>{item.title}</h4>
+                      <AiDisclosureBadge disclosure={item.aiDisclosure} />
                       <p>{item.artist ?? "Unknown Artist"}</p>
                       <div className="ng-recommendation-card__meta">
                         <span>{item.genre || "Discovery"}</span>

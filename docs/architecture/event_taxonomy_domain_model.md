@@ -119,6 +119,9 @@ rules. Warehouse facts store only the coarse values in
 - `catalog.release_ready`
   - owner: Catalog Service
   - payload: release_id, artist_id, track_ids, source
+- `catalog.ai_disclosure_recorded`
+  - owner: Catalog Service
+  - payload: release_id, track_id, DDEX-aligned level, declaration source, bounded contribution facets
 
 ### Session & Licensing
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
+import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 
 /*
  * Home popularity rails (#1451 WS-4) — engagement-ranked Trending Now and
@@ -94,6 +95,7 @@ export function TrendingNowRail({
                 </span>
               </div>
               <h4 className="ng-play-card__title">{item.title}</h4>
+              <AiDisclosureBadge disclosure={item.aiDisclosure} />
               <p className="ng-play-card__artist">
                 {item.artist ?? "Unknown"} · {listenersLabel(item.uniqueListeners)}
               </p>

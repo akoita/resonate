@@ -23,11 +23,17 @@ export interface StemsUploadedEvent extends BaseEvent {
     releaseDate?: string;
     explicit?: boolean;
     tracks?: Array<{
+      id?: string;
       title: string;
       artist?: string;
       position: number;
       isrc?: string;
       explicit?: boolean;
+      aiDisclosure?: {
+        level: "NONE" | "PARTLY" | "ALL";
+        facets: string[];
+        source: "artist" | "resonate_native" | "remix_derived";
+      };
       stems: Array<{
         id: string;
         uri: string;
@@ -780,6 +786,15 @@ export interface CatalogTrackStatusEvent extends BaseEvent {
   error?: string;
 }
 
+export interface CatalogAiDisclosureRecordedEvent extends BaseEvent {
+  eventName: "catalog.ai_disclosure_recorded";
+  releaseId: string;
+  trackId: string;
+  level: "NONE" | "PARTLY" | "ALL";
+  source: "artist" | "resonate_native" | "remix_derived";
+  facets: string[];
+}
+
 export interface SessionStartedEvent extends BaseEvent {
   eventName: "session.started";
   sessionId: string;
@@ -1503,6 +1518,7 @@ export type ResonateEvent =
   | CatalogUpdatedEvent
   | CatalogReleaseReadyEvent
   | CatalogTrackStatusEvent
+  | CatalogAiDisclosureRecordedEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
