@@ -50,22 +50,18 @@ fi
 
 VERIFY_CONTRACTS="${VERIFY_CONTRACTS:-auto}"
 if [[ "$VERIFY_CONTRACTS" == "auto" ]]; then
-    if [[ -n "${ETHERSCAN_API_KEY:-${BASESCAN_API_KEY:-}}" ]]; then
-        VERIFY_CONTRACTS="true"
-    else
-        VERIFY_CONTRACTS="false"
-    fi
+    VERIFY_CONTRACTS="true"
 fi
 
 EXPLORER_API_KEY="${ETHERSCAN_API_KEY:-${BASESCAN_API_KEY:-}}"
 
-if [[ "$VERIFY_CONTRACTS" == "true" && -z "$EXPLORER_API_KEY" ]]; then
-    echo -e "${RED}Error: VERIFY_CONTRACTS=true requires ETHERSCAN_API_KEY${NC}"
-    exit 1
-elif [[ "$VERIFY_CONTRACTS" == "true" ]]; then
-    echo -e "${BLUE}Info: contract verification will run after deployment records are written.${NC}"
+if [[ "$VERIFY_CONTRACTS" == "true" ]]; then
+    echo -e "${BLUE}Info: Sourcify verification will run after deployment records are written.${NC}"
+    if [[ -n "$EXPLORER_API_KEY" ]]; then
+        echo -e "${BLUE}Info: BaseScan verification will also run as a secondary verifier.${NC}"
+    fi
 else
-    echo -e "${YELLOW}Info: contract verification disabled. Set ETHERSCAN_API_KEY to verify during deploy.${NC}"
+    echo -e "${YELLOW}Info: contract verification disabled by VERIFY_CONTRACTS=false.${NC}"
 fi
 
 if ! command -v forge &> /dev/null; then
@@ -148,11 +144,38 @@ fi
 STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
 MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
 TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
-CONTENT_PROTECTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy") | .contractAddress' "$BROADCAST_FILE" | head -1)
+CONTENT_PROTECTION_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ContentProtection") | .contractAddress' "$BROADCAST_FILE" | head -1)
+CONTENT_PROTECTION=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
 CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
-REVENUE_ESCROW=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE")
+REVENUE_ESCROW_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE" | head -1)
+REVENUE_ESCROW_TIMELOCK=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TimelockController") | .contractAddress' "$BROADCAST_FILE" | head -1)
+REVENUE_ESCROW=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 DEPLOY_TX=$(jq -r '.transactions[0].hash' "$BROADCAST_FILE")
+
+for graph_address in \
+    "ContentProtection implementation:$CONTENT_PROTECTION_IMPLEMENTATION" \
+    "ContentProtection proxy:$CONTENT_PROTECTION" \
+    "RevenueEscrow implementation:$REVENUE_ESCROW_IMPLEMENTATION" \
+    "RevenueEscrow timelock:$REVENUE_ESCROW_TIMELOCK" \
+    "RevenueEscrow proxy:$REVENUE_ESCROW"; do
+    graph_name="${graph_address%%:*}"
+    graph_value="${graph_address#*:}"
+    if [[ ! "$graph_value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+        echo -e "${RED}Error: could not distinguish $graph_name in $BROADCAST_FILE${NC}"
+        exit 1
+    fi
+done
 
 echo -e "${GREEN}=== Deployment Successful ===${NC}"
 echo ""
@@ -160,9 +183,12 @@ echo -e "  StemNFT:             ${GREEN}$STEM_NFT${NC}"
 echo -e "  StemMarketplaceV2:   ${GREEN}$MARKETPLACE${NC}"
 echo -e "  TransferValidator:   ${GREEN}$TRANSFER_VALIDATOR${NC}"
 echo -e "  ContentProtection:   ${GREEN}$CONTENT_PROTECTION${NC}"
+echo -e "    implementation:    ${GREEN}$CONTENT_PROTECTION_IMPLEMENTATION${NC}"
 echo -e "  DisputeResolution:   ${GREEN}$DISPUTE_RESOLUTION${NC}"
 echo -e "  CurationRewards:     ${GREEN}$CURATION_REWARDS${NC}"
 echo -e "  RevenueEscrow:       ${GREEN}$REVENUE_ESCROW${NC}"
+echo -e "    implementation:    ${GREEN}$REVENUE_ESCROW_IMPLEMENTATION${NC}"
+echo -e "    timelock:          ${GREEN}$REVENUE_ESCROW_TIMELOCK${NC}"
 echo -e "  First TX:            $DEPLOY_TX"
 echo ""
 
@@ -182,9 +208,12 @@ cat > "$DEPLOY_RECORD" <<EOF
     "StemMarketplaceV2": "$MARKETPLACE",
     "TransferValidator": "$TRANSFER_VALIDATOR",
     "ContentProtection": "$CONTENT_PROTECTION",
+    "ContentProtectionImplementation": "$CONTENT_PROTECTION_IMPLEMENTATION",
     "DisputeResolution": "$DISPUTE_RESOLUTION",
     "CurationRewards": "$CURATION_REWARDS",
-    "RevenueEscrow": "$REVENUE_ESCROW"
+    "RevenueEscrow": "$REVENUE_ESCROW",
+    "RevenueEscrowImplementation": "$REVENUE_ESCROW_IMPLEMENTATION",
+    "RevenueEscrowTimelock": "$REVENUE_ESCROW_TIMELOCK"
   },
   "verification": {
     "basescan": "https://sepolia.basescan.org/address/$STEM_NFT",
@@ -226,9 +255,12 @@ STEM_NFT_ADDRESS=$STEM_NFT
 MARKETPLACE_ADDRESS=$MARKETPLACE
 TRANSFER_VALIDATOR_ADDRESS=$TRANSFER_VALIDATOR
 CONTENT_PROTECTION_ADDRESS=$CONTENT_PROTECTION
+CONTENT_PROTECTION_IMPLEMENTATION=$CONTENT_PROTECTION_IMPLEMENTATION
 DISPUTE_RESOLUTION_ADDRESS=$DISPUTE_RESOLUTION
 CURATION_REWARDS_ADDRESS=$CURATION_REWARDS
 REVENUE_ESCROW_ADDRESS=$REVENUE_ESCROW
+REVENUE_ESCROW_IMPLEMENTATION=$REVENUE_ESCROW_IMPLEMENTATION
+REVENUE_ESCROW_TIMELOCK_ADDRESS=$REVENUE_ESCROW_TIMELOCK
 ENABLE_CONTRACT_INDEXER=true
 
 # x402 on the same chain
@@ -242,16 +274,21 @@ echo -e "${GREEN}✓ Remote deployment env handoff saved to $REMOTE_ENV_RECORD${
 echo ""
 
 if [[ "$VERIFY_CONTRACTS" == "true" ]]; then
-    echo -e "${BLUE}Verifying deployed contracts from broadcast...${NC}"
-    if BASE_SEPOLIA_RPC_URL="$BASE_SEPOLIA_RPC_URL" \
-        ETHERSCAN_API_KEY="$EXPLORER_API_KEY" \
-        BROADCAST_FILE="$BROADCAST_FILE" \
-        "$SCRIPT_DIR/verify-base-sepolia.sh"; then
-        echo -e "${GREEN}✓ Base Sepolia contracts verified${NC}"
+    echo -e "${BLUE}Verifying deployed contracts from broadcast on Sourcify...${NC}"
+    if BROADCAST_FILE="$BROADCAST_FILE" "$SCRIPT_DIR/verify-base-sepolia-sourcify.sh"; then
+        echo -e "${GREEN}✓ Base Sepolia contracts verified on Sourcify${NC}"
     else
-        echo -e "${YELLOW}Warning: contract verification failed after successful deployment.${NC}"
+        echo -e "${YELLOW}Warning: Sourcify verification failed after successful deployment.${NC}"
         echo "Retry without redeploying:"
-        echo "  ETHERSCAN_API_KEY=<etherscan-v2-key-with-base-sepolia-access> make verify-base-sepolia"
+        echo "  make verify-base-sepolia-sourcify"
+    fi
+    if [[ -n "$EXPLORER_API_KEY" ]]; then
+        echo -e "${BLUE}Running secondary BaseScan verification...${NC}"
+        BASE_SEPOLIA_RPC_URL="$BASE_SEPOLIA_RPC_URL" \
+            ETHERSCAN_API_KEY="$EXPLORER_API_KEY" \
+            BROADCAST_FILE="$BROADCAST_FILE" \
+            "$SCRIPT_DIR/verify-base-sepolia.sh" || \
+            echo -e "${YELLOW}Warning: secondary BaseScan verification failed; Sourcify remains canonical.${NC}"
     fi
     echo ""
 fi

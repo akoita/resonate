@@ -28,6 +28,7 @@ on:
           - preflight
           - deploy-protocol
           - deploy-content-protection
+          - deploy-revenue-escrow
           - deploy-show-campaign-escrow
           - deploy-stem-marketplace
           - upgrade-content-protection
@@ -36,6 +37,11 @@ on:
           - set-show-campaign-fee-config
           - set-show-campaign-confirmer
           - pause-show-campaign-escrow
+          - pause-revenue-escrow
+          - schedule-revenue-escrow-upgrade
+          - execute-revenue-escrow-upgrade
+          - smoke-revenue-escrow
+          - verify-revenue-escrow-sourcify
           - create-show-campaign
           - confirm-show-campaign-booking
           - confirm-show-campaign-fulfillment
@@ -92,6 +98,12 @@ jobs:
                 exit 1
               fi
               ;;
+            verify-revenue-escrow-sourcify)
+              if [[ "${{ inputs.target_network }}" != "base-sepolia" ]]; then
+                echo "::error::RevenueEscrow Sourcify workflow verification currently targets Base Sepolia only."
+                exit 1
+              fi
+              ;;
           esac
 
       - name: Checkout
@@ -143,6 +155,17 @@ jobs:
           INPUT_SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY: ${{ vars.SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY }}
           INPUT_SHOW_CAMPAIGN_GUARDIAN: ${{ vars.SHOW_CAMPAIGN_GUARDIAN }}
           INPUT_SHOW_CAMPAIGN_FULFILLMENT_WINDOW: ${{ vars.SHOW_CAMPAIGN_FULFILLMENT_WINDOW }}
+          INPUT_REVENUE_ESCROW_OWNER: ${{ vars.REVENUE_ESCROW_OWNER }}
+          INPUT_REVENUE_ESCROW_DEPLOYER: ${{ vars.REVENUE_ESCROW_DEPLOYER }}
+          INPUT_REVENUE_ESCROW_ADDRESS: ${{ vars.REVENUE_ESCROW_ADDRESS }}
+          INPUT_REVENUE_ESCROW_IMPLEMENTATION: ${{ vars.REVENUE_ESCROW_IMPLEMENTATION }}
+          INPUT_REVENUE_ESCROW_TIMELOCK_ADDRESS: ${{ vars.REVENUE_ESCROW_TIMELOCK_ADDRESS }}
+          INPUT_REVENUE_ESCROW_GUARDIAN: ${{ vars.REVENUE_ESCROW_GUARDIAN }}
+          INPUT_REVENUE_ESCROW_PERIOD: ${{ vars.REVENUE_ESCROW_PERIOD }}
+          INPUT_REVENUE_ESCROW_TIMELOCK_MIN_DELAY: ${{ vars.REVENUE_ESCROW_TIMELOCK_MIN_DELAY }}
+          INPUT_REVENUE_ESCROW_PAUSED: ${{ vars.REVENUE_ESCROW_PAUSED }}
+          INPUT_REVENUE_ESCROW_UPGRADE_SALT: ${{ vars.REVENUE_ESCROW_UPGRADE_SALT }}
+          INPUT_NEW_IMPLEMENTATION: ${{ vars.NEW_IMPLEMENTATION }}
           INPUT_FEE_RECIPIENT: ${{ vars.FEE_RECIPIENT }}
           INPUT_PROTOCOL_FEE_BPS: ${{ vars.PROTOCOL_FEE_BPS }}
           INPUT_NEW_PROTOCOL_FEE_BPS: ${{ vars.NEW_PROTOCOL_FEE_BPS }}
@@ -205,6 +228,17 @@ jobs:
             SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY
             SHOW_CAMPAIGN_GUARDIAN
             SHOW_CAMPAIGN_FULFILLMENT_WINDOW
+            REVENUE_ESCROW_OWNER
+            REVENUE_ESCROW_DEPLOYER
+            REVENUE_ESCROW_ADDRESS
+            REVENUE_ESCROW_IMPLEMENTATION
+            REVENUE_ESCROW_TIMELOCK_ADDRESS
+            REVENUE_ESCROW_GUARDIAN
+            REVENUE_ESCROW_PERIOD
+            REVENUE_ESCROW_TIMELOCK_MIN_DELAY
+            REVENUE_ESCROW_PAUSED
+            REVENUE_ESCROW_UPGRADE_SALT
+            NEW_IMPLEMENTATION
             FEE_RECIPIENT
             PROTOCOL_FEE_BPS
             NEW_PROTOCOL_FEE_BPS
@@ -266,7 +300,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${PRIVATE_KEY:-}" ]]; then
+          requires_signer=true
+          case "${{ inputs.operation }}" in
+            smoke-revenue-escrow|verify-revenue-escrow-sourcify) requires_signer=false ;;
+          esac
+          if [[ "${requires_signer}" == "true" && -z "${PRIVATE_KEY:-}" ]]; then
             echo "::error::Set CONTRACT_DEPLOYER_PRIVATE_KEY in the contracts-${{ inputs.environment }} GitHub environment."
             exit 1
           fi
@@ -283,7 +321,35 @@ jobs:
             [[ "${left}" < "${right}" ]]
           }
 
-          deployer="$(cast wallet address "${PRIVATE_KEY}")"
+          if [[ "${requires_signer}" == "true" ]]; then
+            deployer="$(cast wallet address "${PRIVATE_KEY}")"
+          else
+            deployer="read-only"
+          fi
+
+          case "${{ inputs.operation }}" in
+            deploy-protocol|deploy-content-protection|deploy-revenue-escrow)
+              for name in REVENUE_ESCROW_OWNER REVENUE_ESCROW_GUARDIAN; do
+                if [[ -z "${!name:-}" ]]; then
+                  echo "::error::${{ inputs.operation }} requires ${name} on shared networks."
+                  exit 1
+                fi
+              done
+              if [[ "${REVENUE_ESCROW_OWNER,,}" == "${REVENUE_ESCROW_GUARDIAN,,}" ]]; then
+                echo "::error::REVENUE_ESCROW_GUARDIAN must be independent from REVENUE_ESCROW_OWNER."
+                exit 1
+              fi
+              if [[ "${deployer,,}" == "${REVENUE_ESCROW_GUARDIAN,,}" ]]; then
+                echo "::error::REVENUE_ESCROW_GUARDIAN must be independent from the deployer."
+                exit 1
+              fi
+              revenue_delay="${REVENUE_ESCROW_TIMELOCK_MIN_DELAY:-172800}"
+              if [[ ! "${revenue_delay}" =~ ^[0-9]+$ ]] || lt_uint "${revenue_delay}" "172800"; then
+                echo "::error::REVENUE_ESCROW_TIMELOCK_MIN_DELAY must be at least 172800 seconds (48h)."
+                exit 1
+              fi
+              ;;
+          esac
 
           case "${{ inputs.operation }}" in
             deploy-content-protection)
@@ -376,6 +442,30 @@ jobs:
                 exit 1
               fi
               ;;
+            pause-revenue-escrow)
+              if [[ -z "${REVENUE_ESCROW_ADDRESS:-}" || -z "${PAUSED:-}" ]]; then
+                echo "::error::pause-revenue-escrow requires REVENUE_ESCROW_ADDRESS and PAUSED."
+                exit 1
+              fi
+              ;;
+            schedule-revenue-escrow-upgrade)
+              if [[ -z "${REVENUE_ESCROW_ADDRESS:-}" || -z "${REVENUE_ESCROW_TIMELOCK_ADDRESS:-}" ]]; then
+                echo "::error::schedule-revenue-escrow-upgrade requires proxy and timelock addresses."
+                exit 1
+              fi
+              ;;
+            execute-revenue-escrow-upgrade)
+              if [[ -z "${REVENUE_ESCROW_ADDRESS:-}" || -z "${REVENUE_ESCROW_TIMELOCK_ADDRESS:-}" || -z "${NEW_IMPLEMENTATION:-}" ]]; then
+                echo "::error::execute-revenue-escrow-upgrade requires proxy, timelock, and NEW_IMPLEMENTATION."
+                exit 1
+              fi
+              ;;
+            smoke-revenue-escrow)
+              required_names=(REVENUE_ESCROW_ADDRESS REVENUE_ESCROW_OWNER REVENUE_ESCROW_DEPLOYER REVENUE_ESCROW_IMPLEMENTATION REVENUE_ESCROW_TIMELOCK_ADDRESS REVENUE_ESCROW_GUARDIAN REVENUE_ESCROW_PERIOD REVENUE_ESCROW_TIMELOCK_MIN_DELAY)
+              for name in "${required_names[@]}"; do
+                if [[ -z "${!name:-}" ]]; then echo "::error::smoke-revenue-escrow requires ${name}."; exit 1; fi
+              done
+              ;;
             create-show-campaign)
               required_names=(
                 SHOW_CAMPAIGN_ESCROW_ADDRESS
@@ -443,12 +533,38 @@ jobs:
             exit 1
           fi
 
-          balance_wei="$(cast balance "${deployer}" --rpc-url "${rpc_url}")"
-          balance_eth="$(cast from-wei "${balance_wei}")"
-          if lt_uint "${balance_wei}" "${minimum_wei}"; then
-            echo "::error::Deployer ${deployer} has ${balance_eth} ETH on ${{ inputs.target_network }}; need at least 0.01 ETH."
-            exit 1
+          if [[ "${requires_signer}" == "true" ]]; then
+            balance_wei="$(cast balance "${deployer}" --rpc-url "${rpc_url}")"
+            balance_eth="$(cast from-wei "${balance_wei}")"
+            if lt_uint "${balance_wei}" "${minimum_wei}"; then
+              echo "::error::Deployer ${deployer} has ${balance_eth} ETH on ${{ inputs.target_network }}; need at least 0.01 ETH."
+              exit 1
+            fi
+          else
+            balance_eth="not required"
           fi
+
+          case "${{ inputs.operation }}" in
+            pause-revenue-escrow)
+              live_owner="$(cast call "${REVENUE_ESCROW_ADDRESS}" 'owner()(address)' --rpc-url "${rpc_url}")"
+              if [[ "${live_owner,,}" != "${deployer,,}" ]]; then
+                echo "::error::RevenueEscrow pause signer ${deployer} is not owner ${live_owner}."
+                exit 1
+              fi
+              ;;
+            schedule-revenue-escrow-upgrade|execute-revenue-escrow-upgrade)
+              if [[ "${{ inputs.operation }}" == "schedule-revenue-escrow-upgrade" ]]; then
+                role="$(cast call "${REVENUE_ESCROW_TIMELOCK_ADDRESS}" 'PROPOSER_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              else
+                role="$(cast call "${REVENUE_ESCROW_TIMELOCK_ADDRESS}" 'EXECUTOR_ROLE()(bytes32)' --rpc-url "${rpc_url}")"
+              fi
+              allowed="$(cast call "${REVENUE_ESCROW_TIMELOCK_ADDRESS}" 'hasRole(bytes32,address)(bool)' "${role}" "${deployer}" --rpc-url "${rpc_url}")"
+              if [[ "${allowed}" != "true" ]]; then
+                echo "::error::Signer ${deployer} does not hold the required RevenueEscrow timelock role."
+                exit 1
+              fi
+              ;;
+          esac
 
           {
             echo "### Contract deployment preflight"
@@ -480,6 +596,26 @@ jobs:
             --evm-version cancun \
             --via-ir \
             --slow
+
+      - name: Deploy RevenueEscrow UUPS graph
+        if: inputs.operation == 'deploy-revenue-escrow'
+        run: make deploy-revenue-escrow
+
+      - name: Validate deployed RevenueEscrow authority graph
+        if: inputs.operation == 'deploy-revenue-escrow'
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source "contracts/deployments/revenue-escrow.${{ inputs.target_network }}.remote.env"
+          set +a
+          make smoke-revenue-escrow
+
+      - name: Verify deployed RevenueEscrow graph on Sourcify
+        if: inputs.operation == 'deploy-revenue-escrow' && inputs.target_network == 'base-sepolia' && inputs.verify_contracts != 'false'
+        env:
+          BROADCAST_FILE: contracts/broadcast/DeployRevenueEscrow.s.sol/84532/run-latest.json
+        run: make verify-revenue-escrow-sourcify
 
       - name: Deploy show campaign escrow
         if: inputs.operation == 'deploy-show-campaign-escrow'
@@ -547,6 +683,28 @@ jobs:
         if: inputs.operation == 'pause-show-campaign-escrow'
         run: make pause-show-campaign-escrow
 
+      - name: Pause or unpause RevenueEscrow
+        if: inputs.operation == 'pause-revenue-escrow'
+        run: make pause-revenue-escrow
+
+      - name: Schedule RevenueEscrow upgrade
+        if: inputs.operation == 'schedule-revenue-escrow-upgrade'
+        run: make schedule-revenue-escrow-upgrade
+
+      - name: Execute RevenueEscrow upgrade
+        if: inputs.operation == 'execute-revenue-escrow-upgrade'
+        run: make execute-revenue-escrow-upgrade
+
+      - name: Smoke RevenueEscrow authority graph
+        if: inputs.operation == 'smoke-revenue-escrow'
+        run: make smoke-revenue-escrow
+
+      - name: Verify RevenueEscrow broadcast on Sourcify
+        if: inputs.operation == 'verify-revenue-escrow-sourcify'
+        env:
+          BROADCAST_FILE: contracts/broadcast/DeployRevenueEscrow.s.sol/84532/run-latest.json
+        run: make verify-revenue-escrow-sourcify
+
       - name: Create and activate show campaign
         if: inputs.operation == 'create-show-campaign'
         run: make create-show-campaign
@@ -594,7 +752,7 @@ jobs:
           make release-show-campaign-funds
 
       - name: Summarize admin/config operation
-        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'
+        if: inputs.operation == 'set-marketplace-protocol-fee' || inputs.operation == 'set-show-campaign-fee-config' || inputs.operation == 'set-show-campaign-confirmer' || inputs.operation == 'pause-show-campaign-escrow' || inputs.operation == 'pause-revenue-escrow' || inputs.operation == 'schedule-revenue-escrow-upgrade' || inputs.operation == 'execute-revenue-escrow-upgrade' || inputs.operation == 'create-show-campaign' || inputs.operation == 'confirm-show-campaign-booking' || inputs.operation == 'confirm-show-campaign-fulfillment' || inputs.operation == 'release-show-campaign-funds'
         shell: bash
         run: |
           set -euo pipefail
@@ -624,6 +782,15 @@ jobs:
               pause-show-campaign-escrow)
                 echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
                 echo "- paused: \`${PAUSED}\`"
+                ;;
+              pause-revenue-escrow)
+                echo "- RevenueEscrow proxy: \`${REVENUE_ESCROW_ADDRESS}\`"
+                echo "- paused: \`${PAUSED}\`"
+                ;;
+              schedule-revenue-escrow-upgrade|execute-revenue-escrow-upgrade)
+                echo "- RevenueEscrow proxy: \`${REVENUE_ESCROW_ADDRESS}\`"
+                echo "- RevenueEscrow timelock: \`${REVENUE_ESCROW_TIMELOCK_ADDRESS}\`"
+                echo "- new implementation: \`${NEW_IMPLEMENTATION:-created during schedule}\`"
                 ;;
               create-show-campaign)
                 echo "- show campaign escrow: \`${SHOW_CAMPAIGN_ESCROW_ADDRESS}\`"
@@ -674,6 +841,15 @@ jobs:
             fi
             if [[ -f contracts/deployments/show-campaign-escrow.abi.json ]]; then
               echo "- ShowCampaignEscrow ABI handoff: \`contracts/deployments/show-campaign-escrow.abi.json\`"
+            fi
+            if [[ -f "contracts/deployments/revenue-escrow.${{ inputs.target_network }}.json" ]]; then
+              echo "- RevenueEscrow deployment record: \`contracts/deployments/revenue-escrow.${{ inputs.target_network }}.json\`"
+            fi
+            if [[ -f "contracts/deployments/revenue-escrow.${{ inputs.target_network }}.remote.env" ]]; then
+              echo "- RevenueEscrow environment handoff: \`contracts/deployments/revenue-escrow.${{ inputs.target_network }}.remote.env\`"
+            fi
+            if [[ -f contracts/deployments/revenue-escrow.abi.json ]]; then
+              echo "- RevenueEscrow ABI handoff: \`contracts/deployments/revenue-escrow.abi.json\`"
             fi
             if [[ -f "contracts/deployments/stem-marketplace.${{ inputs.target_network }}.json" ]]; then
               echo "- StemMarketplaceV2 deployment record: \`contracts/deployments/stem-marketplace.${{ inputs.target_network }}.json\`"

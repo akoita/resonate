@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test, console} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {IRevenueEscrow} from "../../src/interfaces/IRevenueEscrow.sol";
+import {RevenueEscrowProxyDeployer} from "../utils/RevenueEscrowProxyDeployer.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
@@ -50,7 +51,7 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
         cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
 
         vm.prank(admin);
-        escrow = new RevenueEscrow(admin, ESCROW_PERIOD);
+        escrow = RevenueEscrowProxyDeployer.deploy(admin, ESCROW_PERIOD, makeAddr("upgradeAuthority"));
 
         vm.startPrank(admin);
         escrow.setContentProtection(address(cp));
@@ -642,7 +643,7 @@ contract RevenueEscrowTest is Test, IRevenueEscrow {
 
     function test_FreezeByTrackRange_RevertContentProtectionNotSet() public {
         vm.prank(admin);
-        RevenueEscrow bare = new RevenueEscrow(admin, ESCROW_PERIOD);
+        RevenueEscrow bare = RevenueEscrowProxyDeployer.deploy(admin, ESCROW_PERIOD, makeAddr("bareUpgradeAuthority"));
 
         vm.prank(admin);
         vm.expectRevert(IRevenueEscrow.ContentProtectionNotSet.selector);

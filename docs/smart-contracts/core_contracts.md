@@ -217,6 +217,14 @@ Hierarchy model:
 
 Holds sale revenue per tokenId until escrow period expires:
 
+- **Guarded upgrades** — The application address is an ERC1967 proxy. Only its
+  `upgradeAuthority` timelock can authorize UUPS upgrades; the operational owner
+  and an independent guardian mutually cancel scheduled changes and can each
+  drive a delay-protected recovery.
+- **Global pause** — The operational owner can immediately stop every custody
+  movement: native/ERC-20 deposits, releases, redirects, and failed-payment
+  claims. Views, dispute freeze controls, configuration, two-step ownership,
+  pause recovery, and upgrade governance remain available while paused.
 - **Deposit** — Accumulates revenue per token. **Permissioned**: only the owner or
   an allowlisted depositor (`setDepositor`) may deposit, because the first deposit
   binds the escrow's beneficiary — leaving it open would let an attacker front-run
@@ -226,8 +234,11 @@ Holds sale revenue per tokenId until escrow period expires:
 - **Release** — Permissionless after escrow period (anyone can call)
 - **Redirect** — Admin sends frozen funds to rightful owner on confirmed theft
 
-> **Deploy/ops:** after deploying `RevenueEscrow`, allowlist the revenue-routing
+> **Deploy/ops:** promote the proxy address, never the implementation. After a
+> fresh deployment, link `ContentProtection` and allowlist each revenue-routing
 > address with `setDepositor(router, true)` (the owner is implicitly authorized).
+> A historical standalone escrow cannot be upgraded in place; audit/settle its
+> liabilities before retiring or replacing that address.
 
 ```solidity
 // Authorize the revenue router once (owner only)

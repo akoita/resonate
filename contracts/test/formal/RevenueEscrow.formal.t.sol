@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
+import {RevenueEscrowProxyDeployer} from "../utils/RevenueEscrowProxyDeployer.sol";
 
 /**
  * @title RevenueEscrow Formal Verification Tests
@@ -29,7 +30,7 @@ contract RevenueEscrowFormalTest is Test, SymTest {
     uint256 public constant PERIOD = 30 days;
 
     function setUp() public {
-        escrow = new RevenueEscrow(owner, PERIOD);
+        escrow = RevenueEscrowProxyDeployer.deploy(owner, PERIOD, address(0x5000));
         usdc = new MockUSDC();
         vm.prank(owner);
         escrow.setDepositor(depositor, true);
@@ -72,5 +73,14 @@ contract RevenueEscrowFormalTest is Test, SymTest {
         assert(bal == 0);
         assert(!frozen);
         assert(benef == recipient);
+    }
+
+    /// The owner can toggle the pause without changing upgrade authority.
+    function check_pausePreservesUpgradeAuthority(bool isPaused) public {
+        address authorityBefore = escrow.upgradeAuthority();
+        vm.prank(owner);
+        escrow.setPaused(isPaused);
+        assert(escrow.paused() == isPaused);
+        assert(escrow.upgradeAuthority() == authorityBefore);
     }
 }

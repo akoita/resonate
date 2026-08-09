@@ -22,6 +22,29 @@ methods {
     function defaultEscrowPeriod() external returns (uint256) envfree;
     function getEscrow(uint256) external returns (address, uint256, uint256, bool) envfree;
     function isReleasable(uint256) external returns (bool) envfree;
+    function paused() external returns (bool) envfree;
+    function upgradeAuthority() external returns (address) envfree;
+}
+
+/// Only the current upgrade authority can rotate itself.
+rule onlyAuthorityCanRotateAuthority(env e, address newAuthority) {
+    require e.msg.sender != upgradeAuthority();
+    setUpgradeAuthority@withrevert(e, newAuthority);
+    assert lastReverted, "non-authority must not rotate upgrade authority";
+}
+
+/// A pause blocks native custody movement into the contract.
+rule pauseBlocksDeposit(env e, uint256 tokenId, address beneficiary) {
+    require paused();
+    deposit@withrevert(e, tokenId, beneficiary);
+    assert lastReverted, "paused escrow must reject deposits";
+}
+
+/// A pause blocks native custody movement out through release.
+rule pauseBlocksRelease(env e, uint256 tokenId) {
+    require paused();
+    release@withrevert(e, tokenId);
+    assert lastReverted, "paused escrow must reject releases";
 }
 
 // ============ Access control ============

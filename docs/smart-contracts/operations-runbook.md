@@ -53,8 +53,11 @@ Core GitHub environment variables:
 | Operation | When to use | Inputs and environment | Outputs | Follow-through |
 | --- | --- | --- | --- | --- |
 | `preflight` | Always run before a write operation after changing env vars, RPCs, or signer keys. | Workflow: `environment`, `target_network`, `operation=preflight`. Secrets: deployer key and target RPC. | Step summary with chain ID, signer address, ETH balance, and selected operation. | If signer, chain ID, or balance is wrong, fix the GitHub environment before running a write op. |
-| `deploy-protocol` | Fresh full protocol graph deployment when constructor immutables or tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify via Sourcify or BaseScan as needed. |
+| `deploy-protocol` | Fresh full protocol graph deployment when constructor immutables or tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, RevenueEscrow owner/guardian/timelock inputs, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify the guarded RevenueEscrow graph and all implementations through Sourcify or BaseScan as needed. |
 | `deploy-content-protection` | Add or replace ContentProtection for an existing `StemNFT` and `TransferValidator` without replacing the whole graph. | Workflow: `operation=deploy-content-protection`. Vars: `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`; optional `MARKETPLACE_ADDRESS`, `EXISTING_ADMIN`. Secret: owner/admin signer. | Forge broadcast files and console summary. | Promote any changed ContentProtection/RevenueEscrow references through IaC and app config if downstream code consumes them. |
+| `deploy-revenue-escrow` | Deploy an isolated guarded RevenueEscrow replacement graph. | Workflow: `operation=deploy-revenue-escrow`. Required remote vars: `REVENUE_ESCROW_OWNER`, independent `REVENUE_ESCROW_GUARDIAN`; optional `REVENUE_ESCROW_PERIOD` (2592000) and `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` (minimum/default 172800). Secret: deployer key. | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast files, authority smoke, and Sourcify verification. | Link ContentProtection and depositors, audit/settle any standalone predecessor, then promote only the proxy through `resonate-iac`. No state moves automatically. |
+| `upgrade-revenue-escrow` | Schedule or execute a reviewed RevenueEscrow implementation upgrade. | Vars: `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `UPGRADE_ACTION`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must be an owner/guardian timelock proposer/executor. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy address stable. | Re-run storage/formal/security gates before scheduling. Guardian or owner cancels a bad operation during the delay. |
+| `pause-revenue-escrow` | Stop or resume all RevenueEscrow fund movement during incident response. | Vars: `REVENUE_ESCROW_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Diagnose while paused. Unpause only after remediation or a timelocked recovery upgrade; coordinate deposit/release operators. |
 | `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + new backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, wait both cursors reach tip, and only then promote the proxy as the current backend/frontend address through `resonate-iac`. |
 | `deploy-stem-marketplace` | Surgically deploy a new `StemMarketplaceV2` against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Vars: `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`. Secret: owner/admin signer. | `contracts/deployments/stem-marketplace.<network>.json`, `.remote.env`, `stem-marketplace.abi.json`, broadcast files. | Promote `MARKETPLACE_ADDRESS` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS` through `resonate-iac`; confirm ContentProtection registrar and validator whitelist effects. |
 | `upgrade-content-protection` | Upgrade the UUPS implementation behind an existing ContentProtection proxy. | Workflow: `operation=upgrade-content-protection`. Vars: `CONTENT_PROTECTION_PROXY`. Secret: proxy owner/admin signer. | Forge broadcast files and console summary. Proxy address stays the same. | No address promotion unless implementation metadata is tracked elsewhere. Keep the broadcast artifact for audit. |
@@ -67,6 +70,50 @@ Core GitHub environment variables:
 | `confirm-show-campaign-booking` | Move a funded Shows campaign to booked after the venue/show booking is confirmed. | Workflow: `operation=confirm-show-campaign-booking`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | Confirm the campaign id matches the backend/admin tracking source before running. If the transaction reverts, check campaign status, booking deadline, and confirmer allowlist. |
 | `confirm-show-campaign-fulfillment` | Mark a booked Shows campaign fulfilled after the show has happened or the operator has accepted fulfillment evidence. | Workflow: `operation=confirm-show-campaign-fulfillment`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | This starts the campaign's dispute window. Do not release funds until the window has elapsed. |
 | `release-show-campaign-funds` | Release the remaining fulfilled campaign balance after the dispute window has elapsed. | Workflow: `operation=release-show-campaign-funds`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: deployment-safe signer key. The contract call is permissionless. | Console summary and workflow summary. Forge logs campaign status before and after the call, plus total released and total fee paid before and after so the run log shows net/fee movement. | Reconcile the Forge log with the campaign ledger/admin record. No address promotion. |
+
+## RevenueEscrow Incident And Upgrade Procedure
+
+`RevenueEscrow` separates immediate containment from delayed code recovery.
+
+1. **Contain:** the operational owner runs `pause-revenue-escrow` with
+   `PAUSED=true`. Deposits, releases, redirects, and failed-payment claims stop
+   immediately. Read calls and dispute freeze controls remain available.
+2. **Account:** record native/ERC-20 balances, open escrow liabilities, failed
+   payments, the current implementation, owner/pending owner, timelock, and role
+   members. Do not infer liability solely from the contract's total balance.
+3. **Prepare and verify:** implement the smallest recovery, then run unit, fuzz,
+   invariant, timelock integration, Halmos, Certora, mutation, storage-layout,
+   and diff security gates. Publish the new implementation source through
+   Sourcify before execution when practical.
+4. **Schedule:** an owner or guardian timelock proposer runs
+   `upgrade-revenue-escrow` with `UPGRADE_ACTION=schedule`. Preserve the logged
+   implementation, operation id, salt, calldata, and ETA.
+5. **Veto when needed:** either authority uses `timelock.cancel(operationId)`
+   during the delay if the implementation, verification, or intent is wrong.
+6. **Execute:** after the delay, an authorized executor reruns the operation with
+   `UPGRADE_ACTION=execute` and the exact `NEW_IMPLEMENTATION`/salt inputs.
+7. **Recover:** verify the authority graph and stored liabilities again, exercise
+   the intended settlement path, then unpause with `PAUSED=false` only when safe.
+
+If the operational owner is unavailable, the independent guardian can schedule
+and execute the delayed recovery without it. The new implementation may provide
+the narrowly reviewed ownership/unpause recovery, but no upgrade bypasses the
+timelock. Owner rotation itself is two-step: the current owner calls
+`transferOwnership(newOwner)` and the new owner must call `acceptOwnership()`.
+
+### Replacing a standalone RevenueEscrow
+
+The historical constructor-deployed contract is not a proxy and cannot be
+converted in place. Before promoting a new proxy:
+
+- enumerate and settle, redirect, or explicitly retain every outstanding native,
+  token, and failed-payment liability at the old address;
+- deploy and smoke-test the new implementation/timelock/proxy graph;
+- set ContentProtection and every authorized depositor on the new proxy;
+- update `REVENUE_ESCROW_ADDRESS` through the reviewed infrastructure path;
+- keep the old address and liability audit in durable deployment records.
+
+The deployment workflow does not migrate balances automatically.
 
 ## CP-1 Attestation Registrar (backend voucher signer)
 

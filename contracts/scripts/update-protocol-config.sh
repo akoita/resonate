@@ -64,10 +64,20 @@ if [[ -f "$BROADCAST_FILE" ]]; then
     STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
     MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
     TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
-    CONTENT_PROTECTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy") | .contractAddress' "$BROADCAST_FILE" | head -1)
+    CONTENT_PROTECTION=$(jq -r '
+      .transactions as $txs
+      | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
+      | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+      | .value.contractAddress
+    ' "$BROADCAST_FILE")
     DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
     CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
-    REVENUE_ESCROW=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE")
+    REVENUE_ESCROW=$(jq -r '
+      .transactions as $txs
+      | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
+      | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+      | .value.contractAddress
+    ' "$BROADCAST_FILE")
 
 elif [[ "$CHAIN_ID" == "11155111" && -f "$SEPOLIA_DEPLOY_FILE" ]]; then
     echo -e "${GREEN}No local broadcast — using Sepolia deployment addresses from sepolia.json${NC}"
