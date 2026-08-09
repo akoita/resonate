@@ -8,8 +8,9 @@
  *   1. A quote's royalty + protocol fee + seller proceeds equal the total price.
  *   2. Royalty is capped at MAX_ROYALTY and the protocol fee at MAX_PROTOCOL_FEE
  *      of the total price; protocolFeeBps never exceeds MAX_PROTOCOL_FEE.
- *   3. Only the owner can change the protocol fee; the cap is enforced.
- *   4. Only the seller can cancel a listing; expired listings cannot be bought.
+ *   3. Only the owner can change fee, registry, and pause configuration.
+ *   4. Only the upgrade authority can rotate that authority.
+ *   5. Only the seller can cancel a listing; expired or paused buys cannot execute.
  *
  * The royalty cap holds even though royaltyInfo is an external call, because
  * `_getRoyalty` clamps the result to (salePrice * MAX_ROYALTY / BPS).
@@ -25,6 +26,8 @@ methods {
     function MAX_ROYALTY() external returns (uint256) envfree;
     function protocolFeeBps() external returns (uint256) envfree;
     function owner() external returns (address) envfree;
+    function upgradeAuthority() external returns (address) envfree;
+    function paused() external returns (bool) envfree;
     function quoteBuy(uint256, uint256) external returns (uint256, uint256, uint256, uint256) envfree;
     function listings(uint256) external returns (address, uint256, uint256, uint256, address, uint40) envfree;
 }
@@ -99,6 +102,33 @@ rule onlyOwnerSetsProtocolFee(env e, uint256 feeBps) {
     assert lastReverted, "non-owner must not set the protocol fee";
 }
 
+/// Only the operational owner can pause or unpause marketplace entry points.
+rule onlyOwnerSetsPause(env e, bool isPaused) {
+    require e.msg.sender != owner();
+
+    setPaused@withrevert(e, isPaused);
+
+    assert lastReverted, "non-owner must not change the marketplace pause";
+}
+
+/// Only the current delayed upgrade authority can rotate itself.
+rule onlyUpgradeAuthorityRotatesAuthority(env e, address newAuthority) {
+    require e.msg.sender != upgradeAuthority();
+
+    setUpgradeAuthority@withrevert(e, newAuthority);
+
+    assert lastReverted, "non-authority must not rotate upgrade authority";
+}
+
+/// Only the operational owner can rotate the payment-asset registry.
+rule onlyOwnerSetsPaymentAssetRegistry(env e, address newRegistry) {
+    require e.msg.sender != owner();
+
+    setPaymentAssetRegistry@withrevert(e, newRegistry);
+
+    assert lastReverted, "non-owner must not rotate the payment registry";
+}
+
 // ============ Listing lifecycle ============
 
 /// Only the seller can cancel a listing.
@@ -135,4 +165,22 @@ rule buyRejectsExpiredListing(env e, uint256 listingId, uint256 amount) {
     buy@withrevert(e, listingId, amount);
 
     assert lastReverted, "an expired listing must not be purchasable";
+}
+
+/// The fast pause blocks purchases while leaving cancellation/claims outside this rule.
+rule pauseBlocksBuy(env e, uint256 listingId, uint256 amount) {
+    require paused();
+
+    buy@withrevert(e, listingId, amount);
+
+    assert lastReverted, "paused marketplace must reject buys";
+}
+
+/// The fast pause blocks every direct listing entry point.
+rule pauseBlocksList(env e, uint256 tokenId, uint256 amount, uint256 price, address paymentToken, uint256 duration) {
+    require paused();
+
+    list@withrevert(e, tokenId, amount, price, paymentToken, duration);
+
+    assert lastReverted, "paused marketplace must reject listings";
 }

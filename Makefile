@@ -201,14 +201,49 @@ summary-revenue-escrow-artifacts:
 	if [ ! -f "$$record" ]; then echo "RevenueEscrow deployment record not found: $$record"; exit 1; fi; \
 	jq '{network,chainId,contracts,governance,deployment,abi}' "$$record"
 
-deploy-stem-marketplace:
-	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
-		echo "PRIVATE_KEY is required"; \
-		exit 1; \
+preflight-stem-marketplace:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "PRIVATE_KEY, RPC_URL, and EXPECTED_CHAIN_ID are required"; exit 1; \
 	fi
-	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
-	(cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
-	RPC_URL="$$rpc_url" ./contracts/scripts/write-stem-marketplace-handoff.sh
+	@deployer="$$(cast wallet address "$${PRIVATE_KEY}")"; \
+	actual_chain_id="$$(cast chain-id --rpc-url "$${RPC_URL}")"; \
+	if [ "$$actual_chain_id" != "$${EXPECTED_CHAIN_ID}" ]; then echo "RPC resolved chain $$actual_chain_id; expected $${EXPECTED_CHAIN_ID}"; exit 1; fi; \
+	for name in MARKETPLACE_OWNER MARKETPLACE_GUARDIAN STEM_NFT_ADDRESS PAYMENT_ASSET_REGISTRY_ADDRESS FEE_RECIPIENT; do \
+		eval "value=\$${$$name:-}"; if [ -z "$$value" ]; then echo "$$name is required"; exit 1; fi; \
+	done; \
+	if [ -z "$${CONTENT_PROTECTION_ADDRESS:-$${CONTENT_PROTECTION_PROXY:-}}" ]; then echo "CONTENT_PROTECTION_ADDRESS or CONTENT_PROTECTION_PROXY is required"; exit 1; fi; \
+	if [ "$$(printf '%s' "$${MARKETPLACE_OWNER}" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${MARKETPLACE_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ] || \
+	   [ "$$(printf '%s' "$$deployer" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${MARKETPLACE_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ]; then \
+		echo "MARKETPLACE_GUARDIAN must be independent from owner and deployer"; exit 1; \
+	fi; \
+	delay="$${MARKETPLACE_TIMELOCK_MIN_DELAY:-172800}"; \
+	if ! printf '%s' "$$delay" | grep -Eq '^[0-9]+$$' || [ "$$delay" -lt 172800 ]; then \
+		echo "MARKETPLACE_TIMELOCK_MIN_DELAY must be at least 172800 seconds"; exit 1; \
+	fi; \
+	echo "StemMarketplaceV2 preflight passed for deployer $$deployer on chain $$actual_chain_id"
+
+deploy-stem-marketplace: preflight-stem-marketplace
+	@cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+	@CHAIN_ID="$${EXPECTED_CHAIN_ID}" RPC_URL="$${RPC_URL}" ./contracts/scripts/write-stem-marketplace-handoff.sh
+
+pause-stem-marketplace:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && forge script script/SetStemMarketplacePaused.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+schedule-stem-marketplace-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=schedule forge script script/UpgradeStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-stem-marketplace-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${NEW_IMPLEMENTATION:-}" ]; then echo "PRIVATE_KEY, RPC_URL, and NEW_IMPLEMENTATION are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=execute forge script script/UpgradeStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+smoke-stem-marketplace:
+	@if [ -z "$${RPC_URL:-}" ]; then echo "RPC_URL is required"; exit 1; fi
+	@cd contracts && forge script script/SmokeStemMarketplace.s.sol --rpc-url "$${RPC_URL}"
+
+verify-stem-marketplace-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployStemMarketplace.s.sol/84532/run-latest.json}" ./contracts/scripts/verify-base-sepolia-sourcify.sh
 
 set-marketplace-protocol-fee:
 	@if [ -z "$${PRIVATE_KEY:-}" ]; then \

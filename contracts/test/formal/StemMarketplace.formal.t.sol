@@ -8,6 +8,7 @@ import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
+import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
 
 /**
  * @title StemMarketplaceV2 Formal Verification Tests
@@ -39,12 +40,14 @@ contract StemMarketplaceFormalTest is Test, SymTest {
         contentProtection = new MockContentProtectionMarketplace();
         paymentAssetRegistry = new PaymentAssetRegistry(address(this));
         paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
-        marketplace = new StemMarketplaceV2(
+        marketplace = StemMarketplaceProxyDeployer.deploy(
             address(stemNFT),
             address(contentProtection),
             address(paymentAssetRegistry),
             feeRecipient,
-            PROTOCOL_FEE_BPS
+            PROTOCOL_FEE_BPS,
+            address(this),
+            address(0xA11CE)
         );
 
         stemNFT.setTransferValidator(address(validator));

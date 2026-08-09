@@ -2,10 +2,9 @@
 pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
-import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
-import {DeploymentKey} from "./DeploymentKey.s.sol";
+import {StemMarketplaceDeployment} from "./StemMarketplaceDeployment.s.sol";
 
 /**
  * @title DeployStemMarketplace
@@ -22,7 +21,7 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  *   PROTOCOL_FEE_BPS - marketplace fee in basis points; defaults to 1000
  *   TRANSFER_VALIDATOR_ADDRESS - existing TransferValidator to whitelist the marketplace
  */
-contract DeployStemMarketplace is DeploymentKey {
+contract DeployStemMarketplace is StemMarketplaceDeployment {
     function run() external {
         uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
@@ -42,18 +41,22 @@ contract DeployStemMarketplace is DeploymentKey {
         }
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(1000));
         address transferValidator = vm.envOr("TRANSFER_VALIDATOR_ADDRESS", address(0));
+        StemMarketplaceConfig memory config = _stemMarketplaceConfig(deployer);
 
         vm.startBroadcast(deployerKey);
 
-        StemMarketplaceV2 marketplace =
-            new StemMarketplaceV2(stemNft, contentProtection, paymentAssetRegistry, feeRecipient, protocolFeeBps);
-        console.log("StemMarketplaceV2:", address(marketplace));
+        StemMarketplaceDeploymentResult memory deployment = _deployStemMarketplace(
+            deployer, config, stemNft, contentProtection, paymentAssetRegistry, feeRecipient, protocolFeeBps
+        );
+        console.log("StemMarketplaceV2 implementation:", address(deployment.implementation));
+        console.log("StemMarketplaceV2 timelock:", address(deployment.timelock));
+        console.log("StemMarketplaceV2 (proxy):", address(deployment.marketplace));
 
-        ContentProtection(contentProtection).setRegistrar(address(marketplace), true);
+        ContentProtection(contentProtection).setRegistrar(address(deployment.marketplace), true);
         console.log("  -> Marketplace granted ContentProtection registrar role");
 
         if (transferValidator != address(0)) {
-            TransferValidator(transferValidator).setWhitelist(address(marketplace), true);
+            TransferValidator(transferValidator).setWhitelist(address(deployment.marketplace), true);
             console.log("  -> Marketplace whitelisted in validator");
         }
 
@@ -68,6 +71,11 @@ contract DeployStemMarketplace is DeploymentKey {
         console.log("TransferValidator:", transferValidator);
         console.log("Protocol Fee BPS:", protocolFeeBps);
         console.log("Fee Recipient:", feeRecipient);
-        console.log("StemMarketplaceV2:", address(marketplace));
+        console.log("Ops owner:", config.owner);
+        console.log("Guardian:", config.guardian);
+        console.log("Timelock min delay (s):", config.timelockMinDelay);
+        console.log("Implementation:", address(deployment.implementation));
+        console.log("StemMarketplaceV2 (proxy):", address(deployment.marketplace));
+        console.log("Upgrade authority (timelock):", address(deployment.timelock));
     }
 }

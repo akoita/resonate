@@ -108,6 +108,9 @@ When adding a new environment variable:
 | `SOURCIFY_API_URL` | Contracts | Optional Sourcify server override for `make verify-base-sepolia-sourcify`; defaults to `https://sourcify.dev/server` |
 | `SOURCIFY_RETRIES` / `SOURCIFY_DELAY_SECONDS` | Contracts | Optional Sourcify retry tuning for `make verify-base-sepolia-sourcify`; defaults to `12` retries and `5` seconds |
 | `STEM_NFT_ADDRESS` / `MARKETPLACE_ADDRESS` / `TRANSFER_VALIDATOR_ADDRESS` | Contracts | Required/optional references for the partial `deploy-content-protection` GitHub workflow operation; set `MARKETPLACE_ADDRESS` when the existing marketplace must receive registrar permission |
+| `MARKETPLACE_OWNER` / `MARKETPLACE_GUARDIAN` / `MARKETPLACE_TIMELOCK_MIN_DELAY` | Contracts | Guarded StemMarketplaceV2 deployment authority. Shared networks require an independent guardian and a delay of at least 172800 seconds. |
+| `MARKETPLACE_IMPLEMENTATION` / `MARKETPLACE_TIMELOCK_ADDRESS` / `MARKETPLACE_DEPLOYER` / `MARKETPLACE_PAUSED` | Contracts handoff | Expected implementation, authority graph, original deployer, and pause state used by marketplace smoke checks and upgrade operations. Applications continue using the stable `MARKETPLACE_ADDRESS` proxy. |
+| `MARKETPLACE_UPGRADE_SALT` / `NEW_IMPLEMENTATION` | Contracts | Optional operation salt and reviewed candidate implementation for the schedule/execute marketplace upgrade workflow. |
 | `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
 | `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |

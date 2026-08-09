@@ -26,6 +26,9 @@ interface IStemMarketplaceV2 {
     event RoyaltyPaid(uint256 indexed tokenId, address indexed recipient, uint256 amount);
     event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
     event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
+    event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
+    event PaymentAssetRegistryUpdated(address indexed previousRegistry, address indexed newRegistry);
+    event MarketplacePaused(bool paused);
 
     // ============ Errors ============
 
@@ -48,4 +51,7 @@ interface IStemMarketplaceV2 {
     error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error NothingToClaim();
     error OnlySelf();
+    error Paused();
+    error UnauthorizedUpgrade(address caller);
+    error AuthorityMustDifferFromOwner();
 }

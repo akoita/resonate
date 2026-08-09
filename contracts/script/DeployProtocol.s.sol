@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
-import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {DisputeResolution} from "../src/core/DisputeResolution.sol";
 import {CurationRewards} from "../src/core/CurationRewards.sol";
@@ -12,6 +11,7 @@ import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
+import {StemMarketplaceDeployment} from "./StemMarketplaceDeployment.s.sol";
 
 /**
  * @title DeployProtocol
@@ -30,7 +30,7 @@ import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
  * Run:
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployProtocol is RevenueEscrowDeployment {
+contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
     bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
     bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
     bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
@@ -54,6 +54,7 @@ contract DeployProtocol is RevenueEscrowDeployment {
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(1000)); // 10% — ADR-BM-2
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
         RevenueEscrowConfig memory revenueEscrowConfig = _revenueEscrowConfig(deployer);
+        StemMarketplaceConfig memory marketplaceConfig = _stemMarketplaceConfig(deployer);
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
         address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
         bool enableWeth = vm.envOr("PAYMENT_ENABLE_WETH", false);
@@ -130,11 +131,19 @@ contract DeployProtocol is RevenueEscrowDeployment {
         console.log("ETH/USD Oracle Adapter:", ethUsdAdapter);
         console.log("USDC/USD Oracle Adapter:", usdcUsdAdapter);
 
-        // 8. Deploy StemMarketplaceV2 (core)
-        StemMarketplaceV2 marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, protocolFeeBps
+        // 8. Deploy StemMarketplaceV2 guarded UUPS graph
+        StemMarketplaceDeploymentResult memory marketplaceDeployment = _deployStemMarketplace(
+            deployer,
+            marketplaceConfig,
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            protocolFeeBps
         );
-        console.log("StemMarketplaceV2:", address(marketplace));
+        console.log("StemMarketplaceV2 implementation:", address(marketplaceDeployment.implementation));
+        console.log("StemMarketplaceV2 timelock:", address(marketplaceDeployment.timelock));
+        console.log("StemMarketplaceV2 (proxy):", address(marketplaceDeployment.marketplace));
 
         // 9. Configure
         stemNFT.setTransferValidator(address(validator));
@@ -151,10 +160,10 @@ contract DeployProtocol is RevenueEscrowDeployment {
         contentProtection.setRegistrar(address(stemNFT), true);
         console.log("  -> StemNFT granted ContentProtection registrar role");
 
-        contentProtection.setRegistrar(address(marketplace), true);
+        contentProtection.setRegistrar(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace granted ContentProtection registrar role");
 
-        validator.setWhitelist(address(marketplace), true);
+        validator.setWhitelist(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace whitelisted in validator");
 
         validator.setContentProtection(address(contentProtection));
@@ -174,7 +183,9 @@ contract DeployProtocol is RevenueEscrowDeployment {
         console.log("");
         console.log("Core Contracts:");
         console.log("  StemNFT:", address(stemNFT));
-        console.log("  StemMarketplaceV2:", address(marketplace));
+        console.log("  StemMarketplaceV2 (proxy):", address(marketplaceDeployment.marketplace));
+        console.log("  StemMarketplaceV2 implementation:", address(marketplaceDeployment.implementation));
+        console.log("  StemMarketplaceV2 timelock:", address(marketplaceDeployment.timelock));
         console.log("  PaymentAssetRegistry:", address(paymentAssetRegistry));
         console.log("");
         console.log("Content Protection:");
@@ -197,5 +208,8 @@ contract DeployProtocol is RevenueEscrowDeployment {
         console.log("  RevenueEscrow owner:", revenueEscrowConfig.owner);
         console.log("  RevenueEscrow guardian:", revenueEscrowConfig.guardian);
         console.log("  RevenueEscrow timelock delay:", revenueEscrowConfig.timelockMinDelay, "seconds");
+        console.log("  Marketplace owner:", marketplaceConfig.owner);
+        console.log("  Marketplace guardian:", marketplaceConfig.guardian);
+        console.log("  Marketplace timelock delay:", marketplaceConfig.timelockMinDelay, "seconds");
     }
 }
