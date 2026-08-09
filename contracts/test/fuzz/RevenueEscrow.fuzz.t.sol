@@ -21,7 +21,7 @@ import {RevenueEscrowProxyDeployer} from "../utils/RevenueEscrowProxyDeployer.so
  *   - per-(tokenId, asset) conservation: deposited == paidOut + remaining
  *   - access control on owner-only freeze/unfreeze/redirect
  */
-contract RevenueEscrowFuzzTest is Test {
+contract RevenueEscrowFuzzTest is Test, IRevenueEscrow {
     RevenueEscrow internal escrow;
     MockUSDC internal usdc;
 
@@ -244,7 +244,7 @@ contract RevenueEscrowFuzzTest is Test {
     function testFuzz_DepositZeroAmountReverts(uint256 tokenId) public {
         vm.deal(depositor, 1 ether);
         vm.prank(depositor);
-        vm.expectRevert(IRevenueEscrow.ZeroAmount.selector);
+        vm.expectRevert(ZeroAmount.selector);
         escrow.deposit{value: 0}(tokenId, beneficiary);
     }
 
@@ -261,7 +261,7 @@ contract RevenueEscrowFuzzTest is Test {
 
         vm.prank(owner);
         escrow.setPaused(true);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.release(tokenId);
 
         (, uint256 remaining,,) = escrow.getEscrow(tokenId);

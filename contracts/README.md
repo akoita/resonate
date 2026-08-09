@@ -15,24 +15,36 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
-## Shared Interfaces
+## Shared Solidity Surfaces
 
 Each contract's **shared surface** — events, custom errors, and any enums/structs
 consumed outside the contract (tests, indexers, the backend, the frontend) — lives
-in a canonical interface under `src/interfaces/`. Production contracts inherit the
-interface and tests import it, so the event/error contract has exactly one
-definition and cannot silently drift.
+in a canonical interface. Definitions with identical semantics across multiple
+production contracts live in focused capability interfaces under `src/common/`;
+contract-specific surfaces remain under `src/interfaces/`. Production contracts
+and tests inherit the domain interface, so every event/error has one declaration
+and cannot silently drift.
+
+| Common capability | Owns | Used by |
+| --- | --- | --- |
+| `IAddressGuard` / `IAmountGuard` / `IPausableGuard` | Generic precondition errors | Only domain interfaces that enforce each guard |
+| `INativePayment` / `IFeeOnTransferGuard` | Native-token and exact ERC-20 transfer errors | Payment and custody domains |
+| `IFailedPaymentRecovery` | Pull-payment escrow events and errors | Content protection, revenue escrow, marketplace |
+| `IStakeGuards` / `IDisputeGuards` | Shared stake and dispute precondition errors | Content protection, curation, dispute resolution |
+| `IOwnershipTransfer` | Standard ownership-transfer event | Content protection, payment registry |
+| `IPaymentAssetRegistryConsumer` | Registry-rotation event | Content protection, marketplace |
+| `IUpgradeAuthority` | Upgrade-authority event and error | Guarded UUPS implementations |
 
 | Interface | Owns | Inherited by |
 | --- | --- | --- |
-| `IShowCampaignEscrow` | `CampaignStatus`, `Campaign`, events, errors | `ShowCampaignEscrow` + tests |
-| `IRevenueEscrow` | `EscrowInfo`, events, errors | `RevenueEscrow` + tests |
+| `IShowCampaignEscrow` | `CampaignStatus`, `Campaign`, campaign events/errors + common capabilities | `ShowCampaignEscrow` + tests |
+| `IRevenueEscrow` | `EscrowInfo`, escrow events/errors + common capabilities | `RevenueEscrow` + tests |
 | `IStemNFT` | events, errors | `StemNFT` + tests |
-| `IStemMarketplaceV2` | `Listing`, events, errors | `StemMarketplaceV2` + tests |
-| `ICurationRewards` | events, errors | `CurationRewards` + tests |
+| `IStemMarketplaceV2` | `Listing`, marketplace events/errors + common capabilities | `StemMarketplaceV2` + tests |
+| `ICurationRewards` | curation events/errors + common capabilities | `CurationRewards` + tests |
 | `IPaymentAssetRegistry` | `PaymentAsset`, events | `PaymentAssetRegistry` + tests |
-| `IContentProtectionEvents` | events, errors | `ContentProtection` + tests; extended by `IContentProtection` |
-| `IDisputeResolutionEvents` | enums, events, errors | `DisputeResolution` + tests; extended by `IDisputeResolution` |
+| `IContentProtectionEvents` | content-protection events/errors + common capabilities | `ContentProtection` + tests; extended by `IContentProtection` |
+| `IDisputeResolutionEvents` | enums, dispute events/errors + common capabilities | `DisputeResolution` + tests; extended by `IDisputeResolution` |
 | `IChainlinkPriceOracleAdapter` | errors | `ChainlinkPriceOracleAdapter` + tests |
 
 `IContentProtection` and `IDisputeResolution` are **consumer** interfaces (function
@@ -43,8 +55,8 @@ carry function signatures, so a test can't inherit them directly — the events/
 DisputeResolution enums via `IDisputeResolutionEvents.Outcome` (an inherited enum is
 not reachable through the derived `IDisputeResolution` name).
 
-**Intentionally kept local** (not extracted — not consumed elsewhere as named types,
-or extracting would change behavior):
+**Intentionally kept local** (not extracted — not consumed elsewhere as named
+types, extracting would change behavior, or the declaration owns storage):
 
 - `StemNFT.MintAuthorization` / `StemData` / `RemixInfo` — internal storage and
   EIP-712 signing structs, accessed only through getters.
@@ -55,6 +67,15 @@ or extracting would change behavior):
   errors; converting them would change revert data, so they stay as-is.
 - `ChainlinkPriceOracleAdapter.AggregatorV3Interface` — the external Chainlink feed
   read interface, an upstream standard rather than Resonate's own surface.
+- `NotAttested` stays domain-specific: `StemNFT` includes a token id while
+  `ContentProtection` uses a parameterless local-state guard.
+- `InvalidRecipient` stays separate between account-abstraction recovery and
+  marketplace settlement because those domains do not share a protocol surface.
+
+ERC-7201 namespace structs always remain inside their owning upgradeable contract.
+New upgradeable implementations use namespaced storage from their first deployment.
+Existing deployed linear layouts are never relocated mechanically: mappings and
+dynamic collections require a contract-specific compatibility or replacement plan.
 
 ## Deployment
 

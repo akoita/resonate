@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IShowCampaignEscrow {
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IAmountGuard} from "../common/IAmountGuard.sol";
+import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
+import {IPausableGuard} from "../common/IPausableGuard.sol";
+import {IUpgradeAuthority} from "../common/IUpgradeAuthority.sol";
+
+interface IShowCampaignEscrow is IAddressGuard, IAmountGuard, IFeeOnTransferGuard, IPausableGuard, IUpgradeAuthority {
     enum CampaignStatus {
         Draft,
         Active,
@@ -71,7 +77,6 @@ interface IShowCampaignEscrow {
     event FeeConfigUpdated(uint256 feeBps, address feeRecipient);
     /// @notice Emitted when the upgrade authority (the TimelockController that governs
     /// implementation upgrades) is set at initialization or handed to a new authority.
-    event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
     /// @notice Emitted when the global fulfillment window is set at the 2.1.0 reinitializer
     /// or updated by the owner. The window is captured into each campaign's
     /// `fulfillmentDeadline` at booking confirmation.
@@ -80,10 +85,6 @@ interface IShowCampaignEscrow {
     error NotConfirmer(address caller);
     /// @notice Raised when an account other than the current {upgradeAuthority} attempts
     /// to upgrade the implementation or reassign the upgrade authority.
-    error UnauthorizedUpgrade(address caller);
-    error Paused();
-    error ZeroAddress();
-    error ZeroAmount();
     error InvalidCampaign(uint256 campaignId);
     error InvalidAuthority(bytes32 artistIdHash, bytes32 authorityHash);
     error InvalidDeadline(uint256 deadline, uint256 bookingDeadline, uint256 currentTime);
@@ -102,7 +103,6 @@ interface IShowCampaignEscrow {
     error DisputeWindowActive(uint256 campaignId, uint256 unlockTime, uint256 currentTime);
     error DisputeWindowClosed(uint256 campaignId, uint256 closedTime, uint256 currentTime);
     error NothingToRelease(uint256 campaignId);
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error BookingDeadlinePassed(uint256 campaignId, uint256 bookingDeadline, uint256 currentTime);
     error InvalidDisputeWindow(uint256 provided, uint256 min, uint256 max);
     error InvalidMinimumBackers();

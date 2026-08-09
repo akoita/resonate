@@ -34,7 +34,7 @@ contract RevenueEscrowUpgradeTest is Test, IRevenueEscrow {
 
     function test_InitializeRejectsZeroUpgradeAuthority() public {
         RevenueEscrow implementation = new RevenueEscrow();
-        vm.expectRevert(IRevenueEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         new ERC1967Proxy(
             address(implementation), abi.encodeCall(RevenueEscrow.initialize, (owner, uint256(30 days), address(0)))
         );
@@ -44,11 +44,11 @@ contract RevenueEscrowUpgradeTest is Test, IRevenueEscrow {
         RevenueEscrowV2 v2 = new RevenueEscrowV2();
 
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.upgradeToAndCall(address(v2), "");
 
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.setUpgradeAuthority(nextAuthority);
 
         vm.prank(authority);
@@ -57,7 +57,7 @@ contract RevenueEscrowUpgradeTest is Test, IRevenueEscrow {
         escrow.setUpgradeAuthority(nextAuthority);
 
         vm.prank(authority);
-        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedUpgrade.selector, authority));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, authority));
         escrow.upgradeToAndCall(address(v2), "");
 
         vm.prank(nextAuthority);
@@ -67,7 +67,7 @@ contract RevenueEscrowUpgradeTest is Test, IRevenueEscrow {
 
     function test_AuthorityCannotBeRotatedToZero() public {
         vm.prank(authority);
-        vm.expectRevert(IRevenueEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setUpgradeAuthority(address(0));
     }
 
@@ -100,23 +100,23 @@ contract RevenueEscrowUpgradeTest is Test, IRevenueEscrow {
         escrow.setPaused(true);
 
         vm.prank(depositor);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.deposit{value: 1}(2, beneficiary);
         vm.prank(depositor);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.depositWithAsset(2, beneficiary, address(usdc), 1);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.release(1);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.releaseAsset(1, address(usdc));
         vm.prank(owner);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.redirect(1, beneficiary);
         vm.prank(owner);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.redirectAsset(1, address(usdc), beneficiary);
         vm.prank(beneficiary);
-        vm.expectRevert(IRevenueEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.claimFailedPayment(address(0));
 
         // Views, dispute controls, configuration, ownership, and governance remain live.

@@ -117,7 +117,7 @@ contract RevenueEscrowTimelockTest is Test, IRevenueEscrow {
     function test_DirectOwnerUpgradeReverts() public {
         RevenueEscrowV2 v2 = new RevenueEscrowV2();
         vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IRevenueEscrow.UnauthorizedUpgrade.selector, owner));
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, owner));
         escrow.upgradeToAndCall(address(v2), "");
     }
 

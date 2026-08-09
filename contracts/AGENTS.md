@@ -93,21 +93,52 @@ They can be useful for experiments, but not as the main standard.
 
 ## Shared Contract Surfaces
 
-When errors, events, enums, structs, or core function signatures are consumed by
-tests, indexers, backend code, or frontend code, put the shared surface in an
-interface under `contracts/src/interfaces/` and import it from both production
-contracts and tests.
+Use the narrowest canonical Solidity surface that matches the ownership of a
+declaration:
+
+- definitions with identical semantics across multiple production contracts
+  belong in a focused capability interface under `contracts/src/common/`;
+- contract-specific events, errors, enums, structs, and core function
+  signatures belong in that contract's interface under
+  `contracts/src/interfaces/`;
+- implementation-only declarations remain beside their implementation.
+
+Domain interfaces inherit the common capability interfaces they use. Production
+contracts and tests then inherit the domain interface, so event topics and error
+selectors have one declaration without advertising unrelated common errors.
+Do not create catch-all `Errors.sol`, `Events.sol`, or `DataTypes.sol` modules,
+and do not mix shared types with behavioral libraries.
 
 Examples:
 
-- `IShowCampaignEscrow` owns `CampaignStatus`, `Campaign`, custom errors, and
-  events.
+- `IUpgradeAuthority` owns the shared upgrade-authority event and error.
+- `IFailedPaymentRecovery` owns the shared pull-payment recovery events and
+  errors.
+- `IShowCampaignEscrow` owns `CampaignStatus`, `Campaign`, and its
+  campaign-specific errors and events while inheriting the common capabilities
+  it uses.
 - `ShowCampaignEscrow` implements/imports that interface.
 - Tests import the same interface for `expectRevert` selectors and
   `expectEmit` declarations.
 
 This prevents tests from silently duplicating event/error declarations that later
 drift from production.
+
+## ERC-7201 Storage Ownership
+
+Every newly deployed upgradeable core contract must use ERC-7201 namespaced
+storage from its first implementation. The annotated namespace struct, namespace
+constant, and storage accessor stay inside the owning contract. An annotated
+struct declared outside a contract is not recognized as that contract's ERC-7201
+namespace.
+
+Storage-only nested structs should also remain contract-local unless a reviewed,
+versioned protocol type genuinely has to be shared. Never move an existing
+deployed mapping or dynamic collection from a legacy linear layout into a
+namespace as a mechanical refactor: those entries are not enumerable and a
+reinitializer cannot safely copy them. Existing proxies require an explicit
+per-contract decision to retain linear storage, use a compatibility-preserving
+hybrid, or deploy a replacement with a chain-specific state-transition plan.
 
 ## Test Directory Conventions
 

@@ -338,20 +338,20 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
             abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 1001, feeRecipient, upgradeAuthority))
         );
 
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 600, address(0), upgradeAuthority))
         );
 
         // The recipient is required even at 0 bps: releases read it at charge time and
         // in-flight campaigns may carry a non-zero snapshotted rate.
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, address(0), upgradeAuthority))
         );
 
         // The upgrade authority is likewise required at initialization.
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         new ERC1967Proxy(
             address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, feeRecipient, address(0)))
         );
@@ -361,15 +361,15 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.setFeeConfig(1001, feeRecipient);
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(600, address(0));
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(0, address(0));
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(600, address(escrow));
 
         vm.prank(alice);
@@ -457,7 +457,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.setPaused(true);
 
         vm.prank(alice);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.pledge(campaignId, 100e6);
     }
 
@@ -743,7 +743,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         uint256 amount = 600e6;
         uint256 received = amount - (amount * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(IShowCampaignEscrow.FeeOnTransferNotSupported.selector, amount, received)
+            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, amount, received)
         );
         escrow.pledge(campaignId, amount);
         vm.stopPrank();
@@ -843,13 +843,13 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         uint256 bdl = block.timestamp + 30 days;
 
         vm.prank(owner); // zero beneficiary
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.createCampaign(
             ARTIST_ID_HASH, AUTHORITY_HASH, address(0), address(usdc), GOAL, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW
         );
 
         vm.prank(owner); // zero goal
-        vm.expectRevert(IShowCampaignEscrow.ZeroAmount.selector);
+        vm.expectRevert(ZeroAmount.selector);
         escrow.createCampaign(
             ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), 0, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW
         );
@@ -903,7 +903,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.updateAuthority(id, bytes32(0), bob);
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.updateAuthority(id, newAuth, address(0));
 
         vm.prank(owner);
@@ -1200,7 +1200,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         vm.prank(owner);
         escrow.setPaused(true);
 
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.openRefundsAfterMissedFulfillment(campaignId);
     }
 

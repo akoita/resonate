@@ -136,7 +136,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         uint256 received = totalPrice - (totalPrice * 100) / 10_000;
         vm.prank(buyer);
         vm.expectRevert(
-            abi.encodeWithSelector(IStemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
+            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, totalPrice, received)
         );
         marketplace.buy(listingId, 1);
     }
@@ -171,7 +171,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Initialize_RevertZeroContentProtection() public {
         StemMarketplaceV2 implementation = new StemMarketplaceV2();
-        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         StemMarketplaceProxyDeployer.deployProxy(
             implementation,
             address(stemNFT),
@@ -186,7 +186,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
     function test_Initialize_RevertZeroPaymentAssetRegistry() public {
         StemMarketplaceV2 implementation = new StemMarketplaceV2();
-        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         StemMarketplaceProxyDeployer.deployProxy(
             implementation,
             address(stemNFT),
@@ -268,19 +268,19 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         marketplace.setPaused(true);
 
         vm.prank(seller);
-        vm.expectRevert(IStemMarketplaceV2.Paused.selector);
+        vm.expectRevert(Paused.selector);
         marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
 
         vm.prank(seller);
-        vm.expectRevert(IStemMarketplaceV2.Paused.selector);
+        vm.expectRevert(Paused.selector);
         marketplace.listLastMint(1, 1 ether, address(0), LISTING_DURATION, 0);
 
         vm.prank(buyer);
-        vm.expectRevert(IStemMarketplaceV2.Paused.selector);
+        vm.expectRevert(Paused.selector);
         marketplace.buy{value: 1 ether}(listingId, 1);
 
         vm.prank(buyer);
-        vm.expectRevert(IStemMarketplaceV2.Paused.selector);
+        vm.expectRevert(Paused.selector);
         marketplace.buyFor{value: 1 ether}(listingId, 1, recipient);
 
         // Sellers can unwind and recipients can still reach the failed-payment
@@ -288,7 +288,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         vm.prank(seller);
         marketplace.cancel(listingId);
         vm.prank(royaltyReceiver);
-        vm.expectRevert(IStemMarketplaceV2.NothingToClaim.selector);
+        vm.expectRevert(NothingToClaim.selector);
         marketplace.claimFailedPayment(address(0));
 
         marketplace.getListing(listingId);
@@ -970,7 +970,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
         // Attempt to send ETH alongside an ERC20 purchase — must revert
         vm.prank(buyer);
-        vm.expectRevert(IStemMarketplaceV2.UnexpectedETH.selector);
+        vm.expectRevert(UnexpectedETH.selector);
         marketplace.buy{value: 1 ether}(listingId, 10);
 
         // Verify no ETH was trapped

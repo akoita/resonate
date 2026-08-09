@@ -105,7 +105,7 @@ contract CurationRewardsTest is Test, ICurationRewards {
 
         vm.deal(reporter, 1 ether);
         vm.prank(reporter);
-        vm.expectRevert(ICurationRewards.UnsupportedStakeAsset.selector);
+        vm.expectRevert(UnsupportedStakeAsset.selector);
         cr.reportContent{value: COUNTER_STAKE}(2, "ipfs://wrong-asset");
     }
 
@@ -240,7 +240,7 @@ contract CurationRewardsTest is Test, ICurationRewards {
         cr.reportContent{value: COUNTER_STAKE}(1, "ipfs://evidence");
 
         vm.prank(reporter);
-        vm.expectRevert(ICurationRewards.DisputeNotResolved.selector);
+        vm.expectRevert(DisputeNotResolved.selector);
         cr.claimBounty(1);
     }
 
@@ -401,7 +401,7 @@ contract CurationRewardsTest is Test, ICurationRewards {
 
     function test_SetTreasury_RevertZeroAddress() public {
         vm.prank(admin);
-        vm.expectRevert(ICurationRewards.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         cr.setTreasury(address(0));
     }
 
