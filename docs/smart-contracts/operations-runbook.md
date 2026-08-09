@@ -62,7 +62,9 @@ Core GitHub environment variables:
 | `deploy-stem-marketplace` | Surgically deploy a guarded `StemMarketplaceV2` proxy against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Required remote vars: `MARKETPLACE_OWNER`, independent `MARKETPLACE_GUARDIAN`, `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`, `MARKETPLACE_TIMELOCK_MIN_DELAY` (minimum/default 172800). | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast, authority smoke, and Sourcify verification. | Grant the proxy ContentProtection registrar and validator whitelist permissions, then promote only it as `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. Audit any failed-payment liabilities on the standalone predecessor. |
 | `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` | Schedule or execute a reviewed marketplace implementation upgrade. | Vars: `MARKETPLACE_ADDRESS`, `MARKETPLACE_TIMELOCK_ADDRESS`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must hold the relevant timelock role. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy stable. | Run storage/formal/security gates and verify the candidate before execution; owner or guardian can cancel during the delay. |
 | `pause-stem-marketplace` | Stop or resume new marketplace listings and purchases. | Vars: `MARKETPLACE_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Sellers retain cancellation and recipients retain failed-payment claims. Unpause only after remediation and smoke verification. |
-| `upgrade-content-protection` | Upgrade the UUPS implementation behind an existing ContentProtection proxy. | Workflow: `operation=upgrade-content-protection`. Vars: `CONTENT_PROTECTION_PROXY`. Secret: proxy owner/admin signer. | Forge broadcast files and console summary. Proxy address stays the same. | No address promotion unless implementation metadata is tracked elsewhere. Keep the broadcast artifact for audit. |
+| `prepare-content-protection-v6-migration` / `execute-content-protection-v6-migration` | One-time bootstrap of a legacy owner-authorized proxy into guarded V6 governance. | Prepare with `CONTENT_PROTECTION_PROXY`, owner, independent guardian and 48h delay; verify the emitted candidate implementation + timelock; execute separately with `NEW_IMPLEMENTATION` and `CONTENT_PROTECTION_TIMELOCK_ADDRESS`. Secret: current owner signer. | Candidate JSON + `.candidate.env` + ABI and governance broadcasts, then an atomic `upgradeToAndCall(reinitializeV6)`. Proxy address stays unchanged. | Candidate handoffs are not live configuration. Execute requires separate operator approval. Snapshot stakes, failed payments, hierarchy/config and owner first; smoke authority and preserved state afterward. |
+| `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Schedule or execute a post-V6 implementation upgrade. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_TIMELOCK_ADDRESS`, optional `CONTENT_PROTECTION_UPGRADE_SALT`; execute also needs the exact scheduled `NEW_IMPLEMENTATION`. Secret: owner or guardian timelock-role signer. | Timelock operation id, candidate implementation, ETA/broadcast, candidate JSON/env/ABI, and Base Sepolia Sourcify evidence. | Candidate handoffs are not live configuration. Schedule and execute calldata must match exactly; verify the candidate before execution. |
+| `pause-content-protection` | Toggle the fast custody/protection pause. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_PAUSED`. Secret: operational owner signer. | Pause event and broadcast. | Failed-payment claims and protective blacklist/revocation intentionally remain available while paused. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
 | `set-marketplace-protocol-fee` | Change marketplace protocol fee and optionally rotate the fee recipient. | Workflow: `operation=set-marketplace-protocol-fee`. Vars: `MARKETPLACE_ADDRESS`, `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`. Secret: `StemMarketplaceV2` owner signer. | Console summary, workflow summary, broadcast file. | If fee economics changed beyond accepted ADR values, update the business-model RFC first. No address promotion. |
 | `set-show-campaign-fee-config` | Change Shows campaign fee rate for future campaigns or rotate the charge-time fee recipient. | Workflow: `operation=set-show-campaign-fee-config`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT`. Secret: `ShowCampaignEscrow` owner signer. | Console summary, workflow summary, broadcast file. | Fee rate affects future campaigns only; recipient rotation applies when fees are charged. Update public/operator docs if terms changed. |
@@ -159,6 +161,39 @@ place. Before promoting the replacement:
 - promote the proxy through the reviewed infrastructure path and retain both
   addresses and the liability audit in durable deployment records.
 
+## ContentProtection Incident And Upgrade Procedure
+
+1. **Contain first:** the operational owner runs `pause-content-protection`
+   with `CONTENT_PROTECTION_PAUSED=true`. New attestations/stakes, hierarchy
+   registrations, slashing, refunds, and burned-balance sweeps stop. Reads,
+   protective blacklist/revocation, recipient-owned failed-payment claims, and
+   upgrade governance remain available.
+2. **Account:** record the implementation slot, owner/pending owner, timelock and
+   role members, treasury, registrars, payment registry, stake/tier policy,
+   active stakes, burned balances, failed payments, and hierarchy checkpoints.
+3. **Prepare and verify:** implement the smallest recovery; run unit, fuzz,
+   invariant, timelock integration, Halmos/Certora, mutation, storage-layout,
+   and diff security gates. Verify the exact candidate through Sourcify.
+4. **Schedule:** an owner or guardian proposer runs
+   `schedule-content-protection-upgrade`. Preserve the candidate, operation id,
+   salt, calldata, live delay, and ETA.
+5. **Veto when needed:** either authority cancels a queued operation whose code,
+   verification, or intent is wrong. The workflow refuses upgrade operations if
+   the live timelock delay is below 48 hours.
+6. **Execute and smoke:** after the delay, an authorized executor runs
+   `execute-content-protection-upgrade` with the exact candidate/salt and then
+   `smoke-content-protection` to validate implementation, pause, owner, delay,
+   admin renunciation, and both recovery-role sets.
+7. **Recover:** compare custody/protection state to the incident snapshot,
+   exercise the repaired path, and unpause with
+   `CONTENT_PROTECTION_PAUSED=false` only after remediation is verified.
+
+If the operational owner is unavailable, the independent guardian can schedule
+and execute a delayed recovery implementation. Rotating `upgradeAuthority` is
+itself authority-gated, so the owner cannot bypass the timelock. The one-time
+legacy V6 bootstrap follows the separately approved migration procedure above;
+it is not an incident shortcut.
+
 ## CP-1 Attestation Registrar (backend voucher signer)
 
 The backend `POST /contracts/attestation-vouchers` endpoint (CP-1, #1271) signs the
@@ -195,9 +230,10 @@ cast send "$CONTENT_PROTECTION_ADDRESS" "setRegistrar(address,bool)" "$VOUCHER_S
 
 `ContentProtection.transferOwnership(newOwner)` no longer transfers ownership in one
 step (CP-3, #1271). It only **stages** `newOwner` as `pendingOwner` and emits
-`OwnershipTransferStarted`; the current owner keeps full authority — including UUPS
-upgrade authorization — until the new owner completes the handoff. This prevents a
-mistyped or unusable address from irreversibly bricking upgrade and admin control.
+`OwnershipTransferStarted`; the current owner keeps operational authority until the
+new owner completes the handoff. UUPS upgrade authorization remains independently
+bound to the delayed timelock. This prevents a mistyped or unusable address from
+irreversibly bricking day-to-day administration without weakening upgrade governance.
 
 Procedure (per chain / per proxy):
 

@@ -11,6 +11,14 @@ import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol"
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
+/// @dev Test-only stand-in for the deployed V5 implementation, whose UUPS gate
+/// followed the operational owner before #1579 separated upgrade governance.
+contract ContentProtectionV5Mock is ContentProtection {
+    function _authorizeUpgrade(address) internal view override {
+        if (msg.sender != owner) revert NotOwner();
+    }
+}
+
 /**
  * @title ContentProtection Unit Tests
  * @notice Tests attestation, staking, slashing, blacklisting, and UUPS upgradability
@@ -24,6 +32,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public reporter = makeAddr("reporter");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
 
     uint256 constant STAKE_AMOUNT = 0.01 ether;
     uint256 constant USDC_STAKE_AMOUNT = 10_000000;
@@ -38,7 +47,8 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
     function setUp() public {
         // Deploy implementation + proxy
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
+        bytes memory initData =
+            abi.encodeCall(ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, upgradeAuthority));
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
 
@@ -78,6 +88,8 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         assertEq(cp.treasury(), treasury);
         assertEq(cp.stakeAmount(), STAKE_AMOUNT);
         assertEq(cp.maxPriceMultiplier(), 10);
+        assertEq(cp.upgradeAuthority(), upgradeAuthority);
+        assertFalse(cp.paused());
     }
 
     function test_Initialize_SeedsTierPolicies() public view {
@@ -98,7 +110,27 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
 
     function test_Initialize_RevertDoubleInit() public {
         vm.expectRevert();
-        cp.initialize(admin, treasury, STAKE_AMOUNT);
+        cp.initializeFresh(admin, treasury, STAKE_AMOUNT, upgradeAuthority);
+    }
+
+    function test_InitializeFresh_RejectsInvalidUpgradeAuthority() public {
+        ContentProtection impl = new ContentProtection();
+
+        bytes memory collision =
+            abi.encodeCall(ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, admin));
+        vm.expectRevert(AuthorityMustDifferFromOwner.selector);
+        new ERC1967Proxy(address(impl), collision);
+
+        bytes memory zeroAuthority =
+            abi.encodeCall(ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, address(0)));
+        vm.expectRevert(ZeroAddress.selector);
+        new ERC1967Proxy(address(impl), zeroAuthority);
+    }
+
+    function test_ImplementationCannotBeInitialized() public {
+        ContentProtection impl = new ContentProtection();
+        vm.expectRevert();
+        impl.initializeFresh(admin, treasury, STAKE_AMOUNT, upgradeAuthority);
     }
 
     // ============ Attestation ============
@@ -364,11 +396,7 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         vm.startPrank(alice);
         feeToken.approve(address(cp), type(uint256).max);
         uint256 received = USDC_STAKE_AMOUNT - (USDC_STAKE_AMOUNT * 100) / 10_000;
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(FeeOnTransferNotSupported.selector, USDC_STAKE_AMOUNT, received));
         cp.stakeWithAsset(1, address(feeToken), USDC_STAKE_AMOUNT);
         vm.stopPrank();
     }
@@ -736,26 +764,198 @@ contract ContentProtectionTest is Test, IContentProtectionEvents {
         cp.setTreasury(bob);
     }
 
-    function test_UpgradeAuthority_FollowsCompletedTransfer() public {
+    function test_UpgradeAuthority_IsSeparateFromOperationalOwner() public {
         ContentProtection newImpl = new ContentProtection();
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, admin));
+        cp.upgradeToAndCall(address(newImpl), "");
 
-        // While pending, the old owner keeps upgrade authority.
+        vm.prank(upgradeAuthority);
+        cp.upgradeToAndCall(address(newImpl), "");
+    }
+
+    function test_InitializeFresh_ConsumesV6() public {
+        vm.prank(admin);
+        vm.expectRevert();
+        cp.reinitializeV6(makeAddr("replacementAuthority"));
+    }
+
+    function test_SetUpgradeAuthority_OnlyCurrentAuthorityAndRejectsCollisions() public {
+        address nextAuthority = makeAddr("nextAuthority");
+
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, admin));
+        cp.setUpgradeAuthority(nextAuthority);
+
+        vm.startPrank(upgradeAuthority);
+        vm.expectRevert(ZeroAddress.selector);
+        cp.setUpgradeAuthority(address(0));
+        vm.expectRevert(AuthorityMustDifferFromOwner.selector);
+        cp.setUpgradeAuthority(admin);
+        vm.expectEmit(true, true, false, true);
+        emit UpgradeAuthorityUpdated(upgradeAuthority, nextAuthority);
+        cp.setUpgradeAuthority(nextAuthority);
+        vm.stopPrank();
+
+        assertEq(cp.upgradeAuthority(), nextAuthority);
+    }
+
+    function test_OwnershipAndUpgradeAuthorityCannotCollide() public {
+        vm.prank(admin);
+        vm.expectRevert(AuthorityMustDifferFromOwner.selector);
+        cp.transferOwnership(upgradeAuthority);
+
         vm.prank(admin);
         cp.transferOwnership(bob);
-        vm.prank(bob);
-        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
-        cp.upgradeToAndCall(address(newImpl), "");
+        vm.prank(upgradeAuthority);
+        vm.expectRevert(AuthorityMustDifferFromOwner.selector);
+        cp.setUpgradeAuthority(bob);
+    }
 
-        vm.prank(bob);
-        cp.acceptOwnership();
+    function test_Pause_BlocksCustodyAndCreationButAllowsContainmentAndRecovery() public {
+        _attestAs(alice, 1, keccak256("a"), keccak256("b"), "uri");
+        _attestReleaseAs(alice, 100, keccak256("release"), keccak256("rfp"), "release-uri");
+        _attestAs(alice, 200, keccak256("track"), keccak256("tfp"), "track-uri");
+        vm.deal(alice, 1 ether);
+        vm.prank(alice);
+        cp.stake{value: STAKE_AMOUNT}(1);
 
-        // After acceptance, upgrade authority follows the completed transfer.
+        RevertingReceiver receiver = new RevertingReceiver();
         vm.prank(admin);
-        vm.expectRevert(IContentProtectionEvents.NotOwner.selector);
-        cp.upgradeToAndCall(address(newImpl), "");
+        cp.slash(1, address(receiver));
+        uint256 failedAmount = cp.failedPayments(address(0), address(receiver));
 
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit ContentProtectionPaused(true);
+        cp.setPaused(true);
+
+        bytes memory sig = _voucher(bob, 2);
         vm.prank(bob);
-        cp.upgradeToAndCall(address(newImpl), "");
+        vm.expectRevert(Paused.selector);
+        cp.attest(2, keccak256("c"), keccak256("d"), "uri2", AUTH_DEADLINE, sig);
+
+        vm.prank(admin);
+        vm.expectRevert(Paused.selector);
+        cp.registerTrack(100, 200);
+
+        vm.prank(admin);
+        cp.blacklist(bob);
+        assertTrue(cp.isBlacklisted(bob), "protective blacklist remains available");
+        vm.prank(admin);
+        cp.removeBlacklist(bob);
+
+        vm.prank(admin);
+        cp.revokeRelease(100);
+        assertFalse(cp.isReleaseVerified(100), "protective revocation remains available");
+
+        receiver.setReject(false);
+        vm.prank(address(receiver));
+        cp.claimFailedPayment(address(0));
+        assertEq(cp.failedPayments(address(0), address(receiver)), 0, "recipient recovery remains available");
+        assertEq(address(receiver).balance, failedAmount);
+
+        vm.prank(admin);
+        cp.setPaused(false);
+        _attestAs(bob, 2, keccak256("c"), keccak256("d"), "uri2");
+        assertTrue(cp.isAttested(2));
+    }
+
+    function test_Pause_BlocksEveryCustodyEntryPoint() public {
+        for (uint256 tokenId = 1; tokenId <= 4; ++tokenId) {
+            _attestAs(alice, tokenId, keccak256("content"), keccak256("fingerprint"), "uri");
+        }
+        _attestAs(alice, 10, keccak256("active"), keccak256("active-fp"), "active-uri");
+        _attestAs(alice, 11, keccak256("burn"), keccak256("burn-fp"), "burn-uri");
+        _attestReleaseAs(alice, 100, keccak256("release"), keccak256("release-fp"), "release-uri");
+        _attestAs(alice, 200, keccak256("track"), keccak256("track-fp"), "track-uri");
+        _attestAs(alice, 300, keccak256("stem"), keccak256("stem-fp"), "stem-uri");
+
+        vm.deal(alice, 10 ether);
+        vm.startPrank(alice);
+        cp.stake{value: STAKE_AMOUNT}(10);
+        cp.stake{value: STAKE_AMOUNT}(11);
+        vm.stopPrank();
+        vm.prank(admin);
+        cp.slash(11, reporter);
+
+        vm.prank(admin);
+        cp.setPaused(true);
+
+        bytes memory sig = _voucher(bob, 999);
+        vm.prank(bob);
+        vm.expectRevert(Paused.selector);
+        cp.attest(999, keccak256("new"), keccak256("new-fp"), "new-uri", AUTH_DEADLINE, sig);
+
+        sig = _voucher(bob, 1000);
+        vm.prank(bob);
+        vm.expectRevert(Paused.selector);
+        cp.attestRelease(1000, keccak256("new"), keccak256("new-fp"), "new-uri", AUTH_DEADLINE, sig);
+
+        vm.startPrank(alice);
+        vm.expectRevert(Paused.selector);
+        cp.stake{value: STAKE_AMOUNT}(1);
+        vm.expectRevert(Paused.selector);
+        cp.stakeForRelease{value: STAKE_AMOUNT}(2);
+        vm.expectRevert(Paused.selector);
+        cp.stakeWithAsset(3, makeAddr("asset"), 1);
+        vm.expectRevert(Paused.selector);
+        cp.stakeForReleaseWithAsset(4, makeAddr("asset"), 1);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        vm.expectRevert(Paused.selector);
+        cp.slash(10, reporter);
+        vm.expectRevert(Paused.selector);
+        cp.refundStake(10);
+        vm.expectRevert(Paused.selector);
+        cp.sweepBurned(address(0));
+        vm.expectRevert(Paused.selector);
+        cp.registerTrack(100, 200);
+        vm.expectRevert(Paused.selector);
+        cp.registerStem(200, 300);
+        vm.expectRevert(Paused.selector);
+        cp.registerStemProtectionRoot(100, 300);
+        vm.stopPrank();
+
+        (uint256 activeAmount,, bool active) = cp.stakes(10);
+        assertEq(activeAmount, STAKE_AMOUNT);
+        assertTrue(active);
+        assertEq(cp.totalBurned(address(0)), STAKE_AMOUNT / 10);
+        assertEq(cp.trackToParentRelease(200), 0);
+        assertEq(cp.stemToCanonicalTrack(300), 0);
+        assertEq(cp.stemToProtectionRoot(300), 0);
+    }
+
+    function test_LegacyV5Migration_IsAtomicAndPreservesState() public {
+        ContentProtectionV5Mock legacyImpl = new ContentProtectionV5Mock();
+        bytes memory initData =
+            abi.encodeCall(ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, upgradeAuthority));
+        ContentProtection legacy = ContentProtection(address(new ERC1967Proxy(address(legacyImpl), initData)));
+
+        vm.prank(admin);
+        legacy.setRegistrar(registrar, true);
+
+        // Simulate the deployed V5 proxy: initialization version 5 and no appended
+        // authority/pause slot. The V5 mock restores the old owner-authorized UUPS gate.
+        bytes32 initializableStorage = 0xf0c57e16840df040f15088dc2f81fe391c3923bec73e23a9662efc9c229c6a00;
+        vm.store(address(legacy), initializableStorage, bytes32(uint256(5)));
+        vm.store(address(legacy), bytes32(uint256(21)), bytes32(0));
+
+        ContentProtection newImpl = new ContentProtection();
+        vm.prank(admin);
+        legacy.upgradeToAndCall(address(newImpl), abi.encodeCall(ContentProtection.reinitializeV6, (upgradeAuthority)));
+
+        assertEq(legacy.owner(), admin);
+        assertEq(legacy.treasury(), treasury);
+        assertEq(legacy.stakeAmount(), STAKE_AMOUNT);
+        assertTrue(legacy.registrars(registrar));
+        assertEq(legacy.upgradeAuthority(), upgradeAuthority);
+        assertFalse(legacy.paused());
+
+        vm.prank(admin);
+        vm.expectRevert();
+        legacy.reinitializeV6(makeAddr("attackerAuthority"));
     }
 
     function test_SetRegistrar() public {

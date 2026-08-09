@@ -7,4 +7,5 @@ interface IUpgradeAuthority {
     event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
 
     error UnauthorizedUpgrade(address caller);
+    error AuthorityMustDifferFromOwner();
 }

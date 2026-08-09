@@ -1,6 +1,6 @@
 ---
 title: "Custody Upgrade And Emergency Recovery"
-status: partial
+status: implemented
 owner: "@akoita"
 ---
 
@@ -8,11 +8,10 @@ owner: "@akoita"
 
 ## Status
 
-`partial` — `ShowCampaignEscrow`, `RevenueEscrow`, and `StemMarketplaceV2`
-use the guarded UUPS posture. `StemNFT` and `TransferValidator` remain
-intentionally immutable/swap-oriented while the remaining `ContentProtection`
-governance hardening and final umbrella decisions stay tracked by
-[#1300](https://github.com/akoita/resonate/issues/1300).
+`implemented` — `ContentProtection`, `ShowCampaignEscrow`, `RevenueEscrow`, and
+`StemMarketplaceV2` use the guarded UUPS posture. `StemNFT` and
+`TransferValidator` remain intentionally immutable/swap-oriented. The strategy
+umbrella is closed in #1300; ContentProtection hardening is tracked by #1579.
 
 ## Who This Is For
 
@@ -76,11 +75,22 @@ place. Replacement rollout deploys a fresh proxy graph, grants the proxy the
 ContentProtection registrar and TransferValidator whitelist permissions, and
 promotes only the proxy address to applications.
 
+### `ContentProtection`
+
+ContentProtection keeps its deployed linear storage layout and appends a packed
+`upgradeAuthority`/`paused` slot from the reserved gap. New deployments consume
+initializer version 6 atomically. Existing proxies use a separately approved,
+one-time owner-authorized `upgradeToAndCall(reinitializeV6)` bootstrap after the
+candidate implementation and timelock are verified; all later upgrades are
+timelocked. The fast pause blocks attestations, stakes, hierarchy registration,
+slashing, refunds, and burned-remainder sweeps while keeping protective
+blacklist/revocation and recipient-owned failed-payment recovery available.
+
 ## Authority Model
 
 | Authority | Capability |
 | --- | --- |
-| Operational owner / multisig | Day-to-day configuration, dispute actions, and instant pause/unpause. Uses two-step ownership on `RevenueEscrow`. |
+| Operational owner / multisig | Day-to-day configuration, dispute actions, and instant pause/unpause. Uses two-step ownership on `RevenueEscrow` and `ContentProtection`. |
 | Timelock | Sole UUPS `upgradeAuthority`; executes only scheduled, delay-elapsed upgrades and authority rotation. |
 | Independent guardian | Timelock proposer, executor, and canceller; can veto the owner and independently drive delayed recovery. |
 | Deployer | Bootstrap only; renounces `DEFAULT_ADMIN_ROLE` after wiring the guardian. |
@@ -128,6 +138,29 @@ Marketplace governance variables use the `MARKETPLACE_OWNER`,
 continues to consume `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`,
 which always point to the stable proxy.
 
+ContentProtection operations:
+
+- `deploy-content-protection` — deploy the implementation/timelock/proxy graph,
+  stage final operational ownership, emit handoffs, smoke the authority graph,
+  and verify Base Sepolia through Sourcify;
+- `prepare-content-protection-v6-migration` /
+  `execute-content-protection-v6-migration` — prepare verified candidates, then
+  atomically bootstrap a legacy stable proxy after separate approval;
+- `pause-content-protection` — stop or resume new custody and unsafe protection
+  lifecycle writes without disabling protective/recovery paths;
+- `schedule-content-protection-upgrade` /
+  `execute-content-protection-upgrade` — run post-V6 upgrades through the live
+  48h-minimum timelock;
+- `smoke-content-protection` — validate proxy implementation, owner/pending
+  owner, pause state, timelock delay/admin, and owner/guardian recovery roles.
+
+The primary variables are `CONTENT_PROTECTION_PROXY`,
+`CONTENT_PROTECTION_OWNER`, `CONTENT_PROTECTION_GUARDIAN`,
+`CONTENT_PROTECTION_TIMELOCK_MIN_DELAY`,
+`CONTENT_PROTECTION_TIMELOCK_ADDRESS`, and
+`CONTENT_PROTECTION_IMPLEMENTATION`. Migration preparation writes a separate
+`.candidate.env`; it is evidence for execution approval, not live app config.
+
 Shared-network deployment requires explicit owner and guardian addresses. The
 guardian must differ from both owner and deployer, and the delay cannot be less
 than 48 hours.
@@ -140,9 +173,13 @@ forge test --match-contract 'RevenueEscrow.*Test' -vv
 forge test --match-path 'test/integration/RevenueEscrowTimelock.t.sol' -vv
 forge test --match-contract 'StemMarketplace.*Test' -vv
 forge test --match-path 'test/integration/StemMarketplaceTimelock.t.sol' -vv
+forge test --match-contract 'ContentProtection.*Test' -vv
+forge test --match-path 'test/integration/ContentProtectionTimelock.t.sol' -vv
 halmos --contract RevenueEscrowFormalTest
+halmos --contract ContentProtectionFormalTest
 bash scripts/check-storage-layout.sh
 certoraRun certora/conf/revenue_escrow.conf
+certoraRun certora/conf/content_protection.conf
 ```
 
 The RevenueEscrow suites cover native and ERC-20 conservation, freeze/release/
@@ -151,6 +188,9 @@ guardian recovery, and live custody state surviving an upgrade.
 The marketplace suites cover listing and payment conservation, pause coverage,
 registry rotation, authority separation, mutual veto, guardian recovery, and
 listing/failed-payment state surviving an upgrade.
+The ContentProtection suites cover the complete pause matrix, state-preserving
+legacy migration, direct-owner upgrade rejection, 48-hour delay, mutual veto,
+guardian recovery, and live state surviving an implementation change.
 
 ## References
 
@@ -158,9 +198,12 @@ listing/failed-payment state surviving an upgrade.
 - Interface: `contracts/src/interfaces/IRevenueEscrow.sol`
 - Marketplace contract: `contracts/src/core/StemMarketplaceV2.sol`
 - Marketplace interface: `contracts/src/interfaces/IStemMarketplaceV2.sol`
+- ContentProtection contract: `contracts/src/core/ContentProtection.sol`
+- ContentProtection interface: `contracts/src/interfaces/IContentProtection.sol`
 - Deployment workflow: `.github/workflows/contracts-deploy.yml`
 - Operator runbook: `docs/smart-contracts/operations-runbook.md`
 - Deployment guide: `docs/smart-contracts/deployment.md`
 - Design rationale: `docs/rfc/contract-upgradeability-and-recovery.md`
 - Tracking: [#1300](https://github.com/akoita/resonate/issues/1300)
 - Marketplace slice: [#1575](https://github.com/akoita/resonate/issues/1575)
+- ContentProtection slice: [#1579](https://github.com/akoita/resonate/issues/1579)

@@ -9,7 +9,7 @@ import {CurationRewards} from "../src/core/CurationRewards.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {ContentProtectionDeployment} from "./ContentProtectionDeployment.s.sol";
 import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
 import {StemMarketplaceDeployment} from "./StemMarketplaceDeployment.s.sol";
 
@@ -30,7 +30,7 @@ import {StemMarketplaceDeployment} from "./StemMarketplaceDeployment.s.sol";
  * Run:
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
+contract DeployProtocol is ContentProtectionDeployment, RevenueEscrowDeployment, StemMarketplaceDeployment {
     bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
     bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
     bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
@@ -55,6 +55,7 @@ contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
         RevenueEscrowConfig memory revenueEscrowConfig = _revenueEscrowConfig(deployer);
         StemMarketplaceConfig memory marketplaceConfig = _stemMarketplaceConfig(deployer);
+        ContentProtectionConfig memory contentProtectionConfig = _contentProtectionConfig(deployer);
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
         address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
         bool enableWeth = vm.envOr("PAYMENT_ENABLE_WETH", false);
@@ -74,10 +75,11 @@ contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
         console.log("TransferValidator:", address(validator));
 
         // 2. Deploy ContentProtection (UUPS proxy)
-        ContentProtection cpImpl = new ContentProtection();
-        bytes memory cpInit = abi.encodeCall(ContentProtection.initialize, (deployer, feeRecipient, stakeAmountWei));
-        ERC1967Proxy cpProxy = new ERC1967Proxy(address(cpImpl), cpInit);
-        ContentProtection contentProtection = ContentProtection(address(cpProxy));
+        ContentProtectionDeploymentResult memory contentProtectionDeployment =
+            _deployContentProtection(deployer, contentProtectionConfig, feeRecipient, stakeAmountWei);
+        ContentProtection contentProtection = contentProtectionDeployment.contentProtection;
+        console.log("ContentProtection implementation:", address(contentProtectionDeployment.implementation));
+        console.log("ContentProtection timelock:", address(contentProtectionDeployment.timelock));
         console.log("ContentProtection (proxy):", address(contentProtection));
 
         // 3. Deploy DisputeResolution
@@ -176,6 +178,11 @@ contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
             console.log("  -> RevenueEscrow owner must link ContentProtection after deployment");
         }
 
+        if (contentProtectionConfig.owner != deployer) {
+            contentProtection.transferOwnership(contentProtectionConfig.owner);
+            console.log("  -> ContentProtection ownership transfer pending:", contentProtectionConfig.owner);
+        }
+
         vm.stopBroadcast();
 
         console.log("");
@@ -190,6 +197,8 @@ contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
         console.log("");
         console.log("Content Protection:");
         console.log("  ContentProtection (proxy):", address(contentProtection));
+        console.log("  ContentProtection implementation:", address(contentProtectionDeployment.implementation));
+        console.log("  ContentProtection timelock:", address(contentProtectionDeployment.timelock));
         console.log("  DisputeResolution:", address(disputeResolution));
         console.log("  CurationRewards:", address(curationRewards));
         console.log("  RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
@@ -208,6 +217,9 @@ contract DeployProtocol is RevenueEscrowDeployment, StemMarketplaceDeployment {
         console.log("  RevenueEscrow owner:", revenueEscrowConfig.owner);
         console.log("  RevenueEscrow guardian:", revenueEscrowConfig.guardian);
         console.log("  RevenueEscrow timelock delay:", revenueEscrowConfig.timelockMinDelay, "seconds");
+        console.log("  ContentProtection owner:", contentProtectionConfig.owner);
+        console.log("  ContentProtection guardian:", contentProtectionConfig.guardian);
+        console.log("  ContentProtection timelock delay:", contentProtectionConfig.timelockMinDelay, "seconds");
         console.log("  Marketplace owner:", marketplaceConfig.owner);
         console.log("  Marketplace guardian:", marketplaceConfig.guardian);
         console.log("  Marketplace timelock delay:", marketplaceConfig.timelockMinDelay, "seconds");

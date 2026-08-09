@@ -19,7 +19,8 @@ import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.s
  *   - Creators attest ownership of protected content / release records
  *   - Stake is required per protected record — slashed on confirmed theft
  *   - Slash split: 60% reporter · 30% treasury · 10% burned
- *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
+ *   - UUPS upgradeable through a dedicated delayed authority; the operational
+ *     owner retains the independent fast-pause lever
  *
  * Attestation authorization (CP-1, #1271):
  *   `attest` / `attestRelease` are open entrypoints, but the tokenIds they claim are
@@ -45,10 +46,12 @@ import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.s
  * Upgrade / migration:
  *   V5 (`reinitializeV5`) initializes the EIP-712 domain ("ContentProtection", "1") on
  *   already-deployed proxies so vouchers verify after upgrade. Fresh deploys also set
- *   the domain in `initialize`. (Versions 2–4 were already consumed by earlier
- *   reinitializers, so this migration uses reinitializer version 5.)
+ *   the domain in `initializeFresh`. (Versions 2–4 were already consumed by earlier
+ *   reinitializers, so this migration uses reinitializer version 5.) V6
+ *   (`reinitializeV6`) separates the upgrade authority from the operational owner and
+ *   initializes the emergency pause state without moving any legacy linear storage.
  *
- * @custom:version 1.1.0
+ * @custom:version 1.2.0
  */
 contract ContentProtection is
     IContentProtectionEvents,
@@ -127,11 +130,20 @@ contract ContentProtection is
     /// @dev Appended after existing storage (before the gap) to preserve the UUPS layout.
     address public pendingOwner;
 
+    /// @notice Sole authority allowed to upgrade the implementation or rotate
+    /// upgrade governance. Production deployments use a delayed TimelockController.
+    /// @dev Appended after all legacy state. Packs with `paused` in one storage slot.
+    address public upgradeAuthority;
+
+    /// @notice Global emergency stop for custody and protection-lifecycle mutations.
+    bool public paused;
+
     /// @dev Reserved storage slots so future upgrades can add state without shifting
     /// the existing layout. Must remain the last storage variable; shrink it by the
     /// number of slots any newly-added state occupies. Shrunk 50 -> 49 when
-    /// `pendingOwner` was added (CP-3, #1271).
-    uint256[49] private __gap;
+    /// `pendingOwner` was added (CP-3, #1271), then 49 -> 48 when the packed
+    /// `upgradeAuthority` + `paused` slot was added (#1579).
+    uint256[48] private __gap;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -153,6 +165,16 @@ contract ContentProtection is
         _;
     }
 
+    modifier onlyUpgradeAuthority() {
+        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) revert Paused();
+        _;
+    }
+
     // ============ Initializer (UUPS) ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -160,19 +182,27 @@ contract ContentProtection is
         _disableInitializers();
     }
 
-    function initialize(address _owner, address _treasury, uint256 _stakeAmount) external initializer {
+    function initializeFresh(address _owner, address _treasury, uint256 _stakeAmount, address _upgradeAuthority)
+        external
+        reinitializer(6)
+    {
+        if (owner != address(0)) revert FreshInitializationOnly();
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        if (_owner == _upgradeAuthority) revert AuthorityMustDifferFromOwner();
 
         // Fresh deploys get the EIP-712 domain here; already-deployed proxies get it via
-        // reinitializeV5() (they never re-run this v1 initializer). See CP-1 (#1271).
+        // the latest applicable reinitializer. See CP-1 (#1271) and #1579.
         __EIP712_init("ContentProtection", "1");
 
         owner = _owner;
         treasury = _treasury;
         stakeAmount = _stakeAmount;
         maxPriceMultiplier = 10;
+        upgradeAuthority = _upgradeAuthority;
         _initializeTierPoliciesFromStakeAmount(_stakeAmount);
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
     // ============ Attestation ============
@@ -196,7 +226,7 @@ contract ContentProtection is
         string calldata metadataURI,
         uint256 deadline,
         bytes calldata signature
-    ) external {
+    ) external whenNotPaused {
         _verifyAttestationAuthorization(tokenId, deadline, signature);
         _attest(tokenId, contentHash, fingerprintHash, metadataURI);
     }
@@ -213,7 +243,7 @@ contract ContentProtection is
         string calldata metadataURI,
         uint256 deadline,
         bytes calldata signature
-    ) external {
+    ) external whenNotPaused {
         _verifyAttestationAuthorization(releaseId, deadline, signature);
         _attest(releaseId, contentHash, fingerprintHash, metadataURI);
     }
@@ -260,7 +290,7 @@ contract ContentProtection is
      * @notice Stake ETH when publishing protected content.
      * @param tokenId The attested content or release identifier to stake for
      */
-    function stake(uint256 tokenId) external payable nonReentrant {
+    function stake(uint256 tokenId) external payable nonReentrant whenNotPaused {
         _stakeNative(tokenId);
     }
 
@@ -268,15 +298,19 @@ contract ContentProtection is
      * @notice Canonical release-first staking entrypoint.
      * @dev Keeps the external API aligned with the hierarchical release-root model.
      */
-    function stakeForRelease(uint256 releaseId) external payable nonReentrant {
+    function stakeForRelease(uint256 releaseId) external payable nonReentrant whenNotPaused {
         _stakeNative(releaseId);
     }
 
-    function stakeWithAsset(uint256 tokenId, address token, uint256 amount) external nonReentrant {
+    function stakeWithAsset(uint256 tokenId, address token, uint256 amount) external nonReentrant whenNotPaused {
         _stakeErc20(tokenId, token, amount);
     }
 
-    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount) external nonReentrant {
+    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount)
+        external
+        nonReentrant
+        whenNotPaused
+    {
         _stakeErc20(releaseId, token, amount);
     }
 
@@ -338,7 +372,7 @@ contract ContentProtection is
      * @param tokenId The token ID to slash
      * @param reporter The address that reported the theft
      */
-    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant {
+    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant whenNotPaused {
         if (!stakes[tokenId].active) revert NotStaked();
         if (reporter == address(0)) revert ZeroAddress();
 
@@ -381,7 +415,7 @@ contract ContentProtection is
      * @notice Refund stake to creator (admin action, e.g., after escrow period).
      * @param tokenId The token ID to refund stake for
      */
-    function refundStake(uint256 tokenId) external onlyOwner nonReentrant {
+    function refundStake(uint256 tokenId) external onlyOwner nonReentrant whenNotPaused {
         if (!stakes[tokenId].active) revert NotStaked();
 
         address attester = attestations[tokenId].attester;
@@ -400,7 +434,7 @@ contract ContentProtection is
     /// to the treasury. The remainder is retained — not destroyed — so this gives it a
     /// defined exit instead of leaving it permanently locked in the contract.
     /// @param token The asset to sweep (address(0) for native ETH).
-    function sweepBurned(address token) external onlyOwner nonReentrant {
+    function sweepBurned(address token) external onlyOwner nonReentrant whenNotPaused {
         uint256 amount = totalBurned[token];
         if (amount == 0) revert NothingToClaim();
         totalBurned[token] = 0;
@@ -479,14 +513,31 @@ contract ContentProtection is
         treasury = newTreasury;
     }
 
+    /// @notice Fast operational circuit breaker. Upgrade governance remains usable
+    /// while paused so a verified recovery implementation can still be scheduled.
+    function setPaused(bool isPaused) external onlyOwner {
+        paused = isPaused;
+        emit ContentProtectionPaused(isPaused);
+    }
+
+    /// @notice Rotate upgrade governance through the current delayed authority.
+    function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        if (newAuthority == owner || newAuthority == pendingOwner) revert AuthorityMustDifferFromOwner();
+        address previousAuthority = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityUpdated(previousAuthority, newAuthority);
+    }
+
     /// @notice Start a two-step ownership handoff (CP-3, #1271). Records `newOwner` as
-    /// the pending owner; the current owner keeps full authority (including
-    /// `_authorizeUpgrade`) until `newOwner` calls {acceptOwnership}. This prevents an
+    /// the pending owner; the current owner keeps operational authority until
+    /// `newOwner` calls {acceptOwnership}. Upgrade authority remains separate. This prevents an
     /// accidental one-step transfer to an unusable or mistyped address from bricking
     /// upgrade and admin control. Re-calling replaces any prior pending owner.
     /// @param newOwner The address that must call {acceptOwnership} to complete the handoff.
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
+        if (newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
         pendingOwner = newOwner;
         emit OwnershipTransferStarted(owner, newOwner);
     }
@@ -496,6 +547,7 @@ contract ContentProtection is
     /// slot and emits {OwnershipTransferred}.
     function acceptOwnership() external {
         if (msg.sender != pendingOwner) revert NotPendingOwner(msg.sender);
+        if (msg.sender == upgradeAuthority) revert AuthorityMustDifferFromOwner();
         address previousOwner = owner;
         owner = pendingOwner;
         delete pendingOwner;
@@ -504,7 +556,7 @@ contract ContentProtection is
 
     // ============ UUPS ============
 
-    function _authorizeUpgrade(address) internal override onlyOwner {}
+    function _authorizeUpgrade(address) internal view virtual override onlyUpgradeAuthority {}
 
     function reinitializeV2() external reinitializer(2) {
         if (maxPriceMultiplier == 0) {
@@ -528,9 +580,21 @@ contract ContentProtection is
         __EIP712_init("ContentProtection", "1");
     }
 
+    /// @notice V6 migration for an existing proxy. Must be executed atomically by the
+    /// current owner as part of the final direct-owner upgrade; all later upgrades are
+    /// authorized exclusively by the supplied timelock authority.
+    function reinitializeV6(address _upgradeAuthority) external reinitializer(6) onlyOwner {
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        if (_upgradeAuthority == owner) revert AuthorityMustDifferFromOwner();
+        __EIP712_init("ContentProtection", "1");
+        upgradeAuthority = _upgradeAuthority;
+        paused = false;
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
+    }
+
     // ============ Views ============
 
-    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner {
+    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner whenNotPaused {
         if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
             revert NotAttested();
         }
@@ -546,7 +610,7 @@ contract ContentProtection is
         emit TrackRegistered(releaseId, trackId);
     }
 
-    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner whenNotPaused {
         if (!_hasAttestation(trackId)) revert NotAttested();
         if (trackId == stemTokenId) revert InvalidParent();
 
@@ -560,7 +624,11 @@ contract ContentProtection is
         emit StemRegistered(trackId, stemTokenId);
     }
 
-    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId)
+        external
+        onlyRegistrarOrOwner
+        whenNotPaused
+    {
         if (!_hasAttestation(releaseId)) revert NotAttested();
         if (releaseId == stemTokenId) revert InvalidParent();
 

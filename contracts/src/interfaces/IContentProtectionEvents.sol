@@ -7,7 +7,9 @@ import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
 import {INativePayment} from "../common/INativePayment.sol";
 import {IOwnershipTransfer} from "../common/IOwnershipTransfer.sol";
 import {IPaymentAssetRegistryConsumer} from "../common/IPaymentAssetRegistryConsumer.sol";
+import {IPausableGuard} from "../common/IPausableGuard.sol";
 import {IStakeGuards} from "../common/IStakeGuards.sol";
+import {IUpgradeAuthority} from "../common/IUpgradeAuthority.sol";
 
 /// @title IContentProtectionEvents
 /// @notice Canonical shared surface (events + custom errors) for ContentProtection.
@@ -24,7 +26,9 @@ interface IContentProtectionEvents is
     INativePayment,
     IOwnershipTransfer,
     IPaymentAssetRegistryConsumer,
-    IStakeGuards
+    IPausableGuard,
+    IStakeGuards,
+    IUpgradeAuthority
 {
     // ============ Events ============
 
@@ -89,6 +93,7 @@ interface IContentProtectionEvents is
     /// on acceptance.
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event BurnedSwept(address indexed token, address indexed treasury, uint256 amount);
+    event ContentProtectionPaused(bool paused);
 
     // ============ Errors ============
 
@@ -105,6 +110,7 @@ interface IContentProtectionEvents is
     error InvalidMultiplier();
     error InvalidTier();
     error InvalidStakeAmount();
+    error FreshInitializationOnly();
 
     /// @notice `acceptOwnership` was called by an address that is not the staged
     /// pending owner (CP-3, #1271).

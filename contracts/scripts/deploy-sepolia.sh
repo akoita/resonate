@@ -126,6 +126,12 @@ MARKETPLACE=$(jq -r '
 ' "$BROADCAST_FILE")
 TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
 CONTENT_PROTECTION_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ContentProtection") | .contractAddress' "$BROADCAST_FILE" | head -1)
+CONTENT_PROTECTION_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 CONTENT_PROTECTION=$(jq -r '
   .transactions as $txs
   | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
@@ -135,7 +141,12 @@ CONTENT_PROTECTION=$(jq -r '
 DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
 CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
 REVENUE_ESCROW_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE" | head -1)
-REVENUE_ESCROW_TIMELOCK=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TimelockController") | .contractAddress' "$BROADCAST_FILE" | head -1)
+REVENUE_ESCROW_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 REVENUE_ESCROW=$(jq -r '
   .transactions as $txs
   | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
@@ -147,6 +158,7 @@ DEPLOY_BLOCK=$(jq -r '.receipts[0].blockNumber' "$BROADCAST_FILE" 2>/dev/null ||
 
 for graph_address in \
     "ContentProtection implementation:$CONTENT_PROTECTION_IMPLEMENTATION" \
+    "ContentProtection timelock:$CONTENT_PROTECTION_TIMELOCK" \
     "ContentProtection proxy:$CONTENT_PROTECTION" \
     "RevenueEscrow implementation:$REVENUE_ESCROW_IMPLEMENTATION" \
     "RevenueEscrow timelock:$REVENUE_ESCROW_TIMELOCK" \
@@ -198,6 +210,7 @@ cat > "$DEPLOY_RECORD" <<EOF
     "TransferValidator": "$TRANSFER_VALIDATOR",
     "ContentProtection": "$CONTENT_PROTECTION",
     "ContentProtectionImplementation": "$CONTENT_PROTECTION_IMPLEMENTATION",
+    "ContentProtectionTimelock": "$CONTENT_PROTECTION_TIMELOCK",
     "DisputeResolution": "$DISPUTE_RESOLUTION",
     "CurationRewards": "$CURATION_REWARDS",
     "RevenueEscrow": "$REVENUE_ESCROW",

@@ -45,7 +45,10 @@ contract CurationRewardsTest is Test, ICurationRewards {
     function setUp() public {
         // Deploy ContentProtection (UUPS proxy)
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (admin, treasury, STAKE_AMOUNT));
+        bytes memory initData =
+            abi.encodeCall(
+                ContentProtection.initializeFresh, (admin, treasury, STAKE_AMOUNT, makeAddr("upgradeAuthority"))
+            );
         ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
         cp = ContentProtection(address(proxy));
 

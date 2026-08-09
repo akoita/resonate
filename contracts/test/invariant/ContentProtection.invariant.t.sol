@@ -42,7 +42,9 @@ contract ContentProtectionHandler is Test {
 
     constructor() {
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (address(this), treasury, STAKE_AMOUNT));
+        bytes memory initData = abi.encodeCall(
+            ContentProtection.initializeFresh, (address(this), treasury, STAKE_AMOUNT, makeAddr("upgradeAuthority"))
+        );
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
 
         // The handler is the owner, so it can register the voucher-signing registrar.
@@ -50,7 +52,8 @@ contract ContentProtectionHandler is Test {
 
         for (uint256 i; i < tokens.length; ++i) {
             attesters[i] = makeAddr(string(abi.encodePacked("cp_attester_", vm.toString(i))));
-            bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attesters[i], tokens[i], AUTH_DEADLINE);
+            bytes memory sig =
+                AttestationVoucher.sign(address(cp), REGISTRAR_PK, attesters[i], tokens[i], AUTH_DEADLINE);
             vm.prank(attesters[i]);
             cp.attest(tokens[i], keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
         }
@@ -93,11 +96,15 @@ contract ContentProtectionHandler is Test {
             gBurned += burned;
         } catch {}
     }
+
+    function doTogglePause(bool isPaused) public {
+        cp.setPaused(isPaused);
+    }
 }
 
 /**
  * @title ContentProtection Invariant Tests
- * @notice Conservation of staked funds under arbitrary stake/slash/refund sequences (#943).
+ * @notice Conservation of staked funds under arbitrary stake/slash/refund/pause sequences (#943, #1579).
  */
 contract ContentProtectionInvariantTest is Test {
     ContentProtectionHandler internal handler;

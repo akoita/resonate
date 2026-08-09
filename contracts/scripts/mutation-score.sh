@@ -23,11 +23,25 @@ ORIGINAL=$(python3 -c "import json; print(json.load(open('$CONFIG'))['filename']
 
 echo "==> Generating mutants: $CONFIG ($ORIGINAL)"
 rm -rf "$OUTDIR"
-gambit mutate --json "$CONFIG" >/dev/null
+if ! gambit mutate --json "$CONFIG" >/dev/null; then
+  echo "ERROR: Gambit failed to generate mutants; check compiler output and remappings." >&2
+  exit 2
+fi
 
 RESULTS="$OUTDIR/gambit_results.json"
-TOTAL=$(python3 -c "import json; print(len(json.load(open('$RESULTS'))))")
+if [ ! -f "$RESULTS" ]; then
+  echo "ERROR: Gambit did not write $RESULTS." >&2
+  exit 2
+fi
+if ! TOTAL=$(python3 -c "import json; print(len(json.load(open('$RESULTS'))))"); then
+  echo "ERROR: Gambit results are not valid JSON." >&2
+  exit 2
+fi
 echo "==> $TOTAL mutants generated"
+if [[ ! "$TOTAL" =~ ^[0-9]+$ ]] || [ "$TOTAL" -eq 0 ]; then
+  echo "ERROR: Gambit generated zero mutants; check compiler output and remappings." >&2
+  exit 2
+fi
 
 # Always restore the pristine source, even on interrupt/timeout/error.
 cp "$ORIGINAL" "$ORIGINAL.mutorig"
