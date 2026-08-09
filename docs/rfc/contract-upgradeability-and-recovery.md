@@ -53,8 +53,9 @@ deliberately deferred to child issues under the umbrella (#1300).
 
 ## Non-goals
 
-- Choosing a specific multisig/governance product, timelock duration, or signer
-  set (those are follow-up decisions on #1300).
+- Choosing the production multisig/governance product and signer set. Implemented
+  shared-network deployments enforce an independent guardian and a minimum
+  48-hour delay; the final production participants remain an operator decision.
 - Implementing any conversion in this RFC. This document ratifies a direction.
 - Re-opening whether `ContentProtection` should be upgradeable (it already is).
 
@@ -67,7 +68,7 @@ those merges will not show `sweepBurned`/`claimFailedPayment`.
 | Contract | Custodies value? | Mutability today | Existing recovery levers (admin) | Can a depositor self-exit? |
 | --- | --- | --- | --- | --- |
 | `ContentProtection` | yes (stakes) | **UUPS upgradeable** | upgrade; `blacklist`; `sweepBurned`; **`refundStake` is `onlyOwner`** | **No** — refund is owner-only |
-| `RevenueEscrow` | yes (per-token revenue) | immutable `Ownable` | `freeze`/`unfreeze`/`redirect`; `claimFailedPayment` | **Only** once unfrozen **and** past `escrowEndTime` (`release` reverts otherwise) |
+| `RevenueEscrow` | yes (per-token revenue) | **UUPS + timelock** with two-step operational ownership and independent guardian recovery (#1300) — historical deployments were immutable `Ownable` | global `setPaused`; per-escrow `freeze`/`unfreeze`/`redirect`; `claimFailedPayment`; delayed upgrade | **Only** once globally unpaused, individually unfrozen, and past `escrowEndTime` (`release` reverts otherwise) |
 | `ShowCampaignEscrow` | yes (fan pledges) | **UUPS + timelock** (guardian = independent proposer+executor+canceller) as of #1497 + SCE-2/#1271 — was immutable `Ownable` | `setPaused` now **freezes every money-movement / lifecycle transition** (not just `pledge`); `cancelCampaign` → pro-rata refunds; upgrade via 48h timelock; guardian can both veto **and** independently drive a recovery upgrade if the owner key is lost while paused | **Only** in `RefundAvailable` (owner/threshold-gated) — not at will |
 | `StemMarketplaceV2` | flow-through (per-tx) | immutable `Ownable`; `paymentAssetRegistry` is `immutable` (no setter) | `setProtocolFee`/`setFeeRecipient`; `claimFailedPayment`; `withdrawTrappedETH` | n/a (no standing deposits) |
 | `StemNFT` | yes (the assets) | immutable | `setTransferValidator` / `setContentProtection` (swap the hooks) | holders own their tokens directly |
@@ -224,7 +225,7 @@ broad upgradeability lowers security. With them, it raises it.
 
 | Contract | Proposed posture |
 | --- | --- |
-| `RevenueEscrow` | **UUPS + timelock + multisig + re-verify**, keep `freeze`/`redirect` and add a fast `pause`. Strongest custody case. |
+| `RevenueEscrow` | ✅ **IMPLEMENTED (#1300 RevenueEscrow slice).** Fresh deployments use an ERC1967 proxy with a 48h-minimum `TimelockController` upgrade authority, operational owner/multisig and independent guardian as mutual cancellers plus independent proposer/executor recovery paths, two-step operational ownership, and a global pause covering every deposit/release/redirect/failed-payment claim. Per-token freeze semantics and accounting stay intact. Unit/fuzz/invariant/Halmos/Certora, timelock integration, mutation, and storage-layout gates cover the implementation. Historical standalone deployments cannot convert in place and require an explicit liability audit/replacement rollout. |
 | `ShowCampaignEscrow` | ✅ **IMPLEMENTED (#1497, slice 1 of #1300; recovery hardening SCE-2/#1271, liveness SCE-1/#1271).** Converted to UUPS behind an ERC1967 proxy; `upgradeAuthority` is a `TimelockController` (48h default delay) with the ops owner as proposer/executor/canceller and an independent **guardian holding `PROPOSER_ROLE` + `EXECUTOR_ROLE` + `CANCELLER_ROLE`**. The operational `owner` runs campaigns + the instant pause but **cannot upgrade** directly. The guardian is a full, independent recovery path: it can schedule + execute a recovery upgrade on its own (still behind the 48h delay) if the owner key is lost/compromised while paused — closing SCE-2, where the frozen-refund pause + `onlyOwner` `setPaused` would otherwise strand fan funds. Owner and guardian both hold `CANCELLER_ROLE`, so they mutually veto each other's scheduled upgrades during the delay. The fast pause now gates **every fund-outflow and lifecycle transition** (`pledge`, `markFailed`, `cancelCampaign`, `openRefundsAfterMissedBooking`, `openRefundsAfterMissedFulfillment`, `confirmBooking`, `releaseDeposit`, `confirmFulfillment`, `releaseFunds`, `claimRefund`) — only config setters and `setPaused`/`setUpgradeAuthority` stay callable. Storage-layout gate, unit/fuzz/invariant/Halmos suites all extended and green. **v2.1.0 (#1271 / SCE-1):** adds a permissionless `openRefundsAfterMissedFulfillment` escape so a stalled `BookingConfirmed`/`DepositReleased` campaign can be forced to `RefundAvailable` after a per-campaign `fulfillmentDeadline` (captured at booking from the global, owner-tunable `fulfillmentWindow`), closing the "confirmer keys + ops owner both go silent after booking" lockup. Shipped as an appended `Campaign.fulfillmentDeadline` field + one new top-level slot `fulfillmentWindow` (gap `41→40`, no existing slot moved), plus an `initializeV2(fulfillmentWindow)` **`reinitializer(2)`** run via the timelock `upgradeToAndCall` — legacy campaigns already booked at the upgrade keep `fulfillmentDeadline == 0` (escape inert) and are not backfilled. |
 | `StemMarketplaceV2` | **UUPS + timelock + multisig + re-verify**, plus a fast `pause` on `buy`/`list`. |
 | `ContentProtection` | Already UUPS — **add the timelock + multisig + a fast pause**; bring it under the same re-verification gate. |
@@ -240,12 +241,9 @@ gates, with pause as the universal fast lever.**
 ## Rollout (high-level — details on #1300)
 
 1. Ratify this stance (per-contract posture + guardrails).
-2. Land the universal **fast pause** on the value contracts (small, low-risk; can
-   precede the proxy work) — and ensure it covers the **payout/release outflow**, not
-   just inflows. For `ShowCampaignEscrow` this means extending `whenNotPaused` to
-   `releaseDeposit`, `releaseFunds`, and the confirm transitions that lead to release
-   (today it gates only `pledge`); for `RevenueEscrow`, add a global pause alongside
-   the per-escrow `freeze`.
+2. Land the universal **fast pause** on the value contracts and ensure it covers
+   payout/release outflow, not just inflows. ✅ Complete for `ShowCampaignEscrow`
+   and `RevenueEscrow`; the marketplace pause remains in its later slice.
 3. Stand up the **`TimelockController` + multisig** as the upgrade/admin authority,
    with an independent **guardian holding `PROPOSER_ROLE` + `EXECUTOR_ROLE` +
    `CANCELLER_ROLE`** — the veto **and** an independent recovery path so upgrade
@@ -253,8 +251,9 @@ gates, with pause as the universal fast lever.**
    mutual cancel rights keep the two authorities checking each other.
 4. Convert the escrows + marketplace to **UUPS** — *one contract per PR*, each with
    initializer + storage `__gap`, the storage-layout gate extended to it, and the
-   full formal suite re-run and required. (For the marketplace, this also restores
-   the ability to change `paymentAssetRegistry`, which is `immutable` today.)
+   full formal suite re-run and required. ✅ Shows and RevenueEscrow complete;
+   `StemMarketplaceV2` remains. (For the marketplace, this also restores the
+   ability to change `paymentAssetRegistry`, which is `immutable` today.)
 5. Make the **Halmos/Certora/storage-layout gates required on every implementation
    bump** (CI policy).
 6. Publish the **emergency-response runbook**.
@@ -277,7 +276,9 @@ gates, with pause as the universal fast lever.**
   process weight; that is the intended trade — it is the price of safe upgradeability.
 - **StemNFT immutability vs. a future need to patch transfer/royalty logic** — left
   open; revisit if such a need is identified.
-- **Governance product, signer set, and delay values** — deferred to #1300.
+- **Production governance product and signer set** — still an operator decision.
+  Shared-network scripts enforce independent owner/guardian addresses and a
+  minimum 48-hour delay for the implemented escrow graphs.
 
 ## Emergency-response runbook — `ShowCampaignEscrow` (implemented #1497)
 

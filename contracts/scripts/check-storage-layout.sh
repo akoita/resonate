@@ -14,7 +14,7 @@
 set -uo pipefail
 
 MODE="${1:-check}"
-CONTRACTS=(ContentProtection ShowCampaignEscrow)
+CONTRACTS=(ContentProtection ShowCampaignEscrow RevenueEscrow)
 DIR="storage-layout"
 mkdir -p "$DIR"
 
@@ -41,7 +41,10 @@ print(json.dumps(out, indent=2, sort_keys=True))
 
 fail=0
 for c in "${CONTRACTS[@]}"; do
-  cur=$(forge inspect "$c" storageLayout --json 2>/dev/null | normalize)
+  # `forge test` can overwrite a contract artifact without storage-layout output.
+  # Disable the cache so this gate always asks solc for the requested layout instead
+  # of depending on whichever artifact shape the preceding command happened to emit.
+  cur=$(forge inspect --no-cache "$c" storageLayout --json 2>/dev/null | normalize)
   base="$DIR/$c.json"
 
   if [ "$MODE" = "--update" ]; then

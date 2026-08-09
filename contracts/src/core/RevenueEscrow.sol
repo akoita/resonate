@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -20,9 +22,18 @@ import {IRevenueEscrow} from "../interfaces/IRevenueEscrow.sol";
  *   - After escrow period, anyone can call release() to pay the beneficiary
  *   - ReentrancyGuard + CEI pattern on all payouts
  *
- * @custom:version 1.0.0
+ * Upgradeability and authority split (issue #1300):
+ *   - This release is a fresh proxy conversion, not an in-place migration of a
+ *     previously deployed constructor instance. The implementation disables
+ *     initializers and a new ERC1967 proxy atomically calls {initialize}.
+ *   - The operational owner manages escrow configuration, disputes, depositors,
+ *     and the emergency pause through two-step ownership.
+ *   - A separate `upgradeAuthority` (a delayed TimelockController in production)
+ *     is the only account allowed to upgrade or rotate upgrade governance.
+ *
+ * @custom:version 2.0.0
  */
-contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
+contract RevenueEscrow is IRevenueEscrow, Initializable, UUPSUpgradeable, Ownable2StepUpgradeable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // ============ State ============
@@ -60,15 +71,52 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
     /// are escrowed here and the recipient reclaims them via `claimFailedPayment`.
     mapping(address => mapping(address => uint256)) public failedPayments;
 
-    // ============ Constructor ============
+    /// @notice Sole authority allowed to upgrade the implementation or rotate
+    /// this authority. Production deployments use a delayed TimelockController.
+    address public upgradeAuthority;
 
-    /**
-     * @param _owner Contract owner (admin)
-     * @param _defaultEscrowPeriod Default escrow duration in seconds
-     */
-    constructor(address _owner, uint256 _defaultEscrowPeriod) Ownable(_owner) {
-        defaultEscrowPeriod = _defaultEscrowPeriod;
+    /// @notice Global emergency stop for every function that moves custody.
+    bool public paused;
+
+    /// @dev Existing state consumes eight slots; authority + pause pack into one
+    /// additional slot. Forty-one slots remain reserved out of a fifty-slot budget.
+    uint256[41] private __gap;
+
+    // ============ Initialization ============
+
+    modifier whenNotPaused() {
+        if (paused) revert Paused();
+        _;
     }
+
+    modifier onlyUpgradeAuthority() {
+        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        _;
+    }
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Atomically initializes a fresh proxy. Callable exactly once.
+    function initialize(address _owner, uint256 _defaultEscrowPeriod, address _upgradeAuthority) external initializer {
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        __Ownable_init(_owner);
+        __Ownable2Step_init();
+        defaultEscrowPeriod = _defaultEscrowPeriod;
+        upgradeAuthority = _upgradeAuthority;
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
+    }
+
+    function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        address previous = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityUpdated(previous, newAuthority);
+    }
+
+    function _authorizeUpgrade(address) internal view override onlyUpgradeAuthority {}
 
     /// @dev Only the owner or an allowlisted revenue router may deposit. Deposits
     /// create the escrow and bind its beneficiary, so leaving them open would let an
@@ -87,7 +135,7 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
      * @param tokenId The token ID to deposit revenue for
      * @param beneficiary The address that will receive funds on release
      */
-    function deposit(uint256 tokenId, address beneficiary) external payable nonReentrant onlyDepositor {
+    function deposit(uint256 tokenId, address beneficiary) external payable nonReentrant onlyDepositor whenNotPaused {
         if (msg.value == 0) revert ZeroAmount();
         _deposit(tokenId, beneficiary, address(0), msg.value);
     }
@@ -96,6 +144,7 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
         external
         nonReentrant
         onlyDepositor
+        whenNotPaused
     {
         if (token == address(0)) revert UnsupportedAsset();
         if (amount == 0) revert ZeroAmount();
@@ -166,11 +215,11 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
      *         Can be called by anyone (permissionless) once the period expires.
      * @param tokenId The token ID to release
      */
-    function release(uint256 tokenId) external nonReentrant {
+    function release(uint256 tokenId) external nonReentrant whenNotPaused {
         _release(tokenId, address(0));
     }
 
-    function releaseAsset(uint256 tokenId, address token) external nonReentrant {
+    function releaseAsset(uint256 tokenId, address token) external nonReentrant whenNotPaused {
         _release(tokenId, token);
     }
 
@@ -182,11 +231,16 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
      * @param tokenId The token ID whose escrow to redirect
      * @param recipient The rightful owner who should receive the funds
      */
-    function redirect(uint256 tokenId, address recipient) external onlyOwner nonReentrant {
+    function redirect(uint256 tokenId, address recipient) external onlyOwner nonReentrant whenNotPaused {
         _redirect(tokenId, address(0), recipient);
     }
 
-    function redirectAsset(uint256 tokenId, address token, address recipient) external onlyOwner nonReentrant {
+    function redirectAsset(uint256 tokenId, address token, address recipient)
+        external
+        onlyOwner
+        nonReentrant
+        whenNotPaused
+    {
         _redirect(tokenId, token, recipient);
     }
 
@@ -229,6 +283,11 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
     function setDefaultEscrowPeriod(uint256 newPeriod) external onlyOwner {
         emit EscrowPeriodUpdated(defaultEscrowPeriod, newPeriod);
         defaultEscrowPeriod = newPeriod;
+    }
+
+    function setPaused(bool isPaused) external onlyOwner {
+        paused = isPaused;
+        emit RevenueEscrowPaused(isPaused);
     }
 
     function freezeByTrack(uint256 trackId) external onlyOwner {
@@ -442,7 +501,7 @@ contract RevenueEscrow is IRevenueEscrow, Ownable, ReentrancyGuard {
 
     /// @notice Reclaim funds escrowed for `msg.sender` after a failed payout.
     /// @param token The asset to claim (address(0) for native ETH).
-    function claimFailedPayment(address token) external nonReentrant {
+    function claimFailedPayment(address token) external nonReentrant whenNotPaused {
         uint256 amount = failedPayments[token][msg.sender];
         if (amount == 0) revert NothingToClaim();
         failedPayments[token][msg.sender] = 0;

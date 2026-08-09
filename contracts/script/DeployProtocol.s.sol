@@ -7,12 +7,11 @@ import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {DisputeResolution} from "../src/core/DisputeResolution.sol";
 import {CurationRewards} from "../src/core/CurationRewards.sol";
-import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {DeploymentKey} from "./DeploymentKey.s.sol";
+import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
 
 /**
  * @title DeployProtocol
@@ -31,7 +30,7 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  * Run:
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployProtocol is DeploymentKey {
+contract DeployProtocol is RevenueEscrowDeployment {
     bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
     bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
     bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
@@ -54,7 +53,7 @@ contract DeployProtocol is DeploymentKey {
         address mintAuthorizer = vm.envOr("MINT_AUTHORIZER_ADDRESS", deployer);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(1000)); // 10% — ADR-BM-2
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
-        uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days)); // Default 30 days
+        RevenueEscrowConfig memory revenueEscrowConfig = _revenueEscrowConfig(deployer);
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
         address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
         bool enableWeth = vm.envOr("PAYMENT_ENABLE_WETH", false);
@@ -89,9 +88,12 @@ contract DeployProtocol is DeploymentKey {
             new CurationRewards(deployer, address(contentProtection), address(disputeResolution), feeRecipient);
         console.log("CurationRewards:", address(curationRewards));
 
-        // 5. Deploy RevenueEscrow
-        RevenueEscrow escrow = new RevenueEscrow(deployer, escrowPeriod);
-        console.log("RevenueEscrow:", address(escrow));
+        // 5. Deploy RevenueEscrow UUPS graph
+        RevenueEscrowDeploymentResult memory revenueEscrowDeployment =
+            _deployRevenueEscrow(deployer, revenueEscrowConfig);
+        console.log("RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
+        console.log("RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
 
         // 6. Deploy StemNFT (core)
         StemNFT stemNFT = new StemNFT(baseUri);
@@ -158,8 +160,12 @@ contract DeployProtocol is DeploymentKey {
         validator.setContentProtection(address(contentProtection));
         console.log("  -> ContentProtection linked to TransferValidator");
 
-        escrow.setContentProtection(address(contentProtection));
-        console.log("  -> ContentProtection linked to RevenueEscrow");
+        if (revenueEscrowConfig.owner == deployer) {
+            revenueEscrowDeployment.escrow.setContentProtection(address(contentProtection));
+            console.log("  -> ContentProtection linked to RevenueEscrow");
+        } else {
+            console.log("  -> RevenueEscrow owner must link ContentProtection after deployment");
+        }
 
         vm.stopBroadcast();
 
@@ -175,7 +181,9 @@ contract DeployProtocol is DeploymentKey {
         console.log("  ContentProtection (proxy):", address(contentProtection));
         console.log("  DisputeResolution:", address(disputeResolution));
         console.log("  CurationRewards:", address(curationRewards));
-        console.log("  RevenueEscrow:", address(escrow));
+        console.log("  RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
+        console.log("  RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("  RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
         console.log("");
         console.log("Modules:");
         console.log("  TransferValidator:", address(validator));
@@ -185,6 +193,9 @@ contract DeployProtocol is DeploymentKey {
         console.log("  Fee Recipient:", feeRecipient);
         console.log("  Mint Authorizer:", mintAuthorizer);
         console.log("  Stake Amount:", stakeAmountWei, "wei");
-        console.log("  Escrow Period:", escrowPeriod, "seconds");
+        console.log("  Escrow Period:", revenueEscrowConfig.escrowPeriod, "seconds");
+        console.log("  RevenueEscrow owner:", revenueEscrowConfig.owner);
+        console.log("  RevenueEscrow guardian:", revenueEscrowConfig.guardian);
+        console.log("  RevenueEscrow timelock delay:", revenueEscrowConfig.timelockMinDelay, "seconds");
     }
 }

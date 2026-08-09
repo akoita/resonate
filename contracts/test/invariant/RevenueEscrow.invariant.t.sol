@@ -4,6 +4,7 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {RevenueEscrow} from "../../src/core/RevenueEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {RevenueEscrowProxyDeployer} from "../utils/RevenueEscrowProxyDeployer.sol";
 
 /**
  * @title RevenueEscrow Invariant Handler
@@ -99,6 +100,10 @@ contract RevenueEscrowHandler is Test {
         vm.warp(block.timestamp + bound(dt, 1, 60 days));
     }
 
+    function setPaused(bool isPaused) public {
+        escrow.setPaused(isPaused);
+    }
+
     // Sum of outstanding per-token escrow balances (used by the invariant test).
     function sumNativeBalances() external view returns (uint256 total) {
         for (uint256 i; i < ids.length; ++i) {
@@ -131,9 +136,11 @@ contract RevenueEscrowInvariantTest is Test {
         usdc = new MockUSDC();
         // Deploy escrow owned by this test, then hand ownership to the handler so it can
         // drive the admin-only freeze/unfreeze/redirect paths directly.
-        escrow = new RevenueEscrow(address(this), 30 days);
+        escrow = RevenueEscrowProxyDeployer.deploy(address(this), 30 days, makeAddr("upgradeAuthority"));
         handler = new RevenueEscrowHandler(escrow, usdc);
         escrow.transferOwnership(address(handler));
+        vm.prank(address(handler));
+        escrow.acceptOwnership();
 
         targetContract(address(handler));
     }

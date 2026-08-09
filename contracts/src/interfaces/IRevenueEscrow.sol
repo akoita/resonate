@@ -45,6 +45,9 @@ interface IRevenueEscrow {
     event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
     event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
 
+    event RevenueEscrowPaused(bool paused);
+    event UpgradeAuthorityUpdated(address indexed previousAuthority, address indexed newAuthority);
+
     // ============ Errors ============
 
     error NoEscrow();
@@ -63,6 +66,8 @@ interface IRevenueEscrow {
     error TooManyEscrowAssets(uint256 tokenId);
     error NothingToClaim();
     error OnlySelf();
+    error Paused();
+    error UnauthorizedUpgrade(address caller);
 
     /// @notice `freezeByTrackRange` was called with a zero page size (RE-1, #1271); a
     /// zero-length page would make no progress and could loop forever.

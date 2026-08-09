@@ -11,7 +11,7 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
 | **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
 | **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist. |
-| **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | Per-token escrow. Deposit, freeze, release, redirect.       |
+| **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | UUPS proxy (timelock + guardian). Per-token escrow with global pause, freeze, release, and redirect. |
 | **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
@@ -107,7 +107,7 @@ forge script script/DeployProtocol.s.sol \
 
 1. **TransferValidator** — standalone module
 2. **ContentProtection** — UUPS proxy (implementation + ERC1967Proxy)
-3. **RevenueEscrow** — initialized with owner + escrow period
+3. **RevenueEscrow** — UUPS proxy initialized with operational owner, escrow period, and timelocked upgrade authority
 4. **StemNFT** — core NFT contract
 5. **StemMarketplaceV2** — linked to StemNFT
 6. **Configure:**
@@ -122,6 +122,9 @@ forge script script/DeployProtocol.s.sol \
 | ------------------------------- | -------------------------------------------------------------------- |
 | `DeployProtocol.s.sol`          | Full protocol from scratch (NFT + Marketplace + Protection + Escrow) |
 | `DeployContentProtection.s.sol` | Phase 2 only — add ContentProtection + Escrow to existing deployment |
+| `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
+| `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
+| `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |
 | `DeployShowCampaignEscrow.s.sol` | Shows only — deploy the UUPS escrow proxy + TimelockController upgrade authority (+ guardian CANCELLER) |
 | `UpgradeShowCampaignEscrow.s.sol` | Timelocked UUPS upgrade of the escrow: `UPGRADE_ACTION=schedule` then `execute` |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
@@ -142,7 +145,7 @@ forge script script/DeployContentProtection.s.sol \
 This will:
 
 1. Deploy ContentProtection (UUPS proxy)
-2. Deploy RevenueEscrow
+2. Deploy RevenueEscrow implementation + timelock + proxy
 3. Grant ContentProtection registrar access to StemNFT and, when provided, marketplace
 4. Link both to your existing StemNFT and TransferValidator
 
@@ -176,6 +179,9 @@ reconciliation is enabled.
 | `STAKE_AMOUNT`     | `0.005 ether`                       | Default stake amount for new creators |
 | `STAKE_USDC_AMOUNT` | `5000000` (5 USDC)                 | USDC stake amount when USDC is enabled |
 | `ESCROW_PERIOD`    | `30 days`                           | Default escrow hold duration          |
+| `REVENUE_ESCROW_OWNER` | Deployer on local chains only | Operational owner/multisig; required on shared networks |
+| `REVENUE_ESCROW_GUARDIAN` | Owner on local chains only | Independent timelock proposer/executor/canceller; required and distinct on shared networks |
+| `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` | `172800` | Upgrade delay in seconds; shared networks require at least 48 hours |
 
 ### Update Stablecoin Stake on an Existing Deployment
 

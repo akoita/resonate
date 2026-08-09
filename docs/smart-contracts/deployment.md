@@ -319,8 +319,11 @@ Deployment operations:
 
 | Operation | Lifecycle | Redeploy/update behavior | Reference updates required |
 | --- | --- | --- | --- |
-| `deploy-protocol` | Full marketplace/music-rights protocol graph | Deploys `TransferValidator`, `ContentProtection` proxy, `DisputeResolution`, `CurationRewards`, `RevenueEscrow`, `StemNFT`, `PaymentAssetRegistry`, and `StemMarketplaceV2` together | Script links `StemNFT -> TransferValidator`, `StemNFT -> ContentProtection`, `TransferValidator -> ContentProtection`, `RevenueEscrow -> ContentProtection`, and grants `ContentProtection` registrar access to `StemNFT` and marketplace |
-| `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and `RevenueEscrow` without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
+| `deploy-protocol` | Full marketplace/music-rights protocol graph | Deploys `TransferValidator`, `ContentProtection` proxy, `DisputeResolution`, `CurationRewards`, guarded `RevenueEscrow` proxy graph, `StemNFT`, `PaymentAssetRegistry`, and `StemMarketplaceV2` together | Script links `StemNFT -> TransferValidator`, `StemNFT -> ContentProtection`, `TransferValidator -> ContentProtection`, `RevenueEscrow -> ContentProtection`, and grants `ContentProtection` registrar access to `StemNFT` and marketplace |
+| `deploy-content-protection` | Phase-2 add-on for an existing `StemNFT` + `TransferValidator` deployment | Deploys a new `ContentProtection` proxy and guarded `RevenueEscrow` proxy graph without replacing `StemNFT` or marketplace | Requires `STEM_NFT_ADDRESS` and `TRANSFER_VALIDATOR_ADDRESS`; script grants the new `ContentProtection` registrar access to `StemNFT`, optionally grants the existing marketplace when `MARKETPLACE_ADDRESS` is set, updates existing `StemNFT`/`TransferValidator` references, and links `RevenueEscrow -> ContentProtection` |
+| `deploy-revenue-escrow` | Revenue escrow replacement or isolated deployment | Atomically deploys the UUPS implementation, governance timelock, and ERC1967 proxy; writes JSON, `.remote.env`, and ABI handoffs | Promote only the proxy as `REVENUE_ESCROW_ADDRESS`; re-link ContentProtection and depositors, and settle/audit any standalone predecessor before retirement |
+| `upgrade-revenue-escrow` | Delayed RevenueEscrow implementation change | `UPGRADE_ACTION=schedule` deploys and schedules; `execute` uses `NEW_IMPLEMENTATION` after the timelock delay | Proxy/app address stays stable; retain operation id and implementation evidence |
+| `pause-revenue-escrow` | Revenue custody incident containment/recovery | Owner calls the global pause without waiting for the upgrade timelock | Deposits, releases, redirects, and failed-payment claims stop; reads, dispute freeze controls, governance, and recovery remain available |
 | `upgrade-content-protection` | UUPS implementation upgrade | Keeps the same `ContentProtection` proxy address; deploys a new implementation and calls the configured reinitializer | Requires `CONTENT_PROTECTION_PROXY`; downstream contract references do not change because the proxy address is stable |
 | `set-content-protection-stake` | Policy/config update | No redeploy; updates stake amount for an ERC-20 asset | Requires `CONTENT_PROTECTION_ADDRESS` plus `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; no contract reference changes |
 | `set-marketplace-protocol-fee` | Marketplace fee config update | No redeploy; calls `StemMarketplaceV2.setProtocolFee` and optionally `setFeeRecipient` | Requires `MARKETPLACE_ADDRESS` and `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`; signer must be marketplace owner |
@@ -357,7 +360,7 @@ Optional GitHub environment variables:
 
 | Variable | Purpose |
 | --- | --- |
-| `VERIFY_CONTRACTS` | Usually set from the workflow input. `auto` verifies when an explorer API key is present. |
+| `VERIFY_CONTRACTS` | Usually set from the workflow input. `auto` runs Sourcify verification without a key and adds BaseScan verification when an explorer key is present. |
 | `VERIFY_ONLY` | Optional contract-name filter for BaseScan/Etherscan or Sourcify verification retries. |
 | `BASESCAN_API_URL` | Override the BaseScan/Etherscan verification API URL. |
 | `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | Tune BaseScan verification retry behavior. |
@@ -369,13 +372,16 @@ Optional GitHub environment variables:
 | `STEM_NFT_ADDRESS`, `MARKETPLACE_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`, `EXISTING_ADMIN` | Required/optional inputs for `deploy-content-protection`. `MARKETPLACE_ADDRESS` should be set when an existing marketplace must register protected content. `EXISTING_ADMIN` is only for local/fork impersonation-style workflows; real testnet runs must be signed by the admin. |
 | `CONTENT_PROTECTION_PROXY` | Required for `upgrade-content-protection`. |
 | `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS`, `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL` | Inputs for `set-content-protection-stake`. |
+| `REVENUE_ESCROW_OWNER`, `REVENUE_ESCROW_GUARDIAN`, `REVENUE_ESCROW_TIMELOCK_MIN_DELAY`, `REVENUE_ESCROW_PERIOD` | Guarded RevenueEscrow deployment inputs. Owner and independent guardian are required remotely; guardian differs from owner/deployer; delay is at least 48 hours. |
+| `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `REVENUE_ESCROW_UPGRADE_SALT`, `UPGRADE_ACTION`, `NEW_IMPLEMENTATION` | Existing proxy/timelock and two-phase upgrade inputs. `NEW_IMPLEMENTATION` is required only for execute. |
+| `REVENUE_ESCROW_IMPLEMENTATION`, `REVENUE_ESCROW_DEPLOYER`, `REVENUE_ESCROW_PAUSED` | Expected implementation, original deployer, and pause state used by the read-only RevenueEscrow smoke check. |
 | `SHOW_CAMPAIGN_ESCROW_OWNER` | Owner/ops multisig for `deploy-show-campaign-escrow`; required on shared networks, local deployments default to the deployer. |
 | `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Existing escrow address for Shows config and campaign-creation operations. |
 | `SHOW_CAMPAIGN_GUARDIAN`, `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY`, `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` | Recovery authority and lifecycle controls for `deploy-show-campaign-escrow`. Guardian is required remotely and differs from owner/deployer; remote delay is at least 48h. |
 | `NEW_PROTOCOL_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-marketplace-protocol-fee`; `NEW_FEE_RECIPIENT` is optional for marketplace recipient rotation. |
 | `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT` | Inputs for `set-show-campaign-fee-config`; both are required for the escrow fee config operation. |
 | `CONFIRMER_ADDRESS`, `CONFIRMER_ALLOWED` | Inputs for `set-show-campaign-confirmer`. |
-| `PAUSED` | Input for `pause-show-campaign-escrow`. |
+| `PAUSED` | Desired state for `pause-show-campaign-escrow` or `pause-revenue-escrow`. |
 | `ARTIST_ID_HASH`, `AUTHORITY_HASH`, `BENEFICIARY`, `PAYMENT_TOKEN`, `GOAL_UNITS`, `MIN_BACKERS`, `FUNDING_DEADLINE`, `BOOKING_DEADLINE`, `DEPOSIT_RELEASE_BPS`, `DISPUTE_WINDOW_SECONDS` | Inputs for `create-show-campaign`; `DEPOSIT_RELEASE_BPS` and `DISPUTE_WINDOW_SECONDS` are optional. |
 
 Security guidance:

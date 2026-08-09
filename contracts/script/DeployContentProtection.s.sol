@@ -3,11 +3,10 @@ pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
-import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {DeploymentKey} from "./DeploymentKey.s.sol";
+import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
 
 /**
  * @title DeployContentProtection
@@ -32,7 +31,7 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  *   forge script script/DeployContentProtection.s.sol \
  *     --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployContentProtection is DeploymentKey {
+contract DeployContentProtection is RevenueEscrowDeployment {
     function run() external {
         uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
@@ -48,7 +47,7 @@ contract DeployContentProtection is DeploymentKey {
         // Config
         address feeRecipient = vm.envOr("FEE_RECIPIENT", deployer);
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether));
-        uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days));
+        RevenueEscrowConfig memory revenueEscrowConfig = _revenueEscrowConfig(deployer);
 
         console.log("=== Deploying Content Protection (Phase 2) ===");
         console.log("Deployer:", deployer);
@@ -75,11 +74,18 @@ contract DeployContentProtection is DeploymentKey {
             console.log("  -> Marketplace granted ContentProtection registrar role");
         }
 
-        // 2. Deploy RevenueEscrow
-        RevenueEscrow escrow = new RevenueEscrow(deployer, escrowPeriod);
-        console.log("RevenueEscrow:", address(escrow));
-        escrow.setContentProtection(address(contentProtection));
-        console.log("  -> ContentProtection linked to RevenueEscrow");
+        // 2. Deploy RevenueEscrow UUPS graph
+        RevenueEscrowDeploymentResult memory revenueEscrowDeployment =
+            _deployRevenueEscrow(deployer, revenueEscrowConfig);
+        console.log("RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
+        console.log("RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
+        if (revenueEscrowConfig.owner == deployer) {
+            revenueEscrowDeployment.escrow.setContentProtection(address(contentProtection));
+            console.log("  -> ContentProtection linked to RevenueEscrow");
+        } else {
+            console.log("  -> RevenueEscrow owner must link ContentProtection after deployment");
+        }
 
         vm.stopBroadcast();
 
@@ -111,11 +117,13 @@ contract DeployContentProtection is DeploymentKey {
         console.log("");
         console.log("New Contracts:");
         console.log("  ContentProtection (proxy):", address(contentProtection));
-        console.log("  RevenueEscrow:", address(escrow));
+        console.log("  RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
+        console.log("  RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("  RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
         console.log("");
         console.log("Config:");
         console.log("  Stake Amount:", stakeAmountWei, "wei");
-        console.log("  Escrow Period:", escrowPeriod, "seconds");
+        console.log("  Escrow Period:", revenueEscrowConfig.escrowPeriod, "seconds");
         console.log("  Treasury:", feeRecipient);
         console.log("");
         console.log("Next steps:");
