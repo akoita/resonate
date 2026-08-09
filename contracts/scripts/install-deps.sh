@@ -9,16 +9,8 @@ cd "$CONTRACTS_DIR"
 
 strip_git_metadata() {
   local root="$1"
-  local preserve_gitmodules="${2:-false}"
 
   if [[ ! -d "$root" ]]; then
-    return
-  fi
-
-  if [[ "$preserve_gitmodules" == "true" ]]; then
-    while IFS= read -r -d '' path; do
-      rm -rf "$path"
-    done < <(find "$root" -name .git -print0)
     return
   fi
 
@@ -49,14 +41,12 @@ install_git_dep() {
   if [[ -d "$path" ]] && [[ -n "$(find "$path" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
     echo "Using existing dependency: $path"
     "$SCRIPT_DIR/repair-kernel-submodule-metadata.sh"
-    strip_git_metadata "$path" true
     return
   fi
 
   rm -rf "$path"
   git clone --depth 1 --branch "$ref" --recurse-submodules "$repo_url" "$path"
   "$SCRIPT_DIR/repair-kernel-submodule-metadata.sh"
-  strip_git_metadata "$path" true
 }
 
 install_dep "lib/forge-std" foundry-rs/forge-std
