@@ -130,6 +130,13 @@ describe("CatalogService MCP catalog search (integration)", () => {
         artworkUrl: `http://localhost:3000/catalog/releases/${releaseId}/artwork`,
         trackCount: 1,
         licensable: true,
+        aiDisclosure: {
+          level: "undeclared",
+          containsAI: null,
+          facets: [],
+          source: "migration",
+          label: "AI disclosure unavailable",
+        },
         deeplink: `http://localhost:3001/release/${releaseId}`,
       },
     ]);
