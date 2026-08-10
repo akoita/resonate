@@ -47,6 +47,10 @@ export interface PunchlineCollectibleCardProps {
   collectedCount?: number;
   /** Animates the waveform ribbon while this moment's clip is playing. */
   playing?: boolean;
+  /** Image loading policy for the surface hosting the card. */
+  imageLoading?: "eager" | "lazy";
+  /** Image decode policy for the surface hosting the card. */
+  imageDecoding?: "sync" | "async" | "auto";
 }
 
 export function PunchlineCollectibleCard({
@@ -59,6 +63,8 @@ export function PunchlineCollectibleCard({
   rightsLabel,
   collectedCount,
   playing,
+  imageLoading,
+  imageDecoding,
 }: PunchlineCollectibleCardProps) {
   const displayTitle = title.trim() || "Untitled moment";
   // Display-only masking of socially-weighted words: the stored lyric is never
@@ -79,6 +85,8 @@ export function PunchlineCollectibleCard({
             className="punchline-card-art-img"
             src={artworkUrl}
             alt={`Artwork for ${displayTitle}`}
+            loading={imageLoading}
+            decoding={imageDecoding}
           />
         ) : (
           <div className="punchline-card-art-placeholder" aria-hidden="true">
