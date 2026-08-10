@@ -12,6 +12,7 @@
  *   - TTFB / DOMContentLoaded / load — from the navigation timing entry
  *   - TBT proxy — sum of max(0, longtask.duration - 50) after FCP
  *   - transferred bytes (total + JS) and request count
+ *   - Next image optimizer cache statuses (HIT/MISS/STALE/REVALIDATED/unknown)
  *
  * It then prints a per-resource breakdown of one representative COLD load —
  * bytes by resource type, the heaviest individual responses, and an image
@@ -233,8 +234,81 @@ export function ensureUsableRuns(runs) {
   if (runs.length === 0) throw new Error("No usable performance runs were collected");
 }
 
+const OPTIMIZER_CACHE_STATUS_KEYS = ["HIT", "MISS", "STALE", "REVALIDATED", "unknown"];
+
+/** Return true only for the Next image optimizer endpoint, regardless of query params. */
+export function isNextImageOptimizerUrl(value) {
+  if (typeof value !== "string") return false;
+  try {
+    return new URL(value, "http://localhost").pathname === "/_next/image";
+  } catch {
+    return false;
+  }
+}
+
+/** Normalize the x-nextjs-cache response header while retaining an explicit unknown bucket. */
+export function normalizeOptimizerCacheStatus(value) {
+  const status = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return OPTIMIZER_CACHE_STATUS_KEYS.includes(status) ? status : "unknown";
+}
+
+/** Build stable per-load cache status counts from the observed response headers. */
+export function aggregateOptimizerCacheStatuses(values = []) {
+  const statuses = Object.fromEntries(OPTIMIZER_CACHE_STATUS_KEYS.map((key) => [key, 0]));
+  for (const value of values) {
+    statuses[normalizeOptimizerCacheStatus(value)] += 1;
+  }
+  return {
+    requestCount: values.length,
+    statuses,
+    // These are deliberately exact header statuses; STALE and REVALIDATED stay
+    // visible in `statuses` rather than being guessed into hit/miss buckets.
+    hits: statuses.HIT,
+    misses: statuses.MISS,
+  };
+}
+
+/** Combine per-load optimizer stats for the report-level cold/warm summary. */
+export function summarizeOptimizerCache(samples = []) {
+  const statuses = Object.fromEntries(OPTIMIZER_CACHE_STATUS_KEYS.map((key) => [key, 0]));
+  for (const sample of samples) {
+    for (const key of OPTIMIZER_CACHE_STATUS_KEYS) {
+      statuses[key] += Number(sample?.statuses?.[key] ?? 0);
+    }
+  }
+  return {
+    requestCount: Object.values(statuses).reduce((sum, count) => sum + count, 0),
+    statuses,
+    hits: statuses.HIT,
+    misses: statuses.MISS,
+  };
+}
+
+async function readOptimizerCacheStatus(request) {
+  try {
+    const response = await request.response();
+    if (!response) return "unknown";
+    const headers = await response.headers();
+    const raw = Object.entries(headers ?? {}).find(
+      ([name]) => name.toLowerCase() === "x-nextjs-cache",
+    )?.[1];
+    return normalizeOptimizerCacheStatus(raw);
+  } catch {
+    // Request response/header reads are best-effort diagnostics and must not
+    // turn an otherwise valid network accounting event into a failed run.
+    return "unknown";
+  }
+}
+
 function newBucket() {
-  return { pending: [], totalBytes: 0, jsBytes: 0, requests: 0, resources: [] };
+  return {
+    pending: [],
+    totalBytes: 0,
+    jsBytes: 0,
+    requests: 0,
+    resources: [],
+    optimizerCacheStatuses: [],
+  };
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -249,6 +323,7 @@ async function drainBucket(bucket) {
       requests: bucket.requests,
     },
     resources: bucket.resources,
+    optimizerCache: aggregateOptimizerCacheStatuses(bucket.optimizerCacheStatuses),
   };
 }
 
@@ -282,22 +357,26 @@ async function measureOnce(browser, attempt) {
   context.on("requestfinished", (request) => {
     const active = bucket;
     active.requests += 1;
-    active.pending.push(
-      request
-        .sizes()
-        .then((sizes) => {
-          const bytes = (sizes.responseBodySize ?? 0) + (sizes.responseHeadersSize ?? 0);
-          const type = request.resourceType();
-          active.totalBytes += bytes;
-          if (type === "script") active.jsBytes += bytes;
-          // Per-response record; feeds the breakdown that tells us WHICH assets
-          // are heavy, not just how many bytes there are in total.
-          active.resources.push({ url: request.url(), type, bytes });
+    const sizePromise = Promise.resolve()
+      .then(() => request.sizes())
+      .then((sizes) => {
+        const bytes = (sizes.responseBodySize ?? 0) + (sizes.responseHeadersSize ?? 0);
+        const type = request.resourceType();
+        active.totalBytes += bytes;
+        if (type === "script") active.jsBytes += bytes;
+        // Per-response record; feeds the breakdown that tells us WHICH assets
+        // are heavy, not just how many bytes there are in total.
+        active.resources.push({ url: request.url(), type, bytes });
+      })
+      .catch(() => {
+        // Request torn down before sizes resolved — skip it rather than fail.
+      });
+    const optimizerCachePromise = isNextImageOptimizerUrl(request.url())
+      ? readOptimizerCacheStatus(request).then((status) => {
+          active.optimizerCacheStatuses.push(status);
         })
-        .catch(() => {
-          // Request torn down before sizes resolved — skip it rather than fail.
-        }),
-    );
+      : Promise.resolve();
+    active.pending.push(Promise.all([sizePromise, optimizerCachePromise]));
   });
 
   const page = await context.newPage();
@@ -307,7 +386,7 @@ async function measureOnce(browser, attempt) {
   const coldTiming = await settleAndRead(page);
   const coldCheck = await inspectLoad(page, coldResponse, EXPECTED_SELECTORS);
   const coldDrain = await drainBucket(bucket);
-  const cold = { ...coldTiming, ...coldDrain.totals };
+  const cold = { ...coldTiming, ...coldDrain.totals, optimizerCache: coldDrain.optimizerCache };
 
   // Swap the accounting bucket so warm bytes are counted separately, then
   // reload in the same context — cache, connections and origin state stay hot.
@@ -316,7 +395,7 @@ async function measureOnce(browser, attempt) {
   const warmTiming = await settleAndRead(page);
   const warmCheck = await inspectLoad(page, warmResponse, EXPECTED_SELECTORS);
   const warmDrain = await drainBucket(bucket);
-  const warm = { ...warmTiming, ...warmDrain.totals };
+  const warm = { ...warmTiming, ...warmDrain.totals, optimizerCache: warmDrain.optimizerCache };
 
   await context.close();
 
@@ -410,6 +489,22 @@ function printTable(cold, warm) {
   console.log(line(header));
   console.log(widths.map((width) => "-".repeat(width)).join("  "));
   rows.forEach((row) => console.log(line(row)));
+}
+
+function formatOptimizerCache(stats) {
+  const statusCounts = OPTIMIZER_CACHE_STATUS_KEYS.filter((key) => stats.statuses[key] > 0)
+    .map((key) => `${key} ${stats.statuses[key]}`)
+    .join(", ");
+  return `${stats.requestCount} request(s), ${stats.hits} hit(s), ${stats.misses} miss(es)` +
+    ` [${statusCounts || "no status headers"}]`;
+}
+
+function printOptimizerCacheSummary(cold, warm) {
+  console.log("");
+  console.log(
+    `Next image optimizer cache — cold ${formatOptimizerCache(cold)} · ` +
+      `warm ${formatOptimizerCache(warm)}`,
+  );
 }
 
 // Playwright resourceType -> reporting group. `media` is kept separate rather
@@ -603,7 +698,10 @@ async function main() {
 
   const cold = summarize(runs.map((run) => run.cold));
   const warm = summarize(runs.map((run) => run.warm));
+  const coldOptimizerCache = summarizeOptimizerCache(runs.map((run) => run.cold.optimizerCache));
+  const warmOptimizerCache = summarizeOptimizerCache(runs.map((run) => run.warm.optimizerCache));
   printTable(cold, warm);
+  printOptimizerCacheSummary(coldOptimizerCache, warmOptimizerCache);
 
   // The breakdown describes one concrete load, so averaging URLs across runs
   // would invent a page that never rendered. Use the run whose cold payload is
@@ -657,8 +755,8 @@ async function main() {
       acceptance:
         "cold and warm documents must both be 2xx and contain every configured expected selector",
     },
-    cold,
-    warm,
+    cold: { ...cold, optimizerCache: coldOptimizerCache },
+    warm: { ...warm, optimizerCache: warmOptimizerCache },
     breakdown: {
       basis: "cold",
       representativeRun: representativeIndex + 1,

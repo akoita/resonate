@@ -69,6 +69,7 @@ run-to-run variance is visible; a single sample is noise.
 | long tasks               | Count of `longtask` entries                                    |
 | transferred total / JS   | Playwright `requestfinished` + `request.sizes()`               |
 | requests                 | Count of finished requests                                     |
+| Next image optimizer cache | `x-nextjs-cache` on `/_next/image` responses; status counts plus exact HIT/MISS counters |
 
 Two deliberate choices:
 
@@ -133,6 +134,29 @@ transferred total       7501.0 KB    7500.9–7502.0  1733.3 KB    1703.8–1734
 transferred JS          527.8 KB     527.8–528.8    0.0 KB       0.0–0.0
 requests                171          169–171        169          116–170
 ```
+
+The CLI also prints one concise cache-status line for all accepted loads, for
+example `Next image optimizer cache — cold 25 request(s), 21 hit(s), 4
+miss(es) [HIT 21, MISS 4] · warm 25 request(s), 25 hit(s), 0 miss(es) [HIT
+25]`. Only requests whose URL path is exactly `/_next/image` are included.
+Missing or unreadable `x-nextjs-cache` headers are counted as `unknown`; `STALE`
+and `REVALIDATED` remain separate statuses rather than being guessed into the
+hit/miss counters.
+
+Each load in `rawRuns` carries an `optimizerCache` object with this shape:
+
+```json
+{
+  "requestCount": 25,
+  "statuses": {"HIT": 21, "MISS": 4, "STALE": 0, "REVALIDATED": 0, "unknown": 0},
+  "hits": 21,
+  "misses": 4
+}
+```
+
+The top-level `cold.optimizerCache` and `warm.optimizerCache` fields combine
+the same status counts across accepted runs. This is additive observability;
+existing byte and request metrics are unchanged.
 
 How to read it:
 
