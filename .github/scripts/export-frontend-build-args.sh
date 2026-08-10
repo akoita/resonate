@@ -102,9 +102,9 @@ validate_contract_handoff
 validate_show_campaign_handoff
 
 for key in "${required_vars[@]}"; do
-  printf '%s=%s\n' "${key}" "${!key}"
+  printf '%s=%q\n' "${key}" "${!key}"
 done
 
 for key in "${optional_vars[@]}"; do
-  printf '%s=%s\n' "${key}" "${!key:-}"
+  printf '%s=%q\n' "${key}" "${!key:-}"
 done
