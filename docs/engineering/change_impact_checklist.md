@@ -74,6 +74,24 @@ Update when relevant:
 - route-level or component tests
 - screenshots/manual QA notes for visual polish changes
 
+#### Home performance and first paint
+
+For changes that add, remove, reorder, or materially restyle Home sections,
+artwork, navigation, or loading states:
+
+- Run the [Home performance harness](home-performance-harness.md) against the
+  same staging target and machine used for the comparison, with five accepted
+  cold/warm pairs where rate limits allow.
+- Treat these as the Home acceptance targets: cold LCP median `< 2.5 s`, cold
+  CLS median `< 0.1`, no unstyled flash, and no discarded cold/warm pair from
+  the harness completeness guard.
+- For image-delivery work, run with `PERF_IMAGE_BUDGET_BYTES=102400` (100 KiB)
+  and record the representative `breakdown.images.heavy` list in the issue or
+  PR evidence.
+- Record the raw JSON artifact, target commit, viewport, settle time, and any
+  discarded attempts. Explain budget misses and intentional diagnostic
+  exceptions rather than silently changing the threshold.
+
 ### API And Client Contract
 
 Ask:

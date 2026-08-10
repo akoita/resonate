@@ -83,6 +83,33 @@ Two deliberate choices:
   which would silently undercount artwork served from a bucket/CDN. The reported
   bytes are wire sizes (`responseBodySize + responseHeadersSize`).
 
+## Home performance budget
+
+The #1491 Home budget is an operator acceptance target for staging, not a CI
+gate or a promise that every local run will meet the number:
+
+| Budget | Target | How to verify |
+| --- | --- | --- |
+| Cold LCP | **< 2.5 s median** | Five accepted cold runs from the harness |
+| Cold CLS | **< 0.1 median** | The harness CLS summary |
+| First paint | **No unstyled flash** | Browser screenshot/manual pass; the harness structural guard must also pass |
+| Load completeness | **No discarded cold/warm pairs** | The harness accepts both navigations with all Home landmarks |
+| Heavy Home artwork | **No distinct image over 100 KiB** for the reviewed Home payload | Run with `PERF_IMAGE_BUDGET_BYTES=102400` and inspect `breakdown.images.heavy` |
+
+Use the same machine, network, target, viewport, settle time, and accepted-run
+count for before/after comparisons. TBT proxy and request count remain useful
+diagnostics, but they are not hard budgets here: passive timing variance and
+intentional contextual prefetches make a single fixed threshold misleading. A
+budget miss should be recorded with the raw JSON artifact and investigated;
+do not relax the target just to make a run pass.
+
+Recommended staging check:
+
+```bash
+PERF_BASE_URL=<staging-origin> PERF_RUNS=5 PERF_MAX_RETRIES=3 \
+  PERF_IMAGE_BUDGET_BYTES=102400 npm run perf:home
+```
+
 ## Reading the output
 
 stdout is a table; the same data lands as JSON in `web/build/perf/` —
