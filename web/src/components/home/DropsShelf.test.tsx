@@ -82,6 +82,17 @@ describe("DropsShelfView", () => {
   it("links each card to the release collect module via ?focus=moments", () => {
     const html = renderToStaticMarkup(<DropsShelfView drops={[drop()]} />);
     expect(html).toContain('href="/release/rel_1?focus=moments"');
+    expect(html).toContain('data-testid="drops-shelf-card"');
+  });
+
+  it("lazy-loads Home artwork without changing shared card defaults", () => {
+    const html = renderToStaticMarkup(
+      <DropsShelfView
+        drops={[drop({ moments: [moment({ artworkUrl: "/artwork.png" })] })]}
+      />,
+    );
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('decoding="async"');
   });
 
   it("card face prefers a still-collectable moment over a sold-out one", () => {

@@ -100,7 +100,7 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
             <Link
               key={drop.id}
               href={`/release/${drop.context.releaseId}?focus=moments`}
-              className="ng-glass"
+              className="ng-glass ng-drops-card"
               style={{
                 display: "block",
                 borderRadius: 20,
@@ -109,6 +109,7 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
                 color: "inherit",
                 position: "relative",
               }}
+              data-testid="drops-shelf-card"
               aria-label={`Collect ${moment.title} from ${drop.context.trackTitle}`}
             >
               <PunchlineCollectibleCard
@@ -120,6 +121,8 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
                 priceCents={moment.priceCents}
                 rightsLabel={moment.rightsLabel}
                 collectedCount={moment.collectedCount}
+                imageLoading="lazy"
+                imageDecoding="async"
               />
               <p
                 className="ng-play-card__artist"

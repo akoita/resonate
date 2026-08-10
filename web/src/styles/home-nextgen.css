@@ -1468,6 +1468,15 @@
   gap: var(--ds-gutter);
 }
 
+/* Drops are below the Home fold. Keep their visual identity intact while
+ * allowing browsers to skip layout/paint work until a card approaches the
+ * viewport. The intrinsic size prevents the shelf grid from collapsing while
+ * an offscreen card is skipped. */
+.home-ng .ng-drops-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 500px;
+}
+
 .home-ng .ng-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

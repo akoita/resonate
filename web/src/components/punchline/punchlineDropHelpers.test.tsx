@@ -271,6 +271,8 @@ describe("PunchlineCollectibleCard", () => {
     );
     expect(html).toContain("Free to claim");
     expect(html).toContain("https://example.com/art.png");
+    expect(html).not.toContain('loading="lazy"');
+    expect(html).not.toContain('decoding="async"');
   });
 
   it("scales the poster lyric to xl for a short slogan", () => {
