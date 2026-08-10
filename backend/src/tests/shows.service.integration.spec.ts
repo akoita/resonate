@@ -73,13 +73,41 @@ const anvilUrl = () => process.env.ANVIL_RPC_URL;
 // carry an in-range dispute window (isolating the invalid deadline under test).
 const DEFAULT_DISPUTE_WINDOW_SECONDS_TEST = 604800;
 
+const oneByOnePng = (suffix = "") => Buffer.concat([
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  ),
+  Buffer.from(suffix),
+]);
+
+const oneByOneJpeg = (suffix = "") => Buffer.concat([
+  Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xd9,
+  ]),
+  Buffer.from(suffix),
+]);
+
+const oneByOneWebp = (suffix = "") => {
+  const header = Buffer.alloc(30);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(22, 4);
+  header.write("WEBP", 8, "ascii");
+  header.write("VP8X", 12, "ascii");
+  header.writeUInt32LE(10, 16);
+  return Buffer.concat([header, Buffer.from(suffix)]);
+};
+
 const visualFile = (name: string, body: string): Express.Multer.File => ({
   fieldname: "gallery",
   originalname: `${name}.webp`,
   encoding: "7bit",
   mimetype: "image/webp",
-  size: Buffer.byteLength(body),
-  buffer: Buffer.from(body),
+  size: oneByOneWebp(body).length,
+  buffer: oneByOneWebp(body),
   destination: "",
   filename: `${name}.webp`,
   path: "",
@@ -398,20 +426,20 @@ describe("ShowsService integration", () => {
       updated.id,
       {
         hero: {
-          buffer: Buffer.from("hero-image"),
+          buffer: oneByOneWebp("hero-image"),
           mimetype: "image/webp",
-          size: 10,
+          size: oneByOneWebp("hero-image").length,
         } as Express.Multer.File,
         card: {
-          buffer: Buffer.from("card-image"),
+          buffer: oneByOnePng("card-image"),
           mimetype: "image/png",
-          size: 10,
+          size: oneByOnePng("card-image").length,
         } as Express.Multer.File,
         gallery: [
           {
-            buffer: Buffer.from("gallery-image"),
+            buffer: oneByOneJpeg("gallery-image"),
             mimetype: "image/jpeg",
-            size: 13,
+            size: oneByOneJpeg("gallery-image").length,
           } as Express.Multer.File,
         ],
       },
@@ -421,12 +449,12 @@ describe("ShowsService integration", () => {
     expect(visualized.visuals.some((visual) => visual.role === "gallery")).toBe(true);
     const heroVisual = await service.getCampaignVisual(updated.id, "hero");
     expect(heroVisual?.mimeType).toBe("image/webp");
-    expect(heroVisual?.data.toString()).toBe("hero-image");
+    expect(heroVisual?.data.equals(oneByOneWebp("hero-image"))).toBe(true);
     const galleryVisualRef = visualized.visuals.find((visual) => visual.role === "gallery")?.id;
     expect(galleryVisualRef).toBeTruthy();
     const galleryVisual = await service.getCampaignVisual(updated.id, galleryVisualRef!);
     expect(galleryVisual?.mimeType).toBe("image/jpeg");
-    expect(galleryVisual?.data.toString()).toBe("gallery-image");
+    expect(galleryVisual?.data.equals(oneByOneJpeg("gallery-image"))).toBe(true);
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },
@@ -583,6 +611,42 @@ describe("ShowsService integration", () => {
     }
   });
 
+  it("prevalidates every visual before storing any campaign asset", async () => {
+    const draft = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Paris",
+        country: "FR",
+        deadline: futureIso(30),
+        goalAmountUnits: "3000000",
+        bookingDeadline: futureIso(45),
+      },
+    );
+    const storedBefore = visualUploads.size;
+
+    await expect(service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      draft.id,
+      {
+        hero: visualFile("valid-hero", "valid"),
+        card: {
+          buffer: Buffer.from("not-an-image"),
+          mimetype: "image/png",
+          size: Buffer.byteLength("not-an-image"),
+        } as Express.Multer.File,
+      },
+    )).rejects.toThrow("card visual must be a JPEG, PNG, or WebP image with readable dimensions");
+
+    expect(visualUploads.size).toBe(storedBefore);
+    const persisted = await prisma.showCampaign.findUnique({
+      where: { id: draft.id },
+      select: { heroImageStorageUri: true, cardImageStorageUri: true },
+    });
+    expect(persisted).toMatchObject({ heroImageStorageUri: null, cardImageStorageUri: null });
+  });
+
   it("lets campaign owners replace, reorder, and delete draft gallery visuals", async () => {
     const draft = await service.createDraftCampaign(
       { userId, role: "artist" },
@@ -620,7 +684,7 @@ describe("ShowsService integration", () => {
     const replacedVisual = replaced.visuals.find((visual) => visual.id === gallery[1].id);
     expect(replacedVisual?.mimeType).toBe("image/webp");
     await expect(service.getCampaignVisual(draft.id, gallery[1].id)).resolves.toMatchObject({
-      data: Buffer.from("second-replaced"),
+      data: oneByOneWebp("second-replaced"),
       mimeType: "image/webp",
     });
 

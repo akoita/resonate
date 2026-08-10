@@ -43,13 +43,16 @@ describe("Asset Persistence", () => {
         // 3. Upload with "files" and "artwork"
         // Use supertest to send multipart/form-data
         const audioBuffer = Buffer.from("fake audio data");
-        const imageBuffer = Buffer.from("fake image data");
+        const imageBuffer = Buffer.from(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            "base64",
+        );
 
         const response = await request(app.getHttpServer())
             .post("/ingestion/upload")
             .set("Authorization", `Bearer ${auth.body.accessToken}`)
             .attach("files", audioBuffer, "test.mp3")
-            .attach("artwork", imageBuffer, "cover.jpg")
+            .attach("artwork", imageBuffer, "cover.png")
             .field("artistId", artist.id)
             .field("metadata", JSON.stringify({
                 title: "Test Release",
@@ -79,7 +82,7 @@ describe("Asset Persistence", () => {
 
         expect(release).toBeTruthy();
         expect(release?.artworkData).toBeTruthy();
-        expect(release?.artworkData?.toString()).toBe("fake image data");
+        expect(release?.artworkData?.equals(imageBuffer)).toBe(true);
         expect(release?.status).toBe("ready");
 
         const track = release?.tracks[0];

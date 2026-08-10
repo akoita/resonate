@@ -8,6 +8,7 @@ import { CatalogService } from '../catalog/catalog.service';
 import { LyriaClient } from './lyria.client';
 import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
+import { validateArtworkUpload } from '../shared/artwork-validation';
 import { GenerationCreditsService } from '../credits/generation-credits.service';
 import { estimateGenerationCostUsd, inferColdStart } from './generation-cost-model';
 import { randomUUID } from 'crypto';
@@ -904,6 +905,10 @@ export class GenerationService {
       throw new UnauthorizedException('Not authorized to publish this track');
     }
 
+    const validatedArtwork = artworkFile
+      ? validateArtworkUpload(artworkFile, { field: 'Artwork' })
+      : undefined;
+
     await prisma.release.update({
       where: { id: track.releaseId },
       data: {
@@ -916,7 +921,7 @@ export class GenerationService {
         status: 'published',
         ...(artworkFile && {
           artworkData: artworkFile.buffer,
-          artworkMimeType: artworkFile.mimetype,
+          artworkMimeType: validatedArtwork!.mimeType,
         }),
       },
     });
