@@ -14,7 +14,7 @@ skill, workflow, or security gate.
 | --- | --- | --- |
 | `AGENTS.md` | Single source of truth for project coding standards. | Yes |
 | `CLAUDE.md`, `GEMINI.md` | Symlinks to `AGENTS.md` so each runtime finds it under the name it expects. | Yes |
-| `.agents/skills/<name>/SKILL.md` | Every Resonate-specific capability, including the `start-issue` and `finish-issue` procedures. | Yes |
+| `.agents/skills/<name>/SKILL.md` | Every Resonate-specific capability, including the `start-issue`, `finish-issue`, and `plan-milestone` procedures. | Yes |
 | `.claude/skills` | Symlink to `.agents/skills` so Claude Code discovers them. | Yes — the symlink is tracked; `.claude/worktrees/` and `settings.local.json` stay ignored |
 | `.gemini/commands/*.toml` | Command shims that point Gemini CLI at the canonical files above. | Yes |
 | `.codex/`, `.codex-tmp/` | Per-developer Codex state. Nothing project-shared lives here. | No — gitignored |
@@ -75,11 +75,18 @@ released, and maintained once. `.agents/skills/` is reserved for knowledge that
 depends on Resonate's own architecture, contracts, business model, or
 conventions.
 
-The one project skill today is `auditing-resonate-security`: a **router plus
-project context**, deliberately containing no methodology. It maps a situation
-to one of the seven shared skills below, then hands that skill Resonate's stack,
-threat surface, house rules for findings, and report conventions. If you find
-yourself writing procedure into `.agents/skills/`, it belongs upstream instead.
+`auditing-resonate-security` shows the pattern for anything with a shared
+upstream equivalent: a **router plus project context**, deliberately containing
+no methodology. It maps a situation to one of the seven shared skills below, then
+hands that skill Resonate's stack, threat surface, house rules for findings, and
+report conventions. If you find yourself writing *generic* methodology into
+`.agents/skills/`, it belongs upstream instead.
+
+Procedure is only allowed here when it is Resonate's own process and would be
+meaningless in another repository — `start-issue` and `finish-issue` (this
+project's branch, gate, and PR conventions) and `plan-milestone` (the fixed
+milestone selection criteria, the Vision Sprint naming, and the roadmap sources
+they are weighed against).
 
 This is why the three security workflows that used to live in
 `.agents/workflows/` (`smart-contract-scan`, `security-best-practices`,

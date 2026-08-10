@@ -235,6 +235,8 @@ only in memory, chat history, or vague PR prose.
 
 7. **Use the `/finish-issue` workflow** when completing work on an issue. Run the steps in `.agents/skills/finish-issue/SKILL.md` to verify, test, commit, push, create PR, merge, and clean up. This ensures security scans are executed and no steps are skipped.
 
+8. **Use the `/plan-milestone` workflow** when composing a new milestone or sprint ("new milestone", "next sprint", "what goes in the next sprint"). Run the steps in `.agents/skills/plan-milestone/SKILL.md` to load the roadmap, balance the four selection axes, and propose the Vision Sprint. Never create the milestone or reassign issues without explicit approval.
+
 ---
 
 ## 🧰 Agent Skills & Workflows
@@ -242,13 +244,14 @@ only in memory, chat history, or vague PR prose.
 Everything an agent can invoke is a skill: `.agents/skills/<name>/SKILL.md`, where
 `<name>` is kebab-case and **must equal** the `name:` field
 ([Agent Skills spec](https://agentskills.io/specification)). That includes the
-`start-issue` and `finish-issue` procedures. There is one source per skill; each
-runtime reaches it differently:
+`start-issue`, `finish-issue`, and `plan-milestone` procedures. There is one
+source per skill; each runtime reaches it differently:
 
 - **Claude Code** — `.claude/skills` symlinks `.agents/skills`, so skills auto-load.
 - **Codex** — no project-skill auto-discovery. `AGENTS.md` is the file Codex always
   reads, so it must name the skill path: for any security request, read
-  `.agents/skills/auditing-resonate-security/SKILL.md` first and follow its routing.
+  `.agents/skills/auditing-resonate-security/SKILL.md` first and follow its routing;
+  for milestone or sprint planning, read `.agents/skills/plan-milestone/SKILL.md`.
 - **Gemini / Antigravity** — `.gemini/commands/*.toml` `@{...}`-include the same files.
 
 `CLAUDE.md` and `GEMINI.md` are symlinks to this file.
