@@ -22,6 +22,11 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowsService } from "./shows.service";
+import {
+  getShowsVisualMaxBytes,
+  getShowsVisualMaxTotalBytes,
+} from "../shared/artwork-validation";
+import { ContentLengthLimitInterceptor } from "../shared/content-length-limit.interceptor";
 
 @Controller("shows")
 export class ShowsController {
@@ -143,11 +148,14 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals")
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: "hero", maxCount: 1 },
-    { name: "card", maxCount: 1 },
-    { name: "gallery", maxCount: 8 },
-  ]))
+  @UseInterceptors(
+    new ContentLengthLimitInterceptor(getShowsVisualMaxTotalBytes(), "Campaign visual"),
+    FileFieldsInterceptor([
+      { name: "hero", maxCount: 1 },
+      { name: "card", maxCount: 1 },
+      { name: "gallery", maxCount: 8 },
+    ], { limits: { fileSize: getShowsVisualMaxBytes() } }),
+  )
   uploadCampaignVisuals(
     @Param("id") id: string,
     @Request() req: any,
@@ -180,7 +188,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals/:visualRef")
-  @UseInterceptors(FileInterceptor("visual"))
+  @UseInterceptors(FileInterceptor("visual", { limits: { fileSize: getShowsVisualMaxBytes() } }))
   replaceCampaignVisual(
     @Param("id") id: string,
     @Param("visualRef") visualRef: string,

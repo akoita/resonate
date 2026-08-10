@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
 import { LicenseType, Prisma, type AiDisclosureLevel, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
+import { validateArtworkUpload } from "../shared/artwork-validation";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
@@ -2058,11 +2059,13 @@ export class CatalogService implements OnModuleInit {
       throw new BadRequestException("Not authorized to update this release");
     }
 
+    const validatedArtwork = validateArtworkUpload(artwork, { field: "Artwork" });
+
     const updated = await prisma.release.update({
       where: { id: releaseId },
       data: {
         artworkData: artwork.buffer,
-        artworkMimeType: artwork.mimetype
+        artworkMimeType: validatedArtwork.mimeType,
       },
       select: { id: true, artworkMimeType: true }
     });

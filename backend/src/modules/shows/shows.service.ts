@@ -20,6 +20,11 @@ import {
 import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
 import { StorageProvider } from "../storage/storage_provider";
+import {
+  getShowsVisualMaxBytes,
+  getShowsVisualMaxTotalBytes,
+  validateArtworkUpload,
+} from "../shared/artwork-validation";
 import { PayoutEligibilityService } from "../trust/payout-eligibility.service";
 import {
   assertShowArtistAuthorityStatus,
@@ -423,8 +428,6 @@ function campaignCriticalTerms(
 }
 
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
-const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_SHOWS_GALLERY_VISUALS = 8;
 const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
   "refund_available",
@@ -1286,6 +1289,25 @@ export class ShowsService {
     });
     if (existingGalleryCount + galleryFiles.length > MAX_SHOWS_GALLERY_VISUALS) {
       throw new BadRequestException(`Campaigns can have ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
+    }
+
+    const visualFiles = [
+      ...(input.hero ? [{ slot: "hero", file: input.hero }] : []),
+      ...(input.card ? [{ slot: "card", file: input.card }] : []),
+      ...galleryFiles.map((file, index) => ({ slot: `gallery-${index + 1}`, file })),
+    ];
+    const totalEncodedBytes = visualFiles.reduce(
+      (total, { file }) => total + Math.max(file.buffer.length, file.size ?? 0),
+      0,
+    );
+    const maxTotalBytes = getShowsVisualMaxTotalBytes();
+    if (totalEncodedBytes > maxTotalBytes) {
+      throw new BadRequestException(
+        `Campaign visuals must total ${Math.floor(maxTotalBytes / (1024 * 1024))} MiB or less`,
+      );
+    }
+    for (const { slot, file } of visualFiles) {
+      validateArtworkUpload(file, { field: `${slot} visual`, maxBytes: getShowsVisualMaxBytes() });
     }
 
     const updates: Prisma.ShowCampaignUpdateInput = {};
@@ -2910,22 +2932,19 @@ export class ShowsService {
     if (!file.buffer?.length) {
       throw new BadRequestException(`${slot} visual file is empty`);
     }
-    if (!SHOWS_VISUAL_MIME_TYPES.has(file.mimetype)) {
-      throw new BadRequestException(`${slot} visual must be a JPEG, PNG, or WebP image`);
-    }
-    const maxBytes = configuredNumber(["SHOWS_VISUAL_MAX_BYTES"], DEFAULT_SHOWS_VISUAL_MAX_BYTES);
-    if (file.size > maxBytes || file.buffer.length > maxBytes) {
-      throw new BadRequestException(`${slot} visual must be ${Math.floor(maxBytes / (1024 * 1024))}MB or smaller`);
-    }
+    const validatedVisual = validateArtworkUpload(file, {
+      field: `${slot} visual`,
+      maxBytes: getShowsVisualMaxBytes(),
+    });
 
     const storage = await this.storageProvider.upload(
       file.buffer,
-      `show-campaign-${campaignId}-${slot}-${randomUUID()}.${visualExtension(file.mimetype)}`,
-      file.mimetype,
+      `show-campaign-${campaignId}-${slot}-${randomUUID()}.${visualExtension(validatedVisual.mimeType)}`,
+      validatedVisual.mimeType,
     );
     return {
       storageUri: storage.uri,
-      mimeType: file.mimetype,
+      mimeType: validatedVisual.mimeType,
     };
   }
 

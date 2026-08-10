@@ -185,6 +185,9 @@ When adding a new environment variable:
 | `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
 | `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
 | `SHOWS_VISUAL_MAX_BYTES` | Backend | Optional maximum size in bytes for each uploaded Shows campaign hero/preview visual. Defaults to `8388608` (8 MiB). |
+| `SHOWS_VISUAL_MAX_TOTAL_BYTES` | Backend | Optional aggregate encoded-size ceiling for one Shows campaign visual upload request. Defaults to `33554432` (32 MiB), before multipart overhead. |
+| `RELEASE_ARTWORK_MAX_BYTES` | Backend | Optional maximum encoded size in bytes for release artwork uploads and AI-generation artwork publishing. Defaults to `8388608` (8 MiB). |
+| `ARTWORK_MAX_INPUT_PIXELS` | Backend | Optional decoded pixel ceiling for uploaded artwork before persistence. Defaults to `16777216` (`4096 × 4096`), matching the frontend optimizer guard. |
 | `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
 | `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
 | `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |

@@ -4,6 +4,7 @@ import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GenerationService } from './generation.service';
 import { CreateGenerationDto, CreateComplementaryDto, PublishGenerationDto } from './generation.dto';
+import { getArtworkMaxBytes } from '../shared/artwork-validation';
 
 @Controller('generation')
 export class GenerationController {
@@ -99,7 +100,7 @@ export class GenerationController {
    */
   @UseGuards(AuthGuard('jwt'))
   @Patch(':trackId/publish')
-  @UseInterceptors(FileInterceptor('artworkBlob'))
+  @UseInterceptors(FileInterceptor('artworkBlob', { limits: { fileSize: getArtworkMaxBytes() } }))
   async publish(
     @Param('trackId') trackId: string,
     @Body() dto: PublishGenerationDto,

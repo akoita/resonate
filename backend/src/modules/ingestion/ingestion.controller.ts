@@ -27,7 +27,7 @@ export class IngestionController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'files', maxCount: 20 },
     { name: 'artwork', maxCount: 1 },
-  ]))
+  ], { limits: { files: 21, parts: 25 } }))
   @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },

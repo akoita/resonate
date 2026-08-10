@@ -18,6 +18,7 @@ import {
   normalizeAiDisclosureSource,
   type AiDisclosureSource,
 } from "../catalog/ai-disclosure.policy";
+import { validateArtworkUpload } from "../shared/artwork-validation";
 
 type UploadStatus = "queued" | "processing" | "complete" | "failed";
 const ACTIVE_PROCESSING_STAGES = new Set(["separating", "encrypting", "storing"]);
@@ -221,8 +222,9 @@ export class IngestionService {
     let artworkMimeType: string | undefined;
 
     if (input.artwork) {
+      const validatedArtwork = validateArtworkUpload(input.artwork, { field: "Artwork" });
       artworkData = input.artwork.buffer;
-      artworkMimeType = input.artwork.mimetype;
+      artworkMimeType = validatedArtwork.mimeType;
       artworkUrl = `/catalog/releases/${releaseId}/artwork`;
     }
 

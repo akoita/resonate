@@ -20,6 +20,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
+import { getArtworkMaxBytes } from "../shared/artwork-validation";
 import {
   DiscoveryPopularityService,
   PopularityWindow,
@@ -344,7 +345,10 @@ export class CatalogController {
 
   @UseGuards(AuthGuard("jwt"))
   @Patch("releases/:releaseId/artwork")
-  @UseInterceptors(FileFieldsInterceptor([{ name: 'artwork', maxCount: 1 }]))
+  @UseInterceptors(FileFieldsInterceptor(
+    [{ name: 'artwork', maxCount: 1 }],
+    { limits: { fileSize: getArtworkMaxBytes() } },
+  ))
   async updateArtwork(
     @Param("releaseId") releaseId: string,
     @UploadedFiles() files: { artwork?: Express.Multer.File[] },
