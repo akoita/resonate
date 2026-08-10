@@ -5,6 +5,36 @@ const apiBasePath = apiOrigin.pathname.replace(/\/+$/, "");
 const localImageOptimizerHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
 // Accommodate high-resolution square cover art while bounding Sharp decompression.
 const MAX_RELEASE_ARTWORK_INPUT_PIXELS = 4096 * 4096;
+const IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_DEFAULT = 0;
+const IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_MIN = 0;
+const IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_MAX = 86400;
+const IMAGE_OPTIMIZER_SHARP_CONCURRENCY_DEFAULT = 1;
+const IMAGE_OPTIMIZER_SHARP_CONCURRENCY_MIN = 1;
+const IMAGE_OPTIMIZER_SHARP_CONCURRENCY_MAX = 4;
+
+function parseIntegerEnv(rawValue, defaultValue, min, max) {
+  if (typeof rawValue !== "string" || rawValue.trim() === "") {
+    return defaultValue;
+  }
+  const value = Number(rawValue);
+  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+    return defaultValue;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+const imageOptimizerMinimumCacheTTL = parseIntegerEnv(
+  process.env.IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL,
+  IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_DEFAULT,
+  IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_MIN,
+  IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL_MAX,
+);
+const imageOptimizerSharpConcurrency = parseIntegerEnv(
+  process.env.IMAGE_OPTIMIZER_SHARP_CONCURRENCY,
+  IMAGE_OPTIMIZER_SHARP_CONCURRENCY_DEFAULT,
+  IMAGE_OPTIMIZER_SHARP_CONCURRENCY_MIN,
+  IMAGE_OPTIMIZER_SHARP_CONCURRENCY_MAX,
+);
 
 // Build-time identity exposed in the in-app About modal. Prefer the
 // CI-provided SHA (GitHub Actions / Vercel) so container builds without
@@ -54,7 +84,7 @@ const nextConfig = {
       },
     ],
     dangerouslyAllowLocalIP: localImageOptimizerHosts.has(apiOrigin.hostname),
-    minimumCacheTTL: 0,
+    minimumCacheTTL: imageOptimizerMinimumCacheTTL,
     maximumRedirects: 0,
   },
   env: {
@@ -64,7 +94,7 @@ const nextConfig = {
   experimental: {
     cssChunking: 'strict',  // Only load CSS for components actually rendered
     imgOptMaxInputPixels: MAX_RELEASE_ARTWORK_INPUT_PIXELS,
-    imgOptConcurrency: 1,
+    imgOptConcurrency: imageOptimizerSharpConcurrency,
   },
   turbopack: {
     root: __dirname,
