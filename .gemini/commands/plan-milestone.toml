@@ -1,0 +1,9 @@
+# Gemini CLI / Antigravity custom command. Adapts the shared workflow (single source).
+description = "Plan the next Resonate milestone — select and balance issues, then propose the Vision Sprint."
+prompt = """
+Follow the Resonate plan-milestone workflow below. Load the roadmap and milestone
+history before selecting, balance the four selection axes, and never create the
+milestone or reassign issues without explicit approval from the user.
+
+@{.agents/skills/plan-milestone/SKILL.md}
+"""
