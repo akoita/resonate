@@ -25,7 +25,7 @@ PERF_BASE_URL=https://staging.resonate.pydes.xyz npm run perf:home
 
 # More iterations, or a different route
 PERF_RUNS=7 npm run perf:home
-PERF_ROUTE=/catalog npm run perf:home
+PERF_ROUTE=/catalog PERF_EXPECTED_SELECTOR=.home-ng.ng-catalog-page npm run perf:home
 ```
 
 The target **always** comes from the environment. Never edit the default in the
@@ -36,6 +36,7 @@ script to point at a deployment.
 | `PERF_BASE_URL`   | `BASE_URL`, then `http://localhost:3001` | Origin to measure                        |
 | `BASE_URL`        | —                              | Shared fallback with the screenshot script          |
 | `PERF_ROUTE`      | `/`                            | Route to measure                                    |
+| `PERF_EXPECTED_SELECTOR` | —                      | Required landmark for non-Home routes; without it, validation is status-only |
 | `PERF_RUNS`       | `3`                            | Iterations (each is cold + warm)                    |
 | `PERF_SETTLE_MS`  | `3000`                         | Quiet time after `load` before reading metrics      |
 | `PERF_TIMEOUT_MS` | `60000`                        | Navigation timeout                                  |
@@ -164,28 +165,49 @@ The JSON carries the same data under `breakdown` (`byType`, `topResponses`,
 `images`) plus `coldResources`, the complete per-response list for the
 representative run, so you can re-slice it without re-measuring.
 
-## Rate limiting and discarded runs
+## Completeness checks and discarded runs
 
-Staging rate-limits repeated hits and returns `429`. A 429 page still "loads",
-and without a guard it would be recorded as a spectacularly fast Home (~29 KB,
-4 requests, LCP 340 ms — observed while building this harness). The script
-therefore checks the **main document HTTP status** for both the cold load and
-the warm reload, discards any attempt that is not 2xx, and retries up to
-`PERF_MAX_RETRIES` extra attempts:
+An error or partially rendered page can still return `200` and look
+spectacularly fast. A sample is accepted only when **both** its cold navigation
+and warm reload return 2xx and pass the configured structural check. The Home
+route (`PERF_ROUTE=/`) always requires these stable, unconditional landmarks:
+
+- `.home-ng`
+- `.home-ng .ng-hero`
+- `.home-ng .ng-catalog-shell`
+- `.home-ng .ng-ops-grid`
+- `.home-ng .ng-section--presets`
+
+For another route, set `PERF_EXPECTED_SELECTOR` to a stable landmark that is
+present whenever that page is complete. Without it, a non-Home route uses an
+explicit **status-only fallback**; the harness prints that mode before running.
+The Home landmarks are never imposed on alternate routes.
+
+Staging also rate-limits repeated hits and returns `429`. A 429 page still
+"loads", and without a guard it would be recorded as a spectacularly fast Home
+(~29 KB, 4 requests, LCP 340 ms — observed while building this harness). Status
+and structural failures are treated the same way: the entire cold/warm pair is
+discarded and the harness retries up to `PERF_MAX_RETRIES` extra attempts:
 
 ```
-  attempt 4  DISCARDED — document status cold 200 / warm 429 (expected 2xx)
-  attempt 5  DISCARDED — document status cold 429 / warm 429 (expected 2xx)
+  attempt 4  DISCARDED — warm: document status 429 (expected 2xx)
+  attempt 5  DISCARDED — cold: missing expected selector(s): .home-ng .ng-ops-grid
   attempt 6  cold LCP 1744ms · warm LCP 1000ms
 ```
 
-Discarded attempts are listed in the JSON under `discardedAttempts`. If you see
-many, raise `PERF_PAUSE_MS`. If the harness cannot collect a single usable run it
-exits non-zero rather than reporting fiction.
+Discarded attempts are listed in the JSON under `discardedAttempts`. Each entry
+has top-level exact `reasons` plus structured `cold` and `warm` checks containing
+the status, validation mode, expected/present/missing selectors, and acceptance
+booleans. `rawRuns` contains accepted complete pairs only, with the same checks.
+If you see many status failures, raise `PERF_PAUSE_MS`; missing selectors point
+to an incomplete render or a landmark that needs deliberate maintenance. If the
+harness cannot collect a single usable run it exits non-zero before calculating
+or writing a summary.
 
-Sanity check for any run: cold `requests` and `transferred total` should be in
-the same order of magnitude as previous runs. A sudden collapse means you
-measured an error page, not a fast page.
+The automatic landmarks are the primary completeness guard. As a manual second
+check, cold `requests` and `transferred total` should remain in the same order of
+magnitude as previous runs. A sudden collapse deserves investigation even if
+the landmarks are present.
 
 ## Caveat: numbers are machine-local
 
