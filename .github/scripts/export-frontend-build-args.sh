@@ -22,6 +22,8 @@ optional_vars=(
   NEXT_PUBLIC_ENV
   NEXT_PUBLIC_EXPLORER_URL
   NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS
+  IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL
+  IMAGE_OPTIMIZER_SHARP_CONCURRENCY
 )
 
 validate_contract_handoff() {
@@ -100,9 +102,9 @@ validate_contract_handoff
 validate_show_campaign_handoff
 
 for key in "${required_vars[@]}"; do
-  printf '%s=%s\n' "${key}" "${!key}"
+  printf '%s=%q\n' "${key}" "${!key}"
 done
 
 for key in "${optional_vars[@]}"; do
-  printf '%s=%s\n' "${key}" "${!key:-}"
+  printf '%s=%q\n' "${key}" "${!key:-}"
 done
