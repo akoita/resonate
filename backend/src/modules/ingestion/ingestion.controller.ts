@@ -17,6 +17,8 @@ import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-expres
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
+import { getArtworkMaxBytes } from "../shared/artwork-validation";
+import { BoundedMemoryStorage } from "../shared/bounded-memory.storage";
 
 @Controller("ingestion")
 export class IngestionController {
@@ -27,7 +29,13 @@ export class IngestionController {
   @UseInterceptors(FileFieldsInterceptor([
     { name: 'files', maxCount: 20 },
     { name: 'artwork', maxCount: 1 },
-  ], { limits: { files: 21, parts: 25 } }))
+  ], {
+    storage: new BoundedMemoryStorage({
+      fieldMaxBytes: { artwork: getArtworkMaxBytes() },
+      label: "Ingestion",
+    }),
+    limits: { files: 21, parts: 25 },
+  }))
   @Throttle({ default: { limit: 20, ttl: 60 } })
   upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },

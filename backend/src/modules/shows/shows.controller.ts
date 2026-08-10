@@ -27,6 +27,7 @@ import {
   getShowsVisualMaxTotalBytes,
 } from "../shared/artwork-validation";
 import { ContentLengthLimitInterceptor } from "../shared/content-length-limit.interceptor";
+import { BoundedMemoryStorage } from "../shared/bounded-memory.storage";
 
 @Controller("shows")
 export class ShowsController {
@@ -154,7 +155,18 @@ export class ShowsController {
       { name: "hero", maxCount: 1 },
       { name: "card", maxCount: 1 },
       { name: "gallery", maxCount: 8 },
-    ], { limits: { fileSize: getShowsVisualMaxBytes() } }),
+    ], {
+      storage: new BoundedMemoryStorage({
+        maxTotalBytes: getShowsVisualMaxTotalBytes(),
+        fieldMaxBytes: {
+          hero: getShowsVisualMaxBytes(),
+          card: getShowsVisualMaxBytes(),
+          gallery: getShowsVisualMaxBytes(),
+        },
+        label: "Campaign visual",
+      }),
+      limits: { fileSize: getShowsVisualMaxBytes() },
+    }),
   )
   uploadCampaignVisuals(
     @Param("id") id: string,
