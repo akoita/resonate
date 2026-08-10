@@ -8,6 +8,9 @@ import {
   collectRuns,
   ensureUsableRuns,
   expectedSelectorsForRoute,
+  aggregateOptimizerCacheStatuses,
+  isNextImageOptimizerUrl,
+  normalizeOptimizerCacheStatus,
   summarize,
 } from "./measure-home-performance.mjs";
 
@@ -152,4 +155,33 @@ test("discard diagnostics retain exact cold and warm checks", async () => {
   assert.equal(result.discarded[0].cold.status, 503);
   assert.deepEqual(result.discarded[0].warm.missingSelectors, [missing]);
   assert.throws(() => ensureUsableRuns(result.runs), /No usable performance runs/);
+});
+
+test("detects the Next image optimizer path regardless of query parameters", () => {
+  assert.equal(isNextImageOptimizerUrl("https://example.test/_next/image?url=%2Fcover.jpg&w=640&q=75"), true);
+  assert.equal(isNextImageOptimizerUrl("/_next/image?url=%2Fcover.jpg"), true);
+  assert.equal(isNextImageOptimizerUrl("https://example.test/_next/image/extra"), false);
+  assert.equal(isNextImageOptimizerUrl("https://example.test/assets/image.jpg"), false);
+  assert.equal(isNextImageOptimizerUrl("not a URL"), false);
+});
+
+test("normalizes image optimizer cache statuses and preserves unknown values", () => {
+  assert.equal(normalizeOptimizerCacheStatus(" hit "), "HIT");
+  assert.equal(normalizeOptimizerCacheStatus("miss"), "MISS");
+  assert.equal(normalizeOptimizerCacheStatus("stale"), "STALE");
+  assert.equal(normalizeOptimizerCacheStatus("revalidated"), "REVALIDATED");
+  assert.equal(normalizeOptimizerCacheStatus("bypass"), "unknown");
+  assert.equal(normalizeOptimizerCacheStatus(undefined), "unknown");
+});
+
+test("aggregates image optimizer cache status counts", () => {
+  assert.deepEqual(
+    aggregateOptimizerCacheStatuses(["HIT", "miss", "STALE", "revalidated", "not-present"]),
+    {
+      requestCount: 5,
+      statuses: { HIT: 1, MISS: 1, STALE: 1, REVALIDATED: 1, unknown: 1 },
+      hits: 1,
+      misses: 1,
+    },
+  );
 });
