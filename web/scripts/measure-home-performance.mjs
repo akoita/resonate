@@ -44,6 +44,7 @@
  *   PERF_BASE_URL   target origin (falls back to BASE_URL, then localhost:3001)
  *   BASE_URL        shared with scripts/capture-help-screenshots.mjs
  *   PERF_ROUTE      route to measure (default "/")
+ *   PERF_EXPECTED_SELECTOR expected landmark for non-Home routes (optional)
  *   PERF_RUNS       iterations (default 3)
  *   PERF_SETTLE_MS  quiet time after load before reading metrics (default 3000)
  *   PERF_TIMEOUT_MS navigation timeout (default 60000)
@@ -71,6 +72,7 @@ import { chromium } from "@playwright/test";
 const BASE_URL =
   process.env.PERF_BASE_URL ?? process.env.BASE_URL ?? "http://localhost:3001";
 const ROUTE = process.env.PERF_ROUTE ?? "/";
+const EXPECTED_SELECTOR = process.env.PERF_EXPECTED_SELECTOR?.trim() || null;
 const RUNS = Math.max(1, Number(process.env.PERF_RUNS ?? 3));
 const SETTLE_MS = Number(process.env.PERF_SETTLE_MS ?? 3000);
 const TIMEOUT_MS = Number(process.env.PERF_TIMEOUT_MS ?? 60000);
@@ -84,6 +86,21 @@ const OUT_DIR = process.env.PERF_OUT_DIR
 
 const TARGET = `${BASE_URL.replace(/\/$/, "")}${ROUTE}`;
 const VIEWPORT = { width: 1440, height: 900 };
+
+export const HOME_EXPECTED_SELECTORS = [
+  ".home-ng",
+  ".home-ng .ng-hero",
+  ".home-ng .ng-catalog-shell",
+  ".home-ng .ng-ops-grid",
+  ".home-ng .ng-section--presets",
+];
+
+export function expectedSelectorsForRoute(route, explicitSelector = null) {
+  if (route === "/") return HOME_EXPECTED_SELECTORS;
+  return explicitSelector?.trim() ? [explicitSelector.trim()] : [];
+}
+
+const EXPECTED_SELECTORS = expectedSelectorsForRoute(ROUTE, EXPECTED_SELECTOR);
 
 /**
  * Installed before any script of the page runs, on every navigation (including
@@ -147,6 +164,75 @@ const READER = () => {
 
 const isOkStatus = (status) => status >= 200 && status < 300;
 
+export function classifyLoad({ status, expectedSelectors, presentSelectors = [] }) {
+  const expected = [...expectedSelectors];
+  const present = new Set(presentSelectors);
+  const missingSelectors = expected.filter((selector) => !present.has(selector));
+  const statusOk = isOkStatus(status);
+  const structurallyComplete = missingSelectors.length === 0;
+  const reasons = [];
+
+  if (!statusOk) reasons.push(`document status ${status} (expected 2xx)`);
+  if (!structurallyComplete) {
+    reasons.push(`missing expected selector(s): ${missingSelectors.join(", ")}`);
+  }
+
+  return {
+    status,
+    statusOk,
+    validation: expected.length ? "selectors" : "status-only",
+    expectedSelectors: expected,
+    presentSelectors: expected.filter((selector) => present.has(selector)),
+    missingSelectors,
+    structurallyComplete,
+    ok: statusOk && structurallyComplete,
+    reasons,
+  };
+}
+
+export function classifyPair(cold, warm) {
+  return {
+    ok: cold.ok && warm.ok,
+    reasons: [
+      ...cold.reasons.map((reason) => `cold: ${reason}`),
+      ...warm.reasons.map((reason) => `warm: ${reason}`),
+    ],
+  };
+}
+
+export function discardedAttempt(attempt, result) {
+  return {
+    attempt,
+    reasons: result.reasons,
+    cold: result.coldCheck,
+    warm: result.warmCheck,
+  };
+}
+
+export async function collectRuns({
+  requestedRuns,
+  maxRetries,
+  measureAttempt,
+  beforeAttempt = async () => {},
+}) {
+  const runs = [];
+  const discarded = [];
+  const maxAttempts = requestedRuns + maxRetries;
+
+  for (let attempt = 1; runs.length < requestedRuns && attempt <= maxAttempts; attempt += 1) {
+    await beforeAttempt(attempt);
+    const result = await measureAttempt(attempt);
+    if (result.ok) runs.push(result);
+    else discarded.push(discardedAttempt(attempt, result));
+  }
+
+  return { runs, discarded, maxAttempts };
+}
+
+export function ensureUsableRuns(runs) {
+  if (runs.length === 0) throw new Error("No usable performance runs were collected");
+}
+
 function newBucket() {
   return { pending: [], totalBytes: 0, jsBytes: 0, requests: 0, resources: [] };
 }
@@ -175,6 +261,18 @@ async function settleAndRead(page) {
   await page.waitForLoadState("networkidle", { timeout: TIMEOUT_MS }).catch(() => {});
   await sleep(SETTLE_MS);
   return page.evaluate(READER);
+}
+
+async function inspectLoad(page, response, expectedSelectors) {
+  const presentSelectors = await page.evaluate(
+    (selectors) => selectors.filter((selector) => document.querySelector(selector) !== null),
+    expectedSelectors,
+  );
+  return classifyLoad({
+    status: response?.status() ?? 0,
+    expectedSelectors,
+    presentSelectors,
+  });
 }
 
 async function measureOnce(browser, attempt) {
@@ -207,6 +305,7 @@ async function measureOnce(browser, attempt) {
 
   const coldResponse = await page.goto(TARGET, { waitUntil: "load", timeout: TIMEOUT_MS });
   const coldTiming = await settleAndRead(page);
+  const coldCheck = await inspectLoad(page, coldResponse, EXPECTED_SELECTORS);
   const coldDrain = await drainBucket(bucket);
   const cold = { ...coldTiming, ...coldDrain.totals };
 
@@ -215,23 +314,19 @@ async function measureOnce(browser, attempt) {
   bucket = newBucket();
   const warmResponse = await page.reload({ waitUntil: "load", timeout: TIMEOUT_MS });
   const warmTiming = await settleAndRead(page);
+  const warmCheck = await inspectLoad(page, warmResponse, EXPECTED_SELECTORS);
   const warmDrain = await drainBucket(bucket);
   const warm = { ...warmTiming, ...warmDrain.totals };
 
   await context.close();
 
-  // A rate-limited or errored document still "loads" and would otherwise be
-  // recorded as a suspiciously fast Home. Staging returns 429 under repeated
-  // hits, so validate the main document before trusting the sample.
-  const coldStatus = coldResponse?.status() ?? 0;
-  const warmStatus = warmResponse?.status() ?? 0;
-  const ok = isOkStatus(coldStatus) && isOkStatus(warmStatus);
+  // A rate-limited, errored, or structurally incomplete document still "loads"
+  // and would otherwise be recorded as a suspiciously fast page.
+  const pairCheck = classifyPair(coldCheck, warmCheck);
+  const { ok, reasons } = pairCheck;
 
   if (!ok) {
-    console.warn(
-      `  attempt ${attempt}  DISCARDED — document status cold ${coldStatus} / ` +
-        `warm ${warmStatus} (expected 2xx)`,
-    );
+    console.warn(`  attempt ${attempt}  DISCARDED — ${reasons.join("; ")}`);
   } else {
     console.log(
       `  attempt ${attempt}  cold LCP ${Math.round(cold.lcpMs)}ms · ` +
@@ -242,7 +337,15 @@ async function measureOnce(browser, attempt) {
   // Only cold resources are kept: on the warm reload nearly every static asset
   // is a cache hit reporting ~0 bytes, so a warm breakdown would be a list of
   // zeroes plus whatever the API refetched — noise, not signal.
-  return { cold, warm, coldStatus, warmStatus, ok, coldResources: coldDrain.resources };
+  return {
+    cold,
+    warm,
+    coldCheck,
+    warmCheck,
+    reasons,
+    ok,
+    coldResources: coldDrain.resources,
+  };
 }
 
 function median(values) {
@@ -265,7 +368,8 @@ const METRICS = [
   { key: "requests", label: "requests", unit: "" },
 ];
 
-function summarize(samples) {
+export function summarize(samples) {
+  ensureUsableRuns(samples);
   const summary = {};
   for (const { key } of METRICS) {
     const values = samples.map((sample) => sample[key]);
@@ -460,30 +564,41 @@ async function main() {
     `${RUNS} iteration(s), ${VIEWPORT.width}x${VIEWPORT.height}, ` +
       `${SETTLE_MS}ms settle, cold + warm per iteration`,
   );
+  console.log(
+    EXPECTED_SELECTORS.length
+      ? `Completeness: ${EXPECTED_SELECTORS.join(", ")}`
+      : "Completeness: status-only (set PERF_EXPECTED_SELECTOR for this route)",
+  );
 
   const browser = await chromium.launch({ headless: !HEADED });
-  const runs = [];
-  const discarded = [];
-  const maxAttempts = RUNS + MAX_RETRIES;
+  let collected;
   try {
-    for (let attempt = 1; runs.length < RUNS && attempt <= maxAttempts; attempt += 1) {
-      if (attempt > 1) await sleep(PAUSE_MS);
-      const result = await measureOnce(browser, attempt);
-      if (result.ok) runs.push(result);
-      else discarded.push({ attempt, cold: result.coldStatus, warm: result.warmStatus });
-    }
+    collected = await collectRuns({
+      requestedRuns: RUNS,
+      maxRetries: MAX_RETRIES,
+      measureAttempt: (attempt) => measureOnce(browser, attempt),
+      beforeAttempt: (attempt) => (attempt > 1 ? sleep(PAUSE_MS) : undefined),
+    });
   } finally {
     await browser.close();
   }
+  const { runs, discarded, maxAttempts } = collected;
 
   if (runs.length < RUNS) {
+    const diagnosticHint =
+      runs.length === 0
+        ? "Review the DISCARDED console diagnostics above."
+        : "Inspect discardedAttempts in the JSON report.";
     console.error("");
     console.error(
       `Only ${runs.length}/${RUNS} usable run(s) after ${maxAttempts} attempts — ` +
-        `the target kept returning non-2xx documents. Raise PERF_PAUSE_MS if it is ` +
-        `rate limiting, and do not trust partial numbers.`,
+        `the target returned non-2xx or structurally incomplete documents. Raise ` +
+        `PERF_PAUSE_MS if it is rate limiting. ${diagnosticHint}`,
     );
-    if (runs.length === 0) process.exit(1);
+    if (runs.length === 0) {
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const cold = summarize(runs.map((run) => run.cold));
@@ -514,13 +629,11 @@ async function main() {
   console.log("Bytes are wire sizes from Playwright's network layer (body + headers).");
   console.log("Only compare runs from the same machine, network and target.");
   if (discarded.length) {
-    console.log(
-      `${discarded.length} attempt(s) discarded for non-2xx documents (see JSON).`,
-    );
+    console.log(`${discarded.length} attempt(s) discarded for status or structure (see JSON).`);
   }
 
   const report = {
-    schema: "resonate.home-performance/1",
+    schema: "resonate.home-performance/2",
     target: TARGET,
     route: ROUTE,
     baseUrl: BASE_URL,
@@ -530,6 +643,10 @@ async function main() {
     discardedAttempts: discarded,
     viewport: VIEWPORT,
     settleMs: SETTLE_MS,
+    validation: {
+      mode: EXPECTED_SELECTORS.length ? "selectors" : "status-only",
+      expectedSelectors: EXPECTED_SELECTORS,
+    },
     notes: {
       inp: "omitted — interaction-driven, not observable on a passive load",
       tbtProxyMs: "sum of max(0, longtask.duration - 50) for long tasks after FCP",
@@ -537,6 +654,8 @@ async function main() {
       comparability: "only comparable across runs on the same machine/network/target",
       breakdown:
         "cold load only, from a single representative run (warm is cache hits at ~0 bytes)",
+      acceptance:
+        "cold and warm documents must both be 2xx and contain every configured expected selector",
     },
     cold,
     warm,
@@ -546,11 +665,10 @@ async function main() {
       ...breakdown,
     },
     coldResources: runs[representativeIndex].coldResources,
-    rawRuns: runs.map(({ cold: c, warm: w, coldStatus, warmStatus }) => ({
+    rawRuns: runs.map(({ cold: c, warm: w, coldCheck, warmCheck }) => ({
       cold: c,
       warm: w,
-      coldStatus,
-      warmStatus,
+      checks: { cold: coldCheck, warm: warmCheck },
     })),
   };
 
@@ -568,7 +686,11 @@ async function main() {
   console.log(`JSON: ${path.join(OUT_DIR, "home-latest.json")}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isDirectRun =
+  process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
