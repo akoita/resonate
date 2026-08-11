@@ -145,13 +145,21 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "show_campaign",
     subjectIdKeys: ["contractCampaignId"],
     payloadKeys: [
+      "chainId",
+      "contractAddress",
       "contractCampaignId",
       "escrowEventName",
       "transactionHash",
       "blockNumber",
       "reason",
     ],
-    sourceRefKeys: ["contractCampaignId", "transactionHash", "blockNumber"],
+    sourceRefKeys: [
+      "chainId",
+      "contractAddress",
+      "contractCampaignId",
+      "transactionHash",
+      "blockNumber",
+    ],
   },
   {
     eventName: "taste_memory.settings_updated",

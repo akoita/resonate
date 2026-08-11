@@ -9,13 +9,18 @@
  * sinceMinutes window), ordering (newest first), caps, and access control.
  */
 
-import { ForbiddenException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, NotFoundException } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { ShowsService } from "../modules/shows/shows.service";
 
 const TEST_PREFIX = `recon_mismatch_${Date.now()}_`;
 const CAMPAIGN_A = `${TEST_PREFIX}101`;
 const CAMPAIGN_B = `${TEST_PREFIX}202`;
+const CHAIN_ID = 31337;
+const ESCROW = "0x" + "7".repeat(40);
+const OTHER_ESCROW = "0x" + "8".repeat(40);
+const ACK_CAMPAIGN = String(Date.now());
+const ACK_TX = txHash(ACK_CAMPAIGN);
 
 const operator = { userId: "op-1", role: "operator" };
 
@@ -33,6 +38,8 @@ async function seedMismatch(params: {
   blockNumber: string;
   reason: string;
   escrowEventName?: string;
+  chainId?: number;
+  contractAddress?: string;
 }): Promise<void> {
   await prisma.analyticsEvent.create({
     data: {
@@ -48,6 +55,8 @@ async function seedMismatch(params: {
       subjectId: params.contractCampaignId,
       payload: {
         contractCampaignId: params.contractCampaignId,
+        ...(params.chainId ? { chainId: params.chainId } : {}),
+        ...(params.contractAddress ? { contractAddress: params.contractAddress } : {}),
         escrowEventName: params.escrowEventName ?? "Pledged",
         transactionHash: params.transactionHash,
         blockNumber: params.blockNumber,
@@ -115,9 +124,38 @@ describe("ShowsService.listReconciliationMismatches (integration)", () => {
         envelope: { schema: "test" },
       },
     });
+    await prisma.showCampaignEscrowEvent.create({
+      data: {
+        chainId: CHAIN_ID,
+        contractAddress: ESCROW,
+        eventName: "CampaignCreated",
+        contractCampaignId: ACK_CAMPAIGN,
+        transactionHash: ACK_TX,
+        logIndex: 0,
+        blockNumber: 3000n,
+        blockHash: txHash("bc"),
+        args: { campaignId: ACK_CAMPAIGN },
+        processedAt: new Date(),
+      },
+    });
+    await seedMismatch({
+      suffix: "ack",
+      contractCampaignId: ACK_CAMPAIGN,
+      occurredAt: new Date(now - 2 * 60 * 1000),
+      transactionHash: ACK_TX,
+      blockNumber: "3000",
+      reason: `no backend campaign bound to escrow campaign ${ACK_CAMPAIGN}`,
+      escrowEventName: "CampaignCreated",
+      // Legacy fact: #1534 identity fields were not present yet. The list must
+      // correlate this through the durable escrow event, not campaign id alone.
+    });
   });
 
   afterAll(async () => {
+    await prisma.showEscrowReconciliationAcknowledgement.deleteMany({
+      where: { chainId: CHAIN_ID, contractCampaignId: ACK_CAMPAIGN },
+    });
+    await prisma.showCampaignEscrowEvent.deleteMany({ where: { transactionHash: ACK_TX } });
     await prisma.analyticsEvent.deleteMany({ where: { eventId: { startsWith: TEST_PREFIX } } });
   });
 
@@ -176,5 +214,136 @@ describe("ShowsService.listReconciliationMismatches (integration)", () => {
     await expect(
       service.listReconciliationMismatches({ userId: "u-1", role: "listener" }),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("acknowledges an indexed exact identity idempotently and flags its mismatch", async () => {
+    const first = await service.acknowledgeReconciliationMismatch(operator, `000${ACK_CAMPAIGN}`, {
+      chainId: String(CHAIN_ID),
+      contractAddress: ESCROW.toUpperCase().replace("0X", "0x"),
+      note: "  Known staging artifact  ",
+    });
+    expect(first).toMatchObject({
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+      contractCampaignId: ACK_CAMPAIGN,
+      acknowledged: true,
+      acknowledgedByUserId: "op-1",
+      acknowledgementNote: "Known staging artifact",
+    });
+
+    const second = await service.acknowledgeReconciliationMismatch(
+      { userId: "op-2", role: "admin" },
+      ACK_CAMPAIGN,
+      { chainId: CHAIN_ID, contractAddress: ESCROW, note: "must not replace first note" },
+    );
+    expect(second.acknowledgedAt).toBe(first.acknowledgedAt);
+    expect(second.acknowledgedByUserId).toBe("op-1");
+    expect(second.acknowledgementNote).toBe("Known staging artifact");
+
+    const rows = await service.listReconciliationMismatches(operator, {
+      contractCampaignId: ACK_CAMPAIGN,
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+      acknowledged: true,
+      acknowledgedByUserId: "op-1",
+      acknowledgementNote: "Known staging artifact",
+    });
+  });
+
+  it("retains revocation audit state idempotently and supports re-acknowledgement", async () => {
+    const removed = await service.removeReconciliationAcknowledgement(operator, ACK_CAMPAIGN, {
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+    });
+    expect(removed).toMatchObject({
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+      contractCampaignId: ACK_CAMPAIGN,
+      acknowledged: false,
+      acknowledgedByUserId: "op-1",
+      acknowledgementNote: "Known staging artifact",
+      revokedByUserId: "op-1",
+    });
+    expect(removed.revokedAt).toEqual(expect.any(String));
+    const repeated = await service.removeReconciliationAcknowledgement(
+      { userId: "op-2", role: "admin" },
+      ACK_CAMPAIGN,
+      {
+        chainId: CHAIN_ID,
+        contractAddress: ESCROW,
+      },
+    );
+    expect(repeated.revokedAt).toBe(removed.revokedAt);
+    expect(repeated.revokedByUserId).toBe("op-1");
+    const revokedRows = await service.listReconciliationMismatches(operator, {
+      contractCampaignId: ACK_CAMPAIGN,
+    });
+    expect(revokedRows[0]).toMatchObject({
+      acknowledged: false,
+      revokedAt: removed.revokedAt,
+      revokedByUserId: "op-1",
+    });
+
+    const reactivated = await service.acknowledgeReconciliationMismatch(
+      { userId: "op-3", role: "operator" },
+      ACK_CAMPAIGN,
+      {
+        chainId: CHAIN_ID,
+        contractAddress: ESCROW,
+        note: "Reconfirmed after review",
+      },
+    );
+    expect(reactivated).toMatchObject({
+      acknowledged: true,
+      acknowledgedByUserId: "op-3",
+      acknowledgementNote: "Reconfirmed after review",
+      revokedAt: null,
+      revokedByUserId: null,
+    });
+    const rows = await service.listReconciliationMismatches(operator, {
+      contractCampaignId: ACK_CAMPAIGN,
+    });
+    expect(rows[0]).toMatchObject({
+      acknowledged: true,
+      acknowledgedByUserId: "op-3",
+      revokedAt: null,
+      revokedByUserId: null,
+    });
+
+    await expect(service.removeReconciliationAcknowledgement(operator, ACK_CAMPAIGN, {
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+    })).resolves.toMatchObject({ acknowledged: false });
+  });
+
+  it("requires an indexed exact triple and validates acknowledgement identities", async () => {
+    await expect(service.acknowledgeReconciliationMismatch(operator, ACK_CAMPAIGN, {
+      chainId: CHAIN_ID,
+      contractAddress: OTHER_ESCROW,
+    })).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.acknowledgeReconciliationMismatch(operator, "0", {
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.acknowledgeReconciliationMismatch(operator, ACK_CAMPAIGN, {
+      chainId: 0,
+      contractAddress: ESCROW,
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.acknowledgeReconciliationMismatch(operator, ACK_CAMPAIGN, {
+      chainId: 2_147_483_648,
+      contractAddress: ESCROW,
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.acknowledgeReconciliationMismatch(operator, ACK_CAMPAIGN, {
+      chainId: CHAIN_ID,
+      contractAddress: "0x" + "0".repeat(40),
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.acknowledgeReconciliationMismatch(
+      { userId: "listener", role: "listener" },
+      ACK_CAMPAIGN,
+      { chainId: CHAIN_ID, contractAddress: ESCROW },
+    )).rejects.toBeInstanceOf(ForbiddenException);
   });
 });

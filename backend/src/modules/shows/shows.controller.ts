@@ -316,6 +316,36 @@ export class ShowsController {
     });
   }
 
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Post("operator/reconciliation-mismatches/:contractCampaignId/acknowledge")
+  acknowledgeReconciliationMismatch(
+    @Param("contractCampaignId") contractCampaignId: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.acknowledgeReconciliationMismatch(
+      this.actorFromRequest(req),
+      contractCampaignId,
+      body ?? {},
+    );
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Delete("operator/reconciliation-mismatches/:contractCampaignId/acknowledgement")
+  removeReconciliationAcknowledgement(
+    @Param("contractCampaignId") contractCampaignId: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.removeReconciliationAcknowledgement(
+      this.actorFromRequest(req),
+      contractCampaignId,
+      body ?? {},
+    );
+  }
+
   // #1390 Tier 2: operator-only, read-only on-chain discovery of the contract
   // campaign id by matching the draft's deterministic escrow terms.
   @UseGuards(AuthGuard("jwt"), RolesGuard)

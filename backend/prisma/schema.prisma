@@ -952,6 +952,27 @@ model ShowEscrowIndexerState {
   @@unique([chainId, contractAddress])
 }
 
+// Operator acknowledgement for an on-chain Shows campaign that is known not
+// to have a backend campaign. Scoped to the full escrow identity because
+// campaign ids can repeat across chains and legacy/current escrow contracts.
+// The actor is stored as an audit scalar so deleting a user cannot erase the
+// operational record (#1534).
+model ShowEscrowReconciliationAcknowledgement {
+  id                   String   @id @default(uuid())
+  chainId              Int
+  contractAddress      String
+  contractCampaignId   String
+  acknowledgedByUserId String
+  note                 String?  @db.Text
+  acknowledgedAt       DateTime @default(now())
+  revokedByUserId      String?
+  revokedAt            DateTime?
+
+  @@unique([chainId, contractAddress, contractCampaignId])
+  @@index([contractCampaignId])
+  @@index([acknowledgedAt])
+}
+
 // Idempotent processed-event log for ShowCampaignEscrow (#948). The
 // (transactionHash, logIndex) unique key makes event ingestion replay-safe
 // across retries and reorgs; reconciliation reads decoded args from here.

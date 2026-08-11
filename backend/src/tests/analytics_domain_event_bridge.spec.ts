@@ -1245,6 +1245,8 @@ describe("AnalyticsDomainEventBridgeService", () => {
       eventName: "shows.campaign_reconciliation_mismatch",
       eventVersion: 1,
       occurredAt: "2026-07-13T10:00:00.000Z",
+      chainId: 84532,
+      contractAddress: "0x" + "11".repeat(20),
       // emitMismatch publishes String(args.campaignId) — the string coercion of
       // the numeric on-chain campaign id.
       contractCampaignId: String(42),
@@ -1265,6 +1267,8 @@ describe("AnalyticsDomainEventBridgeService", () => {
       // subjectId === contractCampaignId (string).
       subjectId: "42",
       payload: expect.objectContaining({
+        chainId: 84532,
+        contractAddress: "0x" + "11".repeat(20),
         contractCampaignId: "42",
         escrowEventName: "Pledged",
         transactionHash,
@@ -1273,6 +1277,8 @@ describe("AnalyticsDomainEventBridgeService", () => {
       }),
     }));
     expect(event.sourceRefs).toEqual(expect.objectContaining({
+      chainId: "84532",
+      contractAddress: "0x" + "11".repeat(20),
       contractCampaignId: "42",
       transactionHash,
       blockNumber: "4567",

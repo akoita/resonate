@@ -54,7 +54,13 @@ Each run:
    `claimRefund` → asserts the smoke wallet's USDC is **fully restored** (delta 0,
    only gas burns) → polls the API campaign to a discovery-excluded refund state.
    Self-cleaning, like the smoke's `auto` mode.
-8. **alert reminder** — prints a reminder that the Cloud Monitoring email alert
+8. **acknowledge** — only after the exact drift assertion and every cleanup check
+   pass, calls
+   `POST /shows/operator/reconciliation-mismatches/:contractCampaignId/acknowledge`
+   with the run's exact `{ chainId, contractAddress }` and a concise drill note.
+   The acknowledgement keeps the historical mismatch visible but prevents this
+   known staging artifact from producing future no-backend-campaign alert noise.
+9. **alert reminder** — prints a reminder that the Cloud Monitoring email alert
    on `backend_app_events{event="shows.campaign_reconciliation_mismatch"}` should
    have fired. The workflow **cannot** assert email delivery, so an operator
    running the drill confirms the notification arrived out of band.
@@ -107,7 +113,8 @@ node reconciliation-drill.mjs            # add --dry-run to stop after auth
 - **PASS** — the operator endpoint returns a mismatch row with our pledge txHash
   and a `no matching backend intent` reason within `MISMATCH_TIMEOUT_MS`
   (default 4 min), then cleanup restores the USDC and settles the campaign to a
-  discovery-excluded state. Exit 0.
+  discovery-excluded state, and the acknowledgement endpoint confirms the exact
+  campaign identity with `acknowledged: true`. Exit 0.
 - **FAIL** — any `SMOKE_FAIL <step>: <reason>`. The most important one:
   - `SMOKE_FAIL assert-detection: no reconciliation mismatch for pledge …` →
     the indexer alert did **not** fire (indexer down/lagging past the bound, the
@@ -118,6 +125,9 @@ node reconciliation-drill.mjs            # add --dry-run to stop after auth
     wrong (same diagnosis as the smoke).
   - `SMOKE_FAIL cleanup-refund: smoke wallet USDC … != pre-run balance …` → the
     detection passed but cleanup left USDC stranded; reconcile manually.
+  - `SMOKE_FAIL acknowledge: …` → detection and cleanup passed, but the known
+    drill artifact was not safely acknowledged. Retry the triple-scoped operator
+    action after verifying the campaign identity; do not treat the run as green.
 
 ## Cleanup behavior
 
@@ -128,6 +138,14 @@ If the drill fails **before** cleanup (e.g. `assert-detection` times out), the
 campaign is left `Funded` with the smoke wallet's 1 USDC in escrow — clean it up
 with the same `cast send … cancelCampaign` + `claimRefund` pair the smoke's
 `skip`-mode log documents.
+
+Acknowledgement is deliberately not part of error cleanup or a `finally` path.
+A failed drift assertion or cleanup therefore remains unacknowledged and noisy.
+On a successful run, acknowledgement suppresses only future
+`no backend campaign bound` alerts for the exact chain, escrow, and campaign id;
+the historical mismatch remains in the operator listing with acknowledgement
+metadata. Pledge-without-intent, dispute, and duplicate-binding mismatches remain
+active alerts.
 
 ## Environment contract
 
@@ -141,6 +159,8 @@ read from the `contracts-staging` environment. Drill-specific optional tuning:
 | `REFUND_TIMEOUT_MS` | no | Cleanup refund-state polling bound (default `180000`) |
 
 No new **backend** or deploy env vars are introduced by this drill.
+The acknowledgement call reuses the operator JWT obtained from the existing
+`SMOKE_WALLET_PRIVATE_KEY` / `OPERATOR_ADDRESSES` authentication flow.
 
 ## References
 
@@ -149,7 +169,9 @@ No new **backend** or deploy env vars are introduced by this drill.
 - Workflow: `.github/workflows/staging-reconciliation-drill.yml` (`workflow_dispatch` only)
 - Indexer + alert emission: `backend/src/modules/shows/shows-escrow-indexer.service.ts`
   (`emitMismatch`), structured helper `backend/src/modules/shared/structured_logging.ts`
-- Operator endpoint: `GET /shows/operator/reconciliation-mismatches`
+- Operator endpoints: `GET /shows/operator/reconciliation-mismatches` and
+  `POST /shows/operator/reconciliation-mismatches/:contractCampaignId/acknowledge`
+  (`DELETE .../:contractCampaignId/acknowledgement` revokes an acknowledgement)
   (`ShowsController.listReconciliationMismatches` → `ShowsService.listReconciliationMismatches`)
 - Analytics bridge entry: `backend/src/modules/analytics/analytics_domain_event_bridge.service.ts`
 - iac alert policy + log-based metric: `resonate-iac` `modules/observability/main.tf`
