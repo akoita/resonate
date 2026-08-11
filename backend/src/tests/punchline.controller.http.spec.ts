@@ -1,5 +1,5 @@
 /**
- * PunchlineController — HTTP contract (#1479 featured shelf)
+ * PunchlineController — HTTP contract (#1479 featured shelf, #1510 browse)
  *
  * Tests routing and the public (no-auth) contract of GET /punchline/featured,
  * including limit parsing and that it does not shadow sibling routes.
@@ -17,6 +17,11 @@ import { PunchlineUnlockService } from '../modules/punchline/punchline-unlock.se
 import { createControllerTestApp } from './e2e-helpers';
 
 const mockDropService = {
+  listDrops: jest.fn().mockResolvedValue({
+    items: [],
+    meta: { count: 0, page: 1, limit: 24, totalCount: 0, totalPages: 0, hasNextPage: false },
+    facets: { genres: [] },
+  }),
   listFeaturedDrops: jest.fn().mockResolvedValue({
     items: [
       {
@@ -75,5 +80,68 @@ describe('PunchlineController featured (e2e)', () => {
       .expect(200);
     expect(mockDropService.listPublishedDropsForTrack).toHaveBeenCalled();
     expect(mockDropService.listFeaturedDrops).not.toHaveBeenCalled();
+  });
+
+  it('GET /punchline/drops uses public browse defaults', async () => {
+    await request(app.getHttpServer()).get('/punchline/drops').expect(200);
+
+    expect(mockDropService.listDrops).toHaveBeenCalledWith({
+      page: 1,
+      limit: 24,
+      kind: 'all',
+      genre: undefined,
+      price: 'all',
+      availability: 'available',
+    });
+  });
+
+  it('normalizes and forwards every browse query', async () => {
+    await request(app.getHttpServer())
+      .get('/punchline/drops?page=2&limit=48&kind=punchline&genre=%20Hip-Hop%20&price=paid&availability=all')
+      .expect(200);
+
+    expect(mockDropService.listDrops).toHaveBeenCalledWith({
+      page: 2,
+      limit: 48,
+      kind: 'punchline',
+      genre: 'Hip-Hop',
+      price: 'paid',
+      availability: 'all',
+    });
+  });
+
+  it('treats a blank trimmed genre as no genre filter', async () => {
+    await request(app.getHttpServer()).get('/punchline/drops?genre=%20%20').expect(200);
+    expect(mockDropService.listDrops).toHaveBeenCalledWith(
+      expect.objectContaining({ genre: undefined }),
+    );
+  });
+
+  it.each([
+    ['page partial integer', 'page=2x'],
+    ['page zero', 'page=0'],
+    ['page negative', 'page=-1'],
+    ['page float', 'page=1.5'],
+    ['limit zero', 'limit=0'],
+    ['limit too large', 'limit=49'],
+    ['unknown kind', 'kind=album'],
+    ['unknown price', 'price=cheap'],
+    ['unknown availability', 'availability=soon'],
+    ['overlong genre', `genre=${'x'.repeat(101)}`],
+    ['repeated scalar', 'kind=all&kind=punchline'],
+  ])('rejects invalid browse query: %s', async (_label, query) => {
+    await request(app.getHttpServer())
+      .get(`/punchline/drops?${query}`)
+      .expect(400);
+    expect(mockDropService.listDrops).not.toHaveBeenCalled();
+  });
+
+  it('keeps browse, detail, and create routes separate', async () => {
+    await request(app.getHttpServer()).get('/punchline/drops/drop-1').expect(200);
+    expect(mockDropService.getDropDetail).toHaveBeenCalledWith('drop-1', undefined);
+    expect(mockDropService.listDrops).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer()).post('/punchline/drops').send({}).expect(401);
+    expect(mockDropService.listDrops).not.toHaveBeenCalled();
   });
 });

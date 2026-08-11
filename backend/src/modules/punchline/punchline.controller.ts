@@ -276,6 +276,77 @@ export class PunchlineController {
   // Public reads
   // ---------------------------------------------------------------------------
 
+  /** Public deterministic, paginated Punchline Drop browse surface (#1510). */
+  @Get("drops")
+  listDrops(
+    @Query("page") page?: unknown,
+    @Query("limit") limit?: unknown,
+    @Query("kind") kind?: unknown,
+    @Query("genre") genre?: unknown,
+    @Query("price") price?: unknown,
+    @Query("availability") availability?: unknown,
+  ) {
+    const parseStrictPositiveInteger = (
+      value: unknown,
+      name: string,
+      fallback: number,
+      maximum?: number,
+    ) => {
+      if (value === undefined) return fallback;
+      if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) {
+        throw new BadRequestException(`${name} must be a positive integer`);
+      }
+      const parsed = Number(value);
+      if (!Number.isSafeInteger(parsed) || (maximum !== undefined && parsed > maximum)) {
+        throw new BadRequestException(
+          maximum === undefined
+            ? `${name} must be a positive integer`
+            : `${name} must be an integer between 1 and ${maximum}`,
+        );
+      }
+      return parsed;
+    };
+    const parseEnum = <T extends string>(
+      value: unknown,
+      name: string,
+      allowed: readonly T[],
+      fallback: T,
+    ): T => {
+      if (value === undefined) return fallback;
+      if (typeof value !== "string" || !allowed.includes(value as T)) {
+        throw new BadRequestException(
+          `${name} must be one of: ${allowed.join(", ")}`,
+        );
+      }
+      return value as T;
+    };
+
+    let normalizedGenre: string | undefined;
+    if (genre !== undefined) {
+      if (typeof genre !== "string") {
+        throw new BadRequestException("genre must be a string");
+      }
+      normalizedGenre = genre.trim() || undefined;
+      if (normalizedGenre && normalizedGenre.length > 100) {
+        throw new BadRequestException("genre must be at most 100 characters");
+      }
+    }
+
+    return this.dropService.listDrops({
+      page: parseStrictPositiveInteger(page, "page", 1),
+      limit: parseStrictPositiveInteger(limit, "limit", 24, 48),
+      kind: parseEnum(kind, "kind", ["all", "punchline"] as const, "all"),
+      genre: normalizedGenre,
+      price: parseEnum(price, "price", ["all", "free", "paid"] as const, "all"),
+      availability: parseEnum(
+        availability,
+        "availability",
+        ["available", "sold_out", "all"] as const,
+        "available",
+      ),
+    });
+  }
+
   /**
    * Drop detail. Uses OptionalJwtAuthGuard so a signed-in owner can preview
    * their own draft, while published/archived drops are visible to anyone.

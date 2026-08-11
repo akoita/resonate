@@ -1947,6 +1947,64 @@ export type FeaturedDrop = PunchlineDrop & {
   };
 };
 
+export type DropsBrowseKind = "all" | "punchline";
+export type DropsBrowsePrice = "all" | "free" | "paid";
+export type DropsBrowseAvailability = "available" | "sold_out" | "all";
+
+/** One momentum-ranked item in the public Drops collection gallery (#1510). */
+export type BrowseDrop = PunchlineDrop & {
+  kind: "punchline";
+  availability: {
+    soldOut: boolean;
+    totalEditions: number;
+    collectedCount: number;
+    remainingEditions: number;
+  };
+  context: FeaturedDrop["context"] & {
+    genre: string | null;
+  };
+};
+
+export type DropsBrowseOptions = {
+  page?: number;
+  limit?: number;
+  kind?: DropsBrowseKind;
+  genre?: string;
+  price?: DropsBrowsePrice;
+  availability?: DropsBrowseAvailability;
+};
+
+export type DropsBrowseResponse = {
+  items: BrowseDrop[];
+  meta: {
+    count: number;
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+  };
+  facets: { genres: string[] };
+};
+
+/** Public, server-renderable Drops gallery feed. */
+export async function fetchDropsBrowse(
+  options: DropsBrowseOptions = {},
+): Promise<DropsBrowseResponse> {
+  const query = new URLSearchParams();
+  if (options.page !== undefined) query.set("page", String(options.page));
+  if (options.limit !== undefined) query.set("limit", String(options.limit));
+  if (options.kind) query.set("kind", options.kind);
+  if (options.genre) query.set("genre", options.genre);
+  if (options.price) query.set("price", options.price);
+  if (options.availability) query.set("availability", options.availability);
+
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return apiRequest<DropsBrowseResponse>(`/punchline/drops${suffix}`, {
+    cache: "no-store",
+  });
+}
+
 /** Momentum-ranked published drops for the Home shelf (#1479). Public. */
 export async function fetchFeaturedDrops(limit = 6): Promise<{ items: FeaturedDrop[] }> {
   return apiRequest<{ items: FeaturedDrop[] }>(

@@ -93,6 +93,15 @@ export interface MomentInput {
   priceCents?: number;
 }
 
+export interface ListDropsOptions {
+  page: number;
+  limit: number;
+  kind: "all" | "punchline";
+  genre?: string;
+  price: "all" | "free" | "paid";
+  availability: "available" | "sold_out" | "all";
+}
+
 interface ValidatedMomentFields {
   title: string;
   lyricText: string;
@@ -696,6 +705,221 @@ export class PunchlineDropService {
     return this.serializeDrop(drop);
   }
 
+  private scoreDropMoments(
+    moments: Array<{
+      id: string;
+      editionSize: number;
+      _count?: { collectibles: number };
+    }>,
+    recentByMoment: ReadonlyMap<string, number>,
+  ) {
+    const totalEditions = moments.reduce(
+      (sum, moment) => sum + moment.editionSize,
+      0,
+    );
+    const collectedCount = moments.reduce(
+      (sum, moment) => sum + (moment._count?.collectibles ?? 0),
+      0,
+    );
+    const soldOut = moments.every(
+      (moment) => (moment._count?.collectibles ?? 0) >= moment.editionSize,
+    );
+    const recentCollects = moments.reduce(
+      (sum, moment) => sum + (recentByMoment.get(moment.id) ?? 0),
+      0,
+    );
+    // This is the established featured-shelf scarcity signal: the fullest
+    // moment that still has an edition available. Keeping it shared ensures
+    // browse and featured rank identical candidates identically.
+    const scarcity = Math.max(
+      0,
+      ...moments
+        .filter(
+          (moment) =>
+            (moment._count?.collectibles ?? 0) < moment.editionSize,
+        )
+        .map(
+          (moment) =>
+            (moment._count?.collectibles ?? 0) / moment.editionSize,
+        ),
+    );
+    return {
+      totalEditions,
+      collectedCount,
+      soldOut,
+      recentCollects,
+      scarcity,
+    };
+  }
+
+  /**
+   * Public Drops browse (#1510). Query validation is deliberately performed by
+   * the controller because this application does not install a global
+   * ValidationPipe. The service owns filtering, deterministic ranking, and
+   * offset paging over the complete published candidate set.
+   */
+  async listDrops(options: ListDropsOptions) {
+    const rows = await prisma.punchlineDrop.findMany({
+      where: { status: "published" },
+      orderBy: [{ publishedAt: "desc" }, { id: "asc" }],
+      include: {
+        moments: {
+          orderBy: { createdAt: "asc" },
+          include: { _count: { select: { collectibles: true } } },
+        },
+        unlocks: { select: { id: true, unlockType: true, rewardMetadata: true } },
+        track: {
+          select: {
+            id: true,
+            title: true,
+            artist: true,
+            release: {
+              select: {
+                id: true,
+                title: true,
+                genre: true,
+                primaryArtist: true,
+                artworkMimeType: true,
+                artist: { select: { id: true, displayName: true } },
+                artistCredits: {
+                  select: { role: true, displayName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Facets are intentionally computed before applying the requested genre or
+    // other filters, but after the global published/nonempty candidate rules.
+    const facetCandidates = rows.filter((row) => row.moments.length > 0);
+    const genresByFoldedName = new Map<string, string>();
+    for (const row of facetCandidates) {
+      const genre = row.track.release.genre?.trim();
+      if (!genre) continue;
+      const folded = genre.toLowerCase();
+      const current = genresByFoldedName.get(folded);
+      if (!current || genre < current) genresByFoldedName.set(folded, genre);
+    }
+    const genres = [...genresByFoldedName.values()].sort((a, b) => {
+      const foldedA = a.toLowerCase();
+      const foldedB = b.toLowerCase();
+      if (foldedA !== foldedB) return foldedA < foldedB ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const momentIds = facetCandidates.flatMap((row) =>
+      row.moments.map((moment) => moment.id),
+    );
+    const recentByMoment = new Map<string, number>(
+      momentIds.length
+        ? (
+            await prisma.punchlineCollectible.groupBy({
+              by: ["momentId"],
+              where: { momentId: { in: momentIds }, acquiredAt: { gte: since } },
+              _count: { momentId: true },
+            })
+          ).map(
+            (group) =>
+              [group.momentId, group._count.momentId] as [string, number],
+          )
+        : [],
+    );
+
+    const requestedGenre = options.genre?.toLowerCase();
+    const ranked = facetCandidates
+      .map((row) => {
+        const momentStats = row.moments.map((moment) => ({
+          moment,
+          collectedCount: moment._count?.collectibles ?? 0,
+        }));
+        const score = this.scoreDropMoments(row.moments, recentByMoment);
+        const priceMatches = (priceCents: number) =>
+          options.price === "all" ||
+          (options.price === "free" ? priceCents === 0 : priceCents > 0);
+        const matchesAvailabilityAndPrice =
+          options.availability === "available"
+            ? momentStats.some(
+                (entry) =>
+                  entry.collectedCount < entry.moment.editionSize &&
+                  priceMatches(entry.moment.priceCents),
+              )
+            : options.availability === "sold_out"
+              ? score.soldOut &&
+                momentStats.some((entry) => priceMatches(entry.moment.priceCents))
+              : momentStats.some((entry) => priceMatches(entry.moment.priceCents));
+        return {
+          row,
+          ...score,
+          remainingEditions: Math.max(
+            0,
+            score.totalEditions - score.collectedCount,
+          ),
+          matchesAvailabilityAndPrice,
+        };
+      })
+      .filter(
+        (entry) =>
+          entry.matchesAvailabilityAndPrice &&
+          (!requestedGenre ||
+            entry.row.track.release.genre?.trim().toLowerCase() ===
+              requestedGenre),
+      )
+      .sort((a, b) => {
+        if (a.recentCollects !== b.recentCollects) {
+          return b.recentCollects - a.recentCollects;
+        }
+        if (a.scarcity !== b.scarcity) return b.scarcity - a.scarcity;
+        const publishedOrder =
+          (b.row.publishedAt?.getTime() ?? 0) -
+          (a.row.publishedAt?.getTime() ?? 0);
+        if (publishedOrder !== 0) return publishedOrder;
+        return a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0;
+      });
+
+    const totalCount = ranked.length;
+    const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / options.limit);
+    const offset = (options.page - 1) * options.limit;
+    const pageItems = ranked.slice(offset, offset + options.limit);
+
+    return {
+      items: pageItems.map((entry) => ({
+        ...this.serializeDrop(entry.row),
+        kind: "punchline" as const,
+        availability: {
+          soldOut: entry.soldOut,
+          totalEditions: entry.totalEditions,
+          collectedCount: entry.collectedCount,
+          remainingEditions: entry.remainingEditions,
+        },
+        context: {
+          trackTitle: entry.row.track.title,
+          releaseId: entry.row.track.release.id,
+          releaseTitle: entry.row.track.release.title,
+          releaseHasArtwork: Boolean(entry.row.track.release.artworkMimeType),
+          artistName: resolveCreditedArtistName({
+            trackArtist: entry.row.track.artist,
+            credits: entry.row.track.release.artistCredits,
+            primaryArtist: entry.row.track.release.primaryArtist,
+            accountDisplayName: entry.row.track.release.artist?.displayName,
+          }),
+          genre: entry.row.track.release.genre,
+        },
+      })),
+      meta: {
+        count: pageItems.length,
+        page: options.page,
+        limit: options.limit,
+        totalCount,
+        totalPages,
+        hasNextPage: options.page < totalPages,
+      },
+      facets: { genres },
+    };
+  }
+
   /**
    * Featured drops for the Home shelf (#1479). Deterministic momentum
    * heuristic — never random:
@@ -757,28 +981,17 @@ export class PunchlineDropService {
 
     const scored = rows
       .map((row) => {
-        const soldOut = row.moments.every(
-          (moment) => (moment._count?.collectibles ?? 0) >= moment.editionSize,
-        );
-        const recentCollects = row.moments.reduce(
-          (sum, moment) => sum + (recentByMoment.get(moment.id) ?? 0),
-          0,
-        );
-        const scarcity = Math.max(
-          0,
-          ...row.moments
-            .filter((moment) => (moment._count?.collectibles ?? 0) < moment.editionSize)
-            .map((moment) => (moment._count?.collectibles ?? 0) / moment.editionSize),
-        );
-        return { row, soldOut, recentCollects, scarcity };
+        return { row, ...this.scoreDropMoments(row.moments, recentByMoment) };
       })
       .filter((entry) => !entry.soldOut && entry.row.moments.length > 0)
       .sort((a, b) => {
         if (a.recentCollects !== b.recentCollects) return b.recentCollects - a.recentCollects;
         if (a.scarcity !== b.scarcity) return b.scarcity - a.scarcity;
-        return (
-          (b.row.publishedAt?.getTime() ?? 0) - (a.row.publishedAt?.getTime() ?? 0)
-        );
+        const publishedOrder =
+          (b.row.publishedAt?.getTime() ?? 0) -
+          (a.row.publishedAt?.getTime() ?? 0);
+        if (publishedOrder !== 0) return publishedOrder;
+        return a.row.id < b.row.id ? -1 : a.row.id > b.row.id ? 1 : 0;
       });
 
     const perArtist = new Map<string, number>();

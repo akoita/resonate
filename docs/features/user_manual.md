@@ -60,8 +60,10 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 Illustrations live in `web/public/help/screenshots/` and are captured with
 `web/scripts/capture-help-screenshots.mjs` in two passes:
 
-- **Public pass** (from staging): Discover, Catalog, Shows, a Shows campaign,
-  the Marketplace, the Player, the Wallet, and the connect wall.
+- **Public pass** (normally from staging; a local public preview is acceptable
+  before a new route is first deployed): Discover, Catalog, Shows, a Shows
+  campaign, the Marketplace, the Drops gallery (`/drops` → `drops.png`), the
+  Player, the Wallet, and the connect wall.
 - **Signed-in pass** (from a local instance): the screens behind the connect
   wall — Upload, Create, Settings, AI DJ, Sonic Radar, Library, and the Dispute
   Center. The script injects the same mock-auth `localStorage` the E2E tests use

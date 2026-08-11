@@ -9,11 +9,13 @@ import type { HelpArticle } from "./types";
  * article here in the same PR (see CLAUDE.md → Feature Catalog rules).
  *
  * Screenshots live in `web/public/help/screenshots/` and are captured from
- * the public surfaces of staging with `scripts/capture-help-screenshots.mjs`.
+ * staging, or from a local public preview before a new route is first deployed,
+ * with `scripts/capture-help-screenshots.mjs`.
  */
 
 const SHOT = "/help/screenshots";
 const STAGING = "Staging";
+const LOCAL_PUBLIC = "Local preview";
 // Authenticated-only screens, captured from a local instance in a signed-in
 // preview state (sample data), since signed-in screens aren't publicly reachable.
 const LOCAL = "Signed-in preview";
@@ -1021,7 +1023,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "listener"],
     status: "partial",
-    keywords: ["punchline", "drops", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
+    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
     sections: [
       {
         id: "what",
@@ -1082,7 +1084,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "You don't have to know which release has a drop: the Home page has a \"Drops\" shelf showing the moments with the most collecting momentum right now — recent collects and nearly-gone editions float to the top, and sold-out drops leave the shelf. Tap any card and you land directly on that release's collect section.",
+            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Filter by drop kind, genre, or free and paid moments; turn on Include sold out when you want to see completed editions too. Your filters and page stay in the web address, so you can share the view. Tap any card and you land directly on that release's collect section. The Home page also shows a smaller shelf of available Drops.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/drops.png`,
+              alt: "The Drops collection gallery with kind, genre, price, and sold-out filters above three collectible moment cards.",
+              caption: "Browse collectible moments by kind, genre, price, and availability.",
+              width: 1440,
+              height: 900,
+              source: LOCAL_PUBLIC,
+            },
           },
           {
             kind: "paragraph",
@@ -1116,6 +1129,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       },
     ],
     appLinks: [
+      { label: "Browse Drops", href: "/drops", description: "Explore available and sold-out collectible moments." },
       { label: "Your catalog", href: "/artist/catalog", description: "Open a release to find its Punchline Drops panel." },
       { label: "Your moments", href: "/library?tab=moments", description: "The Punchline moments you have collected." },
     ],

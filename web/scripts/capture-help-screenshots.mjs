@@ -47,6 +47,7 @@ const PUBLIC_TARGETS = [
   ["/shows", "shows.png"],
   ["/shows/sennarin-paris", "show-campaign.png"],
   ["/marketplace", "marketplace.png"],
+  ["/drops", "drops.png"],
   ["/player", "player.png"],
   ["/wallet", "wallet.png"],
   ["/library", "connect-wallet.png"],
