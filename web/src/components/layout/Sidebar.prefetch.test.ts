@@ -46,6 +46,46 @@ function readSidebarLinks(): SidebarLink[] {
   return links;
 }
 
+function readPrimaryItemBadge(itemName: string): string | undefined {
+  const sourceText = readFileSync(SIDEBAR_FILE, "utf8");
+  const sourceFile = ts.createSourceFile(
+    SIDEBAR_FILE,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let badge: string | undefined;
+
+  function visit(node: ts.Node) {
+    if (ts.isObjectLiteralExpression(node)) {
+      const name = node.properties.find(
+        (property): property is ts.PropertyAssignment =>
+          ts.isPropertyAssignment(property) && property.name.getText(sourceFile) === "name",
+      );
+      if (
+        name &&
+        ts.isStringLiteral(name.initializer) &&
+        name.initializer.text === itemName
+      ) {
+        const badgeProperty = node.properties.find(
+          (property): property is ts.PropertyAssignment =>
+            ts.isPropertyAssignment(property) && property.name.getText(sourceFile) === "badge",
+        );
+        const initializer = badgeProperty?.initializer;
+        if (initializer) {
+          const value = ts.isAsExpression(initializer) ? initializer.expression : initializer;
+          if (ts.isStringLiteral(value)) badge = value.text;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return badge;
+}
+
 describe("Sidebar route prefetching", () => {
   it("explicitly disables prefetch on every persistent Sidebar Link", () => {
     // The Home trace measured 64 RSC prefetch requests from this always-mounted
@@ -60,5 +100,10 @@ describe("Sidebar route prefetching", () => {
       missingLines,
       `Sidebar <Link> tags missing explicit prefetch={false} at lines: ${missingLines.join(", ")}`,
     ).toEqual([]);
+  });
+
+  it("marks Drops with the same NEW navigation badge as Shows", () => {
+    expect(readPrimaryItemBadge("Shows")).toBe("NEW");
+    expect(readPrimaryItemBadge("Drops")).toBe("NEW");
   });
 });

@@ -173,6 +173,57 @@
 
 .drops-grid { align-items: stretch; }
 
+.drops-page .ng-drops-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.drops-page .ng-drops-card__link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.drops-card-preview {
+  display: flex;
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.drops-card-preview__button {
+  display: inline-flex;
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ds-primary) 16%, transparent);
+  color: #fff;
+  font: 700 14px var(--ds-font-body);
+  cursor: pointer;
+}
+
+.drops-card-preview__button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ds-primary) 28%, transparent);
+}
+
+.drops-card-preview__button[aria-pressed="true"] {
+  border-color: var(--ds-primary);
+  background: var(--ds-primary);
+  color: #100f14;
+}
+
+.drops-card-preview__button:disabled {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ds-on-surface-variant);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .drops-card-sold-out {
   position: absolute;
   z-index: 2;
@@ -254,4 +305,5 @@
   .drops-filters button, .drops-clear-link { width: 100%; }
   .drops-pagination { grid-template-columns: 1fr 1fr; }
   .drops-pagination > span:nth-child(2) { grid-column: 1 / -1; grid-row: 1; text-align: center; }
+  .drops-card-preview__button { width: 100%; }
 }

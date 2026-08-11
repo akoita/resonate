@@ -104,6 +104,26 @@ describe("DropsBrowseView", () => {
     expect(html).toContain('name="includeSoldOut"');
     expect(html.indexOf("Moment first")).toBeLessThan(html.indexOf("Moment second"));
     expect(html).toContain('href="/release/release-first?focus=moments"');
+    expect(html).toContain('aria-label="Play preview of Moment first"');
+    expect(html).toContain('aria-pressed="false"');
+    expect(html).toContain("Play preview");
+    const releaseLinkStart = html.indexOf('href="/release/release-first?focus=moments"');
+    const releaseLinkEnd = html.indexOf("</a>", releaseLinkStart);
+    const previewButtonStart = html.indexOf("<button", releaseLinkStart);
+    expect(releaseLinkEnd).toBeLessThan(previewButtonStart);
+  });
+
+  it("renders an honest disabled preview when the selected moment has no clip", () => {
+    const unavailable = drop("unavailable", {
+      moments: [moment({ clipAssetUri: null })],
+    });
+    const html = renderToStaticMarkup(
+      <DropsBrowseView result={response([unavailable])} query={defaultQuery} />,
+    );
+    expect(html).toContain('aria-label="Preview unavailable for Golden line"');
+    expect(html).toContain("disabled");
+    expect(html).toContain("Preview unavailable");
+    expect(html).toContain('href="/release/release-unavailable?focus=moments"');
   });
 
   it("normalizes invalid incoming values to safe defaults", () => {

@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 export default async function DropsPage({
   searchParams,
 }: {
-  searchParams?: Promise<DropsSearchParams> | DropsSearchParams;
+  searchParams?: Promise<DropsSearchParams>;
 }) {
   const query = parseDropsBrowseQuery(await searchParams);
   let result;

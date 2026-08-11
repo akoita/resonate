@@ -176,6 +176,7 @@ export function DropsBrowseView({
                   drop={drop}
                   price={query.price}
                   testId="drops-browse-card"
+                  enablePreview
                 />
               ))}
             </div>
