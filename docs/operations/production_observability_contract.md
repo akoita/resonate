@@ -56,6 +56,26 @@ Common fields:
 - `statusCode` when the event maps to an HTTP response.
 - `reason` for failed or rejected flows.
 
+## Shows Escrow Indexer Lease Events
+
+The distributed indexer ownership contract uses these stable events:
+
+- `shows.escrow_indexer.lease_acquired`
+- `shows.escrow_indexer.lease_takeover`
+- `shows.escrow_indexer.lease_lost`
+- `shows.escrow_indexer.lease_released`
+
+Event-dependent bounded fields include `chainId`, `contractAddress`, `ownerId`,
+`leaseEpoch`, `leaseExpiresAt`, `leaseTtlMs`, `cursorBlock`, `phase`, and an
+optional `reason` or `errorClass`. These events must not contain transaction
+hashes, campaign ids, or RPC payloads. `ownerId` and `contractAddress` remain
+JSON log fields rather than metric labels so autoscaling cannot create unbounded
+metric cardinality.
+
+Infrastructure maps any `lease_lost` event to an operator alert and monitors
+repeated acquisition/takeover events for ownership churn. The companion rollout
+is tracked in [`akoita/resonate-iac#209`](https://github.com/akoita/resonate-iac/issues/209).
+
 ## Infrastructure Mapping
 
 `resonate-iac` can turn these events into Cloud Logging log-based metrics for
@@ -63,4 +83,3 @@ payment health, challenge volume, replay rejection, and request-latency
 dashboards. The first infrastructure slice should create platform dashboards
 and leave app log-based metrics behind explicit variables until staging log
 volume confirms the final thresholds.
-

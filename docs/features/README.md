@@ -10,6 +10,10 @@ This catalog is the human-readable entry point for implemented, in-progress,
 planned, and retired Resonate features. Use it before reading RFCs or scanning
 the codebase.
 
+The Resonate Shows escrow indexer now includes fenced, per-target distributed
+ownership (#1567), allowing lease-aware backend revisions to autoscale while
+preserving reconciliation and cursor safety. See [Resonate Shows](resonate_shows.md).
+
 Each durable product or platform capability should have one short feature page
 that answers:
 

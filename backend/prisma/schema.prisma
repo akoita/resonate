@@ -941,15 +941,20 @@ model IndexerState {
 // separate from IndexerState so the escrow poller and the marketplace/content
 // indexer advance independently on the same chain.
 model ShowEscrowIndexerState {
-  id              String   @id @default(uuid())
-  chainId         Int
-  contractAddress String
-  lastBlockNumber BigInt   @default(0)
-  currentFeeBps   Int?
-  feeRecipient    String?
-  updatedAt       DateTime @updatedAt
+  id               String    @id @default(uuid())
+  chainId          Int
+  contractAddress  String
+  lastBlockNumber  BigInt    @default(0)
+  currentFeeBps    Int?
+  feeRecipient     String?
+  leaseOwnerId     String?
+  leaseExpiresAt   DateTime?
+  leaseHeartbeatAt DateTime?
+  leaseEpoch       BigInt    @default(0)
+  updatedAt        DateTime  @updatedAt
 
   @@unique([chainId, contractAddress])
+  @@index([leaseExpiresAt])
 }
 
 // Operator acknowledgement for an on-chain Shows campaign that is known not

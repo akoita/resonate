@@ -58,7 +58,7 @@ Core GitHub environment variables:
 | `deploy-revenue-escrow` | Deploy an isolated guarded RevenueEscrow replacement graph. | Workflow: `operation=deploy-revenue-escrow`. Required remote vars: `REVENUE_ESCROW_OWNER`, independent `REVENUE_ESCROW_GUARDIAN`; optional `REVENUE_ESCROW_PERIOD` (2592000) and `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` (minimum/default 172800). Secret: deployer key. | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast files, authority smoke, and Sourcify verification. | Link ContentProtection and depositors, audit/settle any standalone predecessor, then promote only the proxy through `resonate-iac`. No state moves automatically. |
 | `upgrade-revenue-escrow` | Schedule or execute a reviewed RevenueEscrow implementation upgrade. | Vars: `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `UPGRADE_ACTION`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must be an owner/guardian timelock proposer/executor. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy address stable. | Re-run storage/formal/security gates before scheduling. Guardian or owner cancels a bad operation during the delay. |
 | `pause-revenue-escrow` | Stop or resume all RevenueEscrow fund movement during incident response. | Vars: `REVENUE_ESCROW_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Diagnose while paused. Unpause only after remediation or a timelocked recovery upgrade; coordinate deposit/release operators. |
-| `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + new backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, wait both cursors reach tip, and only then promote the proxy as the current backend/frontend address through `resonate-iac`. |
+| `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + lease-aware backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, verify lease acquisition, and wait both cursors reach tip. Promote the proxy and restore normal backend autoscaling through `resonate-iac`; return to one instance if lease-loss/churn alerts fire. |
 | `deploy-stem-marketplace` | Surgically deploy a guarded `StemMarketplaceV2` proxy against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Required remote vars: `MARKETPLACE_OWNER`, independent `MARKETPLACE_GUARDIAN`, `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`, `MARKETPLACE_TIMELOCK_MIN_DELAY` (minimum/default 172800). | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast, authority smoke, and Sourcify verification. | Grant the proxy ContentProtection registrar and validator whitelist permissions, then promote only it as `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. Audit any failed-payment liabilities on the standalone predecessor. |
 | `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` | Schedule or execute a reviewed marketplace implementation upgrade. | Vars: `MARKETPLACE_ADDRESS`, `MARKETPLACE_TIMELOCK_ADDRESS`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must hold the relevant timelock role. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy stable. | Run storage/formal/security gates and verify the candidate before execution; owner or guardian can cancel during the delay. |
 | `pause-stem-marketplace` | Stop or resume new marketplace listings and purchases. | Vars: `MARKETPLACE_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Sellers retain cancellation and recipients retain failed-payment claims. Unpause only after remediation and smoke verification. |
@@ -424,6 +424,34 @@ failed assertion cannot hide itself and the successful test does not leave
 permanent no-backend-campaign noise. Run it after any deploy that touches the
 escrow indexer. Full guide:
 [`docs/features/staging_reconciliation_drill.md`](../features/staging_reconciliation_drill.md).
+
+## Shows Escrow Indexer Lease
+
+Every configured chain/address target has an independent database-backed lease.
+The database clock determines expiry, and a monotonically increasing epoch fences
+reconciliation and cursor writes from an instance that lost ownership. A normal
+deployment may produce one acquisition or takeover per target; it must not produce
+sustained ownership churn.
+
+Monitor these structured app events:
+
+- `shows.escrow_indexer.lease_acquired`: a previously unowned target was claimed.
+- `shows.escrow_indexer.lease_takeover`: an expired owner was replaced.
+- `shows.escrow_indexer.lease_lost`: the active worker was fenced; page on any
+  occurrence and inspect database availability, transaction latency, RPC latency,
+  poll duration, and recent revisions.
+- `shows.escrow_indexer.lease_released`: graceful shutdown released ownership.
+
+Repeated acquisitions/takeovers outside a rollout indicate churn. Confirm that
+`SHOWS_ESCROW_LEASE_TTL_MS` is greater than twice the polling interval and that a
+full index cycle fits comfortably inside the TTL. A crashed owner needs no manual
+cleanup: the next instance takes over after expiry. Do not manually reset
+`leaseEpoch` or clear an active lease.
+
+If ownership is unstable, set the backend maximum instance count to one through
+`resonate-iac`, keep the indexer enabled so reconciliation continues, and diagnose
+before restoring autoscaling. A graceful shutdown releases only leases still owned
+by that process; correctness after a hard crash relies on expiry and epoch fencing.
 
 The same structured-app-event + log-based-metric + email-alert path also covers
 `x402.refund_due_stale` (#1506) — a paid Punchline collect that could not be

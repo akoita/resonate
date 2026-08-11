@@ -317,7 +317,10 @@ Use full 20-byte addresses in real configuration. Every target requires its
 exact deployment block, and the list must include the current address. Deploy
 the schema migration and new backend revision completely before adding a second
 target; old revisions assume one cursor per chain. Keep the backend at one
-instance while this in-process single-writer indexer is enabled.
+instance until every serving revision includes the per-target distributed lease.
+Verify lease acquisition and target cursor progress, then restore normal backend
+autoscaling through `resonate-iac`. If lease-loss or repeated-takeover alerts fire,
+roll back the maximum instance count to one while investigating.
 
 #### Verification and rollback
 
