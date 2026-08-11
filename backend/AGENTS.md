@@ -23,7 +23,10 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
 
 ## Rules
 
-1. **Never mock Prisma.** If a service uses `prisma`, write an `.integration.spec.ts` that runs against the real Testcontainer Postgres. Use the global `prisma` singleton from `../db/prisma` — the Testcontainer setup handles the `DATABASE_URL`.
+1. **Keep Prisma artifacts current.** Prisma schema changes require a migration
+   and `npx prisma generate`. Do not hand-edit generated Prisma artifacts.
+
+2. **Never mock Prisma.** If a service uses `prisma`, write an `.integration.spec.ts` that runs against the real Testcontainer Postgres. Use the global `prisma` singleton from `../db/prisma` — the Testcontainer setup handles the `DATABASE_URL`.
 
    ```typescript
    // ✅ CORRECT — import real prisma
@@ -35,7 +38,7 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    }));
    ```
 
-2. **Seed with unique prefixes.** Every integration test must use a unique `TEST_PREFIX` to avoid collisions with parallel tests:
+3. **Seed with unique prefixes.** Every integration test must use a unique `TEST_PREFIX` to avoid collisions with parallel tests:
 
    ```typescript
    const TEST_PREFIX = `mytest_${Date.now()}_`;
@@ -55,17 +58,16 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    });
    ```
 
-3. **External services stay mocked.** Services that require external infrastructure not available as a Testcontainer (Google AI, Lyria, bundlers like Pimlico/Alto) should be mocked. Common allowed mocks:
+4. **External services stay mocked.** Services that require external infrastructure not available as a Testcontainer (Google AI, Lyria, bundlers like Pimlico/Alto) should be mocked. Common allowed mocks:
    - `@google/genai`, `@google/adk` — AI SDK (ESM packages)
    - `google-auth-library` — Google Cloud auth
    - `fetch` for external APIs (Vertex AI, bundlers) — but NOT for Anvil-reachable endpoints
    - BullMQ queue — job scheduling internals
    - Storage provider — when not testing storage itself
 
-4. **Use dockerized Anvil for blockchain.** The Testcontainer Anvil is available at `process.env.ANVIL_RPC_URL`. Use it for:
+5. **Use dockerized Anvil for blockchain.** The Testcontainer Anvil is available at `process.env.ANVIL_RPC_URL`. Use it for:
    - ERC-4337 client tests (real JSON-RPC transport)
    - Indexer tests (real block reading)
    - Any contract interaction test
 
-5. **Use Pub/Sub emulator for messaging.** Available at `process.env.PUBSUB_EMULATOR_HOST` with project ID `resonate-local`.
-
+6. **Use Pub/Sub emulator for messaging.** Available at `process.env.PUBSUB_EMULATOR_HOST` with project ID `resonate-local`.
