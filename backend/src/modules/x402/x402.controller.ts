@@ -18,6 +18,7 @@ import { X402Config } from './x402.config';
 import { prisma } from '../../db/prisma';
 import { EncryptionService } from '../encryption/encryption.service';
 import { buildStemX402Quote } from './x402.quote';
+import type { X402PersonalQuoteOverride } from './x402.quote';
 import { buildStemX402Receipt, encodeX402ReceiptHeader } from './x402.receipt';
 import { getX402ChainId, resolveX402AssetInfo, type X402AssetInfo } from './x402.public';
 import { buildStorefrontStemDetail } from '../storefront/storefront.presenter';
@@ -86,6 +87,15 @@ const MARKETPLACE_BUY_FOR_ABI = [
       { name: 'recipient', type: 'address' },
     ],
     outputs: [],
+  },
+] as const;
+const MARKETPLACE_PROTOCOL_FEE_ABI = [
+  {
+    type: 'function',
+    name: 'protocolFeeBps',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
   },
 ] as const;
 const MARKETPLACE_SOLD_EVENT = {
@@ -318,11 +328,12 @@ export class X402Controller {
       }
 
       const activeListing = await this.findActiveListing(stem.id);
-      const amountUsd = this.resolveReceiptAmountUsd({
+      const paymentTerms = this.resolvePaymentTerms({
         pricing,
         activeListing,
         assetInfo,
       });
+      const amountUsd = paymentTerms.amountUsd;
       const buyerAddress = this.resolveBuyerAddress(req, input.payer);
       const contractSettlement = await this.resolveContractSettlement({
         listing: activeListing,
@@ -346,12 +357,13 @@ export class X402Controller {
           hasNft: !!stem.nftMint,
           tokenId: stem.nftMint?.tokenId?.toString() ?? null,
           amountUsd,
+          amount: paymentTerms.amount,
           paymentAsset: {
             assetId: assetInfo.assetId,
             tokenAddress: assetInfo.address,
             symbol: assetInfo.symbol,
             decimals: assetInfo.decimals,
-            amountUnits: this.toTokenAmount(amountUsd, assetInfo.decimals),
+            amountUnits: paymentTerms.amountUnits,
           },
           network: this.x402Config.network,
           payTo: this.x402Config.payoutAddress,
@@ -473,12 +485,13 @@ export class X402Controller {
         hasNft: !!stem.nftMint,
         tokenId: stem.nftMint?.tokenId?.toString() ?? null,
         amountUsd,
+        amount: paymentTerms.amount,
         paymentAsset: {
           assetId: assetInfo.assetId,
           tokenAddress: assetInfo.address,
           symbol: assetInfo.symbol,
           decimals: assetInfo.decimals,
-          amountUnits: this.toTokenAmount(amountUsd, assetInfo.decimals),
+          amountUnits: paymentTerms.amountUnits,
         },
         network: this.x402Config.network,
         payTo: this.x402Config.payoutAddress,
@@ -651,9 +664,14 @@ export class X402Controller {
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId },
     });
-    const amountUsd = this.x402Config.resolveLicenseAmountUsd(pricing, 'personal');
     const asset = this.resolveAssetInfo();
-    const amountUnits = this.toTokenAmount(amountUsd, asset.decimals);
+    const activeListing = await this.findActiveListing(stemId);
+    const paymentTerms = this.resolvePaymentTerms({
+      pricing,
+      activeListing,
+      assetInfo: asset,
+    });
+    const amountUnits = paymentTerms.amountUnits;
     const payTo = getAddress(this.x402Config.payoutAddress);
     const assetAddress = getAddress(asset.address);
 
@@ -669,7 +687,7 @@ export class X402Controller {
       assetAddress,
       payer,
       payTo,
-      minAmountUnits: BigInt(amountUnits),
+      expectedAmountUnits: BigInt(amountUnits),
     });
     if (!transfer) {
       throw new Error('No matching USDC transfer to the x402 payout address was found.');
@@ -794,7 +812,7 @@ export class X402Controller {
     });
   }
 
-  private resolveReceiptAmountUsd(input: {
+  private resolvePaymentTerms(input: {
     pricing:
       | {
           basePlayPriceUsd?: number | null;
@@ -803,15 +821,82 @@ export class X402Controller {
       | undefined;
     activeListing: ActiveX402Listing | null;
     assetInfo: X402AssetInfo;
-  }) {
+  }): {
+    amount: string;
+    amountUsd: number;
+    amountUnits: string;
+    contractBacked: boolean;
+  } {
     if (
       this.x402Config.contractSettlementEnabled &&
-      input.activeListing &&
-      input.activeListing.paymentToken.toLowerCase() === input.assetInfo.address.toLowerCase()
+      input.activeListing
     ) {
-      return Number(formatUnits(BigInt(input.activeListing.pricePerUnit), input.assetInfo.decimals));
+      if (input.activeListing.paymentToken.toLowerCase() !== input.assetInfo.address.toLowerCase()) {
+        throw new Error(
+          'The active marketplace listing is not priced in the configured x402 stablecoin asset.',
+        );
+      }
+      if (input.activeListing.chainId !== this.x402Config.chainId) {
+        throw new Error(
+          'The active marketplace listing is on a different chain than the configured x402 network.',
+        );
+      }
+      const amountUnits = BigInt(input.activeListing.pricePerUnit);
+      if (amountUnits <= BigInt(0)) {
+        throw new Error('The active marketplace listing has an invalid payment amount.');
+      }
+      const amount = formatUnits(amountUnits, input.assetInfo.decimals);
+      return {
+        amount,
+        amountUsd: Number(amount),
+        amountUnits: amountUnits.toString(),
+        contractBacked: true,
+      };
     }
-    return this.x402Config.resolveLicenseAmountUsd(input.pricing, 'personal');
+    const amountUsd = this.x402Config.resolveLicenseAmountUsd(input.pricing, 'personal');
+    const amountUnits = this.toTokenAmount(amountUsd, input.assetInfo.decimals);
+    return {
+      amount: formatUnits(BigInt(amountUnits), input.assetInfo.decimals),
+      amountUsd,
+      amountUnits,
+      contractBacked: false,
+    };
+  }
+
+  private async resolvePersonalQuote(input: {
+    paymentTerms: ReturnType<X402Controller['resolvePaymentTerms']>;
+    activeListing: ActiveX402Listing | null;
+    assetInfo: X402AssetInfo;
+  }): Promise<X402PersonalQuoteOverride | undefined> {
+    if (!input.paymentTerms.contractBacked || !input.activeListing) {
+      return undefined;
+    }
+
+    const feeBpsValue = await this.getX402PublicClient().readContract({
+      address: getAddress(input.activeListing.contractAddress),
+      abi: MARKETPLACE_PROTOCOL_FEE_ABI,
+      functionName: 'protocolFeeBps',
+    });
+    const feeBps = Number(feeBpsValue);
+    if (!Number.isInteger(feeBps) || feeBps < 0 || feeBps > 10_000) {
+      throw new Error('The marketplace contract returned an invalid protocol fee.');
+    }
+
+    const amountUnits = BigInt(input.paymentTerms.amountUnits);
+    const feeUnits = amountUnits * BigInt(feeBps) / BigInt(10_000);
+    const netUnits = amountUnits - feeUnits;
+    const platformFeeAmount = formatUnits(feeUnits, input.assetInfo.decimals);
+    const netToSellerAmount = formatUnits(netUnits, input.assetInfo.decimals);
+    return {
+      currency: input.assetInfo.symbol,
+      amount: input.paymentTerms.amount,
+      amountUsd: input.paymentTerms.amountUsd,
+      feeBps,
+      platformFeeAmount,
+      platformFeeUsd: Number(platformFeeAmount),
+      netToSellerAmount,
+      netToSellerUsd: Number(netToSellerAmount),
+    };
   }
 
   private resolveBuyerAddress(req: Request, fallback?: string | null) {
@@ -1023,7 +1108,7 @@ export class X402Controller {
       assetAddress: Address;
       payer: Address;
       payTo: Address;
-      minAmountUnits: bigint;
+      expectedAmountUnits: bigint;
     },
   ) {
     for (const log of receipt.logs) {
@@ -1043,7 +1128,7 @@ export class X402Controller {
         if (
           getAddress(args.from) === input.payer &&
           getAddress(args.to) === input.payTo &&
-          args.value >= input.minAmountUnits
+          args.value === input.expectedAmountUnits
         ) {
           return { logIndex: log.logIndex };
         }
@@ -1217,20 +1302,24 @@ export class X402Controller {
       return { error: 'Stem not found' };
     }
 
-    // Look up active listing price
-    const listing = await prisma.stemListing.findFirst({
-      where: {
-        stemId: stem.id,
-        status: 'active',
-      },
-      orderBy: { listedAt: 'desc' },
-    });
+    const listing = await this.findActiveListing(stem.id);
 
     // Also check StemPricing for a base price
     const pricing = await prisma.stemPricing.findUnique({
       where: { stemId: stem.id },
     });
 
+    const assetInfo = this.resolveAssetInfo();
+    const paymentTerms = this.resolvePaymentTerms({
+      pricing,
+      activeListing: listing,
+      assetInfo,
+    });
+    const personalQuote = await this.resolvePersonalQuote({
+      paymentTerms,
+      activeListing: listing,
+      assetInfo,
+    });
     const quote = buildStemX402Quote({
       stemId: stem.id,
       type: stem.type,
@@ -1247,6 +1336,7 @@ export class X402Controller {
       network: this.x402Config.network,
       payTo: this.x402Config.payoutAddress,
       licensePricing: this.x402Config.licensePricing,
+      personalQuote,
     });
 
     const storefrontDetail = buildStorefrontStemDetail(
@@ -1282,6 +1372,14 @@ export class X402Controller {
 
     return {
       ...storefrontDetail,
+      price: quote.price,
+      priceSummary: quote.priceSummary,
+      licenseOptions: quote.licenseOptions,
+      pricing: {
+        currency: quote.price.currency,
+        licenses: quote.licenseOptions,
+        summary: quote.priceSummary,
+      },
       stemId: quote.stemId,
       type: quote.type,
       hasNft: quote.hasNft,
@@ -1293,7 +1391,7 @@ export class X402Controller {
             required: true,
             available:
               this.x402Config.contractSettlementEnabled &&
-              listing.paymentToken.toLowerCase() === this.x402ConfigAssetAddress().toLowerCase() &&
+              listing.paymentToken.toLowerCase() === assetInfo.address.toLowerCase() &&
               listing.chainId === this.x402Config.chainId,
             contractSettlementEnabled: this.x402Config.contractSettlementEnabled,
             listingId: listing.listingId.toString(),
@@ -1308,7 +1406,4 @@ export class X402Controller {
     };
   }
 
-  private x402ConfigAssetAddress() {
-    return this.resolveAssetInfo().address;
-  }
 }

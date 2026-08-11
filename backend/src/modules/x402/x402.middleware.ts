@@ -216,6 +216,7 @@ export class X402Middleware implements NestMiddleware {
       },
       select: {
         paymentToken: true,
+        chainId: true,
       },
       orderBy: { listedAt: 'desc' },
     });
@@ -252,6 +253,15 @@ export class X402Middleware implements NestMiddleware {
         error: 'Unsupported listing payment asset',
         message:
           'The active marketplace listing is not priced in the configured x402 stablecoin asset.',
+      };
+    }
+    if (listing.chainId !== this.x402Config.chainId) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: 'Unsupported listing chain',
+        message:
+          'The active marketplace listing is on a different chain than the configured x402 network.',
       };
     }
 

@@ -498,6 +498,12 @@
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.buy-modal__x402-unavailable {
+  color: #fca5a5;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .buy-modal__x402-status {
   font-size: 12px;
   color: var(--color-muted);

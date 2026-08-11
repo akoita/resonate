@@ -113,4 +113,49 @@ describe("buildStemX402Quote", () => {
     expect(quote.licenseOptions[2].price.amount).toBe("25");
     expect(quote.alternativeOffers).toEqual([]);
   });
+
+  it("uses an exact server-authored personal quote without adding its included fee", () => {
+    const quote = buildStemX402Quote({
+      stemId: "stem_listed",
+      type: "bass",
+      title: "Bass",
+      trackTitle: "Track",
+      artist: "Artist",
+      releaseTitle: "Release",
+      hasNft: true,
+      tokenId: "9",
+      network: "eip155:84532",
+      payTo: "0xPayTo",
+      licensePricing,
+      personalQuote: {
+        currency: "USDC",
+        amount: "2",
+        amountUsd: 2,
+        feeBps: 1000,
+        platformFeeAmount: "0.2",
+        platformFeeUsd: 0.2,
+        netToSellerAmount: "1.8",
+        netToSellerUsd: 1.8,
+      },
+    });
+
+    expect(quote.price).toEqual({
+      currency: "USDC",
+      amount: "2",
+      display: "2 USDC",
+      usd: 2,
+    });
+    expect(quote.licenseOptions[0]).toEqual({
+      key: "personal",
+      price: { currency: "USDC", amount: "2" },
+      displayPrice: "2 USDC",
+      breakdown: {
+        feeBps: 1000,
+        royaltyBps: null,
+        platformFee: { currency: "USDC", amount: "0.2", usd: 0.2 },
+        royalty: null,
+        netToSeller: { currency: "USDC", amount: "1.8", usd: 1.8 },
+      },
+    });
+  });
 });

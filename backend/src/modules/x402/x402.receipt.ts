@@ -13,6 +13,8 @@ export type X402ReceiptInput = {
   tokenId: string | null;
   licenseKey?: QuoteLicenseKey;
   amountUsd: number;
+  /** Exact decimal token amount from the server's canonical payment terms. */
+  amount?: string;
   paymentAsset?: {
     assetId: string;
     tokenAddress: string;
@@ -51,7 +53,7 @@ const LICENSE_NAMES: Record<QuoteLicenseKey, string> = {
 export function buildStemX402Receipt(input: X402ReceiptInput) {
   const purchasedAt = input.purchasedAt ?? new Date();
   const licenseKey = input.licenseKey ?? 'personal';
-  const normalizedAmount = formatUsdcAmount(input.amountUsd);
+  const normalizedAmount = input.amount ?? formatUsdcAmount(input.amountUsd);
   const paymentAsset = input.paymentAsset ?? {
     assetId: 'x402:usdc',
     tokenAddress: ZERO_PAYMENT_TOKEN,

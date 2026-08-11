@@ -571,7 +571,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "steps",
             items: [
               "Open a listing and choose its license tier.",
-              "Confirm the price (shown in a stablecoin) and pay from your wallet balance.",
+              "Choose x402 or direct wallet checkout when both are available. In x402 checkout, review the platform fee marked as included and the unchanged stablecoin total.",
+              "Confirm the total and pay from your wallet balance. Resonate disables payment if it cannot verify the current quote details.",
               "Approve with your passkey — your collected stem and receipt appear in your wallet and library.",
             ],
           },
