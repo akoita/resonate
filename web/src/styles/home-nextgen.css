@@ -1473,8 +1473,44 @@
  * viewport. The intrinsic size prevents the shelf grid from collapsing while
  * an offscreen card is skipped. */
 .home-ng .ng-drops-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   content-visibility: auto;
-  contain-intrinsic-size: auto 500px;
+  /* Reserve only vertical space while the below-fold card is skipped. The
+   * former one-value shorthand also supplied a 500px inline fallback, which
+   * became the grid item's min-content width on narrow viewports. */
+  contain-intrinsic-block-size: auto 500px;
+}
+
+/* The living collectible card is shared with release/editor surfaces. Keep
+ * these defensive shrink/wrap rules scoped to its narrow Home shelf host. */
+.home-ng .ng-drops-card .punchline-card,
+.home-ng .ng-drops-card .punchline-card-art-placeholder,
+.home-ng .ng-drops-card .punchline-card-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.home-ng .ng-drops-card .punchline-card-title,
+.home-ng .ng-drops-card .punchline-card-lyric,
+.home-ng .ng-drops-card .punchline-card-art-lyric,
+.home-ng .ng-drops-card .punchline-card-collected,
+.home-ng .ng-drops-card__artist,
+.home-ng .ng-drops-card__track {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.home-ng .ng-drops-card .punchline-card-meta {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.home-ng .ng-drops-card__context {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .home-ng .ng-grid-2 {
@@ -2238,7 +2274,7 @@
 }
 
 @media (max-width: 1023px) {
-  .home-ng .ng-grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .home-ng .ng-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-ng .ng-grid-4 { grid-template-columns: repeat(2, 1fr); }
   .home-ng .ng-ops-grid { grid-template-columns: 1fr; }
   .home-ng .ng-grid-5 { grid-template-columns: repeat(3, 1fr); }
@@ -2268,7 +2304,7 @@
 
 @media (max-width: 767px) {
   .home-ng .ng-grid-2 { grid-template-columns: 1fr; }
-  .home-ng .ng-grid-3 { grid-template-columns: 1fr; }
+  .home-ng .ng-grid-3 { grid-template-columns: minmax(0, 1fr); }
   .home-ng .ng-grid-4 { grid-template-columns: 1fr; }
   .home-ng .ng-resource-grid { grid-template-columns: 1fr; }
   .home-ng .ng-recommendation-grid { grid-template-columns: 1fr; }
