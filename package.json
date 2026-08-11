@@ -1,5 +1,6 @@
 {
   "name": "resonate",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "npm@11.14.1",
   "engines": {
@@ -12,6 +13,8 @@
     "security:lock-sources": "node scripts/check-npm-lock-sources.mjs",
     "security:npm-lifecycles": "node scripts/check-npm-lifecycle-policy.mjs",
     "test:security:npm-lifecycles": "node --test scripts/tests/npm-lifecycle-policy.test.mjs",
+    "release:check": "node scripts/release-policy.mjs check",
+    "test:release-policy": "node --test scripts/tests/release-policy.test.mjs",
     "install:hardened": "node scripts/hardened-npm-install.mjs --project . --run-project-lifecycle prepare",
     "desktop:dev": "npm --prefix desktop run dev",
     "desktop:package": "npm --prefix desktop run package:dir",

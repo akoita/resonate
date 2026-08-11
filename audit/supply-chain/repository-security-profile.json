@@ -232,10 +232,11 @@
         "workflows": [
           {"path": ".github/workflows/ci.yml", "purpose": "PR/merge validation, application image publication and deploy manifest", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/ci.yml:1"},
           {"path": ".github/workflows/security.yml", "purpose": "advisory PR and nightly deterministic security scans from #1537", "owner": "Resonate security maintainer", "evidence": ".github/workflows/security.yml:1"},
-          {"path": ".github/workflows/code-review.yml", "purpose": "advisory model-assisted pull-request review", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/code-review.yml:1"},
           {"path": ".github/workflows/deploy-handoff.yml", "purpose": "validated cross-repository dispatch to private resonate-iac", "owner": "Resonate release maintainer", "evidence": ".github/workflows/deploy-handoff.yml:1"},
           {"path": ".github/workflows/contracts-deploy.yml", "purpose": "manual contract preflight, deployment, upgrade, authority and lifecycle operations", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/contracts-deploy.yml:1"},
           {"path": ".github/workflows/desktop-release.yml", "purpose": "desktop package and GitHub Release publication", "owner": "Resonate desktop maintainer", "evidence": ".github/workflows/desktop-release.yml:1"},
+          {"path": ".github/workflows/release-please.yml", "purpose": "version and changelog pull-request automation plus read-only release previews", "owner": "Resonate release maintainer", "evidence": ".github/workflows/release-please.yml:1"},
+          {"path": ".github/workflows/software-release.yml", "purpose": "protected exact-SHA release evidence validation, immutable tag creation and draft release publication", "owner": "Resonate release maintainer", "evidence": ".github/workflows/software-release.yml:1"},
           {"path": ".github/workflows/publish-analytics-dataflow-flex-template.yml", "purpose": "OIDC-authenticated Dataflow template publication", "owner": "Resonate analytics maintainer", "evidence": ".github/workflows/publish-analytics-dataflow-flex-template.yml:1"},
           {"path": ".github/workflows/certora.yml", "purpose": "scheduled/manual Certora verification", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/certora.yml:1"},
           {"path": ".github/workflows/formal.yml", "purpose": "Halmos formal properties", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/formal.yml:1"},
@@ -244,7 +245,7 @@
           {"path": ".github/workflows/staging-reconciliation-drill.yml", "purpose": "manual funded staging reconciliation drill", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/staging-reconciliation-drill.yml:1"}
         ],
         "actions_and_reuse": {
-          "external_actions": ["actions/checkout", "actions/setup-node", "actions/setup-python", "actions/upload-artifact", "actions/download-artifact", "actions/cache", "foundry-rs/foundry-toolchain", "google-github-actions/auth", "google-github-actions/setup-gcloud", "anthropics/claude-code-action", "anchore/sbom-action", "sigstore/cosign-installer"],
+          "external_actions": ["actions/checkout", "actions/setup-node", "actions/setup-python", "actions/upload-artifact", "actions/download-artifact", "actions/cache", "googleapis/release-please-action", "foundry-rs/foundry-toolchain", "google-github-actions/auth", "google-github-actions/setup-gcloud", "anthropics/claude-code-action", "anchore/sbom-action", "sigstore/cosign-installer"],
           "local_composite_actions": [
             {
               "path": ".github/actions/setup-npm-hardened/action.yml",
@@ -260,12 +261,13 @@
             }
           ],
           "reusable_workflows": [],
-          "reusable_workflow_absence_evidence": "repository-wide command `rg -n '^\\s*workflow_call\\s*:' .github/workflows` returned no matches on 2026-08-03; all twelve workflow files are listed above",
+          "reusable_workflow_absence_evidence": "repository-wide command `rg -n '^\\s*workflow_call\\s*:' .github/workflows` returned no matches on 2026-08-03; all thirteen workflow files are listed above",
           "immutable_reference_evidence": [".github/actions/setup-npm-hardened/action.yml:15", ".github/workflows/ci.yml:51", ".github/workflows/ci.yml:1026"],
           "owner": "Resonate repository maintainer"
         },
         "build_utilities": [
           {"name": "npm", "version_policy": "11.14.1 pinned by packageManager and local composite action", "owner": "Resonate repository maintainer", "evidence": ["package.json:4", ".github/actions/setup-npm-hardened/action.yml:21"]},
+          {"name": "Release Please", "version_policy": "v5.0.0 selected through a commit-pinned Action; configured to prepare version/changelog PRs without creating tags or releases", "owner": "Resonate release maintainer", "evidence": [".github/workflows/release-please.yml:1", "release-please-config.json:1"]},
           {"name": "Foundry", "version_policy": "v1.4.3 selected through a commit-pinned foundry-toolchain Action", "owner": "Resonate protocol maintainer", "evidence": [".github/workflows/ci.yml:350", ".github/workflows/ci.yml:354"]},
           {"name": "Syft", "version_policy": "v1.50.0 selected through a commit-pinned sbom-action and declared in the ABOM with the reviewed Linux archive digest", "owner": "Resonate release maintainer", "evidence": [".github/actions/publish-image-evidence/action.yml:75", ".github/workflows/security.yml:111"]},
           {"name": "cosign", "version_policy": "v3.1.2 selected through a commit-pinned installer and declared in the ABOM with the reviewed Linux binary digest", "owner": "Resonate release maintainer", "evidence": [".github/actions/publish-image-evidence/action.yml:87", ".github/workflows/security.yml:112"]},
@@ -441,7 +443,7 @@
       "risk_reduction": "high",
       "operating_cost": "low",
       "prerequisites": [
-        "A revision-scoped actionlint and zizmor result confirms all twelve workflows after the pinning and persist-credentials changes",
+        "A revision-scoped actionlint and zizmor result confirms all thirteen workflows after the pinning and persist-credentials changes",
         "Any job that keeps write or id-token permission documents the exact later step that consumes it"
       ],
       "failure_mode": "Top-level read permissions can mask a job-level write grant, a new trigger can execute privileged code, or a checkout can retain credentials that a later build or artifact step exposes.",
@@ -630,7 +632,7 @@
       "applicability": "required",
       "decision": "adopt",
       "trigger_evidence": [
-        ".github/workflows contains twelve workflow files inventoried in repository.extensions.inventory.workflows",
+        ".github/workflows contains thirteen workflow files inventoried in repository.extensions.inventory.workflows",
         ".github/actions/setup-npm-hardened/action.yml and .github/actions/publish-image-evidence/action.yml define two local composite Actions",
         "repository-wide workflow_call scan recorded no reusable workflows"
       ],
