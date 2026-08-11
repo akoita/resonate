@@ -273,6 +273,10 @@ When adding a new environment variable:
 | `RESONATE_DESKTOP_DEVTOOLS` | Desktop shell | Optional local debugging flag; set to `true` to open Chromium DevTools on launch |
 | `DESKTOP_WEB_URL` | GitHub repository variable | Deployed web URL used by the `Desktop Release Artifacts` workflow when baking desktop packages from tags or manual runs. Manual workflow input `desktop_web_url` takes precedence |
 | `DESKTOP_ALLOWED_ORIGINS` | GitHub repository variable | Optional comma-separated extra origins passed to `RESONATE_DESKTOP_ALLOWED_ORIGINS` during desktop artifact builds |
+| `RELEASE_AUTOMATION_ENABLED` | GitHub repository variable | Safety switch for automatic Release Please pull-request updates after `main` changes. Leave unset/`false` until the release token and protected release environment are configured; manual preview remains available while disabled |
+| `RELEASE_PLEASE_TOKEN` | GitHub Actions repository secret | Dedicated least-privilege token used only to create/update the Release Please version pull request. Never store the value in source |
+| `SOFTWARE_RELEASE_TOKEN` | GitHub Actions secret in the protected `software-release` environment | Separate release-publisher credential used only after environment approval to create the immutable software tag and draft release. It must not be exposed to the automatic Release Please job |
+| `RELEASE_TAG_RULESET_ID` | GitHub Actions variable in the protected `software-release` environment | Numeric ID of the active GitHub tag ruleset that protects `refs/tags/v*` from deletion and non-fast-forward updates. The publish workflow validates the ruleset before creating a tag |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |

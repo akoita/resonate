@@ -57,6 +57,9 @@ jobs:
       - name: Classify changed paths
         id: detect
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
 
@@ -80,18 +83,18 @@ jobs:
           run_all=false
           main_deploy_only=false
 
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == "main" ]]; then
+          if [[ "${EVENT_NAME}" == "push" && "${REF_NAME}" == "main" ]]; then
             main_deploy_only=true
             echo "Main push detected; this run will publish/deploy from a merge-queue-certified commit and skip duplicate validation jobs."
           fi
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             base_sha="${{ github.event.pull_request.base.sha }}"
-          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+          elif [[ "${EVENT_NAME}" == "merge_group" ]]; then
             base_sha="${{ github.event.merge_group.base_sha }}"
             run_all=true
             echo "GitHub merge queue candidate detected; running the full validation safety net once for the queued batch."
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == mergify/merge-queue/* ]]; then
+          elif [[ "${EVENT_NAME}" == "push" && "${REF_NAME}" == mergify/merge-queue/* ]]; then
             base_sha="${{ github.event.before }}"
             run_all=true
             echo "Mergify queue branch detected; running the full validation safety net once for the queued batch."
@@ -367,6 +370,12 @@ jobs:
         run: |
           npm run security:npm-lifecycles
           npm run test:security:npm-lifecycles
+
+      - name: Verify release contract
+        run: |
+          npm run release:check
+          npm run test:release-policy
+          python3 -m unittest discover -s .github/scripts/tests -p 'test_release_evidence.py'
 
   contracts:
     name: Smart Contract Tests

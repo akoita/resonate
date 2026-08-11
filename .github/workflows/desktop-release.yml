@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-      - "desktop-v*"
   workflow_dispatch:
     inputs:
       platform:
@@ -71,12 +70,23 @@ jobs:
       RESONATE_DESKTOP_START_WEB: "false"
       RESONATE_DESKTOP_WEB_URL: ${{ inputs.desktop_web_url || vars.DESKTOP_WEB_URL || '' }}
       SHOULD_BUILD: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == matrix.platform }}
+      SOURCE_REF: ${{ github.event_name == 'push' && github.ref || (inputs.publish_release && inputs.release_tag) || github.sha }}
     steps:
       - name: Checkout
         if: env.SHOULD_BUILD == 'true'
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Validate release tag and source version
+        if: env.SHOULD_BUILD == 'true' && (github.event_name == 'push' || inputs.publish_release == true)
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          npm run release:check -- --tag "${RELEASE_TAG}"
 
       - name: Setup hardened npm
         if: env.SHOULD_BUILD == 'true'
@@ -146,6 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push' || inputs.publish_release == true
+    environment: software-release
     permissions:
       contents: write
     steps:
@@ -160,6 +171,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          REQUESTED_PLATFORM: ${{ inputs.platform || 'all' }}
         run: |
           set -euo pipefail
 
@@ -167,6 +179,46 @@ jobs:
             echo "::error::Manual release publishing requires the release_tag input."
             exit 1
           fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${REQUESTED_PLATFORM}" != "all" ]]; then
+            echo "::error::Publishing a software release requires platform=all. Platform-specific runs are build-only."
+            exit 1
+          fi
+
+          release_json=""
+          for attempt in $(seq 1 20); do
+            if release_json=$(gh release view "${RELEASE_TAG}" --json isDraft 2>/dev/null); then
+              break
+            fi
+            if [[ "${attempt}" == "20" ]]; then
+              echo "::error::No draft software release exists for ${RELEASE_TAG}. Run the protected Software Release workflow first."
+              exit 1
+            fi
+            sleep 15
+          done
+
+          if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
+            echo "::error::Release ${RELEASE_TAG} is already published; desktop assets are immutable."
+            exit 1
+          fi
+
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          expected_sha=$(jq -r '.object.sha' <<<"${tag_ref}")
+          mkdir -p "${RUNNER_TEMP}/release-evidence"
+          gh release download "${RELEASE_TAG}" \
+            --pattern release-evidence.json \
+            --dir "${RUNNER_TEMP}/release-evidence"
+          evidence_sha=$(jq -r '.source_sha' "${RUNNER_TEMP}/release-evidence/release-evidence.json")
+          if [[ "${evidence_sha}" != "${expected_sha}" ]]; then
+            echo "::error::Release evidence source ${evidence_sha} does not match tag ${RELEASE_TAG} at ${expected_sha}."
+            exit 1
+          fi
+
+          for required_asset in release-evidence.json release-evidence.tar.gz SHA256SUMS; do
+            if ! gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${required_asset}"; then
+              echo "::error::Draft release is missing required evidence asset ${required_asset}."
+              exit 1
+            fi
+          done
 
           mkdir -p release-assets
           find desktop-artifacts -type f \
@@ -177,12 +229,23 @@ jobs:
             echo "::error::No desktop release artifacts were downloaded."
             exit 1
           fi
+          for required_pattern in '*.exe' '*.dmg' '*.AppImage'; do
+            if ! compgen -G "release-assets/${required_pattern}" >/dev/null; then
+              echo "::error::Desktop release is incomplete; no ${required_pattern} artifact was produced."
+              exit 1
+            fi
+          done
 
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
-          else
-            gh release create "${RELEASE_TAG}" release-assets/* \
-              --target "${GITHUB_SHA}" \
-              --title "Resonate Desktop ${RELEASE_TAG}" \
-              --generate-notes
-          fi
+          (cd release-assets && sha256sum * | sort -k2 > desktop-SHA256SUMS)
+
+          existing_assets=$(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')
+          while IFS= read -r asset; do
+            asset_name=$(basename "${asset}")
+            if grep -Fxq "${asset_name}" <<<"${existing_assets}"; then
+              echo "::error::Release asset ${asset_name} already exists; refusing to overwrite it."
+              exit 1
+            fi
+          done < <(find release-assets -maxdepth 1 -type f -print | sort)
+
+          gh release upload "${RELEASE_TAG}" release-assets/*
+          gh release edit "${RELEASE_TAG}" --draft=false

@@ -1,0 +1,40 @@
+changelog:
+  exclude:
+    labels:
+      - "release:skip-notes"
+  categories:
+    - title: "User-visible changes"
+      labels:
+        - "release:user-visible"
+        - "feature"
+        - "enhancement"
+    - title: "API and contract changes"
+      labels:
+        - "release:api-contract"
+        - "api"
+        - "smart-contracts"
+    - title: "Operations and deployments"
+      labels:
+        - "release:operations"
+        - "infrastructure"
+        - "analytics"
+    - title: "Security"
+      labels:
+        - "release:security"
+        - "security"
+    - title: "Migrations"
+      labels:
+        - "release:migration"
+        - "database"
+    - title: "Known limitations and deferred work"
+      labels:
+        - "release:known-limitation"
+        - "release:deferred"
+    - title: "Documentation and maintenance"
+      labels:
+        - "documentation"
+        - "dependencies"
+        - "chore"
+    - title: "Other changes"
+      labels:
+        - "*"

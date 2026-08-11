@@ -1,0 +1,367 @@
+name: Software Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Preview validates and renders evidence; publish additionally creates the immutable tag and draft release.
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - publish
+      candidate_sha:
+        description: Full SHA of the merged Release Please commit on main.
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful CI run ID for exactly candidate_sha.
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: software-release-${{ inputs.candidate_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    name: Validate Release Candidate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      release_pr_url: ${{ steps.release.outputs.release_pr_url }}
+    steps:
+      - name: Validate inputs and certified CI run
+        id: context
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_sha must be a full lowercase commit SHA."
+            exit 1
+          fi
+          if [[ ! "${CI_RUN_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::ci_run_id must be a positive numeric Actions run ID."
+            exit 1
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}" > "${RUNNER_TEMP}/ci-run.json"
+          CI_RUN_PATH="${RUNNER_TEMP}/ci-run.json" CANDIDATE_SHA="${CANDIDATE_SHA}" python3 - <<'PY'
+          import json
+          import os
+
+          run = json.load(open(os.environ["CI_RUN_PATH"], encoding="utf-8"))
+          expected_sha = os.environ["CANDIDATE_SHA"]
+          failures = []
+          if run.get("name") != "CI":
+              failures.append("referenced run is not the CI workflow")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              failures.append("referenced CI run did not complete successfully")
+          if run.get("event") != "push" or run.get("head_branch") != "main":
+              failures.append("referenced CI run must be a push on main")
+          if run.get("head_sha") != expected_sha:
+              failures.append("referenced CI run head SHA does not match candidate_sha")
+          if failures:
+              raise SystemExit("; ".join(failures))
+          PY
+
+      - name: Check out release candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve and validate release identity
+        id: release
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${CANDIDATE_SHA}" origin/main; then
+            echo "::error::candidate_sha is not reachable from origin/main."
+            exit 1
+          fi
+
+          version="$(node -p 'require("./.release-please-manifest.json")["."]')"
+          tag="v${version}"
+          npm run release:check -- --tag "${tag}"
+
+          gh api \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/commits/${CANDIDATE_SHA}/pulls" \
+            > "${RUNNER_TEMP}/candidate-prs.json"
+          PRS_PATH="${RUNNER_TEMP}/candidate-prs.json" python3 - <<'PY' > "${RUNNER_TEMP}/release-pr-url"
+          import json
+          import os
+
+          pull_requests = json.load(open(os.environ["PRS_PATH"], encoding="utf-8"))
+          matches = [
+              pr for pr in pull_requests
+              if pr.get("merged_at")
+              and (pr.get("base") or {}).get("ref") == "main"
+              and (pr.get("head") or {}).get("ref", "").startswith("release-please--branches--main")
+          ]
+          if len(matches) != 1:
+              raise SystemExit("candidate SHA must belong to exactly one merged Release Please PR")
+          print(matches[0]["html_url"])
+          PY
+          release_pr_url="$(cat "${RUNNER_TEMP}/release-pr-url")"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "::error::Tag ${tag} already exists; release versions are immutable."
+            exit 1
+          fi
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "::error::GitHub Release ${tag} already exists; release assets are immutable."
+            exit 1
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag=${tag}"
+            echo "release_pr_url=${release_pr_url}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Download deploy manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: deploy-manifest
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/deploy-manifest
+
+      - name: Download backend image evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-evidence-backend-${{ inputs.candidate_sha }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/image-evidence/backend
+
+      - name: Download frontend image evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-evidence-frontend-${{ inputs.candidate_sha }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/image-evidence/frontend
+
+      - name: Download Demucs image evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-evidence-demucs-${{ inputs.candidate_sha }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/image-evidence/demucs
+
+      - name: Download Stable Audio image evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: image-evidence-stable-audio-${{ inputs.candidate_sha }}
+          run-id: ${{ inputs.ci_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/image-evidence/stable-audio
+
+      - name: Build release evidence manifest
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_PR_URL: ${{ steps.release.outputs.release_pr_url }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.ci_run_id }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_evidence.py build \
+            --deploy-manifest "${RUNNER_TEMP}/deploy-manifest/deploy-manifest.json" \
+            --image-evidence-root "${RUNNER_TEMP}/image-evidence" \
+            --source-sha "${CANDIDATE_SHA}" \
+            --version "${VERSION}" \
+            --ci-run-id "${CI_RUN_ID}" \
+            --ci-run-url "${CI_RUN_URL}" \
+            --release-pr-url "${RELEASE_PR_URL}" \
+            --output "${RUNNER_TEMP}/release-evidence.json"
+
+      - name: Generate categorized release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f "tag_name=${TAG}" \
+            -f "target_commitish=${CANDIDATE_SHA}" \
+            > "${RUNNER_TEMP}/generated-release-notes.json"
+          python3 .github/scripts/release_evidence.py render-notes \
+            --generated-notes-json "${RUNNER_TEMP}/generated-release-notes.json" \
+            --evidence "${RUNNER_TEMP}/release-evidence.json" \
+            --output "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Package durable release evidence
+        run: |
+          set -euo pipefail
+          cp "${RUNNER_TEMP}/deploy-manifest/deploy-manifest.json" "${RUNNER_TEMP}/release-deploy-manifest.json"
+          tar -C "${RUNNER_TEMP}" -czf "${RUNNER_TEMP}/release-evidence.tar.gz" \
+            release-evidence.json \
+            release-deploy-manifest.json \
+            image-evidence
+          (
+            cd "${RUNNER_TEMP}"
+            sha256sum \
+              release-evidence.json \
+              release-deploy-manifest.json \
+              release-evidence.tar.gz \
+              > SHA256SUMS
+          )
+
+      - name: Upload validated release plan
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: software-release-${{ steps.release.outputs.tag }}
+          path: |
+            ${{ runner.temp }}/release-notes.md
+            ${{ runner.temp }}/release-evidence.json
+            ${{ runner.temp }}/release-deploy-manifest.json
+            ${{ runner.temp }}/release-evidence.tar.gz
+            ${{ runner.temp }}/SHA256SUMS
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summarize validation
+        env:
+          MODE: ${{ inputs.mode }}
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_PR_URL: ${{ steps.release.outputs.release_pr_url }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.ci_run_id }}
+        run: |
+          {
+            echo "## Software release ${MODE}"
+            echo
+            echo "- tag: \`${TAG}\`"
+            echo "- source: \`${CANDIDATE_SHA}\`"
+            echo "- certified CI: [${CI_RUN_ID}](${CI_RUN_URL})"
+            echo "- release PR: ${RELEASE_PR_URL}"
+            echo "- validation: passed"
+            if [[ "${MODE}" == "preview" ]]; then
+              echo "- side effects: none; no tag or release was created"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  publish:
+    name: Publish Immutable Release Candidate
+    if: inputs.mode == 'publish'
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: software-release
+    permissions:
+      actions: read
+      contents: read
+      deployments: read
+    steps:
+      - name: Download validated release plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: software-release-${{ needs.validate.outputs.tag }}
+          path: ${{ runner.temp }}/release-plan
+
+      - name: Validate protected release controls
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${RELEASE_TAG_RULESET_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Set RELEASE_TAG_RULESET_ID to the active immutable v* tag ruleset."
+            exit 1
+          fi
+          gh api "repos/${GITHUB_REPOSITORY}/environments/software-release" > "${RUNNER_TEMP}/release-environment.json"
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "${RUNNER_TEMP}/release-ruleset.json"
+          ENV_PATH="${RUNNER_TEMP}/release-environment.json" RULESET_PATH="${RUNNER_TEMP}/release-ruleset.json" python3 - <<'PY'
+          import json
+          import os
+
+          environment = json.load(open(os.environ["ENV_PATH"], encoding="utf-8"))
+          if not environment.get("protection_rules"):
+              raise SystemExit("software-release environment must have at least one protection rule")
+
+          ruleset = json.load(open(os.environ["RULESET_PATH"], encoding="utf-8"))
+          includes = ((ruleset.get("conditions") or {}).get("ref_name") or {}).get("include", [])
+          rule_types = {rule.get("type") for rule in ruleset.get("rules", [])}
+          if ruleset.get("target") != "tag" or ruleset.get("enforcement") != "active":
+              raise SystemExit("release tag ruleset must be active and target tags")
+          if "refs/tags/v*" not in includes:
+              raise SystemExit("release tag ruleset must include refs/tags/v*")
+          if not {"deletion", "non_fast_forward"}.issubset(rule_types):
+              raise SystemExit("release tag ruleset must block deletion and non-fast-forward updates")
+          PY
+
+      - name: Revalidate publication credential and immutability
+        env:
+          SOFTWARE_RELEASE_TOKEN: ${{ secrets.SOFTWARE_RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SOFTWARE_RELEASE_TOKEN}" ]]; then
+            echo "::error::SOFTWARE_RELEASE_TOKEN is required for the approved release identity."
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags "https://github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} appeared after validation; refusing to overwrite it."
+            exit 1
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "::error::Release ${TAG} appeared after validation; refusing to overwrite it."
+            exit 1
+          fi
+
+      - name: Create immutable tag and draft release
+        env:
+          GH_TOKEN: ${{ secrets.SOFTWARE_RELEASE_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          PLAN_DIR: ${{ runner.temp }}/release-plan
+        run: |
+          set -euo pipefail
+          release_flags=(--draft)
+          if [[ "${TAG}" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/${TAG}" \
+            -f "sha=${CANDIDATE_SHA}"
+          gh release create "${TAG}" \
+            "${release_flags[@]}" \
+            --target "${CANDIDATE_SHA}" \
+            --title "Resonate ${TAG}" \
+            --notes-file "${PLAN_DIR}/release-notes.md" \
+            "${PLAN_DIR}/release-evidence.json" \
+            "${PLAN_DIR}/release-deploy-manifest.json" \
+            "${PLAN_DIR}/release-evidence.tar.gz" \
+            "${PLAN_DIR}/SHA256SUMS"
+
+          {
+            echo "## Draft software release created"
+            echo
+            echo "- tag: \`${TAG}\`"
+            echo "- source: \`${CANDIDATE_SHA}\`"
+            echo "- state: draft until desktop artifacts and checksums complete"
+          } >> "${GITHUB_STEP_SUMMARY}"

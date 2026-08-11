@@ -31,6 +31,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_CI_RUN_ID: ${{ inputs.ci_run_id || '' }}
           GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id || '' }}
+          WORKFLOW_RUN_NUMBER: ${{ github.event.workflow_run.run_number || '' }}
+          WORKFLOW_RUN_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha || '' }}
+          WORKFLOW_RUN_EVENT: ${{ github.event.workflow_run.event || '' }}
+          WORKFLOW_RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}
         run: |
           run_id=""
           run_number=""
@@ -40,12 +46,12 @@ jobs:
           run_conclusion=""
 
           if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
-            run_id="${{ github.event.workflow_run.id }}"
-            run_number="${{ github.event.workflow_run.run_number }}"
-            head_branch="${{ github.event.workflow_run.head_branch }}"
-            head_sha="${{ github.event.workflow_run.head_sha }}"
-            run_event="${{ github.event.workflow_run.event }}"
-            run_conclusion="${{ github.event.workflow_run.conclusion }}"
+            run_id="${WORKFLOW_RUN_ID}"
+            run_number="${WORKFLOW_RUN_NUMBER}"
+            head_branch="${WORKFLOW_RUN_HEAD_BRANCH}"
+            head_sha="${WORKFLOW_RUN_HEAD_SHA}"
+            run_event="${WORKFLOW_RUN_EVENT}"
+            run_conclusion="${WORKFLOW_RUN_CONCLUSION}"
           else
             response="$(curl --fail-with-body \
               -H "Accept: application/vnd.github+json" \
