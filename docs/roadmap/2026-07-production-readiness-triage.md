@@ -17,6 +17,29 @@ related:
 fees) per ADR-BM-6 sequencing; the triage itself is vision-neutral
 (launch-quality/infra).
 
+## Progress update — Vision Sprint 11 close (2026-08-11)
+
+Vision Sprint 11 closed its nine focused slices without making a production-go
+claim. Home performance/mobile, Drops browse, x402 fee transparency, and Shows
+reconciliation/indexer hygiene landed. PR
+[#1610](https://github.com/akoita/resonate/pull/1610) also established the
+software-release/versioning foundation.
+
+Two boundaries intentionally remain open:
+
+- [#1593](https://github.com/akoita/resonate/issues/1593) still requires the
+  protected GitHub environment/tag controls, a retained dry run, and one real
+  evidence-linked software release;
+- [#1595](https://github.com/akoita/resonate/issues/1595) remains the whole-app
+  readiness denominator. Sprint closure does not waive its legal, privacy,
+  security, feature-gating, support, or infrastructure blockers.
+
+The distributed Shows indexer lease
+[#1567](https://github.com/akoita/resonate/issues/1567) is complete. Background
+indexers still keep staging API instances warm, so separating those schedulers
+from the API runtime remains independently tracked in
+[#1608](https://github.com/akoita/resonate/issues/1608).
+
 ## Why this document exists
 
 The #1271 engineering gate for Shows custody is complete: hardening, blocking
@@ -68,7 +91,7 @@ else is deliberately shipped, gated, hidden, or honestly labeled.
 | --- | --- | --- |
 | Onboarding + passkey auth/wallet | cross-cutting | First minutes of every cohort user; smart-account creation, session reset (#1199) exists. Full first-run QA pass needed. |
 | Home + discovery rails | shipped S8 | The storefront for Shows *and* Drops. #1491 completed the measured Home performance program: cold LCP/CLS and image budgets pass, the unstyled flash is fixed, below-fold work is deferred, and responsive artwork plus prefetch reductions materially cut bytes and requests. Cache-coherent artwork versioning (#1604) and mixed-ingestion sibling-stream cleanup (#1605) remain independent hardening follow-ups. |
-| Shows end-to-end | `partial` (staging-proven) | The flagship. Engineering proven; needs the production go-live package in #1583 (owner GO, prod escrow deploy, `contractCampaignId` wiring, prod indexer verification, fixture gating, and controlled cohort). |
+| Shows end-to-end | `partial` (staging-proven) | The flagship. The researched cohort campaign fixtures from #1224 are complete. The remaining production go-live package stays in #1583 (owner GO, prod escrow deploy, `contractCampaignId` wiring, prod indexer verification, production fixture gating, and controlled cohort). |
 | Player / playback sessions | page still `draft` | Core listening loop. The feature page must be brought to truth and the playback path QA'd; Player Action Layer (`in-progress`) ships in its current scope (Shows chip live). |
 | Library (+ Moments tab, playlists) | shipped | Where ownership lands after collecting. Verify pass. |
 | Wallet funding + budget cap | page still `draft` | Fans fund pledges through this. Needs a truth pass on the doc and a hard QA of funding UX, low-balance, and failure states. |
@@ -133,7 +156,7 @@ two of them (playback, wallet funding) are on the critical money path.
 | --- | --- | --- |
 | **Legal** | Not in repo | Terms of Service, Privacy Policy, refund policy for escrow pledges (fee-free refunds are implemented — write the promise down), imprint/contact, cookie/consent posture. Real money without ToS is not launchable. |
 | **Privacy / GDPR** | Partial | Analytics consent & retention policy exists as policy; the **user-facing controls and deletion propagation are explicitly follow-up work** — data export/delete must work (or analytics scope be narrowed) before real users. |
-| **Support & ops** | Partial | Custody runbooks, smoke, drill, alert email proven. Missing: a support channel for real users, an incident/on-call statement, and the #1506 operator refund panel (runbook exists; panel open). |
+| **Support & ops** | Partial | Custody runbooks, smoke, drill, alert email, and the #1506 operator `refund_due` reconciliation surface are complete. Missing: a support channel for real users and an incident/on-call statement. |
 | **Abuse & moderation** | Partial | Rights verification routes uploads; community moderation tooling exists but is unstaffed — which is why community is gated above. Rate limiting / abuse posture needs a sweep. |
 | **Security** | Strong, one gap | Internal review complete and remediated (1H/2M/4L). The checklist's "ideally one external review" is unmet — acknowledge explicitly in the go decision, or commission one. |
 | **Infrastructure target** | Undecided | The production environment question (#915: migrate-first vs current project) is deferred to the go decision **with a written comparison required**. Also: backups/DR posture, secret rotation, cost budgets + alerts, domain/DNS/email deliverability for real users. |
@@ -141,17 +164,18 @@ two of them (playback, wallet funding) are on the critical money path.
 
 ## What this means: the real remaining backlog
 
-1. **Content:** #1224 sample campaigns (open, in progress).
-2. **Quality:** #1491 Home perf complete; playback + wallet-funding + upload QA passes;
+1. **Quality:** #1491 Home perf and #1224 sample campaigns are complete;
+   playback + wallet-funding + upload QA passes remain;
    `/help` refresh.
-3. **Gating work:** implement the GATE/HIDE decisions above (nav pruning,
+2. **Gating work:** implement the GATE/HIDE decisions above (nav pruning,
    role gates, flags, beta labels) — mostly small, but it *is* code work.
-4. **Docs truth:** six draft feature pages + four uncatalogued routes.
-5. **Cross-cutting:** legal pages, GDPR controls (or narrowed analytics),
-   support channel, #1506 panel, infra-target comparison, backup/cost sweep.
-6. **Then** the #1583 gated go-live package itself (owner GO → production contract deploy → cohort).
+3. **Docs truth:** six draft feature pages + four uncatalogued routes.
+4. **Cross-cutting:** legal pages, GDPR controls (or narrowed analytics),
+   support channel, infra-target comparison, backup/cost sweep,
+   and the remaining #1593 protected-release controls/evidence.
+5. **Then** the #1583 gated go-live package itself (owner GO → production contract deploy → cohort).
 
-Items 1–5 are the honest distance between "custody is proven in staging" and
+Items 1–4 are the honest distance between "custody is proven in staging" and
 "a coherent v1 in production." None of them are custody engineering — the
 gate did its job — but all of them face the first real user.
 
