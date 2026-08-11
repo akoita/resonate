@@ -45,7 +45,7 @@ export class X402PaymentService {
       where: { stemId: resource.stemId },
     });
     const assetInfo = this.resolveAssetInfo();
-    const amountUsd = await this.resolvePaymentAmountUsd({
+    const paymentAmount = await this.resolvePaymentAmount({
       stemId: resource.stemId,
       pricing,
       licenseType,
@@ -53,7 +53,7 @@ export class X402PaymentService {
       assetAddress: assetInfo.address,
       assetDecimals: assetInfo.decimals,
     });
-    const displayPrice = `${formatUsdcAmount(amountUsd)} ${assetInfo.symbol}`;
+    const displayPrice = `${paymentAmount.displayAmount} ${assetInfo.symbol}`;
 
     return {
       x402Version: 2,
@@ -67,7 +67,7 @@ export class X402PaymentService {
         {
           scheme: "exact",
           network: this.x402Config.network,
-          amount: this.toTokenAmount(amountUsd, assetInfo.decimals),
+          amount: paymentAmount.amountUnits,
           asset: assetInfo.address,
           payTo: this.x402Config.payoutAddress,
           maxTimeoutSeconds: 300,
@@ -152,7 +152,7 @@ export class X402PaymentService {
     );
   }
 
-  private async resolvePaymentAmountUsd(input: {
+  private async resolvePaymentAmount(input: {
     stemId: string;
     pricing:
       | {
@@ -178,18 +178,38 @@ export class X402PaymentService {
         select: {
           pricePerUnit: true,
           paymentToken: true,
+          chainId: true,
         },
         orderBy: { listedAt: "desc" },
       });
-      if (
-        listing &&
-        listing.paymentToken.toLowerCase() === input.assetAddress.toLowerCase()
-      ) {
-        return Number(formatUnits(BigInt(listing.pricePerUnit), input.assetDecimals));
+      if (listing) {
+        if (listing.paymentToken.toLowerCase() !== input.assetAddress.toLowerCase()) {
+          throw new Error(
+            "The active marketplace listing is not priced in the configured x402 stablecoin asset.",
+          );
+        }
+        if (listing.chainId !== this.x402Config.chainId) {
+          throw new Error(
+            "The active marketplace listing is on a different chain than the configured x402 network.",
+          );
+        }
+        const amountUnits = BigInt(listing.pricePerUnit);
+        if (amountUnits <= 0n) {
+          throw new Error("The active marketplace listing has an invalid payment amount.");
+        }
+        return {
+          amountUnits: amountUnits.toString(),
+          displayAmount: formatUnits(amountUnits, input.assetDecimals),
+        };
       }
     }
 
-    return this.resolveLicenseAmountUsd(input.pricing, input.licenseType);
+    const amountUsd = this.resolveLicenseAmountUsd(input.pricing, input.licenseType);
+    const amountUnits = this.toTokenAmount(amountUsd, input.assetDecimals);
+    return {
+      amountUnits,
+      displayAmount: formatUsdcAmount(amountUsd),
+    };
   }
 
   private async verifyPayment(

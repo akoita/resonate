@@ -18,6 +18,18 @@ export type X402QuoteInput = {
   network: string;
   payTo: string;
   licensePricing: X402LicensePricing;
+  personalQuote?: X402PersonalQuoteOverride;
+};
+
+export type X402PersonalQuoteOverride = {
+  currency: string;
+  amount: string;
+  amountUsd: number;
+  feeBps: number;
+  platformFeeAmount: string;
+  platformFeeUsd: number;
+  netToSellerAmount: string;
+  netToSellerUsd: number;
 };
 
 export function formatUsdcAmount(value: number): string {
@@ -68,6 +80,32 @@ function makeLicenseOption(key: QuoteLicenseKey, amount: number, feeBps: number)
   };
 }
 
+function makePersonalLicenseOption(quote: X402PersonalQuoteOverride) {
+  return {
+    key: "personal" as const,
+    price: {
+      currency: quote.currency,
+      amount: quote.amount,
+    },
+    displayPrice: `${quote.amount} ${quote.currency}`,
+    breakdown: {
+      feeBps: quote.feeBps,
+      royaltyBps: null,
+      platformFee: {
+        currency: quote.currency,
+        amount: quote.platformFeeAmount,
+        usd: quote.platformFeeUsd,
+      },
+      royalty: null,
+      netToSeller: {
+        currency: quote.currency,
+        amount: quote.netToSellerAmount,
+        usd: quote.netToSellerUsd,
+      },
+    },
+  };
+}
+
 export function buildStemX402Quote(input: X402QuoteInput) {
   const personalPrice = input.basePlayPriceUsd ?? input.licensePricing.personal.amountUsd;
   const remixPrice = input.remixLicenseUsd ?? input.licensePricing.remix.amountUsd;
@@ -77,13 +115,16 @@ export function buildStemX402Quote(input: X402QuoteInput) {
   const purchaseUrl = `/api/stems/${input.stemId}/x402`;
   const quoteUrl = `/api/stems/${input.stemId}/x402/info`;
 
+  const personalOption = input.personalQuote
+    ? makePersonalLicenseOption(input.personalQuote)
+    : makeLicenseOption("personal", personalPrice, input.licensePricing.personal.feeBps);
   const licenseOptions = [
-    makeLicenseOption("personal", personalPrice, input.licensePricing.personal.feeBps),
+    personalOption,
     makeLicenseOption("remix", remixPrice, input.licensePricing.remix.feeBps),
     makeLicenseOption("commercial", commercialPrice, input.licensePricing.commercial.feeBps),
   ];
 
-  const fromAmount = formatUsdcAmount(personalPrice);
+  const fromAmount = input.personalQuote?.amount ?? formatUsdcAmount(personalPrice);
   const toAmount = formatUsdcAmount(commercialPrice);
 
   return {
@@ -96,10 +137,10 @@ export function buildStemX402Quote(input: X402QuoteInput) {
     hasNft: input.hasNft,
     tokenId: input.tokenId,
     price: {
-      currency: "USDC",
+      currency: input.personalQuote?.currency ?? "USDC",
       amount: fromAmount,
-      display: `${fromAmount} USDC`,
-      usd: personalPrice,
+      display: `${fromAmount} ${input.personalQuote?.currency ?? "USDC"}`,
+      usd: input.personalQuote?.amountUsd ?? personalPrice,
     },
     priceSummary: {
       currency: "USDC",

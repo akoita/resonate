@@ -127,17 +127,30 @@ backend/src/modules/x402/
 Public quote and payment challenge pricing resolve in this order:
 
 1. Active marketplace listing `pricePerUnit` when contract-backed x402
-   settlement is enabled and the listing payment token matches the configured
-   x402 stablecoin.
+   settlement is enabled and the listing payment token and chain match the
+   configured x402 stablecoin rail.
 2. `StemPricing.basePlayPriceUsd` (direct USD from DB)
 3. `$0.05` storefront fallback when no canonical USD price is stored
+
+The resolved amount is canonical across discovery, browser smart-account
+verification, receipt construction, and marketplace settlement. Smart-account
+transfers must equal it exactly; both underpayment and overpayment are rejected.
+Request-body price, fee, payment-asset, and payout-address fields are not trusted.
+
+For contract-backed listing quotes, the personal-license breakdown reads
+`protocolFeeBps()` from the active `StemMarketplaceV2` contract and calculates
+the fee with the same integer basis-point arithmetic as the contract. For
+facilitator-only quotes, the configured personal x402 fee applies. In both
+cases, `breakdown.platformFee` is included in `price.amount`; clients display
+the fee for transparency but do not add it to the transfer total.
 
 ## Discovery contract
 
 `GET /api/stems/:stemId/x402/info` is intended to be sufficient for machine pre-purchase decision making. The response is storefront-grade and includes:
 
 - Canonical USDC `price` and `priceSummary`
-- `licenseOptions` for personal, remix, and commercial access
+- `licenseOptions` for personal, remix, and commercial access, including the
+  platform-fee breakdown already included in each total
 - `preview`, `rights`, and `asset` metadata for discovery tooling
 - `payment`, `purchase`, and `x402` endpoint/protocol metadata for checkout clients
 - Optional `alternativeOffers` when an ETH marketplace listing exists, while keeping USDC as the canonical storefront price
@@ -161,6 +174,10 @@ Current behavior:
 - x402 redemptions are idempotent by payment proof hash or smart-account
   payment transaction hash. Retrying the same payment for the same stem returns
   the same receipt; trying to redeem it for a different stem is rejected.
+- The browser smart-account rail parses the public quote fail-closed, checks one
+  personal option against the configured stablecoin and payout address, and
+  transfers only the exact server-authored total. Fee metadata never enters the
+  wallet transfer parameters.
 - Direct marketplace checkout submits a wallet transaction against
   `StemMarketplaceV2`; native listings pay with the chain coin, while ERC-20
   listings use `web/src/lib/onchainCheckout.ts` to plan an approval plus

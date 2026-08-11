@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import {
+  X402QuoteBreakdown,
   isConsumedOnchainListing,
   showLegacyNativeWarning,
 } from "./BuyModal";
@@ -67,5 +69,36 @@ describe("showLegacyNativeWarning (#1172)", () => {
         false,
       ),
     ).toBe(false);
+  });
+});
+
+describe("X402QuoteBreakdown (#1581)", () => {
+  it("shows the backend fee as included and does not add it to total", () => {
+    const html = renderToStaticMarkup(
+      <X402QuoteBreakdown
+        loading={false}
+        quote={{
+          totalAmount: "10.25",
+          totalCurrency: "USDC",
+          amountUsd: 10.25,
+          amountUnits: "10250000",
+          payTo: SELLER,
+          platformFee: { amount: "1.025", currency: "USDC", feeBps: 1000 },
+        }}
+      />,
+    );
+    expect(html).toContain("Platform fee (included)");
+    expect(html).toContain("1.025 USDC");
+    expect(html).toContain("Total");
+    expect(html).toContain("10.25 USDC");
+    expect(html).not.toContain("11.275 USDC");
+  });
+
+  it("renders an explicit unavailable state without guessed amounts", () => {
+    const html = renderToStaticMarkup(
+      <X402QuoteBreakdown loading={false} quote={null} />,
+    );
+    expect(html).toContain("Quote details unavailable");
+    expect(html).toContain("Unavailable");
   });
 });
