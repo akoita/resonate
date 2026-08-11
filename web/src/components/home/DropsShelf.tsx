@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { fetchFeaturedDrops, type FeaturedDrop, type PunchlineMoment } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
-import { PunchlineCollectibleCard } from "../punchline/PunchlineCollectibleCard";
-import { DROP_KIND_LABEL } from "../punchline/punchlineDropHelpers";
+import Link from "next/link";
+import { DropDiscoveryCard, discoveryMoment } from "../drops/DropDiscoveryCard";
 
 /*
  * Home "Drops" shelf (#1479) — first-class discovery surface for drops.
@@ -28,11 +27,7 @@ import { DROP_KIND_LABEL } from "../punchline/punchlineDropHelpers";
 
 /** The card face: the first still-collectable moment, else the first moment. */
 export function shelfMoment(drop: FeaturedDrop): PunchlineMoment | null {
-  return (
-    drop.moments.find((moment) => moment.collectedCount < moment.editionSize) ??
-    drop.moments[0] ??
-    null
-  );
+  return discoveryMoment(drop);
 }
 
 export function formatPrice(priceCents: number): string {
@@ -91,58 +86,18 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
           <span className="ng-kicker ng-kicker--violet">Own a piece of the hook</span>
           <h3 className="ng-section-title">Drops</h3>
         </div>
+        <Link href="/drops" className="ng-section-link">
+          Browse all →
+        </Link>
       </header>
       <div className="ng-grid-3" style={{ alignItems: "stretch" }}>
         {drops.map((drop) => {
-          const moment = shelfMoment(drop);
-          if (!moment) return null;
           return (
-            <Link
+            <DropDiscoveryCard
               key={drop.id}
-              href={`/release/${drop.context.releaseId}?focus=moments`}
-              className="ng-glass ng-drops-card"
-              style={{
-                display: "block",
-                borderRadius: 20,
-                padding: 14,
-                textDecoration: "none",
-                color: "inherit",
-                position: "relative",
-              }}
-              data-testid="drops-shelf-card"
-              aria-label={`Collect ${moment.title} from ${drop.context.trackTitle}`}
-            >
-              <PunchlineCollectibleCard
-                title={moment.title}
-                lyricText={moment.lyricText}
-                artworkUrl={moment.artworkUrl}
-                durationMs={moment.endMs - moment.startMs}
-                editionSize={moment.editionSize}
-                priceCents={moment.priceCents}
-                rightsLabel={moment.rightsLabel}
-                collectedCount={moment.collectedCount}
-                imageLoading="lazy"
-                imageDecoding="async"
-              />
-              <p
-                className="ng-play-card__artist ng-drops-card__context"
-                style={{
-                  marginTop: 10,
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: "4px 8px",
-                  alignItems: "baseline",
-                }}
-              >
-                <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
-                <strong className="ng-drops-card__artist" style={{ fontWeight: 700 }}>
-                  {drop.context.artistName ?? "Unknown artist"}
-                </strong>
-                <span className="ng-drops-card__track" style={{ opacity: 0.7 }}>
-                  · {drop.context.trackTitle}
-                </span>
-              </p>
-            </Link>
+              drop={drop}
+              testId="drops-shelf-card"
+            />
           );
         })}
       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   collectPunchlineMoment,
   fetchPunchlineMomentQuote,
@@ -390,6 +391,9 @@ export function PunchlineCollectModule({ tracks, onSummary }: PunchlineCollectMo
             release.
           </p>
         </div>
+        <Link href="/drops" className="punchline-collect-browse-link">
+          Browse all Drops →
+        </Link>
       </div>
 
       {tracksWithDrops.map(({ track, drops }) => (

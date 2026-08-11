@@ -67,6 +67,8 @@ describe("DropsShelfView", () => {
     // …the kind lives on a chip in the footer instead (#1476-ready).
     expect(html).toContain("punchline-kind-chip");
     expect(html).toContain(">Punchline<");
+    expect(html).toContain('href="/drops"');
+    expect(html).toContain("Browse all");
   });
 
   it("reuses the living collectible card and adds the artist·track footer", () => {

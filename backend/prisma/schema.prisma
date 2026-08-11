@@ -2184,6 +2184,7 @@ model PunchlineDrop {
 
   @@index([trackId])
   @@index([artistId, status])
+  @@index([status, publishedAt, id])
 }
 
 // A single collectible moment: a clip range on the vocal stem plus the

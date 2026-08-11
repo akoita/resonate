@@ -59,6 +59,15 @@ const PRIMARY_ITEMS = [
     )
   },
   {
+    name: "Drops",
+    href: "/drops",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="m4 7 8 4 8-4" /><path d="M12 11v10" />
+      </svg>
+    )
+  },
+  {
     name: "Marketplace",
     href: "/marketplace",
     icon: (

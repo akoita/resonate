@@ -47,6 +47,7 @@ This section tracks what is actually built.
 | Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | ✅ done | Artist attaches an optional set bonus (bonus vocal clip + note, extracted at publish with the #481 primitive); completing the set grants it **exactly once** (DB-unique `PunchlineUnlockGrant`), emits `punchline.unlock_granted`, and reveals it in the collect module + Moments tab. Reward content is gated: public payloads carry existence only. |
 | Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | ✅ done | Full funnel instrumentation: the 4 domain events registered + bridged into the analytics fact store, 4 client funnel events (`drop_viewed` → `preview_played` → `collect_started` → `collect_completed`) through the product-analytics rail, and an owner metrics endpoint + builder strip (views/previews/collected/conversion/sets completed, per drop and per moment). |
 | Home "Drops" shelf | [#1479](https://github.com/akoita/resonate/issues/1479) | ✅ done | First-class Home discovery surface: public `GET /punchline/featured` ranks published drops by a deterministic momentum heuristic (sold-out excluded → 7-day collect activity from `PunchlineCollectible.acquiredAt` → scarcity urgency → `publishedAt` desc, ≤2 drops per artist). The shelf (umbrella-named "Drops", per-card kind chip) reuses the living collectible card + a context footer (artist · track · scarcity · price) and deep-links to `/release/[id]?focus=moments`, which scroll-pulses the collect module. Renders nothing when no collectable drops exist. Emits `punchline.drop_viewed` with `source: "home"` for Home-vs-release funnel comparison. |
+| Full Drops browse gallery | [#1510](https://github.com/akoita/resonate/issues/1510) | ✅ done | Public `/drops` collection gallery with momentum-ranked cards, URL-shareable kind/genre/price/availability filters, 24-item paging, explicit empty/error/loading states, and sold-out visibility. It reuses the exact Home card/footer and deep-links to the release collect module. Sidebar, Home, and release collect-module links expose it. Browse impressions emit `punchline.drop_viewed` with `source: "drops_browse"`. |
 | Owned-moments profile showcase (slice 1) | [#1477](https://github.com/akoita/resonate/issues/1477) | 🟡 partial | Public listener profile (`/community/profile/[userId]`) surfaces a collector's newest owned moments (≤12, newest-first) as living collectible cards with edition line, credited artist, acquired date, and a `/release/[id]?focus=moments` link. Strictly behind the existing `showOwnedItems` community-visibility opt-in and the `public` profile gate: consent off → field absent + `owned_items_hidden` redaction; non-public profile → 404. The public shape carries **no wallet and no payment provenance** (`paymentRail`/`pricePaidCents`/`paymentRef` excluded). Slice 2 (shareable moment cards / share buttons) is pending. |
 
 Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
@@ -78,6 +79,7 @@ fee.
 | Method | Route | Auth | Purpose |
 | --- | --- | --- | --- |
 | `GET` | `/punchline/eligibility?trackId=` | JWT | Explainable allow/deny for creating a drop on a track (#480). Response also carries `clipBoundsMs: { minMs, maxMs }` — the server-resolved, env-tunable clip-length bounds the selection UI reads so it never hardcodes them (#483). |
+| `GET` | `/punchline/drops` | Public | Momentum-ranked browse feed (#1510). Query: `page` (default 1), `limit` (default 24, max 48), `kind=all|punchline`, exact `genre`, `price=all|free|paid`, and `availability=available|sold_out|all`. Returns page metadata and genre facets for the server-rendered `/drops` gallery. |
 | `POST` | `/punchline/drops` | JWT (owner) | Create a draft drop on an owned, eligible track. |
 | `PATCH` | `/punchline/drops/:dropId` | JWT (owner) | Update a draft drop's title/description. |
 | `POST` | `/punchline/drops/:dropId/moments` | JWT (owner) | Add a collectible moment to a draft. |
@@ -231,6 +233,10 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   `web/src/styles/punchline.css`; punchline API client in `web/src/lib/api.ts`;
   wired into `web/src/app/release/[id]/page.tsx`. User Guide article
   `punchline-drops` in `web/src/lib/help/content.ts`.
+- Browse UI (#1510): `web/src/app/drops/` and `web/src/components/drops/` —
+  server-rendered gallery/filter/paging states, a small client impression island,
+  and the shared discovery card consumed by both `/drops` and Home. Route styles
+  live in `web/src/styles/drops.css`.
 - Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
   `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`,
   `punchline-collect.integration.spec.ts` (#485: incl. a concurrent-collect race
@@ -240,6 +246,8 @@ All builder validation mirrors the backend limits exactly (shared helpers in
   post-payment race → `refund_due` + honest error, price-band validation);
   frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx`,
   `PunchlineDropsPanel.test.tsx`, and `punchlineDropHelpers.test.tsx`.
+  Browse coverage lives in `web/src/components/drops/DropsBrowse.test.tsx` and
+  shared Home behavior in `web/src/components/home/DropsShelf.test.tsx`.
   Run backend: `npm run test:integration -- --testPathPattern='punchline'`
   (the publish/clip render cases require ffmpeg on PATH; CI installs it for the
   backend-integration job). Run frontend: `npx vitest run src/components/punchline`.
