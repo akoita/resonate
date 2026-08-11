@@ -67,7 +67,7 @@ else is deliberately shipped, gated, hidden, or honestly labeled.
 | Surface | Status today | Why it is critical / required work |
 | --- | --- | --- |
 | Onboarding + passkey auth/wallet | cross-cutting | First minutes of every cohort user; smart-account creation, session reset (#1199) exists. Full first-run QA pass needed. |
-| Home + discovery rails | shipped S8 | The storefront for Shows *and* Drops. #1491 (perf: slow/unstyled Drops cards) is open and launch-blocking for quality. |
+| Home + discovery rails | shipped S8 | The storefront for Shows *and* Drops. #1491 completed the measured Home performance program: cold LCP/CLS and image budgets pass, the unstyled flash is fixed, below-fold work is deferred, and responsive artwork plus prefetch reductions materially cut bytes and requests. Cache-coherent artwork versioning (#1604) and mixed-ingestion sibling-stream cleanup (#1605) remain independent hardening follow-ups. |
 | Shows end-to-end | `partial` (staging-proven) | The flagship. Engineering proven; needs the production go-live package in #1583 (owner GO, prod escrow deploy, `contractCampaignId` wiring, prod indexer verification, fixture gating, and controlled cohort). |
 | Player / playback sessions | page still `draft` | Core listening loop. The feature page must be brought to truth and the playback path QA'd; Player Action Layer (`in-progress`) ships in its current scope (Shows chip live). |
 | Library (+ Moments tab, playlists) | shipped | Where ownership lands after collecting. Verify pass. |
@@ -142,7 +142,7 @@ two of them (playback, wallet funding) are on the critical money path.
 ## What this means: the real remaining backlog
 
 1. **Content:** #1224 sample campaigns (open, in progress).
-2. **Quality:** #1491 Home perf; playback + wallet-funding + upload QA passes;
+2. **Quality:** #1491 Home perf complete; playback + wallet-funding + upload QA passes;
    `/help` refresh.
 3. **Gating work:** implement the GATE/HIDE decisions above (nav pruning,
    role gates, flags, beta labels) — mostly small, but it *is* code work.
