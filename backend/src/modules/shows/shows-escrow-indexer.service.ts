@@ -193,7 +193,8 @@ export function configuredShowEscrowIndexerTargets(chainId: number): EscrowIndex
 }
 
 type MismatchInput = {
-  chainId?: number;
+  chainId: number;
+  contractAddress: string;
   contractCampaignId: string;
   transactionHash: string;
   blockNumber: bigint;
@@ -570,18 +571,37 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     });
 
     if (matches.length === 0) {
-      pushMismatch({
-        ...ctx,
-        contractCampaignId,
-        reason: `no backend campaign bound to escrow campaign ${contractCampaignId}`,
-        eventName,
+      const contractAddress = ctx.escrowAddress.toLowerCase();
+      const acknowledgement = await tx.showEscrowReconciliationAcknowledgement.findUnique({
+        where: {
+          chainId_contractAddress_contractCampaignId: {
+            chainId: ctx.chainId,
+            contractAddress,
+            contractCampaignId,
+          },
+        },
+        select: { revokedAt: true },
       });
+      if (!acknowledgement || acknowledgement.revokedAt !== null) {
+        pushMismatch({
+          chainId: ctx.chainId,
+          contractAddress,
+          contractCampaignId,
+          transactionHash: ctx.transactionHash,
+          blockNumber: ctx.blockNumber,
+          reason: `no backend campaign bound to escrow campaign ${contractCampaignId}`,
+          eventName,
+        });
+      }
       return;
     }
     if (matches.length > 1) {
       pushMismatch({
-        ...ctx,
+        chainId: ctx.chainId,
+        contractAddress: ctx.escrowAddress.toLowerCase(),
         contractCampaignId,
+        transactionHash: ctx.transactionHash,
+        blockNumber: ctx.blockNumber,
         reason: `multiple backend campaigns bound to escrow campaign ${contractCampaignId}`,
         eventName,
       });
@@ -709,8 +729,11 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
           });
           if (openDispute) {
             pushMismatch({
-              ...ctx,
+              chainId: ctx.chainId,
+              contractAddress: ctx.escrowAddress.toLowerCase(),
               contractCampaignId,
+              transactionHash: ctx.transactionHash,
+              blockNumber: ctx.blockNumber,
               reason: `funds released on-chain while an off-chain dispute is open`,
               eventName,
             });
@@ -813,7 +836,12 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     tx: Prisma.TransactionClient,
     campaignId: string,
     args: any,
-    ctx: { transactionHash: string; blockNumber: bigint },
+    ctx: {
+      chainId: number;
+      escrowAddress: string;
+      transactionHash: string;
+      blockNumber: bigint;
+    },
     pushMismatch: (m: MismatchInput) => void,
   ): Promise<void> {
     const backer = String(args.backer).toLowerCase();
@@ -832,6 +860,8 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
     if (!pledge) {
       // A pledge happened on chain without a matching backend intent.
       pushMismatch({
+        chainId: ctx.chainId,
+        contractAddress: ctx.escrowAddress.toLowerCase(),
         contractCampaignId: String(args.campaignId),
         transactionHash: ctx.transactionHash,
         blockNumber: ctx.blockNumber,
@@ -955,6 +985,8 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       event: "shows.campaign_reconciliation_mismatch",
       message: "Show campaign reconciliation mismatch detected",
       contractCampaignId: input.contractCampaignId,
+      chainId: input.chainId,
+      contractAddress: input.contractAddress,
       escrowEventName: input.eventName,
       transactionHash: input.transactionHash,
       blockNumber: input.blockNumber.toString(),
@@ -964,6 +996,8 @@ export class ShowsEscrowIndexerService implements OnModuleInit, OnModuleDestroy 
       eventName: "shows.campaign_reconciliation_mismatch",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
+      chainId: input.chainId,
+      contractAddress: input.contractAddress,
       contractCampaignId: input.contractCampaignId,
       escrowEventName: input.eventName,
       transactionHash: input.transactionHash,

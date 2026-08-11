@@ -48,11 +48,31 @@ type ReconciliationMismatchQuery = {
 
 type ReconciliationMismatchRecord = {
   occurredAt: string;
+  chainId: number | null;
+  contractAddress: string | null;
   contractCampaignId: string | null;
   escrowEventName: string | null;
   transactionHash: string | null;
   blockNumber: string | null;
   reason: string | null;
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
+  acknowledgedByUserId: string | null;
+  acknowledgementNote: string | null;
+  revokedAt: string | null;
+  revokedByUserId: string | null;
+};
+
+type ReconciliationAcknowledgementInput = {
+  chainId?: unknown;
+  contractAddress?: unknown;
+  note?: unknown;
+};
+
+type ReconciliationIdentity = {
+  chainId: number;
+  contractAddress: string;
+  contractCampaignId: string;
 };
 
 type CampaignBaseInput = {
@@ -200,6 +220,8 @@ const DEFAULT_DISPUTE_WINDOW_SECONDS = 604800;
 // InvalidDeadline reverts when `deadline <= now || bookingDeadline <= deadline`).
 const MIN_DISPUTE_WINDOW_SECONDS = 3600;
 const MAX_DISPUTE_WINDOW_SECONDS = 7776000;
+const MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH = 1000;
+const MAX_UINT256 = (1n << 256n) - 1n;
 const AUTHORIZED_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
   "trusted_source_authorized",
@@ -625,6 +647,74 @@ function normalizeContractCampaignId(
   if (value === null || value === undefined) return undefined;
   const text = String(value).trim();
   return text.length > 0 ? text : undefined;
+}
+
+function normalizeReconciliationContractCampaignId(value: unknown): string {
+  const text = typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : "";
+  if (!/^[0-9]+$/.test(text)) {
+    throw new BadRequestException("contractCampaignId must be a positive uint256");
+  }
+  const parsed = BigInt(text);
+  if (parsed <= 0n || parsed > MAX_UINT256) {
+    throw new BadRequestException("contractCampaignId must be a positive uint256");
+  }
+  return parsed.toString();
+}
+
+function parseReconciliationChainId(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 2_147_483_647) {
+    throw new BadRequestException("chainId must be a positive PostgreSQL integer");
+  }
+  return parsed;
+}
+
+function parseReconciliationAddress(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new BadRequestException("contractAddress must be a valid nonzero EVM address");
+  }
+  const address = validateOptionalAddress(value, "contractAddress");
+  if (!address || /^0x0{40}$/.test(address)) {
+    throw new BadRequestException("contractAddress must be a valid nonzero EVM address");
+  }
+  return address;
+}
+
+function parseAcknowledgementNote(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("note must be a string");
+  }
+  const note = value.trim();
+  if (!note) return null;
+  if (note.length > MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH) {
+    throw new BadRequestException(
+      `note must be at most ${MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH} characters`,
+    );
+  }
+  return note;
+}
+
+function reconciliationIdentityKey(identity: ReconciliationIdentity): string {
+  return `${identity.chainId}:${identity.contractAddress}:${identity.contractCampaignId}`;
+}
+
+function reconciliationIdentityFromUnknown(input: {
+  chainId: unknown;
+  contractAddress: unknown;
+  contractCampaignId: unknown;
+}): ReconciliationIdentity | null {
+  try {
+    return {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(input.contractCampaignId),
+    };
+  } catch {
+    return null;
+  }
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -1975,17 +2065,196 @@ export class ShowsService {
       select: { occurredAt: true, subjectId: true, payload: true },
     });
 
-    return rows.map((row) => {
+    const records = rows.map((row) => {
       const payload = (row.payload ?? {}) as Record<string, unknown>;
       return {
         occurredAt: row.occurredAt.toISOString(),
+        chainId: null as number | null,
+        contractAddress: null as string | null,
         contractCampaignId: stringOrNull(payload.contractCampaignId ?? row.subjectId),
         escrowEventName: stringOrNull(payload.escrowEventName),
         transactionHash: stringOrNull(payload.transactionHash),
         blockNumber: stringOrNull(payload.blockNumber),
         reason: stringOrNull(payload.reason),
+        identity: reconciliationIdentityFromUnknown({
+          chainId: payload.chainId,
+          contractAddress: payload.contractAddress,
+          contractCampaignId: payload.contractCampaignId ?? row.subjectId,
+        }),
       };
     });
+
+    // Facts emitted before #1534 do not carry chain/address. Resolve those from
+    // the durable indexed log only when txHash + campaign id identifies exactly
+    // one escrow triple; never guess from campaign id alone.
+    const legacyRecords = records.filter(
+      (record) => !record.identity && record.transactionHash && record.contractCampaignId,
+    );
+    if (legacyRecords.length > 0) {
+      const transactionHashes = [...new Set(legacyRecords.map((record) => record.transactionHash!))];
+      const campaignIds = [...new Set(legacyRecords.map((record) => record.contractCampaignId!))];
+      const escrowEvents = await prisma.showCampaignEscrowEvent.findMany({
+        where: {
+          transactionHash: { in: transactionHashes },
+          contractCampaignId: { in: campaignIds },
+        },
+        select: {
+          transactionHash: true,
+          contractCampaignId: true,
+          chainId: true,
+          contractAddress: true,
+        },
+      });
+      const candidates = new Map<string, Map<string, ReconciliationIdentity>>();
+      for (const event of escrowEvents) {
+        if (!event.contractCampaignId) continue;
+        const identity = reconciliationIdentityFromUnknown(event);
+        if (!identity) continue;
+        const correlationKey = `${event.transactionHash}:${event.contractCampaignId}`;
+        const identities = candidates.get(correlationKey) ?? new Map();
+        identities.set(reconciliationIdentityKey(identity), identity);
+        candidates.set(correlationKey, identities);
+      }
+      for (const record of legacyRecords) {
+        const identities = candidates.get(`${record.transactionHash}:${record.contractCampaignId}`);
+        if (identities?.size === 1) record.identity = [...identities.values()][0];
+      }
+    }
+
+    const identities = new Map<string, ReconciliationIdentity>();
+    for (const record of records) {
+      if (record.identity) identities.set(reconciliationIdentityKey(record.identity), record.identity);
+    }
+    const acknowledgements = identities.size > 0
+      ? await prisma.showEscrowReconciliationAcknowledgement.findMany({
+          where: {
+            OR: [...identities.values()].map((identity) => ({
+              chainId: identity.chainId,
+              contractAddress: identity.contractAddress,
+              contractCampaignId: identity.contractCampaignId,
+            })),
+          },
+        })
+      : [];
+    const acknowledgementByIdentity = new Map(
+      acknowledgements.map((acknowledgement) => [
+        reconciliationIdentityKey(acknowledgement),
+        acknowledgement,
+      ]),
+    );
+
+    return records.map(({ identity, ...record }): ReconciliationMismatchRecord => {
+      const acknowledgement = identity
+        ? acknowledgementByIdentity.get(reconciliationIdentityKey(identity))
+        : undefined;
+      return {
+        ...record,
+        chainId: identity?.chainId ?? null,
+        contractAddress: identity?.contractAddress ?? null,
+        acknowledged: Boolean(acknowledgement && acknowledgement.revokedAt === null),
+        acknowledgedAt: acknowledgement?.acknowledgedAt.toISOString() ?? null,
+        acknowledgedByUserId: acknowledgement?.acknowledgedByUserId ?? null,
+        acknowledgementNote: acknowledgement?.note ?? null,
+        revokedAt: acknowledgement?.revokedAt?.toISOString() ?? null,
+        revokedByUserId: acknowledgement?.revokedByUserId ?? null,
+      };
+    });
+  }
+
+  async acknowledgeReconciliationMismatch(
+    actor: Actor,
+    contractCampaignIdInput: unknown,
+    input: ReconciliationAcknowledgementInput,
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can acknowledge reconciliation mismatches");
+    }
+    const identity: ReconciliationIdentity = {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(contractCampaignIdInput),
+    };
+    const note = parseAcknowledgementNote(input.note);
+    const indexedEvent = await prisma.showCampaignEscrowEvent.findFirst({
+      where: {
+        chainId: identity.chainId,
+        contractAddress: { equals: identity.contractAddress, mode: "insensitive" },
+        contractCampaignId: identity.contractCampaignId,
+      },
+      select: { id: true },
+    });
+    if (!indexedEvent) {
+      throw new NotFoundException("No indexed escrow event exists for this campaign identity");
+    }
+    const acknowledgement = await prisma.$transaction(async (tx) => {
+      // Reactivation is conditional so concurrent/retried POSTs preserve the
+      // first actor/time/note for each active acknowledgement period.
+      await tx.showEscrowReconciliationAcknowledgement.updateMany({
+        where: { ...identity, revokedAt: { not: null } },
+        data: {
+          acknowledgedByUserId: actor.userId,
+          acknowledgedAt: new Date(),
+          note,
+          revokedAt: null,
+          revokedByUserId: null,
+        },
+      });
+      return tx.showEscrowReconciliationAcknowledgement.upsert({
+        where: { chainId_contractAddress_contractCampaignId: identity },
+        create: {
+          ...identity,
+          acknowledgedByUserId: actor.userId,
+          note,
+        },
+        update: {},
+      });
+    });
+    return {
+      chainId: acknowledgement.chainId,
+      contractAddress: acknowledgement.contractAddress,
+      contractCampaignId: acknowledgement.contractCampaignId,
+      acknowledged: true,
+      acknowledgedAt: acknowledgement.acknowledgedAt.toISOString(),
+      acknowledgedByUserId: acknowledgement.acknowledgedByUserId,
+      acknowledgementNote: acknowledgement.note,
+      revokedAt: null,
+      revokedByUserId: null,
+    };
+  }
+
+  async removeReconciliationAcknowledgement(
+    actor: Actor,
+    contractCampaignIdInput: unknown,
+    input: ReconciliationAcknowledgementInput,
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can remove reconciliation acknowledgements");
+    }
+    const identity: ReconciliationIdentity = {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(contractCampaignIdInput),
+    };
+    const acknowledgement = await prisma.$transaction(async (tx) => {
+      // Conditional update makes repeated/concurrent DELETEs idempotent and
+      // preserves the first revoker and timestamp for the audit trail.
+      await tx.showEscrowReconciliationAcknowledgement.updateMany({
+        where: { ...identity, revokedAt: null },
+        data: { revokedAt: new Date(), revokedByUserId: actor.userId },
+      });
+      return tx.showEscrowReconciliationAcknowledgement.findUnique({
+        where: { chainId_contractAddress_contractCampaignId: identity },
+      });
+    });
+    return {
+      ...identity,
+      acknowledged: false,
+      acknowledgedAt: acknowledgement?.acknowledgedAt.toISOString() ?? null,
+      acknowledgedByUserId: acknowledgement?.acknowledgedByUserId ?? null,
+      acknowledgementNote: acknowledgement?.note ?? null,
+      revokedAt: acknowledgement?.revokedAt?.toISOString() ?? null,
+      revokedByUserId: acknowledgement?.revokedByUserId ?? null,
+    };
   }
 
   /**

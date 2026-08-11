@@ -24,6 +24,8 @@ const mockShowsService = {
   resyncCampaignFromChain: jest.fn(),
   discoverOnChainCampaign: jest.fn(),
   listReconciliationMismatches: jest.fn(),
+  acknowledgeReconciliationMismatch: jest.fn(),
+  removeReconciliationAcknowledgement: jest.fn(),
   createPledgeIntent: jest.fn(),
   confirmPledge: jest.fn(),
   confirmPledgeRefund: jest.fn(),
@@ -269,5 +271,70 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges an exact reconciliation identity for operators", async () => {
+    const contractAddress = "0x" + "a".repeat(40);
+    mockShowsService.acknowledgeReconciliationMismatch.mockResolvedValue({
+      chainId: 84532,
+      contractAddress,
+      contractCampaignId: "42",
+      acknowledged: true,
+    });
+
+    await request(app.getHttpServer())
+      .post("/shows/operator/reconciliation-mismatches/42/acknowledge")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .send({ chainId: 84532, contractAddress, note: "Known staging artifact" })
+      .expect(201)
+      .expect((res) => expect(res.body.acknowledged).toBe(true));
+
+    expect(mockShowsService.acknowledgeReconciliationMismatch).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      "42",
+      { chainId: 84532, contractAddress, note: "Known staging artifact" },
+    );
+  });
+
+  it("removes a reconciliation acknowledgement idempotently for admins", async () => {
+    const contractAddress = "0x" + "b".repeat(40);
+    mockShowsService.removeReconciliationAcknowledgement.mockResolvedValue({
+      chainId: 84532,
+      contractAddress,
+      contractCampaignId: "42",
+      acknowledged: false,
+    });
+
+    await request(app.getHttpServer())
+      .delete("/shows/operator/reconciliation-mismatches/42/acknowledgement")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ chainId: 84532, contractAddress })
+      .expect(200)
+      .expect((res) => expect(res.body.acknowledged).toBe(false));
+
+    expect(mockShowsService.removeReconciliationAcknowledgement).toHaveBeenCalledWith(
+      { userId: "admin-1", role: "admin" },
+      "42",
+      { chainId: 84532, contractAddress },
+    );
+  });
+
+  it("protects acknowledgement mutations with JWT and operator roles", async () => {
+    const postRoute = "/shows/operator/reconciliation-mismatches/42/acknowledge";
+    const deleteRoute = "/shows/operator/reconciliation-mismatches/42/acknowledgement";
+    await request(app.getHttpServer()).post(postRoute).send({}).expect(401);
+    await request(app.getHttpServer())
+      .post(postRoute)
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer()).delete(deleteRoute).send({}).expect(401);
+    await request(app.getHttpServer())
+      .delete(deleteRoute)
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({})
+      .expect(403);
+    expect(mockShowsService.acknowledgeReconciliationMismatch).not.toHaveBeenCalled();
+    expect(mockShowsService.removeReconciliationAcknowledgement).not.toHaveBeenCalled();
   });
 });

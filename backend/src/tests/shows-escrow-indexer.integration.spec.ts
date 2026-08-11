@@ -114,6 +114,9 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
   });
 
   afterAll(async () => {
+    await prisma.showEscrowReconciliationAcknowledgement.deleteMany({
+      where: { chainId: CHAIN_ID, contractAddress: { in: [ESCROW, INDEX_OLD, INDEX_NEW, INDEX_FAIL] } },
+    });
     await prisma.showCampaignEscrowEvent.deleteMany({ where: { contractAddress: { in: [ESCROW, INDEX_OLD, INDEX_NEW, INDEX_FAIL] } } });
     await prisma.showEscrowIndexerState.deleteMany({ where: { contractAddress: ESCROW } });
     await prisma.showEscrowIndexerState.deleteMany({ where: { contractAddress: { in: [INDEX_OLD, INDEX_NEW, INDEX_FAIL] } } });
@@ -467,6 +470,24 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
 
   it("emits a reconciliation mismatch for an on-chain pledge with no backend intent", async () => {
     await seedCampaign("mismatch", "4");
+    // A known-foreign acknowledgement is intentionally narrow: once the
+    // campaign is mapped, pledge drift must still alert.
+    await prisma.showEscrowReconciliationAcknowledgement.upsert({
+      where: {
+        chainId_contractAddress_contractCampaignId: {
+          chainId: CHAIN_ID,
+          contractAddress: ESCROW,
+          contractCampaignId: "4",
+        },
+      },
+      create: {
+        chainId: CHAIN_ID,
+        contractAddress: ESCROW,
+        contractCampaignId: "4",
+        acknowledgedByUserId: "indexer-test",
+      },
+      update: {},
+    });
     mismatches.length = 0;
 
     // writeStructuredLog defaults to console.info; capture the structured
@@ -494,10 +515,10 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
     expect(mismatches.length).toBeGreaterThanOrEqual(1);
     expect(mismatches[0]).toMatchObject({
       eventName: "shows.campaign_reconciliation_mismatch",
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
       escrowEventName: "Pledged",
     });
-    // No secret leakage in the audit event.
-    expect(JSON.stringify(mismatches[0])).not.toContain(ESCROW);
 
     // The structured app-event line drives the Cloud Monitoring alert: it must
     // carry service=resonate-backend, the event name, and the drift reason.
@@ -509,8 +530,94 @@ describe("ShowsEscrowIndexerService reconciliation (integration)", () => {
       event: "shows.campaign_reconciliation_mismatch",
       escrowEventName: "Pledged",
       contractCampaignId: "4",
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
     });
     expect(String(structured.reason)).toContain("no matching backend intent");
+  });
+
+  it("suppresses only an exact acknowledged unbound campaign while processing its log", async () => {
+    const campaignId = "404040";
+    const acknowledgedTx = ("0x" + "c1".padStart(64, "0")) as `0x${string}`;
+    await prisma.showEscrowReconciliationAcknowledgement.create({
+      data: {
+        chainId: CHAIN_ID,
+        contractAddress: ESCROW,
+        contractCampaignId: campaignId,
+        acknowledgedByUserId: "indexer-test",
+        note: "Known foreign campaign",
+      },
+    });
+    mismatches.length = 0;
+    const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      await service.processLog(
+        buildLog("CampaignActivated", { campaignId: BigInt(campaignId) }, { transactionHash: acknowledgedTx }),
+        CHAIN_ID,
+        ESCROW,
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
+
+    expect(mismatches).toHaveLength(0);
+    const processed = await prisma.showCampaignEscrowEvent.findUniqueOrThrow({
+      where: { transactionHash_logIndex: { transactionHash: acknowledgedTx, logIndex: 0 } },
+    });
+    expect(processed.processedAt).not.toBeNull();
+
+    // Revoked acknowledgements remain as audit rows but are inactive and must
+    // no longer suppress alerts.
+    await prisma.showEscrowReconciliationAcknowledgement.update({
+      where: {
+        chainId_contractAddress_contractCampaignId: {
+          chainId: CHAIN_ID,
+          contractAddress: ESCROW,
+          contractCampaignId: campaignId,
+        },
+      },
+      data: { revokedAt: new Date(), revokedByUserId: "indexer-reviewer" },
+    });
+    const revokedTx = ("0x" + "c3".padStart(64, "0")) as `0x${string}`;
+    await service.processLog(
+      buildLog("CampaignActivated", { campaignId: BigInt(campaignId) }, { transactionHash: revokedTx }),
+      CHAIN_ID,
+      ESCROW,
+    );
+    expect(mismatches).toContainEqual(expect.objectContaining({
+      chainId: CHAIN_ID,
+      contractAddress: ESCROW,
+      contractCampaignId: campaignId,
+    }));
+    mismatches.length = 0;
+
+    // The same numeric id on a different escrow is a distinct identity and must
+    // still alert.
+    const otherTx = ("0x" + "c2".padStart(64, "0")) as `0x${string}`;
+    await service.processLog(
+      buildLog("CampaignActivated", { campaignId: BigInt(campaignId) }, { transactionHash: otherTx }),
+      CHAIN_ID,
+      INDEX_OLD,
+    );
+    expect(mismatches).toContainEqual(expect.objectContaining({
+      chainId: CHAIN_ID,
+      contractAddress: INDEX_OLD,
+      contractCampaignId: campaignId,
+    }));
+    mismatches.length = 0;
+
+    // The same address/id on another chain is also a distinct identity.
+    const otherChainTx = ("0x" + "c4".padStart(64, "0")) as `0x${string}`;
+    await service.processLog(
+      buildLog("CampaignActivated", { campaignId: BigInt(campaignId) }, { transactionHash: otherChainTx }),
+      CHAIN_ID + 1,
+      ESCROW,
+    );
+    expect(mismatches).toContainEqual(expect.objectContaining({
+      chainId: CHAIN_ID + 1,
+      contractAddress: ESCROW,
+      contractCampaignId: campaignId,
+    }));
   });
 
   it("alerts when funds are released on-chain while an off-chain dispute is open (#950)", async () => {

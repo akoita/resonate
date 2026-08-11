@@ -220,6 +220,8 @@ export interface RemixEncryptedRenderDeniedEvent extends BaseEvent {
  */
 export interface ShowCampaignReconciliationMismatchEvent extends BaseEvent {
   eventName: "shows.campaign_reconciliation_mismatch";
+  chainId: number;
+  contractAddress: string;
   contractCampaignId: string;
   escrowEventName: string;
   transactionHash: string;

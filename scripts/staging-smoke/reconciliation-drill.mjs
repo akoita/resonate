@@ -159,7 +159,10 @@ async function main() {
 
   if (DRY_RUN) {
     console.log("[drill] --dry-run: stopped cleanly after preflight + auth");
-    run.report({ mode: "drift", skipped: ["chain-create", "api-bind", "drift-pledge", "assert-detection", "cleanup"] });
+    run.report({
+      mode: "drift",
+      skipped: ["chain-create", "api-bind", "drift-pledge", "assert-detection", "cleanup", "acknowledge"],
+    });
     return;
   }
 
@@ -407,7 +410,54 @@ async function main() {
     }
   }
 
-  // === 8. alert reminder ====================================================
+  // === 8. acknowledge the deliberately provoked drift ======================
+  // This is intentionally after both the exact tx-hash/reason assertion and
+  // every cleanup assertion. A failed detection or cleanup must remain a
+  // failed, unacknowledged drill rather than being hidden from operators.
+  {
+    const t = Date.now();
+    const campaignId = contractCampaignId.toString();
+    const acknowledgement = await fetchJson(
+      `${API_BASE}/shows/operator/reconciliation-mismatches/${encodeURIComponent(campaignId)}/acknowledge`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          chainId: EXPECTED_CHAIN_ID,
+          contractAddress: ESCROW,
+          note: `Staging reconciliation drill ${RUN_ID} completed successfully`,
+        }),
+      },
+      "acknowledge",
+    );
+    if (String(acknowledgement.contractCampaignId) !== campaignId) {
+      throw new SmokeError(
+        "acknowledge",
+        `response contractCampaignId is "${acknowledgement.contractCampaignId}", expected "${campaignId}"`,
+      );
+    }
+    if (Number(acknowledgement.chainId) !== EXPECTED_CHAIN_ID) {
+      throw new SmokeError(
+        "acknowledge",
+        `response chainId is "${acknowledgement.chainId}", expected "${EXPECTED_CHAIN_ID}"`,
+      );
+    }
+    if (
+      typeof acknowledgement.contractAddress !== "string" ||
+      acknowledgement.contractAddress.toLowerCase() !== ESCROW.toLowerCase()
+    ) {
+      throw new SmokeError(
+        "acknowledge",
+        `response contractAddress is "${acknowledgement.contractAddress}", expected "${ESCROW}"`,
+      );
+    }
+    if (acknowledgement.acknowledged !== true) {
+      throw new SmokeError("acknowledge", "response did not confirm acknowledged=true");
+    }
+    ok("acknowledge", t, `campaign ${campaignId} marked as known staging drill drift`);
+  }
+
+  // === 9. alert reminder ====================================================
   // The workflow cannot assert email delivery; surface the expected alert so an
   // operator running the drill can confirm the Cloud Monitoring notification.
   warn(

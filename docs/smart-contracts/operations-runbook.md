@@ -364,7 +364,48 @@ drift is also written as a durable analytics fact.
 
 3. **If the reason is "no backend campaign bound…"** — an on-chain campaign has
    no linked backend row. Bind/activate the campaign (operator activation with
-   the `contractCampaignId`) or, if it is not ours, record and ignore.
+   the `contractCampaignId`) when it is ours. If chain inspection proves it is a
+   known-foreign or intentionally burned artifact, acknowledge the exact chain,
+   escrow, and campaign identity with an admin/operator JWT:
+
+   ```bash
+   curl -sS -X POST \
+     -H "Authorization: Bearer $OPERATOR_JWT" \
+     -H "Content-Type: application/json" \
+     -d "$(jq -nc \
+       --argjson chainId "$CHAIN_ID" \
+       --arg contractAddress "$SHOW_CAMPAIGN_ESCROW_ADDRESS" \
+       --arg note "Known-foreign campaign verified against chain" \
+       '{chainId: $chainId, contractAddress: $contractAddress, note: $note}')" \
+     "$API_BASE/shows/operator/reconciliation-mismatches/$CONTRACT_CAMPAIGN_ID/acknowledge" | jq .
+   ```
+
+   Confirm the response contains the exact `chainId`, `contractAddress`, and
+   `contractCampaignId` plus `acknowledged: true`. The action is idempotent.
+   Acknowledged mismatches remain visible in the operator listing, flagged with
+   their acknowledgement metadata; acknowledgement suppresses only future
+   **no-backend-campaign-bound** alerts for that exact identity. It never
+   suppresses pledge-without-intent, open-dispute release, or duplicate-binding
+   mismatches.
+
+   If the campaign later becomes ours, or the acknowledgement was mistaken,
+   revoke it before relying on the alert again:
+
+   ```bash
+   curl -sS -X DELETE \
+     -H "Authorization: Bearer $OPERATOR_JWT" \
+     -H "Content-Type: application/json" \
+     -d "$(jq -nc \
+       --argjson chainId "$CHAIN_ID" \
+       --arg contractAddress "$SHOW_CAMPAIGN_ESCROW_ADDRESS" \
+       '{chainId: $chainId, contractAddress: $contractAddress}')" \
+     "$API_BASE/shows/operator/reconciliation-mismatches/$CONTRACT_CAMPAIGN_ID/acknowledgement" | jq .
+   ```
+
+   Revocation idempotently marks the acknowledgement inactive and restores
+   future no-backend-campaign alerting. The acknowledgement and revocation audit
+   metadata remain available, and historical mismatch facts are not deleted
+   from the operator listing.
 
 4. **If the reason is "funds released … while an off-chain dispute is open"** —
    chain released despite an open dispute (release is time-locked, not
@@ -377,8 +418,11 @@ drift is also written as a durable analytics fact.
 **Proving the alert works.** The **Staging Reconciliation Drill**
 (`.github/workflows/staging-reconciliation-drill.yml`, `workflow_dispatch` only)
 provokes a genuine pledge-without-intent drift on staging and asserts the
-operator endpoint surfaces it. Run it after any deploy that touches the escrow
-indexer. Full guide:
+operator endpoint surfaces it. Only after the exact assertion and all cleanup
+checks pass does the drill acknowledge its triple-scoped burned campaign, so a
+failed assertion cannot hide itself and the successful test does not leave
+permanent no-backend-campaign noise. Run it after any deploy that touches the
+escrow indexer. Full guide:
 [`docs/features/staging_reconciliation_drill.md`](../features/staging_reconciliation_drill.md).
 
 The same structured-app-event + log-based-metric + email-alert path also covers
