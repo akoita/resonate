@@ -1084,7 +1084,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Filter by drop kind, genre, or free and paid moments; turn on Include sold out when you want to see completed editions too. Your filters and page stay in the web address, so you can share the view. Tap any card and you land directly on that release's collect section. The Home page also shows a smaller shelf of available Drops.",
+            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Filter by drop kind, genre, or free and paid moments; turn on Include sold out when you want to see completed editions too. Your filters and page stay in the web address, so you can share the view. Use the play button to preview a Drop without leaving the gallery, or tap the rest of the card to open that release's collect section. The Home page also shows a smaller shelf of available Drops.",
           },
           {
             kind: "figure",
