@@ -79,6 +79,36 @@ describe("DropsShelfView", () => {
     expect(html).not.toContain("of 100 left");
   });
 
+  it("gives long card and context text stable shrink-and-wrap hooks", () => {
+    const longTitle = "TitleWithoutAnyNaturalWrapOpportunity".repeat(3);
+    const longLyric = "LyricWithoutAnyNaturalWrapOpportunity".repeat(4);
+    const longArtist = "ArtistWithoutAnyNaturalWrapOpportunity".repeat(3);
+    const longTrack = "TrackWithoutAnyNaturalWrapOpportunity".repeat(3);
+    const html = renderToStaticMarkup(
+      <DropsShelfView
+        drops={[
+          drop({
+            context: {
+              ...drop().context,
+              artistName: longArtist,
+              trackTitle: longTrack,
+            },
+            moments: [moment({ title: longTitle, lyricText: longLyric })],
+          }),
+        ]}
+      />,
+    );
+
+    expect(html).toContain("ng-drops-card__context");
+    expect(html).toContain("ng-drops-card__artist");
+    expect(html).toContain("ng-drops-card__track");
+    expect(html).toContain(longTitle);
+    expect(html).toContain(longArtist);
+    expect(html).toContain(longTrack);
+    // The no-artwork poster intentionally caps display copy at 180 characters.
+    expect(html).toContain(longLyric.slice(0, 180));
+  });
+
   it("links each card to the release collect module via ?focus=moments", () => {
     const html = renderToStaticMarkup(<DropsShelfView drops={[drop()]} />);
     expect(html).toContain('href="/release/rel_1?focus=moments"');

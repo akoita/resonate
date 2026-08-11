@@ -125,7 +125,7 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
                 imageDecoding="async"
               />
               <p
-                className="ng-play-card__artist"
+                className="ng-play-card__artist ng-drops-card__context"
                 style={{
                   marginTop: 10,
                   display: "flex",
@@ -135,10 +135,12 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
                 }}
               >
                 <span className="punchline-kind-chip">{DROP_KIND_LABEL}</span>
-                <strong style={{ fontWeight: 700 }}>
+                <strong className="ng-drops-card__artist" style={{ fontWeight: 700 }}>
                   {drop.context.artistName ?? "Unknown artist"}
                 </strong>
-                <span style={{ opacity: 0.7 }}>· {drop.context.trackTitle}</span>
+                <span className="ng-drops-card__track" style={{ opacity: 0.7 }}>
+                  · {drop.context.trackTitle}
+                </span>
               </p>
             </Link>
           );
