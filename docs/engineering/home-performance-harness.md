@@ -111,6 +111,48 @@ PERF_BASE_URL=<staging-origin> PERF_RUNS=5 PERF_MAX_RETRIES=3 \
   PERF_IMAGE_BUDGET_BYTES=102400 npm run perf:home
 ```
 
+## #1491 completion evidence
+
+The Home performance investigation is complete. The work deliberately followed
+the measurements instead of applying every optimization proposed before a
+baseline existed:
+
+| Acceptance area | Implemented evidence |
+| --- | --- |
+| Measure first | [#1550](https://github.com/akoita/resonate/pull/1550) added this repeatable cold/warm harness and recorded the staging baseline in [#1491](https://github.com/akoita/resonate/issues/1491). |
+| Drops card and first paint | The card owns its stylesheet, and [#1594](https://github.com/akoita/resonate/pull/1594) adds Home-only lazy artwork decoding plus `content-visibility` without changing the approved shared card design. The measured main-thread cost did not justify removing its visual effects. |
+| Home composition | [#1549](https://github.com/akoita/resonate/pull/1549) defers below-fold sections, [#1565](https://github.com/akoita/resonate/pull/1565) removes persistent-sidebar route prefetch, and [#1562](https://github.com/akoita/resonate/pull/1562) plus [#1572](https://github.com/akoita/resonate/pull/1572) size release and Shows artwork responsively. |
+| Stable measurement | [#1587](https://github.com/akoita/resonate/pull/1587) rejects incomplete 2xx samples, while [#1591](https://github.com/akoita/resonate/pull/1591) reports exact Next optimizer cache status. |
+| Durable budget | [#1588](https://github.com/akoita/resonate/pull/1588) defines the budget above and adds it to the engineering change-impact checklist. |
+| Upload and optimizer bounds | [#1589](https://github.com/akoita/resonate/pull/1589) and [#1590](https://github.com/akoita/resonate/pull/1590) bound artwork ingestion; [#1592](https://github.com/akoita/resonate/pull/1592) adds bounded opt-in cache-TTL and Sharp-concurrency controls. |
+
+The published baseline transferred about **7,501 KiB** over roughly **171
+requests**. The final completeness-aware staging pass on 2026-08-10 retained
+all five cold/warm pairs and recorded a **1,148.2 KiB cold median**, **94 cold
+requests**, **1,440 ms cold LCP median**, and **no image over 100 KiB**. The
+earlier post-prefetch pass recorded a **0.085947 cold CLS median**, inside the
+`<0.1` budget, and the stylesheet correction was visually verified without an
+unstyled flash. Timing measurements remain machine-local; the repeatable
+payload, request, completeness, and image-budget results are the reliable
+comparison.
+
+The original issue proposed one-off Lighthouse plus passive INP reporting. The
+implementation deliberately replaced that with this repeatable Playwright
+network/Web Vitals harness: passive navigation cannot produce a valid INP, and
+the harness therefore reports a TBT proxy while documenting that real INP needs
+an interaction script or field RUM. This is an explicit measurement-method
+refinement, not a claim that INP was collected.
+
+Two independent hardening opportunities remain tracked outside #1491:
+
+- [#1604](https://github.com/akoita/resonate/issues/1604) versions mutable
+  artwork URLs before deployment enables a nonzero optimizer cache TTL.
+- [#1605](https://github.com/akoita/resonate/issues/1605) cancels and bounds
+  sibling audio work after multipart artwork rejection.
+
+Neither follow-up changes the measured conclusion that Home meets its current
+performance budget.
+
 ## Reading the output
 
 stdout is a table; the same data lands as JSON in `web/build/perf/` —
@@ -285,5 +327,7 @@ methodology so an old artifact stays interpretable.
 
 - `web/scripts/measure-home-performance.mjs` — the harness
 - `web/scripts/capture-help-screenshots.mjs` — sibling Playwright script, same conventions
-- [#1491](https://github.com/akoita/resonate/issues/1491) — Home performance audit & fix
+- [#1491](https://github.com/akoita/resonate/issues/1491) — completed Home performance audit & fix
+- [#1604](https://github.com/akoita/resonate/issues/1604) — cache-coherent mutable artwork versioning
+- [#1605](https://github.com/akoita/resonate/issues/1605) — mixed-ingestion sibling-stream cleanup
 - [`docs/engineering/change_impact_checklist.md`](change_impact_checklist.md)
