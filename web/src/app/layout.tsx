@@ -5,6 +5,9 @@ import "./globals.css";
 // reliably wins ties over the base chrome / aid / vault rules defined
 // inline in globals.css and the aid-*.css imports.
 import "../styles/identity-refresh.css";
+// Player console surface (queue rows, icon buttons, gain, split buttons).
+// Last so it wins over the base `.ui-btn` / `.queue-item` rules it refines.
+import "../styles/player-console.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";

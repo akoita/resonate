@@ -28,6 +28,8 @@ import { useBreakpoint } from "../../../hooks/useBreakpoint";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
+import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
+import { useQueueActions } from "../../../lib/useQueueActions";
 
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
@@ -369,9 +371,8 @@ export default function ReleaseDetails() {
     setMixerVolumes,
     isPlaying,
     currentTrack,
-    addTracksToQueue,
-    playTracksNext,
   } = usePlayer();
+  const queueActions = useQueueActions();
   const { addToast } = useToast();
   const { token, userId, login } = useAuth();
   const { trustTier } = useTrustTier();
@@ -1111,6 +1112,14 @@ export default function ReleaseDetails() {
     [mapToLocalTrack, resolveTrackPlaybackUrl],
   );
 
+  /** Header queue actions follow the checkbox selection, falling back to the whole release. */
+  const queueSelectionTracks = useCallback(
+    () => (release?.tracks ?? [])
+      .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
+      .map((track) => mapToLocalTrack(track)),
+    [release?.tracks, selectedTrackIds, mapToLocalTrack],
+  );
+
   const handlePlayAll = () => handlePlayTrack(0);
 
   const handleAddReleaseToPlaylist = async () => {
@@ -1623,40 +1632,12 @@ export default function ReleaseDetails() {
               <Button onClick={handlePlayAll} className="btn-play-all">
                 Play All
               </Button>
-              <Button
-                variant="ghost"
-                className="btn-save"
-                onClick={() => {
-                  const result = addTracksToQueue((release.tracks ?? [])
-                    .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
-                    .map((track) => mapToLocalTrack(track)));
-                  addToast({
-                    type: result.added.length > 0 ? "success" : "info",
-                    title: result.added.length > 0 ? "Queue updated" : "Already queued",
-                    message: `${result.added.length} track${result.added.length === 1 ? "" : "s"} added${result.skipped.length ? `; ${result.skipped.length} duplicate${result.skipped.length === 1 ? " was" : "s were"} skipped` : ""}.`,
-                  });
-                }}
+              <QueueActionsButton
+                tracks={queueSelectionTracks}
+                label={selectedTrackIds.size > 0 ? `Queue ${selectedTrackIds.size} selected` : "Queue album"}
+                nextLabel={selectedTrackIds.size > 0 ? "Play selection next" : "Play album next"}
                 disabled={!release.tracks?.length}
-              >
-                {selectedTrackIds.size > 0 ? `Add selected (${selectedTrackIds.size}) to queue` : "Add album to queue"}
-              </Button>
-              <Button
-                variant="ghost"
-                className="btn-save"
-                onClick={() => {
-                  const result = playTracksNext((release.tracks ?? [])
-                    .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
-                    .map((track) => mapToLocalTrack(track)));
-                  addToast({
-                    type: result.added.length > 0 ? "success" : "info",
-                    title: result.added.length > 0 ? "Queue updated" : "Already queued",
-                    message: `${result.added.length} track${result.added.length === 1 ? "" : "s"} will play next${result.skipped.length ? `; ${result.skipped.length} duplicate${result.skipped.length === 1 ? " was" : "s were"} skipped` : ""}.`,
-                  });
-                }}
-                disabled={!release.tracks?.length}
-              >
-                {selectedTrackIds.size > 0 ? `Play selected (${selectedTrackIds.size}) next` : "Play album next"}
-              </Button>
+              />
               <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
                 Add to Playlist
               </Button>
@@ -2317,6 +2298,7 @@ export default function ReleaseDetails() {
                         )}
                         <TrackActionMenu
                           actions={[
+                            ...queueActions.actionMenuItems(mapToLocalTrack(track)),
                             {
                               label: "Add to Playlist",
                               icon: "🎵",
