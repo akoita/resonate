@@ -18,6 +18,7 @@ import { useAuth } from "../../components/auth/AuthProvider";
 import { useImmersiveMode } from "../../lib/useImmersiveMode";
 import { VolumeIcon } from "../../components/player/VolumeIcon";
 import { useQueueActions } from "../../lib/useQueueActions";
+import { useIdleReveal } from "../../lib/useIdleReveal";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -25,6 +26,8 @@ function PlayerContent() {
   const { token } = useAuth();
   const playerStageRef = useRef<HTMLDivElement>(null);
   const immersive = useImmersiveMode(playerStageRef);
+  // In immersive mode the console steps aside once the listener settles.
+  const immersiveIdle = useIdleReveal(immersive.active);
   const queueActions = useQueueActions();
   const trackId = searchParams.get("trackId");
 
@@ -336,7 +339,7 @@ function PlayerContent() {
   return (
     <div
       ref={playerStageRef}
-      className={`player-master-stage ${immersive.active ? "is-immersive" : ""} ${immersive.fallback ? "is-immersive-fallback" : ""}`}
+      className={`player-master-stage ${immersive.active ? "is-immersive" : ""} ${immersive.fallback ? "is-immersive-fallback" : ""} ${immersiveIdle ? "is-settled" : ""}`}
     >
       {/* Mesh Backdrop Layer */}
       {artworkUrl && (
@@ -346,6 +349,14 @@ function PlayerContent() {
         />
       )}
       <div className="player-mesh-overlay" />
+
+      {/* Immersive keeps a hairline of progress on the bottom edge, so the
+        * console can recede without taking the playhead with it. */}
+      {immersive.active && (
+        <div className="immersive-progress" aria-hidden="true">
+          <span style={{ transform: `scaleX(${Math.max(0, Math.min(100, progress || 0)) / 100})` }} />
+        </div>
+      )}
 
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
