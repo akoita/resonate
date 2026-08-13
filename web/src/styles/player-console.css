@@ -286,8 +286,9 @@
    * Shrink-wrapping keeps the button on the art where it belongs. */
   width: auto;
   max-width: 100%;
-  /* Leave headroom so the art doesn't consume every pixel of the column. */
-  max-height: 78%;
+  /* No max-height cap: the stage's vertical padding already guarantees the
+   * air above and below, so capping the column as well only shrank the
+   * record twice for the same breathing room. */
   margin-bottom: 0;
 }
 
