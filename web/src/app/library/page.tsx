@@ -460,9 +460,20 @@ export default function LibraryPage() {
         setContextMenu({ x: e.clientX, y: e.clientY, items: getTrackContextMenuItems(track) });
     };
 
+    /* Shared by the right-click menus and the cards' overflow menus so both
+     * queue exactly the same set. */
+    const tracksForArtist = (artistName: string) =>
+        tracks.filter(t => (t.artist || "Unknown Artist") === artistName);
+
+    const tracksForAlbum = (albumName: string, artistName: string) =>
+        tracks.filter(t =>
+            (t.album || "Unknown Album") === albumName &&
+            (t.artist || "Unknown Artist") === artistName
+        );
+
     const handleArtistContextMenu = (e: React.MouseEvent, artistName: string) => {
         e.preventDefault();
-        const artistTracks = tracks.filter(t => (t.artist || "Unknown Artist") === artistName);
+        const artistTracks = tracksForArtist(artistName);
         setContextMenu({
             x: e.clientX,
             y: e.clientY,
@@ -477,10 +488,7 @@ export default function LibraryPage() {
 
     const handleAlbumContextMenu = (e: React.MouseEvent, albumName: string, artistName: string) => {
         e.preventDefault();
-        const albumTracks = tracks.filter(t =>
-            (t.album || "Unknown Album") === albumName &&
-            (t.artist || "Unknown Artist") === artistName
-        );
+        const albumTracks = tracksForAlbum(albumName, artistName);
         setContextMenu({
             x: e.clientX,
             y: e.clientY,
@@ -733,6 +741,7 @@ export default function LibraryPage() {
                             )}
                             <TrackActionMenu
                                 actions={[
+                                    ...queueActions.actionMenuItems(track),
                                     { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
                                     ...(track.stemType && track.tokenId
                                         ? [{
@@ -783,6 +792,11 @@ export default function LibraryPage() {
                         <div className="library-card-meta">
                             {artist.trackCount} track{artist.trackCount !== 1 ? "s" : ""}
                             {artist.albums.length > 0 && ` • ${artist.albums.length} album${artist.albums.length !== 1 ? "s" : ""}`}
+                        </div>
+                        {/* Queueing a whole artist was right-click only, so most
+                          * people never found it. */}
+                        <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForArtist(artist.name))} />
                         </div>
                     </div>
                 );
@@ -836,6 +850,9 @@ export default function LibraryPage() {
                         </div>
                         <div className="library-card-count">
                             {album.trackCount} track{album.trackCount !== 1 ? "s" : ""}
+                        </div>
+                        <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForAlbum(album.name, album.artist))} />
                         </div>
                     </div>
                 );

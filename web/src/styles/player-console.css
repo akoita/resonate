@@ -271,15 +271,22 @@
  * the container's job; the 1:1 ratio keeps the art square as it does it. */
 .player-master-stage.is-immersive .player-art-container {
   display: flex;
-  flex: 0 1 auto;
+  align-items: center;
+  justify-content: center;
+  /* Grows, not just shrinks: the container has to claim the leftover height
+   * so the artwork below has a definite box to fill. */
+  flex: 1 1 auto;
   min-height: 0;
-  max-width: 100%;
+  width: 100%;
 }
 
+/* `height`, not `max-height`. An <img> sized `width/height: auto` renders at
+ * its intrinsic pixel size and a max-* only ever caps it — so artwork stored
+ * at e.g. 500px stayed 500px no matter how much room immersive freed. A
+ * definite height scales it up, and aspect-ratio: 1/1 keeps it square. */
 .player-master-stage.is-immersive .player-art-master {
+  height: 100%;
   width: auto;
-  height: auto;
-  max-height: 100%;
   max-width: min(62vw, 100%);
   border-radius: var(--r-radius-hero);
   box-shadow:
@@ -571,6 +578,36 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 1.35;
+}
+
+/* ---- Library artist / album cards -------------------------------------
+ * Queueing a whole artist or album was reachable only by right-click, which
+ * almost nobody discovers. The overflow menu sits in the card corner and
+ * surfaces on hover or keyboard focus, so it never competes with the
+ * artwork it sits on. */
+
+.library-card {
+  position: relative;
+}
+
+.library-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.library-card:hover .library-card-actions,
+.library-card:focus-within .library-card-actions {
+  opacity: 1;
+}
+
+/* No hover on touch, so keep it discoverable there. */
+@media (hover: none) {
+  .library-card-actions {
+    opacity: 0.75;
+  }
 }
 
 /* ---- Saved chip is a toggle, not a dead end --------------------------
