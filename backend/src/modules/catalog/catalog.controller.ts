@@ -17,6 +17,7 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
@@ -292,8 +293,10 @@ export class CatalogController {
     return this.catalogService.getRelease(releaseId);
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get("tracks/:trackId/actions")
   getTrackActions(
+    @Request() req: any,
     @Param("trackId") trackId: string,
     @Query("reason") reason?: string | string[],
     @Query("reasons") reasons?: string,
@@ -304,6 +307,7 @@ export class CatalogController {
     ];
     return this.catalogService.getPlayerTrackActions(trackId, {
       recommendationReasons,
+      userId: req.user?.userId,
     });
   }
 

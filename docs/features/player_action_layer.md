@@ -21,6 +21,12 @@ when the playing artist has an active Shows campaign, it deep-links to that
 campaign with compact title and funding progress metadata; otherwise it explains
 that no live campaign is open for the artist right now.
 
+The player-session improvements in [#1614](https://github.com/akoita/resonate/issues/1614)
+add ordered batch queue mutations, fair shuffle cycles, authenticated Saved/remove
+state, immersive mode, and a mute toggle that restores the previous audible level.
+This is vision-neutral product quality work and changes no fees, payouts, or
+monetization mechanics.
+
 ## Who It Is For
 
 - Listeners who want to act while music is playing.
@@ -51,6 +57,26 @@ and queue context. Disabled or future actions render as a compact
 `Unavailable / Coming soon` list with safe reasons, so unavailable capabilities
 are visible without behaving like conversion buttons.
 
+Queue actions are available for individual tracks, selected release tracks,
+albums, and playlists. Additions keep their source order, skip track IDs already
+present in the active queue, update the queue immediately, and persist for the
+browser playback session. Removing an entry reconciles the current position and
+the active shuffle cycle.
+
+Shuffle keeps a played set and navigation history instead of choosing each next
+track independently. A track does not repeat automatically until every eligible
+unique queue entry has played. Added entries join the current cycle; removed
+entries are filtered without resetting playback; Previous walks known history;
+Next retraces that history before drawing another eligible entry. Repeat All
+starts a new cycle only after exhaustion.
+
+The volume icon is a keyboard-operable mute toggle. Muting records the last
+non-zero volume, and unmuting restores it while keeping the slider, master audio,
+and stem mixer synchronized. The same player stage can enter browser fullscreen;
+when fullscreen is unavailable or denied, it uses an in-page immersive fallback.
+Escape and the visible exit control leave immersive mode without replacing the
+audio element or queue.
+
 The Shows campaign action is part of the implemented conversion feed for revenue
 line (1) Shows campaign fees: active campaigns render as `Support a show` chips
 linking to `/shows/<slug>`. Non-active campaign states stay disabled here
@@ -66,6 +92,11 @@ Each action has:
 - optional `href`
 - optional safe `reason`
 - optional compact `metadata`
+
+Authenticated responses also contain owner-scoped `library` state with the
+listener's saved flag and library-row ID. Anonymous responses use `library: null`.
+The identity comes only from optional JWT authentication; no caller can query
+another listener's library state.
 
 Initial action keys:
 
@@ -129,16 +160,24 @@ Manual:
 2. Confirm Now Playing actions render in the right console without shifting
    playback controls.
 3. Confirm save changes to `Saved` after success and add-to-playlist uses the
-   existing playlist flow.
+   existing playlist flow; activating Saved removes the track and returns it to
+   Save without a reload.
 4. Confirm marketplace/license appears only when an active public listing exists.
 5. Confirm Support a show links to `/shows/<slug>` only when the playing artist
    has an active campaign, with title/funding progress shown on the chip.
 6. Confirm disabled/planned actions show safe reasons.
+7. Add a track, selection, album, and playlist; confirm source order is retained,
+   duplicates are skipped, and the current track is not interrupted.
+8. Enable shuffle and confirm every queued track plays once before Repeat All
+   starts another cycle; add and remove entries during the cycle.
+9. Mute and unmute with pointer and keyboard, then enter and exit immersive mode
+   with its button and Escape; confirm playback position and queue stay unchanged.
 
 ## References
 
 - [#1005](https://github.com/akoita/resonate/issues/1005)
 - [#1367](https://github.com/akoita/resonate/issues/1367)
+- [#1614](https://github.com/akoita/resonate/issues/1614)
 - [Strategy execution plan](../strategy/next_generation_music_platform_execution_plan.md)
 - [Agent Taste Intelligence](agent_taste_intelligence.md)
 - [Marketplace Listing Lifecycle](marketplace_listing_lifecycle.md)

@@ -19,6 +19,7 @@ const actionState: PlayerTrackActionsResponse = {
     summary: "Picked for your current listening context.",
     reasons: ["context"],
   },
+  library: null,
   actions: [
     {
       key: "remix",
@@ -191,5 +192,7 @@ describe("PlayerActionPanel", () => {
     expect(grouped.primaryActions.find((action) => action.key === "save")?.label).toBe("Saved");
     expect(html).toContain("Saved");
     expect(html).toContain("aria-pressed=\"true\"");
+    expect(html).toContain("aria-label=\"Remove from library\"");
+    expect(html).not.toMatch(/aria-label="Remove from library"[^>]*disabled/);
   });
 });

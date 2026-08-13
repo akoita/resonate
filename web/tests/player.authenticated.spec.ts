@@ -20,7 +20,7 @@ test.describe("Authenticated Player", () => {
 
         // Player controls should be visible
         const main = authenticatedPage.getByRole("main");
-        await expect(main.getByRole("button", { name: "Play" })).toBeVisible();
+        await expect(main.getByRole("button", { name: "Play", exact: true })).toBeVisible();
     });
 
     test("PLAYER-AUTH-02: System monitoring label visible", async ({ authenticatedPage }) => {
@@ -56,5 +56,30 @@ test.describe("Authenticated Player", () => {
 
         // Output Gain label should be visible
         await expect(authenticatedPage.getByText("Output Gain")).toBeVisible();
+    });
+
+    test("PLAYER-AUTH-06: mute restores the prior slider value", async ({ authenticatedPage }) => {
+        await authenticatedPage.goto("/player");
+        const slider = authenticatedPage.locator("input.player-range").last();
+        await authenticatedPage.waitForTimeout(750);
+        await slider.fill("37");
+        await expect(slider).toHaveValue("37");
+
+        const mute = authenticatedPage.getByRole("button", { name: "Mute" });
+        await mute.click();
+        await expect(authenticatedPage.getByRole("button", { name: "Unmute" })).toHaveAttribute("aria-pressed", "true");
+        await expect(slider).toHaveValue("0");
+
+        await authenticatedPage.getByRole("button", { name: "Unmute" }).click();
+        await expect(slider).toHaveValue("37");
+    });
+
+    test("PLAYER-AUTH-07: immersive mode enters and exits without replacing controls", async ({ authenticatedPage }) => {
+        await authenticatedPage.goto("/player");
+        await authenticatedPage.getByRole("button", { name: "Open immersive player" }).click();
+        await expect(authenticatedPage.getByRole("button", { name: "Exit immersive player" })).toBeVisible();
+        await expect(authenticatedPage.getByRole("main").getByRole("button", { name: "Play", exact: true })).toBeVisible();
+        await authenticatedPage.keyboard.press("Escape");
+        await expect(authenticatedPage.getByRole("button", { name: "Open immersive player" })).toBeVisible();
     });
 });

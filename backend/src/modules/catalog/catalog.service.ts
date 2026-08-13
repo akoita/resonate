@@ -238,6 +238,10 @@ export type PlayerTrackActionsResponse = {
     summary: string;
     reasons: string[];
   };
+  library: {
+    saved: boolean;
+    libraryTrackId: string | null;
+  } | null;
   actions: PlayerTrackAction[];
 };
 
@@ -1221,7 +1225,7 @@ export class CatalogService implements OnModuleInit {
 
   async getPlayerTrackActions(
     trackId: string,
-    options?: { recommendationReasons?: string[] },
+    options?: { recommendationReasons?: string[]; userId?: string },
   ): Promise<PlayerTrackActionsResponse | null> {
     const track = await prisma.track.findUnique({
       where: { id: trackId },
@@ -1301,6 +1305,17 @@ export class CatalogService implements OnModuleInit {
     const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
     const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
     const safeRecommendationReasons = sanitizeRecommendationReasons(options?.recommendationReasons);
+    const savedLibraryTrack = options?.userId
+      ? await prisma.libraryTrack.findUnique({
+          where: {
+            userId_catalogTrackId: {
+              userId: options.userId,
+              catalogTrackId: track.id,
+            },
+          },
+          select: { id: true },
+        })
+      : null;
     // #1379: campaigns link to the public catalog artist credit, which can be
     // a different Artist row than the uploader-profile release.artistId —
     // match against every credited artist plus the profile fallback.
@@ -1362,6 +1377,9 @@ export class CatalogService implements OnModuleInit {
             },
           }
         : {}),
+      library: options?.userId
+        ? { saved: Boolean(savedLibraryTrack), libraryTrackId: savedLibraryTrack?.id ?? null }
+        : null,
       actions: [
         {
           key: "save",

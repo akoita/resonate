@@ -297,10 +297,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "playing-music",
     title: "Playing music & the Now Playing console",
     summary:
-      "Play any track and use the Now Playing console to manage your queue, inspect stems, save tracks, take licensing actions, and back live show campaigns.",
+      "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
+    keywords: ["play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "playing",
@@ -320,6 +320,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
               height: 900,
               source: STAGING,
             },
+          },
+        ],
+      },
+      {
+        id: "queue-controls",
+        heading: "Build and control your listening session",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
+              "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
+              "Select the sound icon to mute; select it again to restore your previous volume. The slider stays synchronized.",
+              "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",
+              "Signed-in listeners see Saved in green when the current track is already in their library. Select Saved to remove it again.",
+            ],
           },
         ],
       },
