@@ -254,6 +254,158 @@
   z-index: 10000; /* app top layer, above the player bar and modals */
 }
 
+/* Immersive was only hiding the app chrome: the artwork stayed at its
+ * windowed size, and the hero kept reserving room for a player bar that
+ * isn't rendered here. Reclaim that space and let the record be the page. */
+
+.player-master-stage.is-immersive .player-hero-stage {
+  height: 100%;
+  justify-content: center;
+  padding: var(--r-lg);
+  padding-right: clamp(340px, 32vw, 520px);
+  transition: padding 0.9s var(--r-ease-out);
+}
+
+/* The record takes whatever height the title block leaves, rather than a
+ * fixed vh fraction that clips the title on shorter viewports. Shrinking is
+ * the container's job; the 1:1 ratio keeps the art square as it does it. */
+.player-master-stage.is-immersive .player-art-container {
+  display: flex;
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+}
+
+.player-master-stage.is-immersive .player-art-master {
+  width: auto;
+  height: auto;
+  max-height: 100%;
+  max-width: min(62vw, 100%);
+  border-radius: var(--r-radius-hero);
+  box-shadow:
+    0 80px 160px rgba(0, 0, 0, 0.95),
+    0 0 120px rgba(124, 92, 255, 0.22);
+  transition: max-width 0.9s var(--r-ease-out), box-shadow 0.9s ease;
+  animation: immersive-float 16s ease-in-out infinite;
+}
+
+.player-master-stage.is-immersive .hero-title {
+  font-size: clamp(2.6rem, 1.4rem + 3vw, 4.25rem);
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+  margin-top: var(--r-md);
+}
+
+.player-master-stage.is-immersive .hero-artist {
+  font-size: clamp(1.05rem, 0.9rem + 0.6vw, 1.5rem);
+  color: var(--r-secondary);
+}
+
+/* The blurred artwork behind the stage becomes the room's light source. */
+.player-master-stage.is-immersive .player-mesh-bg {
+  filter: blur(140px) saturate(210%) brightness(0.52);
+  opacity: 0.95;
+  animation: immersive-bloom 34s ease-in-out infinite;
+}
+
+.player-master-stage.is-immersive .player-mesh-overlay {
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    transparent 0%,
+    rgba(5, 5, 8, 0.35) 45%,
+    rgba(5, 5, 8, 0.88) 100%
+  );
+}
+
+/* ---- Settled: nothing but the record ---------------------------------
+ * After a few idle seconds the console drifts out and the artwork slides
+ * to true centre. Any pointer move, key or focus brings it straight back. */
+
+.player-master-stage.is-immersive.is-settled {
+  cursor: none;
+}
+
+.player-master-stage.is-immersive.is-settled
+  .player-floating-console:not(:focus-within) {
+  opacity: 0;
+  transform: translateX(24px) scale(0.985);
+  pointer-events: none;
+}
+
+.player-master-stage.is-immersive .player-floating-console {
+  transition: opacity 0.7s var(--r-ease-out), transform 0.7s var(--r-ease-out);
+}
+
+/* With the console gone the hero re-centres instead of sitting off-axis. */
+.player-master-stage.is-immersive.is-settled:not(:focus-within)
+  .player-hero-stage {
+  padding-right: var(--r-lg);
+}
+
+.player-master-stage.is-immersive.is-settled:not(:focus-within)
+  .player-art-master {
+  max-width: min(74vw, 100%);
+}
+
+/* Playhead survives the fade, as a hairline on the very bottom edge. */
+.immersive-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  z-index: 1001;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
+.immersive-progress span {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  background: var(--r-grad-brand-bright);
+  box-shadow: 0 0 12px rgba(124, 92, 255, 0.55);
+}
+
+@keyframes immersive-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-14px) scale(1.014);
+  }
+}
+
+@keyframes immersive-bloom {
+  0%,
+  100% {
+    transform: scale(1.1) translate3d(0, 0, 0);
+    filter: blur(140px) saturate(210%) brightness(0.52);
+  }
+
+  50% {
+    transform: scale(1.22) translate3d(2%, -2%, 0);
+    filter: blur(160px) saturate(240%) brightness(0.62);
+  }
+}
+
+/* Motion here is ambience, never information — drop it on request, but keep
+ * the extra room, which is the point of immersive mode. */
+@media (prefers-reduced-motion: reduce) {
+  .player-master-stage.is-immersive .player-art-master,
+  .player-master-stage.is-immersive .player-mesh-bg {
+    animation: none;
+  }
+
+  .player-master-stage.is-immersive .player-hero-stage,
+  .player-master-stage.is-immersive .player-art-master,
+  .player-master-stage.is-immersive .player-floating-console {
+    transition: none;
+  }
+}
+
 /* ---- Split button ------------------------------------------------------
  * One control, two tiers: the common action stays a single click and its
  * rarer sibling lives behind a caret, instead of every queue action
