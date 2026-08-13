@@ -25,6 +25,8 @@ import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { ContextMenu } from "../ui/ContextMenu";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import type { QueueFeedbackMode } from "../../lib/queueFeedback";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 interface GlobalPlaylistPanelProps {
@@ -43,7 +45,8 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const { addToast } = useToast();
     const { togglePlaylistPanel } = useUIStore();
-    const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
+    const { playQueue, currentTrack } = usePlayer();
+    const queueActions = useQueueActions();
     const [isSyncing, setIsSyncing] = useState(false);
 
     // Keyboard shortcut: Ctrl+J / Cmd+J to toggle
@@ -167,6 +170,21 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
 
     // -- Context Menus --
 
+    /** Queue a whole playlist from the sidebar, loading its tracks if they aren't cached. */
+    const queuePlaylist = async (p: Playlist, mode: QueueFeedbackMode) => {
+        let tracks = playlistTracks.get(p.id);
+        if (!tracks?.length) {
+            const playlist = await getPlaylist(p.id);
+            const resolved = await Promise.all((playlist?.trackIds ?? []).map(id => getTrack(id)));
+            tracks = resolved.filter((t): t is LocalTrack => t !== null);
+        }
+        if (!tracks.length) {
+            addToast({ type: "warning", title: "Empty Playlist", message: "This playlist has no tracks." });
+            return;
+        }
+        queueActions.queue(tracks, mode);
+    };
+
     const showPlaylistMenu = (e: React.MouseEvent, p: Playlist) => {
         e.preventDefault();
         e.stopPropagation();
@@ -174,6 +192,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
+                { label: "Play Next", icon: "⏭️", onClick: () => { void queuePlaylist(p, "next"); } },
+                { label: "Add to Queue", icon: "➕", onClick: () => { void queuePlaylist(p, "queue"); } },
+                { separator: true, label: "", onClick: () => { } },
                 { label: "Rename", icon: "✏️", onClick: () => setModalState({ type: 'rename-playlist', isOpen: true, targetId: p.id, initialValue: p.name }) },
                 { label: "Delete", icon: "🗑️", variant: "destructive", onClick: () => handleDeletePlaylist(p.id, p.name) },
             ]
@@ -200,8 +221,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Play Next", icon: "⏭️", onClick: () => { const result = playNext(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already next", message: result.added.length ? `"${track.title}" will play next` : `"${track.title}" is already next or currently playing.` }); } },
-                { label: "Add to Queue", icon: "➕", onClick: () => { const result = addToQueue(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already queued", message: result.added.length ? `Added "${track.title}" to queue` : `"${track.title}" is already queued.` }); } },
+                ...queueActions.contextMenuItems(track),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(p.id, track.id) },
             ]

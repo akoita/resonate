@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import { QueueActionsButton } from "../player/QueueActionsButton";
+import { TrackActionMenu } from "../ui/TrackActionMenu";
 import { useAuth } from "../auth/AuthProvider";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
@@ -48,7 +51,8 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
   const router = useRouter();
   const { token } = useAuth();
   const { addToast } = useToast();
-  const { playQueue, currentTrack, addTracksToQueue, playTracksNext } = usePlayer();
+  const { playQueue, currentTrack } = usePlayer();
+  const queueActions = useQueueActions();
 
   const [playlist, setPlaylist] = useState<PublicPlaylist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,17 +100,6 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
       payload: { playlistId, trackCount: playableTracks.length },
     });
   }, [playableTracks, playQueue, playlistId]);
-
-  const queuePlaylist = useCallback((mode: "queue" | "next") => {
-    const result = mode === "next"
-      ? playTracksNext(playableTracks)
-      : addTracksToQueue(playableTracks);
-    addToast({
-      type: result.added.length > 0 ? "success" : "info",
-      title: result.added.length > 0 ? "Queue updated" : "Already queued",
-      message: `${result.added.length} track${result.added.length === 1 ? "" : "s"} ${mode === "next" ? "will play next" : "added"}${result.skipped.length ? `; ${result.skipped.length} duplicate${result.skipped.length === 1 ? " was" : "s were"} skipped` : ""}.`,
-    });
-  }, [addToast, addTracksToQueue, playableTracks, playTracksNext]);
 
   const handlePlayTrack = useCallback(
     (track: PublicPlaylistTrack) => {
@@ -240,12 +233,12 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
             <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
               ▶ Play
             </Button>
-            <Button variant="ghost" onClick={() => queuePlaylist("queue")} disabled={playableTracks.length === 0}>
-              Add to queue
-            </Button>
-            <Button variant="ghost" onClick={() => queuePlaylist("next")} disabled={playableTracks.length === 0}>
-              Play next
-            </Button>
+            <QueueActionsButton
+              tracks={playableTracks}
+              label="Add to queue"
+              nextLabel="Play playlist next"
+              disabled={playableTracks.length === 0}
+            />
 
             {playlist.isOwner ? (
               <Link href="/library?tab=playlists" className="ui-btn ui-btn-ghost">
@@ -315,6 +308,9 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
                     </div>
                   </div>
                   <div className="library-item-duration">{formatDuration(track.duration)}</div>
+                  {track.playable && (
+                    <TrackActionMenu actions={queueActions.actionMenuItems(toLocalTrack(track))} />
+                  )}
                 </div>
               );
             })}

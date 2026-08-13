@@ -16,6 +16,8 @@ import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useImmersiveMode } from "../../lib/useImmersiveMode";
+import { VolumeIcon } from "../../components/player/VolumeIcon";
+import { useQueueActions } from "../../lib/useQueueActions";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -23,6 +25,7 @@ function PlayerContent() {
   const { token } = useAuth();
   const playerStageRef = useRef<HTMLDivElement>(null);
   const immersive = useImmersiveMode(playerStageRef);
+  const queueActions = useQueueActions();
   const trackId = searchParams.get("trackId");
 
   const {
@@ -45,8 +48,6 @@ function PlayerContent() {
     queue,
     playQueue,
     artworkUrl,
-    playNext,
-    addToQueue,
     removeFromQueue,
     mixerMode,
     toggleMixerMode
@@ -225,8 +226,7 @@ function PlayerContent() {
   };
 
   const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-    { label: "Play Next", icon: "⏭️", onClick: () => { const result = playNext(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already next", message: result.added.length ? `"${track.title}" will play next` : `"${track.title}" is already next or currently playing.` }); } },
-    { label: "Add to Queue", icon: "➕", onClick: () => { const result = addToQueue(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already queued", message: result.added.length ? `Added "${track.title}" to queue` : `"${track.title}" is already in the queue.` }); } },
+    ...queueActions.contextMenuItems(track),
     { separator: true, label: "", onClick: () => { } },
     { label: "Add to Playlist", icon: "🎵", onClick: () => setShowAddToPlaylist(true) },
   ];
@@ -399,31 +399,29 @@ function PlayerContent() {
       {/* THE FLOATING CONSOLE */}
       <aside className="player-floating-console">
         <div className="player-status-area">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-            <div className="studio-label">System Monitoring</div>
-            <button
-              type="button"
-              className="ui-btn player-immersive-toggle"
-              onClick={() => void immersive.toggle()}
-              aria-label={immersive.active ? "Exit immersive player" : "Open immersive player"}
-              aria-pressed={immersive.active}
-              title={immersive.active ? "Exit immersive player" : "Open immersive player"}
-            >
-              {immersive.active ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                  <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
-                </svg>
-              )}
-            </button>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="studio-label">System Monitoring</div>
+          <div className="player-status-signal">
             <div className="status-led" />
             <span className="status-text">Live Sync Active</span>
           </div>
+          <button
+            type="button"
+            className="console-icon-btn console-icon-btn--immersive"
+            onClick={() => void immersive.toggle()}
+            aria-label={immersive.active ? "Exit immersive player" : "Open immersive player"}
+            aria-pressed={immersive.active}
+            title={immersive.active ? "Exit immersive player" : "Open immersive player"}
+          >
+            {immersive.active ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+              </svg>
+            )}
+          </button>
         </div>
 
         <div className="player-controls-backstage">
@@ -473,22 +471,18 @@ function PlayerContent() {
           />
         </div>
 
-        <div className="player-volume" style={{ background: "transparent", padding: 0, marginBottom: "var(--space-1)" }}>
-          <div className="studio-label" style={{ marginBottom: "2px" }}>Output Gain</div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", width: "100%" }}>
+        <div className={`console-gain ${muted ? "is-muted" : ""}`}>
+          <div className="studio-label console-gain__label">Output Gain</div>
+          <div className="console-gain__row">
             <button
               type="button"
-              className="ui-btn player-mute-toggle"
+              className="console-icon-btn console-icon-btn--mute"
               onClick={toggleMute}
               aria-label={muted ? "Unmute" : "Mute"}
               aria-pressed={muted}
               title={muted ? "Unmute" : "Mute"}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                {muted && <line x1="22" y1="9" x2="16" y2="15" />}
-                {muted && <line x1="16" y1="9" x2="22" y2="15" />}
-              </svg>
+              <VolumeIcon volume={volume} muted={muted} size={16} />
             </button>
             <input
               className="player-range"
@@ -521,23 +515,16 @@ function PlayerContent() {
                   className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""}`}
                   onClick={() => playQueue(queue, idx)}
                   onContextMenu={(e) => handleContextMenu(e, track)}
-                  style={{
-                    background: currentIndex === idx ? "rgba(124, 92, 255, 0.15)" : "rgba(255,255,255,0.02)",
-                    borderRadius: "12px",
-                    border: currentIndex === idx ? "1px solid rgba(124, 92, 255, 0.2)" : "1px solid transparent"
-                  }}
                 >
                   <div className="queue-item-left">
-                    <div className="queue-item-name" style={{ color: currentIndex === idx ? "var(--color-accent)" : "#fff" }}>
-                      {track.title}
-                    </div>
+                    <div className="queue-item-name">{track.title}</div>
                     <div className="queue-item-artist">{track.artist || "Unknown Artist"}</div>
                   </div>
                   <div className="queue-item-right">
-                    {formatDuration(track.duration)}
+                    <span className="queue-item-duration">{formatDuration(track.duration)}</span>
                     <button
                       type="button"
-                      className="ui-btn queue-remove-button"
+                      className="queue-remove-button"
                       onClick={(event) => {
                         event.stopPropagation();
                         removeFromQueue(idx);
@@ -545,7 +532,10 @@ function PlayerContent() {
                       aria-label={`Remove ${track.title} from queue`}
                       title="Remove from queue"
                     >
-                      ×
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
                     </button>
                   </div>
                 </div>

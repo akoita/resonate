@@ -7,6 +7,7 @@ import { libraryArtistHref } from "../../lib/artistRoutes";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
+import { VolumeIcon } from "../player/VolumeIcon";
 
 export default function PlayerBar() {
   const router = useRouter();
@@ -200,7 +201,7 @@ export default function PlayerBar() {
         </div>
       </div>
 
-      <div className="player-volume">
+      <div className={`player-volume ${muted ? "is-muted" : ""}`}>
         <button
           type="button"
           className="volume-icon"
@@ -212,7 +213,7 @@ export default function PlayerBar() {
           aria-pressed={muted}
           title={muted ? "Unmute" : "Mute"}
         >
-          {muted ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
+          <VolumeIcon volume={volume} muted={muted} size={17} />
         </button>
         <input
           type="range"

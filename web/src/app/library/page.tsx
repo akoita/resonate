@@ -39,6 +39,7 @@ import { listMyPunchlineCollectibles, listMyPunchlineUnlocks, type PunchlineColl
 import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
@@ -67,7 +68,8 @@ function getRelativeTime(dateStr: string): string {
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { playQueue, stop: handleStop, currentTrack, playNext, addToQueue, addTracksToQueue } = usePlayer();
+    const { playQueue, stop: handleStop, currentTrack } = usePlayer();
+    const queueActions = useQueueActions();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
@@ -466,10 +468,7 @@ export default function LibraryPage() {
             y: e.clientY,
             items: [
                 { label: "Play Artist", icon: "▶️", onClick: () => playQueue(artistTracks, 0) },
-                { label: "Add to Queue", icon: "➕", onClick: () => {
-                    const result = addTracksToQueue(artistTracks);
-                    addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queue updated" : "Already queued", message: `${result.added.length} added${result.skipped.length ? `; ${result.skipped.length} duplicates skipped` : ""}.` });
-                } },
+                ...queueActions.contextMenuItems(artistTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(artistTracks) },
             ]
@@ -487,10 +486,7 @@ export default function LibraryPage() {
             y: e.clientY,
             items: [
                 { label: "Play Album", icon: "▶️", onClick: () => playQueue(albumTracks, 0) },
-                { label: "Add to Queue", icon: "➕", onClick: () => {
-                    const result = addTracksToQueue(albumTracks);
-                    addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queue updated" : "Already queued", message: `${result.added.length} added${result.skipped.length ? `; ${result.skipped.length} duplicates skipped` : ""}.` });
-                } },
+                ...queueActions.contextMenuItems(albumTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(albumTracks) },
             ]
@@ -499,8 +495,7 @@ export default function LibraryPage() {
 
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [
-            { label: "Play Next", icon: "⏭️", onClick: () => { const result = playNext(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already next", message: result.added.length ? `"${track.title}" will play next` : `"${track.title}" is already next or currently playing.` }); } },
-            { label: "Add to Queue", icon: "➕", onClick: () => { const result = addToQueue(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already queued", message: result.added.length ? `Added "${track.title}" to queue` : `"${track.title}" is already queued.` }); } },
+            ...queueActions.contextMenuItems(track),
             { separator: true, label: "", onClick: () => { } },
             { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
         ];

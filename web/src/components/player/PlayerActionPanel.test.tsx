@@ -192,7 +192,18 @@ describe("PlayerActionPanel", () => {
     expect(grouped.primaryActions.find((action) => action.key === "save")?.label).toBe("Saved");
     expect(html).toContain("Saved");
     expect(html).toContain("aria-pressed=\"true\"");
-    expect(html).toContain("aria-label=\"Remove from library\"");
-    expect(html).not.toMatch(/aria-label="Remove from library"[^>]*disabled/);
+    // The accessible name must contain the visible label (WCAG 2.5.3 Label in
+    // Name), so it extends "Saved" instead of replacing it outright.
+    expect(html).toContain("aria-label=\"Saved — remove from library\"");
+    expect(html).not.toMatch(/aria-label="Saved — remove from library"[^>]*disabled/);
+  });
+
+  it("marks the save chip busy while the library update is in flight", () => {
+    const html = renderToStaticMarkup(
+      <PlayerActionPanel actionState={actionState} loading={false} saving onAction={vi.fn()} />,
+    );
+
+    expect(html).toContain("player-action-chip__spinner");
+    expect(html).toContain("aria-busy=\"true\"");
   });
 });
