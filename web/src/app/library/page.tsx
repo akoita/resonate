@@ -40,6 +40,7 @@ import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
 import { useQueueActions } from "../../lib/useQueueActions";
+import { QueueActionsButton } from "../../components/player/QueueActionsButton";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
@@ -889,6 +890,21 @@ export default function LibraryPage() {
                         <div className="detail-hero-meta">
                             {artistAlbums.length} album{artistAlbums.length !== 1 ? "s" : ""} • {artistTracks.length} track{artistTracks.length !== 1 ? "s" : ""}
                         </div>
+                        <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
+                            <Button
+                                variant="primary"
+                                onClick={() => playQueue(artistTracks, 0)}
+                                disabled={artistTracks.length === 0}
+                            >
+                                ▶ Play Artist
+                            </Button>
+                            <QueueActionsButton
+                                tracks={artistTracks}
+                                label="Queue artist"
+                                nextLabel="Play artist next"
+                                disabled={artistTracks.length === 0}
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -1003,10 +1019,22 @@ export default function LibraryPage() {
                         <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
                             <Button
                                 variant="primary"
-                                onClick={() => setTracksToAddToPlaylist(albumTracks)}
-                                className="flex items-center gap-2"
+                                onClick={() => playQueue(albumTracks, 0)}
+                                disabled={albumTracks.length === 0}
                             >
-                                <span style={{ fontSize: "1.2rem", fontWeight: "bold" }}>+</span> Add Album to Playlist
+                                ▶ Play Album
+                            </Button>
+                            <QueueActionsButton
+                                tracks={albumTracks}
+                                label="Queue album"
+                                nextLabel="Play album next"
+                                disabled={albumTracks.length === 0}
+                            />
+                            <Button
+                                variant="ghost"
+                                onClick={() => setTracksToAddToPlaylist(albumTracks)}
+                            >
+                                Add Album to Playlist
                             </Button>
                         </div>
                     </div>
