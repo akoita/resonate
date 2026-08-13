@@ -28,6 +28,6 @@ test("wallet recovery panel renders", async ({ page }) => {
 test("player controls visible", async ({ page }) => {
   await page.goto("/player");
   // Use specific selectors to avoid matching multiple elements
-  await expect(page.getByRole("main").getByRole("button", { name: "Play" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("button", { name: "Play", exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "Prev" })).toBeVisible();
 });
