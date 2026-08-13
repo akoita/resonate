@@ -1007,6 +1007,7 @@ describe('CatalogService (integration)', () => {
     });
 
     expect(result).not.toBeNull();
+    expect(result!.library).toBeNull();
     expect(result!.recommendation?.reasons).toEqual(['Matches your jazz preference']);
 
     const buyAction = result!.actions.find((action) => action.key === 'buy_license');
@@ -1026,6 +1027,42 @@ describe('CatalogService (integration)', () => {
     expect(serialized).not.toContain(sellerAddress);
     expect(serialized).not.toContain('listing_expired');
     expect(serialized).not.toContain('raw private text');
+
+    const otherUserId = `${TEST_PREFIX}player_actions_other_user`;
+    await prisma.user.create({
+      data: { id: otherUserId, email: `${otherUserId}@test.resonate` },
+    });
+    try {
+      const otherSave = await prisma.libraryTrack.create({
+        data: {
+          userId: otherUserId,
+          source: 'remote',
+          title: 'Actionable Track',
+          catalogTrackId: trackId,
+        },
+      });
+      const callerUnsaved = await catalog.getPlayerTrackActions(trackId, {
+        userId: `${TEST_PREFIX}user`,
+      });
+      expect(callerUnsaved!.library).toEqual({ saved: false, libraryTrackId: null });
+
+      const callerSave = await prisma.libraryTrack.create({
+        data: {
+          userId: `${TEST_PREFIX}user`,
+          source: 'remote',
+          title: 'Actionable Track',
+          catalogTrackId: trackId,
+        },
+      });
+      const callerSaved = await catalog.getPlayerTrackActions(trackId, {
+        userId: `${TEST_PREFIX}user`,
+      });
+      expect(callerSaved!.library).toEqual({ saved: true, libraryTrackId: callerSave.id });
+      expect(JSON.stringify(callerSaved)).not.toContain(otherSave.id);
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { catalogTrackId: trackId } });
+      await prisma.user.delete({ where: { id: otherUserId } });
+    }
   });
 
   it('keeps marketplace player actions disabled when listings are not publicly purchasable', async () => {

@@ -2562,12 +2562,17 @@ export type PlayerTrackActionsResponse = {
     summary: string;
     reasons: string[];
   };
+  library: {
+    saved: boolean;
+    libraryTrackId: string | null;
+  } | null;
   actions: PlayerTrackAction[];
 };
 
 export async function getPlayerTrackActions(
   trackId: string,
   input: { reasons?: string[] } = {},
+  token?: string | null,
 ) {
   const params = new URLSearchParams();
   for (const reason of input.reasons ?? []) {
@@ -2576,6 +2581,8 @@ export async function getPlayerTrackActions(
   const query = params.toString();
   return apiRequest<PlayerTrackActionsResponse>(
     `/catalog/tracks/${encodeURIComponent(trackId)}/actions${query ? `?${query}` : ""}`,
+    {},
+    token,
   );
 }
 

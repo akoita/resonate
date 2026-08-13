@@ -15,7 +15,7 @@ export default function PlayerBar() {
     currentTrack, isPlaying, artworkUrl, togglePlay, nextTrack, prevTrack,
     progress, queue, currentIndex, seek,
     shuffle, repeatMode, toggleShuffle, toggleRepeatMode,
-    volume, setVolume,
+    volume, muted, setVolume, toggleMute,
     mixerMode, toggleMixerMode
   } = usePlayer();
   const { addToast } = useToast();
@@ -144,8 +144,8 @@ export default function PlayerBar() {
           </button>
           <button
             className="player-btn-side"
-            onClick={nextTrack}
-            disabled={currentIndex >= queue.length - 1 && repeatMode !== "all"}
+            onClick={() => nextTrack()}
+            disabled={!shuffle && currentIndex >= queue.length - 1 && repeatMode !== "all"}
             title="Next"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -201,9 +201,19 @@ export default function PlayerBar() {
       </div>
 
       <div className="player-volume">
-        <span className="volume-icon">
-          {volume === 0 ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
-        </span>
+        <button
+          type="button"
+          className="volume-icon"
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleMute();
+          }}
+          aria-label={muted ? "Unmute" : "Mute"}
+          aria-pressed={muted}
+          title={muted ? "Unmute" : "Mute"}
+        >
+          {muted ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
+        </button>
         <input
           type="range"
           min="0"

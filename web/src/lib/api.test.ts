@@ -309,18 +309,20 @@ describe('API Client', () => {
               genre: 'Jazz',
               moods: [],
             },
+            library: { saved: true, libraryTrackId: 'library-1' },
             actions: [],
           }),
       });
 
       await api.getPlayerTrackActions('track-1', {
         reasons: ['genre:jazz', 'agent_pick'],
-      });
+      }, 'listener-token');
 
-      const [url] = mockFetch.mock.calls[0];
+      const [url, init] = mockFetch.mock.calls[0];
       expect(url).toBe(
         'http://test-api:3000/catalog/tracks/track-1/actions?reason=genre%3Ajazz&reason=agent_pick',
       );
+      expect(init.headers.get('Authorization')).toBe('Bearer listener-token');
     });
   });
 

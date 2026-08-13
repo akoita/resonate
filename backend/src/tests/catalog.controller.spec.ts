@@ -218,10 +218,16 @@ describe('CatalogController', () => {
     it('passes recommendation reason query params to the service', async () => {
       const ctrl = makeController();
 
-      await ctrl.getTrackActions('trk-1', ['genre:jazz', 'agent_pick'], 'mood:focus');
+      await ctrl.getTrackActions(
+        { user: { userId: 'listener-1' } },
+        'trk-1',
+        ['genre:jazz', 'agent_pick'],
+        'mood:focus',
+      );
 
       expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
         recommendationReasons: ['genre:jazz', 'agent_pick', 'mood:focus'],
+        userId: 'listener-1',
       });
     });
   });

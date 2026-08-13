@@ -110,11 +110,13 @@ export function PlayerActionPanel({
   actionState,
   loading,
   saved = false,
+  saving = false,
   onAction,
 }: {
   actionState: PlayerTrackActionsResponse | null;
   loading: boolean;
   saved?: boolean;
+  saving?: boolean;
   onAction: (action: PlayerTrackAction) => void;
 }) {
   if (loading) {
@@ -160,9 +162,10 @@ export function PlayerActionPanel({
                 className={`player-action-chip player-action-chip--available ${isSavedAction ? "is-saved" : ""}`}
                 type="button"
                 onClick={() => onAction(action)}
-                disabled={isSavedAction}
+                disabled={saving && action.key === "save"}
                 aria-pressed={isSavedAction || undefined}
-                title={detail || action.reason ? `${action.label} — ${detail || action.reason}` : action.label}
+                aria-label={isSavedAction ? "Remove from library" : action.label}
+                title={isSavedAction ? "Remove from library" : detail || action.reason ? `${action.label} — ${detail || action.reason}` : action.label}
               >
                 <ActionIcon k={action.key} />
                 <span className="player-action-chip-copy">

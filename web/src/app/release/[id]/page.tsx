@@ -368,7 +368,9 @@ export default function ReleaseDetails() {
     toggleMixerMode,
     setMixerVolumes,
     isPlaying,
-    currentTrack
+    currentTrack,
+    addTracksToQueue,
+    playTracksNext,
   } = usePlayer();
   const { addToast } = useToast();
   const { token, userId, login } = useAuth();
@@ -1620,6 +1622,40 @@ export default function ReleaseDetails() {
             <div className="header-action-group header-action-group--primary">
               <Button onClick={handlePlayAll} className="btn-play-all">
                 Play All
+              </Button>
+              <Button
+                variant="ghost"
+                className="btn-save"
+                onClick={() => {
+                  const result = addTracksToQueue((release.tracks ?? [])
+                    .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
+                    .map((track) => mapToLocalTrack(track)));
+                  addToast({
+                    type: result.added.length > 0 ? "success" : "info",
+                    title: result.added.length > 0 ? "Queue updated" : "Already queued",
+                    message: `${result.added.length} track${result.added.length === 1 ? "" : "s"} added${result.skipped.length ? `; ${result.skipped.length} duplicate${result.skipped.length === 1 ? " was" : "s were"} skipped` : ""}.`,
+                  });
+                }}
+                disabled={!release.tracks?.length}
+              >
+                {selectedTrackIds.size > 0 ? `Add selected (${selectedTrackIds.size}) to queue` : "Add album to queue"}
+              </Button>
+              <Button
+                variant="ghost"
+                className="btn-save"
+                onClick={() => {
+                  const result = playTracksNext((release.tracks ?? [])
+                    .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
+                    .map((track) => mapToLocalTrack(track)));
+                  addToast({
+                    type: result.added.length > 0 ? "success" : "info",
+                    title: result.added.length > 0 ? "Queue updated" : "Already queued",
+                    message: `${result.added.length} track${result.added.length === 1 ? "" : "s"} will play next${result.skipped.length ? `; ${result.skipped.length} duplicate${result.skipped.length === 1 ? " was" : "s were"} skipped` : ""}.`,
+                  });
+                }}
+                disabled={!release.tracks?.length}
+              >
+                {selectedTrackIds.size > 0 ? `Play selected (${selectedTrackIds.size}) next` : "Play album next"}
               </Button>
               <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
                 Add to Playlist

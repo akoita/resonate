@@ -84,6 +84,19 @@ describe('CatalogController (e2e)', () => {
     expect(res.body.actions).toEqual([]);
     expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
       recommendationReasons: ['genre:jazz'],
+      userId: undefined,
+    });
+  });
+
+  it('GET /catalog/tracks/:id/actions passes optional authenticated identity', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/tracks/trk-1/actions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
+      recommendationReasons: [],
+      userId: 'user-1',
     });
   });
 

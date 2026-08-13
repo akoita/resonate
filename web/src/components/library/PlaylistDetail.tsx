@@ -38,7 +38,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-    const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
+    const { playQueue, currentTrack, playNext, addToQueue, addTracksToQueue, playTracksNext } = usePlayer();
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
     const { addToast } = useToast();
     const [trackProgress, setTrackProgress] = useState<Map<string, number>>(new Map());
@@ -117,8 +117,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     };
 
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-        { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-        { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+        { label: "Play Next", icon: "⏭️", onClick: () => { const result = playNext(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already next", message: result.added.length ? `"${track.title}" will play next` : `"${track.title}" is already next or currently playing.` }); } },
+        { label: "Add to Queue", icon: "➕", onClick: () => { const result = addToQueue(track); addToast({ type: result.added.length ? "success" : "info", title: result.added.length ? "Queued" : "Already queued", message: result.added.length ? `Added "${track.title}" to queue` : `"${track.title}" is already queued.` }); } },
         { separator: true, label: "", onClick: () => { } },
         { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
     ];
@@ -137,6 +137,14 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 },
             });
         }
+    };
+
+    const notifyQueueResult = (added: number, skipped: number, mode: "queue" | "next") => {
+        addToast({
+            type: added > 0 ? "success" : "info",
+            title: added > 0 ? "Queue updated" : "Already queued",
+            message: `${added} track${added === 1 ? "" : "s"} ${mode === "next" ? "will play next" : "added"}${skipped > 0 ? `; ${skipped} duplicate${skipped === 1 ? " was" : "s were"} skipped` : ""}.`,
+        });
     };
 
     // Global key listener for playback
@@ -236,6 +244,18 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                     <div className="detail-hero-actions">
                         <Button variant="primary" onClick={handlePlayAll} disabled={tracks.length === 0}>
                             Play All
+                        </Button>
+                        <Button variant="ghost" onClick={() => {
+                            const result = addTracksToQueue(tracks);
+                            notifyQueueResult(result.added.length, result.skipped.length, "queue");
+                        }} disabled={tracks.length === 0}>
+                            Add to queue
+                        </Button>
+                        <Button variant="ghost" onClick={() => {
+                            const result = playTracksNext(tracks);
+                            notifyQueueResult(result.added.length, result.skipped.length, "next");
+                        }} disabled={tracks.length === 0}>
+                            Play next
                         </Button>
                         <PlaylistShareControl
                             playlistId={playlist.id}

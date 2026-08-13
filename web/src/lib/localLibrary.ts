@@ -59,7 +59,14 @@ export interface PlayerState {
     queue: LocalTrack[];
     currentIndex: number;
     volume: number;
+    muted?: boolean;
+    previousNonZeroVolume?: number;
     shuffle: boolean;
+    shuffleCycle?: {
+        history: string[];
+        position: number;
+        played: string[];
+    };
     repeatMode: "none" | "one" | "all";
 }
 
@@ -243,6 +250,18 @@ export async function saveTrackMetadata(track: LocalTrack): Promise<LocalTrack> 
     // Fallback: save to IndexedDB
     await trackStore.setItem(track.id, track);
     return track;
+}
+
+/** Save a catalog track using authenticated server truth without local fallback. */
+export async function saveTrackMetadataAuthenticated(
+    track: LocalTrack,
+    token: string,
+): Promise<LocalTrack> {
+    const apiTrack = await saveLibraryTrackAPI(
+        token,
+        localTrackToApi(track, track.source ?? "remote"),
+    );
+    return apiTrackToLocal(apiTrack);
 }
 
 /**
