@@ -1,4 +1,4 @@
-FROM gcr.io/dataflow-templates-base/python312-template-launcher-base@sha256:c14942ea30b2eab6eba6202f27d9c3d591b6f4293083a7f86e81c2bd82ad6cf3
+FROM gcr.io/dataflow-templates-base/python312-template-launcher-base@sha256:e25576104a8e886722e8d12abaa9a8870740088fde0c6543741c6c2502b079d1
 
 WORKDIR /template
 
