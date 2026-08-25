@@ -1,5 +1,5 @@
 # ---- Stage 1: Dependencies ----
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0 AS deps
+FROM node:24-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS deps
 
 WORKDIR /app
 
@@ -43,7 +43,7 @@ FROM build AS prod-deps
 RUN npm prune --omit=dev
 
 # ---- Stage 4: Production Runtime ----
-FROM node:20-slim@sha256:2cf067cfed83d5ea958367df9f966191a942351a2df77d6f0193e162b5febfc0
+FROM node:24-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
 
 WORKDIR /app
 

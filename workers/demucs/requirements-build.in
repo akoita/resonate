@@ -1,2 +1,2 @@
 # PEP 517 backend declared by the reviewed Demucs source archive.
-hatchling==1.31.0
+hatchling==1.32.0

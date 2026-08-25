@@ -7,12 +7,21 @@ reviewing the corresponding release.
 
 ## Dependabot update cadence and grouping
 
-Routine minor and patch version updates are grouped monthly by ecosystem.
-Security updates remain immediate and event-driven, but supported ecosystems
-receive one grouped security pull request per ecosystem. Do not merge small,
-superseded security pull requests individually; cross-ecosystem updates remain
-separate by GitHub design. Review the lifecycle-policy tuple whenever grouped
-lockfile changes update a package with an install script.
+Routine version updates, including major, minor, and patch releases, arrive as
+one monthly cross-ecosystem routine pull request across the configured package
+ecosystems. Security updates remain immediate and event-driven, with one
+grouped security pull request per affected ecosystem. Do not merge small,
+superseded security pull requests individually.
+
+Do not run a full CI/build for each dependency in a routine batch. Review and
+consolidate the complete batch first, then run one full validation. Review the
+lifecycle-policy tuple whenever grouped lockfile changes update a package with
+an install script.
+
+For production Node.js images, select a supported LTS line rather than blindly
+accepting Dependabot's newest major tag. Digest-pin the reviewed multi-platform
+manifest and validate the resulting image reference with the repository's
+Docker base-image check.
 
 ## GitHub Actions
 
