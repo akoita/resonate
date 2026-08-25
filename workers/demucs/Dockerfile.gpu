@@ -1,7 +1,7 @@
 # GPU-enabled Demucs worker using NVIDIA CUDA
 # Use via the GPU-enabled local infrastructure stack in resonate-iac
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime@sha256:e4aaefef0c96318759160ff971b527ae61ee306a1204c5f6e907c4b45f05b8a3
+FROM pytorch/pytorch:2.3.1-cuda12.1-cudnn8-runtime@sha256:fc47f8018254e6df30f48c48f2db1c758d44de21a8c553de1a1c451a65baa70a
 
 # Build argument to control model pre-caching
 ARG CACHE_MODEL=1

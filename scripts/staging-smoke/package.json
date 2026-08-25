@@ -15,6 +15,6 @@
     "check": "node --check lib.mjs && node --check lifecycle-smoke.mjs && node --check reconciliation-drill.mjs"
   },
   "dependencies": {
-    "viem": "^2.44.4"
+    "viem": "^2.55.18"
   }
 }

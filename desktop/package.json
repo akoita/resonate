@@ -23,7 +23,7 @@
     "dist:linux": "npm run prepare:runtime-config && electron-builder --linux AppImage deb --config electron-builder.yml"
   },
   "devDependencies": {
-    "electron": "40.9.3",
-    "electron-builder": "26.9.1"
+    "electron": "41.10.3",
+    "electron-builder": "26.15.3"
   }
 }

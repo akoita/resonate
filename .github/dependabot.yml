@@ -1,8 +1,17 @@
 version: 2
 
+# Routine version updates are consolidated into one monthly cross-ecosystem PR.
 # Security updates remain event-driven through GitHub's enabled native setting
-# and are grouped into one PR per supported ecosystem.
-# This file keeps routine version updates low-noise and reviewable.
+# and are grouped into one PR per affected ecosystem.
+multi-ecosystem-groups:
+  monthly-routine-updates:
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    commit-message:
+      prefix: deps
+
 updates:
   - package-ecosystem: npm
     directories:
@@ -12,23 +21,13 @@ updates:
       - /desktop
       - /examples/mcp-client
       - /scripts/staging-smoke
-    schedule:
-      interval: monthly
-      time: "04:00"
-      timezone: Europe/Paris
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
     groups:
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
-      npm-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types:
-          - minor
-          - patch
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: deps
 
   # The archived experiments/stable-audio-3-spike tree is intentionally not
   # configured: it is outside the production policy and maintained graph.
@@ -37,23 +36,13 @@ updates:
       - /workers/analytics-dataflow
       - /workers/demucs
       - /workers/stable-audio
-    schedule:
-      interval: monthly
-      time: "04:00"
-      timezone: Europe/Paris
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
     groups:
       pip-security:
         applies-to: security-updates
         patterns: ["*"]
-      pip-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types:
-          - minor
-          - patch
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: deps
 
   - package-ecosystem: docker
     directories:
@@ -62,51 +51,22 @@ updates:
       - /workers/analytics-dataflow
       - /workers/demucs
       - /workers/stable-audio
-    schedule:
-      interval: monthly
-      time: "04:00"
-      timezone: Europe/Paris
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
     groups:
       docker-security:
         applies-to: security-updates
         patterns: ["*"]
-      docker-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types:
-          - minor
-          - patch
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: deps
 
   - package-ecosystem: github-actions
     directory: "/"
-    schedule:
-      interval: monthly
-      time: "04:00"
-      timezone: Europe/Paris
-    groups:
-      github-actions-minor-patch:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types:
-          - minor
-          - patch
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: deps
 
   - package-ecosystem: gitsubmodule
     directory: "/"
-    schedule:
-      interval: monthly
-      time: "04:00"
-      timezone: Europe/Paris
-    groups:
-      gitsubmodule-all:
-        applies-to: version-updates
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
     open-pull-requests-limit: 5
-    commit-message:
-      prefix: deps
