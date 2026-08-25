@@ -190,9 +190,12 @@ The live GitHub settings audit on 2026-08-25 records the following controls:
   tracks evidence-backed triage.
 - Partner-pattern validity checks remain disabled because GitHub documents them
   as organization-owned Team/Secret Protection functionality; GitHub-token
-  validity checks remain automatic. Immediately after enablement there were
-  zero open or resolved native secret-scanning alerts and zero open Dependabot
-  alerts; dependency-graph and alert backfill can be asynchronous.
+  validity checks remain automatic. Native secret scanning reported zero open
+  or resolved alerts after enablement. Once dependency-graph processing
+  completed, Dependabot reported 270 existing npm advisory leads (4 critical,
+  119 high, 127 medium, and 20 low); these are not reachability-validated
+  findings, and [#1626](https://github.com/akoita/resonate/issues/1626) tracks
+  controlled triage.
 - The active `main` ruleset (ID `12327414`) requires pull requests and nine
   status checks, has no bypass actors, and requires zero approving reviews.
   Zero reviews is an explicit solo-maintainer decision: raising it to one
