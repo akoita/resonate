@@ -116,7 +116,7 @@ describe("ArtistAnalyticsDashboard", () => {
     // last, enabled by #1121), but the card schema and renderer still
     // support it for future gated actions.
     const disabledAction = {
-      ...dashboard.actions[0],
+      ...dashboard.actions![0],
       id: "synthetic_disabled",
       cta: {
         label: "Workflow planned",

@@ -198,7 +198,7 @@ describe("audio preview helpers (#1165)", () => {
   it("builds preview stem state from local edits", () => {
     const p = project();
     const edits = initialEdits(p);
-    edits.stems["stem-1"] = { gainDb: -12, muted: true };
+    edits.stems["stem-1"] = { gainDb: -12, muted: true, sections: null };
     expect(stemPreviewStates(p, edits)).toEqual([
       { stemId: "stem-1", gainDb: -12, muted: true },
       { stemId: "stem-2", gainDb: null, muted: true },
@@ -232,8 +232,8 @@ describe("buildProjectPatch", () => {
   it("emits minimal per-stem patches for changed mute/gain only", () => {
     const p = project();
     const edits = initialEdits(p);
-    edits.stems["stem-1"] = { gainDb: -6, muted: false };
-    edits.stems["stem-2"] = { gainDb: null, muted: false };
+    edits.stems["stem-1"] = { gainDb: -6, muted: false, sections: null };
+    edits.stems["stem-2"] = { gainDb: null, muted: false, sections: null };
     expect(buildProjectPatch(p, edits)).toEqual({
       stems: [
         { stemId: "stem-1", gainDb: -6 },

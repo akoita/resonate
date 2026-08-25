@@ -1,6 +1,7 @@
 version: 2
 
-# Security updates remain event-driven through GitHub's enabled native setting.
+# Security updates remain event-driven through GitHub's enabled native setting
+# and are grouped into one PR per supported ecosystem.
 # This file keeps routine version updates low-noise and reviewable.
 updates:
   - package-ecosystem: npm
@@ -16,7 +17,11 @@ updates:
       time: "04:00"
       timezone: Europe/Paris
     groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
       npm-minor-patch:
+        applies-to: version-updates
         patterns: ["*"]
         update-types:
           - minor
@@ -37,7 +42,11 @@ updates:
       time: "04:00"
       timezone: Europe/Paris
     groups:
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
       pip-minor-patch:
+        applies-to: version-updates
         patterns: ["*"]
         update-types:
           - minor
@@ -58,7 +67,11 @@ updates:
       time: "04:00"
       timezone: Europe/Paris
     groups:
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
       docker-minor-patch:
+        applies-to: version-updates
         patterns: ["*"]
         update-types:
           - minor
@@ -75,6 +88,7 @@ updates:
       timezone: Europe/Paris
     groups:
       github-actions-minor-patch:
+        applies-to: version-updates
         patterns: ["*"]
         update-types:
           - minor
@@ -91,6 +105,7 @@ updates:
       timezone: Europe/Paris
     groups:
       gitsubmodule-all:
+        applies-to: version-updates
         patterns: ["*"]
     open-pull-requests-limit: 5
     commit-message:

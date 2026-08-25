@@ -51,14 +51,27 @@ describe("catalog display helpers", () => {
         tracks: [
           {
             id: "trk-rednex",
+            releaseId: "rel-rednex",
             title: "Wish You Were Here",
             artist: "Rednex",
             position: 1,
             explicit: false,
             createdAt: "2026-06-05T14:11:17.092Z",
             stems: [
-              { id: "stem-original", type: "original", uri: "/stem-original", title: "Original" },
-              { id: "stem-vocals", type: "vocals", uri: "/stem-vocals", title: "Vocals" },
+              {
+                id: "stem-original",
+                trackId: "trk-rednex",
+                type: "original",
+                uri: "/stem-original",
+                title: "Original",
+              },
+              {
+                id: "stem-vocals",
+                trackId: "trk-rednex",
+                type: "vocals",
+                uri: "/stem-vocals",
+                title: "Vocals",
+              },
             ],
           },
         ],
