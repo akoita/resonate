@@ -375,7 +375,7 @@ jobs:
         run: |
           npm run release:check
           npm run test:release-policy
-          python3 -m unittest discover -s .github/scripts/tests -p 'test_release_evidence.py'
+          python3 -m unittest discover -s .github/scripts/tests -p 'test_release_*.py'
 
   contracts:
     name: Smart Contract Tests

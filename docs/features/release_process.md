@@ -44,6 +44,11 @@ a visible release blocker.
 - Release Please manifest mode prepares the reviewable version/changelog PR.
   A separate protected workflow validates evidence and publishes the immutable
   tag and GitHub Release.
+- Before publication, the protected workflow requires numeric release and
+  milestone ruleset IDs, a reviewed `software-release` environment with a
+  required reviewer and protected-branch policy, active tag-scoped rules with
+  creation/deletion/non-fast-forward protections, and an always-enabled bypass
+  actor on each creation-protected ruleset.
 
 ## How To Use And Test It
 
@@ -51,6 +56,13 @@ Developers should use the local read-only preview before reviewing a Release
 Please PR. Operators then run the CI `preview` mode for the exact approved
 source SHA, review the rendered release plan and evidence gaps, and use the
 protected publication mode only after the release PR merges and CI succeeds.
+
+The release-evidence and release-controls unit tests cover malformed evidence,
+missing note sections, missing reviewers, incorrect ruleset scope, incomplete
+protections, and missing bypass actors. Before live enablement, operators also
+retain negative-test denials for unauthorized tag creation/update/deletion,
+release publication, and asset replacement alongside the workflow and evidence
+artifacts.
 
 Milestone operators follow the separate milestone closure section and never
 create a `v*` tag for a sprint report. Hotfix and rollback procedures preserve
@@ -68,15 +80,19 @@ See:
 ## Evidence And Remaining Work
 
 Current supporting evidence includes the Release Please manifest/configuration,
-read-only preview, release-policy and evidence validators, protected publication
-workflow, immutable desktop finalizer, SHA-tagged OCI builds, digest-bound deploy
-manifests, CycloneDX SBOMs, signatures, attestations, and release-plane audit
-artifacts. The following external evidence remains required before this feature
-can become `implemented`:
+read-only preview, release-policy/evidence/control validators, protected
+publication workflow, immutable desktop finalizer, SHA-tagged OCI builds,
+digest-bound deploy manifests, CycloneDX SBOMs, signatures, attestations, and
+release-plane audit artifacts. Retained release evidence includes the rendered
+plan, control-validation result, deploy manifest, evidence archive, and
+`SHA256SUMS`. The following external evidence remains required before this
+feature can become `implemented`:
 
-- protected tag rules and `software-release` environment approval;
+- protected `v*` and `milestone-*` tag rules and `software-release` environment
+  approval;
 - the dedicated Release Please PR identity/secret, separate protected software
-  publisher identity/secret, tag-ruleset ID, and explicit enable flag;
+  publisher identity/secret, both numeric ruleset IDs, and explicit enable
+  flag;
 - one successful read-only dry run with its workflow/artifact links;
 - one real software release with exact source, artifacts, provenance,
   deployment state, known limitations, and rollback evidence;

@@ -166,8 +166,12 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 json.dumps(
                     {
                         "categories": {
+                            "Summary": "A release-bound summary (#0)",
                             "User-visible changes": ["Added the browse view (#1)"],
                             "Security": "- Hardened the release gate (#2)",
+                            "Documentation and maintenance": ["Updated the operator runbook (#4)"],
+                            "Other changes": "- Recorded an internal cleanup (#5)",
+                            "Rollback and recovery": "- Documented the last-known-good rollback (#6)",
                         },
                         "body": "## API and contract changes\n\n- Added v2 contract (#3)\n",
                     }
@@ -184,11 +188,18 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertIn("Added the browse view (#1)", notes)
         self.assertIn("Added v2 contract (#3)", notes)
         self.assertIn("Hardened the release gate (#2)", notes)
+        self.assertIn("A release-bound summary (#0)", notes)
+        self.assertIn("Updated the operator runbook (#4)", notes)
+        self.assertIn("Recorded an internal cleanup (#5)", notes)
+        self.assertIn("Documented the last-known-good rollback (#6)", notes)
         self.assertIn(f"Source commit: `{REVISION}`", notes)
         self.assertIn("[123](https://github.com/akoita/resonate/actions/runs/123)", notes)
         self.assertIn("https://github.com/akoita/resonate/pull/456", notes)
         self.assertIn("backend@sha256", notes)
         self.assertGreaterEqual(notes.count("None"), 3)
+
+        heading_positions = [notes.index(f"## {heading}\n") for heading in release_evidence.REQUIRED_NOTE_HEADINGS]
+        self.assertEqual(heading_positions, sorted(heading_positions))
 
 
 if __name__ == "__main__":
