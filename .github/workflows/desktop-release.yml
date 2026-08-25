@@ -92,7 +92,7 @@ jobs:
         if: env.SHOULD_BUILD == 'true'
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Resolve desktop runtime target

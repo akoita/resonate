@@ -296,7 +296,7 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install desktop dependencies
@@ -663,7 +663,7 @@ jobs:
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
