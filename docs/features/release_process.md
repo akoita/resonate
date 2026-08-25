@@ -9,10 +9,11 @@ owner: "@akoita"
 ## Status
 
 `in-progress` — the release contract and templates are documented, and the
-protected GitHub controls plus a read-only Release Please preview are proven.
-Issue [#1593](https://github.com/akoita/resonate/issues/1593) remains open until
-the release credentials, negative-control tests, generated Release Please PR,
-Software Release preview, and one real software release have durable evidence.
+fail-closed repository validators, protected GitHub controls, and read-only
+Release Please preview are proven. Issue [#1593](https://github.com/akoita/resonate/issues/1593)
+closes through this documentation boundary; unperformed operational work is
+owned by the intentionally unmilestoned [#1667](https://github.com/akoita/resonate/issues/1667).
+The feature remains `in-progress` until #1667 closes.
 
 ## Who This Is For
 
@@ -102,19 +103,25 @@ See:
 - [sprint working mode](../sprints/README.md)
 - [supply-chain incident response](../operations/supply_chain_incident_response.md)
 
-## Evidence And Remaining Work
+## Delivered Controls And Read-Only Evidence
 
-Current supporting evidence includes the Release Please manifest/configuration,
-read-only preview, release-policy/evidence/control validators, the protected
-Software Release workflow, release-gated image/evidence contracts, immutable
-desktop finalizer, CycloneDX SBOMs, signatures, attestations, and release-plane
-audit artifacts. Retained release evidence includes the rendered plans,
-control-validation result, deploy manifest, evidence archive, and `SHA256SUMS`.
+Repository-delivered support includes the Release Please manifest/configuration,
+the read-only preview path, release-policy/evidence/control validators, the
+protected Software Release workflow, release-gated image/evidence contracts,
+immutable desktop finalizer, and the CycloneDX SBOM, signature, attestation,
+and release-plane audit mechanisms. The workflows are designed to retain
+rendered plans, control-validation results, deploy manifests, evidence archives,
+and `SHA256SUMS`; this page does not claim that a tag, release, deployment, or
+production action has occurred.
 The live protected-control and Release Please preview evidence is recorded in
 the [operator runbook](../operations/release_process.md#live-evidence-snapshot)
 and the [preview workflow run](https://github.com/akoita/resonate/actions/runs/32797404994).
-The following external evidence remains required before this feature can become
-`implemented`:
+
+## Remaining Operational Work
+
+The following work is unperformed and owned by the intentionally unmilestoned
+[#1667](https://github.com/akoita/resonate/issues/1667) before this feature can
+become `implemented`:
 
 - the dedicated `RELEASE_PLEASE_TOKEN` and separate protected
   `SOFTWARE_RELEASE_TOKEN`, plus `RELEASE_AUTOMATION_ENABLED=true`;
@@ -132,6 +139,7 @@ The following external evidence remains required before this feature can become
   release contract is tracked in
   [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213).
 
-The source of truth for tracked completion is
-[#1593](https://github.com/akoita/resonate/issues/1593). A milestone closing
-does not close that issue while these items remain.
+Issue [#1593](https://github.com/akoita/resonate/issues/1593) is the repository
+documentation boundary; #1667 is the source of truth for the remaining
+operational work. A milestone closing does not close the feature while those
+items remain.

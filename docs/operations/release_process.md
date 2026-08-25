@@ -12,10 +12,13 @@ application image publication path, and `Deploy Handoff` can follow only a
 successful explicitly dispatched release run. Analytics Dataflow publication
 is also manual and exact-SHA bound.
 
-Issue [#1593](https://github.com/akoita/resonate/issues/1593) remains open until
-the release credentials, negative-control tests, Software Release preview, and
-first real release have durable evidence. Do not create a `v*` tag manually
-while that work is incomplete.
+Issue [#1593](https://github.com/akoita/resonate/issues/1593) covers the
+documented repository contract and live read-only controls. Its documentation
+boundary is intended to close that issue; the unmilestoned operational
+follow-up [#1667](https://github.com/akoita/resonate/issues/1667) owns the
+unperformed credential, negative-test, preview, and first-release work. Do not
+create a `v*` tag manually or imply a release/deployment occurred while that
+work is incomplete.
 
 ## Roles
 
@@ -79,9 +82,10 @@ nor GitHub Release exists.
 The evidence validator fetches exactly
 `image-evidence-<service>-<candidate_sha>` for each selected allowlisted service
 from the image-release run. Record workflow URLs, source SHA, retained plan
-checksums, run IDs, and validation results on #1593. A local fixture test is not
-the acceptance dry run because it cannot prove GitHub permissions, artifact
-lookup, or repository settings.
+checksums, run IDs, and validation results on [#1667](https://github.com/akoita/resonate/issues/1667)
+when that operational follow-up is performed. A local fixture test is not the
+acceptance dry run because it cannot prove GitHub permissions, artifact lookup,
+or repository settings.
 
 ## Release Deployment
 
@@ -179,6 +183,8 @@ least-privilege repository secret used only to update the version/changelog PR;
 `SOFTWARE_RELEASE_TOKEN` is available only inside the approved
 `software-release` environment and is used only to create the immutable tag and
 draft release. The default workflow token remains read-only for validation.
+Provisioning and explicit enablement are not evidenced here; they remain owned
+by [#1667](https://github.com/akoita/resonate/issues/1667).
 
 GitHub environment reviewers, required-branch policies, and ruleset bypass
 actors are external repository settings. They must be configured and
@@ -196,9 +202,11 @@ expected denials and actor context without recording token contents.
 
 ## Live Evidence Snapshot
 
-The following evidence is recorded for [#1593](https://github.com/akoita/resonate/issues/1593)
-and separates proven repository controls from the remaining credential and
-publication gates:
+The following evidence records delivered repository and live read-only controls
+for [#1593](https://github.com/akoita/resonate/issues/1593). It does not record
+credential provisioning, a generated release PR, a Software Release preview, a
+tag, a GitHub Release, a deployment, or a production action. The remaining
+operational gates belong to [#1667](https://github.com/akoita/resonate/issues/1667):
 
 - PR [#1623](https://github.com/akoita/resonate/pull/1623) merged at
   `ef9ed481e40d514ed9d21d7a97b443370b09904c`; the merged
@@ -354,7 +362,8 @@ containment, evidence preservation, credential rotation, and reconciliation.
 ## External Completion Checklist
 
 The live rulesets, protected environment, and Release Please preview are proven
-in the evidence snapshot above. The following remain before #1593 can close:
+in the evidence snapshot above. The following operations are not yet performed
+and remain owned by [#1667](https://github.com/akoita/resonate/issues/1667):
 
 - add `RELEASE_AUTOMATION_ENABLED=true` only after the release-PR path is ready;
 - install `RELEASE_PLEASE_TOKEN` as a least-privilege repository secret that
@@ -375,12 +384,13 @@ in the evidence snapshot above. The following remain before #1593 can close:
   and explicit `deploy` decision;
 - run the Software Release `preview` mode with matching `ci_run_id` and
   `image_run_id`, then retain its evidence;
-- run one real software release and link its tag, source SHA, CI, artifacts,
-  provenance, deployment state, and rollback target on #1593;
+- run one authorized real software release and link its tag, source SHA, CI,
+  artifacts, provenance, deployment state, and rollback target on
+  [#1667](https://github.com/akoita/resonate/issues/1667);
 - complete desktop signing/notarization before calling those packages
   production-trusted;
 - verify live IaC, analytics, and contract deployment boundaries with their
   owners and environment credentials, with the independent IaC release
   contract tracked in [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213).
 
-Until those items exist, the feature remains `in-progress`.
+Until those items exist and #1667 closes, the feature remains `in-progress`.
