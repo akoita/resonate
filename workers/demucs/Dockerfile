@@ -17,7 +17,7 @@ WORKDIR /app
 # wheels. The CUDA-base graph is intentionally separate in Dockerfile.gpu.
 COPY requirements-build.lock requirements-cpu.lock ./
 RUN python -m pip install --no-cache-dir --require-hashes -r requirements-build.lock \
-    && python -m pip install --no-cache-dir --require-hashes \
+    && python -m pip install --no-cache-dir --require-hashes --no-deps \
         --no-build-isolation -r requirements-cpu.lock
 
 # Create models directory with proper permissions

@@ -25,7 +25,7 @@ WORKDIR /app
 # untracked command-line addition.
 COPY requirements-build.lock requirements-gpu.lock constraints-gpu.txt patch_demucs.py ./
 RUN python -m pip install --no-cache-dir --require-hashes -r requirements-build.lock \
-    && python -m pip install --no-cache-dir --require-hashes --no-build-isolation \
+    && python -m pip install --no-cache-dir --require-hashes --no-deps --no-build-isolation \
         --constraint constraints-gpu.txt -r requirements-gpu.lock \
     && python patch_demucs.py
 
