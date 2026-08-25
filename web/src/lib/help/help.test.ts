@@ -97,6 +97,30 @@ describe("help content integrity", () => {
       }
     }
   });
+
+  it("keeps upload guidance honest about self-attestation and release gating", () => {
+    const article = getArticle("upload-music");
+    const text = JSON.stringify(article).toLowerCase();
+
+    expect(text).toContain("self-attestation is not independent rights verification");
+    expect(text).toContain("request evidence");
+    expect(text).toContain("marketplace access");
+    expect(text).toContain("release's rights state");
+    expect(text).toContain("account verification alone does not clear release rights");
+  });
+
+  it("separates account, personhood, provenance, economic, and release-rights signals", () => {
+    const article = getArticle("rights-protection");
+    const text = JSON.stringify(article).toLowerCase();
+
+    expect(text).toContain("account trust");
+    expect(text).toContain("human/personhood");
+    expect(text).toContain("self-attested on-chain");
+    expect(text).toContain("verified economic tier");
+    expect(text).toContain("rights verified is reserved");
+    expect(text).toContain("submitted evidence was reviewed");
+    expect(text).toContain("release-scoped rights");
+  });
 });
 
 describe("help index projection", () => {
