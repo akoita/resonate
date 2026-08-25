@@ -8,10 +8,11 @@ owner: "@akoita"
 
 ## Status
 
-`in-progress` — the release contract and templates are documented, but issue
-[#1593](https://github.com/akoita/resonate/issues/1593) remains open until the
-automation, protected GitHub settings, one CI dry run, and one real software
-release have durable evidence.
+`in-progress` — the release contract and templates are documented, and the
+protected GitHub controls plus a read-only Release Please preview are proven.
+Issue [#1593](https://github.com/akoita/resonate/issues/1593) remains open until
+the release credentials, negative-control tests, generated Release Please PR,
+Software Release preview, and one real software release have durable evidence.
 
 ## Who This Is For
 
@@ -85,19 +86,24 @@ publication workflow, immutable desktop finalizer, SHA-tagged OCI builds,
 digest-bound deploy manifests, CycloneDX SBOMs, signatures, attestations, and
 release-plane audit artifacts. Retained release evidence includes the rendered
 plan, control-validation result, deploy manifest, evidence archive, and
-`SHA256SUMS`. The following external evidence remains required before this
-feature can become `implemented`:
+`SHA256SUMS`. The live protected-control and Release Please preview evidence is
+recorded in the [operator runbook](../operations/release_process.md#live-evidence-snapshot)
+and the [preview workflow run](https://github.com/akoita/resonate/actions/runs/32797404994).
+The following external evidence remains required before this feature can become
+`implemented`:
 
-- protected `v*` and `milestone-*` tag rules and `software-release` environment
-  approval;
-- the dedicated Release Please PR identity/secret, separate protected software
-  publisher identity/secret, both numeric ruleset IDs, and explicit enable
-  flag;
-- one successful read-only dry run with its workflow/artifact links;
+- the dedicated `RELEASE_PLEASE_TOKEN` and separate protected
+  `SOFTWARE_RELEASE_TOKEN`, plus `RELEASE_AUTOMATION_ENABLED=true`;
+- a separate non-bypass identity and retained negative tests for unauthorized
+  tag creation/update/deletion, release publication, and asset replacement;
+- a generated and reviewed Release Please PR followed by a successful Software
+  Release `preview` run;
 - one real software release with exact source, artifacts, provenance,
   deployment state, known limitations, and rollback evidence;
-- owner verification of desktop signing/notarization and external IaC/contract
-  boundaries where applicable.
+- owner verification of desktop signing/notarization and credentialed live IaC,
+  analytics, and contract boundaries where applicable. The independent IaC
+  release contract is tracked in
+  [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213).
 
 The source of truth for tracked completion is
 [#1593](https://github.com/akoita/resonate/issues/1593). A milestone closing

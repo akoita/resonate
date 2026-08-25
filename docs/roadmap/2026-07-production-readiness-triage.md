@@ -25,11 +25,19 @@ reconciliation/indexer hygiene landed. PR
 [#1610](https://github.com/akoita/resonate/pull/1610) also established the
 software-release/versioning foundation.
 
+The release-plane controls and a read-only Release Please preview are now
+proven. PR [#1623](https://github.com/akoita/resonate/pull/1623) merged the
+validator, and the [preview run](https://github.com/akoita/resonate/actions/runs/32797404994)
+records the exact source and proposed version. The independent IaC release
+contract is tracked in [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213).
+
 Two boundaries intentionally remain open:
 
-- [#1593](https://github.com/akoita/resonate/issues/1593) still requires the
-  protected GitHub environment/tag controls, a retained dry run, and one real
-  evidence-linked software release;
+- [#1593](https://github.com/akoita/resonate/issues/1593) still requires
+  `RELEASE_PLEASE_TOKEN`, `SOFTWARE_RELEASE_TOKEN`, and
+  `RELEASE_AUTOMATION_ENABLED=true`; a separate non-bypass identity with
+  retained unauthorized-actor negative tests; a generated Release Please PR; a
+  Software Release `preview`; and one real evidence-linked software release;
 - [#1595](https://github.com/akoita/resonate/issues/1595) remains the whole-app
   readiness denominator. Sprint closure does not waive its legal, privacy,
   security, feature-gating, support, or infrastructure blockers.
@@ -172,7 +180,8 @@ two of them (playback, wallet funding) are on the critical money path.
 3. **Docs truth:** six draft feature pages + four uncatalogued routes.
 4. **Cross-cutting:** legal pages, GDPR controls (or narrowed analytics),
    support channel, infra-target comparison, backup/cost sweep,
-   and the remaining #1593 protected-release controls/evidence.
+   and the remaining #1593 release credentials, negative-control tests, and
+   publication evidence.
 5. **Then** the #1583 gated go-live package itself (owner GO → production contract deploy → cohort).
 
 Items 1–4 are the honest distance between "custody is proven in staging" and
