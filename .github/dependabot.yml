@@ -1,0 +1,97 @@
+version: 2
+
+# Security updates remain event-driven through GitHub's enabled native setting.
+# This file keeps routine version updates low-noise and reviewable.
+updates:
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - /backend
+      - /web
+      - /desktop
+      - /examples/mcp-client
+      - /scripts/staging-smoke
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+
+  # The archived experiments/stable-audio-3-spike tree is intentionally not
+  # configured: it is outside the production policy and maintained graph.
+  - package-ecosystem: pip
+    directories:
+      - /workers/analytics-dataflow
+      - /workers/demucs
+      - /workers/stable-audio
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    groups:
+      pip-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /web
+      - /workers/analytics-dataflow
+      - /workers/demucs
+      - /workers/stable-audio
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    groups:
+      docker-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    groups:
+      github-actions-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    groups:
+      gitsubmodule-all:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
