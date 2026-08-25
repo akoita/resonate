@@ -512,13 +512,15 @@ selected full-SHA tags, registry digests, and build/SBOM/signature/attestation
 evidence. Unchanged content-addressed images may be reused when their evidence
 is valid.
 
-Deploy Handoff is reusable via `workflow_call` only from a successful explicitly
-dispatched Release Deployment run. Its separate manual `workflow_dispatch`
-`release_run_id` input supports retry or rollback using the retained immutable
-manifest without rebuilding or retagging images. It has no `workflow_run`
-trigger and never follows ordinary CI. A successful release may intentionally
-set `deploy=false`; no handoff is dispatched in that case. A failed or partial
-publication cannot dispatch a partial manifest.
+Deploy Handoff is reusable from Release Deployment and from the protected
+stable release finalizer. `deploy=true` performs an immediate non-production
+handoff; `deploy=false` may defer the exact staging manifest until all desktop
+assets are attached and the stable GitHub Release becomes public. Drafts,
+prereleases, milestone changelogs, and generic/manual releases cannot enter the
+automatic path, and an immediate handoff is not duplicated. The separate
+manual `workflow_dispatch` path still supports retry or rollback without
+rebuilding. No ordinary CI run can dispatch, and a failed or partial
+publication cannot produce an eligible manifest.
 
 The non-production handoff mapping is:
 

@@ -8,9 +8,11 @@ It is an operator/developer procedure, not an end-user feature.
 CI and deployment are separate planes. Pull requests, merge-queue candidates,
 and `main`/`develop` pushes validate source only; the `main` post-merge run is
 a lightweight receipt. The manual **Release Deployment** workflow is the only
-application image publication path, and `Deploy Handoff` can follow only a
-successful explicitly dispatched release run. Analytics Dataflow publication
-is also manual and exact-SHA bound.
+application image publication path. A protected stable software release
+automatically hands its retained immutable staging manifest to
+`resonate-iac` only after Desktop Release Artifacts publishes the completed
+GitHub Release. Analytics Dataflow publication remains manual and exact-SHA
+bound.
 
 Issue [#1593](https://github.com/akoita/resonate/issues/1593) covers the
 documented repository contract and live read-only controls. Its documentation
@@ -123,16 +125,21 @@ valid; the build metadata and image evidence record the reuse result.
 The deploy manifest is eligible only after the selected image work completes
 as one successful aggregate. A failed or partial publication never dispatches
 an incomplete manifest. A successful publish may still have `deploy=false`.
-When `deploy=true`, the release workflow hands the complete immutable manifest
-to `Deploy Handoff`; production remains manual and `resonate-iac`-owned.
+For an image run selected by a later stable Software Release, that value defers
+staging handoff until the GitHub Release is published. When `deploy=true`,
+Release Deployment hands off immediately; the later publication gate
+recognizes the completed handoff and does not dispatch it twice. Production
+remains manual and `resonate-iac`-owned.
 
-`Deploy Handoff` is reusable via `workflow_call` from a successful explicitly
-dispatched Release Deployment run, with a separate manual `workflow_dispatch`
-path whose `release_run_id` supports retry or rollback from a retained
-successful manifest without rebuilding or retagging images. It has no
-`workflow_run` trigger and never follows ordinary CI, a merge-queue run, or a
-`main`/`develop` push. A preview has no deploy manifest and is therefore skipped
-by the handoff.
+`Deploy Handoff` is reusable via `workflow_call` from Release Deployment and
+from the stable release finalizer. The release-publication mode accepts only a
+strict stable `vMAJOR.MINOR.PATCH` tag push after the release is non-draft and
+non-prerelease, then requires the tag ref, release evidence, image run, and
+staging manifest to agree on the exact `main` SHA. Its separate manual
+`workflow_dispatch` path supports retry or rollback from a retained manifest.
+It has no generic `release` or `workflow_run` trigger. A preview has no manifest
+and is skipped; milestone tags, drafts, prereleases, and manual/generic releases
+cannot enter the automatic path.
 
 Analytics is separate from application image publication. **Publish Analytics
 Dataflow Flex Template** is `workflow_dispatch` only and requires a full
@@ -158,11 +165,11 @@ image reuse. Analytics additionally reads
 `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` when configured. The publisher uses
 workload identity; no cloud private key belongs in the repository.
 
-`Deploy Handoff` reads `RESONATE_IAC_DISPATCH_TOKEN` when a complete manifest
-requests deployment. It is a handoff credential, not an image-publisher
-credential, and is never needed when `deploy=false`. The handoff payload
-contains the target environment, selected services, source SHA, release ID,
-and immutable image tags/digests.
+`Deploy Handoff` reads `RESONATE_IAC_DISPATCH_TOKEN` only when it will dispatch
+a complete manifest. It is a handoff credential, not an image-publisher
+credential. A publish-only manifest does not use it until an eligible stable
+release becomes public. The payload contains the target environment, selected
+services, source SHA, release ID, and immutable image tags/digests.
 
 The publish job reads the `software-release` environment and both configured
 rulesets before it can use the publisher credential. The environment must have
@@ -246,8 +253,9 @@ operational gates belong to [#1667](https://github.com/akoita/resonate/issues/16
    CI run, selecting `planned` or `on-demand`, the target environment, and the
    canonical service set. Retain the resulting plan.
 7. If publication is approved, rerun Release Deployment with `mode=publish`.
-   Keep `deploy=false` when the release should publish evidence without an IaC
-   handoff.
+   For a stable software release, use `deploy=false` so staging changes only
+   after the completed GitHub Release becomes public. Use `deploy=true` only
+   for an explicitly approved immediate non-production handoff.
 8. Confirm each selected image evidence artifact contains build metadata,
    CycloneDX SBOM, signature verification, SBOM-attestation verification, and
    build-attestation verification bound to the same SHA and digest. Record any
@@ -277,13 +285,16 @@ match. The workflow must:
 7. create the immutable `v*` tag at the approved SHA;
 8. create the GitHub Release without `--clobber`, marking `-rc.N` as a
    prerelease;
-9. attach durable checksums/evidence required by policy and verify the published
-   release still points to the expected SHA.
+9. attach durable checksums/evidence required by policy and verify the draft
+   release still points to the expected SHA;
+10. let the `v*` tag-triggered Desktop Release Artifacts workflow build and
+    attach the complete platform set, publish the GitHub Release, and then
+    invoke the automatic staging handoff for the exact retained manifest.
 
-Software Release publication does not itself authorize production deployment.
-Record `deploy=false` explicitly when images were published without a handoff,
-and record the target environment and immutable manifest when a handoff did
-occur. Production remains manual and IaC-owned.
+Only a strict stable `vMAJOR.MINOR.PATCH` publication automatically deploys to
+staging. Drafts, `-rc.N` prereleases, milestone changelogs, and generic/manual
+GitHub Releases do not. Software Release publication never authorizes
+production deployment; production remains manual and IaC-owned.
 
 ## Close A Milestone
 
@@ -343,11 +354,14 @@ containment, evidence preservation, credential rotation, and reconciliation.
 - If reusable CI or any selected image publication fails, the aggregate release
   fails closed and no partial deploy manifest is eligible for Deploy Handoff.
   Fix the source through a PR or rerun the exact release after review.
-- If a publish succeeds with `deploy=false`, that manifest remains
-  intentionally ineligible for handoff and does not imply that an environment
-  changed. A later approved deployment requires a new Release Deployment
-  publish with `deploy=true`; content-addressed reuse may avoid rebuilding the
-  unchanged images.
+- If image publication succeeds with `deploy=false`, no environment changes at
+  that point. An eligible stable release later promotes that exact retained
+  staging manifest after publication. If the desktop finalizer or automatic
+  handoff fails, keep the release/run evidence and retry through the reviewed
+  workflow path; do not rebuild or retag merely to retry the handoff.
+- If the prior image run used `deploy=true`, its successful status proves the
+  immediate handoff completed. The release-publication path records a duplicate
+  skip rather than dispatching the same manifest again.
 - If validation fails before the tag is created, preserve the plan and logs,
   fix the source through a PR, and rerun preview. Do not weaken the validator.
 - If a tag exists but release creation fails, stop. Treat the immutable tag as a
