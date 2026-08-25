@@ -5,10 +5,12 @@ It is an operator/developer procedure, not an end-user feature.
 
 ## Current State
 
-The target process is defined, but issue
+The target process and protected release controls are now live, and a
+read-only Release Please preview is recorded below. Issue
 [#1593](https://github.com/akoita/resonate/issues/1593) remains open until the
-automation, repository settings, dry run, and first real release have evidence.
-Do not create a `v*` tag manually while that work is incomplete.
+release credentials, negative-control tests, Software Release preview, and
+first real release have evidence. Do not create a `v*` tag manually while that
+work is incomplete.
 
 ## Roles
 
@@ -96,6 +98,34 @@ release-evidence archive, deploy manifest, and `SHA256SUMS` with the release
 record. Before enabling publication, negatively test unauthorized tag creation,
 tag update/deletion, release publication, and asset replacement; retain the
 expected denials and actor context without recording token contents.
+
+## Live Evidence Snapshot
+
+The following evidence is recorded for [#1593](https://github.com/akoita/resonate/issues/1593)
+and separates proven repository controls from the remaining credential and
+publication gates:
+
+- PR [#1623](https://github.com/akoita/resonate/pull/1623) merged at
+  `ef9ed481e40d514ed9d21d7a97b443370b09904c`; the merged
+  `release_controls` validator accepted the live GitHub API payloads.
+- Release tag ruleset `21354806` is active for `refs/tags/v*`; milestone tag
+  ruleset `21354808` is active for `refs/tags/milestone-*`. Both require
+  creation, deletion, and non-fast-forward protections and have an
+  always-enabled approved User bypass actor. The environment variables point
+  to these two rulesets.
+- The `software-release` environment requires reviewer `akoita`, uses the
+  protected-branch deployment policy, and has `prevent_self_review=false` for
+  the solo-maintainer path.
+- The [read-only Release Please preview run](https://github.com/akoita/resonate/actions/runs/32797404994)
+  produced `release-preview-ef9ed481e40d514ed9d21d7a97b443370b09904c/release-plan.json`
+  with SHA-256
+  `4c2a05561bf31c5806afa95faebb85d18dce1150e0d9faa2e118cbed21e7b833`.
+  The plan records source `ef9ed481e40d514ed9d21d7a97b443370b09904c`, current
+  version `0.1.0`, proposed version/tag `0.2.0`/`v0.2.0`, 21 commits, and
+  `dryRun: true`.
+- The independent IaC release contract is tracked in
+  [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213); this
+  branch does not expand into IaC implementation.
 
 ## Prepare And Approve A Software Release
 
@@ -200,27 +230,27 @@ containment, evidence preservation, credential rotation, and reconciliation.
 
 ## External Completion Checklist
 
-The following cannot be proven by this documentation PR:
+The live rulesets, protected environment, and Release Please preview are proven
+in the evidence snapshot above. The following remain before #1593 can close:
 
-- configure and audit immutable `v*` and `milestone-*` tag rules;
-- configure the protected `software-release` environment and reviewer;
 - add `RELEASE_AUTOMATION_ENABLED=true` only after the release-PR path is ready;
 - install `RELEASE_PLEASE_TOKEN` as a least-privilege repository secret that
   can update the generated version/changelog PR but cannot publish releases;
 - install a separate `SOFTWARE_RELEASE_TOKEN` only in the protected
   `software-release` environment and authorize that identity to create `v*`
   tags and draft releases;
-- set the environment variables `RELEASE_TAG_RULESET_ID` and
-  `MILESTONE_TAG_RULESET_ID` to the active numeric ruleset IDs validated by the
-  publication workflow;
-- negatively test unauthorized tag creation, tag update/deletion, release
-  publication, and asset replacement, retaining the expected denials;
-- run the read-only Actions dry run and retain its evidence;
+- configure a separate non-bypass identity and negatively test unauthorized tag
+  creation, tag update/deletion, release publication, and asset replacement,
+  retaining the expected denials;
+- generate and review the Release Please PR for the release candidate;
+- run the Software Release `preview` mode against that approved candidate and
+  retain its evidence;
 - run one real software release and link its tag, source SHA, CI, artifacts,
   provenance, deployment state, and rollback target on #1593;
 - complete desktop signing/notarization before calling those packages
   production-trusted;
 - verify live IaC, analytics, and contract deployment boundaries with their
-  owners and environment credentials.
+  owners and environment credentials, with the independent IaC release
+  contract tracked in [resonate-iac#213](https://github.com/akoita/resonate-iac/issues/213).
 
 Until those items exist, the feature remains `in-progress`.
