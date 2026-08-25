@@ -38,7 +38,7 @@ function campaignListOptions(params: SearchParams | undefined): {
 export default async function ShowsExplorerPage({
   searchParams,
 }: {
-  searchParams?: Promise<SearchParams> | SearchParams;
+  searchParams?: Promise<SearchParams>;
 }) {
   const resolvedSearchParams = await searchParams;
   const { activeFilter, options } = campaignListOptions(resolvedSearchParams);

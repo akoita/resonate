@@ -104,10 +104,6 @@
           "disposition": "deny",
           "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
         },
-        "node_modules/sharp@0.34.5": {
-          "disposition": "execute",
-          "rationale": "Next.js image processing depends on sharp validating its platform-specific native binary."
-        },
         "node_modules/unrs-resolver@1.11.1": {
           "disposition": "execute",
           "rationale": "The resolver validates its N-API platform binding for the frontend build toolchain."

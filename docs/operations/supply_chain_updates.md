@@ -5,6 +5,15 @@ readable version/tag and immutable commit or digest must move together; do not
 update a comment while retaining an old commit, or replace a digest without
 reviewing the corresponding release.
 
+## Dependabot update cadence and grouping
+
+Routine minor and patch version updates are grouped monthly by ecosystem.
+Security updates remain immediate and event-driven, but supported ecosystems
+receive one grouped security pull request per ecosystem. Do not merge small,
+superseded security pull requests individually; cross-ecosystem updates remain
+separate by GitHub design. Review the lifecycle-policy tuple whenever grouped
+lockfile changes update a package with an install script.
+
 ## GitHub Actions
 
 1. Wait at least seven days after a release unless the PR documents an urgent
