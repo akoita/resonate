@@ -18,11 +18,10 @@ name: Security Scan
 # keys / mock JWTs — i.e. the secrets gate needs a `.gitleaksignore` baseline
 # before it can ever block anything.
 #
-# NO SARIF UPLOAD. GitHub code scanning is disabled on this repository (tracked
-# in #1539), so `github/codeql-action/upload-sarif` would fail the job. Reports
-# go to workflow artifacts and a digest goes to the job summary instead. Once
-# #1539 enables code scanning, the artifact upload can be swapped for
-# `upload-sarif` and the digest kept as a convenience.
+# CodeQL default setup is now enabled for native code-scanning ingestion. The
+# custom scanner SARIF produced here remains artifact-only deliberately: it
+# avoids duplicating CodeQL findings and noise while preserving raw reports and
+# the digest for review. Runtime behavior of this workflow is unchanged.
 #
 # Scanners are installed as pinned CLI downloads rather than marketplace
 # actions: this is the security workflow, so it is where third-party action

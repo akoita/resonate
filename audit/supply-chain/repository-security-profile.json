@@ -169,7 +169,7 @@
             "role": "Source hosting, pull requests, Actions, hosted runners, environments, repository dispatch and desktop Releases",
             "owner": "Resonate repository maintainer",
             "evidence": ["AGENTS.md:215", ".github/workflows/ci.yml:1", ".github/workflows/desktop-release.yml:144"],
-            "private_boundary": "repository settings, environment reviewers and audit-log routing require setting evidence"
+            "private_boundary": "native repository controls and the main ruleset are evidenced in SC-VCS-01, SC-DEP-02 and SC-MON-01; environment reviewers and audit-log routing remain private setting evidence"
           },
           {
             "name": "Google Cloud",
@@ -399,24 +399,27 @@
       "trigger_evidence": [
         "AGENTS.md:215 requires branch-and-PR changes",
         ".github/workflows/ci.yml:3 runs validation for pushes, pull requests and merge groups",
-        "GitHub setting evidence from issue #1539 audit dated 2026-07-29: active main ruleset requires a pull request and nine status checks with no bypass actors"
+        "GitHub settings audit dated 2026-08-25: active main ruleset ID 12327414 requires a pull request and nine status checks, has no bypass actors and requires zero approving reviews; the default GITHUB_TOKEN is read-only and cannot approve pull requests"
       ],
-      "decision_rationale": "Retain the PR and merge-queue topology credited by #1537 and adapt the baseline to a solo-maintainer repository where CI is currently the merge gate. Do not claim repository settings complete: #1539 owns the settings export, approval-count decision and native security settings.",
+      "decision_rationale": "Retain the PR and merge-queue topology credited by #1537 and adapt the baseline to a solo-maintainer repository where CI is the merge gate. The live settings audit confirms the active main ruleset, nine required checks and no bypass actors. Zero approving reviews is a deliberate solo-maintainer exception: raising the count to one would deadlock pull requests. Release controls remain a separate review surface.",
       "evidence": [
         "AGENTS.md:215",
         ".github/workflows/ci.yml:9",
-        "GitHub setting evidence: issue #1539 records required_approving_review_count=0 and default GITHUB_TOKEN read with workflow PR approval disabled"
+        "GitHub settings audit 2026-08-25: main ruleset ID 12327414 requires pull requests and nine checks, has no bypass actors and requires zero approving reviews",
+        "GitHub settings audit 2026-08-25: default GITHUB_TOKEN is read-only and cannot approve pull requests"
       ],
       "risk_reduction": "high",
       "operating_cost": "medium",
       "prerequisites": [
-        "Issue #1539 produces or refreshes a repository/ruleset settings export and explicitly accepts or changes the zero-reviewer solo-maintainer model",
-        "Protected-branch required checks remain aligned with actual job names after workflow changes"
+        "Keep the active main ruleset's required checks aligned with actual job names after workflow changes",
+        "Revisit the zero-approval solo-maintainer exception if another maintainer becomes available; do not set one approval while solo because pull requests would deadlock",
+        "Review release controls separately from the repository merge gate"
       ],
       "failure_mode": "Written PR policy and CI jobs can look strong while a settings change adds a bypass actor, drops required checks, permits direct pushes or leaves zero independent review for T4 release changes.",
       "compensating_controls": [
-        "Current main ruleset was API-audited in #1539 as blocking deletion and non-fast-forward with no bypass actors",
-        "CI and formal verification provide attributable automated review"
+        "The active main ruleset was audited on 2026-08-25 as requiring pull requests and nine checks with no bypass actors",
+        "CI and formal verification provide attributable automated review",
+        "The default GITHUB_TOKEN is read-only and cannot approve pull requests"
       ],
       "owner": "Resonate repository maintainer",
       "review_cadence": "quarterly",
@@ -600,28 +603,39 @@
       "trigger_evidence": [
         "backend/package.json:31 declares runtime dependencies including payment, MCP, cloud and account-abstraction packages",
         ".github/workflows/security.yml:51 declares SCA and container scanner versions",
-        ".github/workflows/security.yml:10 states the initial advisory ratchet"
+        ".github/workflows/security.yml:10 states the initial advisory ratchet",
+        ".github/dependabot.yml:1 defines monthly low-noise version updates for npm, pip, Docker, GitHub Actions and Foundry submodules",
+        "GitHub settings audit dated 2026-08-25: Dependabot vulnerability alerts and security updates are enabled; completed dependency-graph processing reported 270 existing open npm advisory leads",
+        "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398 using default JavaScript/TypeScript setup"
       ],
-      "decision_rationale": "Credit #1537's PR/nightly OSV, Trivy and related advisory scans, but add a written disposition policy for vulnerable, confirmed-malicious, abandoned, newly published, provenance-missing and maintainer-transferred inputs. Native Dependabot and CodeQL settings remain #1539 work and are not claimed here.",
+      "decision_rationale": "Credit #1537's PR/nightly OSV, Trivy and related advisory scans, and add a written disposition policy for vulnerable, confirmed-malicious, abandoned, newly published, provenance-missing and maintainer-transferred inputs. Native Dependabot alerts and security updates are enabled, with routine version updates grouped monthly in .github/dependabot.yml. Completed dependency-graph processing reported 270 existing npm advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks controlled triage. CodeQL default setup is enabled for JavaScript/TypeScript with the default query suite and remote threat model; its initial run succeeded, but CodeQL remains advisory/non-required. The run reported 19 open advisory tool leads in metadata (4 critical, 14 high, 1 medium), not validated findings; issue #1625 tracks evidence-backed triage. Custom scanner SARIF remains artifact-only to avoid duplicating CodeQL ingestion and noise.",
       "evidence": [
         ".github/workflows/security.yml:10",
         ".github/workflows/security.yml:51",
         ".github/workflows/security.yml:290",
         ".github/workflows/security.yml:303",
-        "GitHub setting evidence from issue #1539 audit dated 2026-07-29: Dependabot alerts/security updates disabled and CodeQL not configured"
+        ".github/dependabot.yml:1",
+        ".github/workflows/security.yml:21",
+        "GitHub settings audit 2026-08-25: Dependabot alerts and security updates enabled; completed dependency-graph processing reported 270 open npm advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks triage",
+        "GitHub settings audit 2026-08-25: CodeQL default setup configured for javascript-typescript, query_suite=default, threat_model=remote and standard runner; initial run 32799678109 succeeded",
+        "CodeQL initial run metadata reported 19 open advisory tool leads (4 critical, 14 high, 1 medium), not validated findings; issue #1625 tracks evidence-backed triage"
       ],
       "risk_reduction": "high",
       "operating_cost": "medium",
       "prerequisites": [
         "Adopt the agent-toolkit dependency-intake disposition policy with explicit owners and time bounds",
         "Triage #1537 advisory baselines before promoting deterministic high-confidence classes",
-        "Issue #1539 owns enabling and configuring Dependabot alerts/security updates and CodeQL; reconcile overlap rather than duplicate it"
+        "Review native Dependabot and CodeQL findings alongside retained custom scanner artifacts, and keep routine version updates grouped and event-driven security updates enabled",
+        "Complete evidence-backed triage of the 19 CodeQL advisory tool leads under issue #1625 without treating metadata severity as a validated finding",
+        "Triage the 270 Dependabot npm advisory leads under issue #1626 by dependency path, fixed-version availability and runtime reachability before sequenced upgrades or dismissals"
       ],
       "failure_mode": "Scanners can upload reports while all failures are ignored, no owner dispositions them, or soft signals such as package age are mistaken for deterministic compromise evidence.",
       "compensating_controls": [
         "Nightly full-history/full-tree scans retain reports for thirty days",
         "PR scans produce reviewable report artifacts",
-        "npm release-age filtering delays newly published inputs"
+        "npm release-age filtering delays newly published inputs",
+        "Dependabot native alerts/security updates and monthly grouped version updates cover declared dependency paths",
+        "The successful initial CodeQL run provides configuration and execution evidence; its result is not a required merge gate"
       ],
       "owner": "Resonate security maintainer",
       "review_cadence": "quarterly",
@@ -765,13 +779,23 @@
       "decision": "adapt",
       "trigger_evidence": [
         ".github/workflows/security.yml:34 schedules nightly security scans",
+        ".github/workflows/security.yml:21 keeps custom scanner SARIF artifact-only to avoid duplicate CodeQL ingestion/noise",
+        ".github/dependabot.yml:1 defines monthly version-update coverage",
+        "GitHub settings audit dated 2026-08-25 records enabled private vulnerability reporting, secret scanning, push protection, Dependabot alerts/security updates and CodeQL default setup",
         "docs/architecture/deployment_architecture.md:191 documents private Cloud Monitoring ownership",
         "backend/src/modules/x402/x402.middleware.ts:75 emits payment challenge and settlement audit events"
       ],
-      "decision_rationale": "Credit #1537's retained PR/nightly scanner artifacts and existing payment/key audit events, but add retained and routed evidence for workflow changes, unexpected triggers, WIF/credential use and privileged-job egress. #1539's native secret scanning and code scanning remain separate prerequisites.",
+      "decision_rationale": "Credit #1537's retained PR/nightly scanner artifacts and existing payment/key audit events, and add retained and routed evidence for workflow changes, unexpected triggers, WIF/credential use and privileged-job egress. Native private vulnerability reporting, secret scanning, push protection, Dependabot alerts/security updates and CodeQL are now enabled. The successful initial CodeQL run is execution evidence, while CodeQL remains advisory/non-required; custom scanner SARIF stays artifact-only to avoid duplicate ingestion/noise. The retained historical scan leads were triaged as metadata-only with no Resonate-owned credential requiring rotation.",
       "evidence": [
         ".github/workflows/security.yml:294",
         ".github/workflows/security.yml:442",
+        ".github/workflows/security.yml:21",
+        ".github/dependabot.yml:1",
+        "GitHub settings audit 2026-08-25: zero open and zero resolved native secret-scanning alerts after enablement",
+        "GitHub settings audit 2026-08-25: completed dependency-graph processing reported 270 open npm Dependabot advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks triage",
+        "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398",
+        "CodeQL initial run metadata reported 19 open advisory tool leads (4 critical, 14 high, 1 medium), not validated findings; issue #1625 tracks evidence-backed triage",
+        "Retained nightly scan run 32686785885: 19 provider-verified TruffleHog leads triaged metadata-only; no Resonate-owned credential required rotation",
         "backend/src/modules/x402/x402.middleware.ts:75",
         "backend/src/modules/identity/zerodev_session_key.service.ts:167",
         "unverified private boundary: GitHub audit-log retention/routing, GCP IAM audit alerts and privileged-job egress alerts are not public code evidence"
@@ -781,14 +805,15 @@
       "prerequisites": [
         "Define retained GitHub audit events and alerts for workflow/ref/environment/ruleset changes and unusual triggers",
         "Define GCP WIF/service-account use and privileged-job egress alerts with owner and escalation route",
-        "Issue #1539 owns secret scanning, push protection, private vulnerability reporting and CodeQL setting changes",
+        "Review native secret-scanning, Dependabot and CodeQL outcomes with the retained custom scanner artifacts; #1625 and #1626 track the initial advisory baselines",
         "Exercise alert routing and retain one response record"
       ],
       "failure_mode": "Logs and scanner artifacts can exist without retention, an alert, a human route or enough correlation to connect a workflow change to credential use and a deployed digest.",
       "compensating_controls": [
         "Nightly scanner artifacts are retained for thirty days",
         "x402 and session-key operations emit application audit events",
-        "Private Terraform documentation declares Cloud Monitoring ownership"
+        "Private Terraform documentation declares Cloud Monitoring ownership",
+        "Native GitHub settings and the initial successful CodeQL run provide repository-control evidence while private audit-log routing remains unverified"
       ],
       "owner": "Resonate security maintainer",
       "review_cadence": "quarterly",

@@ -165,17 +165,54 @@ the shared skill and supplies the Resonate context it needs.
 > `.pre-commit-config.yaml` now exist (#1537 Phase 3), but nothing they report
 > can fail a merge. Every heuristic scan step is `continue-on-error: true` under the
 > ratchet rule, and **pre-commit is opt-in** — it is not installed for you (see
-> [Pre-commit](#pre-commit-opt-in) below). Two constraints shape the workflow:
-> GitHub code scanning is **disabled** on this repository
-> ([#1539](https://github.com/akoita/resonate/issues/1539)), so reports go to
-> workflow artifacts and the job summary rather than to `upload-sarif`; and no
-> new check has been added to the `main` ruleset.
+> [Pre-commit](#pre-commit-opt-in) below). Custom scanner SARIF remains
+> artifact-only; CodeQL now owns native code-scanning ingestion, so uploading
+> overlapping SARIF would duplicate findings and noise. No custom scanner has
+> been added to the `main` ruleset.
+
+### Native GitHub controls
+
+The live GitHub settings audit on 2026-08-25 records the following controls:
+
+- Private vulnerability reporting, secret scanning, push protection, Dependabot
+  vulnerability alerts, and Dependabot security updates are enabled. Security
+  updates are event-driven; routine version updates use
+  [`.github/dependabot.yml`](../../.github/dependabot.yml) on a monthly
+  04:00 Europe/Paris schedule across the declared npm, pip, Docker, Actions,
+  and Foundry submodule paths.
+- CodeQL default setup is enabled for `javascript-typescript`, query suite
+  `default`, remote threat modeling, and the standard runner. The initial
+  [run 32799678109](https://github.com/akoita/resonate/actions/runs/32799678109)
+  completed successfully against the reviewed revision. CodeQL remains
+  advisory/non-required and is not one of the nine required checks. It reported
+  19 open advisory tool leads in its metadata (4 critical, 14 high, 1 medium),
+  not validated findings; [#1625](https://github.com/akoita/resonate/issues/1625)
+  tracks evidence-backed triage.
+- Partner-pattern validity checks remain disabled because GitHub documents them
+  as organization-owned Team/Secret Protection functionality; GitHub-token
+  validity checks remain automatic. Native secret scanning reported zero open
+  or resolved alerts after enablement. Once dependency-graph processing
+  completed, Dependabot reported 270 existing npm advisory leads (4 critical,
+  119 high, 127 medium, and 20 low); these are not reachability-validated
+  findings, and [#1626](https://github.com/akoita/resonate/issues/1626) tracks
+  controlled triage.
+- The active `main` ruleset (ID `12327414`) requires pull requests and nine
+  status checks, has no bypass actors, and requires zero approving reviews.
+  Zero reviews is an explicit solo-maintainer decision: raising it to one
+  would deadlock pull requests. CI remains the merge gate; release controls are
+  separate. The default `GITHUB_TOKEN` is read-only and cannot approve PRs.
+
+The retained nightly scan run `32686785885` produced 19 TruffleHog
+provider-verified leads that were triaged as metadata-only: 13 Lob `test_…`
+function-name matches in tests and 6 upstream Forge/Infura sample IDs in a
+historical vendored subtree. No Resonate-owned credential required rotation;
+raw values are intentionally not documented.
 
 | Job | Skill | Trigger | Blocking | Status |
 | --- | --- | --- | --- | --- |
 | `security.yml` → `Security Scan (PR, advisory)` | `security-scan` | Pull request, diff-scoped against `git merge-base origin/main HEAD` | No — advisory during the soak period | Implemented (#1537 Phase 3) |
 | `security.yml` → `Nightly Security Scan (advisory)` | `security-scan` | Schedule (02:30 UTC) + `workflow_dispatch`, full tree and full history | No — digest only | Implemented (#1537 Phase 3) |
-| `security.yml` → `Supply Chain Baseline` | `security-supply-chain` | Pull request, schedule, and `workflow_dispatch`; validates the T4 profile and revision-bound ABOM | Deterministic job fails on schema or mutable build inputs; branch-required status remains #1539 | Implemented (#1551) |
+| `security.yml` → `Supply Chain Baseline` | `security-supply-chain` | Pull request, schedule, and `workflow_dispatch`; validates the T4 profile and revision-bound ABOM | Deterministic job fails on schema or mutable build inputs; separate from native CodeQL and branch ruleset requirements | Implemented (#1551) |
 | `security.yml` → `Release Plane Evidence` | `security-supply-chain` | Schedule and `workflow_dispatch`; inventories privileged runs and delivery-path changes | Flags unexpected trigger classes; alert routing remains private/live evidence | Implemented (#1551) |
 | ~~`code-review.yml`~~ | `security-review` | — | — | Retired (#1547). The hosted review needed its own paid `ANTHROPIC_API_KEY`; run `/code-review` locally instead. |
 | `certora.yml`, `formal.yml`, `mutation.yml` | `security-smart-contracts` (doctrine) | Nightly / weekly / per-PR on `contracts/**` | `formal.yml` blocks; `certora.yml` and `mutation.yml` are scheduled-only | Implemented |
