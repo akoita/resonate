@@ -43,11 +43,26 @@ jobs:
 name: Deploy Handoff
 on:
   workflow_call:
-    inputs: {}
+    inputs:
+      automatic_published_release:
+        required: false
   workflow_dispatch:
     inputs: {}
 jobs:
   handoff:
+    runs-on: ubuntu-latest
+    steps: []
+""",
+    "desktop-release.yml": """\
+name: Desktop Release Artifacts
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs: {}
+jobs:
+  release:
     runs-on: ubuntu-latest
     steps: []
 """,
@@ -137,7 +152,7 @@ class WorkflowTriggerPolicyTests(unittest.TestCase):
 
     def test_deploy_handoff_must_not_use_workflow_run_or_ci_target(self) -> None:
         invalid = WORKFLOW_FIXTURES["deploy-handoff.yml"].replace(
-            "  workflow_call:\n    inputs: {}\n",
+            "  workflow_call:\n    inputs:\n      automatic_published_release:\n        required: false\n",
             '  workflow_run:\n    workflows: ["CI"]\n    types: [completed]\n',
         )
         with tempfile.TemporaryDirectory() as directory:
@@ -158,6 +173,45 @@ class WorkflowTriggerPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(
                 workflow_trigger_policy.WorkflowTriggerPolicyError,
                 "deploy-handoff.yml: trigger events must be exactly",
+            ):
+                workflow_trigger_policy.validate_repository(root)
+
+    def test_deploy_handoff_automatic_mode_is_workflow_call_only(self) -> None:
+        invalid = WORKFLOW_FIXTURES["deploy-handoff.yml"].replace(
+            "      automatic_published_release:\n        required: false\n",
+            "",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = write_workflow_fixture(Path(directory), **{"deploy-handoff.yml": invalid})
+            with self.assertRaisesRegex(
+                workflow_trigger_policy.WorkflowTriggerPolicyError,
+                "automatic published-release mode must be workflow_call-only",
+            ):
+                workflow_trigger_policy.validate_repository(root)
+
+    def test_desktop_release_requires_v_tag_push_and_manual_dispatch(self) -> None:
+        invalid = WORKFLOW_FIXTURES["desktop-release.yml"].replace(
+            '      - "v*"',
+            '      - "*"',
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = write_workflow_fixture(Path(directory), **{"desktop-release.yml": invalid})
+            with self.assertRaisesRegex(
+                workflow_trigger_policy.WorkflowTriggerPolicyError,
+                "desktop push trigger must contain exactly the v\\* tag pattern",
+            ):
+                workflow_trigger_policy.validate_repository(root)
+
+    def test_desktop_release_rejects_generic_release_event(self) -> None:
+        invalid = WORKFLOW_FIXTURES["desktop-release.yml"].replace(
+            "  workflow_dispatch:\n",
+            "  release:\n  workflow_dispatch:\n",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = write_workflow_fixture(Path(directory), **{"desktop-release.yml": invalid})
+            with self.assertRaisesRegex(
+                workflow_trigger_policy.WorkflowTriggerPolicyError,
+                "desktop-release.yml: trigger events must be exactly",
             ):
                 workflow_trigger_policy.validate_repository(root)
 

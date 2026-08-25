@@ -125,6 +125,39 @@ class ReleaseEvidenceTests(unittest.TestCase):
                     with self.assertRaisesRegex(release_evidence.ReleaseEvidenceError, "strict"):
                         fixture.build(version=invalid)
 
+    def test_rejects_non_positive_actions_run_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = ReleaseFixture(Path(directory))
+            for field in ("ci_run_id", "image_run_id"):
+                with self.subTest(field=field):
+                    with self.assertRaisesRegex(
+                        release_evidence.ReleaseEvidenceError,
+                        "positive numeric",
+                    ):
+                        fixture.build(**{field: "0"})
+
+    def test_publish_only_stable_manifest_is_pending_automatic_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fixture = ReleaseFixture(root)
+            manifest = image_evidence.build_manifest(
+                should_dispatch=False,
+                environment="staging",
+                source_repository="akoita/resonate",
+                source_ref=REVISION,
+                services_csv=",".join(SERVICES),
+                trigger_branch="main",
+                release_sha=REVISION,
+                release_id="ci-123-4",
+                image_tags=TAGS,
+                image_digests=DIGESTS,
+            )
+            image_evidence.write_manifest(fixture.manifest_path, manifest)
+            document = fixture.build(version="1.2.3")
+
+        self.assertEqual(document["deployment"]["status"], "automatic-handoff-pending")
+        self.assertEqual(document["infrastructure"]["status"], "automatic-handoff-pending")
+
     def test_rejects_missing_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             fixture = ReleaseFixture(Path(directory))

@@ -25,6 +25,7 @@ EXPECTED_WORKFLOWS = {
     "release-deployment.yml": ("workflow_dispatch",),
     "publish-deployable-images.yml": ("workflow_call",),
     "deploy-handoff.yml": ("workflow_call", "workflow_dispatch"),
+    "desktop-release.yml": ("push", "workflow_dispatch"),
     "publish-analytics-dataflow-flex-template.yml": ("workflow_dispatch",),
     "software-release.yml": ("workflow_dispatch",),
 }
@@ -146,6 +147,83 @@ def _trigger_events(text: str, *, path: Path) -> tuple[list[str], list[str]]:
     return events, text.splitlines()[start + 1 : end]
 
 
+def _event_block(lines: Sequence[str], event: str) -> list[str]:
+    """Return one direct event mapping and its nested lines."""
+    starts: list[int] = []
+    for index, raw_line in enumerate(lines):
+        line = _strip_comment(raw_line)
+        if _indent(line) != 2:
+            continue
+        match = _KEY_VALUE.fullmatch(line)
+        if match and match.group("key") == event:
+            starts.append(index)
+    if not starts:
+        return []
+    start = starts[0]
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        line = _strip_comment(lines[index])
+        if _indent(line) == 2 and _KEY_VALUE.fullmatch(line):
+            end = index
+            break
+    return lines[start:end]
+
+
+def _nested_mapping_keys(block: Sequence[str], mapping: str) -> list[str]:
+    """Return direct keys under a named mapping in an event block."""
+    for index, raw_line in enumerate(block):
+        line = _strip_comment(raw_line)
+        match = _KEY_VALUE.fullmatch(line)
+        if match and _indent(line) == 4 and match.group("key") == mapping:
+            nested: list[str] = []
+            for candidate in block[index + 1 :]:
+                cleaned = _strip_comment(candidate)
+                if cleaned.strip() and _indent(cleaned) <= 4:
+                    break
+                nested.append(candidate)
+            return _direct_mapping_keys(nested)
+    return []
+
+
+def _validate_desktop_trigger(path: Path, trigger_lines: Sequence[str]) -> None:
+    push_block = _event_block(trigger_lines, "push")
+    if not push_block:
+        raise WorkflowTriggerPolicyError(
+            f"{path.name}: desktop releases must use a v* tag push trigger"
+        )
+    if _direct_mapping_keys(push_block[1:]) != ["tags"]:
+        raise WorkflowTriggerPolicyError(
+            f"{path.name}: desktop push trigger must be restricted to tags"
+        )
+
+    tags: list[str] = []
+    for line in push_block[1:]:
+        if _indent(_strip_comment(line)) <= 4:
+            continue
+        match = re.match(r"^\s*-\s*(.+?)\s*$", _strip_comment(line))
+        if match:
+            tags.append(_unquote(match.group(1)))
+    if tags != ["v*"]:
+        raise WorkflowTriggerPolicyError(
+            f"{path.name}: desktop push trigger must contain exactly the v* tag pattern"
+        )
+
+
+def _validate_deploy_handoff_boundary(path: Path, trigger_lines: Sequence[str]) -> None:
+    call_block = _event_block(trigger_lines, "workflow_call")
+    dispatch_block = _event_block(trigger_lines, "workflow_dispatch")
+    call_inputs = _nested_mapping_keys(call_block, "inputs")
+    dispatch_inputs = _nested_mapping_keys(dispatch_block, "inputs")
+    if "automatic_published_release" not in call_inputs:
+        raise WorkflowTriggerPolicyError(
+            f"{path.name}: automatic published-release mode must be workflow_call-only"
+        )
+    if "automatic_published_release" in dispatch_inputs:
+        raise WorkflowTriggerPolicyError(
+            f"{path.name}: workflow_dispatch must not expose automatic published-release mode"
+        )
+
+
 def _validate_trigger_set(
     *,
     path: Path,
@@ -175,8 +253,12 @@ def validate_workflow_text(path: Path, text: str) -> None:
             f"{path.name}: no release trigger policy is defined for this workflow"
         )
 
-    events, _trigger_lines = _trigger_events(text, path=path)
+    events, trigger_lines = _trigger_events(text, path=path)
     _validate_trigger_set(path=path, expected_events=expected_events, events=events)
+    if path.name == "desktop-release.yml":
+        _validate_desktop_trigger(path, trigger_lines)
+    elif path.name == "deploy-handoff.yml":
+        _validate_deploy_handoff_boundary(path, trigger_lines)
 
 
 def _workflow_job_blocks(text: str, *, path: Path) -> list[tuple[str, str]]:

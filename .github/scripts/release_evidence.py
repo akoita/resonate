@@ -21,6 +21,8 @@ STRICT_SEMVER = re.compile(
     rf"{SEMVER_NUMBER}\.{SEMVER_NUMBER}\.{SEMVER_NUMBER}"
     rf"(?:-{SEMVER_PRERELEASE_IDENTIFIER}(?:\.{SEMVER_PRERELEASE_IDENTIFIER})*)?"
 )
+STRICT_STABLE_VERSION = re.compile(rf"{SEMVER_NUMBER}\.{SEMVER_NUMBER}\.{SEMVER_NUMBER}")
+POSITIVE_RUN_ID = re.compile(r"[1-9][0-9]*")
 HTTP_URL = re.compile(r"https://[^\s]+")
 REQUIRED_NOTE_HEADINGS = (
     "Summary",
@@ -58,6 +60,13 @@ def validate_source_sha(source_sha: str) -> str:
     if not image_evidence.SOURCE_REVISION.fullmatch(source_sha):
         raise ReleaseEvidenceError("source SHA must be 40 lowercase hexadecimal characters")
     return source_sha
+
+
+def validate_run_id(run_id: str, *, field: str) -> str:
+    """Validate a GitHub Actions run ID before recording it in evidence."""
+    if not isinstance(run_id, str) or not POSITIVE_RUN_ID.fullmatch(run_id):
+        raise ReleaseEvidenceError(f"{field} must be a positive numeric Actions run ID")
+    return run_id
 
 
 def validate_url(value: str, *, field: str) -> str:
@@ -152,10 +161,8 @@ def build_release_evidence(
 ) -> dict[str, Any]:
     validate_source_sha(source_sha)
     validate_version(version)
-    if not ci_run_id.strip():
-        raise ReleaseEvidenceError("ci-run-id must not be empty")
-    if not image_run_id.strip():
-        raise ReleaseEvidenceError("image-run-id must not be empty")
+    validate_run_id(ci_run_id, field="ci-run-id")
+    validate_run_id(image_run_id, field="image-run-id")
     validate_url(ci_run_url, field="ci-run-url")
     validate_url(image_run_url, field="image-run-url")
     validate_url(release_pr_url, field="release-pr-url")
@@ -188,7 +195,19 @@ def build_release_evidence(
             digest=digest,
         )
 
-    deploy_status = "handoff-requested" if manifest["should_dispatch"] else "not-performed"
+    if manifest["should_dispatch"]:
+        deploy_status = "handoff-requested"
+    elif (
+        STRICT_STABLE_VERSION.fullmatch(version)
+        and manifest["environment"] == "staging"
+        and manifest["trigger_branch"] == "main"
+    ):
+        # A publish-only image run deliberately leaves the handoff for the
+        # protected stable release.  Keep that state distinguishable from a
+        # release that never had an automatic handoff path.
+        deploy_status = "automatic-handoff-pending"
+    else:
+        deploy_status = "not-performed"
     return {
         "schema_version": SCHEMA_VERSION,
         "version": version,

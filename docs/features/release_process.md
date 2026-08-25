@@ -55,12 +55,13 @@ a visible release blocker.
   boolean. Preview retains a read-only plan. Publish reruns exact-source CI and
   invokes the workflow-call-only image publisher for SHA-tagged,
   digest-bound images and evidence, with safe content-addressed reuse.
-- Deploy Handoff is reusable via `workflow_call` only from a successful
-  explicitly dispatched Release Deployment run; its manual `workflow_dispatch`
-  `release_run_id` enables retry or rollback from an immutable manifest without
-  rebuilding. It has no `workflow_run` trigger, and `deploy=false` is an
-  intentional valid outcome. Analytics Dataflow publication is manual-only and
-  exact-SHA bound.
+- Deploy Handoff is reusable from Release Deployment and the stable release
+  finalizer. A strict stable `vMAJOR.MINOR.PATCH` automatically hands its exact
+  publish-only staging manifest to `resonate-iac` after desktop assets complete
+  and the GitHub Release becomes public. Drafts, prereleases, milestones, and
+  generic/manual releases cannot enter that path; a prior `deploy=true`
+  handoff is not duplicated. Manual retry/rollback remains available, and
+  Analytics Dataflow publication remains manual and exact-SHA bound.
 - Software Release requires both `ci_run_id` and `image_run_id`, and all run
   identities must match the candidate SHA. `dev` maps to `develop`, `staging`
   maps to `main`, and production remains manual/IaC-owned.
@@ -81,7 +82,9 @@ aggregate publication, and immutable manifest checks prevent partial handoffs.
 
 For Software Release, provide the matching successful `ci_run_id` and
 `image_run_id`. The workflow validates both identities before protected tag and
-GitHub Release publication.
+draft creation. The tag-triggered desktop workflow then attaches the complete
+platform artifacts, publishes a stable release, and starts its exact immutable
+staging handoff. Production remains a separate manual IaC decision.
 
 The release-evidence and release-controls unit tests cover malformed evidence,
 missing note sections, missing reviewers, incorrect ruleset scope, incomplete
@@ -108,8 +111,9 @@ See:
 Repository-delivered support includes the Release Please manifest/configuration,
 the read-only preview path, release-policy/evidence/control validators, the
 protected Software Release workflow, release-gated image/evidence contracts,
-immutable desktop finalizer, and the CycloneDX SBOM, signature, attestation,
-and release-plane audit mechanisms. The workflows are designed to retain
+immutable desktop finalizer, stable-release staging handoff, and the CycloneDX
+SBOM, signature, attestation, and release-plane audit mechanisms. The workflows
+are designed to retain
 rendered plans, control-validation results, deploy manifests, evidence archives,
 and `SHA256SUMS`; this page does not claim that a tag, release, deployment, or
 production action has occurred.

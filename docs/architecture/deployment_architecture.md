@@ -25,10 +25,12 @@ module diagram. It follows a C4-style container/deployment view:
   SQL, Redis, GCS, Secret Manager, IAM, Artifact Registry, and Monitoring
 - Delivery control plane: ordinary `resonate` CI validates source only; the
   manual Release Deployment workflow gates exact-SHA reusable CI, invokes the
-  workflow-call-only image publisher, retains SBOM/signature evidence and a
-  digest-bound manifest, and optionally hands that complete manifest to private
-  `resonate-iac`; private reconciliation must verify declared, registry,
-  attestation, and live-revision identity before a deployment is complete
+  workflow-call-only image publisher, and retains SBOM/signature evidence plus
+  a digest-bound manifest. An explicit `deploy=true` may hand off immediately;
+  otherwise publication of the protected stable software release automatically
+  hands the same manifest to private `resonate-iac`. Private reconciliation
+  must verify declared, registry, attestation, and live-revision identity
+  before a deployment is complete
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
   session keys, and Resonate protocol contracts
 - Payment layer: x402 challenge/verification flow and USDC settlement
@@ -89,7 +91,9 @@ flowchart LR
   Publisher --> Images["Artifact Registry<br>SHA tags + digest-bound images<br>SBOM/signatures/attestations"]
   Gate -. "retained read-only plan" .-> Plan["Release plan"]
   Publisher --> Manifest["Complete immutable<br>deploy manifest"]
-  Manifest --> Handoff["Deploy Handoff<br>workflow_call from successful release"]
+  Manifest --> SoftwareRelease["Protected stable v* release<br>desktop assets complete + published"]
+  SoftwareRelease --> Handoff["Automatic staging Deploy Handoff<br>exact tag/evidence/run/manifest SHA"]
+  Manifest -. "explicit deploy or retry" .-> Handoff
   Handoff --> IaC["resonate-iac Terraform<br>GCS state + WIF"]
   IaC --> Edge
   IaC --> Frontend
@@ -102,10 +106,11 @@ flowchart LR
 
 Release publication is serialized by target environment. `dev` consumes a
 `develop` source and `staging` consumes a `main` source; production is a manual
-IaC operation. A failed image fan-out cannot dispatch a partial manifest, and a
-successful publish may intentionally use `deploy=false`. Analytics Dataflow
-uses its own manual exact-SHA publication path and is not triggered by a branch
-push.
+IaC operation. A failed image fan-out cannot dispatch a partial manifest. A
+stable protected release promotes a publish-only staging manifest after the
+release is public; prereleases, milestone changelogs, drafts, and generic
+releases do not. Analytics Dataflow uses its own manual exact-SHA publication
+path and is not triggered by a branch push.
 
 ## Components
 
@@ -214,12 +219,14 @@ workflow records a read-only preview or, after exact-source reusable CI,
 invokes the workflow-call-only image publisher. That publisher resolves
 selected SHA-tagged images to immutable digests and produces CycloneDX,
 source/build-metadata, signature, and attestation evidence. A complete
-manifest may be handed to `resonate-iac`; Deploy Handoff is reusable via
-`workflow_call` only from a successful explicitly dispatched release run and
-has a separate manual `workflow_dispatch` `release_run_id` path for retry or
-rollback without rebuilding. It has no `workflow_run` trigger. `resonate-iac`
-owns environment deploys,
-live digest reconciliation, edge changes, and Terraform state.
+manifest may be handed to `resonate-iac` explicitly, or automatically after
+the matching protected stable GitHub Release becomes public and its desktop
+artifacts are complete. Deploy Handoff revalidates the release, tag, evidence,
+source run, and staging manifest, skips a duplicate if `deploy=true` already
+completed, and retains a manual `workflow_dispatch` path for retry or rollback
+without rebuilding. It has no generic `release` or `workflow_run` trigger.
+`resonate-iac` owns environment deploys, live digest reconciliation, edge
+changes, and Terraform state.
 
 ### Observability
 

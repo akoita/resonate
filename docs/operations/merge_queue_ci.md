@@ -88,10 +88,12 @@ keeping a single urgent PR from waiting too long.
    emits only its post-merge receipt.
 7. If an environment needs new application images, an authorized operator
    explicitly dispatches **Release Deployment** with the full source SHA and
-   successful CI run ID. `deploy=false` is valid when publication is needed
-   without an IaC handoff.
+   successful CI run ID. `deploy=false` publishes without an immediate IaC
+   handoff; a later protected stable release automatically promotes that exact
+   staging manifest after publication.
 
-No step in this flow publishes images or deploys an environment automatically.
+The merge flow itself never publishes or deploys. Automatic staging deployment
+exists only at the separate protected stable-release publication boundary.
 
 ## Failure Handling
 

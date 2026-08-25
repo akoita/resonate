@@ -130,12 +130,21 @@ reused, with the result recorded in build metadata and image evidence.
 
 The target environment is serialized so concurrent releases cannot race. A
 partial or failed image publication never dispatches a partial manifest. A
-successful publication may intentionally set `deploy=false`. Deploy Handoff is
-reusable via `workflow_call` only from a successful explicitly dispatched
-Release Deployment run. Its separate manual `workflow_dispatch` path accepts
-`release_run_id` for retry or rollback of a retained immutable digest manifest
-without rebuilding or retagging images. It has no `workflow_run` trigger and
-never follows ordinary CI.
+successful publication may set `deploy=false` to defer its handoff until the
+corresponding stable software release is public. After Desktop Release
+Artifacts attaches the complete desktop set and publishes that release, it
+passes the evidence-bound image run to Deploy Handoff. The handoff revalidates
+the strict stable `vMAJOR.MINOR.PATCH` tag, non-draft/non-prerelease release,
+tag and evidence SHA, successful Release Deployment run, `main` branch, and
+staging manifest before dispatching the retained digests. If the image run
+already completed `deploy=true`, the publication path skips a duplicate
+dispatch.
+
+Deploy Handoff remains callable directly from Release Deployment when an
+operator selects `deploy=true`. Its separate manual `workflow_dispatch` path
+accepts `release_run_id` for retry or rollback without rebuilding or
+retagging. It has no `release` or `workflow_run` trigger: generic releases,
+drafts, prereleases, milestone changelogs, and ordinary CI cannot deploy.
 
 Analytics Dataflow publication is a separate `workflow_dispatch`-only path. It
 requires `source_sha` to equal the dispatch revision and the target branch
@@ -171,8 +180,9 @@ A software release is valid only when its notes identify:
   Deployment image run for that same SHA;
 - every included OCI image by digest, with build metadata, SBOM, signature, and
   attestation verification;
-- the deploy manifest and any `resonate-iac` handoff or an explicit statement
-  that deployment did not occur;
+- the deploy manifest and its handoff state, including a pending automatic
+  staging handoff when image publication deliberately precedes the stable
+  software release;
 - desktop assets and checksums, or an explicit statement that desktop artifacts
   were not produced;
 - analytics image/template evidence when analytics changed;
@@ -186,8 +196,10 @@ bound to a different SHA, or uses a mutable image reference.
 
 Software Release therefore requires both `ci_run_id` and `image_run_id`; the
 candidate SHA, referenced CI run, and referenced image run must all identify
-the same approved source. A release may state that no deployment occurred when
-the image run intentionally used `deploy=false`.
+the same approved source. For a stable release, `deploy=false` means the
+immutable manifest is pending automatic staging handoff after publication; it
+does not authorize production. Prereleases remain non-deploying unless an
+operator used the explicit Release Deployment path.
 
 ## Hotfix And Rollback Rules
 

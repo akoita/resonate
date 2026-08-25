@@ -159,6 +159,11 @@ jobs:
     environment: software-release
     permissions:
       contents: write
+    outputs:
+      release_tag: ${{ steps.publish_assets.outputs.release_tag }}
+      source_sha: ${{ steps.publish_assets.outputs.source_sha }}
+      image_run_id: ${{ steps.publish_assets.outputs.image_run_id }}
+      automatic_handoff_eligible: ${{ steps.publish_assets.outputs.automatic_handoff_eligible }}
     steps:
       - name: Download desktop artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -167,6 +172,7 @@ jobs:
           merge-multiple: true
 
       - name: Publish release assets
+        id: publish_assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -247,5 +253,88 @@ jobs:
             fi
           done < <(find release-assets -maxdepth 1 -type f -print | sort)
 
+          image_run_id="$(jq -r '.image_run.id // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          source_sha="$(jq -r '.source_sha // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_tag="$(jq -r '.tag // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_schema="$(jq -r '.schema_version // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_environment="$(jq -r '.deployment.environment // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_branch="$(jq -r '.deployment.trigger_branch // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          automatic_handoff_eligible="false"
+          eligibility_reason="release is not a strict stable tag push with a main-to-staging publish-only manifest"
+
+          # This is the pre-publication half of the gate.  Deploy Handoff
+          # repeats the release API/evidence checks after the draft becomes
+          # public; this step only records safe outputs from evidence already
+          # validated while the release was still a draft.
+          if [[ "${GITHUB_EVENT_NAME}" == "push" \
+            && "${GITHUB_REF}" == "refs/tags/${RELEASE_TAG}" \
+            && "${GITHUB_REF_NAME}" == "${RELEASE_TAG}" \
+            && "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            && "${source_sha}" == "${expected_sha}" \
+            && "${source_sha}" =~ ^[0-9a-f]{40}$ \
+            && "${evidence_tag}" == "${RELEASE_TAG}" \
+            && "${evidence_schema}" == "resonate-release-evidence/v2" \
+            && "${image_run_id}" =~ ^[1-9][0-9]*$ \
+            && "${evidence_environment}" == "staging" \
+            && "${evidence_branch}" == "main" ]]; then
+            automatic_handoff_eligible="true"
+            eligibility_reason="stable tag-push evidence is eligible for authoritative published-release revalidation"
+          fi
+
+          output_source_sha=""
+          output_image_run_id=""
+          if [[ "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            output_source_sha="${source_sha}"
+          fi
+          if [[ "${image_run_id}" =~ ^[1-9][0-9]*$ ]]; then
+            output_image_run_id="${image_run_id}"
+          fi
+
+          {
+            echo "release_tag=${RELEASE_TAG}"
+            echo "source_sha=${output_source_sha}"
+            echo "image_run_id=${output_image_run_id}"
+            echo "automatic_handoff_eligible=${automatic_handoff_eligible}"
+            echo "eligibility_reason=${eligibility_reason}"
+          } >> "${GITHUB_OUTPUT}"
+
           gh release upload "${RELEASE_TAG}" release-assets/*
           gh release edit "${RELEASE_TAG}" --draft=false
+
+          {
+            echo "## Published desktop release"
+            echo
+            echo "- tag: \`${RELEASE_TAG}\`"
+            echo "- automatic handoff gate: pre-publication evidence eligibility recorded"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize published release gate
+        if: always()
+        env:
+          RELEASE_TAG: ${{ steps.publish_assets.outputs.release_tag }}
+          IMAGE_RUN_ID: ${{ steps.publish_assets.outputs.image_run_id }}
+          ELIGIBLE: ${{ steps.publish_assets.outputs.automatic_handoff_eligible }}
+          REASON: ${{ steps.publish_assets.outputs.eligibility_reason }}
+        run: |
+          {
+            echo "- tag: \`${RELEASE_TAG}\`"
+            echo "- image release run: \`${IMAGE_RUN_ID}\`"
+            echo "- automatic handoff eligible: \`${ELIGIBLE}\`"
+            echo "- eligibility reason: ${REASON}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  automatic-deploy-handoff:
+    name: Automatically Handoff Published Stable Release
+    needs: release
+    if: needs.release.result == 'success' && needs.release.outputs.automatic_handoff_eligible == 'true'
+    uses: ./.github/workflows/deploy-handoff.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      release_run_id: ${{ needs.release.outputs.image_run_id }}
+      release_tag: ${{ needs.release.outputs.release_tag }}
+      release_source_sha: ${{ needs.release.outputs.source_sha }}
+      automatic_published_release: true
+    secrets:
+      RESONATE_IAC_DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
