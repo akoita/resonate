@@ -133,6 +133,10 @@ The CPU and GPU images intentionally use different reviewed inputs and locks:
   build-time graph. Both images install this lock first and disable PEP 517
   build isolation, preventing an untracked backend download while preparing
   the Demucs archive.
+- Both runtime images install the complete compiled lock with `--no-deps`.
+  Dependency resolution belongs to `uv pip compile`; image builds consume only
+  the reviewed, hash-bound closure and cannot re-resolve optional transitive
+  dependencies after a new release appears on an index.
 
 The Demucs source archive is commit-addressed and independently SHA-256
 verified before its checksum is placed in either input. Refresh both locks

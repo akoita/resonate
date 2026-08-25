@@ -122,12 +122,14 @@ def main() -> int:
         Path("workers/demucs/Dockerfile"): (
             "COPY requirements-build.lock requirements-cpu.lock ./",
             "--require-hashes -r requirements-build.lock",
+            "--no-deps",
             "--no-build-isolation -r requirements-cpu.lock",
         ),
         Path("workers/demucs/Dockerfile.gpu"): (
             "COPY requirements-build.lock requirements-gpu.lock constraints-gpu.txt patch_demucs.py ./",
             "--require-hashes -r requirements-build.lock",
-            "--require-hashes",
+            "--require-hashes --no-deps",
+            "--no-build-isolation",
             "--constraint constraints-gpu.txt -r requirements-gpu.lock",
         ),
         Path("workers/stable-audio/Dockerfile"): (
