@@ -110,7 +110,7 @@ old-link readability without requiring historical image retention.
   API, Home artwork, Shows image, config, and performance-harness tests. Do not
   run an unrelated full monorepo build for this dependency-independent slice.
 
-### 5. Stage, measure, and select the TTL
+### 5. Operational follow-up: stage, measure, and select the TTL
 
 - Deploy the versioned contract with the TTL still at `0`, replace one release
   cover and one campaign visual, and record that each produces a different
@@ -122,8 +122,8 @@ old-link readability without requiring historical image retention.
 - Trial a bounded nonzero TTL through the existing deployment variable, then
   choose and document the smallest value supported by the measured warm-cache
   evidence. The code default remains `0` as the immediate rollback switch;
-  any deployment-repository configuration change is linked to #1604 and
-  reviewed before the issue closes.
+  any deployment-repository configuration change is linked to #1666 and
+  reviewed before that operational follow-up closes.
 
 ## Documentation and rollout
 
@@ -154,19 +154,19 @@ old-link readability without requiring historical image retention.
 - **Rollback:** setting the optimizer TTL to `0` stops extended reuse; legacy
   endpoints and paths remain available, so frontend rollback does not require
   a data rollback.
-- **Cross-repository deployment state:** do not claim completion until any
-  required `resonate-iac` variable change and staging evidence are linked from
-  the issue/PR. Repository implementation can ship safely with TTL `0` while
-  that operational step is pending.
+- **Cross-repository deployment state:** do not claim that a nonzero TTL is
+  production-ready until the required `resonate-iac` variable change and
+  staging evidence are linked from #1666. The repository implementation can
+  ship safely with TTL `0` while that operational follow-up is pending.
 
 ## Completion evidence
 
-The PR will report focused commands and results, migration behavior, an API
-contract example before/after replacement, strict allowlist coverage, relevant
-change-impact checklist decisions, and the staging harness evidence. If the
-staging/IaC step cannot be completed in the same delivery window, #1604 stays
-open with that external step explicitly assigned; the implementation PR must
-not claim that a nonzero TTL is production-ready.
+The implementation PR reports focused commands and results, migration behavior,
+the replacement API contract, strict allowlist coverage, and relevant
+change-impact checklist decisions. Staging harness and IaC evidence are tracked
+in #1666 so an unavailable operational window does not hold Vision Sprint 12
+open. Neither #1604 nor its implementation PR claims that a nonzero TTL is
+production-ready.
 
 ## Operational completion checkpoint — 2026-08-26
 
@@ -176,7 +176,7 @@ green. It has not yet been proven on staging: the corresponding
 Actions spending capacity was unavailable. Do not treat the current public
 staging deployment as evidence for the revisioned contract.
 
-After owner approval, complete the remaining work in this order:
+Issue #1666 owns the remaining operational work in this order:
 
 1. Restore GitHub Actions runner capacity and confirm an authorized operator can
    inspect `resonate-staging-503400`. This is a prerequisite, not a code change.
