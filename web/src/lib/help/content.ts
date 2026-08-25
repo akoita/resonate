@@ -938,7 +938,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Before a release goes public, Resonate checks publishing rights. Depending on your account's verification, you may attest to ownership or provide proof of control. Once cleared, your release and its stems are published to the catalog and can be listed in the Marketplace.",
+            text: "Publishing uses a release-specific route. You may self-attest provenance for an upload, but self-attestation is not independent rights verification. Depending on account trust and release signals, Resonate may publish with limited monitoring, request evidence, or route the release for review. Marketplace access and payout eligibility remain gated by the release's rights state; account verification alone does not clear release rights.",
           },
         ],
       },
@@ -1167,7 +1167,36 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Accounts carry a verification level that decides how much proof a release needs — from an unverified uploader, to a verified independent artist, to a trusted creator or trusted source. Higher trust means a smoother publishing path.",
+            text: "These signals answer different questions and are not interchangeable. Account trust can make a publishing route smoother, but every release keeps its own rights state.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Account trust",
+                description: "Independent Account Trust, Trusted Creator, and Trusted Source Account describe the account route and its controls. They do not clear rights for a particular release.",
+              },
+              {
+                term: "Human/personhood",
+                description: "Human Verified means the wallet passed a personhood or anti-sybil check. It does not prove music ownership or publishing authority.",
+              },
+              {
+                term: "Provenance",
+                description: "Self-Attested On-Chain records the creator wallet's statement about a release. Fingerprint Cleared means configured checks found no conflicting match. Neither is independent rights approval.",
+              },
+              {
+                term: "Economic trust",
+                description: "Verified Economic Tier and stake/escrow signals describe economic controls and account history. They do not prove release rights.",
+              },
+              {
+                term: "Release-scoped rights review",
+                description: "Rights Verified is reserved for a release whose submitted evidence was reviewed and supports likely recording ownership or publishing authority. Other release states can be under review, approved with limits, denied, or disputed.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Marketplace listing and payout eligibility use release-scoped rights and policy gates. A human check, self-attestation, account tier, or technical provenance signal cannot substitute for that review.",
           },
         ],
       },

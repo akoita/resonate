@@ -120,8 +120,8 @@ export const RIGHTS_UPLOADER_CLASSIFICATION_COPY: Record<
     color: "#f59e0b",
   },
   verified_independent: {
-    label: "Verified Independent",
-    description: "The artist has enough account trust to use standard escrow, but rights remain release-scoped.",
+    label: "Independent Account Trust",
+    description: "This account has enough trust to use standard escrow; it does not independently verify ownership, and release rights remain release-scoped.",
     color: "#3b82f6",
   },
   trusted_creator: {

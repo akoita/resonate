@@ -3,6 +3,7 @@ import {
   CONTENT_PROVENANCE_COPY,
   HUMAN_VERIFICATION_COPY,
   RIGHTS_VERIFICATION_COPY,
+  RIGHTS_UPLOADER_CLASSIFICATION_COPY,
   normalizeContentProvenanceState,
   normalizeHumanVerificationState,
   normalizeRightsVerificationState,
@@ -30,6 +31,21 @@ describe("verificationSemantics", () => {
     expect(normalizeRightsVerificationState("approved_with_limits")).toBe("approved_with_limits");
     expect(RIGHTS_VERIFICATION_COPY.approved_with_limits.description).toContain("not verified ownership rights");
     expect(RIGHTS_VERIFICATION_COPY.rights_verified.label).toBe("Rights Verified");
+  });
+
+  it("scopes independent trust to the account rather than release rights", () => {
+    const copy = RIGHTS_UPLOADER_CLASSIFICATION_COPY.verified_independent;
+
+    expect(copy.label).toBe("Independent Account Trust");
+    expect(copy.description).toContain("does not independently verify ownership");
+    expect(copy.description).toContain("release rights remain release-scoped");
+  });
+
+  it("keeps personhood, self-attestation, economic trust, and rights review distinct", () => {
+    expect(HUMAN_VERIFICATION_COPY.human_verified.description).toContain("does not verify music ownership rights");
+    expect(CONTENT_PROVENANCE_COPY.self_attested.description).toContain("not independent rights verification");
+    expect(RIGHTS_VERIFICATION_COPY.approved_with_limits.description).toContain("not verified ownership rights");
+    expect(RIGHTS_VERIFICATION_COPY.rights_verified.description).toContain("enough evidence");
   });
 
   it("normalizes legacy platform review labels to explicit rights review states", () => {
