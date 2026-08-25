@@ -167,3 +167,59 @@ change-impact checklist decisions, and the staging harness evidence. If the
 staging/IaC step cannot be completed in the same delivery window, #1604 stays
 open with that external step explicitly assigned; the implementation PR must
 not claim that a nonzero TTL is production-ready.
+
+## Operational completion checkpoint — 2026-08-26
+
+The revisioned URL implementation merged in PR #1662 at `645a7afa`, with CI
+green. It has not yet been proven on staging: the corresponding
+`resonate-iac` receiver run did not start its deployment steps because GitHub
+Actions spending capacity was unavailable. Do not treat the current public
+staging deployment as evidence for the revisioned contract.
+
+After owner approval, complete the remaining work in this order:
+
+1. Restore GitHub Actions runner capacity and confirm an authorized operator can
+   inspect `resonate-staging-503400`. This is a prerequisite, not a code change.
+2. Use the release-gated workflow to publish and deploy a current `main` source
+   that contains `645a7afa` to `staging`, using its successful exact-SHA CI
+   run. Keep `IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL=0` for this first deployment
+   and retain the release/deploy manifest evidence.
+3. Select an explicitly disposable staging release and Shows campaign visual.
+   Record their IDs and original image digests privately before mutation; do not
+   replace real user content or proceed without a safe fixture and rollback
+   image.
+4. Replace each fixture image once and prove that the returned canonical URL
+   advances from `/vN` to `/vN+1`, the corresponding `/_next/image` source key
+   changes, the new bytes render, and the legacy unversioned URL remains
+   readable. Restore the fixture content if the test image is not intended to
+   remain.
+5. Run five accepted cold/warm Home pairs at TTL `0` with
+   `PERF_IMAGE_BUDGET_BYTES=102400`. Retain raw JSON and record commit, target,
+   viewport, settle time, discarded attempts, cache HIT/MISS counts, and heavy
+   images.
+6. Trial one bounded nonzero TTL through the authoritative `resonate-iac`
+   staging configuration, redeploy without rebuilding application images, and
+   repeat the same five-pair harness plus one replacement check. Select the
+   smallest TTL whose warm-cache evidence improves without weakening immediate
+   replacement correctness.
+7. Record the selected value, evidence, stale-content behavior, and rollback to
+   `0` in deployment and performance documentation. Link the exact
+   `resonate-iac` issue/PR that owns the staging variable; keep repository and
+   deployment changes independently reviewable.
+
+The first approved release attempt used source
+`18dfd8025a8b97b0755e54c9be3ef44e24e88d90` and CI run `32903072598`. Release
+run `32903515660` passed its exact-source validation but failed while publishing
+both selected images: the reusable image jobs received neither a workload
+identity provider nor service-account credential from the `staging`
+environment. The failure happened before the deploy manifest and IaC handoff,
+so staging was not changed. Retry only after the image jobs bind directly to
+the validated reusable-workflow environment input and a regression check covers
+that binding.
+
+No additional local full-monorepo build is required for this operational pass.
+The release workflow remains the consolidated deployment gate and may perform
+its own required exact-source validation. Use that evidence, focused replacement
+checks, the Home performance harness, and configuration/documentation
+validation. No production deployment or production TTL change is authorized by
+this plan.
