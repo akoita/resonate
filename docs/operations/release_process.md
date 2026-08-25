@@ -59,9 +59,43 @@ downloads and validates the digest-bound deploy/image evidence, renders release
 notes and a release-evidence archive, and asserts that neither the proposed tag
 nor GitHub Release exists.
 
+The workflow validates the deploy manifest before downloading image evidence. It
+fetches exactly `image-evidence-<service>-<candidate_sha>` for each selected
+allowlisted service into its service directory; a valid manifest with no
+selected services downloads no image artifact and still passes through the
+evidence validator.
+
 Record the workflow URL, source SHA, rendered plan checksum, and validation
 result on #1593. A local fixture test is not the acceptance dry run because it
 cannot prove GitHub permissions, artifact lookup, or repository settings.
+
+## Protected Controls And Credential Boundaries
+
+The publish job reads the `software-release` environment and both configured
+rulesets before it can use the publisher credential. The environment must have
+at least one required reviewer and `deployment_branch_policy.protected_branches`
+must be `true`. The release ruleset must be active, target tags, include
+`refs/tags/v*`, and contain `creation`, `deletion`, and `non_fast_forward`
+protections. The milestone ruleset has the same controls for
+`refs/tags/milestone-*`. Each creation-protected ruleset must also have at least
+one `bypass_mode: always` actor for the approved publisher/maintainer path.
+
+`RELEASE_TAG_RULESET_ID` and `MILESTONE_TAG_RULESET_ID` are positive numeric
+IDs for those exact rulesets. The workflow validates the IDs before fetching
+the control documents and fails closed on missing, inactive, incorrectly
+scoped, or incomplete controls. It does not print secret values.
+
+Credential responsibilities stay separate: `RELEASE_PLEASE_TOKEN` is a
+least-privilege repository secret used only to update the version/changelog PR;
+`SOFTWARE_RELEASE_TOKEN` is available only inside the approved
+`software-release` environment and is used only to create the immutable tag and
+draft release. The default workflow token remains read-only for validation.
+
+Retain the workflow URL, control-validation result, rendered release plan,
+release-evidence archive, deploy manifest, and `SHA256SUMS` with the release
+record. Before enabling publication, negatively test unauthorized tag creation,
+tag update/deletion, release publication, and asset replacement; retain the
+expected denials and actor context without recording token contents.
 
 ## Prepare And Approve A Software Release
 
@@ -176,10 +210,11 @@ The following cannot be proven by this documentation PR:
 - install a separate `SOFTWARE_RELEASE_TOKEN` only in the protected
   `software-release` environment and authorize that identity to create `v*`
   tags and draft releases;
-- set the environment variable `RELEASE_TAG_RULESET_ID` to the active tag
-  ruleset ID validated by the publication workflow;
+- set the environment variables `RELEASE_TAG_RULESET_ID` and
+  `MILESTONE_TAG_RULESET_ID` to the active numeric ruleset IDs validated by the
+  publication workflow;
 - negatively test unauthorized tag creation, tag update/deletion, release
-  publication, and asset replacement;
+  publication, and asset replacement, retaining the expected denials;
 - run the read-only Actions dry run and retain its evidence;
 - run one real software release and link its tag, source SHA, CI, artifacts,
   provenance, deployment state, and rollback target on #1593;

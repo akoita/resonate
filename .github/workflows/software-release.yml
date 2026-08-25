@@ -146,37 +146,51 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/deploy-manifest
 
-      - name: Download backend image evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: image-evidence-backend-${{ inputs.candidate_sha }}
-          run-id: ${{ inputs.ci_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/image-evidence/backend
+      - name: Download selected image evidence
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          image_evidence_root="${RUNNER_TEMP}/image-evidence"
+          mkdir -p "${image_evidence_root}"
+          DEPLOY_MANIFEST_PATH="${RUNNER_TEMP}/deploy-manifest/deploy-manifest.json" \
+            CANDIDATE_SHA="${CANDIDATE_SHA}" \
+            PYTHONDONTWRITEBYTECODE=1 \
+            PYTHONPATH=.github/scripts \
+            python3 - <<'PY' > "${RUNNER_TEMP}/selected-image-services"
+          import os
+          from pathlib import Path
 
-      - name: Download frontend image evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: image-evidence-frontend-${{ inputs.candidate_sha }}
-          run-id: ${{ inputs.ci_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/image-evidence/frontend
+          import image_evidence
 
-      - name: Download Demucs image evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: image-evidence-demucs-${{ inputs.candidate_sha }}
-          run-id: ${{ inputs.ci_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/image-evidence/demucs
+          manifest_path = Path(os.environ["DEPLOY_MANIFEST_PATH"])
+          expected_sha = os.environ["CANDIDATE_SHA"]
+          try:
+              manifest = image_evidence.load_manifest(manifest_path)
+          except image_evidence.ManifestError as error:
+              raise SystemExit(f"invalid deploy manifest: {error}") from error
+          if manifest["source_ref"] != expected_sha or manifest["release_sha"] != expected_sha:
+              raise SystemExit("deploy manifest source and release SHAs must match candidate_sha")
+          for service in image_evidence.parse_services(manifest["services"]):
+              print(service)
+          PY
 
-      - name: Download Stable Audio image evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: image-evidence-stable-audio-${{ inputs.candidate_sha }}
-          run-id: ${{ inputs.ci_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/image-evidence/stable-audio
+          while IFS= read -r service; do
+            [[ -z "${service}" ]] && continue
+            case "${service}" in
+              backend|frontend|demucs|stable-audio) ;;
+              *)
+                echo "::error::deploy manifest selected an unsupported image service."
+                exit 1
+                ;;
+            esac
+            gh run download "${CI_RUN_ID}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --name "image-evidence-${service}-${CANDIDATE_SHA}" \
+              --dir "${image_evidence_root}/${service}"
+          done < "${RUNNER_TEMP}/selected-image-services"
 
       - name: Build release evidence manifest
         env:
@@ -282,36 +296,43 @@ jobs:
           name: software-release-${{ needs.validate.outputs.tag }}
           path: ${{ runner.temp }}/release-plan
 
+      - name: Check out release controls
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Validate protected release controls
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG_RULESET_ID: ${{ vars.RELEASE_TAG_RULESET_ID }}
+          MILESTONE_TAG_RULESET_ID: ${{ vars.MILESTONE_TAG_RULESET_ID }}
         run: |
           set -euo pipefail
           if [[ ! "${RELEASE_TAG_RULESET_ID}" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::Set RELEASE_TAG_RULESET_ID to the active immutable v* tag ruleset."
             exit 1
           fi
+          if [[ ! "${MILESTONE_TAG_RULESET_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Set MILESTONE_TAG_RULESET_ID to the active milestone-* tag ruleset."
+            exit 1
+          fi
           gh api "repos/${GITHUB_REPOSITORY}/environments/software-release" > "${RUNNER_TEMP}/release-environment.json"
           gh api "repos/${GITHUB_REPOSITORY}/rulesets/${RELEASE_TAG_RULESET_ID}" > "${RUNNER_TEMP}/release-ruleset.json"
-          ENV_PATH="${RUNNER_TEMP}/release-environment.json" RULESET_PATH="${RUNNER_TEMP}/release-ruleset.json" python3 - <<'PY'
-          import json
-          import os
-
-          environment = json.load(open(os.environ["ENV_PATH"], encoding="utf-8"))
-          if not environment.get("protection_rules"):
-              raise SystemExit("software-release environment must have at least one protection rule")
-
-          ruleset = json.load(open(os.environ["RULESET_PATH"], encoding="utf-8"))
-          includes = ((ruleset.get("conditions") or {}).get("ref_name") or {}).get("include", [])
-          rule_types = {rule.get("type") for rule in ruleset.get("rules", [])}
-          if ruleset.get("target") != "tag" or ruleset.get("enforcement") != "active":
-              raise SystemExit("release tag ruleset must be active and target tags")
-          if "refs/tags/v*" not in includes:
-              raise SystemExit("release tag ruleset must include refs/tags/v*")
-          if not {"deletion", "non_fast_forward"}.issubset(rule_types):
-              raise SystemExit("release tag ruleset must block deletion and non-fast-forward updates")
-          PY
+          gh api "repos/${GITHUB_REPOSITORY}/rulesets/${MILESTONE_TAG_RULESET_ID}" > "${RUNNER_TEMP}/milestone-ruleset.json"
+          PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${GITHUB_WORKSPACE}/.github/scripts" \
+            python3 .github/scripts/release_controls.py validate \
+              --environment "${RUNNER_TEMP}/release-environment.json" \
+              --release-ruleset "${RUNNER_TEMP}/release-ruleset.json" \
+              --milestone-ruleset "${RUNNER_TEMP}/milestone-ruleset.json"
+          {
+            echo "### Protected release controls"
+            echo
+            echo "- software-release environment: validated"
+            echo "- v* tag ruleset: validated"
+            echo "- milestone-* tag ruleset: validated"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Revalidate publication credential and immutability
         env:

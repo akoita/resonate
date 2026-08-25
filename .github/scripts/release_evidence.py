@@ -23,13 +23,17 @@ STRICT_SEMVER = re.compile(
 )
 HTTP_URL = re.compile(r"https://[^\s]+")
 REQUIRED_NOTE_HEADINGS = (
+    "Summary",
     "User-visible changes",
     "API and contract changes",
     "Operations and deployments",
     "Security",
     "Migrations",
     "Known limitations and deferred work",
+    "Documentation and maintenance",
+    "Other changes",
     "Release evidence",
+    "Rollback and recovery",
 )
 EVIDENCE_FILES = {
     "build_metadata": "{service}.build.json",
