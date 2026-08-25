@@ -1,2 +1,2 @@
 # Resolved for the digest-pinned Dataflow Python 3.12 launcher image.
-apache-beam[gcp]>=2.60,<3
+apache-beam[gcp]>=2.75.0,<3
