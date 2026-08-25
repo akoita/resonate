@@ -61,6 +61,7 @@ export function TrendingNowRail({
                   <HomeReleaseArtwork
                     releaseId={item.releaseId}
                     mimeType={item.artworkMimeType}
+                    artworkRevision={item.artworkRevision}
                     alt={item.title}
                     sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
                   />

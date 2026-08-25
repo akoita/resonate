@@ -14,6 +14,7 @@ describe("HomeReleaseArtwork", () => {
         <HomeReleaseArtwork
           releaseId="rel_1"
           mimeType=" Image/JPEG; charset=binary "
+          artworkRevision={5}
           alt="Release cover"
           sizes="(max-width: 767px) 96px, 112px"
           className="custom-art"
@@ -21,7 +22,7 @@ describe("HomeReleaseArtwork", () => {
       </span>,
     );
 
-    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork%2Fv5");
     expect(html).toContain('alt="Release cover"');
     expect(html).toContain('sizes="(max-width: 767px) 96px, 112px"');
     expect(html).toContain('loading="lazy"');
@@ -38,12 +39,13 @@ describe("HomeReleaseArtwork", () => {
         <HomeReleaseArtwork
           releaseId="rel_legacy"
           mimeType={mimeType}
+          artworkRevision={5}
           alt="Legacy artwork"
           sizes="64px"
         />,
       );
 
-      expect(html).toContain('src="http://localhost:3000/catalog/releases/rel_legacy/artwork"');
+      expect(html).toContain('src="http://localhost:3000/catalog/releases/rel_legacy/artwork/v5"');
       expect(html).not.toContain("/_next/image");
       expect(html).not.toContain("srcset=");
       expect(shouldOptimizeHomeReleaseArtwork(mimeType)).toBe(false);
@@ -56,6 +58,7 @@ describe("HomeReleaseArtwork", () => {
     const unsafeProps = {
       releaseId: "rel_safe",
       mimeType: "image/png",
+      artworkRevision: 9,
       alt: "Safe artwork",
       sizes: "64px",
       src: "https://evil.example/artwork.jpg",
@@ -64,7 +67,7 @@ describe("HomeReleaseArtwork", () => {
     const html = renderToStaticMarkup(<HomeReleaseArtwork {...unsafeProps} />);
 
     expect(acceptsSrc).toBe(false);
-    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_safe%2Fartwork");
+    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_safe%2Fartwork%2Fv9");
     expect(html).not.toContain("evil.example");
   });
 });

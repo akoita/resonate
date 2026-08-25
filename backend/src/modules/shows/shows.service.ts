@@ -836,6 +836,7 @@ export function serializePublicShowCampaign(campaign: any) {
         role: visual.role,
         publicUrl: visual.publicUrl,
         mimeType: visual.mimeType,
+        artworkRevision: visual.artworkRevision,
         sortOrder: visual.sortOrder,
         caption: visual.caption ?? null,
         credit: visual.credit ?? null,
@@ -1520,6 +1521,7 @@ export class ShowsService {
               storageUri: stored.storageUri,
               mimeType: stored.mimeType,
               publicUrl: visual.publicUrl,
+              artworkRevision: { increment: 1 },
             },
           },
         },
@@ -1667,7 +1669,7 @@ export class ShowsService {
     return updated;
   }
 
-  async getCampaignVisual(campaignIdOrSlug: string, visualRef: string) {
+  async getCampaignVisual(campaignIdOrSlug: string, visualRef: string, _artworkRevision?: string) {
     if (!this.storageProvider) return null;
     const campaign = await prisma.showCampaign.findFirst({
       where: {
@@ -1681,25 +1683,32 @@ export class ShowsService {
         heroImageMimeType: true,
         cardImageStorageUri: true,
         cardImageMimeType: true,
+        visuals: {
+          where: {
+            OR: [
+              { id: visualRef },
+              ...(visualRef === "hero" || visualRef === "card" ? [{ role: visualRef }] : []),
+            ],
+          },
+          select: { storageUri: true, mimeType: true, artworkRevision: true },
+          take: 1,
+        },
       },
     });
     if (!campaign) return null;
 
+    const visual = campaign.visuals?.[0];
+    if (_artworkRevision !== undefined) {
+      if (!/^[1-9]\d*$/.test(_artworkRevision) || !visual) return null;
+      const requestedRevision = Number(_artworkRevision);
+      if (!Number.isSafeInteger(requestedRevision) || requestedRevision > visual.artworkRevision) {
+        return null;
+      }
+    }
+
     let storageUri = visualRef === "hero" ? campaign.heroImageStorageUri : visualRef === "card" ? campaign.cardImageStorageUri : null;
     let mimeType = visualRef === "hero" ? campaign.heroImageMimeType : visualRef === "card" ? campaign.cardImageMimeType : null;
     if (!storageUri || !mimeType) {
-      const visual = await prisma.showCampaignVisual.findFirst({
-        where: {
-          id: visualRef,
-          campaign: {
-            OR: [
-              { id: campaignIdOrSlug },
-              { slug: campaignIdOrSlug },
-            ],
-          },
-        },
-        select: { storageUri: true, mimeType: true },
-      });
       storageUri = visual?.storageUri ?? null;
       mimeType = visual?.mimeType ?? null;
     }
@@ -3265,7 +3274,10 @@ export class ShowsService {
     if (existing) {
       return prisma.showCampaignVisual.update({
         where: { id: existing.id },
-        data,
+        data: {
+          ...data,
+          artworkRevision: { increment: 1 },
+        },
       });
     }
     return prisma.showCampaignVisual.create({

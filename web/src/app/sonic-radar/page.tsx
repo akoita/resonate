@@ -103,7 +103,11 @@ export default function SonicRadarPage() {
             const stemSlug = tx.stemName?.toLowerCase().replace(/\s+/g, '_') || 'unknown';
             const lic = licByTrack.get(tx.trackId!);
             const artworkUrl = lic?.track.release?.artworkUrl
-                || (lic?.track.release?.artworkMimeType ? getReleaseArtworkUrl(lic.track.release.id) : undefined);
+                || (lic?.track.release?.artworkMimeType
+                    ? getReleaseArtworkUrl(lic.track.release.id, {
+                        artworkRevision: lic.track.release.artworkRevision,
+                    })
+                    : undefined);
 
             // Resolve the actual stem ID from catalog data
             const realStemId = stemLookup.get(tx.trackId!)?.get(stemSlug);

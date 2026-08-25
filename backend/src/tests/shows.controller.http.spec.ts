@@ -74,6 +74,21 @@ describe("ShowsController (http)", () => {
       .expect(401);
   });
 
+  it("serves versioned campaign visuals with the legacy public cache semantics", async () => {
+    mockShowsService.getCampaignVisual.mockResolvedValue({
+      data: Buffer.from("visual"),
+      mimeType: "image/webp",
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/shows/campaigns/campaign-1/visuals/card/v4")
+      .expect(200);
+
+    expect(res.headers["content-type"]).toContain("image/webp");
+    expect(res.headers["cache-control"]).toBe("public, max-age=300");
+    expect(mockShowsService.getCampaignVisual).toHaveBeenCalledWith("campaign-1", "card", "4");
+  });
+
   it("loads campaign community state with JWT", async () => {
     await request(app.getHttpServer())
       .get("/shows/campaigns/campaign-1/community")

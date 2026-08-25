@@ -195,6 +195,7 @@ export type McpCatalogSearchItem = {
   moods: string[];
   releaseDate: string | null;
   artworkUrl: string | null;
+  artworkRevision: number;
   trackCount: number;
   licensable: boolean;
   aiDisclosure: ReturnType<typeof deriveReleaseAiDisclosureSummary>;
@@ -894,6 +895,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true, userId: true, payoutAddress: true }
         },
@@ -1029,6 +1031,7 @@ export class CatalogService implements OnModuleInit {
           id: true,
           title: true,
           status: true,
+          artworkRevision: true,
           tracks: {
             select: {
               id: true,
@@ -1202,6 +1205,7 @@ export class CatalogService implements OnModuleInit {
             rightsSourceType: true,
             rightsEvaluatedAt: true,
             artworkMimeType: true,
+            artworkRevision: true,
             artist: { select: { id: true, displayName: true, userId: true } }
           }
         }
@@ -1511,6 +1515,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true, userId: true }
         },
@@ -1586,6 +1591,7 @@ export class CatalogService implements OnModuleInit {
             rightsSourceType: true,
             rightsEvaluatedAt: true,
             artworkMimeType: true,
+            artworkRevision: true,
             artist: {
               select: { id: true, displayName: true, userId: true }
             },
@@ -1778,6 +1784,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         tracks: {
           orderBy: { position: "asc" },
           select: {
@@ -2084,15 +2091,17 @@ export class CatalogService implements OnModuleInit {
       data: {
         artworkData: artwork.buffer,
         artworkMimeType: validatedArtwork.mimeType,
+        artworkRevision: { increment: 1 },
       },
-      select: { id: true, artworkMimeType: true }
+      select: { id: true, artworkMimeType: true, artworkRevision: true }
     });
 
     this.clearCache();
     return {
       success: true,
       id: updated.id,
-      artworkUrl: `/catalog/releases/${releaseId}/artwork?t=${Date.now()}`
+      artworkRevision: updated.artworkRevision,
+      artworkUrl: `/catalog/releases/${releaseId}/artwork/v${updated.artworkRevision}`,
     };
   }
 
@@ -2150,6 +2159,7 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         createdAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true }
         },
@@ -2268,6 +2278,7 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         artworkUrl: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { displayName: true },
         },
@@ -2305,6 +2316,7 @@ export class CatalogService implements OnModuleInit {
         moods: release.moods,
         releaseDate: release.releaseDate?.toISOString() ?? null,
         artworkUrl: this.buildMcpArtworkUrl(release),
+        artworkRevision: release.artworkRevision,
         trackCount: release.tracks.length,
         licensable: release.tracks.some((track) =>
           track.stems.some((stem) => stem.listings.length > 0),
@@ -2352,23 +2364,27 @@ export class CatalogService implements OnModuleInit {
     }
   }
 
-  async getReleaseArtwork(releaseId: string) {
+  async getReleaseArtwork(releaseId: string, _artworkRevision?: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      select: { artworkData: true, artworkMimeType: true, rightsRoute: true },
+      select: { artworkData: true, artworkMimeType: true, artworkRevision: true, rightsRoute: true },
     });
     if (!release || !release.artworkData || !this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
+    if (!this.isReadableArtworkRevision(_artworkRevision, release.artworkRevision)) {
       return null;
     }
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
-  async getReleaseArtworkForUser(releaseId: string, userId: string) {
+  async getReleaseArtworkForUser(releaseId: string, userId: string, _artworkRevision?: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
         artworkData: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { userId: true },
         },
@@ -2379,10 +2395,21 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
+    if (!this.isReadableArtworkRevision(_artworkRevision, release.artworkRevision)) {
+      return null;
+    }
+
     return {
       data: release.artworkData,
       mimeType: release.artworkMimeType || "image/jpeg",
     };
+  }
+
+  private isReadableArtworkRevision(requested: string | undefined, current: number): boolean {
+    if (requested === undefined) return true;
+    if (!/^[1-9]\d*$/.test(requested)) return false;
+    const parsed = Number(requested);
+    return Number.isSafeInteger(parsed) && parsed <= current;
   }
 
   async getTrackStreamForUser(

@@ -100,7 +100,21 @@ describe("Next image configuration", () => {
         protocol: "https",
         hostname: "api.example.test",
         port: "8443",
+        pathname: "/platform/v1/catalog/releases/*/artwork/v*",
+        search: "",
+      },
+      {
+        protocol: "https",
+        hostname: "api.example.test",
+        port: "8443",
         pathname: "/platform/v1/shows/campaigns/*/visuals/*",
+        search: "",
+      },
+      {
+        protocol: "https",
+        hostname: "api.example.test",
+        port: "8443",
+        pathname: "/platform/v1/shows/campaigns/*/visuals/*/v*",
         search: "",
       },
     ]);
@@ -126,7 +140,21 @@ describe("Next image configuration", () => {
         protocol: "http",
         hostname: "localhost",
         port: "3000",
+        pathname: "/catalog/releases/*/artwork/v*",
+        search: "",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "3000",
         pathname: "/shows/campaigns/*/visuals/*",
+        search: "",
+      },
+      {
+        protocol: "http",
+        hostname: "localhost",
+        port: "3000",
+        pathname: "/shows/campaigns/*/visuals/*/v*",
         search: "",
       },
     ]);

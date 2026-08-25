@@ -15,14 +15,22 @@ const PUBLIC_RELEASE_ROUTES = new Set([
   "TRUSTED_FAST_PATH",
 ]);
 
+export type ReleaseArtworkUrlOptions = {
+  ownerScoped?: boolean;
+  artworkRevision?: number | null;
+};
+
 export function getReleaseArtworkUrl(
   releaseId: string,
-  options?: { ownerScoped?: boolean },
+  options?: ReleaseArtworkUrlOptions,
 ) {
+  const revision = Number.isInteger(options?.artworkRevision) && (options?.artworkRevision ?? 0) > 0
+    ? `/v${options?.artworkRevision}`
+    : "";
   if (options?.ownerScoped) {
-    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork`;
+    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork${revision}`;
   }
-  return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
+  return `${API_BASE}/catalog/releases/${releaseId}/artwork${revision}`;
 }
 
 export function getReleaseTrackStreamUrl(
@@ -114,6 +122,7 @@ function isPublicReleaseRoute(route?: string | null) {
 async function getOwnerScopedArtworkObjectUrl(
   releaseId: string,
   token: string,
+  artworkRevision?: number | null,
 ): Promise<string | undefined> {
   if (
     typeof window === "undefined" ||
@@ -122,7 +131,7 @@ async function getOwnerScopedArtworkObjectUrl(
     return undefined;
   }
 
-  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true }), {
+  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true, artworkRevision }), {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -393,6 +402,7 @@ export type Release = {
   createdAt: string;
   artworkUrl?: string | null;
   artworkMimeType?: string | null;
+  artworkRevision?: number | null;
   rightsRoute?: string | null;
   rightsFlags?: string[] | null;
   rightsReason?: string | null;
@@ -2481,10 +2491,12 @@ export async function getRelease(releaseId: string, token?: string | null) {
       !isPublicReleaseRoute(release.rightsRoute)
     ) {
       release.artworkUrl =
-        (await getOwnerScopedArtworkObjectUrl(release.id, token)) ||
+        (await getOwnerScopedArtworkObjectUrl(release.id, token, release.artworkRevision)) ||
         undefined;
     } else {
-      release.artworkUrl = getReleaseArtworkUrl(release.id);
+      release.artworkUrl = getReleaseArtworkUrl(release.id, {
+        artworkRevision: release.artworkRevision,
+      });
     }
   }
   return release;
@@ -2521,7 +2533,9 @@ export async function waitForReleaseAvailability(
 export async function getTrack(trackId: string, token?: string | null) {
   const track = await apiRequest<Track>(`/catalog/tracks/${trackId}`, {}, token);
   if (track && track.release && track.release.artworkMimeType) {
-    track.release.artworkUrl = getReleaseArtworkUrl(track.release.id);
+    track.release.artworkUrl = getReleaseArtworkUrl(track.release.id, {
+      artworkRevision: track.release.artworkRevision,
+    });
   }
   return track;
 }
@@ -2590,7 +2604,9 @@ export async function listArtistReleases(artistId: string, token?: string | null
   const releases = await apiRequest<Release[]>(`/catalog/artist/${artistId}`, {}, token);
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
 }
 
@@ -2598,7 +2614,9 @@ export async function listMyReleases(token: string) {
   const releases = await apiRequest<Release[]>("/catalog/me", {}, token);
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
 }
 
@@ -2608,7 +2626,9 @@ export async function listPublishedReleases(limit = 20, primaryArtist?: string) 
   const releases = await apiRequest<Release[]>(`/catalog/published?${params}`, {});
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
 }
 
@@ -2625,6 +2645,7 @@ export interface TrendingTrackItem {
   genre: string | null;
   artworkUrl: string | null;
   artworkMimeType: string | null;
+  artworkRevision?: number | null;
   aiDisclosure?: AiDisclosure | null;
   score: number;
   plays: number;
@@ -2765,6 +2786,7 @@ export interface HomeFeedItem {
   genre: string | null;
   moods: string[];
   artworkMimeType: string | null;
+  artworkRevision?: number | null;
   aiDisclosure?: AiDisclosure | null;
   reasons: string[];
 }
@@ -3931,7 +3953,11 @@ export async function updateReleaseArtwork(
   releaseId: string,
   formData: FormData
 ) {
-  return apiRequest<{ success: boolean; artworkUrl: string }>(
+  return apiRequest<{
+    success: boolean;
+    artworkUrl?: string;
+    artworkRevision?: number | null;
+  }>(
     `/catalog/releases/${releaseId}/artwork`,
     { method: "PATCH", body: formData },
     token
@@ -4446,7 +4472,13 @@ export interface AgentSessionLicense {
     title: string;
     artist: string | null;
     releaseId: string;
-    release: { id: string; artworkMimeType: string | null; artworkUrl?: string | null; title: string };
+    release: {
+      id: string;
+      artworkMimeType: string | null;
+      artworkRevision?: number | null;
+      artworkUrl?: string | null;
+      title: string;
+    };
   };
 }
 
@@ -4533,7 +4565,9 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
   for (const session of sessions) {
     for (const lic of session.licenses) {
       if (lic.track.release?.artworkMimeType) {
-        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id);
+        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id, {
+          artworkRevision: lic.track.release.artworkRevision,
+        });
       }
     }
   }
@@ -4923,7 +4957,12 @@ export async function publishAiGeneration(
   trackId: string,
   formData: FormData
 ) {
-  return apiRequest<{ success: boolean; releaseId: string }>(
+  return apiRequest<{
+    success: boolean;
+    releaseId: string;
+    artworkRevision?: number | null;
+    artworkUrl?: string | null;
+  }>(
     `/generation/${trackId}/publish`,
     { method: "PATCH", body: formData },
     token

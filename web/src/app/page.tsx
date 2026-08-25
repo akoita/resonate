@@ -1366,6 +1366,7 @@ export default function Home() {
                       <HomeReleaseArtwork
                         releaseId={r.id}
                         mimeType={r.artworkMimeType ?? ""}
+                        artworkRevision={r.artworkRevision}
                         alt={r.title}
                         sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
                       />
@@ -1470,6 +1471,7 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
         <HomeReleaseArtwork
           releaseId={release.id}
           mimeType={release.artworkMimeType ?? ""}
+          artworkRevision={release.artworkRevision}
           alt=""
           sizes={small ? "(max-width: 767px) 46px, 48px" : "(max-width: 767px) 56px, 72px"}
         />
@@ -1792,6 +1794,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
           <HomeReleaseArtwork
             releaseId={release.id}
             mimeType={release.artworkMimeType ?? ""}
+            artworkRevision={release.artworkRevision}
             alt=""
             className="ng-stem-card__image"
             sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 64px), (max-width: 1279px) calc(33vw - 64px), calc((100vw - 460px) / 3)"

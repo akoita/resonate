@@ -15,7 +15,7 @@ const escapedCampaignVisualApiBasePath = campaignVisualApiBasePath.replace(
   "\\$&",
 );
 const campaignVisualPathPattern = new RegExp(
-  `^${escapedCampaignVisualApiBasePath}/shows/campaigns/[^/]+/visuals/[^/]+$`,
+  `^${escapedCampaignVisualApiBasePath}/shows/campaigns/[^/]+/visuals/[^/]+(?:/v[1-9]\\d*)?$`,
 );
 
 /**

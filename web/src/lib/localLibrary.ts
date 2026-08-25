@@ -325,7 +325,11 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
                     createdAt: catalogTrack.createdAt || new Date().toISOString(),
                     source: "remote",
                     catalogTrackId: catalogTrack.id,
-                    remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType ? getReleaseArtworkUrl(catalogTrack.release.id) : undefined),
+                    remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType
+                        ? getReleaseArtworkUrl(catalogTrack.release.id, {
+                            artworkRevision: catalogTrack.release.artworkRevision,
+                        })
+                        : undefined),
                     stems: catalogTrack.stems?.map(s => ({
                         id: s.id,
                         uri: isMixerStemType(s.type) ? getStemPreviewUrl(s.id) : s.uri,

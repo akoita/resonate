@@ -109,6 +109,25 @@ export class ShowsController {
     return new StreamableFile(visual.data);
   }
 
+  @Get("campaigns/:id/visuals/:visualRef/v:artworkRevision")
+  async getVersionedCampaignVisual(
+    @Param("id") id: string,
+    @Param("visualRef") visualRef: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const visual = await this.showsService.getCampaignVisual(id, visualRef, artworkRevision);
+    if (!visual) {
+      res.status(404).send("Campaign visual not found");
+      return;
+    }
+    res.set({
+      "Content-Type": visual.mimeType,
+      "Cache-Control": "public, max-age=300",
+    });
+    return new StreamableFile(visual.data);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Get("me/pledges")
   getMyPledges(

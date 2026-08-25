@@ -119,6 +119,41 @@ export class OpenApiService {
             },
           },
         },
+        '/catalog/releases/{releaseId}/artwork/v{artworkRevision}': {
+          get: {
+            summary: 'Get versioned release artwork',
+            description:
+              'Returns the current public artwork for a server-issued revision. Current and earlier positive revisions remain readable; future or malformed revisions return 404.',
+            'x-payment-info': freePaymentInfo,
+            parameters: [
+              {
+                name: 'releaseId',
+                in: 'path',
+                required: true,
+                schema: { type: 'string' },
+              },
+              {
+                name: 'artworkRevision',
+                in: 'path',
+                required: true,
+                schema: { type: 'integer', minimum: 1 },
+              },
+            ],
+            responses: {
+              '200': {
+                description: 'Release artwork returned successfully.',
+                content: {
+                  'image/*': {
+                    schema: { type: 'string', format: 'binary' },
+                  },
+                },
+              },
+              '404': {
+                description: 'Artwork or revision not found.',
+              },
+            },
+          },
+        },
         '/catalog/tracks/{trackId}': {
           get: {
             summary: 'Get track detail',
@@ -468,6 +503,7 @@ export class OpenApiService {
               primaryArtist: { type: 'string', nullable: true },
               genre: { type: 'string', nullable: true },
               artworkUrl: { type: 'string', nullable: true },
+              artworkRevision: { type: 'integer', minimum: 1 },
             },
             required: ['id', 'title'],
           },

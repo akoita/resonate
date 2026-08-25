@@ -506,6 +506,7 @@ model Release {
   artworkUrl            String?
   artworkData           Bytes?
   artworkMimeType       String?
+  artworkRevision       Int                           @default(1)
   attestation           String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
   attestationSignature  String?                       @db.Text // Wallet signature of the attestation
   rightsRoute           String?
@@ -1576,6 +1577,7 @@ model ShowCampaignVisual {
   publicUrl  String
   storageUri String
   mimeType   String
+  artworkRevision Int          @default(1)
   sortOrder  Int          @default(0)
   caption    String?      @db.Text
   credit     String?

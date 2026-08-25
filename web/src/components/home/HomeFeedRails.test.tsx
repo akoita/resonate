@@ -127,10 +127,10 @@ describe("HomeFeedRails", () => {
   it("uses optimized canonical release artwork and preserves the monogram fallback", () => {
     const withArtwork = renderToStaticMarkup(
       <HomeFeedRails
-        feed={feed([rail({ items: [item({ artworkMimeType: "image/jpeg" })] })])}
+        feed={feed([rail({ items: [item({ artworkMimeType: "image/jpeg", artworkRevision: 6 })] })])}
       />,
     );
-    expect(withArtwork).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+    expect(withArtwork).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork%2Fv6");
     expect(withArtwork).toContain("/_next/image");
 
     const withoutArtwork = renderToStaticMarkup(<HomeFeedRails feed={feed([rail()])} />);

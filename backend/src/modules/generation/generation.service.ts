@@ -909,7 +909,7 @@ export class GenerationService {
       ? validateArtworkUpload(artworkFile, { field: 'Artwork' })
       : undefined;
 
-    await prisma.release.update({
+    const updatedRelease = await prisma.release.update({
       where: { id: track.releaseId },
       data: {
         title: dto.title,
@@ -922,7 +922,13 @@ export class GenerationService {
         ...(artworkFile && {
           artworkData: artworkFile.buffer,
           artworkMimeType: validatedArtwork!.mimeType,
+          artworkRevision: { increment: 1 },
         }),
+      },
+      select: {
+        id: true,
+        artworkMimeType: true,
+        artworkRevision: true,
       },
     });
 
@@ -958,7 +964,14 @@ export class GenerationService {
       });
     }
 
-    return { success: true, releaseId: track.releaseId };
+    return {
+      success: true,
+      releaseId: track.releaseId,
+      artworkRevision: updatedRelease.artworkRevision,
+      artworkUrl: updatedRelease.artworkMimeType
+        ? `/catalog/releases/${track.releaseId}/artwork/v${updatedRelease.artworkRevision}`
+        : null,
+    };
   }
 
   private async ensureAiGenerationRightsProvenance(releaseId: string) {

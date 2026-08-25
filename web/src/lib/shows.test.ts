@@ -252,6 +252,63 @@ describe("Shows campaign explorer mapping", () => {
     expect(campaign?.escrowContractAddress).toBeNull();
     expect(campaign?.etherscanUrl).toBeUndefined();
   });
+
+  it("versions canonical hero, card, and gallery visual URLs from server revisions", async () => {
+    mockCampaignResponse({
+      ...backendCampaign,
+      heroImageUrl: "/shows/campaigns/campaign-1/visuals/hero",
+      cardImageUrl: "/shows/campaigns/campaign-1/visuals/card",
+      visuals: [
+        {
+          id: "visual-hero",
+          role: "hero",
+          publicUrl: "/shows/campaigns/campaign-1/visuals/hero",
+          artworkRevision: 3,
+          sortOrder: 0,
+        },
+        {
+          id: "visual-card",
+          role: "card",
+          publicUrl: "/shows/campaigns/campaign-1/visuals/card",
+          artworkRevision: 4,
+          sortOrder: 1,
+        },
+        {
+          id: "visual-gallery",
+          role: "gallery",
+          publicUrl: "/shows/campaigns/campaign-1/visuals/visual-gallery",
+          artworkRevision: 5,
+          sortOrder: 2,
+        },
+      ],
+    });
+
+    const campaign = await getCampaign(backendCampaign.slug);
+
+    expect(campaign?.heroImage).toBe(
+      "http://localhost:3000/shows/campaigns/campaign-1/visuals/hero/v3",
+    );
+    expect(campaign?.cardImage).toBe(
+      "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/v4",
+    );
+    expect(campaign?.visuals).toMatchObject([
+      {
+        id: "visual-hero",
+        url: "http://localhost:3000/shows/campaigns/campaign-1/visuals/hero/v3",
+        artworkRevision: 3,
+      },
+      {
+        id: "visual-card",
+        url: "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/v4",
+        artworkRevision: 4,
+      },
+      {
+        id: "visual-gallery",
+        url: "http://localhost:3000/shows/campaigns/campaign-1/visuals/visual-gallery/v5",
+        artworkRevision: 5,
+      },
+    ]);
+  });
 });
 
 describe("Shows trust / terms / pledge helpers (#949)", () => {

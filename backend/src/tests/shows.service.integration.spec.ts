@@ -447,6 +447,8 @@ describe("ShowsService integration", () => {
     expect(visualized.heroImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/hero`);
     expect(visualized.cardImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/card`);
     expect(visualized.visuals.some((visual) => visual.role === "gallery")).toBe(true);
+    expect(visualized.visuals.find((visual) => visual.role === "hero")?.artworkRevision).toBe(1);
+    expect(visualized.visuals.find((visual) => visual.role === "card")?.artworkRevision).toBe(1);
     const heroVisual = await service.getCampaignVisual(updated.id, "hero");
     expect(heroVisual?.mimeType).toBe("image/webp");
     expect(heroVisual?.data.equals(oneByOneWebp("hero-image"))).toBe(true);
@@ -455,6 +457,25 @@ describe("ShowsService integration", () => {
     const galleryVisual = await service.getCampaignVisual(updated.id, galleryVisualRef!);
     expect(galleryVisual?.mimeType).toBe("image/jpeg");
     expect(galleryVisual?.data.equals(oneByOneJpeg("gallery-image"))).toBe(true);
+
+    const replacedSlots = await service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      updated.id,
+      {
+        hero: {
+          buffer: oneByOneWebp("hero-replacement"),
+          mimetype: "image/webp",
+          size: oneByOneWebp("hero-replacement").length,
+        } as Express.Multer.File,
+        card: {
+          buffer: oneByOnePng("card-replacement"),
+          mimetype: "image/png",
+          size: oneByOnePng("card-replacement").length,
+        } as Express.Multer.File,
+      },
+    );
+    expect(replacedSlots.visuals.find((visual) => visual.role === "hero")?.artworkRevision).toBe(2);
+    expect(replacedSlots.visuals.find((visual) => visual.role === "card")?.artworkRevision).toBe(2);
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },
@@ -683,10 +704,21 @@ describe("ShowsService integration", () => {
     );
     const replacedVisual = replaced.visuals.find((visual) => visual.id === gallery[1].id);
     expect(replacedVisual?.mimeType).toBe("image/webp");
+    expect(replacedVisual?.artworkRevision).toBe(2);
     await expect(service.getCampaignVisual(draft.id, gallery[1].id)).resolves.toMatchObject({
       data: oneByOneWebp("second-replaced"),
       mimeType: "image/webp",
     });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "1")).resolves.toMatchObject({
+      data: oneByOneWebp("second-replaced"),
+      mimeType: "image/webp",
+    });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "2")).resolves.toMatchObject({
+      data: oneByOneWebp("second-replaced"),
+      mimeType: "image/webp",
+    });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "3")).resolves.toBeNull();
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "bogus")).resolves.toBeNull();
 
     const reordered = await service.reorderCampaignVisuals(
       { userId, role: "artist" },
@@ -698,6 +730,7 @@ describe("ShowsService integration", () => {
       gallery[0].id,
       gallery[1].id,
     ]);
+    expect(reordered.visuals.find((visual) => visual.id === gallery[1].id)?.artworkRevision).toBe(2);
 
     const afterDelete = await service.deleteCampaignVisual(
       { userId, role: "artist" },
