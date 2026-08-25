@@ -13,6 +13,7 @@
 [submodule "contracts/lib/kernel"]
 	path = contracts/lib/kernel
 	url = https://github.com/zerodevapp/kernel
+	update = none
 [submodule "contracts/lib/solady"]
 	path = contracts/lib/solady
 	url = https://github.com/Vectorized/solady

@@ -30,11 +30,11 @@ jobs:
         with:
           persist-credentials: false
 
-      # Explicit, deterministic submodule init. Repair the pinned Kernel
-      # checkout's missing nested-gitlink metadata before walking dependencies.
+      # Generic recursive clones skip the pinned Kernel because its nested metadata
+      # is malformed; explicitly check it out and repair that metadata here.
       - name: Init contract submodules
         run: |
-          git submodule update --init
+          git submodule update --init --checkout
           ./contracts/scripts/repair-kernel-submodule-metadata.sh
           git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
 
