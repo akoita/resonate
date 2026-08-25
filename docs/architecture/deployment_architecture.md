@@ -1,5 +1,10 @@
 # Deployment Architecture
 
+> **Production target:** The accepted
+> [GCP target decision](production-gcp-target-decision.md) selects a
+> migrate-first path to `resonate-493513` before the first controlled cohort.
+> The decision does not authorize migration, deployment, or go-live.
+
 This diagram is the high-level deployment view for Resonate. It combines the
 application repository, the `resonate-iac` infrastructure repository, the
 Google Cloud edge/runtime platform, smart account infrastructure, protocol
