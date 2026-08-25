@@ -2,7 +2,7 @@
 # Runtime base matches the torch stable_audio_3 wants (2.7.1 / cu12.6) without
 # the 4 GB of compiler/development layers that the prebuilt flash-attn wheel no
 # longer needs. The wheel is selected against this image's actual C++ ABI below.
-FROM pytorch/pytorch:2.13.0-cuda12.6-cudnn9-runtime@sha256:6acf597eeb8e376a96580dde4952f37cc017fef732bb40bfc73f28f25e3f64b4
+FROM pytorch/pytorch:2.7.1-cuda12.6-cudnn9-runtime@sha256:2b59b1b91885677814f78be1f8df48a25d5dc952eb6580eaecfefca510f9afd3
 
 ENV DEBIAN_FRONTEND=noninteractive PIP_NO_CACHE_DIR=1
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
