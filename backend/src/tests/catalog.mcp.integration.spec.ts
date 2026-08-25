@@ -128,6 +128,7 @@ describe("CatalogService MCP catalog search (integration)", () => {
         moods: ["Focus"],
         releaseDate: "2026-04-22T00:00:00.000Z",
         artworkUrl: `http://localhost:3000/catalog/releases/${releaseId}/artwork`,
+        artworkRevision: 1,
         trackCount: 1,
         licensable: true,
         aiDisclosure: {

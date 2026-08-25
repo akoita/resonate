@@ -208,6 +208,7 @@ describe("Punchline public share surfaces (integration, #1477)", () => {
         id: RELEASE_ID,
         title: "Share Release",
         artworkMimeType: "image/png",
+        artworkRevision: 1,
       });
       // Credited artist, not the manager account label.
       expect(result.artistName).toBe("Credited Artist");

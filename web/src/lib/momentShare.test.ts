@@ -34,7 +34,12 @@ function makeShare(overrides: Partial<PublicMomentShare["moment"]> = {}): Public
     },
     drop: { id: "d1", title: "Drop One" },
     track: { id: "t1", title: "Track One" },
-    release: { id: "r1", title: "Release One", artworkMimeType: "image/png" },
+    release: {
+      id: "r1",
+      title: "Release One",
+      artworkMimeType: "image/png",
+      artworkRevision: 1,
+    },
     artistName: "Real Artist",
   };
 }
