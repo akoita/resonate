@@ -62,3 +62,4 @@ Every sprint plan passes the **Business Model Conformance** check in
 | [2026-07-12](2026-07-12-vision-sprint-9-custody-to-production.md) | Vision Sprint 9 — custody to production + first paid collects | ✅ Closed — custody/readiness and paid-collect foundations landed; Home performance carried forward |
 | Vision Sprint 10 | Home performance follow-through | ✅ Closed as a carry-over planning milestone; #1491 moved into Sprint 11 |
 | [2026-08-11](2026-08-11-vision-sprint-11-production-readiness.md) | Vision Sprint 11 — production readiness, not production | ✅ Closed — all nine focused slices landed; #1593 external release evidence and evergreen #1595 explicitly carried forward |
+| [2026-08-11](2026-08-11-vision-sprint-12-production-controls.md) | Vision Sprint 12 — production controls and trust | ✅ Closed — all seven finite sprint outcomes landed; cache-TTL and first-software-release operations remain explicitly unmilestoned |
