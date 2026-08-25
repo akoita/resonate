@@ -493,26 +493,45 @@ Use `resonate-iac` for all of the following:
 
 ### GitHub delivery -> deploy handoff
 
-Application CI still runs in this repo. Successful push-based CI on:
-
-- `develop`
-- `main`
-
-now sends deploy intent to `resonate-iac` through GitHub `repository_dispatch`.
-
-`main` should be merged through Mergify's merge queue. In that mode, pull requests
-get path-aware feedback, Mergify queue branches run the full validation suite once
-for the combined batch, and the post-merge `main` push focuses on deployable image
-publication plus deploy-manifest handoff. See
+Application CI still runs in this repo, but every ordinary PR, merge-queue,
+`main`, and `develop` run is validation-only. The post-merge `main` run is a
+lightweight receipt; it does not publish images, create a deploy manifest, or
+send a dispatch. `main` should be merged through Mergify's merge queue so the
+combined candidate receives the full validation suite before it moves. See
 [`docs/operations/merge_queue_ci.md`](../operations/merge_queue_ci.md) for the
 required branch protection settings, Mergify setup, and operator flow.
 
-Automatic handoff mapping:
+The manual-only **Release Deployment** workflow owns application publication.
+It requires `mode=preview|publish`, `release_kind=planned|on-demand`, a full
+`source_sha`, the successful exact-SHA `ci_run_id`,
+`environment=dev|staging`, a canonical service selection defaulting to all four services,
+and a `deploy` boolean. `dev` maps to `develop`; `staging` maps to `main`.
+Preview retains a read-only release plan. Publish reruns reusable CI for the
+exact source and invokes the workflow-call-only image publisher, which emits
+selected full-SHA tags, registry digests, and build/SBOM/signature/attestation
+evidence. Unchanged content-addressed images may be reused when their evidence
+is valid.
+
+Deploy Handoff is reusable via `workflow_call` only from a successful explicitly
+dispatched Release Deployment run. Its separate manual `workflow_dispatch`
+`release_run_id` input supports retry or rollback using the retained immutable
+manifest without rebuilding or retagging images. It has no `workflow_run`
+trigger and never follows ordinary CI. A successful release may intentionally
+set `deploy=false`; no handoff is dispatched in that case. A failed or partial
+publication cannot dispatch a partial manifest.
+
+The non-production handoff mapping is:
 
 - `develop` -> `dev`
 - `main` -> `staging`
 
 Production remains manual-only in `resonate-iac`.
+
+Analytics Dataflow publication is not part of ordinary CI or the application
+image handoff. **Publish Analytics Dataflow Flex Template** is
+`workflow_dispatch` only and requires a full `source_sha` equal to the
+dispatch revision on the matching branch (`develop` for `dev`, `main` for
+`staging`).
 
 The sender workflow in this repo passes:
 
@@ -525,6 +544,7 @@ The sender workflow in this repo passes:
 - `backend_image`
 - `frontend_image`
 - `demucs_image`
+- `stable_audio_image`
 
 It intentionally does not pass `source_repository`, because `resonate-iac`
 already knows the default source repository and GitHub repository dispatch
@@ -536,11 +556,13 @@ Required sender secret in `resonate`:
   - GitHub token with permission to trigger repository dispatch events on
     `akoita/resonate-iac`
 
-Deployable image publication now runs through GCP Cloud Build. Backend and Demucs
-images are still built from the exact GitHub commit being deployed. Frontend image
-publication now reuses an environment-scoped GitHub Actions build artifact and only
-uses Cloud Build to package the runtime image, which removes a second `next build`
-from the deploy path while keeping immutable image refs in the deploy manifest.
+Deployable image publication runs through the release-scoped publisher and GCP
+Cloud Build. Backend, frontend, Demucs, and stable-audio images are selected by
+the release plan, built from the exact source where needed, and resolved to
+immutable registry digests. The deploy manifest records each selected service,
+source SHA, image tag, digest, and evidence identity. Target-environment
+concurrency serializes releases, while retries and rollbacks reuse the retained
+manifest.
 
 Required image-publish auth secrets in deployable GitHub environments for `resonate`:
 
@@ -551,6 +573,14 @@ Required image-publish auth secrets in deployable GitHub environments for `reson
   - GitHub Actions authenticates as this identity and passes it explicitly to
     `gcloud builds submit --service-account` so Cloud Build does not fall back to
     the project default build identity
+
+The `dev` and `staging` GitHub environments are the credential and approval
+boundaries for image and Dataflow publication. Their required reviewers,
+deployment-branch restrictions, and any wait timers are external GitHub
+settings and must be configured before enabling mutation. The same environment
+secrets are used by Analytics publication. `RESONATE_IAC_DISPATCH_TOKEN` is
+read by Deploy Handoff only when `deploy=true`; it is not an image-publisher
+credential.
 
 Additional GCP requirement:
 
@@ -570,6 +600,8 @@ Required deployable GitHub environment variables in `resonate`:
 
 - `GCP_PROJECT_ID`
 - `GCP_REGION`
+- `CI_FORCE_IMAGE_REBUILD` when an operator intentionally bypasses
+  content-addressed image reuse
 - `NEXT_PUBLIC_API_URL`
 - `NEXT_PUBLIC_ZERODEV_PROJECT_ID`
 - `NEXT_PUBLIC_CHAIN_ID`

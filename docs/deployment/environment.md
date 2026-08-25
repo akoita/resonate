@@ -83,13 +83,13 @@ When adding a new environment variable:
 | `DEMUCS_WORKER_URL` | Backend | Demucs worker base URL for separation requests and the stem feature backfill (`POST /admin/stems/backfill-audio-features` → worker `/analyze`). Defaults to `http://localhost:8000` |
 | `WORKER_MAX_UPLOAD_BYTES` | Demucs worker | Optional upload ceiling for the worker's `/separate` and `/analyze` endpoints (default `209715200` = 200 MiB). Oversized uploads are refused with HTTP 413 before touching disk-backed processing (#1184) |
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
-| `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
-| `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
-| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | CI | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
-| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | CI | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
+| `GCP_BILLING_QUOTA_PROJECT` | Release image publisher | Optional quota/billing project for Cloud Build submission; release publication defaults it to `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | Release image publisher | Optional Cloud Storage prefix for `gcloud builds submit` source archives; release publication defaults it from `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | Release image publisher | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | Analytics Dataflow publication | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | Analytics Dataflow publication | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | Analytics Dataflow publication | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Analytics Dataflow publication | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
@@ -287,6 +287,42 @@ When adding a new environment variable:
 | `ERC8004_REPUTATION_SCHEDULER_INTERVAL_MS` | Backend | Optional scheduler interval; defaults to `21600000` (6 hours) when the scheduler is enabled |
 | `ERC8004_REPUTATION_FRESHNESS_MS` | Backend | Optional freshness window before an agent is eligible for another reputation attestation; defaults to `86400000` (24 hours) |
 | `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Backend | Optional maximum active minted agents refreshed per scheduler sweep; defaults to `25` |
+
+## Release-Gated Deployment Workflows
+
+Ordinary CI validates source only. Image publication, deploy-manifest creation,
+and non-production handoff use explicit release workflows and the exact source
+SHA selected by an operator. The manual **Release Deployment** inputs are
+`mode` (`preview` or `publish`), `release_kind` (`planned` or `on-demand`),
+full `source_sha`, successful exact-SHA `ci_run_id`, `environment` (`dev` or
+`staging`), canonical service selection (all four services by default), and `deploy`.
+`dev` maps to `develop`; `staging` maps to `main`.
+
+### Target GitHub environment configuration
+
+The `dev` and `staging` GitHub environments are the publisher boundaries for
+Release Deployment and Analytics Dataflow publication. Environment reviewers,
+branch restrictions, wait timers, and approval rules are GitHub settings rather
+than environment variables; configure and review them outside this document.
+
+| Name | Location | Purpose |
+| --- | --- | --- |
+| `GCP_WIF_PROVIDER` | `dev`/`staging` GitHub environment secret | Workload Identity Federation provider used by GitHub Actions to authenticate to GCP. |
+| `GCP_ARTIFACT_REGISTRY_SA_EMAIL` | `dev`/`staging` GitHub environment secret | Dedicated Cloud Build/Artifact Registry publisher service account. |
+| `GCP_PROJECT_ID`, `GCP_REGION` | `dev`/`staging` GitHub environment variables | Target project and region; both are required by image and Analytics Dataflow publication. |
+| `NEXT_PUBLIC_*` build variables | `dev`/`staging` GitHub environment variables | Frontend build configuration, including API, chain, contract, and optimizer values listed above. |
+| `CI_FORCE_IMAGE_REBUILD` | Optional `dev`/`staging` GitHub environment variable | Set to `true` to bypass content-addressed image reuse for a release publication; leave unset to reuse unchanged image content safely. |
+| `GCP_BILLING_QUOTA_PROJECT`, `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR`, `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | Optional `dev`/`staging` variables | Cloud Build quota, source-staging, and polling overrides. |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY`, `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET`, `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX`, `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Optional `dev`/`staging` variables | Analytics Dataflow image repository and Flex Template storage coordinates; the corresponding variable descriptions are listed above. |
+| `RESONATE_IAC_DISPATCH_TOKEN` | Actions secret available to Deploy Handoff | Repository-dispatch credential for `akoita/resonate-iac`; used only when a successful release has `deploy=true`, never for image publication. |
+
+Publish Analytics Dataflow Flex Template is `workflow_dispatch` only. Its
+required full `source_sha` must equal the dispatch revision and use the matching
+branch (`develop` for `dev`, `main` for `staging`). Deploy Handoff is reusable
+via `workflow_call` only from a successful explicitly dispatched Release
+Deployment run; its manual `workflow_dispatch` `release_run_id` path supports
+retry and rollback without rebuilding. It has no `workflow_run` trigger, and
+retries and rollbacks reuse the retained immutable manifest.
 
 ## Lyria Auth Modes
 

@@ -186,5 +186,5 @@
   <path d="M863 944 C870 944 878 944 885 944" class="blueLine"/>
 
   <rect x="70" y="1030" width="1460" height="54" class="sub"/>
-  <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. App CI publishes immutable images and analytics templates, while resonate-iac owns Terraform state, IAM, routing, analytics mode selection, alerts, and validation.</text>
+  <text x="96" y="1062" class="small">Public traffic terminates at the edge; Cloud Run stays behind serverless NEGs. CI validates source; explicit exact-SHA releases publish images/templates, while resonate-iac owns Terraform state, IAM, routing, alerts, and reconciliation.</text>
 </svg>

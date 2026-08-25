@@ -1,0 +1,252 @@
+name: Release Deployment
+
+# Release mutation is explicit and release-scoped. CI and merge-queue events
+# validate code only; this workflow is the sole caller of the image publisher.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Render a release plan or publish immutable images.
+        required: true
+        type: choice
+        options:
+          - preview
+          - publish
+      release_kind:
+        description: Audit classification for this release request.
+        required: true
+        type: choice
+        options:
+          - planned
+          - on-demand
+      source_sha:
+        description: Full commit SHA of the exact main/develop revision to release.
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful CI run ID for source_sha.
+        required: true
+        type: string
+      environment:
+        description: Release target environment.
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+      services:
+        description: Comma-separated deployable services to publish.
+        required: true
+        default: backend,frontend,demucs,stable-audio
+        type: string
+      deploy:
+        description: Mark the published manifest eligible for deployment handoff.
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-deployment-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Release Request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      release_kind: ${{ steps.plan.outputs.release_kind }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      ci_run_id: ${{ steps.plan.outputs.ci_run_id }}
+      environment: ${{ steps.plan.outputs.environment }}
+      services_csv: ${{ steps.plan.outputs.services_csv }}
+      should_dispatch: ${{ steps.plan.outputs.should_dispatch }}
+      release_id: ${{ steps.plan.outputs.release_id }}
+    steps:
+      - name: Check out the dispatched revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Fetch referenced CI run (read-only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --header 'Accept: application/vnd.github+json' \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}" \
+            > "${RUNNER_TEMP}/ci-run.json"
+
+      - name: Require exact dispatched source SHA
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${SOURCE_SHA}" != "${DISPATCH_SHA}" ]]; then
+            echo "source_sha must equal the SHA of the dispatched workflow revision." >&2
+            exit 1
+          fi
+
+      - name: Validate release inputs and referenced CI run
+        id: validate
+        env:
+          MODE: ${{ inputs.mode }}
+          RELEASE_KIND: ${{ inputs.release_kind }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          SERVICES: ${{ inputs.services }}
+          DEPLOY: ${{ inputs.deploy }}
+          RELEASE_ID: release-${{ github.run_id }}-${{ github.run_number }}
+          CI_RUN_JSON: ${{ runner.temp }}/ci-run.json
+          PLAN_OUTPUT: ${{ runner.temp }}/release-plan.json
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release_deployment.py validate \
+            --mode "${MODE}" \
+            --release-kind "${RELEASE_KIND}" \
+            --source-sha "${SOURCE_SHA}" \
+            --environment "${ENVIRONMENT}" \
+            --services "${SERVICES}" \
+            --deploy "${DEPLOY}" \
+            --release-id "${RELEASE_ID}" \
+            --ci-run-json "${CI_RUN_JSON}" \
+            --output "${PLAN_OUTPUT}" \
+            --github-output "${GITHUB_OUTPUT}"
+
+      - name: Export validated release outputs
+        id: plan
+        env:
+          PLAN_OUTPUT: ${{ runner.temp }}/release-plan.json
+          MODE: ${{ inputs.mode }}
+          RELEASE_KIND: ${{ inputs.release_kind }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          SERVICES: ${{ inputs.services }}
+          DEPLOY: ${{ inputs.deploy }}
+          RELEASE_ID: release-${{ github.run_id }}-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          PLAN_OUTPUT="${PLAN_OUTPUT}" \
+          MODE="${MODE}" \
+          RELEASE_KIND="${RELEASE_KIND}" \
+          SOURCE_SHA="${SOURCE_SHA}" \
+          CI_RUN_ID="${CI_RUN_ID}" \
+          ENVIRONMENT="${ENVIRONMENT}" \
+          SERVICES="${SERVICES}" \
+          DEPLOY="${DEPLOY}" \
+          RELEASE_ID="${RELEASE_ID}" \
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          plan = json.loads(Path(os.environ["PLAN_OUTPUT"]).read_text(encoding="utf-8"))
+
+          def value(*keys, fallback=""):
+              for key in keys:
+                  candidate = plan.get(key)
+                  if candidate is not None:
+                      return candidate
+              return fallback
+
+          services = value("services_csv", "services", fallback=os.environ["SERVICES"])
+          if isinstance(services, list):
+              services = ",".join(str(item) for item in services)
+          should_dispatch = value(
+              "should_dispatch",
+              "deploy",
+              fallback=os.environ["DEPLOY"],
+          )
+          if isinstance(should_dispatch, bool):
+              should_dispatch = str(should_dispatch).lower()
+
+          outputs = {
+              "mode": value("mode", fallback=os.environ["MODE"]),
+              "release_kind": value("release_kind", fallback=os.environ["RELEASE_KIND"]),
+              "source_sha": value("source_sha", fallback=os.environ["SOURCE_SHA"]),
+              "ci_run_id": value("ci_run_id", fallback=os.environ["CI_RUN_ID"]),
+              "environment": value("environment", fallback=os.environ["ENVIRONMENT"]),
+              "services_csv": services,
+              "should_dispatch": should_dispatch,
+              "release_id": value("release_id", fallback=os.environ["RELEASE_ID"]),
+          }
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
+              for key, output in outputs.items():
+                  handle.write(f"{key}={output}\n")
+          PY
+
+      - name: Upload validated release plan
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-plan-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-plan.json
+          retention-days: 90
+
+      - name: Summarize validated release plan
+        env:
+          PLAN_OUTPUT: ${{ runner.temp }}/release-plan.json
+        run: |
+          set -euo pipefail
+          {
+            echo "## Release Deployment validation"
+            echo
+            echo '```json'
+            cat "${PLAN_OUTPUT}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  # Preview is intentionally terminal: it does not rerun CI, authenticate to
+  # cloud providers, publish images, or invoke the deployment handoff.
+  ci:
+    name: Validate Exact Release Source
+    needs: [validate]
+    if: needs.validate.outputs.mode == 'publish'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    with:
+      release_validation: true
+
+  publish-images:
+    name: Publish Release Images
+    needs: [validate, ci]
+    if: needs.validate.outputs.mode == 'publish' && needs.ci.result == 'success'
+    uses: ./.github/workflows/publish-deployable-images.yml
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      source_sha: ${{ needs.validate.outputs.source_sha }}
+      environment: ${{ needs.validate.outputs.environment }}
+      services_csv: ${{ needs.validate.outputs.services_csv }}
+      should_dispatch: ${{ needs.validate.outputs.should_dispatch == 'true' }}
+      release_id: ${{ needs.validate.outputs.release_id }}
+
+  # The handoff is reachable only after an explicit publish has produced the
+  # digest-bound manifest and only when deploy was requested. Preview runs and
+  # publish-only runs terminate before this reusable deployment boundary.
+  deploy-handoff:
+    name: Handoff Release Manifest
+    needs: [validate, publish-images]
+    if: needs.validate.outputs.mode == 'publish' && needs.validate.outputs.should_dispatch == 'true' && needs.publish-images.result == 'success'
+    uses: ./.github/workflows/deploy-handoff.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      release_run_id: ${{ github.run_id }}
+    secrets:
+      RESONATE_IAC_DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}

@@ -5,12 +5,17 @@ It is an operator/developer procedure, not an end-user feature.
 
 ## Current State
 
-The target process and protected release controls are now live, and a
-read-only Release Please preview is recorded below. Issue
-[#1593](https://github.com/akoita/resonate/issues/1593) remains open until the
-release credentials, negative-control tests, Software Release preview, and
-first real release have evidence. Do not create a `v*` tag manually while that
-work is incomplete.
+CI and deployment are separate planes. Pull requests, merge-queue candidates,
+and `main`/`develop` pushes validate source only; the `main` post-merge run is
+a lightweight receipt. The manual **Release Deployment** workflow is the only
+application image publication path, and `Deploy Handoff` can follow only a
+successful explicitly dispatched release run. Analytics Dataflow publication
+is also manual and exact-SHA bound.
+
+Issue [#1593](https://github.com/akoita/resonate/issues/1593) remains open until
+the release credentials, negative-control tests, Software Release preview, and
+first real release have durable evidence. Do not create a `v*` tag manually
+while that work is incomplete.
 
 ## Roles
 
@@ -51,27 +56,109 @@ and Conventional Commits considered. It performs no Git write or network call.
 Inspect the JSON, run `npm run test:release-policy` plus the release-evidence
 tests, and confirm `git status --short` is unchanged.
 
-## CI Dry Run
+## CI And Release Dry Run
 
-First run **Release Please → Preview Release Plan** for a full main SHA to
-retain the read-only version proposal. After the generated release PR is merged
-and its exact main CI run succeeds, run **Software Release** with `mode=preview`,
-that full SHA, and the numeric CI run ID. Preview mode uses only read access; it
-downloads and validates the digest-bound deploy/image evidence, renders release
+Run **Release Please → Preview Release Plan** for a full `main` SHA to retain
+the read-only version proposal. The preview has no tag, release, image,
+deployment, or cloud side effect.
+
+After the release commit is on `main` and its exact CI run succeeds, run
+**Release Deployment** with `mode=preview`. This read-only run checks the exact
+source and CI run, branch/environment mapping, service selection, and release
+configuration, then retains a release plan. It does not authenticate to a
+publisher or create images, a deploy manifest, or an IaC handoff.
+
+For the software release evidence dry run, run **Software Release** with
+`mode=preview`, the full candidate SHA, the successful `ci_run_id`, and the
+successful explicit Release Deployment `image_run_id`. The two run identities
+must both point to that candidate SHA. Software Release preview uses read
+access, validates the digest-bound manifest and image evidence, renders release
 notes and a release-evidence archive, and asserts that neither the proposed tag
 nor GitHub Release exists.
 
-The workflow validates the deploy manifest before downloading image evidence. It
-fetches exactly `image-evidence-<service>-<candidate_sha>` for each selected
-allowlisted service into its service directory; a valid manifest with no
-selected services downloads no image artifact and still passes through the
-evidence validator.
+The evidence validator fetches exactly
+`image-evidence-<service>-<candidate_sha>` for each selected allowlisted service
+from the image-release run. Record workflow URLs, source SHA, retained plan
+checksums, run IDs, and validation results on #1593. A local fixture test is not
+the acceptance dry run because it cannot prove GitHub permissions, artifact
+lookup, or repository settings.
 
-Record the workflow URL, source SHA, rendered plan checksum, and validation
-result on #1593. A local fixture test is not the acceptance dry run because it
-cannot prove GitHub permissions, artifact lookup, or repository settings.
+## Release Deployment
+
+**Release Deployment** (`.github/workflows/release-deployment.yml`) is
+`workflow_dispatch` only. It accepts the following inputs:
+
+| Input | Contract |
+| --- | --- |
+| `mode` | `preview` or `publish`. |
+| `release_kind` | `planned` or `on-demand`; this is release audit metadata, not an automatic schedule. |
+| `source_sha` | Required full 40-character source SHA. Moving or ambiguous refs are rejected. |
+| `ci_run_id` | Required successful CI run ID for exactly `source_sha`. |
+| `environment` | `dev` or `staging`; `dev` maps to `develop`, and `staging` maps to `main`. |
+| `services` | Canonical comma-separated selection from `backend`, `frontend`, `demucs`, and `stable-audio`; the default selects all four. |
+| `deploy` | Boolean handoff intent. `false` intentionally publishes images without dispatching a deployment. |
+
+The workflow serializes publication and handoff per target environment. It
+validates the source SHA, CI run identity, branch mapping, service allowlist,
+and environment configuration before any publisher credentials are used.
+
+In `preview` mode, the workflow is read-only and retains a release plan with
+the exact SHA, CI run, environment, selected services, and deploy intent. A
+preview never creates an image, deploy manifest, or IaC
+dispatch.
+
+In `publish` mode, the workflow first invokes reusable `CI` validation
+(`workflow_call`) for the exact source. Only after that succeeds does it call
+the workflow-call-only
+`.github/workflows/publish-deployable-images.yml` publisher. The publisher
+creates selected SHA-tagged images, resolves immutable registry digests, and
+retains build metadata, SBOM, signature, and attestation evidence. Unchanged
+content-addressed images may be reused when their digest-bound evidence is
+valid; the build metadata and image evidence record the reuse result.
+
+The deploy manifest is eligible only after the selected image work completes
+as one successful aggregate. A failed or partial publication never dispatches
+an incomplete manifest. A successful publish may still have `deploy=false`.
+When `deploy=true`, the release workflow hands the complete immutable manifest
+to `Deploy Handoff`; production remains manual and `resonate-iac`-owned.
+
+`Deploy Handoff` is reusable via `workflow_call` from a successful explicitly
+dispatched Release Deployment run, with a separate manual `workflow_dispatch`
+path whose `release_run_id` supports retry or rollback from a retained
+successful manifest without rebuilding or retagging images. It has no
+`workflow_run` trigger and never follows ordinary CI, a merge-queue run, or a
+`main`/`develop` push. A preview has no deploy manifest and is therefore skipped
+by the handoff.
+
+Analytics is separate from application image publication. **Publish Analytics
+Dataflow Flex Template** is `workflow_dispatch` only and requires a full
+`source_sha` that equals the dispatch revision on the matching branch:
+`develop` for `dev` and `main` for `staging`. It publishes the SHA-tagged image,
+evidence, and template only after that exact-source check.
 
 ## Protected Controls And Credential Boundaries
+
+Release Deployment and Analytics publication use the target GitHub environment
+(`dev` or `staging`) as the publisher boundary. Those environments must hold
+the environment-scoped `GCP_WIF_PROVIDER` and
+`GCP_ARTIFACT_REGISTRY_SA_EMAIL` secrets, plus the variables required by the
+selected workflow: `GCP_PROJECT_ID`, `GCP_REGION`, the frontend `NEXT_PUBLIC_*`
+build variables, and the optional Cloud Build controls
+`GCP_BILLING_QUOTA_PROJECT`, `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR`, and
+`GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS`. `CI_FORCE_IMAGE_REBUILD` may be
+set as an environment variable when an operator must bypass content-addressed
+image reuse. Analytics additionally reads
+`ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY`,
+`ANALYTICS_DATAFLOW_TEMPLATE_BUCKET`,
+`ANALYTICS_DATAFLOW_TEMPLATE_PREFIX`, and
+`ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` when configured. The publisher uses
+workload identity; no cloud private key belongs in the repository.
+
+`Deploy Handoff` reads `RESONATE_IAC_DISPATCH_TOKEN` when a complete manifest
+requests deployment. It is a handoff credential, not an image-publisher
+credential, and is never needed when `deploy=false`. The handoff payload
+contains the target environment, selected services, source SHA, release ID,
+and immutable image tags/digests.
 
 The publish job reads the `software-release` environment and both configured
 rulesets before it can use the publisher credential. The environment must have
@@ -92,6 +179,14 @@ least-privilege repository secret used only to update the version/changelog PR;
 `SOFTWARE_RELEASE_TOKEN` is available only inside the approved
 `software-release` environment and is used only to create the immutable tag and
 draft release. The default workflow token remains read-only for validation.
+
+GitHub environment reviewers, required-branch policies, and ruleset bypass
+actors are external repository settings. They must be configured and
+negatively tested by maintainers; checked-in workflow validation can only fail
+closed when the settings are missing or malformed. The `software-release`
+environment currently requires a reviewer and protected-branch policy, while
+`dev` and `staging` must have the reviewer/protection policy required by the
+organization before enabling image publication or analytics mutation.
 
 Retain the workflow URL, control-validation result, rendered release plan,
 release-evidence archive, deploy manifest, and `SHA256SUMS` with the release
@@ -139,33 +234,48 @@ publication gates:
    completion for a partial slice.
 5. Merge through the normal queue and wait for required CI on the exact release
    commit.
-6. Confirm each required image evidence artifact contains build metadata,
+6. Run Release Deployment `mode=preview` with the exact source and successful
+   CI run, selecting `planned` or `on-demand`, the target environment, and the
+   canonical service set. Retain the resulting plan.
+7. If publication is approved, rerun Release Deployment with `mode=publish`.
+   Keep `deploy=false` when the release should publish evidence without an IaC
+   handoff.
+8. Confirm each selected image evidence artifact contains build metadata,
    CycloneDX SBOM, signature verification, SBOM-attestation verification, and
-   build-attestation verification bound to the same SHA and digest.
-7. Confirm the deploy manifest and any analytics, desktop, contract, or IaC
+   build-attestation verification bound to the same SHA and digest. Record any
+   content-addressed image reuse.
+9. Confirm the deploy manifest and any analytics, desktop, contract, or IaC
    evidence. State explicitly which units were not built or deployed.
-8. Run `preview` mode again against the approved commit and retain the plan.
+10. For Software Release, retain both the successful `ci_run_id` and successful
+    image-release `image_run_id`; both must identify the candidate SHA.
 
-## Publish
+## Publish The Software Release
 
-Start the publication mode only for the approved release commit. The workflow
-must:
+Start **Software Release** publication only for the approved release commit,
+after the explicit Release Deployment image run succeeds. Supply the full
+`candidate_sha`, its successful `ci_run_id`, and its successful
+`image_run_id`. The candidate SHA, CI run SHA, and image-release run SHA must
+match. The workflow must:
 
 1. verify the commit is reachable from `main` and is the merged release PR
    commit;
-2. verify required CI succeeded for that exact SHA;
-3. revalidate version consistency, release-note completeness, and all selected
+2. verify the referenced `ci_run_id` succeeded on `main` for that exact SHA;
+3. verify the referenced `image_run_id` is a successful explicitly dispatched
+   Release Deployment publish on `main` for that exact SHA;
+4. revalidate version consistency, release-note completeness, and all selected
    evidence;
-4. fail if the tag or GitHub Release already exists;
-5. obtain approval from the protected `software-release` environment;
-6. create the immutable `v*` tag at the approved SHA;
-7. create the GitHub Release without `--clobber`, marking `-rc.N` as a
+5. fail if the tag or GitHub Release already exists;
+6. obtain approval from the protected `software-release` environment;
+7. create the immutable `v*` tag at the approved SHA;
+8. create the GitHub Release without `--clobber`, marking `-rc.N` as a
    prerelease;
-8. attach durable checksums/evidence required by policy and verify the published
+9. attach durable checksums/evidence required by policy and verify the published
    release still points to the expected SHA.
 
-Publication does not itself authorize production deployment. Record deployment
-state and the external handoff precisely.
+Software Release publication does not itself authorize production deployment.
+Record `deploy=false` explicitly when images were published without a handoff,
+and record the target environment and immutable manifest when a handoff did
+occur. Production remains manual and IaC-owned.
 
 ## Close A Milestone
 
@@ -200,12 +310,14 @@ Never use `v*` for a sprint report.
 
 1. Stop or pause the affected handoff/deployment and preserve evidence before a
    retry.
-2. Select a reconciled last-known-good release, full SHA, immutable digest, and
-   deploy manifest.
+2. Select a reconciled last-known-good successful Release Deployment run,
+   full SHA, immutable digest, and deploy manifest. Use its `release_run_id`
+   with Deploy Handoff for a retry or rollback; do not rebuild images.
 3. Revalidate signer identity, attestations, declared digest, registry digest,
    and environment before redeployment.
-4. Redeploy by digest through `resonate-iac`; never retag a mutable image as the
-   previous version.
+4. Redeploy the retained manifest by digest through `resonate-iac`; never retag
+   a mutable image as the previous version. Target-environment concurrency
+   prevents two handoffs from racing.
 5. For contracts, use the documented pause/timelock/upgrade/replacement path and
    record chain-specific state. Do not imply that source rollback reverses a
    transaction.
@@ -217,6 +329,17 @@ containment, evidence preservation, credential rotation, and reconciliation.
 
 ## Failed Or Suspicious Publication
 
+- If Release Deployment preview validation fails, retain the plan and logs,
+  correct the source or inputs, and rerun preview. Preview has no cloud write
+  to roll back.
+- If reusable CI or any selected image publication fails, the aggregate release
+  fails closed and no partial deploy manifest is eligible for Deploy Handoff.
+  Fix the source through a PR or rerun the exact release after review.
+- If a publish succeeds with `deploy=false`, that manifest remains
+  intentionally ineligible for handoff and does not imply that an environment
+  changed. A later approved deployment requires a new Release Deployment
+  publish with `deploy=true`; content-addressed reuse may avoid rebuilding the
+  unchanged images.
 - If validation fails before the tag is created, preserve the plan and logs,
   fix the source through a PR, and rerun preview. Do not weaken the validator.
 - If a tag exists but release creation fails, stop. Treat the immutable tag as a
@@ -243,8 +366,15 @@ in the evidence snapshot above. The following remain before #1593 can close:
   creation, tag update/deletion, release publication, and asset replacement,
   retaining the expected denials;
 - generate and review the Release Please PR for the release candidate;
-- run the Software Release `preview` mode against that approved candidate and
-  retain its evidence;
+- configure and review the `dev` and `staging` target environments with
+  publisher secrets, required variables, and reviewer protections; configure
+  `RESONATE_IAC_DISPATCH_TOKEN` separately as an Actions secret available to
+  Deploy Handoff;
+- run Release Deployment `preview` and, after approval, one real `publish`
+  against an approved exact SHA; retain its plan, image evidence, manifest,
+  and explicit `deploy` decision;
+- run the Software Release `preview` mode with matching `ci_run_id` and
+  `image_run_id`, then retain its evidence;
 - run one real software release and link its tag, source SHA, CI, artifacts,
   provenance, deployment state, and rollback target on #1593;
 - complete desktop signing/notarization before calling those packages

@@ -45,6 +45,24 @@ a visible release blocker.
 - Release Please manifest mode prepares the reviewable version/changelog PR.
   A separate protected workflow validates evidence and publishes the immutable
   tag and GitHub Release.
+- Ordinary PR, merge-queue, `main`, and `develop` CI is validation-only. The
+  `main` post-merge run is a lightweight receipt; it does not publish images or
+  deploy.
+- The manual-only Release Deployment workflow accepts preview/publish,
+  planned/on-demand, full source SHA, exact successful CI run ID, `dev` or
+  `staging`, canonical service selection defaulting to all four services, and a deploy
+  boolean. Preview retains a read-only plan. Publish reruns exact-source CI and
+  invokes the workflow-call-only image publisher for SHA-tagged,
+  digest-bound images and evidence, with safe content-addressed reuse.
+- Deploy Handoff is reusable via `workflow_call` only from a successful
+  explicitly dispatched Release Deployment run; its manual `workflow_dispatch`
+  `release_run_id` enables retry or rollback from an immutable manifest without
+  rebuilding. It has no `workflow_run` trigger, and `deploy=false` is an
+  intentional valid outcome. Analytics Dataflow publication is manual-only and
+  exact-SHA bound.
+- Software Release requires both `ci_run_id` and `image_run_id`, and all run
+  identities must match the candidate SHA. `dev` maps to `develop`, `staging`
+  maps to `main`, and production remains manual/IaC-owned.
 - Before publication, the protected workflow requires numeric release and
   milestone ruleset IDs, a reviewed `software-release` environment with a
   required reviewer and protected-branch policy, active tag-scoped rules with
@@ -54,9 +72,15 @@ a visible release blocker.
 ## How To Use And Test It
 
 Developers should use the local read-only preview before reviewing a Release
-Please PR. Operators then run the CI `preview` mode for the exact approved
-source SHA, review the rendered release plan and evidence gaps, and use the
-protected publication mode only after the release PR merges and CI succeeds.
+Please PR. Operators then run Release Deployment `mode=preview` for the exact
+approved source SHA and successful CI run, review the retained plan and
+evidence gaps, and use `mode=publish` only after the release PR merges and
+exact-source validation succeeds. Target-environment concurrency, complete
+aggregate publication, and immutable manifest checks prevent partial handoffs.
+
+For Software Release, provide the matching successful `ci_run_id` and
+`image_run_id`. The workflow validates both identities before protected tag and
+GitHub Release publication.
 
 The release-evidence and release-controls unit tests cover malformed evidence,
 missing note sections, missing reviewers, incorrect ruleset scope, incomplete
@@ -81,19 +105,22 @@ See:
 ## Evidence And Remaining Work
 
 Current supporting evidence includes the Release Please manifest/configuration,
-read-only preview, release-policy/evidence/control validators, protected
-publication workflow, immutable desktop finalizer, SHA-tagged OCI builds,
-digest-bound deploy manifests, CycloneDX SBOMs, signatures, attestations, and
-release-plane audit artifacts. Retained release evidence includes the rendered
-plan, control-validation result, deploy manifest, evidence archive, and
-`SHA256SUMS`. The live protected-control and Release Please preview evidence is
-recorded in the [operator runbook](../operations/release_process.md#live-evidence-snapshot)
+read-only preview, release-policy/evidence/control validators, the protected
+Software Release workflow, release-gated image/evidence contracts, immutable
+desktop finalizer, CycloneDX SBOMs, signatures, attestations, and release-plane
+audit artifacts. Retained release evidence includes the rendered plans,
+control-validation result, deploy manifest, evidence archive, and `SHA256SUMS`.
+The live protected-control and Release Please preview evidence is recorded in
+the [operator runbook](../operations/release_process.md#live-evidence-snapshot)
 and the [preview workflow run](https://github.com/akoita/resonate/actions/runs/32797404994).
 The following external evidence remains required before this feature can become
 `implemented`:
 
 - the dedicated `RELEASE_PLEASE_TOKEN` and separate protected
   `SOFTWARE_RELEASE_TOKEN`, plus `RELEASE_AUTOMATION_ENABLED=true`;
+- target `dev`/`staging` environment credentials, reviewer protections, and a
+  retained Release Deployment preview and publish with matching CI/image run
+  identities;
 - a separate non-bypass identity and retained negative tests for unauthorized
   tag creation/update/deletion, release publication, and asset replacement;
 - a generated and reviewed Release Please PR followed by a successful Software
