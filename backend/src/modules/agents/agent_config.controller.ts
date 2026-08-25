@@ -509,7 +509,7 @@ export class AgentConfigController {
                                 title: true,
                                 artist: true,
                                 releaseId: true,
-                                release: { select: { id: true, artworkMimeType: true, title: true } },
+                                release: { select: { id: true, artworkMimeType: true, artworkRevision: true, title: true } },
                             },
                         },
                     },

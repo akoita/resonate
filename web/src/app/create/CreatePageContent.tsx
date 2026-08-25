@@ -244,14 +244,16 @@ export default function CreatePageContent() {
           year: metadata.releaseDate ? parseInt(metadata.releaseDate.split("-")[0]) : undefined,
           catalogTrackId: result.trackId,
           remoteUrl: getReleaseTrackStreamUrl(targetReleaseId, result.trackId),
-          remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId),
+          remoteArtworkUrl: getReleaseArtworkUrl(targetReleaseId, {
+            artworkRevision: publishResult.artworkRevision,
+          }),
         });
       } else if (publishActionQueue === "demucs") {
         await retryRelease(token, targetReleaseId);
       }
       setHasPublished(true);
 
-      // Show clickable toast linking to the release (with cache-busting rev to show fresh artwork)
+      // The release read returns the committed server-owned artwork revision.
       const actionLabel = publishActionQueue === "demucs" ? "sent to Demucs" : "published";
       addToast({
         type: "success",
@@ -264,7 +266,7 @@ export default function CreatePageContent() {
           } catch {
             // The release page can continue polling if the catalog write is still settling.
           }
-          router.push(`/release/${targetReleaseId}?pending=1&rev=${Date.now()}`);
+          router.push(`/release/${targetReleaseId}?pending=1`);
         },
       });
     } catch (err) {

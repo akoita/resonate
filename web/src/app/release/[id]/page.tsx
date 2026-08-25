@@ -791,13 +791,6 @@ export default function ReleaseDetails() {
 
       loadRelease
         .then((r) => {
-          if (r) {
-            // If a ?rev= param is present (e.g. from post-publish toast), bust artwork cache
-            const rev = searchParams.get('rev');
-            if (rev && r.artworkUrl) {
-              r.artworkUrl = `${r.artworkUrl}?rev=${rev}`;
-            }
-          }
           setRelease(r);
         })
         .catch(console.error)
@@ -1304,10 +1297,15 @@ export default function ReleaseDetails() {
       const result = await updateReleaseArtwork(token, release.id, formData);
 
       if (result.success) {
-        // Force refresh the image by using the helper which ensures API_BASE is included
-        // and adding a fresh timestamp to bypass browser cache
-        const newUrl = `${getReleaseArtworkUrl(release.id)}?rev=${Date.now()}`;
-        setRelease(prev => prev ? { ...prev, artworkUrl: newUrl } : null);
+        // The backend revision is committed with the replacement, so use it as
+        // the cache identity instead of a client-generated query parameter.
+        setRelease(prev => prev ? {
+          ...prev,
+          artworkRevision: result.artworkRevision ?? prev.artworkRevision,
+          artworkUrl: getReleaseArtworkUrl(prev.id, {
+            artworkRevision: result.artworkRevision ?? prev.artworkRevision,
+          }),
+        } : null);
         addToast({
           title: "Artwork updated",
           message: "The release cover has been successfully updated.",

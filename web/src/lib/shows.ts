@@ -40,6 +40,7 @@ export interface CampaignVisual {
   id: string;
   role: string;
   url: string;
+  artworkRevision?: number | null;
   sortOrder: number;
   caption?: string | null;
   credit?: string | null;
@@ -939,6 +940,7 @@ type BackendShowCampaignVisual = {
   id: string;
   role?: string | null;
   publicUrl?: string | null;
+  artworkRevision?: number | null;
   sortOrder?: number | null;
   caption?: string | null;
   credit?: string | null;
@@ -1843,6 +1845,19 @@ async function mutateShowCampaign(path: string, input: {
 function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign {
   const decimals = campaign.paymentAssetDecimals ?? 2;
   const contractAddress = campaign.contractAddress ?? null;
+  const visuals = (campaign.visuals ?? [])
+    .map((visual) => ({
+      id: visual.id,
+      role: visual.role ?? "gallery",
+      url: mediaUrl(visual.publicUrl, visual.artworkRevision),
+      artworkRevision: visual.artworkRevision ?? null,
+      sortOrder: visual.sortOrder ?? 0,
+      caption: visual.caption ?? null,
+      credit: visual.credit ?? null,
+    }))
+    .filter((visual) => visual.url);
+  const heroVisual = visuals.find((visual) => visual.role === "hero");
+  const cardVisual = visuals.find((visual) => visual.role === "card");
   return {
     id: campaign.slug,
     backendId: campaign.id,
@@ -1891,18 +1906,9 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
     disputes: Array.isArray(campaign.disputes) ? campaign.disputes : [],
     backerCount: campaign.uniqueBackerCount ?? campaign.confirmedPledgeCount ?? 0,
     thresholdBackers: campaign.minimumBackers ?? 0,
-    heroImage: mediaUrl(campaign.heroImageUrl),
-    cardImage: mediaUrl(campaign.cardImageUrl) || mediaUrl(campaign.heroImageUrl),
-    visuals: (campaign.visuals ?? [])
-      .map((visual) => ({
-        id: visual.id,
-        role: visual.role ?? "gallery",
-        url: mediaUrl(visual.publicUrl),
-        sortOrder: visual.sortOrder ?? 0,
-        caption: visual.caption ?? null,
-        credit: visual.credit ?? null,
-      }))
-      .filter((visual) => visual.url),
+    heroImage: heroVisual?.url || mediaUrl(campaign.heroImageUrl),
+    cardImage: cardVisual?.url || mediaUrl(campaign.cardImageUrl) || mediaUrl(campaign.heroImageUrl),
+    visuals,
     status: mapBackendStatus(campaign.status),
     featured: index === 0,
     contractAddress,
@@ -1926,12 +1932,34 @@ function mapBackendCampaign(campaign: BackendShowCampaign, index = 0): Campaign 
   };
 }
 
-function mediaUrl(value?: string | null): string {
+function mediaUrl(value?: string | null, artworkRevision?: number | null): string {
   if (!value) return "";
-  if (/^https?:\/\//i.test(value) || value.startsWith("data:") || value.startsWith("blob:")) {
-    return value;
+  let resolved = value;
+  if (!/^https?:\/\//i.test(value) && !value.startsWith("data:") && !value.startsWith("blob:")) {
+    resolved = `${API_BASE}${value.startsWith("/") ? value : `/${value}`}`;
   }
-  return `${API_BASE}${value.startsWith("/") ? value : `/${value}`}`;
+
+  if (!Number.isInteger(artworkRevision) || (artworkRevision ?? 0) <= 0) {
+    return resolved;
+  }
+
+  try {
+    const url = new URL(resolved);
+    const apiUrl = new URL(API_BASE);
+    // Only version the canonical Shows visual family. Other media fields use
+    // this mapper too, but their URLs are outside the mutable visual contract.
+    if (
+      url.origin === apiUrl.origin
+      && /\/shows\/campaigns\/[^/]+\/visuals\/[^/]+$/.test(url.pathname)
+      && !/\/v[1-9]\d*$/.test(url.pathname)
+    ) {
+      url.pathname = `${url.pathname}/v${artworkRevision}`;
+      return url.toString();
+    }
+  } catch {
+    // Preserve the original resolved URL when a legacy media value is malformed.
+  }
+  return resolved;
 }
 
 function stringRecord(value: unknown): Record<string, string> {

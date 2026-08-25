@@ -32,7 +32,12 @@ export interface PublicMomentShare {
   };
   drop: { id: string; title: string | null };
   track: { id: string; title: string };
-  release: { id: string; title: string; artworkMimeType: string | null };
+  release: {
+    id: string;
+    title: string;
+    artworkMimeType: string | null;
+    artworkRevision: number;
+  };
   artistName: string | null;
 }
 

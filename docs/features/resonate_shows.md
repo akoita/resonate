@@ -64,6 +64,13 @@ a compact preview is not supplied, the UI reuses the hero or gallery visual
 with a safe crop and falls back to the generated concert-card atmosphere only
 as a last resort.
 
+Each hero, card, or gallery visual carries a server-owned artwork revision.
+Replacement increments that revision in the same database update that points
+the campaign at the new storage object, and public clients include it in the
+canonical `/shows/campaigns/:id/visuals/:visualRef/v:revision` path. Reordering
+and metadata-only edits do not change image identity. Legacy unversioned visual
+routes remain readable for rollback and older clients.
+
 Campaign detail pages use a conversion-first layout (#1365, #1373, #1383):
 the page opens with a clean full-width visual banner (title, date/venue on
 the image), then a lede row pairs the campaign copy panel (tagline, funding

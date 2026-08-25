@@ -118,6 +118,7 @@ export function HomeFeedRails({
                         <HomeReleaseArtwork
                           releaseId={item.releaseId}
                           mimeType={item.artworkMimeType}
+                          artworkRevision={item.artworkRevision}
                           alt=""
                           sizes="(max-width: 767px) 96px, 112px"
                         />

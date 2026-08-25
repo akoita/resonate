@@ -4,6 +4,7 @@ import { getReleaseArtworkUrl } from "../../lib/api";
 export type HomeReleaseArtworkProps = {
   releaseId: string;
   mimeType: string;
+  artworkRevision?: number | null;
   alt: string;
   sizes: string;
   className?: string;
@@ -25,13 +26,14 @@ export function shouldOptimizeHomeReleaseArtwork(mimeType: string): boolean {
 export function HomeReleaseArtwork({
   releaseId,
   mimeType,
+  artworkRevision,
   alt,
   sizes,
   className,
 }: HomeReleaseArtworkProps) {
   return (
     <Image
-      src={getReleaseArtworkUrl(releaseId)}
+      src={getReleaseArtworkUrl(releaseId, { artworkRevision })}
       alt={alt}
       fill
       sizes={sizes}

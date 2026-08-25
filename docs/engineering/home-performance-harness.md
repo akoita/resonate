@@ -145,13 +145,44 @@ refinement, not a claim that INP was collected.
 
 Two independent hardening opportunities remain tracked outside #1491:
 
-- [#1604](https://github.com/akoita/resonate/issues/1604) versions mutable
-  artwork URLs before deployment enables a nonzero optimizer cache TTL.
+- [#1604](https://github.com/akoita/resonate/issues/1604) adds persisted,
+  server-owned revisions to release and Shows artwork URLs. The repository
+  implementation keeps legacy paths readable and the optimizer TTL default at
+  `0`; enabling a nonzero deployment value remains gated on the same-machine
+  staging procedure below.
 - [#1605](https://github.com/akoita/resonate/issues/1605) cancels and bounds
   sibling audio work after multipart artwork rejection.
 
 Neither follow-up changes the measured conclusion that Home meets its current
 performance budget.
+
+### Artwork cache-coherency rollout (#1604)
+
+Mutable release covers and Shows hero/card/gallery visuals use canonical
+version path segments such as `artwork/v2` and `visuals/hero/v2`. A successful
+replacement increments the revision in the same database mutation that changes
+the image, so new application reads switch optimizer keys immediately. The
+legacy unversioned endpoints remain readable for rollback and older clients;
+they resolve the current image and are not historical snapshots.
+
+Before setting `IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` above `0` in a deployed
+environment:
+
+1. deploy the versioned backend and frontend with the TTL still at `0`;
+2. capture the optimizer request URL for a release cover and a Shows visual,
+   replace each asset, and verify the next request contains a higher revision;
+3. retain evidence that both legacy URLs still read successfully;
+4. run five accepted cold/warm Home pairs on the same staging target and
+   machine with `PERF_IMAGE_BUDGET_BYTES=102400`;
+5. record the target commit, viewport, settle time, raw JSON artifact,
+   discarded attempts, exact HIT/MISS counts, and
+   `breakdown.images.heavy`; and
+6. trial and document the smallest bounded nonzero TTL supported by that warm
+   cache evidence.
+
+Rollback is setting the deployment variable back to `0`; no schema rollback or
+URL migration is required. Do not describe a nonzero TTL as selected or
+production-ready until the staging record is linked from #1604.
 
 ## Reading the output
 

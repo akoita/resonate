@@ -52,6 +52,21 @@ describe('API Client', () => {
         'http://test-api:3000/catalog/me/releases/release-123/artwork',
       );
     });
+
+    it('uses a positive server revision for public and owner-scoped artwork', () => {
+      expect(api.getReleaseArtworkUrl('release-123', { artworkRevision: 7 })).toBe(
+        'http://test-api:3000/catalog/releases/release-123/artwork/v7',
+      );
+      expect(api.getReleaseArtworkUrl('release-123', { ownerScoped: true, artworkRevision: 7 })).toBe(
+        'http://test-api:3000/catalog/me/releases/release-123/artwork/v7',
+      );
+    });
+
+    it.each([0, -1, 1.5, null, undefined])('keeps the legacy path for invalid revision %s', (artworkRevision) => {
+      expect(api.getReleaseArtworkUrl('release-123', { artworkRevision })).toBe(
+        'http://test-api:3000/catalog/releases/release-123/artwork',
+      );
+    });
   });
 
   describe('getReleaseTrackStreamUrl', () => {
@@ -917,12 +932,13 @@ describe('API Client', () => {
             id: 'rel-1',
             title: 'Test Release',
             artworkMimeType: 'image/png',
+            artworkRevision: 4,
           }),
       });
 
       const release = await api.getRelease('rel-1');
       expect(release!.artworkUrl).toBe(
-        'http://test-api:3000/catalog/releases/rel-1/artwork',
+        'http://test-api:3000/catalog/releases/rel-1/artwork/v4',
       );
     });
 
@@ -935,13 +951,14 @@ describe('API Client', () => {
             id: 'rel-owner',
             title: 'Restricted Release',
             artworkMimeType: 'image/png',
+            artworkRevision: 3,
           }),
       });
 
       const release = await api.getRelease('rel-owner', 'jwt-token');
 
       expect(release!.artworkUrl).toBe(
-        'http://test-api:3000/catalog/releases/rel-owner/artwork',
+        'http://test-api:3000/catalog/releases/rel-owner/artwork/v3',
       );
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch.mock.calls[0][0]).toBe(
@@ -1023,6 +1040,7 @@ describe('API Client', () => {
             title: 'Restricted Release',
             rightsRoute: 'QUARANTINED_REVIEW',
             artworkMimeType: 'image/png',
+            artworkRevision: 8,
           }),
       });
       mockFetch.mockResolvedValueOnce({
@@ -1039,7 +1057,7 @@ describe('API Client', () => {
       expect(release!.artworkUrl).toBe('blob:owner-artwork');
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(mockFetch.mock.calls[1][0]).toBe(
-        'http://test-api:3000/catalog/me/releases/rel-restricted/artwork',
+        'http://test-api:3000/catalog/me/releases/rel-restricted/artwork/v8',
       );
       expect((mockFetch.mock.calls[1][1] as RequestInit).headers).toEqual({
         Authorization: 'Bearer jwt-token',
@@ -1083,13 +1101,14 @@ describe('API Client', () => {
             release: {
               id: 'rel-1',
               artworkMimeType: 'image/jpeg',
+              artworkRevision: 2,
             },
           }),
       });
 
       const track = await api.getTrack('track-1');
       expect(track!.release!.artworkUrl).toBe(
-        'http://test-api:3000/catalog/releases/rel-1/artwork',
+        'http://test-api:3000/catalog/releases/rel-1/artwork/v2',
       );
     });
   });

@@ -574,6 +574,7 @@ export class PunchlineDropService {
                   id: true,
                   title: true,
                   artworkMimeType: true,
+                  artworkRevision: true,
                   primaryArtist: true,
                   artist: { select: { displayName: true } },
                   artistCredits: {
@@ -613,6 +614,7 @@ export class PunchlineDropService {
           id: string;
           title: string;
           artworkMimeType: string | null;
+          artworkRevision: number;
           primaryArtist: string | null;
           artist: { displayName: string | null } | null;
           artistCredits: Array<{ role: string; displayName: string }>;
@@ -635,6 +637,7 @@ export class PunchlineDropService {
         id: release.id,
         title: release.title,
         artworkMimeType: release.artworkMimeType,
+        artworkRevision: release.artworkRevision,
       },
       artistName,
     };
@@ -780,6 +783,7 @@ export class PunchlineDropService {
                 genre: true,
                 primaryArtist: true,
                 artworkMimeType: true,
+                artworkRevision: true,
                 artist: { select: { id: true, displayName: true } },
                 artistCredits: {
                   select: { role: true, displayName: true },
@@ -957,6 +961,7 @@ export class PunchlineDropService {
                 title: true,
                 primaryArtist: true,
                 artworkMimeType: true,
+                artworkRevision: true,
                 artist: { select: { id: true, displayName: true } },
               },
             },

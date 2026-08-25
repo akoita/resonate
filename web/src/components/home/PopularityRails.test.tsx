@@ -78,11 +78,12 @@ describe("TrendingNowRail", () => {
           trendingItem({
             artworkUrl: "https://untrusted.example/cover.jpg",
             artworkMimeType: "image/jpeg",
+            artworkRevision: 11,
           }),
         ]}
       />,
     );
-    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork");
+    expect(html).toContain("%2Fcatalog%2Freleases%2Frel_1%2Fartwork%2Fv11");
     expect(html).toContain("/_next/image");
     expect(html).not.toContain("untrusted.example");
   });

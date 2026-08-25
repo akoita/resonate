@@ -55,6 +55,7 @@ export interface HomeFeedItem {
   genre: string | null;
   moods: string[];
   artworkMimeType: string | null;
+  artworkRevision: number;
   aiDisclosure: AiDisclosureRecord;
   reasons: string[];
 }
@@ -76,8 +77,9 @@ function explorationCount(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 4;
 }
 
-interface RawItem extends Omit<HomeFeedItem, "artworkMimeType"> {
+interface RawItem extends Omit<HomeFeedItem, "artworkMimeType" | "artworkRevision"> {
   artworkMimeType?: string | null;
+  artworkRevision?: number;
 }
 
 @Injectable()
@@ -222,6 +224,7 @@ export class HomeFeedService {
             moods: true,
             artistId: true,
             artworkMimeType: true,
+            artworkRevision: true,
             primaryArtist: true,
             artist: { select: { displayName: true } },
           },
@@ -246,6 +249,7 @@ export class HomeFeedService {
         genre: track.release.genre,
         moods: track.release.moods ?? [],
         artworkMimeType: track.release.artworkMimeType,
+        artworkRevision: track.release.artworkRevision,
         aiDisclosure: toAiDisclosureRecord(track),
         reasons: ["artist:followed-by-plays"],
       })),
@@ -282,6 +286,7 @@ export class HomeFeedService {
         genre: (item.genre as string) ?? null,
         moods: [],
         artworkMimeType: (item.artworkMimeType as string) ?? null,
+        artworkRevision: Number(item.artworkRevision ?? 1),
         aiDisclosure: item.aiDisclosure as AiDisclosureRecord,
         reasons: [`trending:${dominantGenre}`],
       })),
@@ -318,6 +323,7 @@ export class HomeFeedService {
             moods: true,
             artistId: true,
             artworkMimeType: true,
+            artworkRevision: true,
             primaryArtist: true,
             artist: { select: { displayName: true } },
           },
@@ -352,6 +358,7 @@ export class HomeFeedService {
           genre: track.release.genre,
           moods: track.release.moods ?? [],
           artworkMimeType: track.release.artworkMimeType,
+          artworkRevision: track.release.artworkRevision,
           aiDisclosure: toAiDisclosureRecord(track),
           reasons: ["exploration:fresh"],
         })),
@@ -388,6 +395,7 @@ export class HomeFeedService {
         genre: (item.genre as string) ?? null,
         moods: [],
         artworkMimeType: (item.artworkMimeType as string) ?? null,
+        artworkRevision: Number(item.artworkRevision ?? 1),
         aiDisclosure: item.aiDisclosure as AiDisclosureRecord,
         reasons: ["catalog:trending"],
       })),
@@ -419,7 +427,11 @@ export class HomeFeedService {
       if (artistCount >= ARTIST_CAP_PER_RAIL) continue;
       perArtist.set(item.artistId, artistCount + 1);
       used.add(item.id);
-      selected.push({ ...item, artworkMimeType: item.artworkMimeType ?? null });
+      selected.push({
+        ...item,
+        artworkMimeType: item.artworkMimeType ?? null,
+        artworkRevision: item.artworkRevision ?? 1,
+      });
     }
     return selected;
   }

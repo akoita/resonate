@@ -96,6 +96,56 @@ describe('CatalogService (integration)', () => {
       level: 'none',
       source: 'artist',
     });
+    expect(result.artworkRevision).toBe(1);
+  });
+
+  it('increments release artworkRevision atomically and returns the versioned URL', async () => {
+    const release = await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}artwork_revision_release`,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Artwork Revision Release',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+        artworkData: Buffer.from('initial-artwork'),
+        artworkMimeType: 'image/png',
+      },
+    });
+    const image = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+
+    try {
+      expect(release.artworkRevision).toBe(1);
+
+      const updated = await catalog.updateReleaseArtwork(
+        release.id,
+        `${TEST_PREFIX}user`,
+        { buffer: image, mimetype: 'image/png' },
+      );
+
+      expect(updated).toMatchObject({
+        artworkRevision: 2,
+        artworkUrl: `/catalog/releases/${release.id}/artwork/v2`,
+      });
+      await expect(
+        prisma.release.findUnique({ where: { id: release.id }, select: { artworkRevision: true } }),
+      ).resolves.toMatchObject({ artworkRevision: 2 });
+
+      const publicRelease = await catalog.getRelease(release.id);
+      expect(publicRelease?.artworkRevision).toBe(2);
+      await expect(catalog.getReleaseArtwork(release.id, '1')).resolves.toMatchObject({
+        mimeType: 'image/png',
+      });
+      await expect(catalog.getReleaseArtwork(release.id, '2')).resolves.toMatchObject({
+        mimeType: 'image/png',
+      });
+      await expect(catalog.getReleaseArtwork(release.id, '3')).resolves.toBeNull();
+      await expect(catalog.getReleaseArtwork(release.id, 'not-a-revision')).resolves.toBeNull();
+    } finally {
+      await prisma.release.delete({ where: { id: release.id } });
+    }
   });
 
   it('rejects a new track without an explicit AI disclosure', async () => {

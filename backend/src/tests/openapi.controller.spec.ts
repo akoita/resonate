@@ -34,6 +34,11 @@ describe('OpenApiService', () => {
     expect(doc.paths['/api/storefront/stems/{stemId}']).toBeDefined();
     expect(doc.paths['/api/stems/{stemId}/x402']).toBeDefined();
     expect(doc.paths['/api/stems/{stemId}/x402/info']).toBeDefined();
+    expect(doc.paths['/catalog/releases/{releaseId}/artwork/v{artworkRevision}']).toBeDefined();
+    expect(doc.components.schemas.ReleaseSummary.properties.artworkRevision).toEqual({
+      type: 'integer',
+      minimum: 1,
+    });
     expect(doc.paths['/api/storefront/stems'].get['x-payment-info']).toEqual({
       authMode: 'free',
     });

@@ -17,6 +17,7 @@ import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockCatalogService = {
   getReleaseArtwork: jest.fn(),
+  getReleaseArtworkForUser: jest.fn(),
   getStemBlob: jest.fn(),
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
@@ -240,5 +241,42 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/releases/rel-1/artwork')
       .expect(404);
+  });
+
+  it('GET /catalog/releases/:id/artwork/v:revision → serves versioned public artwork', async () => {
+    mockCatalogService.getReleaseArtwork.mockResolvedValue({
+      data: Buffer.from('artwork'),
+      mimeType: 'image/png',
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/catalog/releases/rel-1/artwork/v7')
+      .expect(200);
+
+    expect(res.headers['content-type']).toContain('image/png');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(mockCatalogService.getReleaseArtwork).toHaveBeenCalledWith('rel-1', '7');
+  });
+
+  it('GET /catalog/me/releases/:id/artwork/v:revision → preserves owner auth and version', async () => {
+    mockCatalogService.getReleaseArtworkForUser.mockResolvedValue({
+      data: Buffer.from('owner-artwork'),
+      mimeType: 'image/webp',
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/catalog/me/releases/rel-1/artwork/v8')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toContain('image/webp');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(mockCatalogService.getReleaseArtworkForUser).toHaveBeenCalledWith('rel-1', 'user-1', '8');
+  });
+
+  it('GET /catalog/me/releases/:id/artwork/v:revision → requires JWT', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/me/releases/rel-1/artwork/v8')
+      .expect(401);
   });
 });

@@ -111,6 +111,24 @@ export class CatalogController {
     return new StreamableFile(artwork.data);
   }
 
+  @Get("releases/:releaseId/artwork/v:artworkRevision")
+  async getVersionedReleaseArtwork(
+    @Param("releaseId") releaseId: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const artwork = await this.catalogService.getReleaseArtwork(releaseId, artworkRevision);
+    if (!artwork) {
+      res.status(404).send("Artwork not found");
+      return;
+    }
+    res.set({
+      "Content-Type": artwork.mimeType,
+      "Cache-Control": "no-cache",
+    });
+    return new StreamableFile(artwork.data);
+  }
+
   @Get("stems/:stemId/blob")
   async getStemBlob(
     @Param("stemId") stemId: string,
@@ -199,6 +217,30 @@ export class CatalogController {
     const artwork = await this.catalogService.getReleaseArtworkForUser(
       releaseId,
       req.user.userId,
+    );
+    if (!artwork) {
+      res.status(404).send("Artwork not found");
+      return;
+    }
+    res.set({
+      "Content-Type": artwork.mimeType,
+      "Cache-Control": "no-cache",
+    });
+    return new StreamableFile(artwork.data);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId/artwork/v:artworkRevision")
+  async getVersionedMyReleaseArtwork(
+    @Param("releaseId") releaseId: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const artwork = await this.catalogService.getReleaseArtworkForUser(
+      releaseId,
+      req.user.userId,
+      artworkRevision,
     );
     if (!artwork) {
       res.status(404).send("Artwork not found");

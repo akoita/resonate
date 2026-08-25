@@ -42,6 +42,19 @@ describe("HomeCampaignVisual", () => {
     expect(html).not.toContain('loading="lazy"');
   });
 
+  it("optimizes the server-versioned canonical visual path", () => {
+    const src = "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/v12";
+    const html = renderToStaticMarkup(
+      <span style={{ position: "relative", display: "block", width: 400, height: 225 }}>
+        <HomeCampaignVisual src={src} sizes="100vw" />
+      </span>,
+    );
+
+    expect(shouldOptimizeHomeCampaignVisual(src)).toBe(true);
+    expect(html).toContain("%2Fshows%2Fcampaigns%2Fcampaign-1%2Fvisuals%2Fcard%2Fv12");
+    expect(html).toContain("/_next/image");
+  });
+
   it.each([
     "https://media.example.test/shows/campaigns/campaign-1/visuals/card",
     "http://user:password@localhost:3000/shows/campaigns/campaign-1/visuals/card",
@@ -49,6 +62,9 @@ describe("HomeCampaignVisual", () => {
     "http://localhost:3000/shows/campaigns/campaign-1/visuals/card#hero",
     "http://localhost:3000/shows/campaigns/campaign-1/visuals",
     "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/extra",
+    "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/v0",
+    "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/v01",
+    "http://localhost:3000/shows/campaigns/campaign-1/visuals/card/vnope",
     "/shows/sennarin-portrait.webp",
     "blob:campaign-art",
     "data:image/webp;base64,AAAA",
