@@ -19,6 +19,10 @@ on:
         description: Successful CI run ID for exactly candidate_sha.
         required: true
         type: string
+      image_run_id:
+        description: Successful explicit Release Deployment publish run for exactly candidate_sha.
+        required: true
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -46,6 +50,7 @@ jobs:
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
+          IMAGE_RUN_ID: ${{ inputs.image_run_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -57,8 +62,13 @@ jobs:
             echo "::error::ci_run_id must be a positive numeric Actions run ID."
             exit 1
           fi
+          if [[ ! "${IMAGE_RUN_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::image_run_id must be a positive numeric Actions run ID."
+            exit 1
+          fi
 
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${CI_RUN_ID}" > "${RUNNER_TEMP}/ci-run.json"
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${IMAGE_RUN_ID}" > "${RUNNER_TEMP}/image-run.json"
           CI_RUN_PATH="${RUNNER_TEMP}/ci-run.json" CANDIDATE_SHA="${CANDIDATE_SHA}" python3 - <<'PY'
           import json
           import os
@@ -74,6 +84,24 @@ jobs:
               failures.append("referenced CI run must be a push on main")
           if run.get("head_sha") != expected_sha:
               failures.append("referenced CI run head SHA does not match candidate_sha")
+          if failures:
+              raise SystemExit("; ".join(failures))
+          PY
+          IMAGE_RUN_PATH="${RUNNER_TEMP}/image-run.json" CANDIDATE_SHA="${CANDIDATE_SHA}" python3 - <<'PY'
+          import json
+          import os
+
+          run = json.load(open(os.environ["IMAGE_RUN_PATH"], encoding="utf-8"))
+          expected_sha = os.environ["CANDIDATE_SHA"]
+          failures = []
+          if run.get("name") != "Release Deployment":
+              failures.append("referenced image run is not the Release Deployment workflow")
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              failures.append("referenced image release run did not complete successfully")
+          if run.get("event") != "workflow_dispatch" or run.get("head_branch") != "main":
+              failures.append("referenced image release must be an explicit dispatch on main")
+          if run.get("head_sha") != expected_sha:
+              failures.append("referenced image release head SHA does not match candidate_sha")
           if failures:
               raise SystemExit("; ".join(failures))
           PY
@@ -142,14 +170,14 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: deploy-manifest
-          run-id: ${{ inputs.ci_run_id }}
+          run-id: ${{ inputs.image_run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/deploy-manifest
 
       - name: Download selected image evidence
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-          CI_RUN_ID: ${{ inputs.ci_run_id }}
+          IMAGE_RUN_ID: ${{ inputs.image_run_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -186,7 +214,7 @@ jobs:
                 exit 1
                 ;;
             esac
-            gh run download "${CI_RUN_ID}" \
+            gh run download "${IMAGE_RUN_ID}" \
               --repo "${GITHUB_REPOSITORY}" \
               --name "image-evidence-${service}-${CANDIDATE_SHA}" \
               --dir "${image_evidence_root}/${service}"
@@ -198,7 +226,9 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           RELEASE_PR_URL: ${{ steps.release.outputs.release_pr_url }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
+          IMAGE_RUN_ID: ${{ inputs.image_run_id }}
           CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.ci_run_id }}
+          IMAGE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.image_run_id }}
         run: |
           set -euo pipefail
           python3 .github/scripts/release_evidence.py build \
@@ -208,6 +238,8 @@ jobs:
             --version "${VERSION}" \
             --ci-run-id "${CI_RUN_ID}" \
             --ci-run-url "${CI_RUN_URL}" \
+            --image-run-id "${IMAGE_RUN_ID}" \
+            --image-run-url "${IMAGE_RUN_URL}" \
             --release-pr-url "${RELEASE_PR_URL}" \
             --output "${RUNNER_TEMP}/release-evidence.json"
 
@@ -265,6 +297,8 @@ jobs:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
           CI_RUN_ID: ${{ inputs.ci_run_id }}
           CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.ci_run_id }}
+          IMAGE_RUN_ID: ${{ inputs.image_run_id }}
+          IMAGE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ inputs.image_run_id }}
         run: |
           {
             echo "## Software release ${MODE}"
@@ -272,6 +306,7 @@ jobs:
             echo "- tag: \`${TAG}\`"
             echo "- source: \`${CANDIDATE_SHA}\`"
             echo "- certified CI: [${CI_RUN_ID}](${CI_RUN_URL})"
+            echo "- explicit image release: [${IMAGE_RUN_ID}](${IMAGE_RUN_URL})"
             echo "- release PR: ${RELEASE_PR_URL}"
             echo "- validation: passed"
             if [[ "${MODE}" == "preview" ]]; then

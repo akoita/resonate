@@ -90,6 +90,8 @@ class ReleaseFixture:
             "version": VERSION,
             "ci_run_id": "123",
             "ci_run_url": "https://github.com/akoita/resonate/actions/runs/123",
+            "image_run_id": "789",
+            "image_run_url": "https://github.com/akoita/resonate/actions/runs/789",
             "release_pr_url": "https://github.com/akoita/resonate/pull/456",
         }
         values.update(overrides)
@@ -102,8 +104,9 @@ class ReleaseEvidenceTests(unittest.TestCase):
             fixture = ReleaseFixture(Path(directory))
             document = fixture.build()
 
-        self.assertEqual(document["schema_version"], "resonate-release-evidence/v1")
+        self.assertEqual(document["schema_version"], "resonate-release-evidence/v2")
         self.assertEqual(document["tag"], f"v{VERSION}")
+        self.assertEqual(document["image_run"]["id"], "789")
         self.assertEqual(document["deployment"]["status"], "handoff-requested")
         self.assertEqual(document["analytics"], {"status": "not-performed"})
         self.assertEqual(document["contracts"], {"status": "not-performed"})
@@ -194,6 +197,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.assertIn("Documented the last-known-good rollback (#6)", notes)
         self.assertIn(f"Source commit: `{REVISION}`", notes)
         self.assertIn("[123](https://github.com/akoita/resonate/actions/runs/123)", notes)
+        self.assertIn("[789](https://github.com/akoita/resonate/actions/runs/789)", notes)
         self.assertIn("https://github.com/akoita/resonate/pull/456", notes)
         self.assertIn("backend@sha256", notes)
         self.assertGreaterEqual(notes.count("None"), 3)

@@ -14,7 +14,7 @@ from typing import Any
 import image_evidence
 
 
-SCHEMA_VERSION = "resonate-release-evidence/v1"
+SCHEMA_VERSION = "resonate-release-evidence/v2"
 SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
 SEMVER_PRERELEASE_IDENTIFIER = r"(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
 STRICT_SEMVER = re.compile(
@@ -146,13 +146,18 @@ def build_release_evidence(
     version: str,
     ci_run_id: str,
     ci_run_url: str,
+    image_run_id: str,
+    image_run_url: str,
     release_pr_url: str,
 ) -> dict[str, Any]:
     validate_source_sha(source_sha)
     validate_version(version)
     if not ci_run_id.strip():
         raise ReleaseEvidenceError("ci-run-id must not be empty")
+    if not image_run_id.strip():
+        raise ReleaseEvidenceError("image-run-id must not be empty")
     validate_url(ci_run_url, field="ci-run-url")
+    validate_url(image_run_url, field="image-run-url")
     validate_url(release_pr_url, field="release-pr-url")
 
     try:
@@ -192,6 +197,10 @@ def build_release_evidence(
         "ci_run": {
             "id": ci_run_id,
             "url": ci_run_url,
+        },
+        "image_run": {
+            "id": image_run_id,
+            "url": image_run_url,
         },
         "release_pr_url": release_pr_url,
         "deployment": {
@@ -268,7 +277,7 @@ def load_release_evidence(path: Path) -> dict[str, Any]:
     document = _load_nonempty_json(path, description="release evidence")
     if not isinstance(document, dict) or document.get("schema_version") != SCHEMA_VERSION:
         raise ReleaseEvidenceError(f"release evidence schema_version must be {SCHEMA_VERSION}")
-    for key in ("tag", "source_sha", "ci_run", "release_pr_url", "services"):
+    for key in ("tag", "source_sha", "ci_run", "image_run", "release_pr_url", "services"):
         if key not in document:
             raise ReleaseEvidenceError(f"release evidence is missing {key}")
     return document
@@ -282,6 +291,7 @@ def render_notes(*, generated_notes_path: Path, evidence_path: Path) -> str:
         f"- Version: `{evidence['tag']}`",
         f"- Source commit: `{evidence['source_sha']}`",
         f"- CI run: [{evidence['ci_run']['id']}]({evidence['ci_run']['url']})",
+        f"- Image release run: [{evidence['image_run']['id']}]({evidence['image_run']['url']})",
         f"- Approved release PR: {evidence['release_pr_url']}",
     ]
     services = evidence.get("services", {})
@@ -321,6 +331,8 @@ def parse_args() -> argparse.Namespace:
     build.add_argument("--version", required=True)
     build.add_argument("--ci-run-id", required=True)
     build.add_argument("--ci-run-url", required=True)
+    build.add_argument("--image-run-id", required=True)
+    build.add_argument("--image-run-url", required=True)
     build.add_argument("--release-pr-url", required=True)
     build.add_argument("--output", required=True, type=Path)
 
@@ -342,6 +354,8 @@ def main() -> int:
                 version=args.version,
                 ci_run_id=args.ci_run_id,
                 ci_run_url=args.ci_run_url,
+                image_run_id=args.image_run_id,
+                image_run_url=args.image_run_url,
                 release_pr_url=args.release_pr_url,
             )
             write_json(args.output, document)

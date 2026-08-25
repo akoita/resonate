@@ -84,6 +84,19 @@ class ImageEvidenceTests(unittest.TestCase):
         self.assertEqual(manifest["backend_image_ref"], f"europe-docker.pkg.dev/project/resonate/backend@{DIGESTS['backend']}")
         self.assertEqual(manifest["stable_audio_image_ref"], "")
 
+    def test_published_images_can_skip_deploy_handoff(self) -> None:
+        manifest = build(should_dispatch=False)
+        self.assertFalse(manifest["should_dispatch"])
+        self.assertEqual(manifest["services"], ",".join(image_evidence.SERVICES))
+        self.assertEqual(
+            manifest["backend_image_ref"],
+            f"europe-docker.pkg.dev/project/resonate/backend@{DIGESTS['backend']}",
+        )
+
+    def test_deploy_handoff_requires_a_selected_service(self) -> None:
+        with self.assertRaisesRegex(image_evidence.ManifestError, "at least one selected service"):
+            build(services_csv="", image_tags={}, image_digests={})
+
     def test_written_manifest_is_stable_and_valid(self) -> None:
         manifest = build()
         with tempfile.TemporaryDirectory() as directory:

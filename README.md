@@ -96,7 +96,7 @@ flowchart LR
   Worker --> Data
 ```
 
-Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Application CI publishes immutable images; [`resonate-iac`](https://github.com/akoita/resonate-iac) applies infrastructure releases.
+Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Ordinary CI validates source; an explicit exact-SHA Release Deployment publishes immutable images and can hand their digest manifest to [`resonate-iac`](https://github.com/akoita/resonate-iac) for infrastructure reconciliation.
 
 ![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)
 

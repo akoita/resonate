@@ -84,8 +84,8 @@ def build_manifest(
     image_digests: dict[str, str],
 ) -> dict[str, Any]:
     services = parse_services(services_csv)
-    if should_dispatch != bool(services):
-        raise ManifestError("should_dispatch must be true exactly when services are selected")
+    if should_dispatch and not services:
+        raise ManifestError("should_dispatch requires at least one selected service")
     if not SOURCE_REVISION.fullmatch(source_ref):
         raise ManifestError("source_ref must be a full 40-character lowercase commit SHA")
     if release_sha != source_ref:

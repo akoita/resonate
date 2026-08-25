@@ -103,6 +103,7 @@ jobs:
           python3 "${validator}" audit/supply-chain/repository-security-profile.json
           node scripts/check-docker-base-digests.mjs
           python3 scripts/check-python-worker-locks.py
+          python3 .github/scripts/workflow_trigger_policy.py validate
           python3 "${generator}" "${GITHUB_WORKSPACE}" \
             --output "${out}/action-bom.json" \
             --minimum-age-days 7 \
@@ -162,12 +163,14 @@ jobs:
           import re
 
           allowed = {
-              ".github/workflows/ci.yml": {"pull_request", "push"},
+              ".github/workflows/ci.yml": {"merge_group", "pull_request", "push", "workflow_dispatch"},
               ".github/workflows/contracts-deploy.yml": {"workflow_dispatch"},
-              ".github/workflows/deploy-handoff.yml": {"workflow_dispatch", "workflow_run"},
+              ".github/workflows/deploy-handoff.yml": {"workflow_call", "workflow_dispatch"},
               ".github/workflows/desktop-release.yml": {"push", "workflow_dispatch"},
-              ".github/workflows/publish-analytics-dataflow-flex-template.yml": {"push", "workflow_dispatch"},
+              ".github/workflows/publish-analytics-dataflow-flex-template.yml": {"workflow_dispatch"},
+              ".github/workflows/publish-deployable-images.yml": {"workflow_call"},
               ".github/workflows/release-please.yml": {"push", "workflow_dispatch"},
+              ".github/workflows/release-deployment.yml": {"workflow_dispatch"},
               ".github/workflows/software-release.yml": {"workflow_dispatch"},
               ".github/workflows/staging-lifecycle-smoke.yml": {"schedule", "workflow_dispatch"},
               ".github/workflows/staging-reconciliation-drill.yml": {"workflow_dispatch"},
@@ -195,7 +198,7 @@ jobs:
               if record["event"] not in allowed[path]:
                   unexpected.append({**record, "unexpected_reason": "event"})
               elif (
-                  record["event"] != "pull_request"
+                  record["event"] not in {"pull_request", "merge_group"}
                   and record["head_branch"] not in {"main", "develop"}
                   and not (
                       record["path"] == ".github/workflows/desktop-release.yml"

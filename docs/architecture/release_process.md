@@ -104,6 +104,43 @@ Release Please does not authorize deployment and must not publish a GitHub
 Release before evidence validation. A repository workflow owns final tag and
 release creation from the approved commit.
 
+### Release-gated deployment plane
+
+Validation and release mutation are separate. Pull-request, merge-queue,
+`main`, and `develop` CI may build or test for validation, but they do not
+publish deployable images, write a Dataflow template, create a deploy manifest,
+or dispatch `resonate-iac`. The `main` post-merge run is a lightweight receipt;
+the reusable `CI` invocation used by a release is the full exact-source gate.
+
+Application publication belongs to the manual-only
+`.github/workflows/release-deployment.yml` workflow. Its operator supplies
+`mode=preview|publish`, `release_kind=planned|on-demand`, a full `source_sha`,
+the successful `ci_run_id` for that SHA, `environment=dev|staging`, a
+canonical service selection (all four services by default), and a `deploy` boolean. `dev`
+maps to `develop`; `staging` maps to `main`; production remains manual and
+`resonate-iac`-owned.
+
+Preview validates the source, CI run, branch mapping, service selection, and
+environment without cloud credentials or mutation, then retains a release
+plan. Publish reruns reusable CI on the exact source and invokes the
+workflow-call-only `publish-deployable-images.yml` workflow. The publisher
+creates selected full-SHA-tagged images, resolves registry digests, and
+retains provenance evidence. Valid unchanged content-addressed images may be
+reused, with the result recorded in build metadata and image evidence.
+
+The target environment is serialized so concurrent releases cannot race. A
+partial or failed image publication never dispatches a partial manifest. A
+successful publication may intentionally set `deploy=false`. Deploy Handoff is
+reusable via `workflow_call` only from a successful explicitly dispatched
+Release Deployment run. Its separate manual `workflow_dispatch` path accepts
+`release_run_id` for retry or rollback of a retained immutable digest manifest
+without rebuilding or retagging images. It has no `workflow_run` trigger and
+never follows ordinary CI.
+
+Analytics Dataflow publication is a separate `workflow_dispatch`-only path. It
+requires `source_sha` to equal the dispatch revision and the target branch
+(`develop` for `dev`, `main` for `staging`).
+
 ### Protected release plane
 
 Repository settings must enforce these controls:
@@ -114,6 +151,8 @@ Repository settings must enforce these controls:
   identity;
 - require a protected `software-release` environment with a human reviewer for
   publication;
+- protect the `dev` and `staging` target environments that hold image and
+  Dataflow publisher credentials and any deployment approvals;
 - keep default workflow permissions read-only and grant `contents: write` only
   to the final publication job;
 - do not permit asset replacement, tag movement, or release recreation;
@@ -128,7 +167,8 @@ audit them but cannot prove enforcement by itself.
 A software release is valid only when its notes identify:
 
 - the full source SHA and approved release PR;
-- the successful CI run for that SHA;
+- the successful CI run for that SHA and the successful explicit Release
+  Deployment image run for that same SHA;
 - every included OCI image by digest, with build metadata, SBOM, signature, and
   attestation verification;
 - the deploy manifest and any `resonate-iac` handoff or an explicit statement
@@ -143,6 +183,11 @@ A software release is valid only when its notes identify:
 
 Evidence validation fails closed when a required record is absent, malformed,
 bound to a different SHA, or uses a mutable image reference.
+
+Software Release therefore requires both `ci_run_id` and `image_run_id`; the
+candidate SHA, referenced CI run, and referenced image run must all identify
+the same approved source. A release may state that no deployment occurred when
+the image run intentionally used `deploy=false`.
 
 ## Hotfix And Rollback Rules
 
