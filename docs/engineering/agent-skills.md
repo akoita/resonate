@@ -183,11 +183,13 @@ The live GitHub settings audit on 2026-08-25 records the following controls:
 - CodeQL default setup is enabled for `javascript-typescript`, query suite
   `default`, remote threat modeling, and the standard runner. The initial
   [run 32799678109](https://github.com/akoita/resonate/actions/runs/32799678109)
-  completed successfully against the reviewed revision. CodeQL remains
-  advisory/non-required and is not one of the nine required checks. It reported
-  19 open advisory tool leads in its metadata (4 critical, 14 high, 1 medium),
-  not validated findings; [#1625](https://github.com/akoita/resonate/issues/1625)
-  tracks evidence-backed triage.
+  completed successfully against the reviewed revision. The
+  [initial baseline triage](../../audit/codeql-baseline-2026-08-26.md) reviewed
+  all 19 leads: seven alerts map to four privately tracked findings, eleven
+  were false positives, and one informational alert was accepted risk. Seven
+  alerts remain open. The 57.9% measured false-positive rate keeps CodeQL
+  advisory/non-required and outside the nine required checks; any narrower
+  blocking ratchet remains a separate decision after remediation.
 - Partner-pattern validity checks remain disabled because GitHub documents them
   as organization-owned Team/Secret Protection functionality; GitHub-token
   validity checks remain automatic. Native secret scanning reported zero open
