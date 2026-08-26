@@ -57,12 +57,12 @@ describe('IngestionController', () => {
       );
     });
 
-    it('throws BadRequestException for invalid JSON string', () => {
+    it('throws BadRequestException for invalid JSON string', async () => {
       const ctrl = makeController();
 
-      expect(() =>
+      await expect(
         ctrl.upload(files, { metadata: '{bad json' }, req),
-      ).toThrow(BadRequestException);
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('extracts userId from req.user', () => {
