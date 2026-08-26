@@ -15,7 +15,9 @@ workflow_trigger_policy = importlib.util.module_from_spec(POLICY_SPEC)
 POLICY_SPEC.loader.exec_module(workflow_trigger_policy)
 
 
-WORKFLOW = Path(__file__).resolve().parents[2] / "workflows" / "publish-deployable-images.yml"
+WORKFLOWS = Path(__file__).resolve().parents[2] / "workflows"
+RELEASE_WORKFLOW = WORKFLOWS / "release-deployment.yml"
+WORKFLOW = WORKFLOWS / "publish-deployable-images.yml"
 GCP_IMAGE_PUBLICATION_JOBS = {
     "publish-backend-image",
     "publish-frontend-image",
@@ -25,6 +27,29 @@ GCP_IMAGE_PUBLICATION_JOBS = {
 
 
 class ReleaseImageEnvironmentTests(unittest.TestCase):
+    def test_release_publish_images_forwards_environment_scoped_secrets(self) -> None:
+        workflow_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        jobs = dict(
+            workflow_trigger_policy._workflow_job_blocks(  # noqa: SLF001
+                workflow_text,
+                path=RELEASE_WORKFLOW,
+            )
+        )
+
+        publish_images = jobs.get("publish-images")
+        self.assertIsNotNone(publish_images)
+        assert publish_images is not None
+        self.assertIn(
+            "uses: ./.github/workflows/publish-deployable-images.yml",
+            publish_images,
+        )
+        secret_lines = [
+            line.strip()
+            for line in publish_images.splitlines()
+            if line.strip().startswith("secrets:")
+        ]
+        self.assertEqual(secret_lines, ["secrets: inherit"])
+
     def test_every_gcp_image_publication_job_uses_workflow_call_environment_input(self) -> None:
         workflow_text = WORKFLOW.read_text(encoding="utf-8")
         jobs = dict(

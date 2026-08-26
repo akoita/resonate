@@ -228,6 +228,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    # Required to forward environment-scoped secrets into reusable jobs; see actions/runner#4453.
+    secrets: inherit
     with:
       source_sha: ${{ needs.validate.outputs.source_sha }}
       environment: ${{ needs.validate.outputs.environment }}
