@@ -190,6 +190,10 @@ When adding a new environment variable:
 | `SHOWS_VISUAL_MAX_TOTAL_BYTES` | Backend | Optional aggregate encoded-size ceiling for one Shows campaign visual upload request. Defaults to `33554432` (32 MiB), before multipart overhead. |
 | `RELEASE_ARTWORK_MAX_BYTES` | Backend | Optional maximum encoded size in bytes for release artwork uploads and AI-generation artwork publishing. Defaults to `8388608` (8 MiB). |
 | `ARTWORK_MAX_INPUT_PIXELS` | Backend | Optional decoded pixel ceiling for uploaded artwork before persistence. Defaults to `16777216` (`4096 × 4096`), matching the frontend optimizer guard. |
+| `INGESTION_MULTIPART_TEMP_DIR` | Backend | Optional root for request-owned temporary multipart directories. Each upload uses a unique child directory and cleanup never targets the configured root itself. Defaults to the operating-system temporary directory under `resonate-ingestion`. |
+| `INGESTION_MULTIPART_TIMEOUT_MS` | Backend | Optional lifetime timeout for an in-progress ingestion multipart request. Defaults to `900000` (15 minutes) and clamps to `1000..3600000` milliseconds. This is a request-lifecycle safety limit, not an audio-size limit. |
+| `INGESTION_MULTIPART_STALE_TTL_MS` | Backend | Optional age before an opportunistic sweep removes a stale generated `request-*` multipart directory. Defaults to `7200000` (2 hours), clamps to `3601000..604800000` milliseconds, and is always greater than the maximum live request timeout. The sweep never targets the configured root or non-generated children. |
+| `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS` | Backend | Optional maximum number of simultaneous ingestion multipart stream writers. Defaults to `4` and clamps to `1..20`; additional file streams remain paused under backpressure until a writer slot is available. This does not cap aggregate audio bytes. |
 | `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
 | `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
 | `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |
@@ -287,6 +291,15 @@ When adding a new environment variable:
 | `ERC8004_REPUTATION_SCHEDULER_INTERVAL_MS` | Backend | Optional scheduler interval; defaults to `21600000` (6 hours) when the scheduler is enabled |
 | `ERC8004_REPUTATION_FRESHNESS_MS` | Backend | Optional freshness window before an agent is eligible for another reputation attestation; defaults to `86400000` (24 hours) |
 | `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Backend | Optional maximum active minted agents refreshed per scheduler sweep; defaults to `25` |
+
+When an ingestion multipart request is rejected, the storage engine marks the
+request terminal, destroys every active or queued file stream, and destroys
+each active disk writer before removing the request directory. The writer
+high-water mark is fixed at `65536` bytes, so post-rejection disk growth is
+bounded by `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS × 65536` bytes (256 KiB at
+the default of four writers); no later chunks are accepted or written. The
+bound covers bytes already handed to a writer when the rejection is observed,
+not the bytes received before rejection.
 
 ## Release-Gated Deployment Workflows
 

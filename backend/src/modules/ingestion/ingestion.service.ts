@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
 import { join } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
-import { readdir } from "fs/promises";
+import { readFile, readdir } from "fs/promises";
 import { Queue } from "bullmq";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Agent } from "undici";
@@ -241,9 +241,12 @@ export class IngestionService {
       let durationSeconds: number | undefined;
       let extractedTitle: string | undefined;
       let extractedArtist: string | undefined;
+      const fileBuffer = await this.readUploadBuffer(file);
 
       try {
-        const metadata = await mm.parseBuffer(file.buffer, { mimeType: file.mimetype });
+        const metadata = file.path
+          ? await mm.parseFile(file.path)
+          : await mm.parseBuffer(fileBuffer, { mimeType: file.mimetype });
         durationSeconds = metadata.format.duration;
         extractedTitle = metadata.common.title;
         extractedArtist = metadata.common.artist;
@@ -253,8 +256,8 @@ export class IngestionService {
           extractedReleaseLabel = metadata.common.label?.[0];
           extractedReleaseDate = metadata.common.date ? new Date(metadata.common.date).toISOString() : undefined;
         }
-      } catch (err) {
-        console.warn(`[Ingestion] Failed to parse metadata for ${file.originalname}:`, err);
+      } catch {
+        console.warn("[Ingestion] Failed to parse metadata for uploaded track");
       }
 
       // Intelligent filename parsing fallback
@@ -272,7 +275,7 @@ export class IngestionService {
       let storageResult;
       try {
         storageResult = await this.storageProvider.upload(
-          file.buffer,
+          fileBuffer,
           `original_${stemId}.${file.originalname.split('.').pop() || 'mp3'}`,
           file.mimetype
         );
@@ -297,7 +300,10 @@ export class IngestionService {
           uri: publicUri,
           storageProvider: storageResult?.provider || 'local',
           type: this.inferStemType(file.originalname),
-          data: file.buffer,
+          // HTTP multipart uploads are path-backed in production. Keep the
+          // current file available for synchronous test processing, but do not
+          // retain an album of buffers in the production request object.
+          data: file.path && !this.useSyncProcessing ? undefined : fileBuffer,
           mimeType: file.mimetype,
           durationSeconds: durationSeconds,
         }]
@@ -754,6 +760,14 @@ export class IngestionService {
    */
   async uploadToStorage(data: Buffer, filename: string, mimeType: string) {
     return this.storageProvider.upload(data, filename, mimeType);
+  }
+
+  private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {
+    if (Buffer.isBuffer(file.buffer)) return file.buffer;
+    if (typeof file.path === "string" && file.path.length > 0) {
+      return readFile(file.path);
+    }
+    throw new BadRequestException("Uploaded audio file has no readable content");
   }
 
   private generateId(prefix: string) {
