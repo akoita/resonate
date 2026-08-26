@@ -17,7 +17,9 @@ Each run:
 
 1. **preflight** — asserts the RPC chain id (84532), that the smoke wallet holds
    enough test USDC + gas (else `SMOKE_WALLET_LOW_BALANCE`), and that the API
-   `/health` responds.
+   `/health` responds. Chain-id and balance reads use a short, bounded retry for
+   classified provider/transport outages; the API health call remains a single
+   HTTP request.
 2. **auth** — logs the smoke EOA in through `POST /auth/nonce` →
    `POST /auth/verify` requesting role `operator`, and asserts the JWT decodes
    with `role: operator` (needs the wallet in `OPERATOR_ADDRESSES`).
@@ -71,7 +73,25 @@ Finally:
 
 Every step logs `[smoke] <step> OK (<ms>)`; any failure exits non-zero with a
 one-line `SMOKE_FAIL <step>: <reason>`, and the workflow opens/updates a
-`smoke-failure` issue.
+`smoke-failure` issue. The on-chain write helper retries simulation reverts
+caused by replica lag and stale/low-nonce submissions for up to 5 attempts
+(3 seconds apart), preparing each retry through `wallet.writeContract` again.
+Preflight RPC reads use up to 3 attempts (1 second apart). Persistent provider failures,
+non-transient transaction errors, and contract reverts remain fail-loud. Raw
+viem errors are attributed to the current smoke step so they do not appear as
+`SMOKE_FAIL unknown`.
+
+The retry policy covers the two diagnosed transient signatures:
+
+- `nonce too low: next nonce <current>, tx nonce <submitted>` during a write
+  after `indexer-confirm` — the wallet prepares a fresh submission for the
+  retry bound.
+- `no backend is currently healthy to serve traffic` during preflight
+  `balanceOf` — the read is retried within the short provider bound.
+
+When the bound is exhausted, or when an error is not classified as a transient
+simulation/provider failure, the run exits immediately with the original error
+message and its canonical step.
 
 ### The two modes (and why)
 
