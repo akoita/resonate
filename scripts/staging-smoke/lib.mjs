@@ -53,8 +53,142 @@ export function sleep(ms) {
 // replica may not yet see a block another replica just produced).
 // ---------------------------------------------------------------------------
 
+const MAX_ERROR_CAUSE_DEPTH = 32;
+
+// Keep this list deliberately narrow. A contract revert, invalid request, or
+// other transaction error must remain fail-loud; only errors that identify a
+// provider/transport outage are safe to retry for an idempotent read.
+const TRANSIENT_RPC_MESSAGES = [
+  /no backend is currently healthy to serve traffic/i,
+  /(?:backend|upstream).*(?:unavailable|not healthy|no healthy)/i,
+  /(?:service|temporarily) unavailable/i,
+  /(?:gateway|upstream) timeout/i,
+  /request timed? out/i,
+  /\btimeout\b/i,
+  /fetch failed/i,
+  /network (?:error|unreachable)/i,
+  /(?:econnreset|econnrefused|enotfound|enetunreach)/i,
+  /socket (?:hang up|closed|reset)/i,
+  /connection (?:reset|closed|aborted|refused)/i,
+  /too many requests/i,
+  /rate limit(?:ed)?/i,
+  /(?:bad gateway|service unavailable|gateway timeout)/i,
+  /upstream connect error/i,
+];
+
+const TRANSIENT_TRANSPORT_NAMES = new Set([
+  "FetchError",
+  "NetworkError",
+  "SocketClosedError",
+  "TimeoutError",
+  "TransportError",
+]);
+
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+function errorChain(error) {
+  const chain = [];
+  const seen = new Set();
+  let current = error;
+
+  for (let depth = 0; current !== undefined && current !== null && depth < MAX_ERROR_CAUSE_DEPTH; depth += 1) {
+    if (typeof current === "object" || typeof current === "function") {
+      if (seen.has(current)) break;
+      seen.add(current);
+    }
+    chain.push(current);
+    try {
+      current = current?.cause;
+    } catch {
+      break;
+    }
+  }
+  return chain;
+}
+
+function errorField(error, field) {
+  try {
+    return error?.[field];
+  } catch {
+    return undefined;
+  }
+}
+
+function errorText(error) {
+  return ["name", "message", "shortMessage", "details"]
+    .map((field) => errorField(error, field))
+    .filter((value) => typeof value === "string" && value.length > 0)
+    .join("\n");
+}
+
+function originalErrorMessage(error) {
+  const message = errorField(error, "message");
+  if (typeof message === "string" && message.length > 0) return message;
+  return String(error);
+}
+
+function smokeErrorFor(step, error) {
+  return error instanceof SmokeError ? error : new SmokeError(step, originalErrorMessage(error));
+}
+
+function isNonceSubmissionError(error) {
+  return errorChain(error).some((cause) => {
+    const name = String(errorField(cause, "name") ?? "");
+    const text = errorText(cause);
+    return name === "NonceTooLowError" ||
+      /\bnonce\s+too\s+low\b/i.test(text) ||
+      /nonce provided .* lower than the current nonce/i.test(text);
+  });
+}
+
+function isSimulationRevert(error) {
+  const chain = errorChain(error);
+  if (chain.some((cause) => errorField(cause, "name") === "EstimateGasExecutionError")) {
+    return true;
+  }
+
+  // A hard transaction error can also mention "execution reverted", but its
+  // viem wrapper has no estimate-gas phase. Do not retry those wrapped errors.
+  const hasTransactionWrapper = chain.some((cause) =>
+    ["ContractFunctionExecutionError", "TransactionExecutionError"].includes(errorField(cause, "name")),
+  );
+  return chain.some((cause) => {
+    const name = String(errorField(cause, "name") ?? "");
+    const text = errorText(cause);
+
+    // Keep the fallback for unwrapped raw RPC errors and small fakes. Once a
+    // viem transaction wrapper is present, the estimate-gas marker above is
+    // required to distinguish simulation from a hard contract error.
+    if (hasTransactionWrapper) return false;
+    if (name === "ExecutionRevertedError") {
+      return true;
+    }
+    return /\bexecution\s+reverted\b/i.test(text) &&
+      !/\btransaction\s+(?:was\s+)?reverted\b/i.test(text);
+  });
+}
+
+function isTransientRpcError(error) {
+  return errorChain(error).some((cause) => {
+    const name = String(errorField(cause, "name") ?? "");
+    const text = errorText(cause);
+    const status = errorField(cause, "status") ?? errorField(cause, "statusCode");
+    if (TRANSIENT_TRANSPORT_NAMES.has(name)) return true;
+    if (name === "HttpRequestError" && Number.isInteger(status) && TRANSIENT_HTTP_STATUSES.has(status)) {
+      return true;
+    }
+    return TRANSIENT_RPC_MESSAGES.some((pattern) => pattern.test(text));
+  });
+}
+
+function retryInfo(run, step, message) {
+  if (typeof run?.info === "function") run.info(step, message);
+}
+
 // Retry writes whose SIMULATION reverts, briefly — real contract reverts keep
-// failing and surface after the last attempt. `run` supplies the step logger.
+// failing and surface immediately/after the last attempt. A stale nonce is
+// also transient: calling writeContract again prepares the transaction from
+// the wallet's refreshed pending nonce. `run` supplies the step logger.
 export async function writeWithLagRetry(wallet, params, step, run, attempts = 5, delayMs = 3000) {
   let lastError;
   for (let i = 0; i < attempts; i += 1) {
@@ -62,18 +196,47 @@ export async function writeWithLagRetry(wallet, params, step, run, attempts = 5,
       return await wallet.writeContract(params);
     } catch (error) {
       lastError = error;
-      const message = String(error?.message ?? error);
-      const simulationRevert =
-        message.includes("reverted") || message.includes("execution reverted");
-      if (!simulationRevert || i === attempts - 1) throw error;
-      run.info(
+      const simulationRevert = isSimulationRevert(error);
+      const nonceTooLow = isNonceSubmissionError(error);
+      if ((!simulationRevert && !nonceTooLow) || i === attempts - 1) {
+        throw smokeErrorFor(step, error);
+      }
+      const reason = nonceTooLow ?
+        "stale nonce (possible provider lag)" :
+        "simulation reverted (possible replica lag)";
+      retryInfo(
+        run,
         step,
-        `simulation reverted (possible replica lag), retry ${i + 1}/${attempts - 1} in ${delayMs}ms`,
+        `${reason}, retry ${i + 1}/${attempts - 1} in ${delayMs}ms`,
       );
       await sleep(delayMs);
     }
   }
-  throw lastError;
+  throw smokeErrorFor(step, lastError);
+}
+
+// Retry an idempotent RPC read across short-lived provider/transport outages.
+// The callback is invoked again for every attempt, so callers never reuse a
+// stale read promise. `run` is optional for callers that do not need logging.
+export async function readWithLagRetry(read, step, run, attempts = 3, delayMs = 1000) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await read();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientRpcError(error) || i === attempts - 1) {
+        throw smokeErrorFor(step, error);
+      }
+      retryInfo(
+        run,
+        step,
+        `transient RPC read failure, retry ${i + 1}/${attempts - 1} in ${delayMs}ms`,
+      );
+      await sleep(delayMs);
+    }
+  }
+  throw smokeErrorFor(step, lastError);
 }
 
 // Poll a fresh campaignStatus read until it reaches one of `wanted`, or throw

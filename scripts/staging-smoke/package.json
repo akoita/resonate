@@ -12,7 +12,8 @@
     "smoke:dry-run": "node lifecycle-smoke.mjs --dry-run",
     "drill": "node reconciliation-drill.mjs",
     "drill:dry-run": "node reconciliation-drill.mjs --dry-run",
-    "check": "node --check lib.mjs && node --check lifecycle-smoke.mjs && node --check reconciliation-drill.mjs"
+    "test": "node --test lib.test.mjs",
+    "check": "node --check lib.mjs && node --check lifecycle-smoke.mjs && node --check reconciliation-drill.mjs && node --check lib.test.mjs"
   },
   "dependencies": {
     "viem": "^2.55.18"

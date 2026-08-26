@@ -66,6 +66,7 @@ import {
   int,
   sleep,
   writeWithLagRetry,
+  readWithLagRetry,
   readStatusUntil,
   fetchJson,
   authHeaders,
@@ -133,14 +134,22 @@ async function main() {
   let smokeUsdcAtStart; // baseline for the auto-mode refund restoration assertion
   {
     const t = Date.now();
-    const chainId = await publicClient.getChainId();
+    const chainId = await readWithLagRetry(
+      () => publicClient.getChainId(),
+      "preflight",
+      run,
+    );
     if (chainId !== EXPECTED_CHAIN_ID) {
       throw new SmokeError("preflight", `RPC chainId ${chainId} != expected ${EXPECTED_CHAIN_ID}`);
     }
-    const [usdc, gas] = await Promise.all([
-      publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [smokeAccount.address] }),
-      publicClient.getBalance({ address: smokeAccount.address }),
-    ]);
+    const [usdc, gas] = await readWithLagRetry(
+      () => Promise.all([
+        publicClient.readContract({ address: PAYMENT_TOKEN, abi: ERC20_ABI, functionName: "balanceOf", args: [smokeAccount.address] }),
+        publicClient.getBalance({ address: smokeAccount.address }),
+      ]),
+      "preflight",
+      run,
+    );
     if (usdc < MIN_USDC_UNITS) {
       throw new SmokeError(
         "preflight",
