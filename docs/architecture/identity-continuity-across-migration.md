@@ -78,3 +78,33 @@ can treat "known user missing on target" as a failure), `2` on bad input.
 The property is covered by `backend/src/tests/resolve_identity.integration.spec.ts`,
 including a case that deletes and re-creates the same rows (a simulated
 dump→restore) and asserts the resolution is byte-identical.
+
+For the migrate-first production target, `verify:migration` also has an
+explicit `--strict-cutover` mode. Strict snapshots require the same reviewed
+identity selector on source and target, exact track, release, and Shows sample
+selectors, and labelled source-project and source-bucket references. Analytics
+requires its own exact sample when `--analytics-required` is selected. The
+snapshot retains only sample presence and a SHA-256 digest of each forbidden
+reference value; it never retains those sample selectors or reference values.
+
+```bash
+# Run once against the frozen source and once against the restored target.
+npm run verify:migration -- --snapshot --strict-cutover \
+  --out <source-or-target.json> \
+  --wallet <reviewed-wallet> \
+  --sample-track <reviewed-track-id> \
+  --sample-release <reviewed-release-id> \
+  --sample-show-campaign <reviewed-show-id> \
+  --forbidden-reference source-project=<source-project-id> \
+  --forbidden-reference source-bucket=<source-bucket-name>
+
+npm run verify:migration -- --compare <source.json> <target.json> \
+  --strict-cutover
+```
+
+Strict comparison blocks on missing identity or sample evidence, row loss,
+cursor loss or regression, inconsistent reference receipts, a different
+reference-value digest between snapshots, or any forbidden source reference
+remaining on the target. Snapshot files still contain the existing resolved
+identity record and must be handled as private migration evidence; the final
+cross-system receipt retains their hashes rather than their contents.

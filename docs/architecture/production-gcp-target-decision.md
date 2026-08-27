@@ -147,7 +147,11 @@ remain independent.
   remains the production-target bootstrap, migration execution, cutover, and
   source-retention umbrella.
 - [#1663](https://github.com/akoita/resonate/issues/1663) owns the sanitized
-  target configuration matrix and cross-system application cutover smoke.
+  target configuration matrix and cross-system application cutover smoke. Its
+  repository-side strict migration verifier and secret-free evidence contract
+  are `partial`; the issue remains open until an authorized target run supplies
+  the configuration, smoke, live-revision, rollback, and source-retention
+  evidence.
 - [`resonate-iac#215`](https://github.com/akoita/resonate-iac/issues/215) owns
   the post-import URI, source-reference, allowlist, analytics/Pub/Sub, and
   fail-closed verification gaps found during the first live migration.
