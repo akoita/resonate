@@ -555,12 +555,12 @@ describe('CatalogService (integration)', () => {
     }
   });
 
-  it('uses the storage provider for unencrypted marketplace previews before localhost fetch', async () => {
+  it('uses the contained source loader for unencrypted marketplace previews', async () => {
     const releaseId = `${TEST_PREFIX}preview_release_unencrypted`;
     const trackId = `${TEST_PREFIX}preview_track_unencrypted`;
     const stemId = `${TEST_PREFIX}preview_stem_unencrypted`;
     const stemUri = 'resonate-stems-staging/originals/preview-raw.mp3';
-    const download = jest.fn().mockResolvedValue(Buffer.from('raw-preview'));
+    const loadSourceBuffer = jest.fn().mockResolvedValue(Buffer.from('raw-preview'));
     const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('should not fetch'));
 
     await prisma.release.create({
@@ -595,8 +595,8 @@ describe('CatalogService (integration)', () => {
 
     const previewCatalog = new CatalogService(
       eventBus,
-      { decrypt: jest.fn() } as unknown as EncryptionService,
-      { download, upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
+      { decrypt: jest.fn(), loadSourceBuffer } as unknown as EncryptionService,
+      { download: jest.fn(), upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
       new UploadRightsRoutingService(),
     );
 
@@ -604,7 +604,7 @@ describe('CatalogService (integration)', () => {
       const preview = await previewCatalog.getStemPreview(stemId);
 
       expect(preview.data.toString()).toBe('raw-preview');
-      expect(download).toHaveBeenCalledWith(stemUri);
+      expect(loadSourceBuffer).toHaveBeenCalledWith(stemUri);
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -612,6 +612,104 @@ describe('CatalogService (integration)', () => {
       await prisma.track.delete({ where: { id: trackId } });
       await prisma.release.delete({ where: { id: releaseId } });
     }
+  });
+
+  it('does not raw-fetch a hostile stem URI after source policy rejection', async () => {
+    const releaseId = `${TEST_PREFIX}hostile_release`;
+    const trackId = `${TEST_PREFIX}hostile_track`;
+    const stemId = `${TEST_PREFIX}hostile_stem`;
+    const hostileUri = 'http://evil.example/catalog/stems/existing.wav/blob';
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Hostile Source',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Hostile Source Track',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: hostileUri,
+        storageProvider: 'local',
+      },
+    });
+
+    try {
+      await expect(
+        catalog.getStemBlob(stemId, { includeRestricted: true }),
+      ).resolves.toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
+  it('stops after a missing local-disk source instead of fetching its own blob route', async () => {
+    const releaseId = `${TEST_PREFIX}missing_local_release`;
+    const trackId = `${TEST_PREFIX}missing_local_track`;
+    const stemId = `${TEST_PREFIX}missing_local_stem`;
+    const loadSourceBuffer = jest.fn();
+    const localCatalog = new CatalogService(
+      eventBus,
+      { loadSourceBuffer } as unknown as EncryptionService,
+      new LocalStorageProvider(),
+      new UploadRightsRoutingService(),
+    );
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Missing Local Source',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.track.create({
+      data: { id: trackId, releaseId, title: 'Missing Local Source Track' },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: `/catalog/stems/${stemId}.mp3/blob`,
+        storageProvider: 'local',
+      },
+    });
+
+    try {
+      await expect(
+        localCatalog.getStemBlob(stemId, { includeRestricted: true }),
+      ).resolves.toBeNull();
+      expect(loadSourceBuffer).not.toHaveBeenCalled();
+    } finally {
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
+  it('retains contained disk lookup compatibility for legacy bare local filenames', () => {
+    expect(
+      (catalog as any).getLocalStemFilename({ id: 'fallback-id', uri: 'legacy-stem.mp3' }),
+    ).toBe('legacy-stem.mp3');
   });
 
   it('persists processing errors on failed releases and tracks', async () => {

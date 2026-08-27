@@ -158,7 +158,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
     const [, setIsDecrypting] = useState(false);
-    const { signMessage, address } = useAuth();
+    const { signMessage, address, token } = useAuth();
     const type = stem.type.toLowerCase();
     const shouldLoad = enabled && mixerVolume > 0 && volume > 0;
 
@@ -213,7 +213,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             // Start new decryption
             const decryptionPromise = (async () => {
                 // Calculate AuthSig using ZeroDev/Kernel signer
-                if (!address) throw new Error("No wallet connected for decryption");
+                if (!address || !token) throw new Error("Authentication required for decryption");
 
                 const authSig = await getAuthSig(signMessage, address);
 
@@ -224,7 +224,10 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
 
                 const proxyResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000"}/encryption/decrypt`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`,
+                    },
                     body: JSON.stringify({
                         uri: currentUri,
                         metadata: rawMetadata,
@@ -275,7 +278,7 @@ const StemAudio = React.memo(({ stem, masterAudio, isPlaying, volume, mixerVolum
             active = false;
             // Don't revoke blob URLs - they're cached and shared
         };
-    }, [stem.uri, stem.isEncrypted, stem.encryptionMetadata, address, signMessage, type, shouldLoad]);
+    }, [stem.uri, stem.isEncrypted, stem.encryptionMetadata, address, token, signMessage, type, shouldLoad]);
 
     useEffect(() => {
         const el = audioRef.current;

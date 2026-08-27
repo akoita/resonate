@@ -1,5 +1,6 @@
 import { X402Controller } from '../modules/x402/x402.controller';
 import { X402Config } from '../modules/x402/x402.config';
+import { StorageUriPolicyError } from '../modules/storage/storage_uri_policy';
 import { encodeAbiParameters, encodeEventTopics } from 'viem';
 
 const ERC20_TRANSFER_EVENT = {
@@ -100,6 +101,7 @@ describe('X402Controller', () => {
   const encryptionService = {
     decrypt: jest.fn(),
     decryptBuffer: jest.fn(),
+    loadSourceBuffer: jest.fn(),
   };
   const storageProvider = {
     download: jest.fn(),
@@ -112,6 +114,8 @@ describe('X402Controller', () => {
     prisma.stemListing.findFirst.mockResolvedValue(null);
     storageProvider.download.mockReset();
     encryptionService.decryptBuffer.mockReset();
+    encryptionService.loadSourceBuffer.mockReset();
+    encryptionService.loadSourceBuffer.mockResolvedValue(Buffer.from([1, 2, 3, 4]));
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
@@ -475,7 +479,7 @@ describe('X402Controller', () => {
     expect(prisma.contractEvent.create).not.toHaveBeenCalled();
   });
 
-  it('resolves relative local blob URLs and records PAYMENT-SIGNATURE receipts', async () => {
+  it('loads relative local blob URLs through the contained source service', async () => {
     prisma.stem.findUnique.mockResolvedValue({
       id: 'stem_local',
       type: 'vocals',
@@ -511,9 +515,10 @@ describe('X402Controller', () => {
 
     await controller.downloadWithPayment('stem_local', req, res);
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:3000/catalog/stems/e2e-x402.m4a/blob',
+    expect(encryptionService.loadSourceBuffer).toHaveBeenCalledWith(
+      '/catalog/stems/e2e-x402.m4a/blob',
     );
+    expect(global.fetch).not.toHaveBeenCalled();
     expect(res.headers['Content-Type']).toBe('audio/mp4');
     expect(res.headers['Content-Disposition']).toContain('Local Stem.m4a');
     expect(prisma.contractEvent.create).toHaveBeenCalledWith({
@@ -604,10 +609,10 @@ describe('X402Controller', () => {
     });
   });
 
-  it('decrypts paid x402 downloads from storage before falling back to public blob URLs', async () => {
+  it('decrypts paid x402 downloads through the contained source service', async () => {
     const encryptedData = Buffer.from('encrypted-stem');
     const decryptedData = Buffer.from('decrypted-stem');
-    storageProvider.download.mockResolvedValue(encryptedData);
+    encryptionService.loadSourceBuffer.mockResolvedValue(encryptedData);
     encryptionService.decryptBuffer.mockResolvedValue(decryptedData);
     prisma.stem.findUnique.mockResolvedValue({
       id: 'stem_encrypted',
@@ -651,9 +656,10 @@ describe('X402Controller', () => {
 
     await controller.downloadWithPayment('stem_encrypted', req, res);
 
-    expect(storageProvider.download).toHaveBeenCalledWith(
+    expect(encryptionService.loadSourceBuffer).toHaveBeenCalledWith(
       '/catalog/stems/stem_encrypted/blob',
     );
+    expect(storageProvider.download).not.toHaveBeenCalled();
     expect(encryptionService.decryptBuffer).toHaveBeenCalledWith(
       encryptedData,
       expect.any(String),
@@ -665,6 +671,28 @@ describe('X402Controller', () => {
     expect(global.fetch).not.toHaveBeenCalled();
     expect(res.body).toEqual(decryptedData);
     expect(res.headers['X-Resonate-License']).toBe('personal');
+  });
+
+  it('does not derive a fetch authority from the request Host for a hostile URI', async () => {
+    const controller = new X402Controller(
+      createMockConfig(),
+      encryptionService as any,
+    );
+    const policyError = new StorageUriPolicyError('source', 'URI rejected');
+    encryptionService.loadSourceBuffer.mockRejectedValue(policyError);
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(
+      (controller as any).fetchPaidStemSourceBuffer({
+        uri: 'https://evil.example/escape.mp3',
+      }),
+    ).rejects.toBe(policyError);
+
+    expect(encryptionService.loadSourceBuffer).toHaveBeenCalledWith(
+      'https://evil.example/escape.mp3',
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
   });
 
   it('verifies smart-account x402 payments from token Transfer logs', async () => {

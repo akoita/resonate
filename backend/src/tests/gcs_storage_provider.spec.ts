@@ -1,5 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { GcsStorageProvider } from '../modules/storage/gcs_storage_provider';
+import { BOUNDED_REMOTE_RESPONSE_CEILING_BYTES } from '../modules/storage/bounded_remote_fetch';
+import { StorageUriPolicyError } from '../modules/storage/storage_uri_policy';
 
 describe('GcsStorageProvider', () => {
   const getClient = jest.fn();
@@ -115,6 +117,105 @@ describe('GcsStorageProvider', () => {
       }),
     );
 
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects a hostile authority before token lookup or fetch', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(
+      provider.download('https://storage.googleapis.com.evil.example/resonate-stems-staging/originals/stem.mp3'),
+    ).rejects.toBeInstanceOf(StorageUriPolicyError);
+
+    expect(getClient).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects a URI for a different GCS bucket before token lookup or fetch', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(
+      provider.download('gs://another-bucket/originals/stem.mp3'),
+    ).rejects.toBeInstanceOf(StorageUriPolicyError);
+
+    expect(getClient).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects a redirect escape before a credentialed follow-up request', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      status: 302,
+      ok: false,
+      headers: new Headers({ location: 'https://evil.example/steal' }),
+      body: null,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as any);
+
+    await expect(
+      provider.download('gs://resonate-stems-staging/originals/stem.mp3'),
+    ).rejects.toBeInstanceOf(StorageUriPolicyError);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer test-token' }),
+        redirect: 'manual',
+      }),
+    );
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects an explicitly ported redirect before URL normalization can widen it', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      status: 302,
+      ok: false,
+      headers: new Headers({
+        location: 'https://storage.googleapis.com:443/resonate-stems-staging/originals/stem.mp3',
+      }),
+      body: null,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as any);
+
+    await expect(
+      provider.download('gs://resonate-stems-staging/originals/stem.mp3'),
+    ).rejects.toBeInstanceOf(StorageUriPolicyError);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    fetchSpy.mockRestore();
+  });
+
+  it('rejects a declared oversized response', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+      status: 200,
+      ok: true,
+      headers: new Headers({
+        'content-length': String(BOUNDED_REMOTE_RESPONSE_CEILING_BYTES + 1),
+      }),
+      body: null,
+      arrayBuffer: async () => new ArrayBuffer(0),
+    } as any);
+
+    await expect(
+      provider.download('gs://resonate-stems-staging/originals/stem.mp3'),
+    ).rejects.toThrow(/ceiling|declares/i);
+    fetchSpy.mockRestore();
+  });
+
+  it('validates an invalid delete URI before token lookup or fetch', async () => {
+    const provider = makeProvider();
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await expect(provider.delete('https://evil.example/other/stem.mp3')).rejects.toBeInstanceOf(
+      StorageUriPolicyError,
+    );
+    expect(getClient).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
 });

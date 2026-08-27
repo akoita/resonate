@@ -6,6 +6,10 @@ import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import {
+  assertSafeLocalFilename,
+  resolveLocalStorageUri,
+} from "../storage/storage_uri_policy";
+import {
   CatalogTrackStatusEvent,
   IpNftMintedEvent,
   StemsProcessedEvent,
@@ -287,67 +291,26 @@ export class CatalogService implements OnModuleInit {
     `;
   }
 
-  private resolveInternalUri(uri: string): string {
-    const trimmedUri = uri.trim();
-    const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-
-    if (trimmedUri.startsWith("/")) {
-      return `${baseUrl}${trimmedUri}`;
-    }
-
-    if (trimmedUri.startsWith("catalog/")) {
-      return `${baseUrl}/${trimmedUri}`;
-    }
-
-    return trimmedUri;
-  }
-
   private async fetchStemSourceBuffer(uri: string): Promise<Buffer> {
-    const trimmedUri = uri.trim();
-    if (!trimmedUri) {
+    if (typeof uri !== "string" || !uri.trim()) {
       throw new BadRequestException("Stem has no source URI");
     }
 
-    try {
-      const downloaded = await this.storageProvider.download(trimmedUri);
-      if (downloaded) {
-        return downloaded;
-      }
-    } catch (error) {
-      console.warn(`[Catalog] Storage provider download failed for ${trimmedUri}:`, error);
-    }
-
-    const resolvedUri = this.resolveInternalUri(trimmedUri);
-    if (!/^https?:\/\//i.test(resolvedUri)) {
-      throw new BadRequestException(`Unsupported stem source URI: ${trimmedUri}`);
-    }
-
-    const response = await fetch(resolvedUri);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch stem content: ${response.status}`);
-    }
-
-    return Buffer.from(await response.arrayBuffer());
+    // All complete source reads go through EncryptionService so provider
+    // selection, URI policy, redirects, response limits, and local
+    // compatibility handling stay in one boundary.  In particular, do not
+    // fall back to a generic fetch after a provider rejection.
+    return this.encryptionService.loadSourceBuffer(uri);
   }
 
   private getLocalStemFilename(stem: { id: string; uri: string }) {
     const trimmedUri = stem.uri.trim();
-    if (!trimmedUri) {
-      return stem.id;
-    }
-
-    // Bare local filenames are stored directly for original uploads.
     if (!trimmedUri.includes("/")) {
-      return trimmedUri;
+      return assertSafeLocalFilename(trimmedUri || stem.id);
     }
 
-    const parts = trimmedUri.split("/").filter(Boolean);
-    const blobIndex = parts.lastIndexOf("blob");
-    if (blobIndex > 0) {
-      return parts[blobIndex - 1];
-    }
-
-    return parts[parts.length - 1] || stem.id;
+    const backendOrigin = `http://localhost:${process.env.PORT || 3000}`;
+    return resolveLocalStorageUri(trimmedUri, { backendOrigin }).filename;
   }
 
   constructor(
@@ -2566,9 +2529,16 @@ export class CatalogService implements OnModuleInit {
       } catch (err) {
         console.error(`[Catalog] Failed to read stem ${stem.id} from disk:`, err);
       }
+
+      // A local catalog URI points back to this handler. Once its contained
+      // disk lookup misses, fetching the URI would recursively call this same
+      // route rather than discover another source.
+      return null;
     }
 
-    // 3. Remote storage providers (GCS/IPFS/etc.) - prefer provider-aware download first.
+    // 3. Provider-aware range reads remain available for callers that request
+    // a byte range.  Full reads below use EncryptionService so a range
+    // failure can never turn into an arbitrary network fetch.
     if (stem.uri && stem.storageProvider && stem.storageProvider !== "local") {
       if (options?.range) {
         try {
@@ -2588,31 +2558,20 @@ export class CatalogService implements OnModuleInit {
           console.error(`[Catalog] Failed to fetch range for stem ${stem.id} via storage provider:`, err);
         }
       }
+    }
 
+    // 4. Complete reads use the contained source loader.  Operational
+    // failures retain the existing null result expected by catalog callers;
+    // there is deliberately no generic HTTP fallback here.
+    if (stem.uri) {
       try {
-        console.log(`[Catalog] Fetching stem ${stem.id} via storage provider: ${stem.uri}`);
-        const fetchedData = await this.storageProvider.download(stem.uri);
+        console.log(`[Catalog] Fetching stem ${stem.id} through contained source loader: ${stem.uri}`);
+        const fetchedData = await this.encryptionService.loadSourceBuffer(stem.uri);
         if (fetchedData) {
           return { data: fetchedData, mimeType: stem.mimeType || "audio/mpeg" };
         }
       } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} via storage provider:`, err);
-      }
-    }
-
-    // 4. Generic HTTP URI fallback
-    if (stem.uri && stem.uri.startsWith("http")) {
-      try {
-        console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
-        const response = await fetch(stem.uri, {
-          signal: AbortSignal.timeout(120000), // 2 minutes for large files
-        });
-        if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
-          return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
-        }
-      } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
+        console.error(`[Catalog] Failed to load stem ${stem.id} through source loader:`, err);
       }
     }
 

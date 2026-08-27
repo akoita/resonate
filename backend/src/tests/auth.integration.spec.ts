@@ -20,6 +20,9 @@ const EXISTING_FAKE_WALLET = addressFromOffset(4n);
 const EXISTING_REAL_WALLET = addressFromOffset(5n);
 const DRIFTED_USER_ID = addressFromOffset(6n);
 const DRIFTED_WALLET = addressFromOffset(7n);
+const LINKED_USER_ID = addressFromOffset(8n);
+const LINKED_WALLET = addressFromOffset(9n);
+const LINKED_OWNER = addressFromOffset(10n);
 const PASSKEY_X = '1'.repeat(64);
 const PASSKEY_Y = '2'.repeat(64);
 
@@ -35,13 +38,13 @@ describe('AuthService wallet identity persistence (integration)', () => {
 
   afterAll(async () => {
     await prisma.passkeyIdentity.deleteMany({
-      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
+      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID, LINKED_USER_ID] } },
     }).catch(() => {});
     await prisma.wallet.deleteMany({
-      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
+      where: { userId: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID, LINKED_USER_ID] } },
     }).catch(() => {});
     await prisma.user.deleteMany({
-      where: { id: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID] } },
+      where: { id: { in: [USER_ID, EXISTING_USER_ID, DRIFTED_USER_ID, LINKED_USER_ID] } },
     }).catch(() => {});
   });
 
@@ -135,5 +138,36 @@ describe('AuthService wallet identity persistence (integration)', () => {
       firstWalletAddress: EXISTING_REAL_WALLET,
       lastWalletAddress: DRIFTED_WALLET,
     });
+  });
+
+  it('authorizes JWT subjects and persisted linked wallet or owner addresses', async () => {
+    expect(await service.isAddressForUser(USER_ID, USER_ID.toUpperCase())).toBe(true);
+
+    await prisma.user.create({
+      data: {
+        id: LINKED_USER_ID,
+        email: `${LINKED_USER_ID}@wallet.resonate`,
+      },
+    });
+    await prisma.wallet.create({
+      data: {
+        userId: LINKED_USER_ID,
+        address: LINKED_WALLET,
+        chainId: 11155111,
+        accountType: 'erc4337',
+        provider: 'erc4337',
+        ownerAddress: LINKED_OWNER,
+      },
+    });
+
+    await expect(
+      service.isAddressForUser(LINKED_USER_ID.toUpperCase(), LINKED_WALLET.toUpperCase()),
+    ).resolves.toBe(true);
+    await expect(
+      service.isAddressForUser(LINKED_USER_ID, LINKED_OWNER.toUpperCase()),
+    ).resolves.toBe(true);
+    await expect(
+      service.isAddressForUser(LINKED_USER_ID, addressFromOffset(11n)),
+    ).resolves.toBe(false);
   });
 });
