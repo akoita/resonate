@@ -5,6 +5,21 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { createHash } from 'crypto';
 import { StorageProvider } from '../storage/storage_provider';
 import {
+    BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
+    fetchBoundedRemote,
+    GCS_REMOTE_FETCH_TIMEOUT_MS,
+    BoundedRemoteResponseLimitError,
+} from '../storage/bounded_remote_fetch';
+import {
+    GcsStorageUri,
+    LighthouseStorageUri,
+    LocalStorageUri,
+    resolveGcsStorageUri,
+    resolveLighthouseStorageUri,
+    resolveLocalStorageUri,
+    StorageUriPolicyError,
+} from '../storage/storage_uri_policy';
+import {
     EncryptionProvider,
     EncryptionContext,
     EncryptedPayload,
@@ -74,18 +89,46 @@ export class EncryptionService {
         }
     }
 
-    /**
-     * Resolve a URI for server-side fetch.
-     * Relative paths (e.g. /catalog/stems/...) are prefixed with the backend's own base URL
-     * because Node.js fetch() requires absolute URLs.
-     */
-    private resolveUri(uri: string): string {
-        if (uri.startsWith('http://') || uri.startsWith('https://')) {
-            return uri;
-        }
+    private backendOrigin(): string {
         const port = this.configService.get('PORT') || process.env.PORT || '3000';
-        const baseUrl = `http://localhost:${port}`;
-        return `${baseUrl}${uri.startsWith('/') ? '' : '/'}${uri}`;
+        return `http://localhost:${port}`;
+    }
+
+    private resolveUri(uri: string): string {
+        const local = resolveLocalStorageUri(uri, { backendOrigin: this.backendOrigin() });
+        return local.target || `${this.backendOrigin()}${local.relativePath}`;
+    }
+
+    private resolveSourceUri(uri: string):
+        | { kind: 'local'; resolved: LocalStorageUri; target: string }
+        | { kind: 'gcs'; resolved: GcsStorageUri; target: string }
+        | { kind: 'lighthouse'; resolved: LighthouseStorageUri; target: string } {
+        try {
+            const resolved = resolveLocalStorageUri(uri, { backendOrigin: this.backendOrigin() });
+            return {
+                kind: 'local',
+                resolved,
+                target: resolved.target || `${this.backendOrigin()}${resolved.relativePath}`,
+            };
+        } catch {
+            // Try the other canonical provider forms below.  The final error
+            // is intentionally a typed source-boundary rejection.
+        }
+
+        try {
+            const bucket = this.configService.get<string>('GCS_STEMS_BUCKET', 'resonate-stems-dev');
+            const resolved = resolveGcsStorageUri(uri, bucket);
+            return { kind: 'gcs', resolved, target: resolved.target };
+        } catch {
+            // Continue to the Lighthouse/IPFS parser.
+        }
+
+        try {
+            const resolved = resolveLighthouseStorageUri(uri);
+            return { kind: 'lighthouse', resolved, target: resolved.target };
+        } catch {
+            throw new StorageUriPolicyError('source', 'URI is not an approved storage destination');
+        }
     }
 
     get isReady(): boolean {
@@ -97,6 +140,8 @@ export class EncryptionService {
     }
 
     private async fetchSourceBuffer(uri: string): Promise<Buffer> {
+        const source = this.resolveSourceUri(uri);
+
         if (this.storageProvider) {
             try {
                 const downloaded = await this.storageProvider.download(uri);
@@ -105,19 +150,48 @@ export class EncryptionService {
                     return downloaded;
                 }
             } catch (error: any) {
+                if (
+                    error instanceof BoundedRemoteResponseLimitError ||
+                    source.kind !== 'local'
+                ) {
+                    throw error;
+                }
                 this.logger.warn(
                     `[Decrypt] Storage provider download failed for ${uri}: ${error?.message || error}`,
                 );
             }
         }
 
+        if (source.kind !== 'local') {
+            throw new Error('Storage provider did not return the approved remote source');
+        }
+
         const resolvedUri = this.resolveUri(uri);
         this.logger.log(`[Decrypt] Fetching source via HTTP: ${resolvedUri}`);
-        const response = await fetch(resolvedUri);
-        if (!response.ok) {
+        const response = await fetchBoundedRemote(resolvedUri, {
+            timeoutMs: GCS_REMOTE_FETCH_TIMEOUT_MS,
+            maxBytes: BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
+            validateTarget: (target) => {
+                const validated = resolveLocalStorageUri(target, { backendOrigin: this.backendOrigin() });
+                const canonicalTarget = validated.target || `${this.backendOrigin()}${validated.relativePath}`;
+                if (canonicalTarget !== target) {
+                    throw new StorageUriPolicyError('local', 'redirect target is not canonical');
+                }
+            },
+        });
+        if (response.status < 200 || response.status >= 300) {
             throw new Error(`Failed to fetch encrypted data: ${response.status}`);
         }
-        return Buffer.from(await response.arrayBuffer());
+        return response.data;
+    }
+
+    /**
+     * Load a source through the same contained storage boundary used by
+     * decryption.  Controllers use this for unencrypted downloads so they do
+     * not need a second raw-fetch path.
+     */
+    async loadSourceBuffer(uri: string): Promise<Buffer> {
+        return this.fetchSourceBuffer(uri);
     }
 
     /**
@@ -173,6 +247,10 @@ export class EncryptionService {
         metadata: string,
         authSig: { address: string; sig: string; signedMessage: string },
     ): Promise<Buffer> {
+        // Validate the persisted destination even when a decrypted-cache hit
+        // would otherwise avoid the source loader entirely.
+        this.resolveSourceUri(uri);
+
         // Check cache first
         const cacheKey = createHash('sha256').update(uri).digest('hex');
         const cachePath = join(this.cacheDir, `${cacheKey}.mp3`);

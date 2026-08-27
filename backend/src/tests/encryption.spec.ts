@@ -9,8 +9,9 @@ import { createHash } from 'crypto';
 import { rmSync } from 'fs';
 import { join } from 'path';
 import { EncryptionService } from '../modules/encryption/encryption.service';
+import { StorageUriPolicyError } from '../modules/storage/storage_uri_policy';
 
-const TEST_STEM_URI = 'https://storage.googleapis.com/private/stem.mp3';
+const TEST_STEM_URI = 'https://storage.googleapis.com/resonate-stems-dev/private/stem.mp3';
 const TEST_STEM_CACHE_PATH = join(
   process.cwd(),
   'uploads',
@@ -65,6 +66,7 @@ describe('EncryptionService', () => {
 
   afterEach(() => {
     clearTestStemCache();
+    jest.restoreAllMocks();
   });
 
   describe('isReady', () => {
@@ -184,6 +186,109 @@ describe('EncryptionService', () => {
           requesterAddress: '0xABC',
         }),
       );
+      expect(mockStorageProvider.download).not.toHaveBeenCalled();
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('does not fall through to raw fetch after a storage policy rejection', async () => {
+      mockStorageProvider.download.mockRejectedValueOnce(new StorageUriPolicyError('gcs', 'rejected'));
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await expect(
+        service.decrypt(
+          TEST_STEM_URI,
+          '',
+          [],
+          { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+        ),
+      ).rejects.toBeInstanceOf(StorageUriPolicyError);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('falls back through the bounded local catalog path only after provider failure', async () => {
+      mockStorageProvider.download.mockRejectedValueOnce(new Error('provider unavailable'));
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+        status: 200,
+        ok: true,
+        headers: new Headers(),
+        body: null,
+        arrayBuffer: async () => Buffer.from('local-audio').buffer,
+      } as any);
+
+      const result = await service.decrypt(
+        '/catalog/stems/local.mp3/blob',
+        '',
+        [],
+        { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+      );
+
+      expect(result.toString()).toContain('local-audio');
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'http://localhost:3000/catalog/stems/local.mp3/blob',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it('allows a provider policy rejection to fall back only for canonical local sources', async () => {
+      mockStorageProvider.download.mockRejectedValueOnce(
+        new StorageUriPolicyError('gcs', 'provider does not handle local URIs'),
+      );
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue({
+        status: 200,
+        ok: true,
+        headers: new Headers(),
+        body: null,
+        arrayBuffer: async () => Buffer.from('local-audio').buffer,
+      } as any);
+
+      const result = await service.decrypt(
+        '/catalog/stems/local.mp3/blob',
+        '',
+        [],
+        { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+      );
+
+      expect(result.toString()).toContain('local-audio');
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'http://localhost:3000/catalog/stems/local.mp3/blob',
+        expect.objectContaining({ redirect: 'manual' }),
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it('does not raw-fetch an arbitrary remote source after provider null', async () => {
+      mockStorageProvider.download.mockResolvedValueOnce(null);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await expect(
+        service.decrypt(
+          TEST_STEM_URI,
+          '',
+          [],
+          { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+        ),
+      ).rejects.toThrow('approved remote source');
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+      fetchSpy.mockRestore();
+    });
+
+    it('rejects an arbitrary source before calling storage or fetch', async () => {
+      const fetchSpy = jest.spyOn(global, 'fetch');
+
+      await expect(
+        service.decrypt(
+          'https://evil.example/source.mp3',
+          '',
+          [],
+          { address: '0xABC', sig: '0x1234', signedMessage: 'test' },
+        ),
+      ).rejects.toBeInstanceOf(StorageUriPolicyError);
+
       expect(mockStorageProvider.download).not.toHaveBeenCalled();
       expect(fetchSpy).not.toHaveBeenCalled();
       fetchSpy.mockRestore();

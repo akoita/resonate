@@ -314,7 +314,6 @@ export class X402Controller {
         }
         const audioBuffer = await this.loadPaidStemAudio({
           stem,
-          req,
           responseMimeType: stem.mimeType || 'audio/mpeg',
         });
         this.writePaidStemResponse({
@@ -340,7 +339,6 @@ export class X402Controller {
         buyerAddress,
         assetInfo,
       });
-      const resolvedStemUrl = this.resolveStemUrl(stem.uri, req);
       const responseMimeType = stem.mimeType || 'audio/mpeg';
 
       if (
@@ -446,9 +444,7 @@ export class X402Controller {
       if (stem.encryptionMetadata) {
         const encryptedBuffer = await this.fetchPaidStemSourceBuffer({
           uri: stem.uri,
-          resolvedUri: resolvedStemUrl,
           data: stem.data,
-          errorLabel: 'encrypted data',
         });
         // Decrypt using the encryption service with a server-side auth sig
         const serverAuthSig = {
@@ -466,9 +462,7 @@ export class X402Controller {
       } else {
         audioBuffer = await this.fetchPaidStemSourceBuffer({
           uri: stem.uri,
-          resolvedUri: resolvedStemUrl,
           data: stem.data,
-          errorLabel: 'stem',
         });
       }
 
@@ -710,16 +704,12 @@ export class X402Controller {
       data?: Buffer | Uint8Array | null;
       encryptionMetadata?: string | null;
     };
-    req: Request;
     responseMimeType: string;
   }) {
-    const resolvedStemUrl = this.resolveStemUrl(input.stem.uri, input.req);
     if (input.stem.encryptionMetadata) {
       const encryptedBuffer = await this.fetchPaidStemSourceBuffer({
         uri: input.stem.uri,
-        resolvedUri: resolvedStemUrl,
         data: input.stem.data,
-        errorLabel: 'encrypted data',
       });
       const serverAuthSig = {
         address: this.x402Config.payoutAddress.toLowerCase(),
@@ -737,9 +727,7 @@ export class X402Controller {
 
     return this.fetchPaidStemSourceBuffer({
       uri: input.stem.uri,
-      resolvedUri: resolvedStemUrl,
       data: input.stem.data,
-      errorLabel: 'stem',
     });
   }
 
@@ -1204,50 +1192,18 @@ export class X402Controller {
     return (intPart + paddedDec).replace(/^0+/, '') || '0';
   }
 
-  private resolveStemUrl(uri: string, req: Request) {
-    if (/^https?:\/\//i.test(uri)) {
-      return uri;
-    }
-
-    const forwardedProto = req.headers['x-forwarded-proto'];
-    const protocol = Array.isArray(forwardedProto)
-      ? forwardedProto[0]
-      : forwardedProto || req.protocol || 'http';
-    const host = req.get('host') || process.env.BACKEND_HOST || 'localhost:3000';
-
-    return new URL(uri, `${protocol}://${host}`).toString();
-  }
-
   private async fetchPaidStemSourceBuffer(input: {
     uri: string;
-    resolvedUri: string;
     data?: Buffer | Uint8Array | null;
-    errorLabel: string;
   }): Promise<Buffer> {
     if (input.data && input.data.length > 0) {
       return Buffer.isBuffer(input.data) ? input.data : Buffer.from(input.data);
     }
 
-    if (this.storageProvider) {
-      for (const candidate of [input.uri, input.resolvedUri]) {
-        try {
-          const downloaded = await this.storageProvider.download(candidate);
-          if (downloaded) {
-            this.logger.log(`x402 loaded paid stem source via storage provider: ${candidate}`);
-            return downloaded;
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.warn(`x402 storage download failed for ${candidate}: ${message}`);
-        }
-      }
-    }
-
-    const response = await fetch(input.resolvedUri);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch ${input.errorLabel}: ${response.status}`);
-    }
-    return Buffer.from(await response.arrayBuffer());
+    // URI reads must use the central source boundary.  It validates the
+    // persisted destination and applies the bounded provider/local fetch
+    // policy; request Host/proto values are never used to choose an origin.
+    return this.encryptionService.loadSourceBuffer(input.uri);
   }
 
   private getDownloadExtension(uri: string, mimeType: string) {

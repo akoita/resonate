@@ -412,8 +412,8 @@ export default function LibraryPage() {
     };
 
     const handleStemDownload = async (stem: LocalTrack) => {
-        if (!address) {
-            addToast({ type: "error", title: "Error", message: "Wallet not connected" });
+        if (!address || !token) {
+            addToast({ type: "error", title: "Error", message: "Authentication required" });
             return;
         }
 
@@ -423,7 +423,10 @@ export default function LibraryPage() {
             // Use the secured download endpoint with ownership verification
             const response = await fetch("/api/encryption/download", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                },
                 body: JSON.stringify({
                     stemId: stem.id,
                     walletAddress: smartAccountAddress || address,
