@@ -71,8 +71,9 @@ Use these project skills:
 - New issue or durable task: `.agents/skills/start-issue/SKILL.md`
 - Finish, verify, commit, push, PR, merge, and cleanup:
   `.agents/skills/finish-issue/SKILL.md`
-- Milestone or sprint planning: `.agents/skills/plan-milestone/SKILL.md`; never
-  create or reassign milestone scope before explicit approval.
+- Milestone or sprint planning: use the `plan-milestone` skill from
+  `codex-utilities@agent-toolkit`; never create or reassign milestone scope
+  before explicit approval.
 - Any security request: `.agents/skills/auditing-resonate-security/SKILL.md`
 
 Skill architecture and runtime setup are documented in
