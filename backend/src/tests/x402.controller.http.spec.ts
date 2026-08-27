@@ -50,6 +50,7 @@ const { prisma } = jest.requireMock('../db/prisma') as {
 
 const mockEncryptionService = {
   decrypt: jest.fn(),
+  loadSourceBuffer: jest.fn(),
 };
 
 @Module({
@@ -102,6 +103,7 @@ describe('X402Controller HTTP contract', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockEncryptionService.loadSourceBuffer.mockResolvedValue(Buffer.from([1, 2, 3, 4]));
     prisma.x402Settlement.findUnique.mockResolvedValue(null);
     prisma.x402Settlement.findFirst.mockResolvedValue(null);
     prisma.stemListing.findFirst.mockResolvedValue(null);
@@ -191,6 +193,9 @@ describe('X402Controller HTTP contract', () => {
       'application/vnd.resonate.purchase-receipt+json',
     );
     expect(res.headers['content-disposition']).toContain('Local Stem.m4a');
+    expect(mockEncryptionService.loadSourceBuffer).toHaveBeenCalledWith(
+      '/catalog/stems/e2e-x402.m4a/blob',
+    );
     expect(prisma.contractEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         eventName: 'x402.purchase',
