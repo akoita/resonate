@@ -180,6 +180,13 @@ environment:
 6. trial and document the smallest bounded nonzero TTL supported by that warm
    cache evidence.
 
+Use the fail-closed [#1666 staging runbook](../operations/artwork-cache-staging-validation.md)
+for fixture approval, private rollback evidence, exact release/runtime
+reconciliation, replacement commands, record sanitization, and maintenance-
+window closure. The repository sample Shows campaigns are active and therefore
+are not valid replacement fixtures; the supported API trial uses a newly
+created disposable draft campaign.
+
 Rollback is setting the deployment variable back to `0`; no schema rollback or
 URL migration is required. Do not describe a nonzero TTL as selected or
 production-ready until the staging record is linked from #1604.

@@ -1,0 +1,469 @@
+{
+  "schemaVersion": "resonate-staging-artwork-cache-evidence/v1",
+  "generatedAt": "2026-08-27T20:00:00Z",
+  "issueUrl": "https://github.com/akoita/resonate/issues/1666",
+  "production": false,
+  "fixturesDisposable": true,
+  "sourceSha": "1111111111111111111111111111111111111111",
+  "sourceEvidenceUrl": "https://evidence.example.invalid/source/1111111",
+  "phases": [
+    {
+      "name": "baseline-ttl-0",
+      "kind": "baseline",
+      "status": "pass",
+      "ttlSeconds": 0,
+      "sourceSha": "1111111111111111111111111111111111111111",
+      "release": {
+        "status": "pass",
+        "runId": "release-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "evidenceUrl": "https://evidence.example.invalid/release/32903515660"
+      },
+      "images": {
+        "status": "pass",
+        "runId": "image-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "services": [
+          {
+            "name": "backend",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "evidenceUrl": "https://evidence.example.invalid/images/backend"
+          },
+          {
+            "name": "frontend",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "evidenceUrl": "https://evidence.example.invalid/images/frontend"
+          },
+          {
+            "name": "demucs",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "evidenceUrl": "https://evidence.example.invalid/images/demucs"
+          }
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/images"
+      },
+      "deploy": {
+        "status": "pass",
+        "runId": "deploy-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "manifestSha256": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "evidenceUrl": "https://evidence.example.invalid/deploy/32903515660"
+      },
+      "iac": {
+        "status": "pass",
+        "repository": "https://github.com/akoita/resonate-iac",
+        "runId": "iac-1666-baseline",
+        "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "evidenceUrl": "https://evidence.example.invalid/iac/baseline"
+      },
+      "live": {
+        "status": "pass",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "revision": "resonate-staging-release-001",
+        "services": [
+          {
+            "name": "backend",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "revision": "resonate-staging-backend-001",
+            "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "evidenceUrl": "https://evidence.example.invalid/live/backend"
+          },
+          {
+            "name": "frontend",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "revision": "resonate-staging-frontend-001",
+            "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "evidenceUrl": "https://evidence.example.invalid/live/frontend"
+          },
+          {
+            "name": "demucs",
+            "sourceSha": "1111111111111111111111111111111111111111",
+            "revision": "resonate-staging-demucs-001",
+            "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "evidenceUrl": "https://evidence.example.invalid/live/demucs"
+          }
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/live/baseline"
+      },
+      "performance": {
+        "status": "pass",
+        "schema": "resonate.home-performance/2",
+        "target": "https://staging.example.invalid/",
+        "route": "/",
+        "runs": 5,
+        "requestedRuns": 5,
+        "discardedAttempts": [],
+        "viewport": {
+          "width": 1440,
+          "height": 900
+        },
+        "settleMs": 3000,
+        "cold": {
+          "lcpMs": 450,
+          "cls": 0.01,
+          "fcpMs": 200,
+          "ttfbMs": 80,
+          "domContentLoadedMs": 300,
+          "loadMs": 500,
+          "tbtProxyMs": 0,
+          "longTaskCount": 1,
+          "totalBytes": 2048,
+          "jsBytes": 1024,
+          "requests": 12,
+          "optimizerCache": {
+            "requestCount": 10,
+            "statuses": {
+              "HIT": 0,
+              "MISS": 10,
+              "STALE": 0,
+              "REVALIDATED": 0,
+              "unknown": 0
+            },
+            "hits": 0,
+            "misses": 10
+          }
+        },
+        "warm": {
+          "lcpMs": 300,
+          "cls": 0.01,
+          "fcpMs": 120,
+          "ttfbMs": 40,
+          "domContentLoadedMs": 180,
+          "loadMs": 250,
+          "tbtProxyMs": 0,
+          "longTaskCount": 0,
+          "totalBytes": 512,
+          "jsBytes": 0,
+          "requests": 4,
+          "optimizerCache": {
+            "requestCount": 10,
+            "statuses": {
+              "HIT": 10,
+              "MISS": 0,
+              "STALE": 0,
+              "REVALIDATED": 0,
+              "unknown": 0
+            },
+            "hits": 10,
+            "misses": 0
+          }
+        },
+        "breakdown": {
+          "basis": "cold",
+          "representativeRun": 1,
+          "byType": [],
+          "topResponses": [],
+          "images": {
+            "totalBytes": 0,
+            "responseCount": 0,
+            "distinctCount": 0,
+            "duplicateRequests": 0,
+            "medianBytes": 0,
+            "maxBytes": 0,
+            "heavyThresholdBytes": 102400,
+            "heavyCount": 0,
+            "heavyBytes": 0,
+            "heavy": []
+          }
+        },
+        "rawRuns": [
+          {
+            "cold": {
+              "lcpMs": 450,
+              "cls": 0.01,
+              "fcpMs": 200,
+              "ttfbMs": 80,
+              "domContentLoadedMs": 300,
+              "loadMs": 500,
+              "tbtProxyMs": 0,
+              "longTaskCount": 1,
+              "totalBytes": 2048,
+              "jsBytes": 1024,
+              "requests": 12,
+              "optimizerCache": {
+                "requestCount": 2,
+                "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0},
+                "hits": 0,
+                "misses": 2
+              }
+            },
+            "warm": {
+              "lcpMs": 300,
+              "cls": 0.01,
+              "fcpMs": 120,
+              "ttfbMs": 40,
+              "domContentLoadedMs": 180,
+              "loadMs": 250,
+              "tbtProxyMs": 0,
+              "longTaskCount": 0,
+              "totalBytes": 512,
+              "jsBytes": 0,
+              "requests": 4,
+              "optimizerCache": {
+                "requestCount": 2,
+                "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0},
+                "hits": 2,
+                "misses": 0
+              }
+            },
+            "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}
+          },
+          {
+            "cold": {
+              "lcpMs": 450,
+              "cls": 0.01,
+              "fcpMs": 200,
+              "ttfbMs": 80,
+              "domContentLoadedMs": 300,
+              "loadMs": 500,
+              "tbtProxyMs": 0,
+              "longTaskCount": 1,
+              "totalBytes": 2048,
+              "jsBytes": 1024,
+              "requests": 12,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}
+            },
+            "warm": {
+              "lcpMs": 300,
+              "cls": 0.01,
+              "fcpMs": 120,
+              "ttfbMs": 40,
+              "domContentLoadedMs": 180,
+              "loadMs": 250,
+              "tbtProxyMs": 0,
+              "longTaskCount": 0,
+              "totalBytes": 512,
+              "jsBytes": 0,
+              "requests": 4,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}
+            },
+            "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}
+          },
+          {
+            "cold": {
+              "lcpMs": 450,
+              "cls": 0.01,
+              "fcpMs": 200,
+              "ttfbMs": 80,
+              "domContentLoadedMs": 300,
+              "loadMs": 500,
+              "tbtProxyMs": 0,
+              "longTaskCount": 1,
+              "totalBytes": 2048,
+              "jsBytes": 1024,
+              "requests": 12,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}
+            },
+            "warm": {
+              "lcpMs": 300,
+              "cls": 0.01,
+              "fcpMs": 120,
+              "ttfbMs": 40,
+              "domContentLoadedMs": 180,
+              "loadMs": 250,
+              "tbtProxyMs": 0,
+              "longTaskCount": 0,
+              "totalBytes": 512,
+              "jsBytes": 0,
+              "requests": 4,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}
+            },
+            "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}
+          },
+          {
+            "cold": {
+              "lcpMs": 450,
+              "cls": 0.01,
+              "fcpMs": 200,
+              "ttfbMs": 80,
+              "domContentLoadedMs": 300,
+              "loadMs": 500,
+              "tbtProxyMs": 0,
+              "longTaskCount": 1,
+              "totalBytes": 2048,
+              "jsBytes": 1024,
+              "requests": 12,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}
+            },
+            "warm": {
+              "lcpMs": 300,
+              "cls": 0.01,
+              "fcpMs": 120,
+              "ttfbMs": 40,
+              "domContentLoadedMs": 180,
+              "loadMs": 250,
+              "tbtProxyMs": 0,
+              "longTaskCount": 0,
+              "totalBytes": 512,
+              "jsBytes": 0,
+              "requests": 4,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}
+            },
+            "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}
+          },
+          {
+            "cold": {
+              "lcpMs": 450,
+              "cls": 0.01,
+              "fcpMs": 200,
+              "ttfbMs": 80,
+              "domContentLoadedMs": 300,
+              "loadMs": 500,
+              "tbtProxyMs": 0,
+              "longTaskCount": 1,
+              "totalBytes": 2048,
+              "jsBytes": 1024,
+              "requests": 12,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}
+            },
+            "warm": {
+              "lcpMs": 300,
+              "cls": 0.01,
+              "fcpMs": 120,
+              "ttfbMs": 40,
+              "domContentLoadedMs": 180,
+              "loadMs": 250,
+              "tbtProxyMs": 0,
+              "longTaskCount": 0,
+              "totalBytes": 512,
+              "jsBytes": 0,
+              "requests": 4,
+              "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}
+            },
+            "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}
+          }
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/performance/baseline"
+      },
+      "artwork": {
+        "release": {
+          "fixtureId": "release-fixture-1666",
+          "visualKey": "cover",
+          "before": {"revision": 1, "key": "/catalog/releases/release-fixture-1666/artwork/v1", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/release-before"},
+          "after": {"revision": 2, "key": "/catalog/releases/release-fixture-1666/artwork/v2", "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/release-after"},
+          "restore": {"revision": 3, "key": "/catalog/releases/release-fixture-1666/artwork/v3", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/release-restore"},
+          "legacyReadable": true,
+          "replacementImmediate": true,
+          "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/release"
+        },
+        "shows": {
+          "fixtureId": "shows-fixture-1666",
+          "visualKey": "hero",
+          "before": {"revision": 1, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v1", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/shows-before"},
+          "after": {"revision": 2, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v2", "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/shows-after"},
+          "restore": {"revision": 3, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v3", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/shows-restore"},
+          "legacyReadable": true,
+          "replacementImmediate": true,
+          "evidenceUrl": "https://evidence.example.invalid/artwork/baseline/shows"
+        }
+      }
+    },
+    {
+      "name": "candidate-ttl-60",
+      "kind": "candidate",
+      "status": "pass",
+      "ttlSeconds": 60,
+      "sourceSha": "1111111111111111111111111111111111111111",
+      "release": {
+        "status": "pass",
+        "runId": "release-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "evidenceUrl": "https://evidence.example.invalid/release/32903515660"
+      },
+      "images": {
+        "status": "pass",
+        "runId": "image-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "services": [
+          {"name": "backend", "sourceSha": "1111111111111111111111111111111111111111", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/images/backend"},
+          {"name": "frontend", "sourceSha": "1111111111111111111111111111111111111111", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "evidenceUrl": "https://evidence.example.invalid/images/frontend"},
+          {"name": "demucs", "sourceSha": "1111111111111111111111111111111111111111", "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "evidenceUrl": "https://evidence.example.invalid/images/demucs"}
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/images"
+      },
+      "deploy": {
+        "status": "pass",
+        "runId": "deploy-32903515660",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "manifestSha256": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "evidenceUrl": "https://evidence.example.invalid/deploy/32903515660"
+      },
+      "iac": {
+        "status": "pass",
+        "repository": "https://github.com/akoita/resonate-iac",
+        "runId": "iac-1666-candidate",
+        "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "evidenceUrl": "https://evidence.example.invalid/iac/candidate"
+      },
+      "live": {
+        "status": "pass",
+        "sourceSha": "1111111111111111111111111111111111111111",
+        "revision": "resonate-staging-release-002",
+        "services": [
+          {"name": "backend", "sourceSha": "1111111111111111111111111111111111111111", "revision": "resonate-staging-backend-002", "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/live/backend"},
+          {"name": "frontend", "sourceSha": "1111111111111111111111111111111111111111", "revision": "resonate-staging-frontend-002", "digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "evidenceUrl": "https://evidence.example.invalid/live/frontend"},
+          {"name": "demucs", "sourceSha": "1111111111111111111111111111111111111111", "revision": "resonate-staging-demucs-002", "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "evidenceUrl": "https://evidence.example.invalid/live/demucs"}
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/live/candidate"
+      },
+      "performance": {
+        "status": "pass",
+        "schema": "resonate.home-performance/2",
+        "target": "https://staging.example.invalid/",
+        "route": "/",
+        "runs": 5,
+        "requestedRuns": 5,
+        "discardedAttempts": [],
+        "viewport": {"width": 1440, "height": 900},
+        "settleMs": 3000,
+        "cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 10, "statuses": {"HIT": 0, "MISS": 10, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 10}},
+        "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 10, "statuses": {"HIT": 10, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 10, "misses": 0}},
+        "breakdown": {"basis": "cold", "representativeRun": 1, "byType": [], "topResponses": [], "images": {"totalBytes": 0, "responseCount": 0, "distinctCount": 0, "duplicateRequests": 0, "medianBytes": 0, "maxBytes": 0, "heavyThresholdBytes": 102400, "heavyCount": 0, "heavyBytes": 0, "heavy": []}},
+        "rawRuns": [
+          {"cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}}, "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}}, "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}},
+          {"cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}}, "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}}, "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}},
+          {"cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}}, "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}}, "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}},
+          {"cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}}, "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}}, "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}},
+          {"cold": {"lcpMs": 450, "cls": 0.01, "fcpMs": 200, "ttfbMs": 80, "domContentLoadedMs": 300, "loadMs": 500, "tbtProxyMs": 0, "longTaskCount": 1, "totalBytes": 2048, "jsBytes": 1024, "requests": 12, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 0, "MISS": 2, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 0, "misses": 2}}, "warm": {"lcpMs": 300, "cls": 0.01, "fcpMs": 120, "ttfbMs": 40, "domContentLoadedMs": 180, "loadMs": 250, "tbtProxyMs": 0, "longTaskCount": 0, "totalBytes": 512, "jsBytes": 0, "requests": 4, "optimizerCache": {"requestCount": 2, "statuses": {"HIT": 2, "MISS": 0, "STALE": 0, "REVALIDATED": 0, "unknown": 0}, "hits": 2, "misses": 0}}, "checks": {"cold": {"ok": true, "status": 200}, "warm": {"ok": true, "status": 200}}}
+        ],
+        "evidenceUrl": "https://evidence.example.invalid/performance/candidate"
+      },
+      "artwork": {
+        "release": {
+          "fixtureId": "release-fixture-1666",
+          "visualKey": "cover",
+          "before": {"revision": 4, "key": "/catalog/releases/release-fixture-1666/artwork/v4", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/release-before"},
+          "after": {"revision": 5, "key": "/catalog/releases/release-fixture-1666/artwork/v5", "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/release-after"},
+          "restore": {"revision": 6, "key": "/catalog/releases/release-fixture-1666/artwork/v6", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/release-restore"},
+          "legacyReadable": true,
+          "replacementImmediate": true,
+          "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/release"
+        },
+        "shows": {
+          "fixtureId": "shows-fixture-1666",
+          "visualKey": "hero",
+          "before": {"revision": 4, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v4", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/shows-before"},
+          "after": {"revision": 5, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v5", "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/shows-after"},
+          "restore": {"revision": 6, "key": "/shows/campaigns/shows-fixture-1666/visuals/hero/v6", "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/shows-restore"},
+          "legacyReadable": true,
+          "replacementImmediate": true,
+          "evidenceUrl": "https://evidence.example.invalid/artwork/candidate/shows"
+        }
+      }
+    }
+  ],
+  "rollback": {
+    "status": "pass",
+    "ttlSeconds": 0,
+    "production": false,
+    "fixturesRestored": true,
+    "sourceRetained": true,
+    "trigger": "Any failed gate restores staging TTL 0 and stops the candidate.",
+    "evidenceUrl": "https://evidence.example.invalid/rollback"
+  }
+}
