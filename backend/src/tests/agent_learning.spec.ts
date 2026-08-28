@@ -63,6 +63,35 @@ describe("agent learning loop", () => {
     });
   });
 
+  it("rejects over-limit scalar metadata and bounds arrays before mapping", () => {
+    const genres = Array.from({ length: 9 }, (_, index) => `genre-${index}`);
+    Object.defineProperty(genres, 8, {
+      configurable: true,
+      get() {
+        throw new Error("entries beyond maxItems must not be mapped");
+      },
+    });
+
+    const metadata = buildAgentSignalMetadata({
+      source: "s".repeat(81),
+      sessionIntent: "i".repeat(64),
+      genres,
+    });
+
+    expect(metadata.source).toBeUndefined();
+    expect(metadata.sessionIntent).toBe("i".repeat(64));
+    expect(metadata.genres).toEqual([
+      "genre-0",
+      "genre-1",
+      "genre-2",
+      "genre-3",
+      "genre-4",
+      "genre-5",
+      "genre-6",
+      "genre-7",
+    ]);
+  });
+
   it("falls back to user-selected vibes until enough signals exist", () => {
     const profile = computeAgentTasteProfileFromSignals([], ["Focus", "Ambient"]);
 
