@@ -42,6 +42,13 @@ admitted issues.
 | 3 | Usability and security | #1677 structured encryption errors | API clients and operators | Deterministic safe errors improve the client contract while removing exception reflection. | Alert 13 is fixed; responses are structured and non-HTML while logs retain safe context. |
 | 4 | Business value and security | #1678 realtime-session ownership | Creators using realtime generation | Cross-user session control would undermine trust in a revenue-supporting creation surface. | Alert 16 is fixed; every session operation enforces server-derived ownership with two-client tests. |
 
+### #1677 encryption failure contract
+
+The decrypt endpoint returns HTTP 500 with `{ "error": "decryption_failed", "message":
+"Decryption failed." }`. The download endpoint returns HTTP 500 with `{ "error":
+"download_failed", "message": "Download failed." }`. Diagnostic exception details
+stay server-side; successful audio responses and headers are unchanged.
+
 ## Blocked Or Deferred Candidates
 
 | Issue | Dependency state | Reason deferred | Clearing action |

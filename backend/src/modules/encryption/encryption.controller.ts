@@ -25,6 +25,23 @@ export class EncryptionController {
         @Optional() private readonly authService?: AuthService,
     ) { }
 
+    private respondWithOperationFailure(
+        operation: 'decrypt' | 'download',
+        error: unknown,
+        res: Response,
+    ): void {
+        const diagnostic = error instanceof Error ? error.stack || error.message : undefined;
+        this.logger.error(
+            `Encryption ${operation} operation failed (provider: ${this.encryptionService.providerName})`,
+            diagnostic,
+        );
+
+        const responseBody = operation === 'decrypt'
+            ? { error: 'decryption_failed', message: 'Decryption failed.' }
+            : { error: 'download_failed', message: 'Download failed.' };
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json(responseBody);
+    }
+
     /**
      * Decrypt endpoint - provider-agnostic
      * 
@@ -36,6 +53,9 @@ export class EncryptionController {
      * - dataToEncryptHash: Used as metadata for AES provider
      * - accessControlConditions: Legacy Lit Protocol field
      * - metadata: Direct AES metadata (preferred for new clients)
+     *
+     * Unexpected failures return HTTP 500 with:
+     * { "error": "decryption_failed", "message": "Decryption failed." }
      */
     @Post('decrypt')
     @UseGuards(AuthGuard('jwt'))
@@ -90,9 +110,8 @@ export class EncryptionController {
             });
 
             return new StreamableFile(decryptedBuffer);
-        } catch (error: any) {
-            this.logger.error(`Decryption endpoint failed for URI ${uri}: ${error.message}`);
-            res.status(HttpStatus.INTERNAL_SERVER_ERROR).send(error.message || 'Decryption failed.');
+        } catch (error: unknown) {
+            this.respondWithOperationFailure('decrypt', error, res);
         }
     }
 
@@ -105,6 +124,9 @@ export class EncryptionController {
      * Required fields:
      * - stemId: The stem ID to download
      * - walletAddress: The wallet address claiming ownership
+     *
+     * Unexpected failures return HTTP 500 with:
+     * { "error": "download_failed", "message": "Download failed." }
      */
     @Post('download')
     @UseGuards(AuthGuard('jwt'))
@@ -204,9 +226,8 @@ export class EncryptionController {
             });
 
             return new StreamableFile(audioBuffer);
-        } catch (error: any) {
-            this.logger.error(`Download failed for stem ${stemId}: ${error.message}`);
-            res.status(HttpStatus.INTERNAL_SERVER_ERROR).send(error.message || 'Download failed.');
+        } catch (error: unknown) {
+            this.respondWithOperationFailure('download', error, res);
         }
     }
 }
