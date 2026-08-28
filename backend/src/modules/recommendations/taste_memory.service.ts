@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from "@nestjs/comm
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 import type { UserPreferences } from "./recommendations.service";
 
 export const TASTE_SIGNAL_TYPES = [
@@ -230,7 +231,7 @@ export class TasteMemoryService {
     const signalType = normalizeSignalType(input.signalType);
     const value = normalizeSignalValue(input.value);
     const action = normalizeSignalAction(input.action) ?? "hidden";
-    const source = normalizeOptionalString(input.source, 80);
+    const source = sanitizeSignalMetadataString(input.source, 80);
     if (!signalType || !value) {
       throw new BadRequestException("signalType and value are required");
     }
@@ -485,21 +486,7 @@ function normalizeExplanationPreference(value: unknown): RecommendationExplanati
 }
 
 function normalizeSignalValue(value: unknown) {
-  return normalizeOptionalString(value, 80);
-}
-
-function normalizeOptionalString(value: unknown, maxLength: number) {
-  if (typeof value !== "string") return undefined;
-  const cleaned = value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned || /https?:\/\//i.test(cleaned) || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(cleaned)) return undefined;
-  if (/\b(?:0x[a-fA-F0-9]{16,}|user[_:-]?[A-Za-z0-9_-]{6,}|session[_:-]?[A-Za-z0-9_-]{6,})\b/.test(cleaned)) {
-    return undefined;
-  }
-  return cleaned.length > maxLength ? cleaned.slice(0, maxLength).trimEnd() : cleaned;
+  return sanitizeSignalMetadataString(value, 80);
 }
 
 function normalizeKey(value: string) {

@@ -99,6 +99,13 @@ downranked signals are applied before recommendation reasons are returned, reset
 markers exclude older `AgentSignal` rows from learned profiles, and future
 social/cohort use of private taste data is disabled unless the listener opts in.
 
+Realtime agent-signal metadata is bounded before normalization. Each raw string
+must fit its existing field contract (from 16 to 240 characters), and genre and
+recommendation-explanation arrays are capped before their elements are scanned.
+The shared normalizer removes closed tag segments, control characters, unsafe
+identifiers, URLs, and email addresses using bounded work; an over-limit field
+is omitted rather than truncated or partially interpreted.
+
 ## Serving Table Contract
 
 Default table:

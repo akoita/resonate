@@ -218,6 +218,39 @@ describe('RecommendationsService (integration)', () => {
     expect(result.items[0].reasons).toContain('mood:Focus');
   });
 
+  it('persists an exact-limit taste signal and rejects an over-limit value', async () => {
+    const tasteMemory = new TasteMemoryService(new EventBus());
+    const exactValue = 'g'.repeat(80);
+
+    const control = await tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
+      signalType: 'genre',
+      value: exactValue,
+      source: 's'.repeat(80),
+    });
+
+    expect(control.value).toBe(exactValue);
+    await expect(tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
+      signalType: 'genre',
+      value: `${exactValue}x`,
+    })).rejects.toThrow('signalType and value are required');
+
+    const persisted = await prisma.listenerTasteSignalControl.findUnique({
+      where: {
+        userId_signalType_value: {
+          userId: `${TEST_PREFIX}user`,
+          signalType: 'genre',
+          value: exactValue,
+        },
+      },
+    });
+    expect(persisted?.value).toBe(exactValue);
+    expect(persisted?.source).toBe('s'.repeat(80));
+    const overLimit = await prisma.listenerTasteSignalControl.findFirst({
+      where: { userId: `${TEST_PREFIX}user`, signalType: 'genre', value: `${exactValue}x` },
+    });
+    expect(overLimit).toBeNull();
+  });
+
   it('falls back after reset instead of using older stored preferences', async () => {
     const eventBus = new EventBus();
     const tasteMemory = new TasteMemoryService(eventBus);
