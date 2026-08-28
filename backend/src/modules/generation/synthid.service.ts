@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { EncryptionService } from '../encryption/encryption.service';
 
 export interface SynthIdResult {
   /** Whether SynthID watermark was detected */
@@ -30,7 +31,10 @@ export class SynthIdService {
   private readonly projectId: string;
   private readonly location: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly encryptionService: EncryptionService,
+  ) {
     this.projectId = this.configService.get<string>('SYNTHID_PROJECT_ID', '');
     this.location = this.configService.get<string>('SYNTHID_LOCATION', 'us-central1');
   }
@@ -141,28 +145,14 @@ export class SynthIdService {
 
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
-      select: { uri: true, storageProvider: true },
+      select: { uri: true },
     });
 
     if (!stem?.uri) {
       throw new Error(`Stem ${stemId} not found or has no URI`);
     }
 
-    // Fetch audio bytes from storage URI
-    let audioBuffer: Buffer;
-    if (stem.uri.startsWith('http')) {
-      const response = await fetch(stem.uri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch stem audio: ${response.status}`);
-      }
-      audioBuffer = Buffer.from(await response.arrayBuffer());
-    } else {
-      // Local file
-      const { readFile } = await import('fs/promises');
-      const { join } = await import('path');
-      const path = stem.uri.startsWith('/') ? stem.uri : join(process.cwd(), stem.uri);
-      audioBuffer = await readFile(path);
-    }
+    const audioBuffer = await this.encryptionService.loadSourceBuffer(stem.uri);
 
     return this.verify(audioBuffer);
   }

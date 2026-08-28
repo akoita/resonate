@@ -38,6 +38,12 @@ denied, or disputed.
 a watermark (with a confidence value where available). It is a qualified
 technical/AI-provenance signal, not a rights, ownership, or licensing decision.
 
+Existing-stem SynthID verification requires an authenticated request. The
+backend resolves stored audio only through the canonical bounded storage
+loader, so neither request data nor a persisted URI can select an arbitrary
+remote authority or filesystem path. Uploaded-file verification remains a
+separate buffer-only flow.
+
 `Verified Economic Tier` is a qualified platform trust tier for economic
 controls such as stake, escrow, and listing limits. It is not `Human Verified`,
 independent account ownership proof, or release-rights approval.
