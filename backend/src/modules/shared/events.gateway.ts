@@ -9,7 +9,7 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, Optional } from '@nestjs/common';
 import { EventBus } from './event_bus';
 import {
     CatalogReleaseReadyEvent, CatalogTrackStatusEvent, StemsUploadedEvent, StemsProgressEvent,
@@ -21,7 +21,28 @@ import {
     ContractDisputeFiledEvent, ContractDisputeResolvedEvent, ContractDisputeAppealedEvent,
 } from '../../events/event_types';
 import { LyriaRealtimeService } from '../generation/lyria_realtime.service';
+import type { RealtimeSessionOwner } from '../generation/lyria_realtime.service';
+import { AuthService } from '../auth/auth.service';
 import { Subscription } from 'rxjs';
+
+interface RealtimeStartPayload {
+    trackId?: unknown;
+    bpm?: number;
+    key?: unknown;
+    density?: number;
+    brightness?: number;
+}
+
+interface RealtimeSessionPayload {
+    sessionId?: unknown;
+}
+
+type RealtimeErrorCode =
+    | 'AUTH_REQUIRED'
+    | 'INVALID_REQUEST'
+    | 'SESSION_ACCESS_DENIED'
+    | 'REALTIME_UNAVAILABLE'
+    | 'OPERATION_FAILED';
 
 @WebSocketGateway({
     cors: {
@@ -40,6 +61,7 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
     constructor(
         private readonly eventBus: EventBus,
         private readonly lyriaRealtime: LyriaRealtimeService,
+        @Optional() private readonly authService?: AuthService,
     ) {
         this.subscribeToEvents();
     }
@@ -437,10 +459,15 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
 
     handleDisconnect(client: Socket) {
         this.logger.log(`Client disconnected: ${client.id}`);
-        // Clean up any realtime sessions owned by this client
+
+        // The service owns the authoritative session map and also sees starts
+        // that are still awaiting provider connection.
+        this.lyriaRealtime.stopSessionsForSocket(client.id);
+
+        // Remove targeted delivery mappings for this socket after service-level
+        // cleanup has cancelled any pending or active sessions.
         for (const [sessionId, socketId] of this.sessionClients.entries()) {
             if (socketId === client.id) {
-                this.lyriaRealtime.stopSession(sessionId);
                 this.sessionClients.delete(sessionId);
                 this.logger.log(`Cleaned up realtime session ${sessionId} for disconnected client ${client.id}`);
             }
@@ -475,27 +502,94 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
 
     // ============ Realtime Message Handlers ============
 
+    private isValidRealtimeString(value: unknown): value is string {
+        return typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
+    }
+
+    private emitRealtimeError(client: Socket, code: RealtimeErrorCode): void {
+        const messages: Record<RealtimeErrorCode, string> = {
+            AUTH_REQUIRED: 'Authentication required',
+            INVALID_REQUEST: 'Invalid realtime request',
+            SESSION_ACCESS_DENIED: 'Realtime session unavailable',
+            REALTIME_UNAVAILABLE: 'Realtime generation unavailable',
+            OPERATION_FAILED: 'Realtime operation failed',
+        };
+        client.emit('realtime:error', { code, message: messages[code] });
+    }
+
+    /**
+     * Authenticate each realtime operation from the Socket.IO auth payload.
+     * No query-string, header, or message-body identity is accepted.
+     */
+    private getRealtimeOwner(client: Socket): RealtimeSessionOwner | null {
+        const auth = client.handshake?.auth;
+        const rawToken =
+            typeof auth === 'string'
+                ? auth
+                : auth && typeof auth === 'object' && 'token' in auth
+                    ? (auth as { token?: unknown }).token
+                    : null;
+        let identity: { userId: string } | null;
+        try {
+            identity = this.authService?.verifyAccessToken(rawToken) ?? null;
+        } catch {
+            identity = null;
+        }
+        if (!identity || !this.isValidRealtimeString(identity.userId)) {
+            return null;
+        }
+        return { userId: identity.userId, socketId: client.id };
+    }
+
     @SubscribeMessage('realtime:start')
     async handleRealtimeStart(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { trackId: string; userId: string; bpm?: number; key?: string; density?: number; brightness?: number },
+        @MessageBody() data: RealtimeStartPayload,
     ) {
+        const owner = this.getRealtimeOwner(client);
+        if (!owner) {
+            this.emitRealtimeError(client, 'AUTH_REQUIRED');
+            return;
+        }
+
+        if (!this.isValidRealtimeString(data?.trackId)) {
+            this.emitRealtimeError(client, 'INVALID_REQUEST');
+            return;
+        }
+
         this.logger.log(`Realtime start request from ${client.id}: trackId=${data.trackId}`);
 
         if (!this.lyriaRealtime.isAvailable()) {
-            client.emit('realtime:error', { message: 'Lyria RealTime is not available' });
+            this.emitRealtimeError(client, 'REALTIME_UNAVAILABLE');
             return;
         }
 
         try {
             const sessionId = await this.lyriaRealtime.startSession({
                 trackId: data.trackId,
-                userId: data.userId,
+                owner,
                 bpm: data.bpm,
-                key: data.key,
+                key: typeof data.key === 'string' ? data.key : undefined,
                 density: data.density,
                 brightness: data.brightness,
             });
+
+            // A disconnect can cancel a service session while provider setup
+            // is still awaiting. Never map or acknowledge that session.
+            if (client.connected === false) {
+                try {
+                    this.lyriaRealtime.stopSession(sessionId, owner);
+                } catch {
+                    // Disconnect cleanup may already have removed the session.
+                }
+                return;
+            }
+
+            const state = this.lyriaRealtime.getSessionState(sessionId, owner);
+            if (!state || !state.isActive) {
+                this.emitRealtimeError(client, 'OPERATION_FAILED');
+                return;
+            }
 
             // Map session to this client for targeted audio delivery
             this.sessionClients.set(sessionId, client.id);
@@ -505,59 +599,123 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                 available: true,
             });
         } catch (error) {
-            this.logger.error(`Failed to start realtime session: ${error}`);
-            client.emit('realtime:error', { message: 'Failed to start realtime session' });
+            if (client.connected === false) return;
+            this.logger.error(`Failed to start realtime session: ${error instanceof Error ? error.message : 'unknown error'}`);
+            this.emitRealtimeError(client, 'OPERATION_FAILED');
         }
     }
 
     @SubscribeMessage('realtime:control')
     async handleRealtimeControl(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { sessionId: string; bpm?: number; key?: string; density?: number; brightness?: number },
+        @MessageBody() data: RealtimeSessionPayload & { bpm?: number; key?: string; density?: number; brightness?: number },
     ) {
+        const owner = this.getRealtimeOwner(client);
+        if (!owner) {
+            this.emitRealtimeError(client, 'AUTH_REQUIRED');
+            return;
+        }
+        if (!this.isValidRealtimeString(data?.sessionId)) {
+            this.emitRealtimeError(client, 'INVALID_REQUEST');
+            return;
+        }
+        if (this.sessionClients.get(data.sessionId) !== client.id) {
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
+            return;
+        }
+
         try {
-            await this.lyriaRealtime.updateControls(data.sessionId, {
+            await this.lyriaRealtime.updateControls(data.sessionId as string, owner, {
                 bpm: data.bpm,
                 key: data.key,
                 density: data.density,
                 brightness: data.brightness,
             });
         } catch (error) {
-            client.emit('realtime:error', { message: `Control update failed: ${error}` });
+            this.logger.warn(`Realtime control failed for ${client.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
         }
     }
 
     @SubscribeMessage('realtime:stop')
     async handleRealtimeStop(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { sessionId: string },
+        @MessageBody() data: RealtimeSessionPayload,
     ) {
-        this.logger.log(`Realtime stop request: sessionId=${data.sessionId}`);
-        this.lyriaRealtime.stopSession(data.sessionId);
-        this.sessionClients.delete(data.sessionId);
-        client.emit('realtime:stopped', { sessionId: data.sessionId });
+        const owner = this.getRealtimeOwner(client);
+        if (!owner) {
+            this.emitRealtimeError(client, 'AUTH_REQUIRED');
+            return;
+        }
+        if (!this.isValidRealtimeString(data?.sessionId)) {
+            this.emitRealtimeError(client, 'INVALID_REQUEST');
+            return;
+        }
+        if (this.sessionClients.get(data.sessionId) !== client.id) {
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
+            return;
+        }
+
+        try {
+            this.logger.log(`Realtime stop request: sessionId=${data.sessionId}`);
+            this.lyriaRealtime.stopSession(data.sessionId as string, owner);
+            this.sessionClients.delete(data.sessionId as string);
+            client.emit('realtime:stopped', { sessionId: data.sessionId });
+        } catch (error) {
+            this.logger.warn(`Realtime stop failed for ${client.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
+        }
     }
 
     @SubscribeMessage('realtime:record-start')
     async handleRecordStart(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { sessionId: string },
+        @MessageBody() data: RealtimeSessionPayload,
     ) {
+        const owner = this.getRealtimeOwner(client);
+        if (!owner) {
+            this.emitRealtimeError(client, 'AUTH_REQUIRED');
+            return;
+        }
+        if (!this.isValidRealtimeString(data?.sessionId)) {
+            this.emitRealtimeError(client, 'INVALID_REQUEST');
+            return;
+        }
+        if (this.sessionClients.get(data.sessionId) !== client.id) {
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
+            return;
+        }
+
         try {
-            this.lyriaRealtime.startRecording(data.sessionId);
+            this.lyriaRealtime.startRecording(data.sessionId as string, owner);
             client.emit('realtime:recording', { sessionId: data.sessionId, isRecording: true });
         } catch (error) {
-            client.emit('realtime:error', { message: `Record start failed: ${error}` });
+            this.logger.warn(`Realtime record start failed for ${client.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
         }
     }
 
     @SubscribeMessage('realtime:record-stop')
     async handleRecordStop(
         @ConnectedSocket() client: Socket,
-        @MessageBody() data: { sessionId: string },
+        @MessageBody() data: RealtimeSessionPayload,
     ) {
+        const owner = this.getRealtimeOwner(client);
+        if (!owner) {
+            this.emitRealtimeError(client, 'AUTH_REQUIRED');
+            return;
+        }
+        if (!this.isValidRealtimeString(data?.sessionId)) {
+            this.emitRealtimeError(client, 'INVALID_REQUEST');
+            return;
+        }
+        if (this.sessionClients.get(data.sessionId) !== client.id) {
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
+            return;
+        }
+
         try {
-            const wavBuffer = this.lyriaRealtime.stopRecording(data.sessionId);
+            const wavBuffer = this.lyriaRealtime.stopRecording(data.sessionId as string, owner);
             // Send the WAV data back as base64
             client.emit('realtime:recorded', {
                 sessionId: data.sessionId,
@@ -566,7 +724,8 @@ export class EventsGateway implements OnModuleInit, OnModuleDestroy, OnGatewayIn
                 sampleRate: 48000,
             });
         } catch (error) {
-            client.emit('realtime:error', { message: `Record stop failed: ${error}` });
+            this.logger.warn(`Realtime record stop failed for ${client.id}: ${error instanceof Error ? error.message : 'unknown error'}`);
+            this.emitRealtimeError(client, 'SESSION_ACCESS_DENIED');
         }
     }
 }

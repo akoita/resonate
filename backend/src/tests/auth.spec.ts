@@ -65,7 +65,10 @@ describe("AuthNonceService", () => {
 // ============ AuthService ============
 
 describe("AuthService", () => {
-  const mockJwt = { sign: jest.fn().mockReturnValue("mock-jwt-token") };
+  const mockJwt = {
+    sign: jest.fn().mockReturnValue("mock-jwt-token"),
+    verify: jest.fn(),
+  };
   const mockAudit = { log: jest.fn() };
   let authService: AuthService;
   let originalAdminAddresses: string | undefined;
@@ -80,6 +83,7 @@ describe("AuthService", () => {
     delete process.env.AGENT_ADDRESSES;
     delete process.env.OPERATOR_ADDRESSES;
     jest.clearAllMocks();
+    mockJwt.verify.mockReset();
     authService = new AuthService(mockJwt as any, mockAudit as any);
   });
 
@@ -93,6 +97,36 @@ describe("AuthService", () => {
     const result = authService.issueToken("0xuser123");
     expect(result.accessToken).toBe("mock-jwt-token");
     expect(mockJwt.sign).toHaveBeenCalledWith({ sub: "0xuser123", role: "listener" });
+  });
+
+  it("derives non-HTTP transport identity from a verified token subject", () => {
+    mockJwt.verify.mockReturnValue({ sub: "user-1", role: "admin" });
+
+    expect(authService.verifyAccessToken("signed-token")).toEqual({ userId: "user-1" });
+    expect(mockJwt.verify).toHaveBeenCalledWith("signed-token");
+  });
+
+  it.each([
+    ["missing token", undefined],
+    ["empty token", "   "],
+    ["missing subject", { token: "signed-token", payload: { role: "listener" } }],
+    ["empty subject", { token: "signed-token", payload: { sub: "   " } }],
+  ])("rejects %s for non-HTTP transport identity", (_label, input) => {
+    if (input && typeof input === "object") {
+      mockJwt.verify.mockReturnValue(input.payload);
+      expect(authService.verifyAccessToken(input.token)).toBeNull();
+      return;
+    }
+
+    expect(authService.verifyAccessToken(input)).toBeNull();
+  });
+
+  it("rejects invalid or expired non-HTTP transport tokens", () => {
+    mockJwt.verify.mockImplementation(() => {
+      throw new Error("jwt expired");
+    });
+
+    expect(authService.verifyAccessToken("expired-token")).toBeNull();
   });
 
   it("fails closed to listener for a self-requested privileged role", () => {
