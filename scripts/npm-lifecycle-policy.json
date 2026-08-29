@@ -84,10 +84,6 @@
     "web": {
       "lockfile": "web/package-lock.json",
       "packageLifecycles": {
-        "node_modules/esbuild@0.27.3": {
-          "disposition": "execute",
-          "rationale": "esbuild verifies and links the platform-specific executable used by the frontend toolchain."
-        },
         "node_modules/fsevents@2.3.2": {
           "disposition": "execute",
           "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
