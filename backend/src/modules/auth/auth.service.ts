@@ -30,6 +30,34 @@ export class AuthService {
   }
 
   /**
+   * Verify a bearer token for non-HTTP transports and return only the
+   * server-derived identity. Callers must not use claims other than `sub` for
+   * authorization decisions.
+   */
+  verifyAccessToken(rawToken: unknown): { userId: string } | null {
+    if (typeof rawToken !== "string" || !rawToken.trim()) {
+      return null;
+    }
+
+    try {
+      const payload = this.jwtService.verify(rawToken);
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+
+      const userId = (payload as { sub?: unknown }).sub;
+      if (typeof userId !== "string" || !userId.trim()) {
+        return null;
+      }
+
+      return { userId: userId.trim() };
+    } catch {
+      // Keep token-validation failures indistinguishable to transport callers.
+      return null;
+    }
+  }
+
+  /**
    * Resolve whether a claimed wallet address belongs to the authenticated
    * identity.  Passkey users can have a JWT subject that is the owner EOA
    * while the persisted wallet row contains the derived smart account (or
