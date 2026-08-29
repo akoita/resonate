@@ -113,12 +113,12 @@ test('a lockfile version mismatch fails closed', (t) => {
   const repositoryRoot = fixtureRepository(t);
   const lockfilePath = path.join(repositoryRoot, 'web/package-lock.json');
   const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
-  lockfile.packages['node_modules/esbuild'].version = '0.27.4';
+  lockfile.packages['node_modules/fsevents'].version = '2.3.4';
   fs.writeFileSync(lockfilePath, `${JSON.stringify(lockfile, null, 2)}\n`);
 
   const errors = validateLifecyclePolicy({ repositoryRoot });
-  assert.ok(errors.some((error) => error.includes('unreviewed lifecycle tuple node_modules/esbuild@0.27.4')));
-  assert.ok(errors.some((error) => error.includes('stale or mismatched lifecycle policy entry node_modules/esbuild@0.27.3')));
+  assert.ok(errors.some((error) => error.includes('unreviewed lifecycle tuple node_modules/fsevents@2.3.4')));
+  assert.ok(errors.some((error) => error.includes('stale or mismatched lifecycle policy entry node_modules/fsevents@2.3.2')));
 });
 
 test('the lock source checker covers the MCP example lockfile', (t) => {

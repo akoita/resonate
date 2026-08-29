@@ -20,7 +20,7 @@ strict installs.
 
 - npm is pinned to `11.14.1` through `packageManager` metadata and CI/Docker
   setup.
-- Node must be `>=20.17.0` and npm must be `>=11.10.0`; `engine-strict=true`
+- Node must be `>=20.19.0` and npm must be `>=11.10.0`; `engine-strict=true`
   makes incompatible local installs fail early.
 - `.npmrc` enables `min-release-age=7`, so npm only selects package versions
   that are at least seven days old.
