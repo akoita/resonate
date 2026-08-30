@@ -17,9 +17,6 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@lit-protocol/auth-browser": "^7.4.0",
-    "@lit-protocol/contracts-sdk": "^7.4.0",
-    "@lit-protocol/lit-node-client": "^7.4.0",
     "@walletconnect/modal": "^2.7.0",
     "@x402/core": "^2.22.0",
     "@x402/evm": "^2.22.0",

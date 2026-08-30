@@ -15,22 +15,6 @@
     "backend": {
       "lockfile": "backend/package-lock.json",
       "packageLifecycles": {
-        "node_modules/@google/genai/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
-        "node_modules/@grpc/proto-loader/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
-        "node_modules/@testcontainers/postgresql/node_modules/protobufjs@7.6.5": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
-        "node_modules/@opentelemetry/otlp-transformer/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
         "node_modules/@prisma/client@5.22.0": {
           "disposition": "execute",
           "executionOrder": 30,
@@ -45,19 +29,11 @@
           "disposition": "execute",
           "rationale": "Optional native CPU feature detection requires a platform build on supported developer and CI hosts."
         },
-        "node_modules/dockerode/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
         "node_modules/fsevents@2.3.3": {
           "disposition": "execute",
           "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
         },
-        "node_modules/google-gax/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
-        "node_modules/msgpackr-extract@3.0.3": {
+        "node_modules/msgpackr-extract@3.0.4": {
           "disposition": "execute",
           "rationale": "Optional native MessagePack acceleration selects or builds a platform binary during installation."
         },
@@ -66,11 +42,7 @@
           "executionOrder": 20,
           "rationale": "The Prisma CLI performs a supported-platform preinstall check needed before explicit prisma generate invocations."
         },
-        "node_modules/proto3-json-serializer/node_modules/protobufjs@7.5.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
-        },
-        "node_modules/protobufjs@6.11.4": {
+        "node_modules/protobufjs@7.6.5": {
           "disposition": "deny",
           "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
         },
@@ -87,10 +59,6 @@
         "node_modules/fsevents@2.3.2": {
           "disposition": "execute",
           "rationale": "Optional macOS filesystem event bindings require platform installation and must not be disabled without macOS coverage."
-        },
-        "node_modules/protobufjs@6.11.4": {
-          "disposition": "deny",
-          "rationale": "The protobufjs postinstall only prints a project support message and is not required for generated runtime artifacts."
         },
         "node_modules/unrs-resolver@1.11.1": {
           "disposition": "execute",
