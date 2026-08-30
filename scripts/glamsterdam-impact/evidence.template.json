@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "resonate-glamsterdam-repricing-evidence/v1",
+  "generatedAt": "2026-08-30T00:00:00Z",
+  "repo": {
+    "sha": "0000000000000000000000000000000000000000",
+    "date": "2026-08-30",
+    "specRevision": "glamsterdam-repricing-v1"
+  },
+  "chain": {
+    "chainId": 31337,
+    "network": "local-anvil",
+    "blockNumber": 0,
+    "rpcIdentifier": "local-anvil"
+  },
+  "contracts": [
+    { "role": "KernelFactory", "address": "0x0000000000000000000000000000000000000001" },
+    { "role": "StemNFT", "address": "0x0000000000000000000000000000000000000002" },
+    { "role": "ContentProtection", "address": "0x0000000000000000000000000000000000000003" },
+    { "role": "RevenueEscrow", "address": "0x0000000000000000000000000000000000000004" },
+    { "role": "ShowCampaignEscrow", "address": "0x0000000000000000000000000000000000000005" },
+    { "role": "StemMarketplaceV2", "address": "0x0000000000000000000000000000000000000006" }
+  ],
+  "observations": [
+    {
+      "flow": "stem_nft_mint",
+      "stateVariant": "cold",
+      "contractRole": "StemNFT",
+      "contractAddress": "0x0000000000000000000000000000000000000002",
+      "direct": { "estimateGas": null, "receipt": null },
+      "userOperation": null,
+      "txHash": null,
+      "comparison": null,
+      "classification": "not_applicable",
+      "rpcIdentifier": "local-anvil",
+      "notes": "Sanitized template; populate from an explicitly approved local characterization run.",
+      "blocker": null
+    },
+    {
+      "flow": "kernel_factory_initialization",
+      "stateVariant": "cold",
+      "contractRole": "KernelFactory",
+      "contractAddress": "0x0000000000000000000000000000000000000001",
+      "direct": { "estimateGas": null, "receipt": null },
+      "userOperation": {
+        "estimateGas": null,
+        "hash": null,
+        "txHash": null,
+        "receipt": null
+      },
+      "txHash": null,
+      "comparison": null,
+      "classification": "not_applicable",
+      "rpcIdentifier": "local-anvil",
+      "notes": "No chain or shared-network evidence is asserted by this template.",
+      "blocker": null
+    },
+    {
+      "flow": "content_protection_revoke_paginated",
+      "stateVariant": "paginated",
+      "contractRole": "ContentProtection",
+      "contractAddress": "0x0000000000000000000000000000000000000003",
+      "direct": { "estimateGas": null, "receipt": null },
+      "userOperation": null,
+      "txHash": null,
+      "comparison": null,
+      "classification": "not_applicable",
+      "rpcIdentifier": "local-anvil",
+      "notes": "Populate page-level receipts and estimates only after local execution.",
+      "blocker": null
+    }
+  ]
+}

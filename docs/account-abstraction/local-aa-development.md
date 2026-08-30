@@ -98,6 +98,37 @@ make web-dev-local
 1. `make local-aa-deploy`
 2. `make deploy-contracts`
 
+## Glamsterdam And Other Custom Devnets
+
+The local AA components are reusable on a custom execution network, but the
+existing Compose target is not portable unchanged. It hardcodes the Anvil
+service name, chain ID `31337`, ports, and deterministic local deployment
+addresses. For a Kurtosis network, use its published EL RPC, deploy the AA
+contracts to that chain, and start Alto with the resulting EntryPoint address
+and custom chain ID.
+
+Platåberget testing also requires EIP-8037-aware deployment headroom. A default
+Foundry estimate can simulate successfully and still exhaust the on-chain
+state-gas reservoir during code deposit. The reproducible topology and measured
+result are documented in the
+[Glamsterdam repricing impact matrix](../smart-contracts/glamsterdam-impact-matrix.md).
+
+The current app SDK path is not an end-to-end validation of this legacy local
+stack. `DeployLocalAA.s.sol` deploys the Kernel dependency's legacy
+`initialize(address,bytes)` surface, while the installed ZeroDev SDK's
+`KERNEL_V3_1` account builder emits the newer
+`initialize(bytes21,address,bytes,bytes,bytes[])` encoding. Alto can connect to
+the locally deployed EntryPoint, but SDK account derivation returns the zero
+address and no UserOperation is submitted. Track and resolve that version
+boundary in [#1694](https://github.com/akoita/resonate/issues/1694) before
+treating local AA startup as application-level UserOperation coverage.
+
+The same Platåberget run successfully exercised the non-AA protocol runtime,
+including protected minting, content custody, marketplace payout recovery,
+multi-asset revenue escrow, campaigns, and dispute/curation state. This narrows
+the remaining local compatibility gap to the Kernel SDK/UserOperation boundary;
+it is not evidence that the underlying custom RPC or Alto connection failed.
+
 ## Config Refresh Helpers
 
 The config scripts now live under `contracts/scripts/`:

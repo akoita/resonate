@@ -1,7 +1,8 @@
 # Vision Sprint 16 — Deferred Dependency Majors
 
-> **Status:** Active from 2026-08-30. This sprint admits the reviewed Kernel
-> dependency-boundary work in #1655.
+> **Status:** Closed 2026-08-30. The isolated Kernel v4 compatibility harness
+> landed while the application and deployment defaults remained on the legacy
+> Kernel v3.1 / EntryPoint v0.7 boundary.
 
 - **Milestone:** Vision Sprint 16 — deferred dependency majors
 - **Revenue line / phase:** vision-neutral infrastructure and security quality.
@@ -52,3 +53,10 @@ before any future decision about a production Kernel major migration. The
 contracts owner should reassess the v4 pin when upstream publishes a stable v4
 tag; promoting the harness into an application or deployment path still
 requires a separately reviewed migration issue.
+
+## Outcome
+
+Issue #1655 closed through PR #1693. The sprint delivered the pinned Kernel v4
+development dependency, the isolated Solidity 0.8.33/Prague compatibility
+harness, and the explicit legacy v3 dependency path without changing deployed
+accounts or application runtime behavior. Milestone 18 is closed.
