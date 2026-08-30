@@ -387,6 +387,14 @@ dev-clean:
 # Local Account Abstraction Development
 # ============================================
 
+# Isolated Kernel v4 compatibility harness. This never changes the default
+# contracts profile or deploys an account to a network.
+kernel-v4-build:
+	cd contracts/kernel-v4 && forge build
+
+kernel-v4-test:
+	cd contracts/kernel-v4 && forge test --match-path test/KernelFactoryCompatibility.t.sol
+
 local-aa-up:
 	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa up -d
 	@echo "Waiting for local Anvil on localhost:8545..."

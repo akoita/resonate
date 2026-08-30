@@ -1,0 +1,25 @@
+[profile.default]
+# This project compiles the pinned v4 sources from the primary Kernel gitlink.
+src = "../lib/kernel/src"
+test = "test"
+out = "out"
+libs = ["dependencies"]
+allow_paths = ["../lib/kernel/src"]
+via_ir = true
+optimizer = true
+optimizer_runs = 200
+evm_version = "prague"
+solc_version = "0.8.33"
+cbor_metadata = false
+bytecode_hash = "none"
+isolate = true
+
+[dependencies]
+solady = "0.1.26"
+eth-infinitism-account-abstraction = { version = "0.9.0", git = "https://github.com/eth-infinitism/account-abstraction.git", rev = "86fcd84cf7263fe384d61d078ee747b16e69a496" }
+"@openzeppelin-contracts" = "5.4.0"
+a16z-halmos-cheatcodes = "6da4e692c357ba6d641a2e677a28298cac9f76ab"
+forge-std = "1.11.0"
+
+[lint]
+exclude_lints = ["unwrapped-modifier-logic"]

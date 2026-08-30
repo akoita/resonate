@@ -404,13 +404,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Generic recursive clones skip the pinned Kernel because its nested metadata
-      # is malformed; explicitly check it out and repair that metadata here.
+      # Generic recursive clones skip the legacy Kernel v3 checkout because its
+      # nested metadata is malformed; explicitly repair that metadata here.
       - name: Init contract submodules
         run: |
           git submodule update --init --checkout
           ./contracts/scripts/repair-kernel-submodule-metadata.sh
-          git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
+          git -C contracts/lib/kernel-v3 submodule update --init --checkout lib/I4337
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
@@ -428,6 +428,10 @@ jobs:
       - name: Run Forge tests
         run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
+
+      - name: Run isolated Kernel v4 compatibility tests
+        run: forge test --match-path test/KernelFactoryCompatibility.t.sol
+        working-directory: contracts/kernel-v4
 
       - name: Check UUPS storage layout
         # Fails if an upgradeable contract's storage layout drifts from its committed
@@ -513,13 +517,13 @@ jobs:
         with:
           persist-credentials: false
 
-      # Generic recursive clones skip the pinned Kernel because its nested metadata
-      # is malformed; explicitly check it out and repair that metadata here.
+      # Generic recursive clones skip the legacy Kernel v3 checkout because its
+      # nested metadata is malformed; explicitly repair that metadata here.
       - name: Init contract submodules
         run: |
           git submodule update --init --checkout
           ./contracts/scripts/repair-kernel-submodule-metadata.sh
-          git -C contracts/lib/kernel submodule update --init lib/I4337 lib/solady lib/FreshCryptoLib lib/p256-verifier lib/forge-std
+          git -C contracts/lib/kernel-v3 submodule update --init --checkout lib/I4337
 
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened

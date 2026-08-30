@@ -30,6 +30,18 @@ make web-dev-local   # or make web-dev-fork when targeting a Sepolia fork on loc
 
 `make dev-up` starts local Postgres, Redis, and the Pub/Sub emulator. `make local-aa-fork` starts the Sepolia fork plus local Alto bundler, and `make local-aa-up` starts the plain `31337` Anvil + bundler pair. `make backend-dev` expects the app-side services on `localhost` and exits early with a targeted message if Postgres is missing.
 
+### Account-abstraction dependency boundary
+
+The application deployment and local AA commands use the legacy Resonate
+Kernel v3.1/EntryPoint v0.7 stack. The primary Kernel dependency uses the
+Kernel v4 development commit `f2a84a332ec5a722e7e95a0d64601905c3c87fe9` for
+the isolated `contracts/kernel-v4/` compatibility harness only;
+that harness uses Solidity 0.8.33/Prague and EntryPoint v0.9, and does not
+migrate, authorize, or replace existing v3.1 accounts. Run
+`make kernel-v4-test` for in-memory compatibility checks after
+`cd contracts && ./scripts/install-deps.sh`; no deployment command should point
+an existing app wallet at the v4 harness.
+
 Useful app-local targets that still live here:
 
 | Command | Purpose |

@@ -3,6 +3,20 @@
 This repository owns the AA smart contracts, local AA runtime, config update scripts, and app runtime.
 Cloud deployment infrastructure still lives in [`akoita/resonate-iac`](https://github.com/akoita/resonate-iac).
 
+## Kernel dependency boundary
+
+The application and local AA runtime remain on the legacy Resonate Kernel v3.1
+surface (Kernel v2.4 dependency pin, EntryPoint v0.7, and the custom
+`KernelFactory`/`UniversalSigValidator` path). The primary Kernel gitlink now
+points to the Kernel v4 development commit
+`f2a84a332ec5a722e7e95a0d64601905c3c87fe9`, but v4 is compiled only by the
+isolated `kernel-v4/` compatibility harness with EntryPoint v0.9 and Solidity
+0.8.33/Prague.
+
+The v4 harness is compatibility and tooling coverage only. It does not migrate,
+authorize, or replace existing v3.1 accounts, and no app-local deployment or
+forked-account flow uses it.
+
 ## What Runs Where
 
 | Concern | Repository |
@@ -53,6 +67,18 @@ make web-dev-fork
 
 `make local-aa-fork` now starts the Sepolia fork, starts the local Alto bundler, and refreshes local `.env` files for fork mode. Keep using `make web-dev-fork` afterward so the frontend stays on chain `11155111`.
 
+### Check the isolated Kernel v4 path
+
+After `./scripts/install-deps.sh`, run the focused compatibility project from
+the repository root:
+
+```bash
+make kernel-v4-test
+```
+
+This deploys contracts only inside Foundry's in-memory test VM. It must not be
+used as a deployment command for existing Resonate wallets.
+
 ## Local-Only Mode
 
 Use this only when you explicitly want a plain `31337` local environment or need offline development.
@@ -67,7 +93,7 @@ make backend-dev
 make web-dev-local
 ```
 
-`make contracts-deploy-local` runs:
+`make contracts-deploy-local` runs the unchanged legacy stack:
 
 1. `make local-aa-deploy`
 2. `make deploy-contracts`
