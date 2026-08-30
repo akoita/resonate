@@ -1,0 +1,202 @@
+{
+  "schemaVersion": "resonate-glamsterdam-repricing-evidence/v1",
+  "generatedAt": "2026-08-30T12:57:47Z",
+  "repo": {
+    "sha": "1f90df0f5981845370dea8dd9f8393d14a30573b",
+    "date": "2026-08-30",
+    "specRevision": "plataberget-devnet-8-a12902ae-fc232285"
+  },
+  "chain": {
+    "chainId": 3151908,
+    "network": "plataberget-local",
+    "blockNumber": 74,
+    "rpcIdentifier": "kurtosis-resonate-plata-1660"
+  },
+  "contracts": [
+    { "role": "EntryPoint", "address": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853" },
+    { "role": "KernelFactory", "address": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788" },
+    { "role": "StemNFT", "address": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042" },
+    { "role": "ContentProtection", "address": "0x322813Fd9A801c5507c9de605d63CEA4f2CE6c44" },
+    { "role": "RevenueEscrow", "address": "0x84eA74d481Ee0A5332c457a4d796187F6Ba67fEB" },
+    { "role": "StemMarketplaceV2", "address": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF" },
+    { "role": "TransferValidator", "address": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1" }
+  ],
+  "observations": [
+    {
+      "flow": "aa_entrypoint_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "EntryPoint",
+      "contractAddress": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "direct": {
+        "estimateGas": 4808681,
+        "receipt": {
+          "txHash": "0x721e646e6c774aa6231f0dba2d6f64b1fc006f63cb6404e15c3de343dc209be9",
+          "status": 0,
+          "gasUsed": 4808681,
+          "blockNumber": 10
+        }
+      },
+      "userOperation": null,
+      "txHash": "0x721e646e6c774aa6231f0dba2d6f64b1fc006f63cb6404e15c3de343dc209be9",
+      "comparison": null,
+      "classification": "execution_failure",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "Foundry simulation succeeded, but the submitted estimate left no EIP-8037 state-gas reservoir. Geth callTracer reported contract creation code storage out of gas while execution gas remained.",
+      "blocker": null
+    },
+    {
+      "flow": "aa_entrypoint_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "EntryPoint",
+      "contractAddress": "0xa513E6E4b8f2a923D98304ec87F64353C4D5C853",
+      "direct": {
+        "estimateGas": 55484790,
+        "receipt": {
+          "txHash": "0xf73e4e8fb4360e32bb0418c4546cef0fe6a5d62eb36c4e708ca01a4e3d813478",
+          "status": 1,
+          "gasUsed": 26215358,
+          "blockNumber": 20
+        }
+      },
+      "userOperation": null,
+      "txHash": "0xf73e4e8fb4360e32bb0418c4546cef0fe6a5d62eb36c4e708ca01a4e3d813478",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "The unchanged EntryPoint v0.7 deployment succeeded with Foundry's gas estimate multiplier set to 1500%, which supplies transaction gas above the execution cap as an EIP-8037 state-gas reservoir.",
+      "blocker": null
+    },
+    {
+      "flow": "kernel_factory_initialization",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "KernelFactory",
+      "contractAddress": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+      "direct": {
+        "estimateGas": 7153770,
+        "receipt": {
+          "txHash": "0x36e5bab8931c114effc9bad0d71d03475f7b320caef04b5195d949b6695511f6",
+          "status": 1,
+          "gasUsed": 3094552,
+          "blockNumber": 20
+        }
+      },
+      "userOperation": null,
+      "txHash": "0x36e5bab8931c114effc9bad0d71d03475f7b320caef04b5195d949b6695511f6",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "The legacy KernelFactory deployment succeeded with an EIP-8037 state-gas reservoir.",
+      "blocker": null
+    },
+    {
+      "flow": "kernel_factory_initialization",
+      "stateVariant": "user-operation",
+      "contractRole": "KernelFactory",
+      "contractAddress": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
+      "direct": {
+        "estimateGas": null,
+        "receipt": null
+      },
+      "userOperation": {
+        "estimateGas": null,
+        "hash": null,
+        "txHash": null,
+        "receipt": null
+      },
+      "txHash": null,
+      "comparison": null,
+      "classification": "blocked",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "Alto started against the custom EntryPoint and returned it from eth_supportedEntryPoints. The application SDK could not derive a nonzero account because the local deployment uses the legacy initialize(address,bytes) Kernel surface while ZeroDev KERNEL_V3_1 emits initialize(bytes21,address,bytes,bytes,bytes[]).",
+      "blocker": "Pre-existing local-AA Kernel deployment and ZeroDev SDK version mismatch; no UserOperation hash or receipt was produced."
+    },
+    {
+      "flow": "protocol_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "StemNFT",
+      "contractAddress": "0x9E545E3C0baAB3E08CdfD552C960A1050f373042",
+      "direct": {
+        "estimateGas": 46885845,
+        "receipt": {
+          "txHash": "0x0d18c97b053b12abce9340294dc49adfa1033db843eff9520de8f533c05452d0",
+          "status": 1,
+          "gasUsed": 21696609,
+          "blockNumber": 70
+        }
+      },
+      "userOperation": null,
+      "txHash": "0x0d18c97b053b12abce9340294dc49adfa1033db843eff9520de8f533c05452d0",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "StemNFT deployed successfully as part of the complete 36-transaction protocol graph with a 1500% gas estimate multiplier.",
+      "blocker": null
+    },
+    {
+      "flow": "protocol_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "ContentProtection",
+      "contractAddress": "0x9A9f2CCfdE556A7E9Ff0848998Aa4a0CFD8863AE",
+      "direct": {
+        "estimateGas": 61233750,
+        "receipt": {
+          "txHash": "0xd45fdb31f72b96ee88750dcfb151b8821b0b4aa8f145ddaf4fb74516b72caf71",
+          "status": 1,
+          "gasUsed": 28896226,
+          "blockNumber": 70
+        }
+      },
+      "userOperation": null,
+      "txHash": "0xd45fdb31f72b96ee88750dcfb151b8821b0b4aa8f145ddaf4fb74516b72caf71",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "The implementation, timelock, ERC-1967 proxy, initialization, and registry linkage all succeeded in the complete protocol deployment.",
+      "blocker": null
+    },
+    {
+      "flow": "protocol_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "StemMarketplaceV2",
+      "contractAddress": "0xf5059a5D33d5853360D16C683c16e67980206f36",
+      "direct": {
+        "estimateGas": 34382655,
+        "receipt": {
+          "txHash": "0x0aaff0eada44c37a2535df2de601602b6189e4c7a23b2d8636688c0d2246ffbc",
+          "status": 1,
+          "gasUsed": 16096189,
+          "blockNumber": 70
+        }
+      },
+      "userOperation": null,
+      "txHash": "0x0aaff0eada44c37a2535df2de601602b6189e4c7a23b2d8636688c0d2246ffbc",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "The implementation, timelock, ERC-1967 proxy, initialization, and post-deployment links all succeeded in the complete protocol deployment.",
+      "blocker": null
+    },
+    {
+      "flow": "protocol_deployment",
+      "stateVariant": "cold-post-fork",
+      "contractRole": "TransferValidator",
+      "contractAddress": "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1",
+      "direct": {
+        "estimateGas": 7809390,
+        "receipt": {
+          "txHash": "0xa7f343eaa05a7b50fc5fb1fa328326e9b919dbbb092e2bde4fb3cdef1751eb7b",
+          "status": 1,
+          "gasUsed": 3433162,
+          "blockNumber": 70
+        }
+      },
+      "userOperation": null,
+      "txHash": "0xa7f343eaa05a7b50fc5fb1fa328326e9b919dbbb092e2bde4fb3cdef1751eb7b",
+      "comparison": null,
+      "classification": "succeeds_with_repriced_gas",
+      "rpcIdentifier": "kurtosis-resonate-plata-1660",
+      "notes": "TransferValidator deployment and its subsequent marketplace/content-protection configuration calls succeeded.",
+      "blocker": null
+    }
+  ]
+}

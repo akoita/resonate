@@ -1,7 +1,8 @@
 # Vision Sprint 15 — Triage And Reduce Dependency Risk
 
-> **Status:** Active from 2026-08-30. This milestone admits only #1626 and is
-> exit-criteria driven.
+> **Status:** Closed 2026-08-30. The milestone completed the current
+> reachability-aware dependency baseline and carried reviewed major-version
+> work into Sprint 16.
 
 - **Milestone:** [17 — Vision Sprint 15](https://github.com/akoita/resonate/milestone/17)
 - **Revenue line / phase:** vision-neutral infrastructure and security quality.
