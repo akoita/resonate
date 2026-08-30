@@ -1,7 +1,8 @@
 # Vision Sprint 14 — Close Retained Application Security Findings
 
-> **Status:** Active from 2026-08-28. This milestone is deliberately small and
-> excludes the `resonate-iac` work paused for Actions credit renewal.
+> **Status:** Closed 2026-08-30. All seven retained CodeQL alerts are fixed on
+> `main`; the milestone excludes the `resonate-iac` work paused for Actions
+> credit renewal.
 
 - **Milestone:** [16 — Vision Sprint 14](https://github.com/akoita/resonate/milestone/16)
 - **Revenue line / phase:** vision-neutral security and reliability work. It

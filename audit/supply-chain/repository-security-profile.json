@@ -605,11 +605,12 @@
         ".github/workflows/security.yml:51 declares SCA and container scanner versions",
         ".github/workflows/security.yml:10 states the initial advisory ratchet",
         ".github/dependabot.yml:1 defines monthly low-noise version updates for npm, pip, Docker, GitHub Actions and Foundry submodules",
-        "GitHub settings audit dated 2026-08-25: Dependabot vulnerability alerts and security updates are enabled; completed dependency-graph processing reported 270 existing open npm advisory leads",
+        "GitHub settings audit dated 2026-08-25: Dependabot vulnerability alerts and security updates are enabled; completed dependency-graph processing reported an initial 270 open npm advisory leads",
+        "audit/dependabot-baseline-2026-08-30.md records the current four-lock reachability baseline, removal and compatible remediation batches, and time-bounded Moderate dispositions",
         "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398 using default JavaScript/TypeScript setup",
         "audit/codeql-baseline-2026-08-26.md dispositions all 19 initial leads and records the advisory-gate decision"
       ],
-      "decision_rationale": "Credit #1537's PR/nightly OSV, Trivy and related advisory scans, and add a written disposition policy for vulnerable, confirmed-malicious, abandoned, newly published, provenance-missing and maintainer-transferred inputs. Native Dependabot alerts and security updates are enabled, with routine version updates grouped monthly in .github/dependabot.yml. Completed dependency-graph processing reported 270 existing npm advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks controlled triage. CodeQL default setup is enabled for JavaScript/TypeScript with the default query suite and remote threat model. The #1625 baseline triage reviewed all 19 leads: seven alerts map to four privately tracked findings, eleven were false positives and one informational alert was accepted risk. Seven alerts remain open. The measured 57.9 percent false-positive rate keeps CodeQL advisory/non-required; a narrower blocking ratchet requires a separate post-remediation decision. Custom scanner SARIF remains artifact-only to avoid duplicating CodeQL ingestion and noise.",
+      "decision_rationale": "Credit #1537's PR/nightly OSV, Trivy and related advisory scans, and add a written disposition policy for vulnerable, confirmed-malicious, abandoned, newly published, provenance-missing and maintainer-transferred inputs. Native Dependabot alerts and security updates are enabled, with routine version updates grouped monthly in .github/dependabot.yml. The initial 270-alert Dependabot snapshot is superseded by audit/dependabot-baseline-2026-08-30.md: local package-level analysis covers all four first-party npm locks, removes unused dependency paths, applies compatible remediations, and retains 32 Moderate leads in two runtime families with owners and a 2026-09-30 review date; no Critical, High, or Low local npm lead remains. CodeQL default setup is enabled for JavaScript/TypeScript with the default query suite and remote threat model. The #1625 baseline triage reviewed all 19 leads: seven alerts mapped to four privately tracked findings, eleven were false positives and one informational alert was accepted risk. All seven retained alerts are fixed on main as of 2026-08-30. The measured 57.9 percent false-positive rate keeps CodeQL advisory/non-required; a narrower blocking ratchet requires a separate post-remediation decision. Custom scanner SARIF remains artifact-only to avoid duplicating CodeQL ingestion and noise.",
       "evidence": [
         ".github/workflows/security.yml:10",
         ".github/workflows/security.yml:51",
@@ -617,7 +618,8 @@
         ".github/workflows/security.yml:303",
         ".github/dependabot.yml:1",
         ".github/workflows/security.yml:21",
-        "GitHub settings audit 2026-08-25: Dependabot alerts and security updates enabled; completed dependency-graph processing reported 270 open npm advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks triage",
+        "GitHub settings audit 2026-08-25: Dependabot alerts and security updates enabled; completed dependency-graph processing reported the initial 270-alert snapshot",
+        "audit/dependabot-baseline-2026-08-30.md: all four first-party npm locks rebaselined; zero local Critical/High/Low package-level leads and 32 time-bounded Moderate leads remain",
         "GitHub settings audit 2026-08-25: CodeQL default setup configured for javascript-typescript, query_suite=default, threat_model=remote and standard runner; initial run 32799678109 succeeded",
         "audit/codeql-baseline-2026-08-26.md: all 19 leads reviewed; 7 alerts map to 4 private findings, 11 were false positives, 1 informational alert was accepted risk, and 7 remain open"
       ],
@@ -627,8 +629,8 @@
         "Adopt the agent-toolkit dependency-intake disposition policy with explicit owners and time bounds",
         "Triage #1537 advisory baselines before promoting deterministic high-confidence classes",
         "Review native Dependabot and CodeQL findings alongside retained custom scanner artifacts, and keep routine version updates grouped and event-driven security updates enabled",
-        "Remediate the seven open CodeQL alerts through the four private finding records from issue #1625 before considering a narrower required-check ratchet",
-        "Triage the 270 Dependabot npm advisory leads under issue #1626 by dependency path, fixed-version availability and runtime reachability before sequenced upgrades or dismissals"
+        "Confirm post-merge default-branch Dependabot processing matches the #1626 local baseline before closing the issue",
+        "Re-review the retained Google and ZeroDev Moderate dependency families by 2026-09-30 or earlier when compatible fixed releases or new exploitation evidence appear"
       ],
       "failure_mode": "Scanners can upload reports while all failures are ignored, no owner dispositions them, or soft signals such as package age are mistaken for deterministic compromise evidence.",
       "compensating_controls": [
@@ -636,7 +638,8 @@
         "PR scans produce reviewable report artifacts",
         "npm release-age filtering delays newly published inputs",
         "Dependabot native alerts/security updates and monthly grouped version updates cover declared dependency paths",
-        "The completed CodeQL baseline records a 57.9 percent false-positive rate, so CodeQL remains advisory and is not a required merge gate"
+        "The completed CodeQL remediation records all seven retained alerts fixed while the 57.9 percent baseline false-positive rate keeps CodeQL advisory rather than a required merge gate",
+        "The #1626 baseline records explicit owner, compensating boundary and review date for unfixable or major-migration Moderate dependency paths"
       ],
       "owner": "Resonate security maintainer",
       "review_cadence": "quarterly",
@@ -793,7 +796,7 @@
         ".github/workflows/security.yml:21",
         ".github/dependabot.yml:1",
         "GitHub settings audit 2026-08-25: zero open and zero resolved native secret-scanning alerts after enablement",
-        "GitHub settings audit 2026-08-25: completed dependency-graph processing reported 270 open npm Dependabot advisory leads (4 critical, 119 high, 127 medium and 20 low), not reachability-validated findings; issue #1626 tracks triage",
+        "GitHub settings audit 2026-08-25: completed dependency-graph processing reported the initial 270-alert Dependabot snapshot; audit/dependabot-baseline-2026-08-30.md records the current reachability and remediation state",
         "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398",
         "audit/codeql-baseline-2026-08-26.md: all 19 initial CodeQL leads dispositioned, 7 alerts retained across 4 private findings, and CodeQL kept advisory",
         "Retained nightly scan run 32686785885: 19 provider-verified TruffleHog leads triaged metadata-only; no Resonate-owned credential required rotation",

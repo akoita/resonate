@@ -195,18 +195,22 @@ The live GitHub settings audit on 2026-08-25 records the following controls:
   completed successfully against the reviewed revision. The
   [initial baseline triage](../../audit/codeql-baseline-2026-08-26.md) reviewed
   all 19 leads: seven alerts map to four privately tracked findings, eleven
-  were false positives, and one informational alert was accepted risk. Seven
-  alerts remain open. The 57.9% measured false-positive rate keeps CodeQL
+  were false positives, and one informational alert was accepted risk. All
+  seven retained alerts were fixed on `main` by 2026-08-30. The 57.9% measured
+  false-positive rate keeps CodeQL
   advisory/non-required and outside the nine required checks; any narrower
   blocking ratchet remains a separate decision after remediation.
 - Partner-pattern validity checks remain disabled because GitHub documents them
   as organization-owned Team/Secret Protection functionality; GitHub-token
   validity checks remain automatic. Native secret scanning reported zero open
-  or resolved alerts after enablement. Once dependency-graph processing
-  completed, Dependabot reported 270 existing npm advisory leads (4 critical,
-  119 high, 127 medium, and 20 low); these are not reachability-validated
-  findings, and [#1626](https://github.com/akoita/resonate/issues/1626) tracks
-  controlled triage.
+  or resolved alerts after enablement. Dependency-graph processing initially
+  reported 270 npm advisory alerts. The
+  [2026-08-30 baseline](../../audit/dependabot-baseline-2026-08-30.md) replaces
+  that snapshot with four-lock reachability evidence: no local Critical, High,
+  or Low npm package-level lead remains, while 32 Moderate leads have an owner,
+  compensating boundary, and 2026-09-30 review date. GitHub's post-merge
+  default-branch reconciliation remains tracked by
+  [#1626](https://github.com/akoita/resonate/issues/1626).
 - The active `main` ruleset (ID `12327414`) requires pull requests and nine
   status checks, has no bypass actors, and requires zero approving reviews.
   Zero reviews is an explicit solo-maintainer decision: raising it to one
