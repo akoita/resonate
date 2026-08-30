@@ -32,8 +32,12 @@ make web-dev-local   # or make web-dev-fork when targeting a Sepolia fork on loc
 
 ### Account-abstraction dependency boundary
 
-The application deployment and local AA commands use the legacy Resonate
-Kernel v3.1/EntryPoint v0.7 stack. The primary Kernel dependency uses the
+The application deployment and local AA commands use official Kernel v3.1
+commit `03f7f5cf5871cda0070e4223f196f5b577f6cde2` with official
+`account-abstraction` v0.7 commit
+`7af70c8993a6f42973f520ae0752386a5032abe7`. Repository-owned networks use the
+explicit implementation and factory addresses with SDK Kernel version `0.3.1`
+and direct factory mode. The separate Kernel dependency uses the
 Kernel v4 development commit `f2a84a332ec5a722e7e95a0d64601905c3c87fe9` for
 the isolated `contracts/kernel-v4/` compatibility harness only;
 that harness uses Solidity 0.8.33/Prague and EntryPoint v0.9, and does not
@@ -50,6 +54,8 @@ Useful app-local targets that still live here:
 | `make web-dev` | Start the Next.js frontend on port `3001` |
 | `make local-aa-fork` | Start the recommended Sepolia fork + local Alto bundler and refresh fork-mode env |
 | `make local-aa-up` | Start a plain local `31337` Anvil + local Alto bundler |
+| `make local-aa-custom` | Deploy AA, start Alto, and refresh app config for an explicit custom devnet RPC |
+| `make local-aa-config-test` | Validate local, fork, and custom AA config generation |
 | `make deploy-base-sepolia` | Deploy protocol contracts to Base Sepolia and refresh app-local contract config |
 | `make local-aa-down` | Stop the local AA runtime |
 | `make db-reset` | Reset the local Prisma database |
@@ -489,6 +495,8 @@ Use these commands after deploying to a local Anvil or a local Sepolia fork:
 | Command | Purpose |
 | --- | --- |
 | `make local-aa-config` | Refresh AA addresses from the latest `DeployLocalAA` broadcast |
+| `make local-aa-config-custom` | Refresh AA addresses for an explicit `AA_CHAIN_ID` and `AA_RPC_URL` |
+| `cd web && npm run test:aa-smoke` | Fund an SDK-derived Kernel account and require a mined signed UserOperation |
 | `make local-aa-fork` | Start a Sepolia fork on `localhost:8545`, start the local bundler on `localhost:4337`, and refresh fork-mode `.env` files |
 | `make deploy-contracts` | Deploy protocol contracts to the local RPC and refresh app config |
 | `make contracts-deploy-local` | Start local AA infra, then run AA deploy + protocol deploy against it |

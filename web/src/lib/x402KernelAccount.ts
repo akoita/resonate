@@ -69,7 +69,7 @@ export async function getX402KernelAccount(
   }
 
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccount, constants } = sdk;
+  const { createKernelAccount } = sdk;
   const passkey = await import("@zerodev/passkey-validator");
   const { toPasskeyValidator, PasskeyValidatorContractVersion } = passkey;
 
@@ -80,8 +80,8 @@ export async function getX402KernelAccount(
       transport: http(),
     });
 
-  const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-  const kernelVersion = constants.KERNEL_V3_1;
+  const accountConfig = getKernelAccountConfig(chainId);
+  const { entryPoint, kernelVersion } = accountConfig;
 
   const passkeyValidator = await toPasskeyValidator(publicClient, {
     webAuthnKey: input.webAuthnKey as never,
@@ -92,9 +92,7 @@ export async function getX402KernelAccount(
 
   const account = (await createKernelAccount(publicClient, {
     plugins: { sudo: passkeyValidator },
-    entryPoint,
-    kernelVersion,
-    factoryAddress,
+    ...accountConfig,
   })) as unknown as X402KernelAccount;
 
   if (
@@ -106,7 +104,7 @@ export async function getX402KernelAccount(
     // contracts aren't deployed on this chain). Surfacing as an error gives
     // callers something to display instead of a silently broken signer.
     throw new Error(
-      "x402 Kernel account resolved to the zero address; check Base Sepolia factory + EntryPoint deployment.",
+      "x402 Kernel account resolved to the zero address; check the configured Kernel factory, implementation, and EntryPoint deployment.",
     );
   }
 

@@ -52,7 +52,8 @@ services:
       - fork-aa
 
   alto-bundler:
-    image: ghcr.io/pimlicolabs/alto:latest
+    # Alto v1.2.8, pinned because the container receives local dev signer keys.
+    image: ghcr.io/pimlicolabs/alto@sha256:f2661042aadefc6a4fc9c5826a14404f574c7ef2de76bdf83fe6a0829137b3c5
     command: >
       --entrypoints 0x5FbDB2315678afecb367f032d93F642f64180aa3
       --rpc-url http://anvil:8545
@@ -62,6 +63,8 @@ services:
       --network-name local
       --chain-id 31337
       --unsafe
+      --safe-mode false
+      --balance-override false
     ports:
       - "4337:4337"
     depends_on:
@@ -72,7 +75,7 @@ services:
       - local-aa
 
   alto-bundler-fork:
-    image: ghcr.io/pimlicolabs/alto:latest
+    image: ghcr.io/pimlicolabs/alto@sha256:f2661042aadefc6a4fc9c5826a14404f574c7ef2de76bdf83fe6a0829137b3c5
     command: >
       --entrypoints 0x0000000071727De22E5E9d8BAf0edAc6f37da032
       --rpc-url http://anvil-fork:8545
@@ -92,3 +95,46 @@ services:
     restart: on-failure
     profiles:
       - fork-aa
+
+  # Connect Alto to an externally managed local devnet such as a Kurtosis
+  # Platåberget enclave. Required values are checked inside the container so
+  # normal local-aa/fork-aa Compose commands remain usable without them.
+  alto-bundler-custom:
+    image: ghcr.io/pimlicolabs/alto@sha256:f2661042aadefc6a4fc9c5826a14404f574c7ef2de76bdf83fe6a0829137b3c5
+    entrypoint: ["/bin/sh", "-ec"]
+    environment:
+      AA_ENTRY_POINT: "${AA_ENTRY_POINT:-}"
+      AA_ALTO_RPC_URL: "${AA_ALTO_RPC_URL:-}"
+      AA_CHAIN_ID: "${AA_CHAIN_ID:-}"
+      AA_EXECUTOR_PRIVATE_KEY: "${AA_EXECUTOR_PRIVATE_KEY:-}"
+      AA_UTILITY_PRIVATE_KEY: "${AA_UTILITY_PRIVATE_KEY:-}"
+      AA_NETWORK_NAME: "${AA_NETWORK_NAME:-custom-local}"
+      AA_EXECUTOR_GAS_MULTIPLIER: "${AA_EXECUTOR_GAS_MULTIPLIER:-100}"
+      AA_V7_VERIFICATION_GAS_MULTIPLIER: "${AA_V7_VERIFICATION_GAS_MULTIPLIER:-130}"
+    command:
+      - |
+        : "$${AA_ENTRY_POINT:?AA_ENTRY_POINT is required for the custom-aa profile}"
+        : "$${AA_ALTO_RPC_URL:?AA_ALTO_RPC_URL is required for the custom-aa profile}"
+        : "$${AA_CHAIN_ID:?AA_CHAIN_ID is required for the custom-aa profile}"
+        : "$${AA_EXECUTOR_PRIVATE_KEY:?AA_EXECUTOR_PRIVATE_KEY is required for the custom-aa profile}"
+        : "$${AA_UTILITY_PRIVATE_KEY:?AA_UTILITY_PRIVATE_KEY is required for the custom-aa profile}"
+        exec pnpm start \
+          --entrypoints "$$AA_ENTRY_POINT" \
+          --rpc-url "$$AA_ALTO_RPC_URL" \
+          --executor-private-keys "$$AA_EXECUTOR_PRIVATE_KEY" \
+          --utility-private-key "$$AA_UTILITY_PRIVATE_KEY" \
+          --port 4337 \
+          --network-name "$$AA_NETWORK_NAME" \
+          --chain-id "$$AA_CHAIN_ID" \
+          --executor-gas-multiplier "$$AA_EXECUTOR_GAS_MULTIPLIER" \
+          --v7-verification-gas-limit-multiplier "$$AA_V7_VERIFICATION_GAS_MULTIPLIER" \
+          --unsafe \
+          --safe-mode false \
+          --balance-override false
+    ports:
+      - "${AA_BUNDLER_PORT:-4337}:4337"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: on-failure
+    profiles:
+      - custom-aa

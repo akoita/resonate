@@ -1,290 +1,277 @@
 #!/usr/bin/env bash
-# update-aa-config.sh - Parse Forge deployment output and update .env files
-#
-# This script reads the latest deployment broadcast JSON and updates
-# backend/.env with the deployed contract addresses.
-#
-# Usage: ./contracts/scripts/update-aa-config.sh
+# Parse a DeployLocalAA broadcast and refresh app-local AA configuration.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BROADCAST_FILE="$PROJECT_ROOT/contracts/broadcast/DeployLocalAA.s.sol/31337/run-latest.json"
-BACKEND_ENV="$PROJECT_ROOT/backend/.env"
+BACKEND_ENV="${AA_BACKEND_ENV_FILE:-$PROJECT_ROOT/backend/.env}"
+WEB_ENV_LOCAL="${AA_WEB_ENV_FILE:-$PROJECT_ROOT/web/.env.local}"
 DEFAULT_SEPOLIA_RPC_URL="https://sepolia.drpc.org"
 
-# Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Parse --mode argument (default: local)
 MODE="local"
-for arg in "$@"; do
-    case $arg in
+CHAIN_ID=""
+RPC_URL=""
+BUNDLER_URL=""
+BROADCAST_FILE=""
+
+usage() {
+    cat <<'EOF'
+Usage: update-aa-config.sh [options]
+
+Options:
+  --mode local|fork|custom  Configuration mode (default: local)
+  --chain-id ID             Required for custom mode
+  --rpc-url URL             Execution RPC exposed to the apps
+  --bundler-url URL         ERC-4337 bundler RPC exposed to the apps
+  --broadcast-file PATH     DeployLocalAA Foundry broadcast JSON
+  --help                    Show this help
+
+For isolated tests, AA_BACKEND_ENV_FILE and AA_WEB_ENV_FILE may point at
+temporary env files. They never change deployment or signing behavior.
+EOF
+}
+
+require_value() {
+    local option="$1"
+    local value="${2:-}"
+    if [[ -z "$value" ]]; then
+        echo "Error: $option requires a value." >&2
+        exit 2
+    fi
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --mode)
-            shift
-            MODE="$1"
-            shift
+            require_value "$1" "${2:-}"
+            MODE="$2"
+            shift 2
             ;;
-        --mode=*)
-            MODE="${arg#*=}"
-            shift
+        --mode=*) MODE="${1#*=}"; shift ;;
+        --chain-id)
+            require_value "$1" "${2:-}"
+            CHAIN_ID="$2"
+            shift 2
             ;;
+        --chain-id=*) CHAIN_ID="${1#*=}"; shift ;;
+        --rpc-url)
+            require_value "$1" "${2:-}"
+            RPC_URL="$2"
+            shift 2
+            ;;
+        --rpc-url=*) RPC_URL="${1#*=}"; shift ;;
+        --bundler-url)
+            require_value "$1" "${2:-}"
+            BUNDLER_URL="$2"
+            shift 2
+            ;;
+        --bundler-url=*) BUNDLER_URL="${1#*=}"; shift ;;
+        --broadcast-file)
+            require_value "$1" "${2:-}"
+            BROADCAST_FILE="$2"
+            shift 2
+            ;;
+        --broadcast-file=*) BROADCAST_FILE="${1#*=}"; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) echo "Error: Unknown option: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
 
-echo "=== Updating AA Configuration (mode: $MODE) ==="
-echo ""
-
-# ================================================
-# Fork mode: use known Sepolia contract addresses
-# ================================================
-if [[ "$MODE" == "fork" ]]; then
-    echo -e "${GREEN}Forked Sepolia Mode${NC}"
-    echo "Using known Sepolia contract addresses (ZeroDev Kernel v3)"
-    echo ""
-
-    # Canonical Sepolia addresses for ZeroDev / ERC-4337 v0.7
-    ENTRY_POINT="0x0000000071727De22E5E9d8BAf0edAc6f37da032"
-    # ZeroDev Kernel v3.1 factory (Sepolia / EntryPoint v0.7)
-    KERNEL_FACTORY="0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419"
-    ECDSA_VALIDATOR="0xd9AB5096a832b9ce79914329DAEE236f8Eea0390"
-
-    # Source .env for ZERODEV_PROJECT_ID
-    if [[ -f "$BACKEND_ENV" ]]; then
-        source "$BACKEND_ENV" 2>/dev/null || true
-    fi
-
-    ZERODEV_PROJECT_ID="${ZERODEV_PROJECT_ID:-}"
-    if [[ -n "$ZERODEV_PROJECT_ID" ]]; then
-        BUNDLER_URL="https://rpc.zerodev.app/api/v2/bundler/${ZERODEV_PROJECT_ID}"
-        PAYMASTER_URL="https://rpc.zerodev.app/api/v2/paymaster/${ZERODEV_PROJECT_ID}"
-        echo -e "${GREEN}ZeroDev Project ID:${NC} $ZERODEV_PROJECT_ID"
-    else
-        BUNDLER_URL="http://localhost:4337"
-        PAYMASTER_URL=""
-        echo -e "${YELLOW}Warning: ZERODEV_PROJECT_ID not set, using localhost bundler${NC}"
-    fi
-
-    # Ensure backend/.env exists
-    if [[ ! -f "$BACKEND_ENV" ]]; then
-        echo "Creating $BACKEND_ENV..."
-        touch "$BACKEND_ENV"
-    fi
-
-    # Source the update function
-    update_env_var() {
-        local var_name="$1"
-        local var_value="$2"
-        local env_file="$3"
-
-        if [[ -z "$var_value" || "$var_value" == "null" ]]; then
-            return
+case "$MODE" in
+    local)
+        CHAIN_ID="${CHAIN_ID:-31337}"
+        RPC_URL="${RPC_URL:-http://localhost:8545}"
+        BUNDLER_URL="${BUNDLER_URL:-http://localhost:4337}"
+        ;;
+    fork)
+        CHAIN_ID="${CHAIN_ID:-11155111}"
+        RPC_URL="${RPC_URL:-http://localhost:8545}"
+        ;;
+    custom)
+        if [[ -z "$CHAIN_ID" || -z "$RPC_URL" ]]; then
+            echo "Error: custom mode requires --chain-id and --rpc-url." >&2
+            exit 2
         fi
+        BUNDLER_URL="${BUNDLER_URL:-http://localhost:4337}"
+        ;;
+    *)
+        echo "Error: Unsupported mode '$MODE'. Use local, fork, or custom." >&2
+        exit 2
+        ;;
+esac
 
-        if grep -q "^${var_name}=" "$env_file" 2>/dev/null; then
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                sed -i '' "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-            else
-                sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-            fi
-        else
-            echo "${var_name}=${var_value}" >> "$env_file"
-        fi
-    }
-
-    # Essential dev defaults
-    update_env_var "DATABASE_URL" "postgresql://resonate:resonate@localhost:5432/resonate" "$BACKEND_ENV"
-    update_env_var "JWT_SECRET" "dev-secret-change-in-production" "$BACKEND_ENV"
-
-    # Sepolia AA addresses
-    update_env_var "AA_ENTRY_POINT" "$ENTRY_POINT" "$BACKEND_ENV"
-    update_env_var "AA_FACTORY" "$KERNEL_FACTORY" "$BACKEND_ENV"
-    update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
-    update_env_var "AA_CHAIN_ID" "11155111" "$BACKEND_ENV"
-    update_env_var "AA_BUNDLER" "$BUNDLER_URL" "$BACKEND_ENV"
-    update_env_var "SEPOLIA_RPC_URL" "${SEPOLIA_RPC_URL:-$DEFAULT_SEPOLIA_RPC_URL}" "$BACKEND_ENV"
-    update_env_var "RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
-    update_env_var "LOCAL_RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
-    update_env_var "BLOCK_EXPLORER_URL" "https://sepolia.etherscan.io" "$BACKEND_ENV"
-    # AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
-
-    echo ""
-    echo -e "${GREEN}✓ backend/.env updated for forked Sepolia${NC}"
-
-    # Update web/.env.local chain ID for fork mode
-    WEB_ENV_LOCAL="$PROJECT_ROOT/web/.env.local"
-    if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
-        touch "$WEB_ENV_LOCAL"
+if [[ ! "$CHAIN_ID" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: chain ID must be a positive integer." >&2
+    exit 2
+fi
+for url in "$RPC_URL" ${BUNDLER_URL:+"$BUNDLER_URL"}; do
+    if [[ ! "$url" =~ ^https?://[^[:space:]]+$ ]]; then
+        echo "Error: RPC and bundler URLs must be absolute HTTP(S) URLs without whitespace." >&2
+        exit 2
     fi
-    update_env_var "NEXT_PUBLIC_CHAIN_ID" "11155111" "$WEB_ENV_LOCAL"
-    update_env_var "NEXT_PUBLIC_RPC_URL" "http://localhost:8545" "$WEB_ENV_LOCAL"
-    update_env_var "NEXT_PUBLIC_AA_ENTRY_POINT" "$ENTRY_POINT" "$WEB_ENV_LOCAL"
-    update_env_var "NEXT_PUBLIC_AA_FACTORY" "$KERNEL_FACTORY" "$WEB_ENV_LOCAL"
-    echo -e "${GREEN}✓ web/.env.local NEXT_PUBLIC_CHAIN_ID set to 11155111${NC}"
+done
 
-    echo ""
-    echo "Backend .env now contains:"
-    grep -E "^AA_|^ZERODEV|^BLOCK_EXPLORER" "$BACKEND_ENV" | sed 's/^/  /'
-    echo ""
-    echo -e "${GREEN}Remember to restart services:${NC}"
-    echo "  • Backend: make backend-dev"
-    echo "  • Frontend: make web-dev-fork"
-    exit 0
-fi
-
-# ================================================
-# Local mode: parse Forge deployment broadcast
-# ================================================
-if [[ ! -f "$BROADCAST_FILE" ]]; then
-    echo "Error: No deployment broadcast found at:"
-    echo "  $BROADCAST_FILE"
-    echo ""
-    echo "Run 'make local-aa-deploy' first."
-    exit 1
-fi
-
-# Extract addresses from broadcast JSON using jq
-if ! command -v jq &> /dev/null; then
-    echo "Error: 'jq' is required but not installed."
-    echo "Install with: sudo apt install jq  (or brew install jq on macOS)"
-    exit 1
-fi
-
-# Parse the JSON to get deployed contract addresses. Forge traces can include
-# repeated entries for the same contract name, so keep a single deterministic
-# address for env-file writes.
-contract_address() {
-    local contract_name="$1"
-    jq -r --arg name "$contract_name" \
-        '.transactions[] | select(.transactionType == "CREATE" and .contractName == $name) | .contractAddress' \
-        "$BROADCAST_FILE" | tail -1
-}
-
-ENTRY_POINT=$(contract_address "EntryPoint")
-KERNEL=$(contract_address "Kernel")
-KERNEL_FACTORY=$(contract_address "KernelFactory")
-ECDSA_VALIDATOR=$(contract_address "ECDSAValidator")
-SIG_VALIDATOR=$(contract_address "UniversalSigValidator")
-
-echo -e "${GREEN}Deployed Contract Addresses:${NC}"
-echo "  EntryPoint:             $ENTRY_POINT"
-echo "  Kernel Implementation:  $KERNEL"
-echo "  KernelFactory:          $KERNEL_FACTORY"
-echo "  ECDSAValidator:         $ECDSA_VALIDATOR"
-echo "  UniversalSigValidator:  $SIG_VALIDATOR"
-echo ""
-
-# Also get the bundler's supported entry point
-BUNDLER_URL="http://localhost:4337"
-echo "Checking bundler's supported entry points..."
-BUNDLER_ENTRYPOINT=$(curl -s "$BUNDLER_URL" -X POST \
-    -H "Content-Type: application/json" \
-    -d '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
-    2>/dev/null | jq -r '.result[0]' 2>/dev/null || echo "")
-
-if [[ -n "$BUNDLER_ENTRYPOINT" && "$BUNDLER_ENTRYPOINT" != "null" ]]; then
-    echo -e "${GREEN}Bundler Entry Point:${NC} $BUNDLER_ENTRYPOINT"
-    # Use bundler's entry point as it's what the bundler will accept
-    ENTRY_POINT="$BUNDLER_ENTRYPOINT"
-    echo -e "${YELLOW}Note: Using bundler's entry point for AA_ENTRY_POINT${NC}"
-else
-    echo -e "${YELLOW}Warning: Could not reach bundler at $BUNDLER_URL${NC}"
-fi
-echo ""
-
-# Function to update or add env variable
 update_env_var() {
-    local var_name="$1"
-    local var_value="$2"
+    local key="$1"
+    local value="$2"
     local env_file="$3"
-    
-    if [[ -z "$var_value" || "$var_value" == "null" ]]; then
+    local temp_file
+
+    if [[ -z "$value" || "$value" == "null" ]]; then
         return
     fi
+    if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+        echo "Error: refusing to write a multiline value for $key." >&2
+        exit 2
+    fi
 
-    if grep -q "^${var_name}=" "$env_file" 2>/dev/null; then
-        # Variable exists, update it
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-        else
-            sed -i "s|^${var_name}=.*|${var_name}=${var_value}|" "$env_file"
-        fi
-    else
-        # Variable doesn't exist, append it
-        echo "${var_name}=${var_value}" >> "$env_file"
+    mkdir -p "$(dirname "$env_file")"
+    touch "$env_file"
+    temp_file="$(mktemp "${env_file}.tmp.XXXXXX")"
+    awk -v key="$key" -v value="$value" '
+        BEGIN { found = 0 }
+        index($0, key "=") == 1 { print key "=" value; found = 1; next }
+        { print }
+        END { if (!found) print key "=" value }
+    ' "$env_file" > "$temp_file"
+    mv "$temp_file" "$env_file"
+}
+
+ensure_env_var() {
+    local key="$1"
+    local value="$2"
+    local env_file="$3"
+
+    mkdir -p "$(dirname "$env_file")"
+    touch "$env_file"
+    if ! grep -q "^${key}=" "$env_file"; then
+        printf '%s=%s\n' "$key" "$value" >> "$env_file"
     fi
 }
 
-# Ensure backend/.env exists
-if [[ ! -f "$BACKEND_ENV" ]]; then
-    echo "Creating $BACKEND_ENV..."
-    touch "$BACKEND_ENV"
-fi
+validate_address() {
+    local label="$1"
+    local address="$2"
+    if [[ ! "$address" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+        echo "Error: deployment output has no valid $label address." >&2
+        exit 1
+    fi
+}
 
-# Update backend/.env
-echo "Updating $BACKEND_ENV..."
-
-# Essential dev defaults (set once if missing)
-update_env_var "DATABASE_URL" "postgresql://resonate:resonate@localhost:5432/resonate" "$BACKEND_ENV"
-update_env_var "JWT_SECRET" "dev-secret-change-in-production" "$BACKEND_ENV"
-
-# AA contract addresses (updated on each deploy)
-update_env_var "AA_ENTRY_POINT" "$ENTRY_POINT" "$BACKEND_ENV"
-update_env_var "AA_FACTORY" "$KERNEL_FACTORY" "$BACKEND_ENV"
-update_env_var "AA_KERNEL" "$KERNEL" "$BACKEND_ENV"
-update_env_var "AA_ECDSA_VALIDATOR" "$ECDSA_VALIDATOR" "$BACKEND_ENV"
-update_env_var "AA_SIG_VALIDATOR" "$SIG_VALIDATOR" "$BACKEND_ENV"
-update_env_var "AA_CHAIN_ID" "31337" "$BACKEND_ENV"
-update_env_var "AA_BUNDLER" "http://localhost:4337" "$BACKEND_ENV"
-update_env_var "RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
-update_env_var "LOCAL_RPC_URL" "http://localhost:8545" "$BACKEND_ENV"
-# AA_SKIP_BUNDLER removed — agent purchases always use session key UserOps
-
-echo -e "${GREEN}✓ backend/.env updated${NC}"
-
+echo "=== Updating AA Configuration (mode: $MODE, chain: $CHAIN_ID) ==="
 echo ""
 
-# Create a web/.env.local if it doesn't exist (for frontend)
-WEB_ENV_LOCAL="$PROJECT_ROOT/web/.env.local"
-if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
-    echo "Creating $WEB_ENV_LOCAL..."
-    cat > "$WEB_ENV_LOCAL" << EOF
-# Local AA Development Configuration
-# Generated by contracts/scripts/update-aa-config.sh
+if [[ "$MODE" == "fork" ]]; then
+    ENTRY_POINT="0x0000000071727De22E5E9d8BAf0edAc6f37da032"
+    KERNEL="0xBAC849bB641841b44E965fB01A4Bf5F074f84b4D"
+    KERNEL_FACTORY="0xaac5D4240AF87249B3f71BC8E4A2cae074A3E419"
+    ECDSA_VALIDATOR="0xd9AB5096a832b9ce79914329DAEE236f8Eea0390"
+    SIG_VALIDATOR=""
 
-# Chain ID for local Anvil
-NEXT_PUBLIC_CHAIN_ID=31337
-NEXT_PUBLIC_RPC_URL=http://localhost:8545
-
-# Disable ZeroDev for local development
-# NEXT_PUBLIC_ZERODEV_PROJECT_ID=
-
-# API URL
-NEXT_PUBLIC_API_URL=http://localhost:3000
-EOF
-    echo -e "${GREEN}✓ web/.env.local created${NC}"
+    if [[ -z "$BUNDLER_URL" ]]; then
+        ZERODEV_PROJECT_ID="${ZERODEV_PROJECT_ID:-}"
+        if [[ -z "$ZERODEV_PROJECT_ID" && -f "$BACKEND_ENV" ]]; then
+            ZERODEV_PROJECT_ID="$(sed -n 's/^ZERODEV_PROJECT_ID=//p' "$BACKEND_ENV" | tail -1)"
+        fi
+        if [[ -n "$ZERODEV_PROJECT_ID" ]]; then
+            BUNDLER_URL="https://rpc.zerodev.app/api/v2/bundler/${ZERODEV_PROJECT_ID}"
+        else
+            BUNDLER_URL="http://localhost:4337"
+            echo -e "${YELLOW}Warning: ZERODEV_PROJECT_ID is unset; using localhost Alto.${NC}"
+        fi
+    fi
+    USE_META_FACTORY="true"
 else
-    echo -e "${YELLOW}web/.env.local already exists, not overwriting${NC}"
+    BROADCAST_FILE="${BROADCAST_FILE:-$PROJECT_ROOT/contracts/broadcast/DeployLocalAA.s.sol/$CHAIN_ID/run-latest.json}"
+    if [[ ! -f "$BROADCAST_FILE" ]]; then
+        echo "Error: no DeployLocalAA broadcast found at $BROADCAST_FILE" >&2
+        exit 1
+    fi
+    if ! command -v jq >/dev/null 2>&1; then
+        echo "Error: jq is required." >&2
+        exit 1
+    fi
+
+    contract_address() {
+        local contract_name="$1"
+        jq -r --arg name "$contract_name" \
+            '.transactions[] | select(.transactionType == "CREATE" and .contractName == $name) | .contractAddress' \
+            "$BROADCAST_FILE" | tail -1
+    }
+
+    ENTRY_POINT="$(contract_address EntryPoint)"
+    KERNEL="$(contract_address Kernel)"
+    KERNEL_FACTORY="$(contract_address KernelFactory)"
+    ECDSA_VALIDATOR="$(contract_address ECDSAValidator)"
+    SIG_VALIDATOR="$(contract_address UniversalSigValidator)"
+    validate_address EntryPoint "$ENTRY_POINT"
+    validate_address Kernel "$KERNEL"
+    validate_address KernelFactory "$KERNEL_FACTORY"
+    validate_address ECDSAValidator "$ECDSA_VALIDATOR"
+    validate_address UniversalSigValidator "$SIG_VALIDATOR"
+    USE_META_FACTORY="false"
+
+    echo "Checking whether the bundler advertises the deployed EntryPoint..."
+    BUNDLER_ENTRYPOINTS="$(curl --max-time 5 -fsS "$BUNDLER_URL" -X POST \
+        -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
+        2>/dev/null | jq -r '.result[]?' 2>/dev/null || true)"
+    if [[ -n "$BUNDLER_ENTRYPOINTS" ]]; then
+        if ! printf '%s\n' "$BUNDLER_ENTRYPOINTS" | grep -Fxiq "$ENTRY_POINT"; then
+            echo "Error: bundler does not advertise deployed EntryPoint $ENTRY_POINT." >&2
+            echo "Restart Alto with this EntryPoint before refreshing app configuration." >&2
+            exit 1
+        fi
+        echo -e "${GREEN}Bundler EntryPoint matches the deployment.${NC}"
+    else
+        echo -e "${YELLOW}Warning: bundler is unreachable; configuration was generated but runtime is not validated.${NC}"
+    fi
 fi
 
-# Always refresh AA-related frontend env vars so the client does not rely on stale defaults
-update_env_var "NEXT_PUBLIC_CHAIN_ID" "31337" "$WEB_ENV_LOCAL"
-update_env_var "NEXT_PUBLIC_RPC_URL" "http://localhost:8545" "$WEB_ENV_LOCAL"
-update_env_var "NEXT_PUBLIC_AA_ENTRY_POINT" "$ENTRY_POINT" "$WEB_ENV_LOCAL"
-update_env_var "NEXT_PUBLIC_AA_FACTORY" "$KERNEL_FACTORY" "$WEB_ENV_LOCAL"
-echo -e "${GREEN}✓ web/.env.local AA config updated${NC}"
-echo ""
+ensure_env_var DATABASE_URL "postgresql://resonate:resonate@localhost:5432/resonate" "$BACKEND_ENV"
+ensure_env_var JWT_SECRET "dev-secret-change-in-production" "$BACKEND_ENV"
+update_env_var AA_ENTRY_POINT "$ENTRY_POINT" "$BACKEND_ENV"
+update_env_var AA_FACTORY "$KERNEL_FACTORY" "$BACKEND_ENV"
+update_env_var AA_KERNEL "$KERNEL" "$BACKEND_ENV"
+update_env_var AA_ECDSA_VALIDATOR "$ECDSA_VALIDATOR" "$BACKEND_ENV"
+update_env_var AA_SIG_VALIDATOR "$SIG_VALIDATOR" "$BACKEND_ENV"
+update_env_var AA_KERNEL_VERSION "0.3.1" "$BACKEND_ENV"
+update_env_var AA_CHAIN_ID "$CHAIN_ID" "$BACKEND_ENV"
+update_env_var AA_BUNDLER "$BUNDLER_URL" "$BACKEND_ENV"
+update_env_var RPC_URL "$RPC_URL" "$BACKEND_ENV"
+update_env_var LOCAL_RPC_URL "$RPC_URL" "$BACKEND_ENV"
+if [[ "$MODE" == "fork" ]]; then
+    update_env_var SEPOLIA_RPC_URL "${SEPOLIA_RPC_URL:-$DEFAULT_SEPOLIA_RPC_URL}" "$BACKEND_ENV"
+    update_env_var BLOCK_EXPLORER_URL "https://sepolia.etherscan.io" "$BACKEND_ENV"
+fi
 
-# Print summary
-echo "=== Configuration Complete ==="
+if [[ ! -f "$WEB_ENV_LOCAL" ]]; then
+    mkdir -p "$(dirname "$WEB_ENV_LOCAL")"
+    printf '%s\n' \
+        '# Local AA Development Configuration' \
+        '# Generated by contracts/scripts/update-aa-config.sh' \
+        '' \
+        'NEXT_PUBLIC_API_URL=http://localhost:3000' > "$WEB_ENV_LOCAL"
+fi
+update_env_var NEXT_PUBLIC_CHAIN_ID "$CHAIN_ID" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_RPC_URL "$RPC_URL" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_AA_ENTRY_POINT "$ENTRY_POINT" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_AA_FACTORY "$KERNEL_FACTORY" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_AA_KERNEL "$KERNEL" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_AA_KERNEL_VERSION "0.3.1" "$WEB_ENV_LOCAL"
+update_env_var NEXT_PUBLIC_AA_USE_META_FACTORY "$USE_META_FACTORY" "$WEB_ENV_LOCAL"
+
 echo ""
-echo "Backend .env now contains:"
-grep -E "^AA_" "$BACKEND_ENV" | sed 's/^/  /'
-echo ""
-echo -e "${GREEN}Remember to restart services to pick up new config:${NC}"
-echo "  • Backend: make backend-dev"
-echo "  • Frontend: make web-dev-local"
-echo ""
+echo -e "${GREEN}AA configuration updated.${NC}"
+echo "  Chain ID: $CHAIN_ID"
+echo "  EntryPoint: $ENTRY_POINT"
+echo "  Kernel: $KERNEL"
+echo "  Factory: $KERNEL_FACTORY"
+echo "  Backend env: $BACKEND_ENV"
+echo "  Web env: $WEB_ENV_LOCAL"
+echo "Bundler and RPC URLs were written but are not printed because they may contain credentials."

@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
 import {EntryPoint} from "@account-abstraction/core/EntryPoint.sol";
-import {IEntryPoint} from "I4337/interfaces/IEntryPoint.sol";
+import {IEntryPoint} from "kernel-v3/interfaces/IEntryPoint.sol";
 import {Kernel} from "kernel-v3/Kernel.sol";
 import {KernelFactory} from "../src/aa/KernelFactory.sol";
 import {ECDSAValidator} from "kernel-v3/validator/ECDSAValidator.sol";
@@ -12,8 +12,8 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployLocalAA
- * @notice Deploys the legacy ERC-4337 EntryPoint v0.7 and Kernel v3.1
- *         compatibility stack plus ERC-6492 UniversalSigValidator to local Anvil.
+ * @notice Deploys the ERC-4337 EntryPoint v0.7 and Kernel v3.1 stack plus
+ *         ERC-6492 UniversalSigValidator to an explicitly selected dev chain.
  *         Kernel v4 is exercised only by the isolated kernel-v4 harness.
  *
  * Run with:
