@@ -81,7 +81,12 @@ function PlayerContent() {
   };
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDragValue(parseFloat(e.target.value));
+    const nextProgress = parseFloat(e.target.value);
+    setDragValue(nextProgress);
+    // Keyboard changes do not emit pointer-up, so commit them immediately.
+    if (!isDragging) {
+      seek(nextProgress);
+    }
   };
 
   const handleSeekEnd = (e: React.PointerEvent<HTMLInputElement>) => {
@@ -479,6 +484,8 @@ function PlayerContent() {
             onPointerDown={handleSeekStart}
             onChange={handleSeekChange}
             onPointerUp={handleSeekEnd}
+            aria-label="Playback position"
+            aria-valuetext={`${formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} of ${formatTime(duration)}`}
           />
         </div>
 
@@ -502,6 +509,8 @@ function PlayerContent() {
               max="100"
               value={volume * 100}
               onChange={handleVolume}
+              aria-label="Output volume"
+              aria-valuetext={`${Math.round(volume * 100)} percent`}
             />
           </div>
         </div>
@@ -518,7 +527,12 @@ function PlayerContent() {
 
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
-          <div className="queue-list" style={{ overflowY: "auto", paddingRight: "8px" }}>
+          <div
+            className="queue-list"
+            style={{ overflowY: "auto", paddingRight: "8px" }}
+            tabIndex={0}
+            aria-label="Playback queue"
+          >
             {queue.length > 0 ? (
               queue.map((track, idx) => (
                 <div

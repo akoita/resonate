@@ -25,7 +25,7 @@ and accurately documented.
 | Order | Issue | Prerequisite or sequencing decision | State | Observable exit |
 | ---: | --- | --- | --- | --- |
 | 1 | [#1440](https://github.com/akoita/resonate/issues/1440) Mobile responsiveness | Prior focused fixes #1427, #1428, and #1439 are merged. | `closed/satisfied` | Every named route is audited at 400 px or narrower with DOM measurements; overflow, clipping, overlapping targets, and unusable density are fixed or durably tracked. |
-| 2 | [#837](https://github.com/akoita/resonate/issues/837) Accessibility baseline | No declared prerequisite. Run after #1440 to avoid repeatedly changing shared primitives. | Unblocked; sequencing choice | WCAG 2.2 AA is documented, critical routes have automated and manual evidence, shared primitives meet the stated bar, gaps are triaged, and the speech-input spike ends in a ship/defer/reject recommendation. |
+| 2 | [#837](https://github.com/akoita/resonate/issues/837) Accessibility baseline | #1440 implementation foundation incorporated on the feature branch; #1557 remains a pre-merge foundation gate. | `in-progress` from 2026-08-31 | WCAG 2.2 AA is documented, critical routes have automated and manual evidence, shared primitives meet the stated bar, gaps are triaged, and the speech-input spike ends in a ship/defer/reject recommendation. |
 | 3 | [#1101](https://github.com/akoita/resonate/issues/1101) SEO metadata | No declared prerequisite. Begin after Sprint 17 establishes the final Next.js 16.3 foundation. | Unblocked after sprint-start gate | Key public routes have tested canonical, title, description, Open Graph, and Twitter metadata; private routes have deliberate `noindex` behavior without private-data leakage. |
 | 4 | [#428](https://github.com/akoita/resonate/issues/428) User Guide completion | PRs #1231, #1232, and #1233 are merged. Local seeded E2E infrastructure exists for the remaining owner views. Execute last so screenshots reflect the completed UI. | `closed/satisfied` foundation; remaining slice unblocked | Seeded Artist Analytics, Managed Catalog, and Community owner-view screenshots are captured, referenced accurately, and protected by the guide integrity test. |
 
@@ -42,6 +42,10 @@ boundary.
   while #1557 remained time-gated. Scope, capacity, issue order, exit criteria,
   and exclusions are unchanged. #1440 starts first; #1101 still waits for the
   final Next.js 16.3 foundation.
+- **2026-08-31 — #837 started:** after #1440 implementation completed, the
+  owner approved the accessibility baseline plan. Its branch incorporates the
+  #1440 foundation; #1557 remains required before either frontend branch can
+  merge.
 
 ## Admitted Work
 
