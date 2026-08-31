@@ -34,6 +34,38 @@ body {
   max-width: 100%;
 }
 
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 12000;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: white;
+  font-weight: 700;
+  transform: translateY(-200%);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid white;
+  outline-offset: 2px;
+}
+
 *,
 *::before,
 *::after {
@@ -1981,6 +2013,22 @@ a {
   z-index: 10;
 }
 
+.player-progress-input {
+  position: absolute;
+  inset: -18px 0;
+  z-index: 2;
+  width: 100%;
+  height: 40px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.player-progress-container:focus-within {
+  outline: 2px solid var(--r-primary, var(--color-accent));
+  outline-offset: 4px;
+}
+
 .queue-indicator {
   position: absolute;
   right: 12px;
@@ -2324,7 +2372,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  animation: fadeIn 0.3s ease;
+  animation: upload-settings-fade-in 0.3s ease;
 }
 
 .track-selection-mini {
@@ -2353,7 +2401,7 @@ a {
   color: white;
 }
 
-@keyframes fadeIn {
+@keyframes upload-settings-fade-in {
   from {
     opacity: 0;
     transform: translateY(5px);
@@ -3824,6 +3872,47 @@ a {
     grid-template-columns: 1fr;
     gap: var(--space-2);
   }
+
+  .vault-card {
+    padding: var(--space-4);
+    min-width: 0;
+  }
+
+  .vault-card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-label {
+    min-width: 0;
+  }
+
+  .vault-detail-value,
+  .vault-addr-container {
+    justify-content: flex-start;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vault-addr-toggle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vault-actions .vault-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 .vault-meta-grid {
@@ -5050,11 +5139,11 @@ a {
   border-radius: 16px;
   padding: var(--space-4);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.15s ease-out;
+  animation: artwork-preview-fade-in 0.15s ease-out;
   pointer-events: none;
 }
 
-@keyframes fadeIn {
+@keyframes artwork-preview-fade-in {
   from {
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.95);
@@ -14464,7 +14553,19 @@ tr[draggable="true"]:hover {
 .analytics-container {
   display: grid;
   gap: var(--space-6);
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: analytics-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes analytics-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cohort-operations-container {

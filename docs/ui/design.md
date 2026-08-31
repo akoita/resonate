@@ -766,8 +766,13 @@ All animations respect `prefers-reduced-motion: reduce`. When active:
 
 ## 10. Accessibility
 
-- **Contrast**: All text meets WCAG 2.1 AA (4.5:1 for body, 3:1 for large
-  text) against the darkest surface.
+WCAG 2.2 Level AA is the engineering target. The tested scope, automated and
+manual evidence, shared-component contract, and known gaps live in the
+[accessibility baseline](../features/accessibility_baseline.md); do not treat
+this design guidance as a product-wide certification.
+
+- **Contrast**: Target at least 4.5:1 for body text and 3:1 for large text
+  against its rendered surface; verify it in the route-level axe baseline.
 - **Focus rings**: Violet outline (`box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35)`)
   on all interactive elements.
 - **Touch targets**: 44px minimum on `pointer: coarse` devices.

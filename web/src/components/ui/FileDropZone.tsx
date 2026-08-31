@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 
 type FileDropZoneProps = {
     onFileSelect: (file: File) => void;
@@ -9,6 +9,8 @@ type FileDropZoneProps = {
     disabled?: boolean;
     multiple?: boolean;
     directory?: boolean;
+    /** Optional accessible name for the drop target and file picker. */
+    ariaLabel?: string;
 };
 
 export function FileDropZone({
@@ -18,9 +20,18 @@ export function FileDropZone({
     disabled = false,
     multiple = false,
     directory = false,
+    ariaLabel,
 }: FileDropZoneProps) {
     const [isDragging, setIsDragging] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const descriptionId = `file-drop-zone-description-${useId().replace(/:/g, "")}`;
+    const accessibleName = ariaLabel ?? (
+        directory
+            ? "Select a folder of audio files"
+            : multiple
+                ? "Select audio files"
+                : "Select an audio file"
+    );
 
     const handleDragOver = useCallback(
         (e: React.DragEvent) => {
@@ -150,9 +161,14 @@ export function FileDropZone({
             onDrop={handleDrop}
             onClick={handleClick}
             role="button"
+            aria-label={accessibleName}
+            aria-describedby={descriptionId}
+            aria-disabled={disabled}
             tabIndex={disabled ? -1 : 0}
             onKeyDown={(e) => {
+                if (disabled) return;
                 if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
                     handleClick();
                 }
             }}
@@ -169,6 +185,7 @@ export function FileDropZone({
             />
             <div className="file-drop-zone-icon">
                 <svg
+                    aria-hidden="true"
                     width="32"
                     height="32"
                     viewBox="0 0 24 24"
@@ -187,7 +204,7 @@ export function FileDropZone({
                     : <>Drop audio file here or <span className="file-drop-zone-link">browse</span></>
                 }
             </span>
-            <span className="file-drop-zone-secondary">
+            <span id={descriptionId} className="file-drop-zone-secondary">
                 {directory ? "Select a folder to import all audio files" : "Supports MP3, WAV, FLAC, AIFF"}
             </span>
         </div>

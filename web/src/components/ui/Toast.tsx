@@ -8,9 +8,9 @@ import {
     type ReactNode,
 } from "react";
 
-type ToastType = "success" | "error" | "warning" | "info";
+export type ToastType = "success" | "error" | "warning" | "info";
 
-type Toast = {
+export type Toast = {
     id: string;
     type: ToastType;
     visual?: "funding";
@@ -18,6 +18,7 @@ type Toast = {
     message?: string;
     duration?: number;
     onClick?: () => void;
+    actionLabel?: string;
 };
 
 type ToastContextType = {
@@ -81,7 +82,7 @@ function ToastContainer({
     );
 }
 
-function ToastItem({
+export function ToastItem({
     toast,
     onRemove,
 }: {
@@ -125,26 +126,58 @@ function ToastItem({
         }
     };
 
-    return (
-        <div
-            className={`toast toast-${toast.type} ${toast.visual ? `toast--${toast.visual}` : ''} ${toast.onClick ? 'clickable' : ''}`}
-            onClick={handleToastClick}
-            style={toast.onClick ? { cursor: 'pointer' } : undefined}
-        >
-            <div className="toast-icon">{icons[toast.type]}</div>
+    const toastContent = (
+        <>
+            <div className="toast-icon" aria-hidden="true">{icons[toast.type]}</div>
             <div className="toast-content">
                 <div className="toast-title">{toast.title}</div>
                 {toast.message && <div className="toast-message">{toast.message}</div>}
             </div>
+        </>
+    );
+
+    return (
+        <div
+            className={`toast toast-${toast.type} ${toast.visual ? `toast--${toast.visual}` : ''} ${toast.onClick ? 'clickable' : ''}`}
+            role={toast.type === "error" ? "alert" : "status"}
+            aria-live={toast.type === "error" ? "assertive" : "polite"}
+            aria-atomic="true"
+            style={toast.onClick ? { cursor: 'pointer' } : undefined}
+        >
+            {toast.onClick ? (
+                <button
+                    type="button"
+                    className="toast-action"
+                    aria-label={toast.actionLabel ?? toast.title}
+                    onClick={handleToastClick}
+                    style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "var(--space-3)",
+                        padding: 0,
+                        border: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        font: "inherit",
+                        textAlign: "left",
+                        cursor: "pointer",
+                    }}
+                >
+                    {toastContent}
+                </button>
+            ) : toastContent}
             <button
+                type="button"
                 className="toast-close"
                 onClick={(e) => {
                     e.stopPropagation();
                     onRemove(toast.id);
                 }}
-                aria-label="Close"
+                aria-label={`Close ${toast.title}`}
             >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <line x1="18" y1="6" x2="6" y2="18" />
                     <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>

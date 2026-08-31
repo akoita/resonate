@@ -277,7 +277,11 @@ export default function Sidebar() {
           aria-hidden="true"
         />
       ) : null}
-      <aside className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}>
+      <aside
+        id="primary-navigation"
+        className={`app-sidebar ${isSidebarOpen ? "open" : ""}`}
+        aria-label="Application navigation"
+      >
       <div className="sidebar-logo">
         <span className="logo-icon" aria-hidden="true">
           <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -307,7 +311,7 @@ export default function Sidebar() {
         ) : null}
       </div>
 
-      <nav className="sidebar-nav primary">
+      <nav className="sidebar-nav primary" aria-label="Primary">
         {PRIMARY_ITEMS.map((item) => {
           const isActive = pathname === item.href;
           const badge = "badge" in item ? item.badge : undefined;
@@ -317,6 +321,7 @@ export default function Sidebar() {
               href={item.href}
               prefetch={false}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
+              aria-current={isActive ? "page" : undefined}
             >
               <span className="link-icon">{item.icon}</span>
               <span className="link-text">{item.name}</span>
@@ -331,7 +336,7 @@ export default function Sidebar() {
       {/* Spacer to push secondary nav down */}
       <div className="flex-grow" />
 
-      <nav className="sidebar-nav secondary">
+      <nav className="sidebar-nav secondary" aria-label="Artist and account">
         <div className="nav-divider" />
         {SECONDARY_ITEMS.map((item) => {
           const isActive = pathname === item.href;
@@ -341,6 +346,7 @@ export default function Sidebar() {
               href={item.href}
               prefetch={false}
               className={`sidebar-link ${isActive ? 'active' : ''}`}
+              aria-current={isActive ? "page" : undefined}
             >
               <span className="link-icon">{item.icon}</span>
               <span className="link-text">{item.name}</span>
@@ -353,6 +359,7 @@ export default function Sidebar() {
               href="/disputes/admin"
               prefetch={false}
               className={`sidebar-link ${pathname === "/disputes/admin" ? 'active' : ''}`}
+              aria-current={pathname === "/disputes/admin" ? "page" : undefined}
             >
               <span className="link-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -366,6 +373,7 @@ export default function Sidebar() {
               href="/admin/community/cohorts"
               prefetch={false}
               className={`sidebar-link ${pathname === "/admin/community/cohorts" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/community/cohorts" ? "page" : undefined}
             >
               <span className="link-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -381,6 +389,7 @@ export default function Sidebar() {
               href="/admin/community/moderation"
               prefetch={false}
               className={`sidebar-link ${pathname === "/admin/community/moderation" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/community/moderation" ? "page" : undefined}
             >
               <span className="link-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

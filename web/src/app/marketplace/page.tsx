@@ -538,6 +538,7 @@ export default function MarketplacePage() {
                     <input
                         type="text"
                         className="marketplace-search__input"
+                        aria-label="Search marketplace listings"
                         placeholder="Search stems, tracks, or artists..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
@@ -568,6 +569,7 @@ export default function MarketplacePage() {
                     {/* Sort */}
                     <select
                         className="marketplace-select"
+                        aria-label="Sort marketplace listings"
                         value={sortBy}
                         onChange={e => setSortBy(e.target.value)}
                         data-testid="marketplace-sort"
@@ -581,6 +583,7 @@ export default function MarketplacePage() {
                     {artists.length > 0 && (
                         <select
                             className="marketplace-select"
+                            aria-label="Filter by artist"
                             value={selectedArtist}
                             onChange={e => setSelectedArtist(e.target.value)}
                         >
@@ -593,6 +596,7 @@ export default function MarketplacePage() {
                     {genres.length > 0 && (
                         <select
                             className="marketplace-select"
+                            aria-label="Filter by genre"
                             value={selectedGenre}
                             onChange={e => setSelectedGenre(e.target.value)}
                         >

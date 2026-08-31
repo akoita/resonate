@@ -569,13 +569,21 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     };
 
     return (
-        <div className={`global-playlist-panel ${isOpen ? 'open' : ''}`}>
+        <aside
+            id="global-playlist-panel"
+            className={`global-playlist-panel ${isOpen ? 'open' : ''}`}
+            aria-label="Playlist panel"
+            aria-hidden={!isOpen}
+            inert={!isOpen}
+        >
             <div className="gpp-header">
                 <h3>Your Playlists</h3>
                 <div className="gpp-actions">
                     <button
+                        type="button"
                         className="gpp-action-btn"
                         onClick={() => setModalState({ type: 'create-playlist', isOpen: true })}
+                        aria-label="New playlist"
                         title="New Playlist"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -584,9 +592,11 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                         </svg>
                     </button>
                     <button
+                        type="button"
                         className={`gpp-action-btn ${isSyncing ? "animate-spin" : ""}`}
                         onClick={handleSync}
                         disabled={isSyncing}
+                        aria-label="Sync playlists with cloud"
                         title="Sync with cloud"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -596,8 +606,10 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                         </svg>
                     </button>
                     <button
+                        type="button"
                         className="gpp-action-btn"
                         onClick={() => setModalState({ type: 'create-folder', isOpen: true })}
+                        aria-label="New folder"
                         title="New Folder"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -606,7 +618,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                             <line x1="9" y1="14" x2="15" y2="14"></line>
                         </svg>
                     </button>
-                    <button className="gpp-close" onClick={onClose}>&times;</button>
+                    <button type="button" className="gpp-close" onClick={onClose} aria-label="Close playlist panel">&times;</button>
                 </div>
             </div>
 
@@ -690,6 +702,6 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                 }}
                 onCancel={() => setModalState(prev => ({ ...prev, isOpen: false }))}
             />
-        </div>
+        </aside>
     );
 }

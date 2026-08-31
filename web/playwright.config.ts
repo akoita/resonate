@@ -41,6 +41,11 @@ export default defineConfig({
       port: 3000,
       timeout: 120000,
       reuseExistingServer: !process.env.CI,
+      env: {
+        // This backend instance exists only for the local/CI E2E harness.
+        // Protected route tests obtain a real signed token through /auth/login.
+        AUTH_DEV_LOGIN_ENABLED: "true",
+      },
     },
     {
       command: process.env.CI ? "npm start -- -p 3001" : "npm run dev",
