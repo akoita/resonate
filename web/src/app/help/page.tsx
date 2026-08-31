@@ -1,13 +1,13 @@
-import type { Metadata } from "next";
-
 import { HelpBrowser } from "../../components/help/HelpBrowser";
 import { AUDIENCES, CATEGORIES, indexEntries } from "../../lib/help";
+import { publicMetadata } from "../../lib/seo";
 
-export const metadata: Metadata = {
+export const metadata = publicMetadata({
   title: "User Guide",
   description:
     "Plain-language guides to everything in Resonate — from your first sign-in to running a fan-funded show.",
-};
+  path: "/help",
+});
 
 export default function HelpLandingPage() {
   const entries = indexEntries();
