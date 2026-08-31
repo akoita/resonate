@@ -14,6 +14,15 @@ import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";
 import { ToastProvider } from "../components/ui/Toast";
 import { AppStateGuard } from "../components/system/AppStateGuard";
 import UpdateAvailablePrompt from "../components/system/UpdateAvailablePrompt";
+import {
+  DEFAULT_SOCIAL_IMAGE,
+  SITE_NAME,
+  SITE_TAGLINE,
+  SITE_URL_OBJECT,
+  canonicalUrl,
+  publicMetadata,
+  socialImageUrl,
+} from "../lib/seo";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,17 +61,16 @@ const beVietnamPro = Be_Vietnam_Pro({
   display: "swap",
 });
 
-const SITE_NAME = "Resonate";
-const SITE_TAGLINE =
-  "Discover, remix, and own music on-chain. Stems, royalties, and an AI DJ — all in one studio.";
-
 export const metadata: Metadata = {
+  ...publicMetadata({
+    title: SITE_NAME,
+    description: SITE_TAGLINE,
+    path: "/",
+    image: DEFAULT_SOCIAL_IMAGE,
+  }),
   // Absolute base for resolving relative Open Graph / Twitter image URLs (e.g.
-  // the per-moment `opengraph-image` route, #1477). Partial groundwork for the
-  // canonical public site URL (#1101). Defaults to local dev.
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001",
-  ),
+  // the per-moment `opengraph-image` route, #1477). Defaults to local dev.
+  metadataBase: SITE_URL_OBJECT,
   // `template` lets per-route pages set their own title via
   // `export const metadata = { title: "Library" }` and get
   // "Library · Resonate" automatically.
@@ -74,14 +82,17 @@ export const metadata: Metadata = {
   applicationName: SITE_NAME,
   openGraph: {
     type: "website",
+    url: canonicalUrl("/"),
     siteName: SITE_NAME,
     title: SITE_NAME,
     description: SITE_TAGLINE,
+    images: [{ url: socialImageUrl(DEFAULT_SOCIAL_IMAGE), alt: SITE_NAME }],
   },
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: SITE_NAME,
     description: SITE_TAGLINE,
+    images: [socialImageUrl(DEFAULT_SOCIAL_IMAGE)],
   },
 };
 

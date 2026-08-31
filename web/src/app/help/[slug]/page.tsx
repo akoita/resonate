@@ -3,6 +3,11 @@ import { notFound } from "next/navigation";
 
 import { HelpArticleView } from "../../../components/help/HelpArticleView";
 import { articleSlugs, getArticle } from "../../../lib/help";
+import {
+  canonicalPath,
+  decodePathSegment,
+  publicMetadata,
+} from "../../../lib/seo";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -14,24 +19,26 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const decodedSlug = decodePathSegment(slug);
+  const article = getArticle(decodedSlug);
   if (!article) {
-    return { title: "Guide not found" };
+    return publicMetadata({
+      title: "Guide not found",
+      description: "Browse the Resonate User Guide.",
+      path: canonicalPath("help", decodedSlug),
+    });
   }
-  return {
+  return publicMetadata({
     title: article.title,
     description: article.summary,
-    openGraph: {
-      title: article.title,
-      description: article.summary,
-      type: "article",
-    },
-  };
+    openGraphType: "article",
+    path: canonicalPath("help", decodedSlug),
+  });
 }
 
 export default async function HelpArticlePage({ params }: Props) {
   const { slug } = await params;
-  const article = getArticle(slug);
+  const article = getArticle(decodePathSegment(slug));
   if (!article) {
     notFound();
   }

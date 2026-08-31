@@ -13,6 +13,11 @@ import {
 import { MomentPermalinkCard } from "../../../components/punchline/MomentPermalinkCard";
 import { formatPriceCents } from "../../../components/punchline/punchlineDropHelpers";
 import { resolveClipUrl } from "../../../components/punchline/punchlineCollectHelpers";
+import {
+  canonicalPath,
+  decodePathSegment,
+  publicMetadata,
+} from "../../../lib/seo";
 
 /**
  * Public moment permalink (#1477 slice 2). Server-rendered so social crawlers
@@ -46,25 +51,42 @@ async function loadShare(momentId: string, collectibleId?: string): Promise<Load
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { momentId } = await params;
   const { c } = await searchParams;
-  const { share, edition } = await loadShare(momentId, c);
-  if (!share) {
-    return { title: "Moment" };
+  const decodedMomentId = decodePathSegment(momentId);
+  const path = canonicalPath("moments", decodedMomentId);
+  try {
+    const { share, edition } = await loadShare(decodedMomentId, c);
+    if (!share) {
+      return publicMetadata({
+        title: "Moment",
+        description: "Discover collectible music moments on Resonate.",
+        path,
+      });
+    }
+    const title = momentShareTitle(share);
+    const description = momentShareDescription(share, edition);
+    // Keep the file-based OG card as the social image while the helper supplies
+    // the shared fallback/canonical/robots behavior.
+    return publicMetadata({
+      title,
+      description,
+      openGraphType: "article",
+      image: canonicalPath("moments", decodedMomentId, "opengraph-image"),
+      path,
+    });
+  } catch {
+    return publicMetadata({
+      title: "Moment",
+      description: "Discover collectible music moments on Resonate.",
+      path,
+    });
   }
-  const title = momentShareTitle(share);
-  const description = momentShareDescription(share, edition);
-  // The file-based `opengraph-image` route auto-supplies og:image + twitter:image.
-  return {
-    title,
-    description,
-    openGraph: { title, description, type: "article" },
-    twitter: { card: "summary_large_image", title, description },
-  };
 }
 
 export default async function MomentPermalinkPage({ params, searchParams }: Props) {
   const { momentId } = await params;
   const { c } = await searchParams;
-  const { share, edition } = await loadShare(momentId, c);
+  const decodedMomentId = decodePathSegment(momentId);
+  const { share, edition } = await loadShare(decodedMomentId, c);
   if (!share) {
     notFound();
   }
