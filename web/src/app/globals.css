@@ -2324,7 +2324,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  animation: fadeIn 0.3s ease;
+  animation: upload-settings-fade-in 0.3s ease;
 }
 
 .track-selection-mini {
@@ -2353,7 +2353,7 @@ a {
   color: white;
 }
 
-@keyframes fadeIn {
+@keyframes upload-settings-fade-in {
   from {
     opacity: 0;
     transform: translateY(5px);
@@ -3824,6 +3824,47 @@ a {
     grid-template-columns: 1fr;
     gap: var(--space-2);
   }
+
+  .vault-card {
+    padding: var(--space-4);
+    min-width: 0;
+  }
+
+  .vault-card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-label {
+    min-width: 0;
+  }
+
+  .vault-detail-value,
+  .vault-addr-container {
+    justify-content: flex-start;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vault-addr-toggle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vault-actions .vault-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 .vault-meta-grid {
@@ -5050,11 +5091,11 @@ a {
   border-radius: 16px;
   padding: var(--space-4);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.15s ease-out;
+  animation: artwork-preview-fade-in 0.15s ease-out;
   pointer-events: none;
 }
 
-@keyframes fadeIn {
+@keyframes artwork-preview-fade-in {
   from {
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.95);
@@ -14464,7 +14505,19 @@ tr[draggable="true"]:hover {
 .analytics-container {
   display: grid;
   gap: var(--space-6);
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: analytics-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes analytics-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cohort-operations-container {

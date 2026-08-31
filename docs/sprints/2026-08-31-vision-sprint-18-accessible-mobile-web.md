@@ -1,7 +1,7 @@
 # Vision Sprint 18 — Accessible, Mobile-Ready Web Experience
 
-> **Status:** Planned on 2026-08-31. Execution begins after Vision Sprint 17
-> closes with #1557 complete.
+> **Status:** Active from 2026-08-31. The owner started #1440 while Vision
+> Sprint 17 remains open and #1557 waits for its dependency release-age gate.
 
 - **Milestone:** [20 — Vision Sprint 18](https://github.com/akoita/resonate/milestone/20)
 - **Revenue line / phase:** vision-neutral web quality and discoverability.
@@ -30,8 +30,18 @@ and accurately documented.
 | 4 | [#428](https://github.com/akoita/resonate/issues/428) User Guide completion | PRs #1231, #1232, and #1233 are merged. Local seeded E2E infrastructure exists for the remaining owner views. Execute last so screenshots reflect the completed UI. | `closed/satisfied` foundation; remaining slice unblocked | Seeded Artist Analytics, Managed Catalog, and Community owner-view screenshots are captured, referenced accurately, and protected by the guide integrity test. |
 
 There are no declared open prerequisites or cycles among the four admitted
-issues. Sprint 17 and #1557 are a planning gate, not Sprint 18 scope: Sprint 18
-does not begin until that milestone closes.
+issues. #1440 may proceed independently while #1557 waits. Before a Sprint 18
+frontend branch merges, it must incorporate the completed #1557 foundation and
+rerun its focused validation when #1557 changed a relevant build or runtime
+boundary.
+
+## Rescope Log
+
+- **2026-08-31 — early start approved:** the owner explicitly started Sprint
+  18 before Sprint 17 closed so repository-local web quality work could proceed
+  while #1557 remained time-gated. Scope, capacity, issue order, exit criteria,
+  and exclusions are unchanged. #1440 starts first; #1101 still waits for the
+  final Next.js 16.3 foundation.
 
 ## Admitted Work
 
