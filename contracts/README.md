@@ -81,20 +81,21 @@ dynamic collections require a contract-specific compatibility or replacement pla
 
 ### Kernel dependency boundary
 
-The primary `lib/kernel` gitlink is pinned to the Kernel v4 development commit
+The `lib/kernel` gitlink is pinned to the Kernel v4 development commit
 `f2a84a332ec5a722e7e95a0d64601905c3c87fe9`. It is compiled only by the
 isolated `kernel-v4/` compatibility harness with Solidity 0.8.33, Prague, and
 EntryPoint v0.9. This is compatibility and tooling coverage; it is not a
 production deployment path and does not migrate, authorize, or replace any
 existing account.
 
-The default `contracts` profile remains on the legacy `lib/kernel-v3` gitlink,
-pinned to Kernel v2.4 commit `e00c66aa82f6d04809c908d2df27d0bac64785ff` (the
-Resonate runtime's Kernel v3.1 surface) and its legacy `I4337` interfaces.
-`DeployLocalAA.s.sol`, the custom `src/aa/KernelFactory.sol`, and
-`UniversalSigValidator` continue to deploy and validate EntryPoint v0.7
-accounts. The bootstrap script initializes both pins while keeping these
-compiler and runtime paths separate.
+The application deployment profile uses the official Kernel v3.1 tag at commit
+`03f7f5cf5871cda0070e4223f196f5b577f6cde2` and the official
+`account-abstraction` v0.7 tag at commit
+`7af70c8993a6f42973f520ae0752386a5032abe7`. `DeployLocalAA.s.sol`, the
+repository-owned `src/aa/KernelFactory.sol`, and `UniversalSigValidator` deploy
+that exact EntryPoint v0.7/Kernel v3.1 boundary. App SDK calls use Kernel
+version `0.3.1`, the explicit implementation and factory addresses, and direct
+factory mode on repository-owned networks.
 
 Run the isolated checks after installing dependencies with:
 
@@ -110,9 +111,9 @@ curl -L https://foundry.paradigm.xyz | bash && foundryup
 cd contracts && ./scripts/install-deps.sh
 ```
 
-This bootstrap script installs the pinned Forge libraries, initializes the
-legacy Kernel `I4337` dependency, and installs the locked v4 harness inputs
-from `kernel-v4/soldeer.lock`.
+This bootstrap script checks out every Forge git dependency at its exact pinned
+commit and installs the locked v4 harness inputs from `kernel-v4/soldeer.lock`.
+It fails closed rather than replacing an unmanaged dependency directory.
 
 ### Local (Anvil)
 
@@ -120,7 +121,7 @@ from `kernel-v4/soldeer.lock`.
 # 1. Start local node
 anvil
 
-# 2. Deploy legacy AA infrastructure (EntryPoint v0.7 + Kernel v3.1) — only needed once
+# 2. Deploy AA infrastructure (EntryPoint v0.7 + Kernel v3.1) — only needed once
 forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
 
 # 3. Deploy protocol contracts
@@ -184,7 +185,7 @@ forge script script/DeployProtocol.s.sol \
 | `UpgradeShowCampaignEscrow.s.sol` | Timelocked UUPS upgrade of the escrow: `UPGRADE_ACTION=schedule` then `execute` |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
 
-`DeployLocalAA.s.sol` is intentionally the legacy local path. Kernel v4's
+`DeployLocalAA.s.sol` is the application-local v3.1 path. Kernel v4's
 `KernelFactory`, `KernelUUPS`, and `KernelImmutableECDSA` are not authorized by
 this script and are not deployed by any application workflow.
 

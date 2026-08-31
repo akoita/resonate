@@ -26,6 +26,11 @@ When adding a new environment variable:
 | `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional HTTP(S) block explorer root for the exact chain in `NEXT_PUBLIC_CHAIN_ID` (for example, `https://base-sepolia.blockscout.com` for Base Sepolia). The override applies only when a link's requested chain matches that safely parsed chain ID; other known chains keep their viem explorer metadata, and an invalid URL falls back to that metadata. Shows contract links to Blockscout open the contract tab. Leave unset for local Anvil. |
 | `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional legacy fallback for Shows campaign contract links when a campaign has an unknown or missing chain ID. Known chains use the matching `NEXT_PUBLIC_EXPLORER_URL` override or their authoritative viem metadata, and local chains have no explorer link. Accepts either an explorer root or a base ending in `/address`. Seeded offline samples do not expose a live escrow link. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
+| `NEXT_PUBLIC_AA_ENTRY_POINT` | Frontend | EntryPoint address for repository-owned local/custom AA deployments. The supported boundary is EntryPoint v0.7. |
+| `NEXT_PUBLIC_AA_FACTORY` | Frontend | Kernel factory deployed on the selected local/custom chain. Generated local config passes this factory directly instead of assuming the public ZeroDev MetaFactory exists. |
+| `NEXT_PUBLIC_AA_KERNEL` | Frontend | Kernel implementation behind `NEXT_PUBLIC_AA_FACTORY`; generated from the same `DeployLocalAA` broadcast as the factory. |
+| `NEXT_PUBLIC_AA_KERNEL_VERSION` | Frontend | Must be `0.3.1` for the current app SDK boundary. The app fails fast instead of constructing calldata for another Kernel surface. |
+| `NEXT_PUBLIC_AA_USE_META_FACTORY` | Frontend | `false` for repository-owned Anvil/custom-chain deployments; `true` for canonical public ZeroDev deployments such as the Sepolia fork. |
 | `NEXT_PUBLIC_AA_PAYMASTER_ENABLED` | Frontend | Optional flag (`true` / `1` / `yes`) to attach a ZeroDev paymaster client to browser UserOps. Leave unset when wallet gas sponsorship is not configured so transactions self-pay from the smart account ETH balance |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
 | `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | Frontend | Optional ZeroDev project ID. When set, passkey login uses the hosted ZeroDev passkey server instead of the self-hosted backend passkey store |
@@ -91,6 +96,13 @@ When adding a new environment variable:
 | `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | Analytics Dataflow publication | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
 | `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Analytics Dataflow publication | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
+| `AA_ENTRY_POINT` | Backend | EntryPoint v0.7 address used by AA services and exposed runtime configuration. |
+| `AA_FACTORY` | Backend | Kernel v3.1 factory address paired with `AA_ENTRY_POINT`. |
+| `AA_KERNEL` | Backend | Kernel v3.1 implementation address produced by the local/custom deployment. |
+| `AA_KERNEL_VERSION` | Backend | Must be `0.3.1`; backend session-key flows reject a different configured account surface. |
+| `AA_CHAIN_ID` | Backend | Positive execution-chain ID used by AA clients. Custom devnet IDs are preserved rather than mapped to Sepolia. |
+| `AA_FUNDER_KEY` | Backend secret | Optional explicit 32-byte key for local/custom-chain account funding. The well-known Anvil key is used automatically only on chain `31337`; every other chain requires this explicit value or external funding. |
+| `AA_STRICT_MODE` | Backend | When `true`, disables all automatic local account funding so tests exercise production-style gas ownership. |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
@@ -101,6 +113,13 @@ When adding a new environment variable:
 | `BASE_SEPOLIA_RPC_URL` | Contracts / backend | Required for Base Sepolia protocol deploys and single-chain x402 staging |
 | `CONTRACT_DEPLOYER_PRIVATE_KEY` | Contracts secret | Preferred GitHub Actions deployer key for `.github/workflows/contracts-deploy.yml`. Use protected GitHub environments; do not store in source. Existing local scripts still read `PRIVATE_KEY` |
 | `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` | Contracts | Explicit override that lets Forge scripts use the default Anvil key on a non-local RPC. Leave unset in shared remote environments. |
+| `AA_RPC_URL` | Local AA operator | Host-visible execution RPC used by Forge and app config in `make local-aa-deploy-custom` / `make local-aa-config-custom`. |
+| `AA_ALTO_RPC_URL` | Local AA operator | Docker-visible execution RPC used by the `custom-aa` Alto profile. For a host-published Kurtosis port, use `http://host.docker.internal:<port>`. |
+| `AA_EXECUTOR_PRIVATE_KEY` / `AA_UTILITY_PRIVATE_KEY` | Local AA secrets | Explicit funded keys required by the custom-chain Alto profile. No default development keys are supplied for custom chain IDs. |
+| `AA_BUNDLER_PORT` | Local AA operator | Optional host port for custom-chain Alto; defaults to `4337`. |
+| `AA_NETWORK_NAME` | Local AA operator | Optional diagnostic network name passed to custom-chain Alto; defaults to `custom-local`. |
+| `AA_EXECUTOR_GAS_MULTIPLIER` | Local AA operator | Optional Alto bundle gas multiplier percentage; use `1500` for the current Platåberget EIP-8037 characterization network. |
+| `AA_V7_VERIFICATION_GAS_MULTIPLIER` | Local AA operator | Optional Alto ERC-4337 v0.7 verification-gas multiplier percentage; use `1500` when counterfactual deployment needs Platåberget state-gas headroom. |
 | `ETHERSCAN_API_KEY` | Contracts secret | Optional Etherscan API v2 key used for Base Sepolia contract verification. Store in secret manager/GitHub environment secrets when used in CI |
 | `BASESCAN_API_KEY` | Contracts secret | Backward-compatible alias for `ETHERSCAN_API_KEY` in Base Sepolia verification scripts |
 | `BASESCAN_API_URL` | Contracts | Optional verification API override. Defaults to `https://api.etherscan.io/v2/api`, which requires a key/plan with Base Sepolia API access |

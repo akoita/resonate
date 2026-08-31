@@ -7,8 +7,9 @@ repair_kernel_metadata() {
   local kernel_dir="$1"
   local module_name="lib/ExcessivelySafeCall"
 
-  # Kernel v4 has no nested gitlinks. The v2.4 compatibility checkout does,
-  # and its pinned commit omitted the Ex...SafeCall .gitmodules entry.
+  # Current Kernel v3.1 and v4 pins need no repair. Keep this compatibility
+  # guard for older cached checkouts whose ExcessivelySafeCall gitlink omitted
+  # its .gitmodules entry.
   if [[ ! -f "${kernel_dir}/.gitmodules" ]] || \
     ! git -C "${kernel_dir}" rev-parse --git-dir >/dev/null 2>&1; then
     return
@@ -25,7 +26,7 @@ repair_kernel_metadata() {
   fi
 
   # Repair only the runner checkout so Foundry and actions/checkout can
-  # traverse the legacy nested submodule; the pinned dependency is unchanged.
+  # traverse that older nested submodule; the pinned dependency is unchanged.
   git -C "${kernel_dir}" config -f .gitmodules \
     submodule."${module_name}".path "${module_name}"
   git -C "${kernel_dir}" config -f .gitmodules \

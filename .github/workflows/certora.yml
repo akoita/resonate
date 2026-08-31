@@ -30,13 +30,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Generic recursive clones skip the legacy Kernel v3 checkout because its
-      # nested metadata is malformed; explicitly repair that metadata here.
       - name: Init contract submodules
-        run: |
-          git submodule update --init --checkout
-          ./contracts/scripts/repair-kernel-submodule-metadata.sh
-          git -C contracts/lib/kernel-v3 submodule update --init --checkout lib/I4337
+        run: git submodule update --init --checkout
 
       - name: Check CERTORAKEY secret
         id: key

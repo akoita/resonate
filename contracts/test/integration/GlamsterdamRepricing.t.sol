@@ -2,12 +2,13 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {IEntryPoint} from "I4337/interfaces/IEntryPoint.sol";
-import {IKernel} from "../../lib/kernel-v3/src/interfaces/IKernel.sol";
-import {IKernelValidator} from "../../lib/kernel-v3/src/interfaces/IKernelValidator.sol";
+import {IEntryPoint} from "kernel-v3/interfaces/IEntryPoint.sol";
+import {IHook} from "kernel-v3/interfaces/IERC7579Modules.sol";
 import {Kernel} from "../../lib/kernel-v3/src/Kernel.sol";
-import {TestValidator} from "../../lib/kernel-v3/src/mock/TestValidator.sol";
+import {ValidationId} from "kernel-v3/core/ValidationManager.sol";
+import {ECDSAValidator} from "kernel-v3/validator/ECDSAValidator.sol";
 import {KernelFactory} from "../../src/aa/KernelFactory.sol";
+import {UniversalSigValidator} from "../../src/aa/UniversalSigValidator.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {CurationRewards} from "../../src/core/CurationRewards.sol";
 import {DisputeResolution} from "../../src/core/DisputeResolution.sol";
@@ -53,10 +54,14 @@ contract GlamsterdamRepricingTest is Test {
 
     function test_Glamsterdam_KernelFactoryCreate2AndInitialization() public {
         Kernel implementation = new Kernel(IEntryPoint(address(0)));
-        TestValidator validator = new TestValidator();
+        ECDSAValidator validator = new ECDSAValidator();
         KernelFactory factory = new KernelFactory(address(implementation));
-        bytes memory initialization =
-            abi.encodeCall(IKernel.initialize, (IKernelValidator(address(validator)), abi.encodePacked(address(this))));
+        bytes[] memory noInitialConfig = new bytes[](0);
+        ValidationId validatorId = ValidationId.wrap(bytes21(abi.encodePacked(hex"01", address(validator))));
+        bytes memory initialization = abi.encodeCall(
+            Kernel.initialize,
+            (validatorId, IHook(address(0)), abi.encodePacked(address(this)), bytes(""), noInitialConfig)
+        );
         bytes32 salt = keccak256("glamsterdam-kernel");
 
         address predicted = factory.getAddress(initialization, salt);
@@ -66,8 +71,15 @@ contract GlamsterdamRepricingTest is Test {
 
         assertEq(account, predicted, "CREATE2 address must match prediction");
         assertGt(account.code.length, 0, "account proxy must be deployed");
-        assertEq(
-            address(IKernel(account).getDefaultValidator()), address(validator), "initialization must persist validator"
+        assertEq(validator.ecdsaValidatorStorage(account), address(this), "initialization must persist validator owner");
+
+        UniversalSigValidator sigValidator = new UniversalSigValidator();
+        sigValidator.setAllowedFactory(address(factory), true);
+        sigValidator.setAllowedSelector(address(factory), factory.createAccount.selector, true);
+        assertTrue(sigValidator.allowedFactories(address(factory)), "factory must remain allowlisted");
+        assertTrue(
+            sigValidator.allowedSelectors(address(factory), factory.createAccount.selector),
+            "only the account-creation selector is enabled"
         );
 
         gasBefore = gasleft();

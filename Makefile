@@ -5,6 +5,7 @@ BROADCAST_FILE ?= contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json
 RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
 LOCAL_INFRA_COMPOSE_FILE ?= docker/docker-compose.local.yml
 AA_INFRA_COMPOSE_FILE ?= docker/docker-compose.aa.yml
+AA_BUNDLER_PORT ?= 4337
 DEMUCS_IMAGE_NAME ?= resonate-demucs:cpu
 DEMUCS_GPU_IMAGE_NAME ?= resonate-demucs:gpu
 DEMUCS_CONTAINER_NAME ?= resonate-demucs-local
@@ -398,20 +399,81 @@ kernel-v4-test:
 local-aa-up:
 	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa up -d
 	@echo "Waiting for local Anvil on localhost:8545..."
-	@until nc -z localhost 8545 >/dev/null 2>&1; do sleep 1; done
+	@for attempt in $$(seq 1 60); do \
+		nc -z localhost 8545 >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Anvil did not become reachable within 60 seconds." >&2; exit 1
 	@echo "Waiting for local Alto bundler on localhost:4337..."
-	@until nc -z localhost 4337 >/dev/null 2>&1; do sleep 1; done
-	@echo "✅ Local AA infra is ready: Anvil (31337), Alto bundler"
+	@for attempt in $$(seq 1 60); do \
+		nc -z localhost 4337 >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Alto did not open port 4337 within 60 seconds." >&2; exit 1
+	@echo "✅ Local AA ports are reachable; deploy the EntryPoint next"
 
 local-aa-down:
-	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa down
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa --profile custom-aa down
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
 	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo "Waiting for Alto to advertise the deployed EntryPoint..."
+	@for attempt in $$(seq 1 60); do \
+		curl -fsS -H 'content-type: application/json' \
+			--data '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
+			http://localhost:4337 2>/dev/null | jq -e '.result | length > 0' >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Alto did not advertise an EntryPoint within 60 seconds." >&2; exit 1
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-aa-config.sh
+
+# Deploy the AA stack to an externally managed local devnet. The caller must
+# explicitly authorize the signer through PRIVATE_KEY or the isolated-devnet
+# ALLOW_DEFAULT_ANVIL_PRIVATE_KEY escape hatch from DeploymentKey.s.sol.
+local-aa-deploy-custom:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_RPC_URL:?AA_RPC_URL is required}"
+	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url "$${AA_RPC_URL}" --broadcast $${AA_FORGE_FLAGS:-}
+
+# Start repository-owned Alto against a custom execution RPC. AA_ALTO_RPC_URL
+# must be reachable from Docker (for a host-published Kurtosis port, use
+# http://host.docker.internal:<port> on Linux/macOS).
+local-aa-custom-up:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_ALTO_RPC_URL:?AA_ALTO_RPC_URL is required}"
+	@: "$${AA_EXECUTOR_PRIVATE_KEY:?AA_EXECUTOR_PRIVATE_KEY is required}"
+	@: "$${AA_UTILITY_PRIVATE_KEY:?AA_UTILITY_PRIVATE_KEY is required}"
+	@entry_point="$${AA_ENTRY_POINT:-$$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "EntryPoint") | .contractAddress' contracts/broadcast/DeployLocalAA.s.sol/$${AA_CHAIN_ID}/run-latest.json | tail -1)}"; \
+	if ! printf '%s' "$$entry_point" | grep -Eq '^0x[0-9a-fA-F]{40}$$'; then \
+		echo "Error: deploy EntryPoint first or set AA_ENTRY_POINT." >&2; \
+		exit 1; \
+	fi; \
+	AA_ENTRY_POINT="$$entry_point" AA_BUNDLER_PORT="$(AA_BUNDLER_PORT)" \
+		docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile custom-aa up -d alto-bundler-custom
+	@echo "Waiting for custom Alto to advertise the deployed EntryPoint..."
+	@entry_point="$${AA_ENTRY_POINT:-$$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "EntryPoint") | .contractAddress' contracts/broadcast/DeployLocalAA.s.sol/$${AA_CHAIN_ID}/run-latest.json | tail -1)}"; \
+	for attempt in $$(seq 1 90); do \
+		curl -fsS -H 'content-type: application/json' \
+			--data '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
+			http://localhost:$(AA_BUNDLER_PORT) 2>/dev/null | \
+			jq -e --arg entry_point "$$entry_point" '.result | map(ascii_downcase) | index($$entry_point | ascii_downcase) != null' >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: custom Alto did not advertise the deployed EntryPoint within 90 seconds." >&2; exit 1
+	@echo "✅ Custom-chain Alto bundler is ready"
+
+local-aa-config-custom:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_RPC_URL:?AA_RPC_URL is required}"
+	./contracts/scripts/update-aa-config.sh --mode custom \
+		--chain-id "$${AA_CHAIN_ID}" \
+		--rpc-url "$${AA_RPC_URL}" \
+		--bundler-url "$${AA_BUNDLER_URL:-http://localhost:$(AA_BUNDLER_PORT)}"
+
+local-aa-custom: local-aa-deploy-custom local-aa-custom-up local-aa-config-custom
+	@echo "✅ Custom-chain AA deployment, Alto, and app configuration are ready"
+
+local-aa-config-test:
+	./contracts/scripts/test-update-aa-config.sh
 
 # Deploy protocol contracts (StemNFT, Marketplace, TransferValidator, ContentProtection, RevenueEscrow)
 # On a Sepolia fork, the on-chain StemNFT predates Phase 2 (missing setContentProtection),
@@ -506,7 +568,7 @@ web-dev-local:
 
 # View local AA logs
 local-aa-logs:
-	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa logs -f
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa --profile custom-aa logs -f
 
 # ============================================
 # Forked Sepolia AA Development (ZeroDev)

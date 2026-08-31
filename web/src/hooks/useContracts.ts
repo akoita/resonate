@@ -300,7 +300,7 @@ async function sendContractTransaction(
   kernelAccount?: any
 ): Promise<string> {
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccountClient, constants } = sdk;
+  const { createKernelAccountClient } = sdk;
 
   let account = kernelAccount;
 
@@ -310,8 +310,8 @@ async function sendContractTransaction(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-    const kernelVersion = constants.KERNEL_V3_1;
+    const accountConfig = getKernelAccountConfig(chainId);
+    const { entryPoint, kernelVersion } = accountConfig;
 
     const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
@@ -331,9 +331,7 @@ async function sendContractTransaction(
 
     account = await sdk.createKernelAccount(publicClient, {
       plugins: { sudo: passkeyValidator },
-      entryPoint,
-      kernelVersion,
-      factoryAddress,
+      ...accountConfig,
     });
   }
 
@@ -2032,7 +2030,7 @@ export async function sendBatchContractTransactions(
   kernelAccount?: any
 ): Promise<string> {
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccountClient, constants } = sdk;
+  const { createKernelAccountClient } = sdk;
 
   let account = kernelAccount;
 
@@ -2041,8 +2039,8 @@ export async function sendBatchContractTransactions(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-    const kernelVersion = constants.KERNEL_V3_1;
+    const accountConfig = getKernelAccountConfig(chainId);
+    const { entryPoint, kernelVersion } = accountConfig;
 
     const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
@@ -2062,9 +2060,7 @@ export async function sendBatchContractTransactions(
 
     account = await sdk.createKernelAccount(publicClient, {
       plugins: { sudo: passkeyValidator },
-      entryPoint,
-      kernelVersion,
-      factoryAddress,
+      ...accountConfig,
     });
   }
 

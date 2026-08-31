@@ -154,8 +154,8 @@ export function useSessionKey() {
         });
 
         // 3. Build policies
-        const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-        const kernelVersion = sdk.constants.KERNEL_V3_1;
+        const accountConfig = getKernelAccountConfig(chainId);
+        const { entryPoint, kernelVersion } = accountConfig;
 
         const callPolicy = toCallPolicy({
           policyVersion: CallPolicyVersion.V0_0_4,
@@ -189,9 +189,7 @@ export function useSessionKey() {
             sudo: sudoValidator,
             regular: permissionValidator,
           },
-          entryPoint,
-          kernelVersion,
-          factoryAddress,
+          ...accountConfig,
         });
 
         // 6. Serialize the permission account (embeds the session private key)
