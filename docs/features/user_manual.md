@@ -58,7 +58,7 @@ from the developer-facing `docs/` (RFCs, architecture, feature specs).
 ## Screenshots
 
 Illustrations live in `web/public/help/screenshots/` and are captured with
-`web/scripts/capture-help-screenshots.mjs` in two passes:
+`web/scripts/capture-help-screenshots.mjs` in three passes:
 
 - **Public pass** (normally from staging; a local public preview is acceptable
   before a new route is first deployed): Discover, Catalog, Shows, a Shows
@@ -70,6 +70,16 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
   (`web/tests/auth.setup.ts`) to render the signed-in shells, so no real passkey
   login is needed. Run it against a local instance:
   `BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs`.
+- **Seeded-owner pass** (from a seeded local backend): Artist Analytics, Managed
+  Catalog, and Community. This pass obtains a real development-login token for
+  the fixed E2E artist/listener and injects its seeded wallet address; it does
+  not enable mock auth. Seed the backend first, then run from `web/`:
+
+  ```sh
+  CAPTURE_PUBLIC=false CAPTURE_AUTH=false CAPTURE_OWNER=true \
+    BASE_URL=http://localhost:3001 API_BASE_URL=http://localhost:3000 \
+    node scripts/capture-help-screenshots.mjs
+  ```
 
 ## Surfaces
 
@@ -80,22 +90,20 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
 - **Assets:** `web/public/help/screenshots/`
 - **Tests:** `web/src/lib/help/help.test.ts`
 
-## Coverage & follow-ups
+## Coverage notes
 
 The guide currently has 20 articles spanning getting started, discovery,
 playback, library/playlists, the marketplace (buy and sell), AI music creation
 and remixing, artist upload/analytics/rights, Resonate Shows (back and run),
 community, disputes, settings/privacy, troubleshooting, and the desktop app.
 
-Tracked follow-ups:
+Coverage notes:
 
-- Signed-in screens are now illustrated via the mock-auth capture pass (Upload,
-  Create, Settings, AI DJ, Sonic Radar, Library, Disputes). A few **data-heavy
-  owner views** still show an empty/error state without a seeded backend, so
-  they're documented with text + deep links rather than screenshots: Artist
-  Analytics, Managed Catalog, and the Community benefits/cohorts hub. Capturing
-  these needs a seeded local backend (the mock JWT isn't accepted by the backend
-  for owner-scoped data) and is deferred.
+- Signed-in screens are illustrated via the mock-auth capture pass (Upload,
+  Create, Settings, AI DJ, Sonic Radar, Library, Disputes).
+- Data-heavy owner views are illustrated via the seeded-owner pass: Artist
+  Analytics, Managed Catalog, and the Community benefits/cohorts hub. Run the
+  backend seed and the exact command above when refreshing those assets.
 - The guide should keep expanding as features ship — it is a living surface,
   like the feature catalog.
 
