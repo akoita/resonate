@@ -182,7 +182,7 @@ jobs:
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # The backend context is self-contained. Its git tree hash is therefore
       # a complete content key and permits safe reuse across release runs.
@@ -257,7 +257,7 @@ jobs:
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # This artifact was built by the reusable CI validation call earlier in
       # the same Release Deployment run; it is never rebuilt from a moving ref.
@@ -340,7 +340,7 @@ jobs:
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # Demucs has two Dockerfiles; include the selected file in the content
       # key so dev and staging images cannot reuse one another accidentally.
@@ -416,7 +416,7 @@ jobs:
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2.2.1
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       # Stable Audio is the expensive image; preserve content-addressed reuse
       # and include its Dockerfile in the cache key.
