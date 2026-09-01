@@ -941,6 +941,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "Publishing uses a release-specific route. You may self-attest provenance for an upload, but self-attestation is not independent rights verification. Depending on account trust and release signals, Resonate may publish with limited monitoring, request evidence, or route the release for review. Marketplace access and payout eligibility remain gated by the release's rights state; account verification alone does not clear release rights.",
           },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-catalog.png`,
+              alt: "The Managed Catalog page for Test Artist showing one ready release, one track, three resources, and a release inventory row for Test Release.",
+              caption: "Managed Catalog: review release status, track counts, resources, and rights routing after publishing.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
         ],
       },
     ],
@@ -1013,6 +1024,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Stablecoin payout totals from sales and royalties.",
               "Content-protection activity and your staking history.",
             ],
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-analytics.png`,
+              alt: "The Artist Analytics page showing seven recent plays, a USDC payout total, Groove Track as the top track, a plays-over-time chart, playback sources, and content-protection status.",
+              caption: "Artist Analytics: recent plays, payouts, playback sources, and protection signals in one view.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -1459,6 +1481,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Cohorts group listeners with similar taste, and city scenes group fans by place. Browse suggestions, join the ones that fit, and leave or hide any you don't want. Cohorts are opt-in and only form once enough people are in them.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/community.png`,
+              alt: "The Community page showing an unlocked Test Artist holder room benefit and a joined Groove Track listeners cohort, with privacy indicators for proofs, wallet, and ownership.",
+              caption: "Community: review private benefits and join privacy-safe listener cohorts from one hub.",
+              width: 1440,
+              height: 1200,
+              source: LOCAL,
+            },
           },
         ],
       },

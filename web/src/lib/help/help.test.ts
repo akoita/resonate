@@ -98,6 +98,13 @@ describe("help content integrity", () => {
     }
   });
 
+  it("references the seeded-owner guide screenshots", () => {
+    const content = JSON.stringify(HELP_ARTICLES);
+    for (const filename of ["artist-analytics.png", "artist-catalog.png", "community.png"]) {
+      expect(content).toContain(`/help/screenshots/${filename}`);
+    }
+  });
+
   it("keeps upload guidance honest about self-attestation and release gating", () => {
     const article = getArticle("upload-music");
     const text = JSON.stringify(article).toLowerCase();
