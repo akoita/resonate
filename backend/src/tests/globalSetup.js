@@ -56,6 +56,12 @@ module.exports = async function globalSetup() {
   // ===== Redis =====
   const redisContainer = await new RedisContainer('redis:7').start();
   env.REDIS_URL = redisContainer.getConnectionUrl();
+  const redisUrl = new URL(env.REDIS_URL);
+  // Application BullMQ modules use the production REDIS_HOST/REDIS_PORT
+  // contract. BullMQ 6 connects eagerly during app.init(), so full-AppModule
+  // integration suites must receive the container coordinates in both forms.
+  env.REDIS_HOST = redisUrl.hostname;
+  env.REDIS_PORT = redisUrl.port || '6379';
   console.log('✅ Redis: ' + env.REDIS_URL);
 
   // ===== Anvil (Foundry local Ethereum node) =====
