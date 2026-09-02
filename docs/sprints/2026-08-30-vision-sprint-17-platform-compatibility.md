@@ -1,9 +1,10 @@
 # Vision Sprint 17 — Platform Compatibility And Delivery Confidence
 
-> **Status:** Active from 2026-08-30. This sprint contains three ordered
-> compatibility and delivery outcomes: #1660, #1557, and #1525.
+> **Status:** Closed 2026-09-02. This sprint merged into Milestone 20 on
+> 2026-09-01 alongside Sprint 18. All three compatibility and delivery
+> outcomes (#1660, #1557, #1525) were delivered on `main`.
 
-- **Milestone:** [19 — Vision Sprint 17](https://github.com/akoita/resonate/milestone/19)
+- **Milestone:** [19 — Vision Sprint 17](https://github.com/akoita/resonate/milestone/19) (merged into [20 — Vision Sprint 17–18](https://github.com/akoita/resonate/milestone/20))
 - **Revenue line / phase:** vision-neutral infrastructure, security, and
   delivery quality. The sprint changes no ADR-BM-6 value flow, fee, payout,
   price, license, collectible, or production authority.
@@ -19,11 +20,11 @@ behavior.
 
 ## Dependency Order
 
-| Order | Issue | Dependency or gate | Observable exit |
-| ---: | --- | --- | --- |
-| 1 | [#1660](https://github.com/akoita/resonate/issues/1660) Glamsterdam repricing | None. Begin immediately. | Static review, reproducible gas evidence, target-schedule classification, and every regression fixed or durably tracked. |
-| 2 | [#1557](https://github.com/akoita/resonate/issues/1557) Next.js 16.3 | Next.js 16.3.3 clears the repository's seven-day release-age gate after 2026-09-01 17:32 CEST. | Lint, unit, build, and E2E validation pass; the bundler choice is documented. |
-| 3 | [#1525](https://github.com/akoita/resonate/issues/1525) Mergify auto-queue | Validate on an operator-approved PR from #1660 or #1557. | The approved `ready-to-merge` gesture queues and merges a qualifying PR reproducibly. |
+| Order | Issue | Dependency or gate | State | Observable exit |
+| ---: | --- | --- | --- | --- |
+| 1 | [#1660](https://github.com/akoita/resonate/issues/1660) Glamsterdam repricing | None. Begin immediately. | `closed/satisfied` | Static review, reproducible gas evidence, target-schedule classification, and every regression fixed or durably tracked. |
+| 2 | [#1557](https://github.com/akoita/resonate/issues/1557) Next.js 16.3 | Next.js 16.3.3 clears the repository's seven-day release-age gate after 2026-09-01 17:32 CEST. | `closed/satisfied` | Lint, unit, build, and E2E validation pass; the bundler choice is documented. |
+| 3 | [#1525](https://github.com/akoita/resonate/issues/1525) Mergify auto-queue | Validate on an operator-approved PR from #1660 or #1557. | `closed/satisfied` | The approved `ready-to-merge` gesture queues and merges a qualifying PR reproducibly. |
 
 The order prevents an automation-only test PR and avoids bypassing the package
 intake policy. A failed prerequisite remains visible as a sprint blocker rather
@@ -64,3 +65,15 @@ compatibility obligation, and maintainer delivery usability. Its beneficiaries
 are users whose contract-backed actions must remain executable, frontend users
 who need a supported framework, and maintainers who need a dependable approval
 and merge path.
+
+## Outcome
+
+All three sprint issues are closed. Milestone 19 was merged into Milestone 20
+on 2026-09-01 to unify platform compatibility, web quality, and staging
+confidence.
+
+| Issue | Observable outcome | Shipped PR |
+| --- | --- | --- |
+| [#1660](https://github.com/akoita/resonate/issues/1660) | Static review, reproducible gas impact matrix, target-schedule classification, and ERC-4337 compatibility baseline documented; all regressions addressed. | [#1695](https://github.com/akoita/resonate/pull/1695) |
+| [#1557](https://github.com/akoita/resonate/issues/1557) | Upgraded Next.js to 16.3.4 after release-age verification with repository-policy-compliant dependency provenance, passing lint, unit, build, and E2E checks with Turbopack deferred. | [#1719](https://github.com/akoita/resonate/pull/1719) |
+| [#1525](https://github.com/akoita/resonate/issues/1525) | Restored and validated the automatic Mergify merge queue end-to-end using the `ready-to-merge` label gesture on milestone PR #1696. | [#1696](https://github.com/akoita/resonate/pull/1696) |
