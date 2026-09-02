@@ -7,6 +7,7 @@
  * Env vars set:
  *   DATABASE_URL       → Postgres container
  *   REDIS_URL          → Redis container
+ *   REDIS_HOST/PORT    → Redis container coordinates for BullMQ
  *   ANVIL_RPC_URL      → Anvil (Foundry) container
  *   PUBSUB_EMULATOR_HOST → Pub/Sub emulator container
  *   PUBSUB_PROJECT_ID    → Pub/Sub project ID

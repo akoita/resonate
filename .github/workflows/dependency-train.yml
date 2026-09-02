@@ -1,0 +1,73 @@
+name: Dependency Train
+
+# Scheduled workflows execute from the repository's default branch.  The
+# explicit ref guard below also makes a manually selected non-default ref a
+# no-op, so write access is never granted to source-branch code.
+on:
+  schedule:
+    - cron: "15 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: dependency-train
+  cancel-in-progress: false
+
+# The job narrows this to write access only where it must publish the train
+# branch and maintain its review pull request.
+permissions:
+  contents: read
+
+env:
+  BASE_BRANCH: main
+  TRAIN_BRANCH: automation/dependency-train
+
+jobs:
+  rebuild:
+    name: Rebuild dependency train
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      checks: read
+      pull-requests: write
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure non-interactive GitHub authentication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          EXPECTED_REF: refs/heads/main
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" != "${EXPECTED_REF}" ]]; then
+            echo "Refusing to run dependency train outside the default branch." >&2
+            exit 1
+          fi
+          git remote set-url origin "https://github.com/${REPOSITORY}.git"
+          gh auth setup-git
+          hooks_directory="${RUNNER_TEMP}/dependency-train-empty-hooks"
+          mkdir -p "${hooks_directory}"
+          git config --local core.hooksPath "${hooks_directory}"
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local fetch.recurseSubmodules false
+          git config --local protocol.file.allow never
+
+      - name: Rebuild and publish the review train
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          python3 scripts/dependency_train.py \
+            --repository-root "${GITHUB_WORKSPACE}" \
+            --repository "${REPOSITORY}" \
+            --base-branch "${BASE_BRANCH}" \
+            --train-branch "${TRAIN_BRANCH}"
