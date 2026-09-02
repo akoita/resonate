@@ -790,6 +790,71 @@ jobs:
           test -d web/.next/static
           test -d web/public
 
+      - name: Prepare frontend runtime context
+        env:
+          FRONTEND_RUNTIME_CONTEXT: ${{ runner.temp }}/frontend-runtime-context
+        run: |
+          set -euo pipefail
+          bash .github/scripts/prepare-frontend-runtime-context.sh \
+            --artifact-dir "web" \
+            --dockerfile-source "web/Dockerfile.runtime" \
+            --output-dir "${FRONTEND_RUNTIME_CONTEXT}"
+
+      - name: Build frontend runtime smoke image
+        env:
+          FRONTEND_RUNTIME_CONTEXT: ${{ runner.temp }}/frontend-runtime-context
+          FRONTEND_RUNTIME_IMAGE: frontend-runtime-smoke:${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --file "${FRONTEND_RUNTIME_CONTEXT}/Dockerfile" \
+            --tag "${FRONTEND_RUNTIME_IMAGE}" \
+            "${FRONTEND_RUNTIME_CONTEXT}"
+
+      - name: Verify Sharp image transform
+        env:
+          FRONTEND_RUNTIME_IMAGE: frontend-runtime-smoke:${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker run --rm --interactive --entrypoint node "${FRONTEND_RUNTIME_IMAGE}" - <<'NODE'
+          "use strict";
+
+          const sharp = require("sharp");
+
+          const source = Buffer.from([
+            0xff, 0x00, 0x00, 0xff,
+            0x00, 0xff, 0x00, 0xff,
+            0x00, 0x00, 0xff, 0xff,
+            0xff, 0xff, 0x00, 0xff,
+          ]);
+
+          (async () => {
+            const { data, info } = await sharp(source, {
+              raw: { width: 2, height: 2, channels: 4 },
+            })
+              .resize({ width: 1, height: 1, fit: "fill" })
+              .webp()
+              .toBuffer({ resolveWithObject: true });
+
+            if (info.format !== "webp") {
+              throw new Error(`Sharp smoke transform returned ${info.format}, expected webp`);
+            }
+            if (info.width !== 1 || info.height !== 1) {
+              throw new Error(
+                `Sharp smoke transform returned ${info.width}x${info.height}, expected 1x1`,
+              );
+            }
+            if (!Number.isInteger(info.size) || info.size <= 0 || info.size !== data.length) {
+              throw new Error(`Sharp smoke transform returned invalid output size: ${info.size}`);
+            }
+
+            console.log(`Sharp smoke transform passed: ${info.width}x${info.height} ${info.format}, ${info.size} bytes`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
       - name: Upload deployable frontend artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -311,6 +311,12 @@ When adding a new environment variable:
 | `ERC8004_REPUTATION_FRESHNESS_MS` | Backend | Optional freshness window before an agent is eligible for another reputation attestation; defaults to `86400000` (24 hours) |
 | `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Backend | Optional maximum active minted agents refreshed per scheduler sweep; defaults to `25` |
 
+The CI-built standalone frontend bundle includes glibc-linked Sharp binaries, so
+the runtime defined by `web/Dockerfile.runtime` must provide the matching glibc
+ABI. The deployable frontend job builds that runtime context and exercises a
+real Sharp resize/WebP encode before the artifact is uploaded. The
+image-optimizer TTL policy above is unchanged.
+
 When an ingestion multipart request is rejected, the storage engine marks the
 request terminal, destroys every active or queued file stream, and destroys
 each active disk writer before removing the request directory. The writer

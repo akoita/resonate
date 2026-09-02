@@ -177,6 +177,15 @@ Restore the original files through the same two PATCH endpoints. Restoration
 must increment the revision again and return the original private digest. Do
 not treat overwriting storage or editing the database as a restore.
 
+## Operator checkpoint: confirm transformed optimizer output
+
+An optimizer response is acceptable only when it is materially transformed:
+check the returned image metadata and bytes, including the requested output
+dimensions and an encoded format such as WebP. HTTP 200, `MISS`, or a response
+that merely returns the source bytes is not proof that the optimizer works.
+Stop the validation if this checkpoint fails and resolve the runtime image
+packaging issue before measuring cache behavior.
+
 ## Measure TTL `0`
 
 After the exact release and live staging revisions are reconciled, run the Home
