@@ -148,7 +148,7 @@ Two independent hardening opportunities remain tracked outside #1491:
 - [#1604](https://github.com/akoita/resonate/issues/1604) adds persisted,
   server-owned revisions to release and Shows artwork URLs. The repository
   implementation keeps legacy paths readable and the optimizer TTL default at
-  `0`; enabling a nonzero deployment value remains gated on the same-machine
+  `0`; any future nonzero deployment remains subject to the same-machine
   staging procedure below.
 - [#1605](https://github.com/akoita/resonate/issues/1605) cancels and bounds
   sibling audio work after multipart artwork rejection.
@@ -180,6 +180,12 @@ environment:
 6. trial and document the smallest bounded nonzero TTL supported by that warm
    cache evidence.
 
+`IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` is a non-secret frontend build-time
+variable in the protected GitHub Actions environment in `akoita/resonate`. The
+build consumes it while producing the frontend image; Terraform in
+`resonate-iac` deploys the immutable image and does not require a separate
+source change for this variable.
+
 Use the fail-closed [#1666 staging runbook](../operations/artwork-cache-staging-validation.md)
 for fixture approval, private rollback evidence, exact release/runtime
 reconciliation, replacement commands, record sanitization, and maintenance-
@@ -187,29 +193,50 @@ window closure. The repository sample Shows campaigns are active and therefore
 are not valid replacement fixtures; the supported API trial uses a newly
 created disposable draft campaign.
 
-Rollback is setting the deployment variable back to `0`; no schema rollback or
-URL migration is required. Do not describe a nonzero TTL as selected or
-production-ready until the staging record is linked from #1604.
+Rollback is deleting the staging Actions variable (restoring the default `0`);
+no schema rollback or URL migration is required. Do not describe a nonzero TTL
+as selected or production-ready until the staging record is linked from #1666.
 
-### 2026-09-01 staging decision (#1666)
+### 2026-09-02 staging decision (#1666)
 
-The protected current-`main` staging release at TTL `0` passed the Release and
-Shows revision-key proof. A controlled Release cycle advanced `v6 → v7 → v8`;
-the Shows hero advanced `v1 → v2 → v3`. Each new canonical key returned the
-replacement immediately, legacy URLs returned current bytes, future revisions
-returned 404, and both fixtures restored their exact original bytes.
+The historical pre-fix run and its Release/Shows revision-key proof remain
+useful context: Release advanced `v6 → v7 → v8`, Shows advanced `v1 → v2 → v3`,
+new canonical keys returned replacements immediately, legacy URLs returned
+current bytes, future revisions returned 404, and both fixtures restored their
+exact original bytes. The pre-fix runtime returned source bytes from the image
+optimizer and failed the image-budget gate.
 
-The same-machine Home run retained five complete cold/warm pairs at 1440×900
-with a 3,000 ms settle time and no discarded attempts. Cold optimizer traffic
-was 125 `MISS`; the 125 warm optimizer responses were browser-cache reads that
-did not expose an `x-nextjs-cache` header and were recorded as `unknown` rather
-than inferred as hits. Median LCP was 1,176 ms cold and 860 ms warm; median
-transfer was 3,730.6 KiB cold and 44.0 KiB warm.
+The post-fix protected staging release at TTL `0` used source
+`79d491327848a2ad0d6979bc9d123385ea2a391d` and passed the transformed-output
+and image-budget checks. The previously completed TTL `0` fixture proof above
+remains the revision-key correctness evidence. The same-machine Home run
+retained five complete cold/warm pairs at 1440×900 with a 3,000 ms settle time
+and no discarded attempts:
 
-The run found 12 distinct images above 100 KiB, totalling 2,003.5 KiB with a
-555.5 KiB maximum. Because that violates the Home artwork budget, the nonzero
-candidate gate did not open. Staging therefore retains
-`IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL=0`; no production TTL decision was made.
+| Measure (cold / warm) | TTL `0` baseline | TTL `300` candidate |
+| --- | ---: | ---: |
+| LCP | 700 / 732 ms | 1,480 / 772 ms |
+| FCP | 580 / 524 ms | 688 / 592 ms |
+| TTFB | 90 / 29 ms | 109 / 31 ms |
+| Transfer | 1,288.7 / 46.6 KiB | 1,288.6 / 47.1 KiB |
+| Requests | 88 / 88 | 88 / 83 |
+| Optimizer statuses | cold `MISS=149`; warm `MISS=26`, `unknown=118`, `HIT=0` | cold `MISS=149`, `HIT=0`; warm `MISS=116`, `HIT=0` |
+| Image budget | 35 images, 427.5 KiB total; 2.8 KiB median; 81.3 KiB max; 0 over 100 KiB | same 35-image budget; 81.3 KiB max; 0 over 100 KiB |
+
+The TTL `0` warm `unknown` statuses were browser-cache reads without an
+exposed `x-nextjs-cache` header and were not inferred as optimizer hits. The
+TTL `300` build returned a public transformed WebP with `max-age=300`, but its
+warm run exposed zero optimizer hits and no improvement in measured reuse.
+The candidate therefore failed the cache-reuse gate and was rejected. The
+Release/Shows replacement mutation was intentionally not repeated at TTL `300`
+after that gate failed; the existing TTL `0` fixture proof remains the
+correctness evidence.
+
+The staging-only Actions variable was deleted after the trial. The rollback
+reconciled the signed image to frontend revision
+`resonate-staging-frontend-00042-wht`; API and frontend checks returned HTTP
+200, and a fresh transformed WebP returned `max-age=0`. Staging remains at
+`IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL=0`; no production value was configured.
 
 ## Reading the output
 

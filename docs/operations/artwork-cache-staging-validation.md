@@ -2,15 +2,22 @@
 
 This runbook completes the operational evidence owned by
 [#1666](https://github.com/akoita/resonate/issues/1666). It proves that Release
-and Shows artwork revisions change Next image-optimizer keys before a nonzero
-cache TTL is accepted for staging.
+and Shows artwork revisions change Next image-optimizer keys and records the
+staging cache-TTL decision.
 
 The owner approved a staging maintenance window and disposable fixtures on
-2026-08-27 and reapproved execution on 2026-09-01. The protected TTL `0`
-deployment, Home baseline, and Release/Shows replacement-and-restore proof are
-complete. Artwork coherence passed, but the baseline failed the 100 KiB image
-budget, so no nonzero candidate was eligible for trial and staging retains TTL
-`0`. Do not use this runbook against production.
+2026-08-27 and reapproved execution on 2026-09-01. The 2026-09-02 protected TTL `0`
+post-fix deployment and Home baseline, Release/Shows replacement-and-restore
+proof, and staging-only TTL `300` candidate trial are complete. The post-fix
+TTL `0` image budget passed; the TTL `300` trial exposed zero warm optimizer
+hits and did not improve warm reuse, so it was rejected. The candidate mutation
+was intentionally not repeated after that cache-reuse gate failed. The staging
+Actions variable was deleted and the signed image rolled back successfully;
+staging retains the default TTL `0`. Do not use this runbook against production.
+
+The exact release, deployment, aggregate measurement, and rollback evidence is
+recorded in the [#1666 validation plan](../issue-1666-staging-validation-plan.md).
+Raw harness JSON and fixture records remain local/private.
 
 ## Safety boundary
 
@@ -204,17 +211,20 @@ time, discarded attempts, exact cache-status counts, and
 
 ## Trial a nonzero value
 
-The TTL is frontend build-time configuration. Change it only in the
-authoritative staging `resonate-iac` configuration and use the normal protected
-release/deploy path. Reuse unchanged backend and Demucs digests; rebuild the
-frontend image because a runtime-only redeploy cannot change the baked Next
-configuration.
+The TTL is frontend build-time configuration. Set the non-secret
+`IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` variable in the protected GitHub Actions
+environment in `akoita/resonate`, then use the normal protected release/deploy
+path. The build consumes the variable while producing the frontend image;
+Terraform in `resonate-iac` deploys that immutable image and does not require a
+separate source issue, PR, or configuration change for this variable. Reuse
+unchanged backend and Demucs digests; rebuild the frontend image because a
+runtime-only redeploy cannot change the baked Next configuration.
 
-Start with the smallest operationally meaningful candidate accepted in the IaC
-review. After reconciling its PR, applied revision, frontend image digest, and
-live revision, repeat the full replacement/restore proof and the same five-pair
-Home command on the same machine. Do not increase the candidate merely to make
-a noisy result look better.
+Start with the smallest operationally meaningful candidate accepted in the
+deployment review. After reconciling the release/deploy run, IaC handoff/apply
+run, frontend image, and live revision, repeat the full replacement/restore
+proof and the same five-pair Home command on the same machine. Do not increase
+the candidate merely to make a noisy result look better.
 
 Accept a nonzero value only when it improves warm optimizer reuse, preserves
 immediate replacement correctness and legacy readability, and keeps the heavy
@@ -247,6 +257,8 @@ records against the sanitized hashes before posting the result to #1666.
 - Leave the Shows fixture inert in draft and the Release clearly marked as a
   disposable staging fixture until a separately reviewed cleanup path is used.
 - Confirm staging TTL is the selected reviewed value, or `0` if the trial did
-  not pass.
-- Link the sanitized evidence, exact release/deploy chain, IaC issue/PR/applied
-  revision, and rollback result from #1666. Do not claim production readiness.
+  not pass. For the completed #1666 trial, it is `0`.
+- Link the sanitized evidence, exact release/deploy and IaC handoff/apply runs,
+  live revision, and rollback result from #1666. A separate IaC source
+  issue/PR is not required for this build-time Actions variable. Do not claim
+  production readiness.

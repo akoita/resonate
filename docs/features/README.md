@@ -97,8 +97,10 @@ that answers:
 Issue [#1604](https://github.com/akoita/resonate/issues/1604) gives mutable
 catalog release covers and Shows campaign visuals server-owned revision paths.
 Image replacement now changes the Next optimizer cache key immediately while
-legacy paths remain readable for rollback. A nonzero deployed optimizer TTL
-remains gated on the documented same-machine staging measurement.
+legacy paths remain readable for rollback. The #1666 same-machine staging trial
+completed: TTL `300` was rejected because it produced zero warm optimizer hits
+and no reuse improvement, so staging remains at the default TTL `0` and no
+production value is configured.
 
 ### Remix Studio quality foundation
 

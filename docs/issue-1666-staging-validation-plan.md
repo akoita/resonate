@@ -2,16 +2,16 @@
 
 ## Outcome
 
-Prove on staging that server-owned artwork revisions keep Release and Shows
-replacements immediately visible while a bounded Next image-optimizer cache TTL
-improves warm-cache behavior. Retain enough release, runtime, replacement, and
-performance evidence to select or reject a nonzero staging TTL without changing
-production.
+Evaluate on staging whether a bounded Next image-optimizer cache TTL improves
+warm-cache behavior while server-owned artwork revisions keep Release and Shows
+replacements immediately visible. Retain enough release, runtime, replacement,
+and performance evidence to select or reject a nonzero staging TTL without
+changing production.
 
 This is vision-neutral infrastructure and quality work under ADR-BM-6. It does
 not change fees, payouts, licensing, or product policy.
 
-## Authorization and current gate
+## Authorization and final gate
 
 The owner approved a staging maintenance window and disposable fixtures on
 2026-08-27. GitHub Actions capacity renewed on 2026-09-01, and the deferred
@@ -19,10 +19,10 @@ staging handoff for #1670 subsequently passed release verification, Terraform
 apply, live digest reconciliation, fixture seeding, and staging validation. The
 budget and staging-deployment prerequisites are therefore cleared.
 
-The owner reapproved that checkpoint on 2026-09-01. The protected TTL `0`
-release and five-pair Home baseline are complete. Fixture mutation and any
-nonzero staging TTL trial remain fail-closed on the fixture and acceptance
-conditions below.
+The owner reapproved that checkpoint on 2026-09-01. The post-fix protected TTL
+`0` release and five-pair Home baseline, the staging-only TTL `300` candidate
+trial, and the rollback to TTL `0` are complete. The candidate was rejected on
+its cache-reuse evidence; staging remains at TTL `0`.
 
 No production deployment or production TTL change is authorized by this plan.
 
@@ -31,14 +31,17 @@ No production deployment or production TTL change is authorized by this plan.
 - **Implemented in this branch:** the fail-closed staging runbook, sanitized
   evidence template and validator, private-fixture safeguards, focused tests,
   and documentation links needed for the maintenance window.
-- **Completed in the approved #1666 operational window:** the current-`main`
-  staging release at TTL `0`, exact release/IaC/live reconciliation, and five
-  accepted cold/warm Home pairs, plus controlled Release and Shows replacement
-  and exact-byte restoration using approved disposable fixtures.
-- **Stopped fail-closed:** the TTL `0` Home baseline exceeds the 100 KiB
-  heavy-image budget. A nonzero TTL candidate is therefore not yet eligible
-  for trial. The remaining work stays open in #1666; no production action is
-  authorized.
+- **Completed in the approved #1666 operational window:** the post-fix
+  current-`main` staging release at TTL `0`, exact release/IaC/live
+  reconciliation, five accepted cold/warm Home pairs, and controlled Release
+  and Shows replacement and exact-byte restoration using approved disposable
+  fixtures. A staging-only TTL `300` candidate was also built, measured, and
+  rolled back successfully.
+- **Outcome:** retain staging TTL `0`. The post-fix baseline passed the
+  transformed-output and 100 KiB image-budget checks, but the TTL `300`
+  candidate produced no warm optimizer hits and did not improve measured warm
+  reuse. The candidate was rejected and the issue outcome is complete; no
+  production action was authorized.
 
 ## Runtime diagnosis and post-deployment gate
 
@@ -48,15 +51,22 @@ failed to load in that runtime and Next silently returned original image bytes
 from the optimizer. The runtime now matches the bundle's glibc ABI, and CI
 checks a real resize/WebP transform.
 
-The private raw baseline showed all 12 heavy responses were optimizer requests:
-11 Release artwork responses and 1 Shows visual response, requested at 96px or
-384px, and each returned its source bytes unchanged.
+The private raw first baseline showed all 12 heavy responses were optimizer
+requests: 11 Release artwork responses and 1 Shows visual response, requested
+at 96px or 384px, and each returned its source bytes unchanged. That historical
+record is retained below as pre-fix evidence; it failed the image-budget gate
+and did not authorize a candidate trial.
 
-After deployment, five accepted cold/warm Home pairs on the same machine with
-TTL `0` remain required before opening any nonzero TTL candidate. The 100 KiB
-image-budget gate and the replacement-coherence checks still apply.
+The post-fix TTL `0` baseline passed the 100 KiB image-budget gate, so the
+bounded staging-only candidate trial could proceed. The replacement-coherence
+proof remained the correctness evidence for the decision; the candidate
+mutation was intentionally not repeated after the candidate's cache-reuse gate
+failed.
 
-## TTL `0` execution record (2026-09-01–02)
+## Historical first TTL `0` baseline and fixture proof (2026-09-01)
+
+This first record predates the runtime packaging correction. It is retained to
+explain the original fail-closed stop and to preserve the fixture proof.
 
 - Source: `a5f6e170abab595da379436d3658f517423bf25a`; exact successful
   [main CI run](https://github.com/akoita/resonate/actions/runs/33457316347).
@@ -92,14 +102,62 @@ image-budget gate and the replacement-coherence checks still apply.
   returned 404, and restoration returned the exact original bytes. The Shows
   campaign remained `draft`, authority `none`, without a linked contract or
   raised funds.
-- Decision: retain staging TTL `0`. The artwork-coherence prerequisite passed,
-  but the Home heavy-image prerequisite failed, so no nonzero candidate was
-  eligible for an IaC trial.
+- Historical decision: retain staging TTL `0`. The artwork-coherence
+  prerequisite passed, but the Home heavy-image prerequisite failed, so no
+  nonzero candidate was eligible for trial in this first run.
 
-The raw harness JSON and fixture record remain private until their content
-identifiers, URLs, and byte digests are sanitized. The public issue record
-links the exact deployment chain and aggregate results without fixture
-identifiers or secrets.
+The raw harness JSON and private fixture record remain local/private. The
+public issue record links the exact deployment chain and sanitized aggregate
+results without fixture identifiers, private URLs/digests, or secrets.
+
+## Post-fix TTL `0` baseline (2026-09-02)
+
+- Source: [`79d491327848a2ad0d6979bc9d123385ea2a391d`](https://github.com/akoita/resonate/commit/79d491327848a2ad0d6979bc9d123385ea2a391d), with the successful
+  [application release/deploy run](https://github.com/akoita/resonate/actions/runs/33659799658).
+- The [IaC handoff/apply run](https://github.com/akoita/resonate-iac/actions/runs/33661237818)
+  deployed the immutable image; no separate `resonate-iac` source change was
+  required for this build-time frontend variable. The live frontend revision
+  was `resonate-staging-frontend-00040-qw8`.
+- Home harness: five accepted cold/warm pairs at 1440×900, a 3,000 ms settle
+  time, and no discarded attempts. Cold/warm medians were LCP 700/732 ms, FCP
+  580/524 ms, TTFB 90/29 ms, transfer 1,288.7/46.6 KiB, and 88/88 requests.
+- Optimizer statuses were cold `MISS=149`; warm `MISS=26`, `unknown=118`,
+  `HIT=0`. The `unknown` warm responses were browser-cache reads without an
+  exposed optimizer cache header and were not inferred as hits.
+- Image budget: 35 images transferred 427.5 KiB; the median image was 2.8 KiB,
+  the maximum was 81.3 KiB, and no image exceeded 100 KiB. The post-fix
+  baseline therefore passed the image-budget gate.
+
+## TTL `300` candidate trial and rejection (2026-09-02)
+
+- The staging-only protected GitHub Actions environment variable was set to
+  `300` for the frontend build. The [application release/deploy run](https://github.com/akoita/resonate/actions/runs/33663869984)
+  and [IaC handoff/apply run](https://github.com/akoita/resonate-iac/actions/runs/33665199010)
+  reconciled to live frontend revision `resonate-staging-frontend-00041-fkj`.
+  A public transformed WebP response reported `max-age=300`, confirming that
+  the candidate value was active.
+- The same machine, viewport, settle time, five accepted pairs, and zero
+  discarded attempts were used. Cold/warm medians were LCP 1,480/772 ms, FCP
+  688/592 ms, TTFB 109/31 ms, transfer 1,288.6/47.1 KiB, and 88/83 requests.
+- Optimizer statuses were cold `MISS=149`, `HIT=0`; warm `MISS=116`, `HIT=0`.
+  Warm optimizer reuse did not improve and the candidate exposed zero hits.
+  The same 35-image budget remained within bounds, with a maximum image size of
+  81.3 KiB and zero images over 100 KiB.
+- Decision: reject TTL `300`. Because the cache-reuse gate had already failed,
+  the Release and Shows replacement mutation was intentionally not repeated at
+  the candidate. The existing TTL `0` fixture proof remains the correctness
+  evidence; TTL `300` could not be selected.
+
+## Rollback and final state (2026-09-02)
+
+- The staging-only GitHub Actions environment variable was deleted, restoring
+  the default TTL `0`. The [rollback application run](https://github.com/akoita/resonate/actions/runs/33665754506)
+  and [rollback IaC handoff/apply run](https://github.com/akoita/resonate-iac/actions/runs/33666981040)
+  reconciled the signed image to live frontend revision
+  `resonate-staging-frontend-00042-wht`.
+- API and frontend health checks returned HTTP 200, and a fresh transformed
+  WebP response reported `max-age=0`. Staging is therefore back at the default
+  TTL `0`; no production value was configured or changed.
 
 ## Fixture contract
 
@@ -193,8 +251,11 @@ exact cold/warm HIT/MISS/STALE/REVALIDATED/unknown counts, and
 
 ### 5. Trial a bounded nonzero staging TTL
 
-- Open a separately reviewable `resonate-iac` change for the staging frontend
-  configuration. Start with the smallest operationally meaningful candidate
+- Set the staging-only non-secret `IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` GitHub
+  Actions environment variable in `akoita/resonate`. It is consumed while
+  building the frontend; Terraform in `resonate-iac` deploys the resulting
+  immutable image, so a separate IaC source issue, PR, or change is not
+  required. Start with the smallest operationally meaningful candidate
   supported by the deployment contract; do not infer a value from the allowed
   `86400` maximum.
 - Reuse unchanged backend and Demucs image digests. If the frontend value is
@@ -217,8 +278,9 @@ exact cold/warm HIT/MISS/STALE/REVALIDATED/unknown counts, and
   evidence sets and cache interpretation.
 - Update the relevant catalog and Shows feature pages only if the operational
   evidence changes their current status or documented behavior.
-- Link the exact `resonate-iac` issue, PR, applied revision, release/deploy
-  evidence, and sanitized raw performance records from #1666.
+- Link the release/deploy and `resonate-iac` handoff/apply runs, live revisions,
+  rollback evidence, and sanitized aggregate performance records from #1666.
+  Keep raw JSON and private fixture records local/private.
 - Restore both disposable fixtures and verify their final bytes. If a nonzero
   TTL is not accepted, restore staging configuration to `0` before ending the
   maintenance window.
@@ -235,8 +297,10 @@ to be published to continue.
 ## Validation and completion evidence
 
 Offline preparation uses the existing focused fixture, configuration, and
-performance-harness tests. The live pass is complete only when #1666 contains
-both five-pair raw records, both fixture replacement proofs at TTL `0` and at
-the selected candidate, the exact release/IaC/runtime chain, the final fixture
-restore checks, and either the measured selected TTL or an explicit evidence-
-backed decision to keep `0`.
+performance-harness tests. The live pass is complete when #1666 contains the
+post-fix TTL `0` and candidate five-pair raw records, the exact
+release/IaC/runtime chain, the final fixture restore checks, and either the
+selected candidate's replacement proof or an explicit evidence-backed
+rejection. For this completed run, the candidate mutation was stopped after
+the cache-reuse gate failed, so the existing TTL `0` fixture proof is the
+correctness evidence and staging was rolled back to `0`.
