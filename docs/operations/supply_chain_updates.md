@@ -18,6 +18,21 @@ consolidate the complete batch first, then run one full validation. Review the
 lifecycle-policy tuple whenever grouped lockfile changes update a package with
 an install script.
 
+The `Dependency Train` workflow automates that consolidation. It runs from the
+default branch, collects same-repository pull requests authored by
+`dependabot[bot]`, and rebuilds the review-only
+`automation/dependency-train` branch. Ordinary source pull requests keep the
+deterministic supply-chain baseline but skip the expensive CI, advisory scan,
+and formal-verification jobs; those jobs run once on the train pull request.
+The workflow never merges or closes a source pull request.
+
+Major upgrades and changes to workflows, containers, contracts, deployment
+configuration, or executable scripts stay outside the automatic train and are
+listed as requiring individual review. Pull requests with pending or failed
+checks and changes that conflict with another selected update are also listed
+rather than forced into the train. Use the workflow's manual trigger when a
+reviewed batch should be refreshed before its weekly schedule.
+
 For production Node.js images, select a supported LTS line rather than blindly
 accepting Dependabot's newest major tag. Digest-pin the reviewed multi-platform
 manifest and validate the resulting image reference with the repository's

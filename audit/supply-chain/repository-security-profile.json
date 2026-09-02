@@ -232,6 +232,7 @@
         "workflows": [
           {"path": ".github/workflows/ci.yml", "purpose": "PR/merge validation, application image publication and deploy manifest", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/ci.yml:1"},
           {"path": ".github/workflows/security.yml", "purpose": "advisory PR and nightly deterministic security scans from #1537", "owner": "Resonate security maintainer", "evidence": ".github/workflows/security.yml:1"},
+          {"path": ".github/workflows/dependency-train.yml", "purpose": "scheduled and manual review-only consolidation of eligible Dependabot pull requests", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/dependency-train.yml:1"},
           {"path": ".github/workflows/deploy-handoff.yml", "purpose": "validated cross-repository dispatch to private resonate-iac", "owner": "Resonate release maintainer", "evidence": ".github/workflows/deploy-handoff.yml:1"},
           {"path": ".github/workflows/contracts-deploy.yml", "purpose": "manual contract preflight, deployment, upgrade, authority and lifecycle operations", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/contracts-deploy.yml:1"},
           {"path": ".github/workflows/desktop-release.yml", "purpose": "desktop package and GitHub Release publication", "owner": "Resonate desktop maintainer", "evidence": ".github/workflows/desktop-release.yml:1"},
@@ -432,6 +433,7 @@
       "trigger_evidence": [
         ".github/workflows/ci.yml:3 defines push, pull-request, merge-group and manual triggers",
         ".github/workflows/contracts-deploy.yml:4 defines a privileged manual contract workflow",
+        ".github/workflows/dependency-train.yml:6 defines a default-branch-only scheduled and manual write workflow",
         ".github/workflows/security.yml:32 defines PR, nightly and manual scanning"
       ],
       "decision_rationale": "Credit #1537's read-only security workflow and the existing least-privilege OIDC publisher jobs. Require every workflow and job to retain explicit minimum permissions, safe triggers and disabled checkout credential persistence; actionlint and zizmor remain advisory evidence rather than proof by declaration alone.",
@@ -446,7 +448,7 @@
       "risk_reduction": "high",
       "operating_cost": "low",
       "prerequisites": [
-        "A revision-scoped actionlint and zizmor result confirms all thirteen workflows after the pinning and persist-credentials changes",
+        "A revision-scoped actionlint and zizmor result confirms all workflows after the pinning and persist-credentials changes",
         "Any job that keeps write or id-token permission documents the exact later step that consumes it"
       ],
       "failure_mode": "Top-level read permissions can mask a job-level write grant, a new trigger can execute privileged code, or a checkout can retain credentials that a later build or artifact step exposes.",
