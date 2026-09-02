@@ -14,11 +14,15 @@ not change fees, payouts, licensing, or product policy.
 ## Authorization and current gate
 
 The owner approved a staging maintenance window and disposable fixtures on
-2026-08-27. The owner also chose to wait for the monthly GitHub Actions allowance
-renewal rather than purchase additional CI credits. Until that renewal, work is
-limited to local inspection, fixture selection criteria, evidence templates, and
-operator commands. Do not dispatch a release, change staging, or create an IaC
-trial merely to test whether the budget gate has cleared.
+2026-08-27. GitHub Actions capacity renewed on 2026-09-01, and the deferred
+staging handoff for #1670 subsequently passed release verification, Terraform
+apply, live digest reconciliation, fixture seeding, and staging validation. The
+budget and staging-deployment prerequisites are therefore cleared.
+
+The owner reapproved that checkpoint on 2026-09-01. The protected TTL `0`
+release and five-pair Home baseline are complete. Fixture mutation and any
+nonzero staging TTL trial remain fail-closed on the fixture and acceptance
+conditions below.
 
 No production deployment or production TTL change is authorized by this plan.
 
@@ -27,11 +31,59 @@ No production deployment or production TTL change is authorized by this plan.
 - **Implemented in this branch:** the fail-closed staging runbook, sanitized
   evidence template and validator, private-fixture safeguards, focused tests,
   and documentation links needed for the maintenance window.
-- **Deferred to the open #1666 operational window:** the staging release at TTL
-  `0`, creation and mutation of approved fixtures, both five-pair measurements,
-  the reviewed `resonate-iac` candidate, the TTL decision, and the final
-  measured documentation update. These steps wait for the monthly Actions
-  allowance renewal and are not authorized for production.
+- **Completed in the approved #1666 operational window:** the current-`main`
+  staging release at TTL `0`, exact release/IaC/live reconciliation, and five
+  accepted cold/warm Home pairs, plus controlled Release and Shows replacement
+  and exact-byte restoration using approved disposable fixtures.
+- **Stopped fail-closed:** the TTL `0` Home baseline exceeds the 100 KiB
+  heavy-image budget. A nonzero TTL candidate is therefore not yet eligible
+  for trial. The remaining work stays open in #1666; no production action is
+  authorized.
+
+## TTL `0` execution record (2026-09-01–02)
+
+- Source: `a5f6e170abab595da379436d3658f517423bf25a`; exact successful
+  [main CI run](https://github.com/akoita/resonate/actions/runs/33457316347).
+- Successful fail-closed
+  [release preview](https://github.com/akoita/resonate/actions/runs/33468391006)
+  and [staging release](https://github.com/akoita/resonate/actions/runs/33468418757),
+  release ID `release-33468418757-5`.
+- Published image digests: backend
+  `sha256:4267cc15a559d61f162707235c5c23688226e1650cfa9a334245399c7074a650`,
+  frontend
+  `sha256:0f23a8acc1f42a0747fff31bacdf6d751dce407fed6adf870ed81867480ce3a7`,
+  reused Demucs
+  `sha256:20eaee7462072d791bd54abce8fd389327ccca5c2a747af3e4d537d6798eb466`,
+  and reused Stable Audio
+  `sha256:4688c1fcf62e5073573bfdccced07bb57265da6ca69c1465f37836f4ed7d3941`.
+- Successful [IaC handoff and apply](https://github.com/akoita/resonate-iac/actions/runs/33469676987)
+  at IaC source `ac6f9a192c79094464858657f9246ec11c0aa1e1`. Live backend revision
+  `resonate-staging-backend-00029-s6v` and frontend revision
+  `resonate-staging-frontend-00039-sj9` reconciled to the published digests;
+  both health probes returned HTTP 200.
+- Home harness: five accepted pairs at 1440x900 with a 3,000 ms settle time and
+  no discarded attempts. Cold optimizer requests were 125 `MISS`; warm
+  optimizer requests were 125 `unknown` because those browser-cached responses
+  did not expose an optimizer cache header. Median LCP was 1,176 ms cold and
+  860 ms warm; median transfer was 3,730.6 KiB cold and 44.0 KiB warm.
+- Image budget: 30 image responses transferred 2,879.1 KiB. Twelve distinct
+  images exceeded 100 KiB, totalling 2,003.5 KiB, with a 555.5 KiB maximum.
+  The 100 KiB acceptance condition therefore failed.
+- Disposable-fixture proof: the Release completed a controlled revision cycle
+  `v6 → v7 → v8`, while the Shows hero completed `v1 → v2 → v3`. In both
+  cases the replacement produced a new canonical optimizer key, the new and
+  legacy URLs returned the replacement immediately, the future revision
+  returned 404, and restoration returned the exact original bytes. The Shows
+  campaign remained `draft`, authority `none`, without a linked contract or
+  raised funds.
+- Decision: retain staging TTL `0`. The artwork-coherence prerequisite passed,
+  but the Home heavy-image prerequisite failed, so no nonzero candidate was
+  eligible for an IaC trial.
+
+The raw harness JSON and fixture record remain private until their content
+identifiers, URLs, and byte digests are sanitized. The public issue record
+links the exact deployment chain and aggregate results without fixture
+identifiers or secrets.
 
 ## Fixture contract
 

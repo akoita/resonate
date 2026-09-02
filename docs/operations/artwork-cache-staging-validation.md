@@ -6,9 +6,11 @@ and Shows artwork revisions change Next image-optimizer keys before a nonzero
 cache TTL is accepted for staging.
 
 The owner approved a staging maintenance window and disposable fixtures on
-2026-08-27. Execution remains gated on the monthly `resonate-iac` GitHub
-Actions allowance renewal. Do not probe that gate by dispatching workflows, and
-do not use this runbook against production.
+2026-08-27 and reapproved execution on 2026-09-01. The protected TTL `0`
+deployment, Home baseline, and Release/Shows replacement-and-restore proof are
+complete. Artwork coherence passed, but the baseline failed the 100 KiB image
+budget, so no nonzero candidate was eligible for trial and staging retains TTL
+`0`. Do not use this runbook against production.
 
 ## Safety boundary
 

@@ -191,6 +191,26 @@ Rollback is setting the deployment variable back to `0`; no schema rollback or
 URL migration is required. Do not describe a nonzero TTL as selected or
 production-ready until the staging record is linked from #1604.
 
+### 2026-09-01 staging decision (#1666)
+
+The protected current-`main` staging release at TTL `0` passed the Release and
+Shows revision-key proof. A controlled Release cycle advanced `v6 → v7 → v8`;
+the Shows hero advanced `v1 → v2 → v3`. Each new canonical key returned the
+replacement immediately, legacy URLs returned current bytes, future revisions
+returned 404, and both fixtures restored their exact original bytes.
+
+The same-machine Home run retained five complete cold/warm pairs at 1440×900
+with a 3,000 ms settle time and no discarded attempts. Cold optimizer traffic
+was 125 `MISS`; the 125 warm optimizer responses were browser-cache reads that
+did not expose an `x-nextjs-cache` header and were recorded as `unknown` rather
+than inferred as hits. Median LCP was 1,176 ms cold and 860 ms warm; median
+transfer was 3,730.6 KiB cold and 44.0 KiB warm.
+
+The run found 12 distinct images above 100 KiB, totalling 2,003.5 KiB with a
+555.5 KiB maximum. Because that violates the Home artwork budget, the nonzero
+candidate gate did not open. Staging therefore retains
+`IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL=0`; no production TTL decision was made.
+
 ## Reading the output
 
 stdout is a table; the same data lands as JSON in `web/build/perf/` —
