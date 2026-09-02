@@ -40,6 +40,22 @@ No production deployment or production TTL change is authorized by this plan.
   for trial. The remaining work stays open in #1666; no production action is
   authorized.
 
+## Runtime diagnosis and post-deployment gate
+
+The CI-built standalone artifact contains Linux glibc Sharp 0.35.3 binaries,
+while the previous `web/Dockerfile.runtime` used Alpine/musl. Sharp therefore
+failed to load in that runtime and Next silently returned original image bytes
+from the optimizer. The runtime now matches the bundle's glibc ABI, and CI
+checks a real resize/WebP transform.
+
+The private raw baseline showed all 12 heavy responses were optimizer requests:
+11 Release artwork responses and 1 Shows visual response, requested at 96px or
+384px, and each returned its source bytes unchanged.
+
+After deployment, five accepted cold/warm Home pairs on the same machine with
+TTL `0` remain required before opening any nonzero TTL candidate. The 100 KiB
+image-budget gate and the replacement-coherence checks still apply.
+
 ## TTL `0` execution record (2026-09-01–02)
 
 - Source: `a5f6e170abab595da379436d3658f517423bf25a`; exact successful
