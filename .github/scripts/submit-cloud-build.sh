@@ -289,9 +289,14 @@ if [[ -n "${content_image}" ]]; then
       echo "Content-addressed reuse HIT: ${content_image} -> ${cached_digest}"
       echo "Build inputs are unchanged, so no Cloud Build is submitted."
 
-      gcloud artifacts docker tags add "${content_image}" "${image}" \
-        --project "${project_id}" \
-        --quiet
+      current_target_digest=""
+      if current_target_digest="$(resolve_image_digest "${image}" 1)" && [[ "${current_target_digest}" == "${cached_digest}" ]]; then
+        echo "Target tag ${image} already points to ${cached_digest}; skipping tag addition."
+      else
+        gcloud artifacts docker tags add "${content_image}" "${image}" \
+          --project "${project_id}" \
+          --quiet
+      fi
 
       confirmed_digest=""
       if ! confirmed_digest="$(resolve_image_digest "${image}" 6)"; then
