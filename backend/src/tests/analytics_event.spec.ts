@@ -188,6 +188,7 @@ describe("analytics event envelope", () => {
 
   it("exposes sample schemas for the initial event families", () => {
     expect(ANALYTICS_EVENT_SCHEMA_EXAMPLES.map((schema) => schema.eventName)).toEqual([
+      "player.action_impression", "player.action_selected",
       "player.segment_loop_enabled", "player.segment_loop_updated", "player.segment_loop_disabled",
       "player.repeat_count_set", "player.repeat_count_updated", "player.repeat_count_cleared",
       "playback.completed",

@@ -111,6 +111,28 @@ or audit an event:
 Avoid timestamps as the only source ref. For frontend product events, include a
 client-generated `clientEventId` when repeated clicks or retries are possible.
 
+For `player.action_impression` and `player.action_selected`, event IDs exclude
+the server receipt timestamp and include the authenticated actor, event name,
+producer, session, track subject, and client event ID. Reusing that identity
+deduplicates retries; deliberate actions must use a fresh client event ID.
+This rule is specific to these two events, not a promise for all product events.
+
+## Player Action Events
+
+Both events are version 1, produced by `web-app`, and use the `pseudonymous`
+privacy tier. The authenticated product endpoint requires a `track` subject
+and fixes payload source to `player`.
+
+| Event | Payload | Meaning |
+| --- | --- | --- |
+| `player.action_impression` | `actionKeys`, `actionStatuses`, `source` | A displayed action set; paired arrays of up to eight unique known action keys and their `available`, `disabled`, or `planned` statuses. |
+| `player.action_selected` | `actionKey`, `actionStatus`, `source` | A deliberate selection of an `available` action; it does not prove the underlying action succeeded. |
+
+Known keys are `save`, `add_to_playlist`, `inspect_stems`, `buy_license`,
+`remix`, `artist_room`, `shows_campaign`, and `collect_drop`. Payloads exclude
+titles, reasons, URLs, and wallet details. Both warehouse transforms retain the
+action dimensions as `player_event` facts with zero play count and payout.
+
 ## Versioning
 
 Event v1 schemas may add optional fields. Breaking changes require a new

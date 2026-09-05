@@ -47,6 +47,9 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
+Current: [Vision Sprint 20 — Trustworthy player action telemetry](2026-09-06-vision-sprint-20-player-action-telemetry.md)
+is in progress; #1732 remains open until authenticated staging verification.
+
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
 | [2026-06-29](2026-06-29-shows-mvp.md) | Shows MVP — campaign funding & trust escrow | ✅ Closed — over-delivered (12/12) |

@@ -81,6 +81,8 @@ export class AnalyticsEventValidationError extends Error {
 }
 
 export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
+  { eventName: "player.action_impression", eventVersion: 1, producer: "web-app", privacyTier: "pseudonymous", payloadFields: ["actionKeys", "actionStatuses", "source"] },
+  { eventName: "player.action_selected", eventVersion: 1, producer: "web-app", privacyTier: "pseudonymous", payloadFields: ["actionKey", "actionStatus", "source"] },
   { eventName: "player.segment_loop_enabled", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },
   { eventName: "player.segment_loop_updated", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },
   { eventName: "player.segment_loop_disabled", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },

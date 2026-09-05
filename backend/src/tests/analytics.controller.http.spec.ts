@@ -424,6 +424,70 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it.each([
+    ["player.action_impression", { actionKeys: ["save", "buy_license", "artist_room"], actionStatuses: ["available", "disabled", "planned"] }],
+    ["player.action_selected", { actionKey: "save", actionStatus: "available" }],
+  ])("accepts authenticated %s with only bounded action metadata", async (eventName, payload) => {
+    await request(app.getHttpServer()).post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ eventName, subjectType: "track", subjectId: "track-1", clientEventId: "action-1",
+        actorId: "spoofed", source: "private source text",
+        payload: { ...(payload as object), title: "private title", wallet: "private wallet", reason: "private reason", href: "/private", source: "private source" } })
+      .expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName, subjectType: "track", subjectId: "track-1", source: "player",
+      actorId: expect.stringMatching(/^user_[0-9a-f]{32}$/), actorUserId: "listener-1",
+      sourceRefs: { clientEventId: "action-1" }, payload: { ...(payload as object), source: "player" },
+    }));
+  });
+
+  it.each(["player.action_impression", "player.action_selected"])("requires authentication for %s", async (eventName) => {
+    await request(app.getHttpServer()).post("/analytics/product/event").send({ eventName }).expect(401);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["player.action_impression", {}],
+    ["player.action_impression", { actionKeys: [], actionStatuses: [] }],
+    ["player.action_impression", { actionKeys: ["save"], actionStatuses: [] }],
+    ["player.action_impression", { actionKeys: ["save", "save"], actionStatuses: ["available", "available"] }],
+    ["player.action_impression", { actionKeys: ["private text"], actionStatuses: ["available"] }],
+    ["player.action_impression", { actionKeys: ["save"], actionStatuses: ["private text"] }],
+    ["player.action_impression", { actionKeys: [["save"]], actionStatuses: ["available"] }],
+    ["player.action_selected", { actionKey: "save", actionStatus: "disabled" }],
+    ["player.action_selected", { actionKey: "private text", actionStatus: "available" }],
+  ])("rejects malformed %s before instrumentation (%j)", async (eventName, payload) => {
+    await request(app.getHttpServer()).post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ eventName, subjectType: "track", subjectId: "track-1", payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { subjectType: "playlist", subjectId: "playlist-1" }])("requires a track subject for player actions (%j)", async (subject) => {
+    await request(app.getHttpServer()).post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({ eventName: "player.action_selected", ...subject, payload: { actionKey: "save", actionStatus: "available" } }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
+
+  it("stores a retried player impression once through HTTP and the real ingestion path", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+    instrumentationService.recordProductEvent.mockImplementation((input) => instrumentation.recordProductEvent(input));
+    const event = { eventName: "player.action_impression", subjectType: "track", subjectId: "track-1",
+      sessionId: "session-1", clientEventId: "impression-retry-1",
+      payload: { actionKeys: ["save"], actionStatuses: ["available"] } };
+    const post = () => request(app.getHttpServer()).post("/analytics/product/event")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`).send(event).expect(201);
+    const first = await post();
+    const retry = await post();
+    expect(retry.body.eventId).toBe(first.body.eventId);
+    expect(await ingest.listEvents()).toEqual([expect.objectContaining({
+      eventName: event.eventName, privacyTier: "pseudonymous",
+      payload: { ...event.payload, source: "player" },
+    })]);
+  });
+
   it.each(['enabled', 'updated', 'disabled'])('accepts segment loop %s actions and drops free-form fields', async action => {
     await request(app.getHttpServer()).post('/analytics/product/event')
       .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)

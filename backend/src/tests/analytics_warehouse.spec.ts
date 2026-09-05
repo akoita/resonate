@@ -331,7 +331,7 @@ describe("analytics warehouse export", () => {
       })], { generatedAt });
       expect(result.analyticsQuarantine).toEqual([]);
       expect(result.analyticsFacts[0].factType).toBe("player_event");
-      for (const key of ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining"]) {
+      for (const key of ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining", "actionKey", "actionStatus", "actionKeys", "actionStatuses"]) {
         if (key in eventCase.payload) {
           expect(result.analyticsFacts[0].dimensions[key]).toEqual(eventCase.payload[key]);
         }

@@ -244,7 +244,7 @@ class AnalyticsTransformTest(unittest.TestCase):
                 self.assertEqual(layers.analytics_quarantine, [])
                 self.assertEqual(layers.analytics_facts[0]["factType"], "player_event")
                 dimensions = json.loads(layers.analytics_facts[0]["dimensions"])
-                for key in ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining"]:
+                for key in ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining", "actionKey", "actionStatus", "actionKeys", "actionStatuses"]:
                     if key in case["payload"]:
                         self.assertEqual(dimensions[key], case["payload"][key])
                 self.assertEqual(layers.analytics_views[0]["eventCount"], 1)
