@@ -6,6 +6,21 @@ import {
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
+import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+
+export interface QueueCreationContext {
+    origin: "player_queue";
+    sourceKind: "ad_hoc" | "modified_playlist";
+    queueCount: number;
+    omittedCount: number;
+}
+
+export interface CreatePlaylistInput {
+    name: string;
+    folderId?: string;
+    trackIds?: string[];
+    queueContext?: QueueCreationContext;
+}
 
 export const PLAYLIST_VISIBILITIES = ["private", "public"] as const;
 export type PlaylistVisibility = (typeof PLAYLIST_VISIBILITIES)[number];
@@ -126,14 +141,55 @@ export class PlaylistService {
         return prisma.folder.delete({ where: { id } });
     }
 
-    async createPlaylist(userId: string, data: { name: string; folderId?: string; trackIds?: string[] }) {
-        const playlist = await prisma.playlist.create({
-            data: {
-                userId,
-                name: data.name,
-                folderId: data.folderId,
-                trackIds: data.trackIds || [],
-            },
+    async createPlaylist(userId: string, data: CreatePlaylistInput) {
+        const context = data.queueContext;
+        if (context) {
+            if (context.origin !== "player_queue" || !["ad_hoc", "modified_playlist"].includes(context.sourceKind)
+                || !Number.isSafeInteger(context.queueCount) || context.queueCount < 1
+                || !Number.isSafeInteger(context.omittedCount) || context.omittedCount < 0
+                || !Array.isArray(data.trackIds) || !data.trackIds.length
+                || data.trackIds.some(id => typeof id !== "string" || !id)
+                || new Set(data.trackIds).size !== data.trackIds.length
+                || data.trackIds.length + context.omittedCount > context.queueCount
+                || typeof data.name !== "string" || !data.name.trim()) {
+                throw new BadRequestException("Invalid queue snapshot");
+            }
+            if (data.folderId && !await prisma.folder.findFirst({ where: { id: data.folderId, userId } })) {
+                throw new BadRequestException("Folder not found");
+            }
+        }
+        const playlist = await prisma.$transaction(async tx => {
+            if (context) {
+                const tracks = await tx.track.findMany({
+                    where: { id: { in: data.trackIds }, contentStatus: "clean", release: { status: { in: ["ready", "published"] }, OR: [{ rightsRoute: null }, { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } }] } },
+                    include: { release: { include: { artist: true } } },
+                });
+                if (tracks.length !== data.trackIds!.length) {
+                    const availableIds = new Set(tracks.map(track => track.id));
+                    throw new BadRequestException({
+                        message: "Some tracks are no longer available. Review the omitted tracks before trying again; no playlist was saved.",
+                        invalidTrackIds: data.trackIds!.filter(id => !availableIds.has(id)),
+                    });
+                }
+                for (const track of tracks) {
+                    await tx.libraryTrack.upsert({
+                        where: { userId_catalogTrackId: { userId, catalogTrackId: track.id } },
+                        create: { userId, catalogTrackId: track.id, source: "remote", title: track.title,
+                            artist: track.artist ?? track.release.artist.displayName, album: track.release.title,
+                            remoteUrl: catalogPathsFor({ releaseId: track.releaseId, trackId: track.id }).streamPath,
+                            remoteArtworkUrl: catalogPathsFor({ releaseId: track.releaseId, trackId: track.id }).artworkPath },
+                        update: {},
+                    });
+                }
+            }
+            return tx.playlist.create({
+                data: {
+                    userId,
+                    name: data.name,
+                    folderId: data.folderId,
+                    trackIds: data.trackIds || [],
+                },
+            });
         });
         this.eventBus?.publish({
             eventName: "playlist.created",
@@ -143,6 +199,8 @@ export class PlaylistService {
             playlistId: playlist.id,
             folderId: playlist.folderId,
             trackCount: playlist.trackIds.length,
+            ...(context ? { origin: context.origin, sourceKind: context.sourceKind,
+                queueCount: context.queueCount, savedTrackCount: playlist.trackIds.length, omittedCount: context.omittedCount } : {}),
         });
         if (playlist.trackIds.length > 0) {
             this.eventBus?.publish({

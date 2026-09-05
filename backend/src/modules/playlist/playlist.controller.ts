@@ -2,7 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards, Req, Query 
 import { Request } from "express";
 import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
-import { PlaylistService } from "./playlist.service";
+import { PlaylistService, CreatePlaylistInput } from "./playlist.service";
 
 @Controller("playlists")
 @UseGuards(AuthGuard("jwt"))
@@ -49,7 +49,7 @@ export class PlaylistController {
 
     // Playlists
     @Post()
-    createPlaylist(@Req() req: Request, @Body() body: { name: string; folderId?: string; trackIds?: string[] }) {
+    createPlaylist(@Req() req: Request, @Body() body: CreatePlaylistInput) {
         return this.playlistService.createPlaylist((req as any).user.userId, body);
     }
 

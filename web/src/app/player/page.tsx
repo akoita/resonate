@@ -1,4 +1,5 @@
 "use client";
+import { ListeningControls } from "../../components/player/ListeningControls";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -20,6 +21,8 @@ import { VolumeIcon } from "../../components/player/VolumeIcon";
 import { useQueueActions } from "../../lib/useQueueActions";
 import { useIdleReveal } from "../../lib/useIdleReveal";
 
+import { SaveQueuePlaylist } from "../../components/player/SaveQueuePlaylist";
+
 function PlayerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -32,6 +35,7 @@ function PlayerContent() {
   const trackId = searchParams.get("trackId");
 
   const {
+    segmentLoop,
     currentTrack,
     isPlaying,
     togglePlay,
@@ -251,7 +255,7 @@ function PlayerContent() {
       // 2. If track is already in the queue, just jump to it
       const queueIndex = queue.findIndex(t => t.id === trackId);
       if (queueIndex !== -1) {
-        void playQueue(queue, queueIndex);
+        void playQueue(queue, queueIndex, { navigation: true });
         return;
       }
 
@@ -474,6 +478,7 @@ function PlayerContent() {
             <span>Signal Progress</span>
             <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
           </div>
+          {segmentLoop && duration > 0 && <div className="segment-timeline" aria-label={`Loop from ${segmentLoop.start.toFixed(1)} to ${segmentLoop.end.toFixed(1)} seconds`}><span style={{ marginLeft: `${segmentLoop.start / duration * 100}%`, width: `${(segmentLoop.end - segmentLoop.start) / duration * 100}%` }} /></div>}
           <input
             className="player-range"
             type="range"
@@ -525,8 +530,10 @@ function PlayerContent() {
           />
         )}
 
-        <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
+        <div className="queue-section" style={{ display: "flex", flexDirection: "column", flex: "0 0 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
+          <SaveQueuePlaylist />
+          <ListeningControls key={currentTrack?.id} />
           <div
             className="queue-list"
             style={{ overflowY: "auto", paddingRight: "8px" }}
@@ -538,7 +545,7 @@ function PlayerContent() {
                 <div
                   key={`${track.id}-${idx}`}
                   className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""}`}
-                  onClick={() => playQueue(queue, idx)}
+                  onClick={() => playQueue(queue, idx, { navigation: true })}
                   onContextMenu={(e) => handleContextMenu(e, track)}
                 >
                   <div className="queue-item-left">

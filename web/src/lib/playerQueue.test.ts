@@ -150,7 +150,7 @@ describe("shuffle cycle navigation", () => {
       random: () => 0,
     });
     expect(repeated.trackId).toBe("a");
-    expect(repeated.state.played).toEqual(["c", "a"]);
+    expect(repeated.state.played).toEqual(["a"]);
   });
 
   it("allows repeat-all to replay a one-item queue", () => {

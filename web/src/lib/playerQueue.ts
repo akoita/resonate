@@ -165,12 +165,10 @@ export function shuffleNext(
   let played = reconciled.played;
   let candidates = eligible.filter((id) => !played.includes(id));
   if (candidates.length === 0 && options.repeatAll && eligible.length > 0) {
-    // The item finishing the old cycle is the first played item in the new
-    // cycle, preventing an immediate repeat whenever another item exists.
-    played = currentTrackId && eligible.includes(currentTrackId)
-      ? [currentTrackId]
-      : [];
-    candidates = eligible.filter((id) => !played.includes(id));
+    // A new cycle must include every item again. Avoid an immediate repeat,
+    // but don't mark the previous cycle's final item as already heard.
+    played = [];
+    candidates = eligible.filter((id) => id !== currentTrackId);
     if (candidates.length === 0 && eligible.length === 1) {
       candidates = eligible;
     }

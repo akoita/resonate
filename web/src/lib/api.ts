@@ -80,6 +80,13 @@ type AuthVerifyResponse =
     }
   | { status: "invalid_signature" | "invalid_nonce" };
 
+export class ApiRequestError extends Error {
+  constructor(message: string, readonly status: number, readonly details: unknown) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 function formatApiErrorMessage(status: number, statusText: string, detail: string) {
   const trimmedDetail = detail.trim();
   if (!trimmedDetail) {
@@ -216,7 +223,9 @@ async function apiRequest<T>(
       invalidateStoredAuthSession();
     }
 
-    throw new Error(formatApiErrorMessage(response.status, response.statusText, errorDetail));
+    let details: unknown;
+    try { details = JSON.parse(errorDetail); } catch { details = undefined; }
+    throw new ApiRequestError(formatApiErrorMessage(response.status, response.statusText, errorDetail), response.status, details);
   }
 
   // Handle No Content (204) or empty body
@@ -4018,7 +4027,7 @@ export async function deleteRelease(
 
 export async function createPlaylistAPI(
   token: string,
-  input: { name: string; folderId?: string; trackIds?: string[] }
+  input: { name: string; folderId?: string; trackIds?: string[]; queueContext?: { origin: "player_queue"; sourceKind: "ad_hoc" | "modified_playlist"; queueCount: number; omittedCount: number } }
 ) {
   return apiRequest<APIPlaylist>(
     "/playlists",

@@ -424,6 +424,26 @@ describe("AnalyticsController (HTTP)", () => {
     );
   });
 
+  it.each(['enabled', 'updated', 'disabled'])('accepts segment loop %s actions and drops free-form fields', async action => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: `player.segment_loop_${action}`, payload: { startMs: 1000, endMs: 5000, segmentDurationMs: 4000, title: 'private title' } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({ payload: { startMs: 1000, endMs: 5000, segmentDurationMs: 4000 } }));
+  });
+  it.each(['set', 'updated', 'cleared'])('accepts finite repeat %s actions', async action => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: `player.repeat_count_${action}`, payload: { target: 'queue', configured: 3, remaining: 2 } }).expect(201);
+  });
+  it('rejects invalid player controls and unauthenticated analytics', async () => {
+    for (const payload of [{ startMs: 5, endMs: 1, segmentDurationMs: 4 }, { startMs: 1, endMs: 5 }]) {
+      await request(app.getHttpServer()).post('/analytics/product/event')
+        .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+        .send({ eventName: 'player.segment_loop_enabled', payload }).expect(400);
+    }
+    await request(app.getHttpServer()).post('/analytics/product/event').send({ eventName: 'player.repeat_count_set', payload: { target: 'track', configured: 1, remaining: 1 } }).expect(401);
+  });
+
   it("accepts artist action cockpit product analytics events", async () => {
     await request(app.getHttpServer())
       .post("/analytics/product/event")

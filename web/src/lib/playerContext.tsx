@@ -100,7 +100,19 @@ import {
 } from "./playerQueue";
 import { setPlayerVolume, togglePlayerMute } from "./playerVolume";
 
+import { queueSourceKind, validateSegment, createFiniteRepeat, consumeRepeat, type SegmentLoop, type FiniteRepeat, type QueueSource, type QueuePlayOptions } from "./listeningSession";
+
+import { recordProductAnalyticsFromBrowser, type ProductAnalyticsEventName, type ProductAnalyticsPayload } from "./productAnalytics";
+
 interface PlayerContextType {
+    segmentLoop: SegmentLoop | null;
+    setSegmentLoop: (start: number, end: number) => boolean;
+    clearSegmentLoop: () => void;
+    finiteRepeat: FiniteRepeat | null;
+    setFiniteRepeat: (target: "track" | "queue", count: number) => boolean;
+    clearFiniteRepeat: () => void;
+    queueSource: QueueSource;
+    queueSourceKind: ReturnType<typeof queueSourceKind>;
     currentTrack: LocalTrack | null;
     queue: LocalTrack[];
     currentIndex: number;
@@ -113,7 +125,7 @@ interface PlayerContextType {
     muted: boolean;
     shuffle: boolean;
     repeatMode: "none" | "one" | "all";
-    playQueue: (list: LocalTrack[], startIndex: number) => Promise<void>;
+    playQueue: (list: LocalTrack[], startIndex: number, options?: QueuePlayOptions) => Promise<void>;
     nextTrack: () => void;
     prevTrack: () => void;
     togglePlay: () => void;
@@ -430,6 +442,11 @@ StemAudio.displayName = "StemAudio";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const { token } = useAuth();
+    const [segmentLoop, setSegmentLoopState] = useState<SegmentLoop | null>(null);
+    const segmentLoopRef = useRef<SegmentLoop | null>(null);
+    const [finiteRepeat, setFiniteRepeatState] = useState<FiniteRepeat | null>(null);
+    const finiteRepeatRef = useRef<FiniteRepeat | null>(null);
+    const [queueSource, setQueueSource] = useState<QueueSource>(null);
     const [queue, setQueue] = useState<LocalTrack[]>([]);
     const [currentIndex, setCurrentIndex] = useState(-1);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -482,6 +499,52 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const mixerVolumesRef = useRef(mixerVolumes);
 
     const currentTrack = currentIndex >= 0 ? queue[currentIndex] : null;
+
+    const reportControl = useCallback((eventName: ProductAnalyticsEventName, payload: ProductAnalyticsPayload) => {
+        const track = queueRef.current[currentIndexRef.current];
+        recordProductAnalyticsFromBrowser(eventName, {
+            source: "player", sessionId: getPlaybackAnalyticsSessionId(),
+            subjectType: track ? "track" : undefined, subjectId: track?.catalogTrackId || track?.id,
+            payload: { trackId: track?.catalogTrackId || track?.id, artistId: track?.artistId,
+                releaseId: track?.releaseId, playbackInstanceId: playbackInstanceIdRef.current,
+                queueLength: queueRef.current.length, shuffle: shuffleRef.current, ...payload },
+        });
+    }, []);
+    const updateFiniteRepeat = useCallback((plan: FiniteRepeat | null) => {
+        finiteRepeatRef.current = plan;
+        setFiniteRepeatState(plan);
+    }, []);
+    const clearFiniteRepeat = useCallback(() => {
+        if (finiteRepeatRef.current) reportControl("player.repeat_count_cleared", { ...finiteRepeatRef.current });
+        updateFiniteRepeat(null);
+    }, [reportControl, updateFiniteRepeat]);
+    const setFiniteRepeat = useCallback((target: "track" | "queue", count: number) => {
+        const plan = createFiniteRepeat(target, count);
+        if (!plan || !queueRef.current.length) return false;
+        reportControl(finiteRepeatRef.current ? "player.repeat_count_updated" : "player.repeat_count_set", { ...plan });
+        repeatModeRef.current = "none";
+        setRepeatMode("none");
+        updateFiniteRepeat(plan);
+        return true;
+    }, [reportControl, updateFiniteRepeat]);
+    const clearSegmentLoop = useCallback(() => {
+        const loop = segmentLoopRef.current;
+        if (loop) reportControl("player.segment_loop_disabled", { startMs: loop.start * 1000, endMs: loop.end * 1000, segmentDurationMs: (loop.end - loop.start) * 1000 });
+        segmentLoopRef.current = null;
+        setSegmentLoopState(null);
+    }, [reportControl]);
+    const setSegmentLoop = useCallback((start: number, end: number) => {
+        const loop = validateSegment(start, end, audioRef.current?.duration ?? 0);
+        if (!loop) return false;
+        reportControl(segmentLoopRef.current ? "player.segment_loop_updated" : "player.segment_loop_enabled",
+            { startMs: Math.round(loop.start * 1000), endMs: Math.round(loop.end * 1000), segmentDurationMs: Math.round((loop.end - loop.start) * 1000) });
+        segmentLoopRef.current = loop;
+        setSegmentLoopState(loop);
+        const audio = audioRef.current;
+        if (audio && (audio.currentTime < loop.start || audio.currentTime >= loop.end)) audio.currentTime = loop.start;
+        return true;
+    }, [reportControl]);
+
 
     useEffect(() => {
         authTokenRef.current = token;
@@ -547,6 +610,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     const hydratedIndex = savedActiveId
                         ? hydratedQueue.findIndex((track) => track.id === savedActiveId)
                         : hydratedQueue.length > 0 ? 0 : -1;
+                    setQueueSource(saved.queueSource ?? null);
                     setQueue(hydratedQueue);
                     setCurrentIndex(hydratedIndex);
                     queueRef.current = hydratedQueue;
@@ -591,10 +655,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 previousNonZeroVolume: previousNonZeroVolumeRef.current,
                 shuffle,
                 shuffleCycle: shuffleCycleRef.current,
-                repeatMode
+                repeatMode,
+                queueSource
             }).catch(err => console.error("Failed to save player state:", err));
         }
-    }, [queue, currentIndex, volume, muted, shuffle, repeatMode, isHydrated]);
+    }, [queue, currentIndex, volume, muted, shuffle, repeatMode, queueSource, isHydrated]);
 
     // Optimized Safe Play/Pause (Synchronous Pause for Gesture Stability)
     const safePlay = useCallback(async () => {
@@ -654,6 +719,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             if (audioRef.current) {
                 const hasStems = track.stems?.some(s => s.type.toUpperCase() !== 'ORIGINAL');
                 audioRef.current.volume = (mixerModeRef.current && hasStems && mixerAudioActiveRef.current) ? 0 : volume;
+            }
+            if (audioRef.current && audioRef.current.currentTime >= audioRef.current.duration) {
+                audioRef.current.currentTime = 0;
+                playbackCompletedTrackRef.current = null;
+                playbackInstanceIdRef.current = createPlaybackAnalyticsInstanceId();
+                playbackHeartbeatBucketsRef.current = new Set();
+                recordPlaybackLifecycleEvent("started", track, 0);
             }
             void safePlay();
             return;
@@ -755,7 +827,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
     // cascading recreation of playQueue → nextTrack → togglePlay on mixer toggle
     }, [recordPlaybackLifecycleEvent, volume, safePause, safePlay]);
 
-    const playQueue = useCallback(async (list: LocalTrack[], startIndex: number) => {
+    const playQueue = useCallback(async (list: LocalTrack[], startIndex: number, options?: QueuePlayOptions) => {
         const requestedTrack = list[startIndex];
         if (!requestedTrack) return;
         const requestId = playbackRequestRef.current + 1;
@@ -775,6 +847,20 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         // Update queue state
         const queueWasReplaced = normalizedList.length !== queueRef.current.length
             || normalizedList.some((track, index) => track.id !== queueRef.current[index]?.id);
+        if (currentTrackIdRef.current !== trackToPlay.id) {
+            segmentLoopRef.current = null;
+            setSegmentLoopState(null);
+            if (finiteRepeatRef.current?.target === "track") clearFiniteRepeat();
+        }
+        if (!options?.navigation) {
+            if (finiteRepeatRef.current) clearFiniteRepeat();
+            setQueueSource(options?.playlistId ? {
+                playlistId: options.playlistId,
+                publicPlaylist: options.publicPlaylist,
+                trackIds: (options.sourceTrackIds ?? normalizedList.map(track => track.id)).map(id =>
+                    normalizedList.find(track => track.id === id || track.catalogTrackId === id)?.id ?? id),
+            } : null);
+        }
         setQueue(normalizedList);
         setCurrentIndex(normalizedIndex);
         queueRef.current = normalizedList;
@@ -791,15 +877,23 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         devLog("playQueue: playing track", trackToPlay.id, "at index", normalizedIndex);
         await playTrack(trackToPlay, requestId);
-    }, [playTrack]);
+    }, [playTrack, clearFiniteRepeat]);
 
     const nextTrack = useCallback((autoAdvance = false) => {
         const q = queueRef.current;
         const idx = currentIndexRef.current;
         const isShuffle = shuffleRef.current;
         const rMode = repeatModeRef.current;
+        if (!autoAdvance && finiteRepeatRef.current?.target === "track") clearFiniteRepeat();
 
         if (q.length === 0) return;
+        const allowQueueWrap = () => {
+            if (finiteRepeatRef.current?.target !== "queue") return rMode === "all";
+            if (!autoAdvance) return false;
+            const result = consumeRepeat(finiteRepeatRef.current);
+            updateFiniteRepeat(result.plan);
+            return result.replay;
+        };
 
         // #1449 WS-2: a user-invoked "next" before the track is (nearly) done
         // is a DELIBERATE skip — a distinct negative signal, not a short
@@ -838,34 +932,37 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                     played: [...new Set([...reconciled.played, pendingTrackId])],
                 };
                 const pendingIndex = q.findIndex((track) => track.id === pendingTrackId);
-                if (pendingIndex >= 0) void playQueue(q, pendingIndex);
+                if (pendingIndex >= 0) void playQueue(q, pendingIndex, { navigation: true });
                 return;
             }
-            const result = shuffleNext(
+            let result = shuffleNext(
                 shuffleCycleRef.current,
                 q.map((track) => track.id),
                 q[idx]?.id ?? null,
-                { repeatAll: rMode === "all" },
+                { repeatAll: false },
             );
+            if (!result.trackId && allowQueueWrap()) {
+                result = shuffleNext(result.state, q.map(track => track.id), q[idx]?.id ?? null, { repeatAll: true });
+            }
             shuffleCycleRef.current = result.state;
             if (!result.trackId) {
                 if (autoAdvance) setIsPlaying(false);
                 return;
             }
             const nextIdx = q.findIndex((track) => track.id === result.trackId);
-            if (nextIdx >= 0) void playQueue(q, nextIdx);
+            if (nextIdx >= 0) void playQueue(q, nextIdx, { navigation: true });
             return;
         }
 
         if (idx < q.length - 1) {
-            void playQueue(q, idx + 1);
-        } else if (rMode === "all") {
-            void playQueue(q, 0); // Loop back to start
+            void playQueue(q, idx + 1, { navigation: true });
+        } else if (allowQueueWrap()) {
+            void playQueue(q, 0, { navigation: true }); // Loop back to start
         } else {
             if (autoAdvance) setIsPlaying(false);
             return;
         }
-    }, [playQueue, recordPlaybackLifecycleEvent]);
+    }, [playQueue, recordPlaybackLifecycleEvent, clearFiniteRepeat, updateFiniteRepeat]);
 
     const prevTrack = useCallback(() => {
         const q = queueRef.current;
@@ -879,13 +976,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             shuffleCycleRef.current = result.state;
             if (!result.trackId) return;
             const previousIndex = q.findIndex((track) => track.id === result.trackId);
-            if (previousIndex >= 0) void playQueue(q, previousIndex);
+            if (previousIndex >= 0) void playQueue(q, previousIndex, { navigation: true });
             return;
         }
         if (idx > 0) {
-            void playQueue(q, idx - 1);
+            void playQueue(q, idx - 1, { navigation: true });
         } else if (repeatModeRef.current === "all" && q.length > 0) {
-            void playQueue(q, q.length - 1); // Loop to end
+            void playQueue(q, q.length - 1, { navigation: true }); // Loop to end
         }
     }, [playQueue]);
 
@@ -902,12 +999,13 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         });
     }, []);
     const toggleRepeatMode = useCallback(() => {
+        clearFiniteRepeat();
         setRepeatMode(prev => {
-            if (prev === "none") return "all";
-            if (prev === "all") return "one";
-            return "none";
+            const next = prev === "none" ? "all" : prev === "all" ? "one" : "none";
+            repeatModeRef.current = next;
+            return next;
         });
-    }, []);
+    }, [clearFiniteRepeat]);
 
     // Sync refs for event listeners
     useEffect(() => {
@@ -927,6 +1025,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         const handleTimeUpdate = () => {
             // Don't update progress if we're currently seeking
             if (isSeekingRef.current) return;
+            const loop = segmentLoopRef.current;
+            if (loop && !audio.paused && (audio.currentTime >= loop.end || audio.currentTime < loop.start)) {
+                audio.currentTime = loop.start;
+                Object.values(stemAudiosRef.current).forEach(stem => { stem.currentTime = loop.start; });
+                setCurrentTime(loop.start);
+                setProgress(loop.start / audio.duration * 100);
+                return;
+            }
 
             setCurrentTime(audio.currentTime);
             setDuration(audio.duration || 0);
@@ -1029,7 +1135,19 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             const idx = currentIndexRef.current;
             const rMode = repeatModeRef.current;
 
-            if (rMode === "one") {
+            const loop = segmentLoopRef.current;
+            if (loop) {
+                audio.currentTime = loop.start;
+                void safePlay();
+                return;
+            }
+            let finiteTrackReplay = false;
+            if (finiteRepeatRef.current?.target === "track") {
+                const result = consumeRepeat(finiteRepeatRef.current);
+                finiteTrackReplay = result.replay;
+                updateFiniteRepeat(result.plan);
+            }
+            if (rMode === "one" || finiteTrackReplay) {
                 const activeTrack = q[idx] ?? null;
                 playbackCompletedTrackRef.current = null;
                 playbackInstanceIdRef.current = createPlaybackAnalyticsInstanceId();
@@ -1042,7 +1160,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 return;
             }
 
-            if (shuffleRef.current || idx < q.length - 1 || rMode === "all") {
+            if (shuffleRef.current || idx < q.length - 1 || rMode === "all" || finiteRepeatRef.current?.target === "queue") {
                 nextTrackRef.current(true);
             } else {
                 setIsPlaying(false);
@@ -1107,7 +1225,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             const track = currentIndex >= 0 ? queue[currentIndex] : null;
             const audioHasTrack = audioRef.current?.src && currentTrackIdRef.current === track?.id;
             if (track && !audioHasTrack) {
-                void playQueue(queue, currentIndex);
+                void playQueue(queue, currentIndex, { navigation: true });
             } else {
                 void safePlay();
             }
@@ -1210,7 +1328,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
     const seek = useCallback((percent: number) => {
         if (!audioRef.current) return;
-        const targetTime = (percent / 100) * (audioRef.current.duration || 0);
+        const requestedTime = (percent / 100) * (audioRef.current.duration || 0);
+        const loop = segmentLoopRef.current;
+        const targetTime = loop ? Math.max(loop.start, Math.min(requestedTime, loop.end - 0.001)) : requestedTime;
 
         isSeekingRef.current = true;
         audioRef.current.currentTime = targetTime;
@@ -1321,6 +1441,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         queueRef.current = nextQueue;
 
         if (nextQueue.length === 0) {
+            clearFiniteRepeat();
+            segmentLoopRef.current = null;
+            setSegmentLoopState(null);
+            setQueueSource(null);
             setQueue([]);
             setCurrentIndex(-1);
             currentIndexRef.current = -1;
@@ -1340,8 +1464,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             nextQueue.map((track) => track.id),
             nextQueue[nextIndex]?.id ?? null,
         );
-        if (index === activeIndex) void playQueue(nextQueue, nextIndex);
-    }, [playQueue, safePause]);
+        if (index === activeIndex) void playQueue(nextQueue, nextIndex, { navigation: true });
+    }, [playQueue, safePause, clearFiniteRepeat]);
 
     const toggleMixerMode = useCallback(() => {
         mixerAudioActiveRef.current = false;
@@ -1398,6 +1522,9 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         : [];
 
     const contextValue = React.useMemo<PlayerContextType>(() => ({
+        segmentLoop, setSegmentLoop, clearSegmentLoop, finiteRepeat, setFiniteRepeat, clearFiniteRepeat,
+        queueSource,
+        queueSourceKind: queueSourceKind(queue, queueSource),
         currentTrack,
         queue,
         currentIndex,
@@ -1430,7 +1557,8 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         mixerVolumes,
         setMixerVolumes,
     }), [
-        currentTrack, queue, currentIndex, isPlaying, progress, currentTime,
+        segmentLoop, setSegmentLoop, clearSegmentLoop, finiteRepeat, setFiniteRepeat, clearFiniteRepeat,
+        queueSource, currentTrack, queue, currentIndex, isPlaying, progress, currentTime,
         duration, artworkUrl, volume, muted, shuffle, repeatMode, playQueue, nextTrack,
         prevTrack, togglePlay, toggleShuffle, toggleRepeatMode, seek, setVolume, toggleMute,
         stop, addToQueue, playNextInQueue, addTracksToQueue, playTracksNext, removeFromQueue,

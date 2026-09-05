@@ -25,6 +25,12 @@ type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
 const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat"]);
 const REPEAT_MODES = new Set(["none", "one", "all"]);
 const PRODUCT_EVENT_NAMES = new Set([
+  "player.segment_loop_enabled",
+  "player.segment_loop_updated",
+  "player.segment_loop_disabled",
+  "player.repeat_count_set",
+  "player.repeat_count_updated",
+  "player.repeat_count_cleared",
   "onboarding.started",
   "onboarding.step_viewed",
   "onboarding.step_completed",
@@ -339,7 +345,7 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     subjectId: subjectId || undefined,
     source: source || "web_app",
     geo: normalizeAnalyticsGeoDimension(body.geo),
-    payload: sanitizeProductPayload(body.payload),
+    payload: normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -415,4 +421,27 @@ function sanitizeProductPayloadValue(value: unknown): string | number | boolean 
     return values.slice(0, 20);
   }
   return undefined;
+}
+
+function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {
+  const segment = eventName.startsWith("player.segment_loop_");
+  if (!segment && !eventName.startsWith("player.repeat_count_")) return payload;
+  const fields = segment ? ["startMs", "endMs", "segmentDurationMs"] : ["configured", "remaining"];
+  for (const field of fields) {
+    if (typeof payload[field] !== "number" || !Number.isFinite(payload[field]) || (payload[field] as number) < 0) {
+      throw new BadRequestException(`Invalid ${field}`);
+    }
+  }
+  if (segment) {
+    if ((payload.endMs as number) <= (payload.startMs as number)
+        || Math.abs((payload.endMs as number) - (payload.startMs as number) - (payload.segmentDurationMs as number)) > 1) {
+      throw new BadRequestException("Invalid segment range");
+    }
+  } else if (!["track", "queue"].includes(payload.target as string)
+      || !Number.isSafeInteger(payload.configured) || (payload.configured as number) < 1
+      || !Number.isSafeInteger(payload.remaining) || (payload.remaining as number) > (payload.configured as number)) {
+    throw new BadRequestException("Invalid finite repeat plan");
+  }
+  const allowed = new Set([...fields, ...(!segment ? ["target"] : []), "trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle"]);
+  return Object.fromEntries(Object.entries(payload).filter(([key]) => allowed.has(key)));
 }

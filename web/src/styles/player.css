@@ -1,0 +1,24 @@
+
+/* Shared listening controls keep labels and touch targets usable in both players. */
+.listening-controls { margin-block: 12px; }
+.listening-controls summary { cursor: pointer; padding: 12px; }
+.listening-controls fieldset { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; min-width: 0; }
+.listening-controls label { display: flex; flex-direction: column; gap: 6px; }
+.listening-controls input, .listening-controls select, .listening-controls button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--border-subtle, #555); border-radius: 8px; color: inherit; background: var(--bg-panel, #171923); }
+.listening-controls input[type="number"] { width: 120px; }
+.listening-controls :focus-visible { outline: 2px solid var(--accent-primary, #9d8fff); outline-offset: 3px; }
+.listening-controls button:disabled { opacity: .5; }
+.listening-controls p { width: 100%; }
+.listening-dialog { padding: 24px; max-width: min(520px, 95vw); max-height: 85dvh; overflow: auto; }
+.player-listening-menu { position: absolute; bottom: 100%; right: 12px; z-index: 30; max-width: min(520px, calc(100vw - 24px)); background: var(--bg-panel, #171923); border-radius: 12px; }
+.player-listening-menu .listening-controls { margin: 0; }
+.player-listening-menu details[open] { max-height: 65dvh; overflow: auto; }
+.segment-timeline { height: 6px; width: 100%; background: transparent; }
+.segment-timeline span { display: block; height: 100%; background: var(--accent-primary, #9d8fff); border-inline: 2px solid currentColor; }
+aside.player-floating-console { overflow-y: auto; }
+aside.player-floating-console > * { flex-shrink: 0; }
+aside.player-floating-console .queue-list { max-height: 35vh; }
+.listening-controls { font-size: .875rem; line-height: 1.5; }
+.listening-controls fieldset { border: 1px solid rgba(255,255,255,.14); border-radius: 12px; margin-block: 8px; }
+.listening-controls legend { padding-inline: 6px; color: var(--color-muted, #c0b8d7); }
+.listening-controls button { align-self: end; }

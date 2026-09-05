@@ -92,22 +92,22 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
 
   const handlePlayAll = useCallback(() => {
     if (playableTracks.length === 0) return;
-    void playQueue(playableTracks, 0);
+    void playQueue(playableTracks, 0, { playlistId, publicPlaylist: true, sourceTrackIds: playlist?.tracks.map(t => t.id) });
     recordProductAnalyticsFromBrowser("playlist.played", {
       source: "public_playlist_view",
       subjectType: "playlist",
       subjectId: playlistId,
       payload: { playlistId, trackCount: playableTracks.length },
     });
-  }, [playableTracks, playQueue, playlistId]);
+  }, [playableTracks, playQueue, playlistId, playlist]);
 
   const handlePlayTrack = useCallback(
     (track: PublicPlaylistTrack) => {
       if (!track.playable) return;
       const index = playableTracks.findIndex((t) => t.id === track.id);
-      void playQueue(playableTracks, index >= 0 ? index : 0);
+      void playQueue(playableTracks, index >= 0 ? index : 0, { playlistId, publicPlaylist: true, sourceTrackIds: playlist?.tracks.map(t => t.id) });
     },
-    [playableTracks, playQueue]
+    [playableTracks, playQueue, playlistId, playlist]
   );
 
   const handleCopyLink = useCallback(async () => {

@@ -27,7 +27,7 @@ import { type Address } from "viem"; // eslint-disable-line @typescript-eslint/n
 import {
     Playlist,
     listPlaylists,
-    // getPlaylist,
+    getPlaylist,
     // removeTrackFromPlaylist,
     // reorderTracks,
     // renamePlaylist,
@@ -340,6 +340,8 @@ export default function LibraryPage() {
 
         if (tab === "playlists") {
             setActiveTab("playlists");
+            const playlistId = searchParams.get("playlist");
+            if (playlistId) void getPlaylist(playlistId).then(setSelectedPlaylist);
         } else if (tab === "ai_creations") {
             setActiveTab("ai_creations");
         } else if (tab === "moments") {

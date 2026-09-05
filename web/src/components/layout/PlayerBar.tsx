@@ -1,4 +1,5 @@
 "use client";
+import { ListeningControls } from "../player/ListeningControls";
 
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
@@ -14,8 +15,8 @@ export default function PlayerBar() {
   const pathname = usePathname();
   const {
     currentTrack, isPlaying, artworkUrl, togglePlay, nextTrack, prevTrack,
-    progress, queue, currentIndex, seek,
-    shuffle, repeatMode, toggleShuffle, toggleRepeatMode,
+    progress, duration, queue, currentIndex, seek,
+    segmentLoop, shuffle, repeatMode, toggleShuffle, toggleRepeatMode,
     volume, muted, setVolume, toggleMute,
     mixerMode, toggleMixerMode
   } = usePlayer();
@@ -57,11 +58,13 @@ export default function PlayerBar() {
       style={{ cursor: "pointer" }}
       title="Double-click to open player"
     >
+      <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>
       {/* Progress Line */}
       <div
         className="player-progress-container"
         style={{ cursor: 'pointer' }}
       >
+        {segmentLoop && duration > 0 && <div className="segment-timeline" aria-label="Active passage loop"><span style={{ marginLeft: `${segmentLoop.start / duration * 100}%`, width: `${(segmentLoop.end - segmentLoop.start) / duration * 100}%` }} /></div>}
         <div className="player-progress-bar" style={{ width: `${progress}%` }} />
         <input
           type="range"
