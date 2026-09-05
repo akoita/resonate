@@ -259,3 +259,10 @@ with the batch materializer implementation.
 - IaC edge model: `resonate-iac/docs/cloud-edge-architecture.md`
 - Cross-repo deploy contract: `resonate-iac/docs/cross-repo-deploy-contract.md`
 - Supply-chain incident response: [supply_chain_incident_response.md](../operations/supply_chain_incident_response.md)
+
+## Validation scheduling
+
+[Selective CI validation](../features/ci_validation.md) documents the package
+classifier and job graph. Independent validation runs alongside lint; E2E still
+consumes the web build artifact, and deployable frontend artifacts still require
+successful lint. Queue and explicit release invocations retain full validation.
