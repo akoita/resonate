@@ -28,6 +28,12 @@ seconds listened or 80 percent completion for shorter tracks. It also records
 authenticated pseudonymous user playback lifecycle events through
 `POST /analytics/playback/event`, currently `playback.started` and periodic
 `playback.heartbeat`, so long-session, replay, retention, and future listener
+- `playback.skipped` (#1449) — an explicit deliberate-skip signal (user-invoked
+  next before ~97% of the track), with `positionMs`/`durationMs`/`reason`.
+  Distinct from a short listen; auto-mirrored into a negative `AgentSignal`.
+- `recommendation.served` / `recommendation.clicked` (#1449) — Home ranking
+  impressions (requestId, railId, trackIds/position, source) at pseudonymous
+  tier, correlating with the `requestId` on `GET /recommendations/:userId`.
 summary reports can be reconstructed without relying on today's artist
 dashboard shape. For broader frontend funnel memory, authenticated clients use
 `web/src/lib/productAnalytics.ts` to send allowlisted product events through

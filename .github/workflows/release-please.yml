@@ -1,0 +1,121 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: Full main-branch source SHA to preview without writes.
+        required: true
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: release-please-${{ github.event_name == 'push' && github.sha || inputs.candidate_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  preview:
+    name: Preview Release Plan
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate candidate SHA
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::candidate_sha must be a full lowercase commit SHA."
+            exit 1
+          fi
+
+      - name: Check out candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release contract
+        run: npm run release:check
+
+      - name: Render read-only release plan
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+        run: |
+          node scripts/release-policy.mjs preview \
+            --source "${CANDIDATE_SHA}" \
+            --output "${RUNNER_TEMP}/release-plan.json"
+
+      - name: Summarize preview
+        env:
+          PLAN_PATH: ${{ runner.temp }}/release-plan.json
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const plan = JSON.parse(fs.readFileSync(process.env.PLAN_PATH, "utf8"));
+          const lines = [
+            "## Read-only release preview",
+            "",
+            `- source: \`${plan.sourceSha}\``,
+            `- current version: \`${plan.currentVersion}\``,
+            `- proposed version: \`${plan.proposedVersion ?? "no release"}\``,
+            `- proposed tag: \`${plan.tag ?? "none"}\``,
+            `- boundary: \`${plan.baseRef}\``,
+            `- commits considered: ${plan.commits.length}`,
+            "",
+            "No tag, release, commit, branch, deployment, or artifact publication was created.",
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${lines.join("\n")}\n`);
+          NODE
+
+      - name: Upload release preview
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-preview-${{ inputs.candidate_sha }}
+          path: ${{ runner.temp }}/release-plan.json
+          retention-days: 90
+          if-no-files-found: error
+
+  release-pr:
+    name: Update Release Pull Request
+    if: >-
+      github.event_name == 'push' &&
+      vars.RELEASE_AUTOMATION_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out certified main source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate release contract
+        run: npm run release:check
+
+      - name: Validate release automation credential
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_PLEASE_TOKEN}" ]]; then
+            echo "::error::RELEASE_AUTOMATION_ENABLED is true but RELEASE_PLEASE_TOKEN is missing."
+            exit 1
+          fi
+
+      - name: Open or update the release pull request
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true

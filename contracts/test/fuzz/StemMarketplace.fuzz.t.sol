@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
+import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
 
 /**
  * @title StemMarketplaceV2 Fuzz Tests
@@ -30,8 +31,14 @@ contract StemMarketplaceFuzzTest is Test {
         contentProtection = new MockContentProtectionMarketplace();
         paymentAssetRegistry = new PaymentAssetRegistry(admin);
         paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
-        marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 250
+        marketplace = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            250,
+            admin,
+            makeAddr("upgradeAuthority")
         );
 
         stemNFT.setTransferValidator(address(validator));
@@ -148,6 +155,48 @@ contract StemMarketplaceFuzzTest is Test {
         vm.prank(buyer);
         vm.expectRevert(IStemMarketplaceV2.InsufficientPayment.selector);
         marketplace.buy{value: totalSent}(listingId, 1);
+    }
+
+    // ── CP-4 (#1271): stake cap enforced at purchase time ───────────────────
+
+    /// @notice Property: whenever a stake-backed cap is active at purchase time, a
+    /// successful buy implies the listed pricePerUnit is within that cap — even if the
+    /// cap moved after the listing was created.
+    function testFuzz_Buy_EnforcesStakeCapAtPurchase(uint256 pricePerUnit, uint256 capAtPurchase) public {
+        pricePerUnit = bound(pricePerUnit, 0.001 ether, 100 ether);
+        capAtPurchase = bound(capAtPurchase, 1, 200 ether);
+
+        address seller = makeAddr("seller");
+        address buyer = makeAddr("buyer");
+        uint256 releaseId = 777;
+
+        uint256[] memory parentIds = new uint256[](0);
+        vm.prank(seller);
+        uint256 tokenId = stemNFT.mint(seller, 10, "ipfs://test", address(0), 500, true, parentIds);
+
+        // Cap exactly covers the price at listing time, so listing always succeeds.
+        contentProtection.registerStemProtectionRoot(releaseId, tokenId);
+        contentProtection.setMaxListingPrice(releaseId, pricePerUnit);
+
+        vm.startPrank(seller);
+        stemNFT.setApprovalForAll(address(marketplace), true);
+        uint256 listingId = marketplace.list(tokenId, 10, pricePerUnit, address(0), 7 days);
+        vm.stopPrank();
+
+        // The cap moves after listing (up or down).
+        contentProtection.setMaxListingPrice(releaseId, capAtPurchase);
+
+        vm.deal(buyer, pricePerUnit);
+        vm.prank(buyer);
+        if (pricePerUnit > capAtPurchase) {
+            vm.expectRevert(IStemMarketplaceV2.PriceExceedsStakeCap.selector);
+            marketplace.buy{value: pricePerUnit}(listingId, 1);
+        } else {
+            marketplace.buy{value: pricePerUnit}(listingId, 1);
+            // Successful buy implies the price respected the cap active at purchase.
+            assertLe(pricePerUnit, capAtPurchase);
+            assertEq(stemNFT.balanceOf(buyer, tokenId), 1);
+        }
     }
 
     // ============ Quote Fuzz Tests ============

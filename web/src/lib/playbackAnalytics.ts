@@ -4,7 +4,7 @@ export const PLAYBACK_COMPLETED_SECONDS = 30;
 export const PLAYBACK_HEARTBEAT_SECONDS = 30;
 export const SHORT_TRACK_COMPLETION_RATIO = 0.8;
 const SESSION_STORAGE_KEY = "resonate.playback.sessionId";
-export type PlaybackLifecycleAction = "started" | "heartbeat";
+export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
 
 export type PlaybackCompletedPayload = {
   trackId: string;
@@ -31,6 +31,8 @@ export type PlaybackLifecyclePayload = {
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
   shuffle?: boolean;
+  /** #1449: why the skip happened (e.g. "next_clicked"). */
+  reason?: string;
 };
 
 export function getPlaybackAnalyticsSessionId() {
@@ -136,6 +138,7 @@ export function buildPlaybackLifecyclePayload(input: {
   currentTimeSeconds?: number | null;
   durationSeconds?: number | null;
   heartbeatIntervalSeconds?: number;
+  reason?: string;
   queueIndex?: number;
   queueLength?: number;
   repeatMode?: "none" | "one" | "all";
@@ -167,6 +170,7 @@ export function buildPlaybackLifecyclePayload(input: {
     source: input.track.source === "remote" ? "web_player" : "web_player_local",
     positionMs: currentTimeSeconds !== undefined ? Math.round(currentTimeSeconds * 1000) : undefined,
     durationMs: durationSeconds ? Math.round(durationSeconds * 1000) : undefined,
+    ...(input.reason ? { reason: input.reason } : {}),
     heartbeatIntervalMs: input.heartbeatIntervalSeconds
       ? Math.round(input.heartbeatIntervalSeconds * 1000)
       : undefined,

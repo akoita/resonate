@@ -4,7 +4,7 @@ import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.se
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AgentLearningService, buildAgentSignalMetadata, type AgentSignalAction } from "../agents/agent_learning.service";
 
-export type PlaybackLifecycleAction = "started" | "heartbeat";
+export type PlaybackLifecycleAction = "started" | "heartbeat" | "skipped";
 
 interface PlaybackCatalogAnalyticsInput {
   trackId: string;
@@ -169,7 +169,7 @@ export class AnalyticsInstrumentationService {
   async recordPlaybackLifecycle(input: PlaybackLifecycleAnalyticsInput) {
     const catalog = await this.resolvePlaybackCatalog(input);
 
-    return this.emit({
+    const result = await this.emit({
       eventName: `playback.${input.action}`,
       producer: "playback-service",
       privacyTier: "pseudonymous",
@@ -215,6 +215,40 @@ export class AnalyticsInstrumentationService {
         ...(input.positionMs !== undefined ? { positionMs: String(input.positionMs) } : {}),
       },
     });
+
+    // #1449 WS-2: auto-mirror playback lifecycle into AgentSignal so plays and
+    // deliberate skips reach the learning loop without a client POSTing agent
+    // signals. Agent-originated playback is excluded — the agent runtime
+    // records its own signals, and mirroring here would double-count.
+    // Consent (`shouldTrainAgentPlayback`) is enforced inside recordSignal.
+    if (!input.agentOriginated) {
+      const mirrorAction =
+        input.action === "started"
+          ? ("accept" as const)
+          : input.action === "skipped"
+            ? ("skip" as const)
+            : null;
+      if (mirrorAction) {
+        await this.recordAgentOutcome({
+          userId: input.actorUserId,
+          sessionId: input.sessionId,
+          trackId: input.trackId,
+          action: mirrorAction,
+          metadata: buildAgentSignalMetadata({
+            source: input.source ?? "web_player",
+            initiator: input.initiator ?? "listener",
+            agentOriginated: false,
+            playbackCommandId: input.playbackCommandId,
+            outcome: {
+              type: `playback_${input.action}`,
+              positionMs: input.positionMs,
+              durationMs: input.durationMs,
+            },
+          }),
+        });
+      }
+    }
+    return result;
   }
 
   async recordProductEvent(input: ProductAnalyticsInput) {

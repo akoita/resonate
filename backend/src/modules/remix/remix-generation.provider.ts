@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -12,9 +13,10 @@ import { Injectable } from "@nestjs/common";
 
 export const REMIX_GENERATION_PROVIDER = "REMIX_GENERATION_PROVIDER";
 
-/** Mirrors the catalog generation cost model ($0.06 per 30 seconds). */
-export const REMIX_GENERATION_COST_PER_30_SECONDS_USD = 0.06;
 export const REMIX_GENERATION_DEFAULT_DURATION_SECONDS = 30;
+
+/** Provider/model path key for the remix stub in the per-path cost model. */
+export const REMIX_STUB_COST_PATH = "remix-stub";
 
 export const REMIX_GENERATION_ERROR_CODES = [
   "provider_disabled",
@@ -456,10 +458,9 @@ export function buildRemixGenerationInput(
 export function estimateRemixGenerationCostUsd(
   durationSeconds: number = REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
 ): number {
-  return +(
-    (durationSeconds / 30) *
-    REMIX_GENERATION_COST_PER_30_SECONDS_USD
-  ).toFixed(2);
+  // Behavior-preserving: routes through the shared per-path cost model (#1421),
+  // which defaults to the historical flat $0.06/30s for the remix-stub path.
+  return estimateGenerationCostUsd(REMIX_STUB_COST_PATH, durationSeconds);
 }
 
 /**

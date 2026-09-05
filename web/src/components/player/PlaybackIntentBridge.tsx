@@ -84,7 +84,9 @@ export function mapCatalogTrackToLocalTrack(track: Track): LocalTrack {
     releaseId,
     remoteUrl: releaseId ? getReleaseTrackStreamUrl(releaseId, catalogTrackId) : undefined,
     remoteArtworkUrl: releaseId
-      ? release?.artworkUrl || (release?.artworkMimeType ? getReleaseArtworkUrl(releaseId) : undefined)
+      ? release?.artworkUrl || (release?.artworkMimeType
+        ? getReleaseArtworkUrl(releaseId, { artworkRevision: release.artworkRevision })
+        : undefined)
       : undefined,
     stems: track.stems?.map((stem) => {
       const mixerStem = isMixerStemType(stem.type);

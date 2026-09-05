@@ -5,18 +5,30 @@ import { useRouter, useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
-import { getTrack, getRelease, getPlayerTrackActions, type PlayerTrackAction, type PlayerTrackActionsResponse } from "../../lib/api";
-import { LocalTrack, saveTrackMetadata } from "../../lib/localLibrary";
+import { deleteLibraryTrackAPI, getTrack, getRelease, getPlayerTrackActions, type PlayerTrackAction, type PlayerTrackActionsResponse } from "../../lib/api";
+import { LocalTrack, saveTrackMetadataAuthenticated } from "../../lib/localLibrary";
 import { AddToPlaylistModal } from "../../components/library/AddToPlaylistModal";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { useToast } from "../../components/ui/Toast";
 import { MixerConsole } from "../../components/player/MixerConsole";
 import { PlayerActionPanel } from "../../components/player/PlayerActionPanel";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
+import { useAuth } from "../../components/auth/AuthProvider";
+import { useImmersiveMode } from "../../lib/useImmersiveMode";
+import { VolumeIcon } from "../../components/player/VolumeIcon";
+import { useQueueActions } from "../../lib/useQueueActions";
+import { useIdleReveal } from "../../lib/useIdleReveal";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { token } = useAuth();
+  const playerStageRef = useRef<HTMLDivElement>(null);
+  const immersive = useImmersiveMode(playerStageRef);
+  // In immersive mode the console steps aside once the listener settles.
+  const immersiveIdle = useIdleReveal(immersive.active);
+  const queueActions = useQueueActions();
   const trackId = searchParams.get("trackId");
 
   const {
@@ -25,18 +37,21 @@ function PlayerContent() {
     togglePlay,
     nextTrack,
     prevTrack,
+    shuffle,
+    repeatMode,
     progress,
     currentTime,
     duration,
     seek,
     volume,
+    muted,
     setVolume,
+    toggleMute,
     currentIndex,
     queue,
     playQueue,
     artworkUrl,
-    playNext,
-    addToQueue,
+    removeFromQueue,
     mixerMode,
     toggleMixerMode
   } = usePlayer();
@@ -45,7 +60,7 @@ function PlayerContent() {
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
   const [trackActions, setTrackActions] = useState<PlayerTrackActionsResponse | null>(null);
-  const [savedActionTrackIds, setSavedActionTrackIds] = useState<Set<string>>(() => new Set());
+  const [savingTrack, setSavingTrack] = useState(false);
   const actionImpressionKeyRef = useRef<string | null>(null);
 
   // Local state for seeking
@@ -66,7 +81,12 @@ function PlayerContent() {
   };
 
   const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDragValue(parseFloat(e.target.value));
+    const nextProgress = parseFloat(e.target.value);
+    setDragValue(nextProgress);
+    // Keyboard changes do not emit pointer-up, so commit them immediately.
+    if (!isDragging) {
+      seek(nextProgress);
+    }
   };
 
   const handleSeekEnd = (e: React.PointerEvent<HTMLInputElement>) => {
@@ -96,12 +116,13 @@ function PlayerContent() {
 
   useEffect(() => {
     let active = true;
+    setTrackActions(null);
 
     if (!actionTrackId) {
       return;
     }
 
-    getPlayerTrackActions(actionTrackId, { reasons: recommendationReasons })
+    getPlayerTrackActions(actionTrackId, { reasons: recommendationReasons }, token)
       .then((response) => {
         if (active) setTrackActions(response);
       })
@@ -113,7 +134,7 @@ function PlayerContent() {
     return () => {
       active = false;
     };
-  }, [actionTrackId, recommendationReasons]);
+  }, [actionTrackId, recommendationReasons, token]);
 
   const visibleTrackActions =
     actionTrackId && trackActions?.track.id === actionTrackId ? trackActions : null;
@@ -159,9 +180,34 @@ function PlayerContent() {
     });
 
     if (action.key === "save") {
-      await saveTrackMetadata({ ...currentTrack, source: currentTrack.source ?? "remote" });
-      setSavedActionTrackIds((current) => new Set(current).add(actionTrackId));
-      addToast({ type: "success", title: "Saved", message: `"${currentTrack.title}" was added to your library.` });
+      if (!token) {
+        addToast({ type: "info", title: "Sign in to save", message: "Connect your account to update your library." });
+        return;
+      }
+      setSavingTrack(true);
+      try {
+        if (visibleTrackActions?.library?.saved && visibleTrackActions.library.libraryTrackId) {
+          await deleteLibraryTrackAPI(visibleTrackActions.library.libraryTrackId, token);
+          setTrackActions((current) => current?.track.id === actionTrackId
+            ? { ...current, library: { saved: false, libraryTrackId: null } }
+            : current);
+          addToast({ type: "success", title: "Removed", message: `"${currentTrack.title}" was removed from your library.` });
+        } else {
+          const savedTrack = await saveTrackMetadataAuthenticated(
+            { ...currentTrack, source: currentTrack.source ?? "remote" },
+            token,
+          );
+          setTrackActions((current) => current?.track.id === actionTrackId
+            ? { ...current, library: { saved: true, libraryTrackId: savedTrack.id } }
+            : current);
+          addToast({ type: "success", title: "Saved", message: `"${currentTrack.title}" was added to your library.` });
+        }
+      } catch (error) {
+        console.warn("Failed to update saved track state:", error);
+        addToast({ type: "error", title: "Library not updated", message: "Please try again." });
+      } finally {
+        setSavingTrack(false);
+      }
       return;
     }
 
@@ -188,8 +234,7 @@ function PlayerContent() {
   };
 
   const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-    { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-    { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+    ...queueActions.contextMenuItems(track),
     { separator: true, label: "", onClick: () => { } },
     { label: "Add to Playlist", icon: "🎵", onClick: () => setShowAddToPlaylist(true) },
   ];
@@ -244,6 +289,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     catalogTrackId: track.id,
                     artistId: release.artist?.id || release.artistId,
+                    aiDisclosure: track.aiDisclosure,
                     source: "remote",
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -264,6 +310,7 @@ function PlayerContent() {
                     createdAt: track.createdAt,
                     catalogTrackId: track.id,
                     artistId: release.artist?.id || release.artistId,
+                    aiDisclosure: track.aiDisclosure,
                     source: "remote",
                     remoteUrl: s.uri,
                     remoteArtworkUrl: release.artworkUrl || undefined,
@@ -295,7 +342,10 @@ function PlayerContent() {
   };
 
   return (
-    <div className="player-master-stage">
+    <div
+      ref={playerStageRef}
+      className={`player-master-stage ${immersive.active ? "is-immersive" : ""} ${immersive.fallback ? "is-immersive-fallback" : ""} ${immersiveIdle ? "is-settled" : ""}`}
+    >
       {/* Mesh Backdrop Layer */}
       {artworkUrl && (
         <div
@@ -304,6 +354,14 @@ function PlayerContent() {
         />
       )}
       <div className="player-mesh-overlay" />
+
+      {/* Immersive keeps a hairline of progress on the bottom edge, so the
+        * console can recede without taking the playhead with it. */}
+      {immersive.active && (
+        <div className="immersive-progress" aria-hidden="true">
+          <span style={{ transform: `scaleX(${Math.max(0, Math.min(100, progress || 0)) / 100})` }} />
+        </div>
+      )}
 
       {/* THE HERO STAGE */}
       <section className="player-hero-stage">
@@ -341,6 +399,7 @@ function PlayerContent() {
         </div>
 
         <h1 className="hero-title">{displayTrack.title}</h1>
+        <AiDisclosureBadge disclosure={currentTrack?.aiDisclosure} />
         <p className="hero-artist">
           {displayTrack.artist} {displayTrack.album ? ` • ${displayTrack.album}` : ""}
         </p>
@@ -357,10 +416,28 @@ function PlayerContent() {
       <aside className="player-floating-console">
         <div className="player-status-area">
           <div className="studio-label">System Monitoring</div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <div className="player-status-signal">
             <div className="status-led" />
             <span className="status-text">Live Sync Active</span>
           </div>
+          <button
+            type="button"
+            className="console-icon-btn console-icon-btn--immersive"
+            onClick={() => void immersive.toggle()}
+            aria-label={immersive.active ? "Exit immersive player" : "Open immersive player"}
+            aria-pressed={immersive.active}
+            title={immersive.active ? "Exit immersive player" : "Open immersive player"}
+          >
+            {immersive.active ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+              </svg>
+            )}
+          </button>
         </div>
 
         <div className="player-controls-backstage">
@@ -384,7 +461,7 @@ function PlayerContent() {
             )}
           </button>
 
-          <button className="ui-btn" onClick={nextTrack} disabled={currentIndex >= queue.length - 1} aria-label="Next">
+          <button className="ui-btn" onClick={() => nextTrack()} disabled={!shuffle && currentIndex >= queue.length - 1 && repeatMode !== "all"} aria-label="Next">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="5 4 15 12 5 20 5 4" fill="currentColor" />
               <line x1="19" y1="5" x2="19" y2="19" />
@@ -407,15 +484,24 @@ function PlayerContent() {
             onPointerDown={handleSeekStart}
             onChange={handleSeekChange}
             onPointerUp={handleSeekEnd}
+            aria-label="Playback position"
+            aria-valuetext={`${formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} of ${formatTime(duration)}`}
           />
         </div>
 
-        <div className="player-volume" style={{ background: "transparent", padding: 0, marginBottom: "var(--space-1)" }}>
-          <div className="studio-label" style={{ marginBottom: "2px" }}>Output Gain</div>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", width: "100%" }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.4 }}>
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-            </svg>
+        <div className={`console-gain ${muted ? "is-muted" : ""}`}>
+          <div className="studio-label console-gain__label">Output Gain</div>
+          <div className="console-gain__row">
+            <button
+              type="button"
+              className="console-icon-btn console-icon-btn--mute"
+              onClick={toggleMute}
+              aria-label={muted ? "Unmute" : "Mute"}
+              aria-pressed={muted}
+              title={muted ? "Unmute" : "Mute"}
+            >
+              <VolumeIcon volume={volume} muted={muted} size={16} />
+            </button>
             <input
               className="player-range"
               type="range"
@@ -423,6 +509,8 @@ function PlayerContent() {
               max="100"
               value={volume * 100}
               onChange={handleVolume}
+              aria-label="Output volume"
+              aria-valuetext={`${Math.round(volume * 100)} percent`}
             />
           </div>
         </div>
@@ -431,14 +519,20 @@ function PlayerContent() {
           <PlayerActionPanel
             actionState={visibleTrackActions}
             loading={actionPanelLoading}
-            saved={Boolean(actionTrackId && savedActionTrackIds.has(actionTrackId))}
+            saved={Boolean(visibleTrackActions?.library?.saved)}
+            saving={savingTrack}
             onAction={handlePlayerAction}
           />
         )}
 
         <div className="queue-section" style={{ display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Queue Manifest</div>
-          <div className="queue-list" style={{ overflowY: "auto", paddingRight: "8px" }}>
+          <div
+            className="queue-list"
+            style={{ overflowY: "auto", paddingRight: "8px" }}
+            tabIndex={0}
+            aria-label="Playback queue"
+          >
             {queue.length > 0 ? (
               queue.map((track, idx) => (
                 <div
@@ -446,20 +540,28 @@ function PlayerContent() {
                   className={`queue-item ${currentIndex === idx ? "queue-item-active" : ""}`}
                   onClick={() => playQueue(queue, idx)}
                   onContextMenu={(e) => handleContextMenu(e, track)}
-                  style={{
-                    background: currentIndex === idx ? "rgba(124, 92, 255, 0.15)" : "rgba(255,255,255,0.02)",
-                    borderRadius: "12px",
-                    border: currentIndex === idx ? "1px solid rgba(124, 92, 255, 0.2)" : "1px solid transparent"
-                  }}
                 >
                   <div className="queue-item-left">
-                    <div className="queue-item-name" style={{ color: currentIndex === idx ? "var(--color-accent)" : "#fff" }}>
-                      {track.title}
-                    </div>
+                    <div className="queue-item-name">{track.title}</div>
                     <div className="queue-item-artist">{track.artist || "Unknown Artist"}</div>
                   </div>
                   <div className="queue-item-right">
-                    {formatDuration(track.duration)}
+                    <span className="queue-item-duration">{formatDuration(track.duration)}</span>
+                    <button
+                      type="button"
+                      className="queue-remove-button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeFromQueue(idx);
+                      }}
+                      aria-label={`Remove ${track.title} from queue`}
+                      title="Remove from queue"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))

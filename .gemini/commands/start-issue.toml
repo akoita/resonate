@@ -1,0 +1,8 @@
+# Gemini CLI / Antigravity custom command. Adapts the shared workflow (single source).
+description = "Start work on a Resonate issue — branch, tracking, and PR scaffold."
+prompt = """
+Follow the Resonate start-issue workflow below for the issue the user names.
+Never work on `main`; create the branch first and keep tracking durable.
+
+@{.agents/skills/start-issue/SKILL.md}
+"""

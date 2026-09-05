@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
+import { privateMetadata } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  title: "AI DJ",
-};
+export const metadata = privateMetadata({ title: "AI DJ" });
 
 export default function RouteLayout({ children }: { children: React.ReactNode }) {
   return children;

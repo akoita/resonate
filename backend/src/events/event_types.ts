@@ -23,11 +23,17 @@ export interface StemsUploadedEvent extends BaseEvent {
     releaseDate?: string;
     explicit?: boolean;
     tracks?: Array<{
+      id?: string;
       title: string;
       artist?: string;
       position: number;
       isrc?: string;
       explicit?: boolean;
+      aiDisclosure?: {
+        level: "NONE" | "PARTLY" | "ALL";
+        facets: string[];
+        source: "artist" | "resonate_native" | "remix_derived";
+      };
       stems: Array<{
         id: string;
         uri: string;
@@ -214,6 +220,8 @@ export interface RemixEncryptedRenderDeniedEvent extends BaseEvent {
  */
 export interface ShowCampaignReconciliationMismatchEvent extends BaseEvent {
   eventName: "shows.campaign_reconciliation_mismatch";
+  chainId: number;
+  contractAddress: string;
   contractCampaignId: string;
   escrowEventName: string;
   transactionHash: string;
@@ -280,6 +288,68 @@ export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   userId: string;
   previous: "allowed" | "disabled";
   next: "allowed" | "disabled";
+}
+
+/**
+ * A Punchline Drop was published (#482): the rights/eligibility gate re-passed,
+ * every moment's clip was extracted, and the drop went from draft to published.
+ * Carries only identifiers and aggregate counts — no lyric text, artwork URIs,
+ * clip bytes, or pricing internals. The full product-analytics taxonomy/bridge
+ * for Punchline Drops is #489; this is the domain signal downstream consumers
+ * subscribe to today.
+ */
+export interface PunchlineDropPublishedEvent extends BaseEvent {
+  eventName: "punchline.drop_published";
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  /** Number of collectible moments in the published drop. */
+  momentCount: number;
+  /** Sum of each moment's edition size — total mintable editions. */
+  totalEditions: number;
+}
+
+/**
+ * A fan collected one edition of a published Punchline moment (#485): the
+ * ownership grant was persisted with a race-safe edition number. Identifiers,
+ * the edition, and payment provenance only — no lyric/artwork content.
+ */
+export interface PunchlineMomentCollectedEvent extends BaseEvent {
+  eventName: "punchline.moment_collected";
+  momentId: string;
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
+  editionNumber: number;
+  pricePaidCents: number;
+  /** "free_claim" today; the paid rail identifier once x402 generalizes. */
+  paymentRail: string;
+}
+
+/**
+ * A collector now owns every moment in a drop (#485 unlock hook). The
+ * complete-set reward slice (#488) consumes this to grant the bonus.
+ */
+export interface PunchlineSetCompletedEvent extends BaseEvent {
+  eventName: "punchline.set_completed";
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
+}
+
+/**
+ * A complete-set reward was granted (#488) — exactly once per collector per
+ * unlock (DB-enforced). Identifiers only; never the reward content.
+ */
+export interface PunchlineUnlockGrantedEvent extends BaseEvent {
+  eventName: "punchline.unlock_granted";
+  unlockId: string;
+  dropId: string;
+  trackId: string;
+  artistId: string;
+  collectorUserId: string;
 }
 
 export interface RecommendationPreferencesUpdatedEvent extends BaseEvent {
@@ -716,6 +786,15 @@ export interface CatalogTrackStatusEvent extends BaseEvent {
   trackId: string;
   status: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed';
   error?: string;
+}
+
+export interface CatalogAiDisclosureRecordedEvent extends BaseEvent {
+  eventName: "catalog.ai_disclosure_recorded";
+  releaseId: string;
+  trackId: string;
+  level: "NONE" | "PARTLY" | "ALL";
+  source: "artist" | "resonate_native" | "remix_derived";
+  facets: string[];
 }
 
 export interface SessionStartedEvent extends BaseEvent {
@@ -1196,7 +1275,12 @@ export interface AgentPurchaseFailedEvent extends BaseEvent {
 
 export interface X402PurchaseEvent extends BaseEvent {
   eventName: "x402.purchase";
-  stemId: string;
+  /** Resource discriminator; defaults to "stem" for the original rail (#1462). */
+  resourceKind?: "stem" | "punchline_moment";
+  /** Set for stem purchases; optional now that moments settle on the same rail. */
+  stemId?: string;
+  /** Set for Punchline moment purchases (#1462). */
+  momentId?: string;
   trackId?: string;
   releaseId?: string;
   artistId?: string;
@@ -1220,7 +1304,12 @@ export interface X402PurchaseEvent extends BaseEvent {
 
 export interface X402PurchaseFailedEvent extends BaseEvent {
   eventName: "x402.purchase_failed";
-  stemId: string;
+  /** Resource discriminator; defaults to "stem" for the original rail (#1462). */
+  resourceKind?: "stem" | "punchline_moment";
+  /** Set for stem failures; optional now that moments settle on the same rail. */
+  stemId?: string;
+  /** Set for Punchline moment failures (#1462), incl. post-payment refund_due. */
+  momentId?: string;
   trackId?: string;
   releaseId?: string;
   artistId?: string;
@@ -1230,6 +1319,28 @@ export interface X402PurchaseFailedEvent extends BaseEvent {
   transactionHash?: string;
   status: string;
   reason: string;
+}
+
+/**
+ * Ops/audit alert (#1506): one or more `refund_due` x402 settlements have sat
+ * unresolved past the watchdog threshold. A verified paid collect that could
+ * not be fulfilled owes the fan an out-of-band refund; this fires when that debt
+ * ages so operators can reconcile it (see the x402 refund runbook). Aggregate —
+ * one event per sweep, not one per row. Identifiers and coarse counts only, no
+ * payer PII beyond settlement ids. Not wired into product analytics.
+ */
+export interface X402RefundDueStaleEvent extends BaseEvent {
+  eventName: "x402.refund_due_stale";
+  /** Total `refund_due` settlements older than the threshold. */
+  outstandingCount: number;
+  /** Age of the oldest outstanding refund, in hours. */
+  oldestAgeHours: number;
+  /** The configured staleness threshold, in hours. */
+  thresholdHours: number;
+  /** Up to 20 outstanding settlement ids for quick operator lookup. */
+  settlementIds: string[];
+  /** Sum of `canonicalAmountUsd` across outstanding rows, when all are known. */
+  totalAmountUsd?: number;
 }
 
 // ============ Generation Events ============
@@ -1291,6 +1402,23 @@ export interface GenerationCreditsRequestedEvent extends BaseEvent {
   note?: string;
 }
 
+/**
+ * #1421 realized-cost telemetry: emitted once per settled generation (catalog
+ * or remix) with the backend wall-clock, the model-estimated COGS, and the sell
+ * price charged, so accumulated data can be reconciled against cloud billing.
+ */
+export interface GenerationCostRecordedEvent extends BaseEvent {
+  eventName: "generation.cost_recorded";
+  userId: string;
+  jobId: string;
+  path: string;
+  durationSeconds: number;
+  wallClockMs: number;
+  estimatedCostUsd: number;
+  sellPriceCents: number;
+  coldStart: boolean | null;
+}
+
 // ============ Realtime Events ============
 
 export interface RealtimeAudioEvent extends BaseEvent {
@@ -1339,6 +1467,10 @@ export type ResonateEvent =
   | RemixPublishedEvent
   | RemixExportedEvent
   | ArtistRemixConsentUpdatedEvent
+  | PunchlineDropPublishedEvent
+  | PunchlineMomentCollectedEvent
+  | PunchlineSetCompletedEvent
+  | PunchlineUnlockGrantedEvent
   | RecommendationPreferencesUpdatedEvent
   | RecommendationGeneratedEvent
   | TasteMemorySettingsUpdatedEvent
@@ -1388,6 +1520,7 @@ export type ResonateEvent =
   | CatalogUpdatedEvent
   | CatalogReleaseReadyEvent
   | CatalogTrackStatusEvent
+  | CatalogAiDisclosureRecordedEvent
   | SessionStartedEvent
   | LicenseGrantedEvent
   | SessionEndedEvent
@@ -1431,6 +1564,7 @@ export type ResonateEvent =
   | AgentPurchaseFailedEvent
   | X402PurchaseEvent
   | X402PurchaseFailedEvent
+  | X402RefundDueStaleEvent
   | AgentGenerationTriggeredEvent
   | GenerationStartedEvent
   | GenerationProgressEvent
@@ -1440,6 +1574,7 @@ export type ResonateEvent =
   | GenerationCreditsDebitedEvent
   | GenerationCreditsInsufficientEvent
   | GenerationCreditsRequestedEvent
+  | GenerationCostRecordedEvent
   | RealtimeAudioEvent
   | RealtimeDisconnectedEvent
   | MarketplaceListingNotifyEvent

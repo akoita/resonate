@@ -9,6 +9,7 @@ import {
   type Track,
   getLatestReleaseRightsUpgradeRequest,
   type ReleaseRightsUpgradeRequestRecord,
+  updateRelease,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
@@ -27,6 +28,8 @@ import { useBreakpoint } from "../../../hooks/useBreakpoint";
 import { usePlayer } from "../../../lib/playerContext";
 import { AddToPlaylistModal } from "../../../components/library/AddToPlaylistModal";
 import { MixerConsole } from "../../../components/player/MixerConsole";
+import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
+import { useQueueActions } from "../../../lib/useQueueActions";
 
 import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
@@ -43,11 +46,20 @@ import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { ErrorDetailsDialog } from "../../../components/ui/ErrorDetailsDialog";
 import { useWebSockets, TrackStatusUpdate, ReleaseStatusUpdate, ReleaseProgressUpdate, type ReleaseRightsRequestUpdate } from "../../../hooks/useWebSockets";
 import { StemPricingPanel } from "../../../components/release/StemPricingPanel";
+import { PunchlineDropsPanel } from "../../../components/punchline/PunchlineDropsPanel";
+import { PunchlineCollectModule } from "../../../components/punchline/PunchlineCollectModule";
+import { tracksWithVocalsStem } from "../../../components/punchline/PunchlineDropsPanel";
+import {
+  formatCollectSummaryValue,
+  scrollToPunchlineSection,
+  type PunchlineCollectSummary,
+} from "../../../components/punchline/punchlineCollectHelpers";
 import { LicensingInfoSection } from "../../../components/release/LicensingInfoSection";
 import { ProcessingFailureCallout } from "../../../components/release/ProcessingFailureCallout";
 import { ReleaseOverviewStrip } from "../../../components/release/ReleaseOverviewStrip";
 import { summarizeProcessingFailure } from "../../../components/release/processingFailure";
 import ReleaseContentProtection from "../../../components/content-protection/ReleaseContentProtection";
+import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
 import ReportContentModal from "../../../components/disputes/ReportContentModal";
 import ReleaseRightsUpgradeModal from "../../../components/rights/ReleaseRightsUpgradeModal";
 import { DEFAULT_MARKETPLACE_LISTING_PRICE_WEI } from "../../../lib/stakeSafeListingPrice";
@@ -358,8 +370,9 @@ export default function ReleaseDetails() {
     toggleMixerMode,
     setMixerVolumes,
     isPlaying,
-    currentTrack
+    currentTrack,
   } = usePlayer();
+  const queueActions = useQueueActions();
   const { addToast } = useToast();
   const { token, userId, login } = useAuth();
   const { trustTier } = useTrustTier();
@@ -375,9 +388,27 @@ export default function ReleaseDetails() {
     setRightsMonitorCardOpen(!isPhone);
   }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
+  // Release-level Punchline summary reported up by the collect module, driving
+  // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
+  const [punchlineSummary, setPunchlineSummary] =
+    useState<PunchlineCollectSummary | null>(null);
+  // #1479: Home Drops shelf lands visitors with ?focus=moments — once the
+  // collect module reports its drops, scroll + pulse it exactly once.
+  const focusMomentsHandledRef = useRef(false);
+  useEffect(() => {
+    if (focusMomentsHandledRef.current) return;
+    if (searchParams.get("focus") !== "moments") return;
+    if (!punchlineSummary || punchlineSummary.momentCount === 0) return;
+    focusMomentsHandledRef.current = true;
+    scrollToPunchlineSection("punchline-collect-module");
+  }, [searchParams, punchlineSummary]);
   const [loading, setLoading] = useState(true);
   const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
+  // #1492: owner-only inline correction of the credited artist (primaryArtist).
+  const [isEditingCreditedArtist, setIsEditingCreditedArtist] = useState(false);
+  const [creditedArtistDraft, setCreditedArtistDraft] = useState("");
+  const [isSavingCreditedArtist, setIsSavingCreditedArtist] = useState(false);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
   const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
@@ -450,6 +481,18 @@ export default function ReleaseDetails() {
       value: totalDurationSeconds > 0 ? formatDuration(totalDurationSeconds) : "Not timed",
       tone: "accent" as const,
     },
+    // Collectible moments exist → surface them above the fold (money/engagement
+    // modules must not hide below the scroll). Click jumps to the module.
+    ...(punchlineSummary && punchlineSummary.momentCount > 0
+      ? [
+          {
+            label: "Drops",
+            value: formatCollectSummaryValue(punchlineSummary),
+            tone: "accent" as const,
+            onClick: () => scrollToPunchlineSection("punchline-collect-module"),
+          },
+        ]
+      : []),
   ];
   const rightsUpgradeStatus =
     rightsUpgradeRequest?.status || releaseProtection?.rightsUpgradeRequestStatus || null;
@@ -748,13 +791,6 @@ export default function ReleaseDetails() {
 
       loadRelease
         .then((r) => {
-          if (r) {
-            // If a ?rev= param is present (e.g. from post-publish toast), bust artwork cache
-            const rev = searchParams.get('rev');
-            if (rev && r.artworkUrl) {
-              r.artworkUrl = `${r.artworkUrl}?rev=${rev}`;
-            }
-          }
           setRelease(r);
         })
         .catch(console.error)
@@ -1069,6 +1105,14 @@ export default function ReleaseDetails() {
     [mapToLocalTrack, resolveTrackPlaybackUrl],
   );
 
+  /** Header queue actions follow the checkbox selection, falling back to the whole release. */
+  const queueSelectionTracks = useCallback(
+    () => (release?.tracks ?? [])
+      .filter((track) => selectedTrackIds.size === 0 || selectedTrackIds.has(track.id))
+      .map((track) => mapToLocalTrack(track)),
+    [release?.tracks, selectedTrackIds, mapToLocalTrack],
+  );
+
   const handlePlayAll = () => handlePlayTrack(0);
 
   const handleAddReleaseToPlaylist = async () => {
@@ -1253,10 +1297,15 @@ export default function ReleaseDetails() {
       const result = await updateReleaseArtwork(token, release.id, formData);
 
       if (result.success) {
-        // Force refresh the image by using the helper which ensures API_BASE is included
-        // and adding a fresh timestamp to bypass browser cache
-        const newUrl = `${getReleaseArtworkUrl(release.id)}?rev=${Date.now()}`;
-        setRelease(prev => prev ? { ...prev, artworkUrl: newUrl } : null);
+        // The backend revision is committed with the replacement, so use it as
+        // the cache identity instead of a client-generated query parameter.
+        setRelease(prev => prev ? {
+          ...prev,
+          artworkRevision: result.artworkRevision ?? prev.artworkRevision,
+          artworkUrl: getReleaseArtworkUrl(prev.id, {
+            artworkRevision: result.artworkRevision ?? prev.artworkRevision,
+          }),
+        } : null);
         addToast({
           title: "Artwork updated",
           message: "The release cover has been successfully updated.",
@@ -1274,6 +1323,42 @@ export default function ReleaseDetails() {
       });
     } finally {
       setIsUpdatingArtwork(false);
+    }
+  };
+
+  // #1492: owner-only post-hoc correction of the credited artist. Fixes
+  // releases whose primaryArtist was laundered from the manager account name
+  // at upload time.
+  const handleSaveCreditedArtist = async () => {
+    if (!release?.id || !token) return;
+    const name = creditedArtistDraft.trim();
+    if (!name) {
+      addToast({
+        type: "error",
+        title: "Credited artist required",
+        message: "Enter the artist this release is credited to.",
+      });
+      return;
+    }
+    setIsSavingCreditedArtist(true);
+    try {
+      await updateRelease(token, release.id, { primaryArtist: name });
+      setRelease(prev => (prev ? { ...prev, primaryArtist: name } : prev));
+      setIsEditingCreditedArtist(false);
+      addToast({
+        type: "success",
+        title: "Credited artist updated",
+        message: `This release is now credited to ${name}.`,
+      });
+    } catch (err) {
+      console.error("Credited artist update failed", err);
+      addToast({
+        type: "error",
+        title: "Update failed",
+        message: "Could not update the credited artist. Please try again.",
+      });
+    } finally {
+      setIsSavingCreditedArtist(false);
     }
   };
 
@@ -1357,13 +1442,59 @@ export default function ReleaseDetails() {
             <span className="release-year">{release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}</span>
           </div>
           <h1 className="release-title-lg text-gradient">{release.title}</h1>
+          <AiDisclosureBadge disclosure={release.aiDisclosure} showHumanMade />
           <div className="release-artist-row">
             <div className="artist-avatar" />
             {(() => {
               const displayedArtist =
                 release.primaryArtist || release.artist?.displayName || "Unknown Artist";
+              // #1492: owners can correct the credited artist inline — fixes
+              // releases whose credit was laundered from the account name.
+              if (isOwner && isEditingCreditedArtist) {
+                return (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="text"
+                      value={creditedArtistDraft}
+                      onChange={(e) => setCreditedArtistDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleSaveCreditedArtist();
+                        if (e.key === "Escape") setIsEditingCreditedArtist(false);
+                      }}
+                      placeholder="Credited artist — e.g. The Game"
+                      aria-label="Credited artist"
+                      autoFocus
+                      disabled={isSavingCreditedArtist}
+                      style={{
+                        background: "rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(255,255,255,0.25)",
+                        borderRadius: 8,
+                        color: "inherit",
+                        font: "inherit",
+                        padding: "4px 10px",
+                        minWidth: 220,
+                      }}
+                    />
+                    <Button
+                      onClick={() => void handleSaveCreditedArtist()}
+                      disabled={isSavingCreditedArtist}
+                      style={{ padding: "4px 14px", fontSize: 13 }}
+                    >
+                      {isSavingCreditedArtist ? "Saving..." : "Save"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setIsEditingCreditedArtist(false)}
+                      disabled={isSavingCreditedArtist}
+                      style={{ padding: "4px 14px", fontSize: 13 }}
+                    >
+                      Cancel
+                    </Button>
+                  </span>
+                );
+              }
               const href = artistCreditHref(displayedArtist, release);
-              return href ? (
+              const name = href ? (
                 <Link
                   href={href}
                   className="artist-name clickable"
@@ -1373,6 +1504,42 @@ export default function ReleaseDetails() {
                 </Link>
               ) : (
                 <span className="artist-name">{displayedArtist}</span>
+              );
+              return (
+                <>
+                  {name}
+                  {isOwner && (
+                    <button
+                      type="button"
+                      aria-label="Edit credited artist"
+                      title="Edit the credited artist"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCreditedArtistDraft(release.primaryArtist || "");
+                        setIsEditingCreditedArtist(true);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "rgba(255,255,255,0.08)",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                        borderRadius: 999,
+                        color: "inherit",
+                        cursor: "pointer",
+                        width: 26,
+                        height: 26,
+                        marginLeft: 6,
+                        opacity: 0.8,
+                      }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                      </svg>
+                    </button>
+                  )}
+                </>
               );
             })()}
             <span className="dot" />
@@ -1463,6 +1630,12 @@ export default function ReleaseDetails() {
               <Button onClick={handlePlayAll} className="btn-play-all">
                 Play All
               </Button>
+              <QueueActionsButton
+                tracks={queueSelectionTracks}
+                label={selectedTrackIds.size > 0 ? `Queue ${selectedTrackIds.size} selected` : "Queue album"}
+                nextLabel={selectedTrackIds.size > 0 ? "Play selection next" : "Play album next"}
+                disabled={!release.tracks?.length}
+              />
               <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
                 Add to Playlist
               </Button>
@@ -1478,6 +1651,30 @@ export default function ReleaseDetails() {
                   Mixer
                 </Button>
               )}
+              {punchlineSummary && punchlineSummary.momentCount > 0 && (
+                <Button
+                  variant="ghost"
+                  className="btn-save"
+                  onClick={() =>
+                    scrollToPunchlineSection("punchline-collect-module")
+                  }
+                >
+                  🎤 Collect moments · {punchlineSummary.momentCount}
+                </Button>
+              )}
+              {isOwner &&
+                release.tracks &&
+                tracksWithVocalsStem(release.tracks).length > 0 && (
+                  <Button
+                    variant="ghost"
+                    className="btn-save"
+                    onClick={() =>
+                      scrollToPunchlineSection("punchline-drops-panel")
+                    }
+                  >
+                    🎤 Drops
+                  </Button>
+                )}
             </div>
 
             {isOwner && (
@@ -1965,6 +2162,7 @@ export default function ReleaseDetails() {
                       <div className="track-title-info">
                         <span className="track-title-name">{track.title}</span>
                         {track.explicit && <span className="explicit-tag">E</span>}
+                        <AiDisclosureBadge disclosure={track.aiDisclosure} />
                       </div>
 
                       {canUseMixerPreview && track.stems && track.stems.length > 1 && (
@@ -2098,6 +2296,7 @@ export default function ReleaseDetails() {
                         )}
                         <TrackActionMenu
                           actions={[
+                            ...queueActions.actionMenuItems(mapToLocalTrack(track)),
                             {
                               label: "Add to Playlist",
                               icon: "🎵",
@@ -2132,6 +2331,15 @@ export default function ReleaseDetails() {
           </table>
         </div>
       </section>
+
+      {/* Collect moments — fan-facing Punchline module (#486). Renders only
+          when a track has published drops; visible to every visitor. */}
+      {release.tracks && release.tracks.length > 0 && (
+        <PunchlineCollectModule
+          tracks={release.tracks}
+          onSummary={setPunchlineSummary}
+        />
+      )}
 
       {/* NFT Marketplace Section - Only for owners */}
       {
@@ -2480,6 +2688,12 @@ export default function ReleaseDetails() {
         if (pricingTracks.length === 0) return null;
         return <StemPricingPanel releaseId={release.id} tracks={pricingTracks} />;
       })()}
+
+      {/* Punchline Drops — owner-only clip selection + preview (#483).
+          Renders only when at least one track has a vocals stem. */}
+      {isOwner && release.tracks && (
+        <PunchlineDropsPanel releaseId={release.id} tracks={release.tracks} />
+      )}
 
       {/* Public Licensing Info — visible to ALL users */}
       <LicensingInfoSection />

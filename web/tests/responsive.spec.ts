@@ -1,11 +1,14 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /*
- * Cross-viewport smoke test for #557.
+ * Cross-viewport smoke test for #557 plus the evidence-first mobile
+ * containment audit for #1440.
  * Runs on chromium / chromium-tablet / chromium-mobile (see playwright.config).
- * Goal: prove the app renders without horizontal overflow and that the
- * phone drawer nav actually works — not to re-run every per-flow spec
- * against three viewports (that would triple CI time).
+ * The smoke checks keep the existing four-route guardrails and phone drawer
+ * behavior. The phone audit samples the named Library, artist, Create,
+ * Marketplace, Shows, Wallet, Player, Community, Settings, and Analytics
+ * surfaces at the four narrowest supported widths, reporting the concrete
+ * elements that widen past the viewport.
  *
  * `mode: serial` — under parallel workers + a single Next.js dev server,
  * the first-compile queue + React hydration race can swallow hamburger
@@ -18,11 +21,240 @@ test.describe.configure({ mode: "serial", retries: 2 });
 
 const ROUTES = ["/", "/library", "/marketplace", "/wallet"] as const;
 
+const MOBILE_AUDIT_WIDTHS = [320, 375, 390, 400] as const;
+
+const MOBILE_AUDIT_ROUTES = [
+  { path: "/", surface: "home" },
+  { path: "/library", surface: "library/playlists" },
+  { path: "/artist/e2e-artist-0000-0000-0000-000000000001", surface: "artist profile/editor" },
+  { path: "/artist/catalog", surface: "artist catalog" },
+  { path: "/artist/upload", surface: "artist upload" },
+  { path: "/create", surface: "create/remix entry" },
+  { path: "/marketplace", surface: "marketplace" },
+  { path: "/shows/sennarin-paris", surface: "shows detail/pledge" },
+  { path: "/wallet", surface: "wallet" },
+  { path: "/player", surface: "player" },
+  { path: "/community", surface: "community" },
+  { path: "/settings", surface: "settings" },
+  { path: "/artist/analytics", surface: "artist analytics" },
+] as const;
+
+type MobileContainmentReport = {
+  document: {
+    scrollWidth: number;
+    clientWidth: number;
+  };
+  offenders: Array<{
+    tag: string;
+    id: string;
+    class: string;
+    left: number;
+    right: number;
+    width: number;
+  }>;
+  interactiveOffenders: Array<{
+    tag: string;
+    label: string;
+    class: string;
+    left: number;
+    right: number;
+    width: number;
+  }>;
+};
+
+async function measureMobileContainment(page: Page): Promise<MobileContainmentReport> {
+  return page.evaluate(() => {
+    const viewportWidth = window.innerWidth;
+    const round = (value: number) => Math.round(value * 100) / 100;
+    const offenders: MobileContainmentReport["offenders"] = [];
+
+    for (const element of document.querySelectorAll<HTMLElement>("body *")) {
+      // The closed phone drawer is deliberately translated outside the
+      // viewport. It does not widen the document and is not an audit defect.
+      if (
+        element.matches(".app-sidebar:not(.open)") ||
+        element.closest(".app-sidebar:not(.open)") ||
+        element.closest(".global-playlist-panel:not(.open)")
+      ) {
+        continue;
+      }
+
+      let intentionallyScrollable = false;
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const overflowX = getComputedStyle(ancestor).overflowX;
+        if (overflowX === "auto" || overflowX === "scroll") {
+          intentionallyScrollable = true;
+          break;
+        }
+      }
+      if (intentionallyScrollable) continue;
+
+      const style = window.getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const isVisible =
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.visibility !== "collapse" &&
+        style.opacity !== "0" &&
+        rect.width > 0 &&
+        rect.height > 0;
+
+      if (!isVisible || (rect.left >= -1 && rect.right <= viewportWidth + 1)) {
+        continue;
+      }
+
+      offenders.push({
+        tag: element.tagName.toLowerCase(),
+        id: element.id,
+        class: element.getAttribute("class") ?? "",
+        left: round(rect.left),
+        right: round(rect.right),
+        width: round(rect.width),
+      });
+    }
+
+    offenders.sort((a, b) => {
+      const aExcess = Math.max(-a.left, a.right - viewportWidth);
+      const bExcess = Math.max(-b.left, b.right - viewportWidth);
+      return bExcess - aExcess;
+    });
+
+    const interactiveOffenders = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "a[href], button, input, select, textarea, [role='button'], [role='link']",
+      ),
+    ).flatMap((element) => {
+      if (
+        element.closest(".app-sidebar:not(.open)") ||
+        element.closest(".global-playlist-panel:not(.open)")
+      ) {
+        return [];
+      }
+
+      const style = getComputedStyle(element);
+      const rect = element.getBoundingClientRect();
+      const visible =
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.opacity !== "0" &&
+        rect.width > 0 &&
+        rect.height > 0;
+      if (!visible || (rect.left >= -1 && rect.right <= viewportWidth + 1)) {
+        return [];
+      }
+
+      for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+        const overflowX = getComputedStyle(ancestor).overflowX;
+        if (overflowX === "auto" || overflowX === "scroll") {
+          return [];
+        }
+      }
+
+      return [{
+        tag: element.tagName.toLowerCase(),
+        label: (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().slice(0, 80),
+        class: element.getAttribute("class") ?? "",
+        left: round(rect.left),
+        right: round(rect.right),
+        width: round(rect.width),
+      }];
+    });
+
+    return {
+      document: {
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      },
+      offenders: offenders.slice(0, 10),
+      interactiveOffenders: interactiveOffenders.slice(0, 10),
+    };
+  });
+}
+
+async function waitForResponsiveLayout(page: Page) {
+  await page.waitForLoadState("domcontentloaded");
+  await expect(page.locator(".app-content")).toBeVisible();
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+  });
+  // Judge the final layout after route entrance animations have settled.
+  await page.waitForTimeout(450);
+}
+
+async function authenticateMobileAudit(page: Page) {
+  const response = await page.request.post("http://localhost:3000/auth/login", {
+    data: {
+      userId: "e2e-user-00000000-0000-0000-0000-000000000001",
+      role: "artist",
+    },
+  });
+  expect(response.ok(), "E2E development login is available").toBe(true);
+  const body = (await response.json()) as { accessToken: string };
+
+  await page.addInitScript(({ token }) => {
+    localStorage.setItem("resonate.token", token);
+    localStorage.setItem("resonate.address", "0x1234567890abcdef1234567890abcdef12345678");
+    // Audit the requested routes themselves, not the first-login DJ wizard.
+    sessionStorage.setItem("resonate.agent_onboarding_dismissed", "1");
+  }, { token: body.accessToken });
+}
+
+async function openAuditRoute(page: Page, path: string) {
+  await expect(async () => {
+    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+    expect(response?.ok(), `${path} loaded successfully`).toBe(true);
+    await waitForResponsiveLayout(page);
+  }).toPass({ timeout: 30_000 });
+}
+
+const LONG_DROP_VALUE = "UnbrokenCollectibleContextValueThatMustNeverWidenTheMobileDropsCard";
+
+const FEATURED_DROP_RESPONSE = {
+  items: [
+    {
+      id: "drop_responsive",
+      trackId: "track_responsive",
+      artistId: "artist_responsive",
+      status: "published",
+      title: `${LONG_DROP_VALUE}Title`,
+      description: null,
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      publishedAt: "2026-08-11T00:00:00.000Z",
+      rightsLabel: "NON_COMMERCIAL_COLLECTIBLE",
+      rightsSummary: "Personal collectible",
+      moments: [
+        {
+          id: "moment_responsive",
+          title: `${LONG_DROP_VALUE}MomentTitle`,
+          lyricText: `${LONG_DROP_VALUE}LyricPoster`,
+          artworkUrl: null,
+          sourceStemType: "vocals",
+          startMs: 0,
+          endMs: 10_000,
+          clipAssetUri: null,
+          editionSize: 100,
+          priceCents: 250,
+          rightsLabel: `NON_COMMERCIAL_COLLECTIBLE_${LONG_DROP_VALUE}`,
+          collectedCount: 12,
+        },
+      ],
+      unlock: null,
+      context: {
+        trackTitle: `${LONG_DROP_VALUE}Track`,
+        releaseId: "release_responsive",
+        releaseTitle: "Responsive release",
+        releaseHasArtwork: false,
+        artistName: `${LONG_DROP_VALUE}Artist`,
+      },
+    },
+  ],
+};
+
 for (const route of ROUTES) {
   test(`no horizontal overflow at ${route}`, async ({ page }) => {
     await page.goto(route);
-    // Let layout settle — some pages lazy-load content.
-    await page.waitForLoadState("domcontentloaded");
+    await waitForResponsiveLayout(page);
 
     const overflow = await page.evaluate(() => {
       const el = document.documentElement;
@@ -32,6 +264,38 @@ for (const route of ROUTES) {
     expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
   });
 }
+
+test("mobile containment audit reports widening elements", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-mobile", "phone-only audit");
+  test.setTimeout(120_000);
+  await authenticateMobileAudit(page);
+
+  const failures: Array<{
+    width: number;
+    surface: string;
+    path: string;
+    report: MobileContainmentReport;
+  }> = [];
+
+  for (const width of MOBILE_AUDIT_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+
+    for (const route of MOBILE_AUDIT_ROUTES) {
+      await openAuditRoute(page, route.path);
+
+      const report = await measureMobileContainment(page);
+      const documentOverflows = report.document.scrollWidth > report.document.clientWidth + 1;
+      if (documentOverflows || report.interactiveOffenders.length > 0) {
+        failures.push({ width, surface: route.surface, path: route.path, report });
+      }
+    }
+  }
+
+  expect(
+    failures,
+    `Mobile containment failures (document width plus up to 10 visible and interactive offenders per route):\n${JSON.stringify(failures)}`,
+  ).toHaveLength(0);
+});
 
 test("phone hamburger opens the sidebar drawer", async ({ page, viewport }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-mobile", "phone-only check");
@@ -108,4 +372,145 @@ test("phone backdrop click closes the drawer", async ({ page }, testInfo) => {
   await expect(backdrop).toHaveCount(0);
   // Sidebar drawer itself should slide off-screen (lose its .open class).
   await expect(page.locator(".app-sidebar.open")).toHaveCount(0);
+});
+
+test("phone Drops card stays contained with long content and the player", async (
+  { page },
+  testInfo,
+) => {
+  test.skip(testInfo.project.name !== "chromium-mobile", "phone-only check");
+
+  await page.route("**/punchline/featured?limit=6", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(FEATURED_DROP_RESPONSE),
+    });
+  });
+
+  for (const width of MOBILE_AUDIT_WIDTHS) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+
+    const card = page.getByTestId("drops-shelf-card");
+    await expect(card).toBeVisible({ timeout: 20_000 });
+    await card.scrollIntoViewIfNeeded();
+
+    const layout = await card.evaluate((element) => {
+      const cardElement = element as HTMLElement;
+      const gridElement = cardElement.parentElement as HTMLElement;
+      const cardRect = cardElement.getBoundingClientRect();
+      const gridRect = gridElement.getBoundingClientRect();
+      const requiredSelectors = [
+        ".punchline-card",
+        ".punchline-card-art",
+        ".punchline-card-wave",
+        ".punchline-card-title",
+        ".punchline-card-meta",
+        ".punchline-card-rights",
+        ".ng-drops-card__context",
+      ];
+
+      return {
+        viewportWidth: window.innerWidth,
+        card: {
+          left: cardRect.left,
+          right: cardRect.right,
+          clientWidth: cardElement.clientWidth,
+          scrollWidth: cardElement.scrollWidth,
+        },
+        grid: {
+          left: gridRect.left,
+          right: gridRect.right,
+          clientWidth: gridElement.clientWidth,
+          scrollWidth: gridElement.scrollWidth,
+        },
+        children: requiredSelectors.map((selector) => {
+          const child = cardElement.querySelector(selector) as HTMLElement | null;
+          const rect = child?.getBoundingClientRect();
+          return {
+            selector,
+            exists: Boolean(child),
+            left: rect?.left ?? 0,
+            right: rect?.right ?? 0,
+          };
+        }),
+        wrappedText: [
+          ".punchline-card-art-lyric",
+          ".punchline-card-title",
+          ".ng-drops-card__artist",
+          ".ng-drops-card__track",
+        ].map((selector) => {
+          const child = cardElement.querySelector(selector) as HTMLElement;
+          return { selector, overflowWrap: getComputedStyle(child).overflowWrap };
+        }),
+      };
+    });
+
+    expect(layout.card.scrollWidth, `${width}px card scroll width`).toBeLessThanOrEqual(
+      layout.card.clientWidth + 1,
+    );
+    expect(layout.grid.scrollWidth, `${width}px grid scroll width`).toBeLessThanOrEqual(
+      layout.grid.clientWidth + 1,
+    );
+    expect(layout.card.left, `${width}px card left edge`).toBeGreaterThanOrEqual(
+      layout.grid.left - 1,
+    );
+    expect(layout.card.right, `${width}px card right edge`).toBeLessThanOrEqual(
+      layout.grid.right + 1,
+    );
+    expect(layout.card.left, `${width}px viewport left edge`).toBeGreaterThanOrEqual(-1);
+    expect(layout.card.right, `${width}px viewport right edge`).toBeLessThanOrEqual(
+      layout.viewportWidth + 1,
+    );
+
+    for (const child of layout.children) {
+      expect(child.exists, `${width}px ${child.selector} exists`).toBe(true);
+      expect(child.left, `${width}px ${child.selector} left edge`).toBeGreaterThanOrEqual(
+        layout.card.left - 1,
+      );
+      expect(child.right, `${width}px ${child.selector} right edge`).toBeLessThanOrEqual(
+        layout.card.right + 1,
+      );
+    }
+    for (const text of layout.wrappedText) {
+      expect(text.overflowWrap, `${width}px ${text.selector} wrapping`).toBe("anywhere");
+    }
+
+    // Exercise the real mobile player CSS without coupling this layout test to
+    // player persistence internals. The app content's reserved bottom space
+    // must let the complete card scroll above the persistent overlay.
+    const player = page.locator("[data-testid=responsive-player]");
+    await page.locator(".app-main").evaluate((appMain) => {
+      const existing = appMain.querySelector("[data-testid=responsive-player]");
+      if (existing) existing.remove();
+      const overlay = document.createElement("div");
+      overlay.className = "app-player";
+      overlay.dataset.testid = "responsive-player";
+      appMain.appendChild(overlay);
+    });
+    await expect(player).toBeVisible();
+    await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
+
+    const clearance = await card.evaluate((element) => {
+      const content = document.querySelector(".app-content") as HTMLElement;
+      const playerElement = document.querySelector(
+        "[data-testid=responsive-player]",
+      ) as HTMLElement;
+      return {
+        cardBottom: element.getBoundingClientRect().bottom,
+        playerTop: playerElement.getBoundingClientRect().top,
+        contentBottomPadding: Number.parseFloat(getComputedStyle(content).paddingBottom),
+      };
+    });
+    expect(clearance.contentBottomPadding).toBeGreaterThanOrEqual(140);
+    expect(clearance.cardBottom, `${width}px player clearance`).toBeLessThanOrEqual(
+      clearance.playerTop + 1,
+    );
+
+    await testInfo.attach(`drops-card-${width}px`, {
+      body: await card.screenshot(),
+      contentType: "image/png",
+    });
+  }
 });

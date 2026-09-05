@@ -1,5 +1,6 @@
-import { Controller, Post, UploadedFile, UseInterceptors, Param, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Post, UploadedFile, UseInterceptors, Param, Logger, BadRequestException, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { AuthGuard } from '@nestjs/passport';
 import { SynthIdService } from './synthid.service';
 
 /**
@@ -53,6 +54,7 @@ export class SynthIdController {
    * Verify an existing stem by ID.
    * POST /api/generation/synthid/verify/:stemId
    */
+  @UseGuards(AuthGuard('jwt'))
   @Post('verify/:stemId')
   async verifyStem(@Param('stemId') stemId: string) {
     if (!this.synthIdService.isAvailable()) {

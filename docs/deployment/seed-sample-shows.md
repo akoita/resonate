@@ -86,7 +86,7 @@ After the job completes, confirm a refreshed image is being served:
 
 ```bash
 # The web fallback (always current with the deploy):
-curl -sI https://<env>/shows/felicia-farerre-dublin-hero.jpg
+curl -sI https://<env>/shows/felicia-farerre-dublin-hero.webp
 # The backend-served, seeded image used by the live cards — re-fetch and eyeball
 # it, or compare its bytes to backend/fixtures/show-campaigns/assets/<file>.
 ```

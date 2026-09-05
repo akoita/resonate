@@ -28,7 +28,9 @@ Status: `in-progress`
 Available in this branch:
 
 - Home mood and genre chips pass request-scoped preference overrides to
-  `GET /recommendations/:userId`.
+  `GET /recommendations/:userId` (since Sprint 8 backed by the unified
+  `DiscoveryRankingService` shared with the AI DJ — see
+  [agent_taste_intelligence.md](agent_taste_intelligence.md) §Unified Ranking Core).
 - Home exposes a vibe session action for active mood or genre chips. It queues
   matching tracks, updates the listener AI DJ config, starts an agent session,
   and records an `agent.track_selected` signal with `source:
@@ -69,6 +71,7 @@ Known follow-up work:
 | Upload metadata | `StemsUploadedEvent.metadata.moods` |
 | Catalog create | `POST /catalog` accepts `moods?: string[]` |
 | Recommendations | `GET /recommendations/:userId?mood=Focus&energy=low&genres=Ambient,Electronic` |
+| Trending / Top Artists | `GET /catalog/trending` and `GET /catalog/top-artists` (`window`, `genre`, `limit`) — engagement-ranked Home rails; genre chips re-rank server-side (see [Agent Taste Intelligence](agent_taste_intelligence.md), #1451) |
 | Home session signal | `recordAgentSignal` metadata uses `agent-signal-metadata/v1` and includes `source`, `vibe`, `filterKind`, `autoQueuedTracks`, and outcome context |
 
 ## Verification

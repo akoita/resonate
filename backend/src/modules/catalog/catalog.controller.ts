@@ -17,13 +17,28 @@ import {
   BadRequestException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
+import { getArtworkMaxBytes } from "../shared/artwork-validation";
+import {
+  DiscoveryPopularityService,
+  PopularityWindow,
+} from "./discovery-popularity.service";
+
+function parsePopularityWindow(value?: string): PopularityWindow | undefined {
+  if (value === undefined || value === "") return undefined;
+  if (value === "24h" || value === "7d" || value === "30d") return value;
+  throw new BadRequestException("window must be one of 24h, 7d, 30d");
+}
 
 @Controller("catalog")
 export class CatalogController {
-  constructor(private readonly catalogService: CatalogService) { }
+  constructor(
+    private readonly catalogService: CatalogService,
+    private readonly discoveryPopularity: DiscoveryPopularityService,
+  ) { }
 
   private sendAudioResponse(
     stem: { data: Buffer; mimeType?: string | null; range?: { start: number; end: number; total: number } },
@@ -85,6 +100,24 @@ export class CatalogController {
   @Get("releases/:releaseId/artwork")
   async getReleaseArtwork(@Param("releaseId") releaseId: string, @Res({ passthrough: true }) res: Response) {
     const artwork = await this.catalogService.getReleaseArtwork(releaseId);
+    if (!artwork) {
+      res.status(404).send("Artwork not found");
+      return;
+    }
+    res.set({
+      "Content-Type": artwork.mimeType,
+      "Cache-Control": "no-cache",
+    });
+    return new StreamableFile(artwork.data);
+  }
+
+  @Get("releases/:releaseId/artwork/v:artworkRevision")
+  async getVersionedReleaseArtwork(
+    @Param("releaseId") releaseId: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const artwork = await this.catalogService.getReleaseArtwork(releaseId, artworkRevision);
     if (!artwork) {
       res.status(404).send("Artwork not found");
       return;
@@ -197,6 +230,30 @@ export class CatalogController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Get("me/releases/:releaseId/artwork/v:artworkRevision")
+  async getVersionedMyReleaseArtwork(
+    @Param("releaseId") releaseId: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Request() req: any,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const artwork = await this.catalogService.getReleaseArtworkForUser(
+      releaseId,
+      req.user.userId,
+      artworkRevision,
+    );
+    if (!artwork) {
+      res.status(404).send("Artwork not found");
+      return;
+    }
+    res.set({
+      "Content-Type": artwork.mimeType,
+      "Cache-Control": "no-cache",
+    });
+    return new StreamableFile(artwork.data);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Post()
   create(
     @Request() req: any,
@@ -217,7 +274,15 @@ export class CatalogController {
       label?: string;
       releaseDate?: string;
       explicit?: boolean;
-      tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
+      tracks?: Array<{
+        title: string;
+        position: number;
+        explicit?: boolean;
+        aiDisclosure: {
+          level: "none" | "partly" | "all";
+          facets?: string[];
+        };
+      }>;
     },
   ) {
     return this.catalogService.createRelease({
@@ -239,13 +304,41 @@ export class CatalogController {
     );
   }
 
+  @Get("trending")
+  getTrending(
+    @Query("window") window?: string,
+    @Query("genre") genre?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.discoveryPopularity.getTrendingTracks({
+      window: parsePopularityWindow(window),
+      genre,
+      limit: limit ? Number(limit) || undefined : undefined,
+    });
+  }
+
+  @Get("top-artists")
+  getTopArtists(
+    @Query("window") window?: string,
+    @Query("genre") genre?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.discoveryPopularity.getTopArtists({
+      window: parsePopularityWindow(window),
+      genre,
+      limit: limit ? Number(limit) || undefined : undefined,
+    });
+  }
+
   @Get("releases/:releaseId")
   getRelease(@Param("releaseId") releaseId: string) {
     return this.catalogService.getRelease(releaseId);
   }
 
+  @UseGuards(OptionalJwtAuthGuard)
   @Get("tracks/:trackId/actions")
   getTrackActions(
+    @Request() req: any,
     @Param("trackId") trackId: string,
     @Query("reason") reason?: string | string[],
     @Query("reasons") reasons?: string,
@@ -256,6 +349,7 @@ export class CatalogController {
     ];
     return this.catalogService.getPlayerTrackActions(trackId, {
       recommendationReasons,
+      userId: req.user?.userId,
     });
   }
 
@@ -268,9 +362,22 @@ export class CatalogController {
   @Patch("releases/:releaseId")
   updateRelease(
     @Param("releaseId") releaseId: string,
-    @Body() body: { title?: string; status?: string },
+    @Body() body: {
+      title?: string;
+      status?: string;
+      primaryArtist?: string;
+      tracks?: Array<{
+        id: string;
+        aiDisclosure: {
+          level: "none" | "partly" | "all";
+          facets?: string[];
+        };
+      }>;
+    },
+    @Request() req: any,
   ) {
-    return this.catalogService.updateRelease(releaseId, body);
+    // Owner-scoped: the service verifies release.artist.userId === userId.
+    return this.catalogService.updateRelease(releaseId, req.user.userId, body);
   }
 
   @UseGuards(AuthGuard("jwt"))
@@ -284,7 +391,10 @@ export class CatalogController {
 
   @UseGuards(AuthGuard("jwt"))
   @Patch("releases/:releaseId/artwork")
-  @UseInterceptors(FileFieldsInterceptor([{ name: 'artwork', maxCount: 1 }]))
+  @UseInterceptors(FileFieldsInterceptor(
+    [{ name: 'artwork', maxCount: 1 }],
+    { limits: { fileSize: getArtworkMaxBytes() } },
+  ))
   async updateArtwork(
     @Param("releaseId") releaseId: string,
     @UploadedFiles() files: { artwork?: Express.Multer.File[] },

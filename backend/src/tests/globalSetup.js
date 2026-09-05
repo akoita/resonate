@@ -32,9 +32,17 @@ module.exports = async function globalSetup() {
     .withDatabase('resonate_test')
     .withUsername('test')
     .withPassword('test')
+    // Each jest suite file gets a fresh module registry, so the prisma
+    // singleton (and its pool) is re-created per suite and pools accumulate
+    // across the run. Postgres's default max_connections=100 became a cliff
+    // around ~88 suites (late suites failed with "sorry, too many clients
+    // already"). Raise the ceiling well past the suite count.
+    .withCommand(['postgres', '-c', 'max_connections=500'])
     .start();
 
-  env.DATABASE_URL = pgContainer.getConnectionUri();
+  // Cap each suite's prisma pool (connection_limit is read from the URL) so
+  // 88+ accumulated per-suite pools stay comfortably under max_connections.
+  env.DATABASE_URL = `${pgContainer.getConnectionUri()}?connection_limit=4`;
 
   // Push Prisma schema (no programmatic API exists for this)
   console.log('📦 Pushing Prisma schema...');
@@ -48,6 +56,12 @@ module.exports = async function globalSetup() {
   // ===== Redis =====
   const redisContainer = await new RedisContainer('redis:7').start();
   env.REDIS_URL = redisContainer.getConnectionUrl();
+  const redisUrl = new URL(env.REDIS_URL);
+  // Application BullMQ modules use the production REDIS_HOST/REDIS_PORT
+  // contract. BullMQ 6 connects eagerly during app.init(), so full-AppModule
+  // integration suites must receive the container coordinates in both forms.
+  env.REDIS_HOST = redisUrl.hostname;
+  env.REDIS_PORT = redisUrl.port || '6379';
   console.log('✅ Redis: ' + env.REDIS_URL);
 
   // ===== Anvil (Foundry local Ethereum node) =====

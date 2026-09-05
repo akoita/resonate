@@ -99,6 +99,13 @@ downranked signals are applied before recommendation reasons are returned, reset
 markers exclude older `AgentSignal` rows from learned profiles, and future
 social/cohort use of private taste data is disabled unless the listener opts in.
 
+Realtime agent-signal metadata is bounded before normalization. Each raw string
+must fit its existing field contract (from 16 to 240 characters), and genre and
+recommendation-explanation arrays are capped before their elements are scanned.
+The shared normalizer removes closed tag segments, control characters, unsafe
+identifiers, URLs, and email addresses using bounded work; an over-limit field
+is omitted rather than truncated or partially interpreted.
+
 ## Serving Table Contract
 
 Default table:
@@ -124,6 +131,112 @@ Optional columns:
 | `explanation` | `STRING` | Short human-readable reason attached to the recommendation signal. |
 | `model_version` | `STRING` | Training or materialization version. |
 | `updated_at` | `TIMESTAMP` or `STRING` | Freshness marker. |
+
+## Signal Completeness (#1449 WS-2)
+
+The learning loop now sees the full implicit-feedback set without any client
+POSTing agent signals:
+
+- `playback.started` auto-mirrors into an `accept` (+1) AgentSignal;
+  `playback.completed` already mirrored `complete` (+1.5); the new explicit
+  `playback.skipped` event mirrors `skip` (−1) with the skip `positionMs` —
+  a deliberate early skip is now distinct from a short listen.
+- Agent-originated playback is **excluded** from mirroring (the agent runtime
+  records its own signals — no double-counting), and consent gating
+  (`shouldTrainAgentPlayback`) is enforced inside `recordSignal` on every path.
+- Home emits `recommendation.served` (one per rail render: requestId, railId,
+  trackIds, count) and `recommendation.clicked` (per action: trackId,
+  position) — the measurement base for WS-8 and for training on Home outcomes.
+  The `/recommendations` response carries the correlating `requestId`.
+
+## Unified Ranking Core (#1448 WS-1)
+
+Since Sprint 8, the AI DJ and the Home feed rank with **one shared brain**:
+`DiscoveryRankingService` (`backend/src/modules/recommendations/
+discovery-ranking.service.ts`), extracted from the DJ's selector. Both
+surfaces feed it candidates plus context (taste queries, learned genre
+weights, embedding similarity, warehouse taste scores, cohort context, energy,
+taste-memory policy) and receive weighted signals + human explanations.
+
+- `GET /recommendations/:userId` now routes through the core: candidates come
+  from a UNION of sources (newest-50, catalog-wide preference matches with no
+  recency bias, cohort query hints) instead of "50 newest" — older tracks are
+  recommendable. WS-3 popularity marts / WS-5 embeddings / WS-6 CF slot in as
+  further sources.
+- User preferences and served-history are durable (`RecommendationProfile`
+  Prisma model), fronted by a fail-open Redis cache
+  (`shared/redis_cache.service.ts`) — they survive restarts and are coherent
+  across Cloud Run instances.
+- Deterministic fallback: with Redis, BigQuery, and every optional signal
+  source unavailable, both surfaces still return correct ranked results from
+  Postgres alone.
+- The legacy Home response contract is unchanged (reason strings
+  `genre:X`/`mood:Y`/`cohort:Title`, strategies, taste-memory hide/downrank
+  semantics); items additionally carry `explanations` from the core.
+- Tests: `backend/src/tests/discovery-ranking.integration.spec.ts`
+  (durability across instances, wide-pool, deterministic fallback) plus the
+  pre-existing recommendation/agent suites.
+
+## True Trending & Top Artists (#1451 WS-4)
+
+Home's "Trending Now" and "Top Artists" rails rank by **measured engagement**,
+never upload recency. They read the WS-3 serving tables
+(`TrackPopularity` / `ArtistEngagement`: `window` 24h/7d/30d × `genre`
+dimension, `""` = overall) through public endpoints:
+
+- `GET /catalog/trending?window&genre&limit` — ranked tracks with score,
+  plays, unique listeners, saves.
+- `GET /catalog/top-artists?window&genre&limit` — per-artist rollups with
+  listeners **unioned** across their tracks, per-genre re-rank for the Home
+  genre chips.
+
+Both are fronted by the fail-open Redis cache (120s TTL). Honesty rules:
+rows below `DISCOVERY_MIN_AUDIENCE` unique listeners (default 3) are never
+written, and an empty result renders an explicit "not enough listening yet"
+state on Home — there is no recency fallback.
+
+Until the WS-3 warehouse marts land (#1450), the tables are filled by an
+interim in-process aggregation over local `AnalyticsEvent` facts
+(`DiscoveryPopularityService.refresh()`: completion-weighted plays +
+playlist saves, linear time-decay per window, bounded read) on an
+env-driven cadence (`DISCOVERY_POPULARITY_REFRESH_MINUTES`, default 15,
+`0` disables). WS-3 replaces only this filler — endpoints, tables, and UI
+are already on the final contract.
+
+Tests: `backend/src/tests/discovery-popularity.integration.spec.ts`
+(aggregation, threshold exclusion, genre dimension, snapshot replace),
+catalog controller unit + HTTP specs, and
+`web/src/components/home/PopularityRails.test.tsx` (ranked render, genre
+re-rank, honest empty state).
+
+## Home Feed v2 (#1454 WS-7)
+
+Home's personalized surface is a **multi-rail feed** composed (never
+re-ranked) from the WS-1 core and WS-4 serving by
+`backend/src/modules/recommendations/home-feed.service.ts`, served at
+`GET /recommendations/:userId/home-feed` (JWT):
+
+- `because_genre` — "Because you save a lot of \<genre\>": WS-1 items whose
+  reasons match the dominant saved genre/mood.
+- `new_from_artists` — newest catalog from artists the listener has actually
+  played (derived server-side; item history never leaves the backend).
+- `trending_genre` — "Trending in \<genre\>" from the WS-4 serving tables.
+- `exploration` — a controlled slice of fresh/low-data tracks
+  (`DISCOVERY_EXPLORATION_COUNT`, default 4) to escape feedback loops.
+- `catalog_signal` — cold users only (RFC §8), labeled as exactly that.
+
+Rules enforced in composition: every explanation is **categorical** (RFC §7 —
+never itemized listening history), max 2 items per artist per rail, each
+track appears in at most one rail, previously-served items sink to the rail
+tail and rendered ids re-enter the served history (impression rotation), and
+the old "first 4 catalog releases" fallback is gone — an empty feed says so.
+The frontend (`web/src/components/home/HomeFeedRails.tsx`) is presentation
+only and emits one `recommendation.served` per rail plus
+`recommendation.clicked` per action (#1449 measurement base).
+
+Tests: `backend/src/tests/home-feed.integration.spec.ts` (rails, caps,
+rotation, cold/warm), `recommendations.controller.http.spec.ts` (routing,
+guard, shape), `web/src/components/home/HomeFeedRails.test.tsx`.
 
 ## Recommendation Explanations
 

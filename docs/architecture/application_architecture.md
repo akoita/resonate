@@ -48,7 +48,7 @@ flowchart LR
 | Agent runtime | AI DJ orchestration, recommendation adapters, policy guard, wallet/purchase execution, evaluation | `backend/src/modules/agents`, `backend/src/modules/recommendations` |
 | Ingestion and AI media | Upload validation, queueing, stem separation, remix draft generation, encryption, storage, status updates | `backend/src/modules/ingestion`, `backend/src/modules/remix`, `workers/demucs`, `workers/stable-audio`, `backend/src/modules/storage` |
 | Rights and trust | Upload rights routing, evidence bundles, human verification, disputes, content protection | `backend/src/modules/rights`, `backend/src/modules/trust`, `backend/src/modules/curation` |
-| Realtime and notifications | Socket.IO fan-out, notification persistence, event broadcasts, Redis adapter fallback | `backend/src/modules/shared`, `backend/src/modules/notifications` |
+| Realtime and notifications | Socket.IO fan-out, authenticated Lyria realtime sessions, notification persistence, event broadcasts, Redis adapter fallback | `backend/src/modules/shared`, `backend/src/modules/notifications`, `backend/src/modules/generation/lyria_realtime.service.ts` |
 
 ## Backend Component Model
 
@@ -84,6 +84,14 @@ Cross-cutting subscribers attach to the shared `EventBus` exported by
 `SharedModule`. Feature modules should import that shared provider instead of
 declaring their own `EventBus`, so realtime fan-out, contract/indexer handlers,
 and analytics bridge subscribers observe the same process-level event stream.
+
+Lyria realtime sessions are authenticated per operation from the Socket.IO
+handshake `auth` token. `AuthService` verifies the JWT and supplies the subject;
+the gateway combines it with the socket id, and the generation service requires
+that full owner context for controls, recording, state reads, and stop. Session
+ids, provider state, targeted delivery mappings, and recorded chunks remain
+process-local, so multi-instance deployments need sticky routing for a socket's
+session lifetime until a shared session/event layer is introduced.
 
 ## Frontend Component Model
 

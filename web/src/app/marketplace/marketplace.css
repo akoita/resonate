@@ -1418,7 +1418,26 @@
   }
 
   .marketplace-toolbar {
+    align-items: stretch;
     gap: var(--space-2);
+  }
+
+  /* Controls v2 replaced the old `.marketplace-toolbar__group` pills with
+   * one segmented control. Reflow the current control explicitly so all
+   * eight stem types stay reachable at 320px instead of being clipped. */
+  .marketplace-toolbar > .marketplace-segment {
+    display: grid;
+    flex: 1 0 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+    padding: 3px;
+  }
+
+  .marketplace-segment__btn {
+    min-width: 0;
+    padding: 6px 3px;
+    font-size: 11px;
   }
 
   .marketplace-hero {

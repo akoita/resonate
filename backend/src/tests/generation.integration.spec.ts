@@ -175,6 +175,7 @@ describe('GenerationService (integration)', () => {
       const events: any[] = [];
       eventBus.subscribe('generation.progress', (e: any) => events.push(e));
       eventBus.subscribe('generation.completed', (e: any) => events.push(e));
+      eventBus.subscribe('catalog.ai_disclosure_recorded', (e: any) => events.push(e));
 
       const jobResult = await service.processGenerationJob({
         jobId: 'job-1',
@@ -204,6 +205,21 @@ describe('GenerationService (integration)', () => {
       expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
       expect(release?.rightsSourceType).toBe('ai_generation');
       expect(release?.rightsFlags).toEqual([]);
+
+      const generatedTrack = await prisma.track.findUniqueOrThrow({
+        where: { id: completedEvent.trackId },
+      });
+      expect(generatedTrack).toMatchObject({
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        eventName: 'catalog.ai_disclosure_recorded',
+        trackId: completedEvent.trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+      }));
 
       await expect(service.getStatus('job-1')).resolves.toMatchObject({
         status: 'completed',
@@ -267,6 +283,65 @@ describe('GenerationService (integration)', () => {
   });
 
   describe('publishGeneration', () => {
+    it('increments artworkRevision when publishing a replacement AI cover', async () => {
+      const release = await prisma.release.create({
+        data: {
+          artistId: `${TEST_PREFIX}artist`,
+          title: 'AI Artwork Revision Draft',
+          status: 'ready',
+          type: 'ai_generated',
+          artworkData: Buffer.from('initial-artwork'),
+          artworkMimeType: 'image/png',
+          tracks: {
+            create: {
+              title: 'AI Artwork Revision Draft',
+              processingStatus: 'complete',
+              generationMetadata: {
+                jobId: 'artwork-revision-job',
+                provider: 'lyria-3-pro-preview',
+                prompt: 'A bright synthwave cover',
+                generatedAt: '2026-05-16T00:00:00.000Z',
+                synthIdPresent: true,
+                durationSeconds: 30,
+              },
+            },
+          },
+        },
+        include: { tracks: true },
+      });
+      const image = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        'base64',
+      );
+
+      const result = await service.publishGeneration(
+        release.tracks[0].id,
+        {
+          title: 'Published AI Artwork Revision',
+          artist: 'AI (Lyria)',
+          genre: 'Electronic',
+          label: 'Resonate Records',
+        } as any,
+        `${TEST_PREFIX}user`,
+        {
+          buffer: image,
+          mimetype: 'image/png',
+          fieldname: 'artworkBlob',
+          originalname: 'cover.png',
+          encoding: '7bit',
+          size: image.length,
+        } as Express.Multer.File,
+      );
+
+      expect(result).toMatchObject({
+        artworkRevision: 2,
+        artworkUrl: `/catalog/releases/${release.id}/artwork/v2`,
+      });
+      await expect(
+        prisma.release.findUnique({ where: { id: release.id }, select: { artworkRevision: true } }),
+      ).resolves.toMatchObject({ artworkRevision: 2 });
+    });
+
     it('backfills automated rights provenance for legacy AI-generated releases', async () => {
       const legacyRelease = await prisma.release.create({
         data: {
@@ -311,6 +386,14 @@ describe('GenerationService (integration)', () => {
       expect(release?.rightsRoute).toBe('STANDARD_ESCROW');
       expect(release?.rightsSourceType).toBe('ai_generation');
       expect(release?.rightsFlags).toEqual([]);
+      const publishedTrack = await prisma.track.findUniqueOrThrow({
+        where: { id: legacyRelease.tracks[0].id },
+      });
+      expect(publishedTrack).toMatchObject({
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+      });
 
       const rightsRequest = await prisma.releaseRightsUpgradeRequest.findFirst({
         where: {

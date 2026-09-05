@@ -343,6 +343,11 @@ describe("Remix publish (integration)", () => {
       aiGenerated: false,
       policyVersion: REMIX_POLICY_VERSION,
     });
+    expect(track).toMatchObject({
+      aiDisclosureLevel: "NONE",
+      aiContributionFacets: [],
+      aiDisclosureSource: "remix_derived",
+    });
 
     expect(track.stems).toHaveLength(1);
     const stem = track.stems[0];
@@ -390,6 +395,11 @@ describe("Remix publish (integration)", () => {
     expect(track.generationMetadata).toMatchObject({
       grounding: "feature_conditioned",
       aiGenerated: true,
+    });
+    expect(track).toMatchObject({
+      aiDisclosureLevel: "PARTLY",
+      aiContributionFacets: ["production"],
+      aiDisclosureSource: "remix_derived",
     });
     const publishedEvent = publishSpy.mock.calls
       .map(([event]) => event)
@@ -508,6 +518,11 @@ describe("Remix publish (integration)", () => {
     // hold generation cost, prompts, and seed for AI-generated tracks).
     for (const track of release!.tracks ?? []) {
       expect(track).not.toHaveProperty("generationMetadata");
+      expect(track.aiDisclosure).toMatchObject({
+        level: "none",
+        containsAI: "None",
+        source: "remix_derived",
+      });
     }
   });
 

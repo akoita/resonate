@@ -80,12 +80,14 @@ See the [feature catalog](docs/features/README.md) for the full index of impleme
 ```mermaid
 flowchart LR
   Studio["Human Studio<br>Next.js"] --> API["NestJS API<br>modular backend"]
+  Desktop["Desktop shell<br>Electron"] --> API
   Agents["Agents<br>OpenAPI + MCP + x402"] --> API
   API --> Catalog["Catalog, pricing,<br>rights, library"]
   API --> Commerce["Marketplace, Shows +<br>x402 stablecoin settlement"]
   API --> Runtime["AI DJ + agent runtime"]
   API --> Ingestion["Upload + stem processing"]
   API --> Remix["Remix Studio +<br>AI generation"]
+  API --> Analytics["Analytics pipeline<br>Dataflow → BigQuery"]
   Commerce --> Chain["Smart accounts +<br>Resonate contracts"]
   Ingestion --> Worker["Demucs worker"]
   Remix --> SAW["Stable Audio worker<br>GPU, scale-to-zero"]
@@ -94,7 +96,7 @@ flowchart LR
   Worker --> Data
 ```
 
-Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Application CI publishes immutable images; [`resonate-iac`](https://github.com/akoita/resonate-iac) applies infrastructure releases.
+Resonate deploys as a full-stack music and agent-commerce system: Cloud Run services, Pub/Sub pipelines, Cloud SQL, Redis, GCS, ERC-4337 smart accounts, and a Terraform-managed GCP edge. Ordinary CI validates source; an explicit exact-SHA Release Deployment publishes immutable images and can hand their digest manifest to [`resonate-iac`](https://github.com/akoita/resonate-iac) for infrastructure reconciliation.
 
 ![Resonate deployment architecture](docs/architecture/resonate-deployment-architecture.svg)
 
@@ -183,11 +185,13 @@ make local-aa-down   # Stop Anvil + Alto
 
 | Layer | Technology |
 | --- | --- |
-| Frontend | Next.js 15, TanStack Query, Viem/Wagmi |
-| Backend | NestJS, Prisma, BullMQ, GCP Pub/Sub, PostgreSQL |
-| Blockchain | Solidity, Foundry, ERC-4337, ZeroDev |
-| AI | Demucs (htdemucs_6s), Vertex AI |
-| Infrastructure | Docker, Redis, GCP Pub/Sub, GitHub Actions |
+| Frontend | Next.js 16, React 19, Zustand, Viem, ZeroDev (ERC-4337 passkeys), Electron (desktop shell) |
+| Backend | NestJS, Prisma, BullMQ, Socket.IO, GCP Pub/Sub, PostgreSQL |
+| Agents | MCP server, OpenAPI storefront, x402 payments, Google ADK (AI DJ runtime) |
+| Blockchain | Solidity, Foundry, ERC-4337, ZeroDev, x402 |
+| AI | Demucs (htdemucs_6s), Stable Audio 3 (self-hosted, GPU), Vertex AI (Lyria, Gemini) |
+| Analytics | Apache Beam (Dataflow), BigQuery, Dataform |
+| Infrastructure | Docker, Redis, GCP Pub/Sub, Cloud Run, GitHub Actions, Terraform (managed in [`resonate-iac`](https://github.com/akoita/resonate-iac)) |
 
 ---
 

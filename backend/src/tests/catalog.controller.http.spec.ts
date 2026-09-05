@@ -12,10 +12,12 @@ import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { CatalogController } from '../modules/catalog/catalog.controller';
 import { CatalogService } from '../modules/catalog/catalog.service';
+import { DiscoveryPopularityService } from '../modules/catalog/discovery-popularity.service';
 import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockCatalogService = {
   getReleaseArtwork: jest.fn(),
+  getReleaseArtworkForUser: jest.fn(),
   getStemBlob: jest.fn(),
   getTrackStream: jest.fn(),
   getStemPreview: jest.fn(),
@@ -33,6 +35,11 @@ const mockCatalogService = {
   search: jest.fn().mockResolvedValue([]),
 };
 
+const mockDiscoveryPopularityService = {
+  getTrendingTracks: jest.fn().mockResolvedValue({ window: '7d', genre: null, minimumAudience: 3, items: [] }),
+  getTopArtists: jest.fn().mockResolvedValue({ window: '7d', genre: null, minimumAudience: 3, items: [] }),
+};
+
 describe('CatalogController (e2e)', () => {
   let app: INestApplication;
   const token = authToken('user-1');
@@ -40,6 +47,7 @@ describe('CatalogController (e2e)', () => {
   beforeAll(async () => {
     app = await createControllerTestApp(CatalogController, [
       { provide: CatalogService, useValue: mockCatalogService },
+      { provide: DiscoveryPopularityService, useValue: mockDiscoveryPopularityService },
     ]);
   });
 
@@ -77,6 +85,19 @@ describe('CatalogController (e2e)', () => {
     expect(res.body.actions).toEqual([]);
     expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
       recommendationReasons: ['genre:jazz'],
+      userId: undefined,
+    });
+  });
+
+  it('GET /catalog/tracks/:id/actions passes optional authenticated identity', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/tracks/trk-1/actions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockCatalogService.getPlayerTrackActions).toHaveBeenCalledWith('trk-1', {
+      recommendationReasons: [],
+      userId: 'user-1',
     });
   });
 
@@ -84,6 +105,38 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/artist/art-1')
       .expect(200);
+  });
+
+  it('GET /catalog/trending → 200 (no auth required)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/catalog/trending?window=24h&genre=Hip%20Hop&limit=5')
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(mockDiscoveryPopularityService.getTrendingTracks).toHaveBeenCalledWith({
+      window: '24h',
+      genre: 'Hip Hop',
+      limit: 5,
+    });
+  });
+
+  it('GET /catalog/trending → 400 on unknown window', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/trending?window=1y')
+      .expect(400);
+  });
+
+  it('GET /catalog/top-artists → 200 (no auth required)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/catalog/top-artists')
+      .expect(200);
+
+    expect(res.body.items).toEqual([]);
+    expect(mockDiscoveryPopularityService.getTopArtists).toHaveBeenCalledWith({
+      window: undefined,
+      genre: undefined,
+      limit: undefined,
+    });
   });
 
   // ----- Guard enforcement -----
@@ -188,5 +241,42 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/releases/rel-1/artwork')
       .expect(404);
+  });
+
+  it('GET /catalog/releases/:id/artwork/v:revision → serves versioned public artwork', async () => {
+    mockCatalogService.getReleaseArtwork.mockResolvedValue({
+      data: Buffer.from('artwork'),
+      mimeType: 'image/png',
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/catalog/releases/rel-1/artwork/v7')
+      .expect(200);
+
+    expect(res.headers['content-type']).toContain('image/png');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(mockCatalogService.getReleaseArtwork).toHaveBeenCalledWith('rel-1', '7');
+  });
+
+  it('GET /catalog/me/releases/:id/artwork/v:revision → preserves owner auth and version', async () => {
+    mockCatalogService.getReleaseArtworkForUser.mockResolvedValue({
+      data: Buffer.from('owner-artwork'),
+      mimeType: 'image/webp',
+    });
+
+    const res = await request(app.getHttpServer())
+      .get('/catalog/me/releases/rel-1/artwork/v8')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.headers['content-type']).toContain('image/webp');
+    expect(res.headers['cache-control']).toBe('no-cache');
+    expect(mockCatalogService.getReleaseArtworkForUser).toHaveBeenCalledWith('rel-1', 'user-1', '8');
+  });
+
+  it('GET /catalog/me/releases/:id/artwork/v:revision → requires JWT', async () => {
+    await request(app.getHttpServer())
+      .get('/catalog/me/releases/rel-1/artwork/v8')
+      .expect(401);
   });
 });

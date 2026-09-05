@@ -88,6 +88,9 @@ contract_id_for() {
         ShowCampaignEscrow)
             echo "src/core/ShowCampaignEscrow.sol:ShowCampaignEscrow"
             ;;
+        TimelockController)
+            echo "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController"
+            ;;
         *)
             return 1
             ;;
@@ -100,13 +103,10 @@ source_path_for() {
 }
 
 read_create_field() {
-    local contract_name="$1"
+    local transaction_index="$1"
     local field="$2"
-    jq -r \
-        --arg name "$contract_name" \
-        --arg field "$field" \
-        'first(.transactions[] | select(.transactionType == "CREATE" and .contractName == $name)) | .[$field] // empty' \
-        "$BROADCAST_FILE"
+    jq -r --argjson index "$transaction_index" --arg field "$field" \
+        '.transactions[$index][$field] // empty' "$BROADCAST_FILE"
 }
 
 build_standard_json_input() {
@@ -150,13 +150,14 @@ build_standard_json_input() {
 
 submit_one() {
     local contract_name="$1"
+    local transaction_index="$2"
     local contract_id
     contract_id="$(contract_id_for "$contract_name")"
 
     local address
     local creation_tx
-    address="$(read_create_field "$contract_name" "contractAddress")"
-    creation_tx="$(read_create_field "$contract_name" "hash")"
+    address="$(read_create_field "$transaction_index" "contractAddress")"
+    creation_tx="$(read_create_field "$transaction_index" "hash")"
 
     if [[ -z "$address" || -z "$creation_tx" ]]; then
         echo -e "${RED}✗ $contract_name missing from broadcast CREATE transactions${NC}"
@@ -217,12 +218,13 @@ submit_one() {
     fi
 
     echo "  Verification ID: $verification_id"
-    poll_verification "$contract_name" "$verification_id"
+    poll_verification "$contract_name" "$address" "$verification_id"
 }
 
 poll_verification() {
     local contract_name="$1"
-    local verification_id="$2"
+    local address="$2"
+    local verification_id="$3"
     local attempt=1
 
     while [[ "$attempt" -le "$SOURCIFY_RETRIES" ]]; do
@@ -245,7 +247,7 @@ poll_verification() {
         if [[ "$completed" == "true" && -n "$match" ]]; then
             echo -e "${GREEN}✓ $contract_name verified: $match (runtime: $runtime_match, creation: $creation_match)${NC}"
             local repo_url
-            repo_url="https://repo.sourcify.dev/$SOURCIFY_CHAIN_ID/$(read_create_field "$contract_name" "contractAddress")"
+            repo_url="https://repo.sourcify.dev/$SOURCIFY_CHAIN_ID/$address"
             echo "  Sourcify: $repo_url"
             echo ""
             return 0
@@ -274,21 +276,27 @@ cd "$CONTRACTS_DIR"
 # script works for ANY deploy script's broadcast (DeployProtocol,
 # DeployShowCampaignEscrow, DeployStemMarketplace, ...), not a hardcoded set.
 # Names without a contract_id_for mapping are reported and skipped.
-mapfile -t CONTRACTS < <(jq -r '[.transactions[] | select(.transactionType == "CREATE") | .contractName] | unique | .[]' "$BROADCAST_FILE")
+mapfile -t CONTRACTS < <(jq -r \
+    '.transactions | to_entries[] | select(.value.transactionType == "CREATE") | [.key, .value.contractName] | @tsv' \
+    "$BROADCAST_FILE")
 
 if [[ "${#CONTRACTS[@]}" -eq 0 ]]; then
     echo -e "${RED}No CREATE transactions found in broadcast.${NC}"
     exit 1
 fi
 
-if [[ -n "${VERIFY_ONLY:-}" ]]; then
-    CONTRACTS=("$VERIFY_ONLY")
-fi
-
 FAILED=()
-for contract_name in "${CONTRACTS[@]}"; do
-    if ! submit_one "$contract_name"; then
-        FAILED+=("$contract_name")
+for contract_entry in "${CONTRACTS[@]}"; do
+    IFS=$'\t' read -r transaction_index contract_name <<< "$contract_entry"
+    if [[ -n "${VERIFY_ONLY:-}" && "$contract_name" != "$VERIFY_ONLY" ]]; then
+        continue
+    fi
+    if ! contract_id_for "$contract_name" >/dev/null; then
+        echo -e "${YELLOW}Skipping unmapped CREATE contract: $contract_name${NC}"
+        continue
+    fi
+    if ! submit_one "$contract_name" "$transaction_index"; then
+        FAILED+=("$contract_name (transaction $transaction_index)")
     fi
 done
 

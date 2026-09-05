@@ -22,6 +22,12 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { CommunityRoomsService } from "../community/community_rooms.service";
 import { ShowsService } from "./shows.service";
+import {
+  getShowsVisualMaxBytes,
+  getShowsVisualMaxTotalBytes,
+} from "../shared/artwork-validation";
+import { ContentLengthLimitInterceptor } from "../shared/content-length-limit.interceptor";
+import { BoundedMemoryStorage } from "../shared/bounded-memory.storage";
 
 @Controller("shows")
 export class ShowsController {
@@ -103,6 +109,25 @@ export class ShowsController {
     return new StreamableFile(visual.data);
   }
 
+  @Get("campaigns/:id/visuals/:visualRef/v:artworkRevision")
+  async getVersionedCampaignVisual(
+    @Param("id") id: string,
+    @Param("visualRef") visualRef: string,
+    @Param("artworkRevision") artworkRevision: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const visual = await this.showsService.getCampaignVisual(id, visualRef, artworkRevision);
+    if (!visual) {
+      res.status(404).send("Campaign visual not found");
+      return;
+    }
+    res.set({
+      "Content-Type": visual.mimeType,
+      "Cache-Control": "public, max-age=300",
+    });
+    return new StreamableFile(visual.data);
+  }
+
   @UseGuards(AuthGuard("jwt"))
   @Get("me/pledges")
   getMyPledges(
@@ -143,11 +168,25 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals")
-  @UseInterceptors(FileFieldsInterceptor([
-    { name: "hero", maxCount: 1 },
-    { name: "card", maxCount: 1 },
-    { name: "gallery", maxCount: 8 },
-  ]))
+  @UseInterceptors(
+    new ContentLengthLimitInterceptor(getShowsVisualMaxTotalBytes(), "Campaign visual"),
+    FileFieldsInterceptor([
+      { name: "hero", maxCount: 1 },
+      { name: "card", maxCount: 1 },
+      { name: "gallery", maxCount: 8 },
+    ], {
+      storage: new BoundedMemoryStorage({
+        maxTotalBytes: getShowsVisualMaxTotalBytes(),
+        fieldMaxBytes: {
+          hero: getShowsVisualMaxBytes(),
+          card: getShowsVisualMaxBytes(),
+          gallery: getShowsVisualMaxBytes(),
+        },
+        label: "Campaign visual",
+      }),
+      limits: { fileSize: getShowsVisualMaxBytes() },
+    }),
+  )
   uploadCampaignVisuals(
     @Param("id") id: string,
     @Request() req: any,
@@ -180,7 +219,7 @@ export class ShowsController {
   @UseGuards(AuthGuard("jwt"))
   @Roles("artist", "admin", "operator")
   @Patch("campaigns/:id/visuals/:visualRef")
-  @UseInterceptors(FileInterceptor("visual"))
+  @UseInterceptors(FileInterceptor("visual", { limits: { fileSize: getShowsVisualMaxBytes() } }))
   replaceCampaignVisual(
     @Param("id") id: string,
     @Param("visualRef") visualRef: string,
@@ -275,6 +314,55 @@ export class ShowsController {
     @Request() req: any,
   ) {
     return this.showsService.resyncCampaignFromChain(this.actorFromRequest(req), id);
+  }
+
+  // #1271 ops tool + drift-drill assertion surface: list reconciliation
+  // mismatches the escrow indexer detected (durable analytics facts), newest
+  // first. Operator/admin only.
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Get("operator/reconciliation-mismatches")
+  listReconciliationMismatches(
+    @Request() req: any,
+    @Query("contractCampaignId") contractCampaignId?: string,
+    @Query("sinceMinutes") sinceMinutes?: string,
+    @Query("limit") limit?: string,
+  ) {
+    return this.showsService.listReconciliationMismatches(this.actorFromRequest(req), {
+      contractCampaignId,
+      sinceMinutes: sinceMinutes !== undefined ? Number(sinceMinutes) : undefined,
+      limit: limit !== undefined ? Number(limit) : undefined,
+    });
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Post("operator/reconciliation-mismatches/:contractCampaignId/acknowledge")
+  acknowledgeReconciliationMismatch(
+    @Param("contractCampaignId") contractCampaignId: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.acknowledgeReconciliationMismatch(
+      this.actorFromRequest(req),
+      contractCampaignId,
+      body ?? {},
+    );
+  }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Delete("operator/reconciliation-mismatches/:contractCampaignId/acknowledgement")
+  removeReconciliationAcknowledgement(
+    @Param("contractCampaignId") contractCampaignId: string,
+    @Request() req: any,
+    @Body() body: any,
+  ) {
+    return this.showsService.removeReconciliationAcknowledgement(
+      this.actorFromRequest(req),
+      contractCampaignId,
+      body ?? {},
+    );
   }
 
   // #1390 Tier 2: operator-only, read-only on-chain discovery of the contract

@@ -377,6 +377,12 @@ FROM \`${bigQueryIdentifier(config.projectId)}.${bigQueryIdentifier(config.datas
 WHERE artistId = @artistId
   AND occurredAt >= TIMESTAMP(@from)
   AND occurredAt < TIMESTAMP(@to)
+-- Facts are appended via streaming inserts whose insertId de-dup is best-effort
+-- and short-lived, so overlapping scheduled loads and backfills can leave more
+-- than one row per event. factId (= fact_<eventId>) is unique per event, so
+-- collapse to one row here — otherwise every metric that counts +1 per fact
+-- (totalPlays, plays over time, track/source rows) over-counts duplicates.
+QUALIFY ROW_NUMBER() OVER (PARTITION BY factId ORDER BY occurredAt) = 1
 ORDER BY occurredAt ASC
 LIMIT @limit
 `.trim();
@@ -442,6 +448,8 @@ WHERE occurredAt >= TIMESTAMP(@from)
     )
     OR STARTS_WITH(COALESCE(JSON_VALUE(dimensions, '$.source'), ''), 'agent')
   )
+-- De-dup streaming-insert duplicates by the unique factId (see artistFactsQuery).
+QUALIFY ROW_NUMBER() OVER (PARTITION BY factId ORDER BY occurredAt) = 1
 ORDER BY occurredAt ASC
 LIMIT @limit
 `.trim();

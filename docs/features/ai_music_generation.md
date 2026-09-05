@@ -53,8 +53,23 @@ payout or licensing rules for AI works.
   - `RightsEvidence.kind = "rights_metadata"`
   - `RightsEvidence.verificationStatus = "system_generated"`
 
+## Realtime Generation Sessions
+
+Interactive Lyria sessions use the Socket.IO transport and require an access
+token in the connection `auth` payload. The backend derives the user identity
+from the verified JWT subject and binds each opaque `rt_<UUID>` session to both
+that user and the originating socket connection. Control, stop, and recording
+operations are accepted only from that same connection; recorded audio is
+delivered only to its owner.
+
+Session ownership, audio buffers, and provider lifecycle state are process
+local. Deployments with more than one backend instance therefore need sticky
+routing for the lifetime of a realtime socket/session (or a future shared
+session store and event transport).
+
 ## Verification
 
+- Realtime ownership: `cd backend && npx jest --runInBand --no-cache src/modules/shared/events.gateway.spec.ts src/modules/generation/lyria_realtime.service.spec.ts`
 - Backend: `cd backend && npm run test -- generation.error_normalization.spec.ts generation.controller.spec.ts`
 - Integration: `cd backend && npm run test:integration -- generation.integration.spec.ts`
 - Frontend: `cd web && npm run test:unit -- rightsOnboarding.test.ts`

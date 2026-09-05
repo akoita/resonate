@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { HomeFeedService } from "./home-feed.service";
 import { RecommendationsService, UserPreferences } from "./recommendations.service";
 import { TasteMemoryService } from "./taste_memory.service";
 
@@ -8,7 +9,15 @@ export class RecommendationsController {
   constructor(
     private readonly recommendationsService: RecommendationsService,
     private readonly tasteMemoryService: TasteMemoryService,
+    private readonly homeFeedService: HomeFeedService,
   ) {}
+
+  /** Home feed v2 (#1454 WS-7): multi-rail personalized feed with categorical explanations. */
+  @UseGuards(AuthGuard("jwt"))
+  @Get(":userId/home-feed")
+  getHomeFeed(@Param("userId") userId: string) {
+    return this.homeFeedService.getHomeFeed(userId);
+  }
 
   @UseGuards(AuthGuard("jwt"))
   @Post("preferences")

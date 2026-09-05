@@ -1,12 +1,46 @@
-import { Controller, Post, Body, Res, HttpStatus, Logger, StreamableFile } from '@nestjs/common';
+import {
+    Body,
+    Controller,
+    ForbiddenException,
+    HttpStatus,
+    Logger,
+    Optional,
+    Post,
+    Req,
+    Res,
+    StreamableFile,
+    UseGuards,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { Response } from 'express';
 import { EncryptionService } from './encryption.service';
+import { AuthService } from '../auth/auth.service';
 
 @Controller('encryption')
 export class EncryptionController {
     private readonly logger = new Logger(EncryptionController.name);
 
-    constructor(private readonly encryptionService: EncryptionService) { }
+    constructor(
+        private readonly encryptionService: EncryptionService,
+        @Optional() private readonly authService?: AuthService,
+    ) { }
+
+    private respondWithOperationFailure(
+        operation: 'decrypt' | 'download',
+        error: unknown,
+        res: Response,
+    ): void {
+        const diagnostic = error instanceof Error ? error.stack || error.message : undefined;
+        this.logger.error(
+            `Encryption ${operation} operation failed (provider: ${this.encryptionService.providerName})`,
+            diagnostic,
+        );
+
+        const responseBody = operation === 'decrypt'
+            ? { error: 'decryption_failed', message: 'Decryption failed.' }
+            : { error: 'download_failed', message: 'Download failed.' };
+        res.status(HttpStatus.INTERNAL_SERVER_ERROR).json(responseBody);
+    }
 
     /**
      * Decrypt endpoint - provider-agnostic
@@ -19,8 +53,12 @@ export class EncryptionController {
      * - dataToEncryptHash: Used as metadata for AES provider
      * - accessControlConditions: Legacy Lit Protocol field
      * - metadata: Direct AES metadata (preferred for new clients)
+     *
+     * Unexpected failures return HTTP 500 with:
+     * { "error": "decryption_failed", "message": "Decryption failed." }
      */
     @Post('decrypt')
+    @UseGuards(AuthGuard('jwt'))
     async decrypt(
         @Body() body: {
             uri: string;
@@ -29,6 +67,7 @@ export class EncryptionController {
             accessControlConditions?: any[];
             authSig: any;
         },
+        @Req() req: any,
         @Res({ passthrough: true }) res: Response,
     ) {
         const { uri, metadata, dataToEncryptHash, accessControlConditions, authSig } = body;
@@ -38,6 +77,16 @@ export class EncryptionController {
             this.logger.warn(`Invalid decryption request: missing uri or authSig`);
             res.status(HttpStatus.BAD_REQUEST).send('Missing required fields: uri and authSig are required.');
             return;
+        }
+
+        const authenticatedUserId = req.user?.userId;
+        if (
+            typeof authenticatedUserId !== 'string' ||
+            typeof authSig.address !== 'string' ||
+            !this.authService ||
+            !(await this.authService.isAddressForUser(authenticatedUserId, authSig.address))
+        ) {
+            throw new ForbiddenException('Authenticated identity does not match authSig.address.');
         }
 
         try {
@@ -61,9 +110,8 @@ export class EncryptionController {
             });
 
             return new StreamableFile(decryptedBuffer);
-        } catch (error: any) {
-            this.logger.error(`Decryption endpoint failed for URI ${uri}: ${error.message}`);
-            res.status(HttpStatus.INTERNAL_SERVER_ERROR).send(error.message || 'Decryption failed.');
+        } catch (error: unknown) {
+            this.respondWithOperationFailure('decrypt', error, res);
         }
     }
 
@@ -76,21 +124,35 @@ export class EncryptionController {
      * Required fields:
      * - stemId: The stem ID to download
      * - walletAddress: The wallet address claiming ownership
+     *
+     * Unexpected failures return HTTP 500 with:
+     * { "error": "download_failed", "message": "Download failed." }
      */
     @Post('download')
+    @UseGuards(AuthGuard('jwt'))
     async download(
         @Body() body: {
             stemId: string;
             walletAddress: string;
         },
+        @Req() req: any,
         @Res({ passthrough: true }) res: Response,
     ) {
         const { stemId, walletAddress } = body;
 
-        if (!stemId || !walletAddress) {
+        if (!stemId || typeof walletAddress !== 'string' || !walletAddress) {
             this.logger.warn(`Invalid download request: missing stemId or walletAddress`);
             res.status(HttpStatus.BAD_REQUEST).send('Missing required fields: stemId and walletAddress are required.');
             return;
+        }
+
+        const authenticatedUserId = req.user?.userId;
+        if (
+            typeof authenticatedUserId !== 'string' ||
+            !this.authService ||
+            !(await this.authService.isAddressForUser(authenticatedUserId, walletAddress))
+        ) {
+            throw new ForbiddenException('Authenticated identity does not match walletAddress.');
         }
 
         try {
@@ -132,13 +194,14 @@ export class EncryptionController {
             const stemUri = stem.uri;
             this.logger.log(`Fetching stem content from: ${stemUri}`);
 
-            // For encrypted stems, use decryption; for unencrypted, fetch directly
+            // For encrypted stems, use decryption; unencrypted stems use the
+            // same bounded source loader without decryption.
             let audioBuffer: Buffer;
 
             if (stem.encryptionMetadata) {
                 // Decrypt the content
                 const authSig = {
-                    address: walletAddress.toLowerCase(),
+                    address: walletAddress,
                     sig: 'ownership-verified',
                     signedMessage: 'Download authorized via ownership verification',
                     internalKey: process.env.INTERNAL_SERVICE_KEY,
@@ -150,10 +213,8 @@ export class EncryptionController {
                     authSig,
                 );
             } else {
-                // No encryption, fetch directly
-                const response = await fetch(stemUri);
-                if (!response.ok) throw new Error(`Failed to fetch stem: ${response.status}`);
-                audioBuffer = Buffer.from(await response.arrayBuffer());
+                // No encryption, but keep the same bounded source boundary.
+                audioBuffer = await this.encryptionService.loadSourceBuffer(stemUri);
             }
 
             // Set response headers for download
@@ -165,9 +226,8 @@ export class EncryptionController {
             });
 
             return new StreamableFile(audioBuffer);
-        } catch (error: any) {
-            this.logger.error(`Download failed for stem ${stemId}: ${error.message}`);
-            res.status(HttpStatus.INTERNAL_SERVER_ERROR).send(error.message || 'Download failed.');
+        } catch (error: unknown) {
+            this.respondWithOperationFailure('download', error, res);
         }
     }
 }

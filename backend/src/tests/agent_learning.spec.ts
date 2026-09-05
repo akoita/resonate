@@ -1,3 +1,4 @@
+import { DiscoveryRankingService } from "../modules/recommendations/discovery-ranking.service";
 import {
   computeAgentTasteProfileFromSignals,
   AGENT_SIGNAL_WEIGHTS,
@@ -62,6 +63,35 @@ describe("agent learning loop", () => {
     });
   });
 
+  it("rejects over-limit scalar metadata and bounds arrays before mapping", () => {
+    const genres = Array.from({ length: 9 }, (_, index) => `genre-${index}`);
+    Object.defineProperty(genres, 8, {
+      configurable: true,
+      get() {
+        throw new Error("entries beyond maxItems must not be mapped");
+      },
+    });
+
+    const metadata = buildAgentSignalMetadata({
+      source: "s".repeat(81),
+      sessionIntent: "i".repeat(64),
+      genres,
+    });
+
+    expect(metadata.source).toBeUndefined();
+    expect(metadata.sessionIntent).toBe("i".repeat(64));
+    expect(metadata.genres).toEqual([
+      "genre-0",
+      "genre-1",
+      "genre-2",
+      "genre-3",
+      "genre-4",
+      "genre-5",
+      "genre-6",
+      "genre-7",
+    ]);
+  });
+
   it("falls back to user-selected vibes until enough signals exist", () => {
     const profile = computeAgentTasteProfileFromSignals([], ["Focus", "Ambient"]);
 
@@ -83,7 +113,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["music"],
@@ -98,6 +128,47 @@ describe("agent learning loop", () => {
         expect.objectContaining({ label: "learned_preference" }),
       ]),
     );
+  });
+
+  it("keeps fully AI-generated tracks out of AI DJ promotion", async () => {
+    const tool = {
+      run: jest.fn().mockResolvedValue({
+        items: [
+          {
+            id: "human",
+            title: "Human Track",
+            aiDisclosureLevel: "NONE",
+            release: { genre: "Ambient" },
+          },
+          {
+            id: "assisted",
+            title: "Assisted Track",
+            aiDisclosureLevel: "PARTLY",
+            release: { genre: "Ambient" },
+          },
+          {
+            id: "generated",
+            title: "Generated Track",
+            aiDisclosureLevel: "ALL",
+            release: { genre: "Ambient" },
+          },
+        ],
+      }),
+    };
+    const selector = new AgentSelectorService(
+      { get: jest.fn().mockReturnValue(tool) } as any,
+      new DiscoveryRankingService(),
+    );
+
+    const result = await selector.select({
+      queries: ["Ambient"],
+      recentTrackIds: [],
+      limit: 5,
+    });
+
+    expect(result.candidates).toEqual(expect.arrayContaining(["human", "assisted"]));
+    expect(result.candidates).not.toContain("generated");
+    expect(result.selected.map((track: any) => track.id)).not.toContain("generated");
   });
 
   it("blends precomputed BigQuery taste scores into selector ranking", async () => {
@@ -122,7 +193,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -171,7 +242,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any, tasteMemory as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any, tasteMemory as any);
 
     await selector.select({
       userId: "user-1",
@@ -204,7 +275,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -248,7 +319,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any, undefined, bigQueryTasteSignals as any);
+    } as any, new DiscoveryRankingService(), undefined, bigQueryTasteSignals as any);
 
     const result = await selector.select({
       userId: "user-1",
@@ -278,7 +349,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Hip Hop"],
@@ -318,6 +389,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService(
       { get: jest.fn().mockReturnValue(tool) } as any,
+      new DiscoveryRankingService(),
       undefined,
       undefined,
       undefined,
@@ -354,7 +426,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Reggaeton"],
@@ -375,7 +447,7 @@ describe("agent learning loop", () => {
     };
     const selector = new AgentSelectorService({
       get: jest.fn().mockReturnValue(tool),
-    } as any);
+    } as any, new DiscoveryRankingService());
 
     const result = await selector.select({
       queries: ["Techno"],

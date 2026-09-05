@@ -34,9 +34,13 @@ import {
 } from "../../lib/playlistStore";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
+import { PunchlineInventory } from "../../components/punchline/PunchlineInventory";
+import { listMyPunchlineCollectibles, listMyPunchlineUnlocks, type PunchlineCollectibleItem, type PunchlineUnlockGrantItem } from "../../lib/api";
 import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import { QueueActionsButton } from "../../components/player/QueueActionsButton";
 import { useUIStore } from "../../lib/uiStore";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
 import { RemixCta } from "../../components/remix/RemixCta";
@@ -48,7 +52,7 @@ import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
 import { libraryArtistHref } from "../../lib/artistRoutes";
 
-type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations";
+type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations" | "moments";
 
 function getRelativeTime(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
@@ -65,7 +69,8 @@ function getRelativeTime(dateStr: string): string {
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { playQueue, stop: handleStop, currentTrack, playNext, addToQueue } = usePlayer();
+    const { playQueue, stop: handleStop, currentTrack } = usePlayer();
+    const queueActions = useQueueActions();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
@@ -96,6 +101,10 @@ export default function LibraryPage() {
     
     // Remote collection state
     const [ownedStems, setOwnedStems] = useState<LocalTrack[]>([]);
+    // Punchline collectible inventory (#487) — owned moments for the Moments tab.
+    const [ownedMoments, setOwnedMoments] = useState<PunchlineCollectibleItem[]>([]);
+    const [momentUnlocks, setMomentUnlocks] = useState<PunchlineUnlockGrantItem[]>([]);
+    const [momentsLoading, setMomentsLoading] = useState(false);
     const [isCollectionLoading, setIsCollectionLoading] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: ContextMenuItem[] } | null>(null);
 
@@ -290,6 +299,38 @@ export default function LibraryPage() {
         }
     }, [token]);
 
+    // Owned Punchline moments for the Moments tab (#487); caller-scoped.
+    useEffect(() => {
+        if (!token) {
+            setOwnedMoments([]);
+            setMomentUnlocks([]);
+            return;
+        }
+        let cancelled = false;
+        setMomentsLoading(true);
+        (async () => {
+            try {
+                const [mine, unlocks] = await Promise.all([
+                    listMyPunchlineCollectibles(token),
+                    listMyPunchlineUnlocks(token),
+                ]);
+                if (!cancelled) {
+                    setOwnedMoments(mine.items);
+                    setMomentUnlocks(unlocks.items);
+                }
+            } catch (error) {
+                console.error("Error fetching punchline moments:", error);
+            } finally {
+                if (!cancelled) {
+                    setMomentsLoading(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [token]);
+
     // Handle deep-linking from query params
     useEffect(() => {
         const tab = searchParams.get("tab");
@@ -301,6 +342,8 @@ export default function LibraryPage() {
             setActiveTab("playlists");
         } else if (tab === "ai_creations") {
             setActiveTab("ai_creations");
+        } else if (tab === "moments") {
+            setActiveTab("moments");
         } else if (artist) {
             setSelectedArtist(artist);
             setActiveTab("artists");
@@ -369,8 +412,8 @@ export default function LibraryPage() {
     };
 
     const handleStemDownload = async (stem: LocalTrack) => {
-        if (!address) {
-            addToast({ type: "error", title: "Error", message: "Wallet not connected" });
+        if (!address || !token) {
+            addToast({ type: "error", title: "Error", message: "Authentication required" });
             return;
         }
 
@@ -380,7 +423,10 @@ export default function LibraryPage() {
             // Use the secured download endpoint with ownership verification
             const response = await fetch("/api/encryption/download", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${token}`,
+                },
                 body: JSON.stringify({
                     stemId: stem.id,
                     walletAddress: smartAccountAddress || address,
@@ -418,15 +464,26 @@ export default function LibraryPage() {
         setContextMenu({ x: e.clientX, y: e.clientY, items: getTrackContextMenuItems(track) });
     };
 
+    /* Shared by the right-click menus and the cards' overflow menus so both
+     * queue exactly the same set. */
+    const tracksForArtist = (artistName: string) =>
+        tracks.filter(t => (t.artist || "Unknown Artist") === artistName);
+
+    const tracksForAlbum = (albumName: string, artistName: string) =>
+        tracks.filter(t =>
+            (t.album || "Unknown Album") === albumName &&
+            (t.artist || "Unknown Artist") === artistName
+        );
+
     const handleArtistContextMenu = (e: React.MouseEvent, artistName: string) => {
         e.preventDefault();
-        const artistTracks = tracks.filter(t => (t.artist || "Unknown Artist") === artistName);
+        const artistTracks = tracksForArtist(artistName);
         setContextMenu({
             x: e.clientX,
             y: e.clientY,
             items: [
                 { label: "Play Artist", icon: "▶️", onClick: () => playQueue(artistTracks, 0) },
-                { label: "Add to Queue", icon: "➕", onClick: () => artistTracks.forEach(t => addToQueue(t)) },
+                ...queueActions.contextMenuItems(artistTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(artistTracks) },
             ]
@@ -435,16 +492,13 @@ export default function LibraryPage() {
 
     const handleAlbumContextMenu = (e: React.MouseEvent, albumName: string, artistName: string) => {
         e.preventDefault();
-        const albumTracks = tracks.filter(t =>
-            (t.album || "Unknown Album") === albumName &&
-            (t.artist || "Unknown Artist") === artistName
-        );
+        const albumTracks = tracksForAlbum(albumName, artistName);
         setContextMenu({
             x: e.clientX,
             y: e.clientY,
             items: [
                 { label: "Play Album", icon: "▶️", onClick: () => playQueue(albumTracks, 0) },
-                { label: "Add to Queue", icon: "➕", onClick: () => albumTracks.forEach(t => addToQueue(t)) },
+                ...queueActions.contextMenuItems(albumTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(albumTracks) },
             ]
@@ -453,8 +507,7 @@ export default function LibraryPage() {
 
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [
-            { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-            { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+            ...queueActions.contextMenuItems(track),
             { separator: true, label: "", onClick: () => { } },
             { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
         ];
@@ -692,6 +745,7 @@ export default function LibraryPage() {
                             )}
                             <TrackActionMenu
                                 actions={[
+                                    ...queueActions.actionMenuItems(track),
                                     { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
                                     ...(track.stemType && track.tokenId
                                         ? [{
@@ -742,6 +796,11 @@ export default function LibraryPage() {
                         <div className="library-card-meta">
                             {artist.trackCount} track{artist.trackCount !== 1 ? "s" : ""}
                             {artist.albums.length > 0 && ` • ${artist.albums.length} album${artist.albums.length !== 1 ? "s" : ""}`}
+                        </div>
+                        {/* Queueing a whole artist was right-click only, so most
+                          * people never found it. */}
+                        <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForArtist(artist.name))} />
                         </div>
                     </div>
                 );
@@ -796,6 +855,9 @@ export default function LibraryPage() {
                         <div className="library-card-count">
                             {album.trackCount} track{album.trackCount !== 1 ? "s" : ""}
                         </div>
+                        <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
+                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForAlbum(album.name, album.artist))} />
+                        </div>
                     </div>
                 );
             })}
@@ -830,6 +892,21 @@ export default function LibraryPage() {
                         <h1 className="detail-hero-title">{selectedArtist}</h1>
                         <div className="detail-hero-meta">
                             {artistAlbums.length} album{artistAlbums.length !== 1 ? "s" : ""} • {artistTracks.length} track{artistTracks.length !== 1 ? "s" : ""}
+                        </div>
+                        <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
+                            <Button
+                                variant="primary"
+                                onClick={() => playQueue(artistTracks, 0)}
+                                disabled={artistTracks.length === 0}
+                            >
+                                ▶ Play Artist
+                            </Button>
+                            <QueueActionsButton
+                                tracks={artistTracks}
+                                label="Queue artist"
+                                nextLabel="Play artist next"
+                                disabled={artistTracks.length === 0}
+                            />
                         </div>
                     </div>
                 </div>
@@ -945,10 +1022,22 @@ export default function LibraryPage() {
                         <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
                             <Button
                                 variant="primary"
-                                onClick={() => setTracksToAddToPlaylist(albumTracks)}
-                                className="flex items-center gap-2"
+                                onClick={() => playQueue(albumTracks, 0)}
+                                disabled={albumTracks.length === 0}
                             >
-                                <span style={{ fontSize: "1.2rem", fontWeight: "bold" }}>+</span> Add Album to Playlist
+                                ▶ Play Album
+                            </Button>
+                            <QueueActionsButton
+                                tracks={albumTracks}
+                                label="Queue album"
+                                nextLabel="Play album next"
+                                disabled={albumTracks.length === 0}
+                            />
+                            <Button
+                                variant="ghost"
+                                onClick={() => setTracksToAddToPlaylist(albumTracks)}
+                            >
+                                Add Album to Playlist
                             </Button>
                         </div>
                     </div>
@@ -1029,6 +1118,12 @@ export default function LibraryPage() {
                             >
                                 ✨ AI Creations ({aiCreations.length})
                             </button>
+                            <button
+                                className={`library-tab ${activeTab === "moments" ? "active" : ""}`}
+                                onClick={() => { setActiveTab("moments"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                            >
+                                🎤 Moments ({ownedMoments.length})
+                            </button>
                         </div>
                         
                         {activeTab === "tracks" && (
@@ -1102,6 +1197,14 @@ export default function LibraryPage() {
                                         )
                                     )}
                                     {activeTab === "stems" && renderTrackList(ownedStems)}
+                                    {activeTab === "moments" && (
+                                        <PunchlineInventory
+                                            items={ownedMoments}
+                                            unlocks={momentUnlocks}
+                                            loading={momentsLoading}
+                                            signedIn={!!token}
+                                        />
+                                    )}
                                     {activeTab === "ai_creations" && (
                                         <>
                                             <div className="create-analytics-strip ai-analytics-header">

@@ -1,5 +1,5 @@
 # ---- Stage 1: Dependencies ----
-FROM node:20-slim AS deps
+FROM node:24-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS deps
 
 WORKDIR /app
 
@@ -9,7 +9,21 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 # Install dependencies
 COPY package.json package-lock.json .npmrc ./
 RUN npm install -g npm@11.14.1
-RUN npm ci
+RUN npm ci --ignore-scripts && \
+    for package in \
+      node_modules/@prisma/engines \
+      node_modules/prisma \
+      node_modules/@prisma/client \
+      node_modules/bufferutil \
+      node_modules/cpu-features \
+      node_modules/fsevents \
+      node_modules/msgpackr-extract \
+      node_modules/ssh2 \
+      node_modules/utf-8-validate; do \
+      if [ -f "${package}/package.json" ]; then \
+        npm rebuild --offline --ignore-scripts=false --foreground-scripts -- "file:./${package}"; \
+      fi; \
+    done
 
 # ---- Stage 2: Build ----
 FROM deps AS build
@@ -29,7 +43,7 @@ FROM build AS prod-deps
 RUN npm prune --omit=dev
 
 # ---- Stage 4: Production Runtime ----
-FROM node:20-slim
+FROM node:24-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df
 
 WORKDIR /app
 

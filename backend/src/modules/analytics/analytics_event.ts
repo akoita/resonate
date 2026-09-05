@@ -103,6 +103,15 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs"],
   },
   {
+    // #1449 WS-2: explicit deliberate-skip signal, distinct from a short
+    // listen (previously only derivable as completionRatio < 0.3).
+    eventName: "playback.skipped",
+    eventVersion: 1,
+    producer: "playback-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "positionMs", "durationMs", "reason"],
+  },
+  {
     eventName: "onboarding.step_completed",
     eventVersion: 1,
     producer: "web-app",
@@ -262,11 +271,124 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["userId", "note"],
   },
   {
+    // #1421 realized-cost telemetry: one record per settled generation with the
+    // backend wall-clock, model-estimated COGS, and sell price charged.
+    eventName: "generation.cost_recorded",
+    eventVersion: 1,
+    producer: "generation-service",
+    privacyTier: "personal",
+    payloadFields: [
+      "userId",
+      "jobId",
+      "path",
+      "durationSeconds",
+      "wallClockMs",
+      "estimatedCostUsd",
+      "sellPriceCents",
+      "coldStart",
+    ],
+  },
+  {
+    // #489 Punchline Drops domain events (bridged from the event bus).
+    eventName: "punchline.drop_published",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["dropId", "trackId", "artistId", "momentCount", "totalEditions"],
+  },
+  {
+    eventName: "punchline.moment_collected",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: [
+      "momentId",
+      "dropId",
+      "trackId",
+      "artistId",
+      "collectorUserId",
+      "editionNumber",
+      "pricePaidCents",
+      "paymentRail",
+    ],
+  },
+  {
+    eventName: "punchline.set_completed",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["dropId", "trackId", "artistId", "collectorUserId"],
+  },
+  {
+    eventName: "punchline.unlock_granted",
+    eventVersion: 1,
+    producer: "punchline-service",
+    privacyTier: "personal",
+    payloadFields: ["unlockId", "dropId", "trackId", "artistId", "collectorUserId"],
+  },
+  {
+    // #489 Punchline funnel product events (client-emitted): view → preview →
+    // collect_started → collect_completed, joinable with the domain truth
+    // above by dropId/momentId + session.
+    eventName: "punchline.drop_viewed",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "trackId", "momentCount", "source"],
+  },
+  {
+    eventName: "punchline.preview_played",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "source"],
+  },
+  {
+    eventName: "punchline.collect_started",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "priceCents", "source"],
+  },
+  {
+    eventName: "punchline.collect_completed",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["dropId", "momentId", "trackId", "editionNumber", "setCompleted", "source"],
+  },
+  {
+    // #1477 slice 2: a fan shared a moment permalink from their inventory or
+    // the release collect module, attributable back into the #489 funnel via
+    // the share URL's drop_viewed(source:"share").
+    eventName: "punchline.moment_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["momentId", "dropId", "context", "method"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",
     privacyTier: "pseudonymous",
     payloadFields: ["userCohortId", "trackIds", "strategy", "candidateCount", "cohortInfluence"],
+  },
+  {
+    // #1449 WS-2: Home ranking impressions — which ranked items were shown.
+    eventName: "recommendation.served",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["requestId", "railId", "trackIds", "count", "source"],
+  },
+  {
+    // #1449 WS-2: a served recommendation was acted on (click/play).
+    eventName: "recommendation.clicked",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["requestId", "railId", "trackId", "position", "source"],
   },
   {
     eventName: "stems.uploaded",
@@ -295,6 +417,13 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     producer: "catalog-service",
     privacyTier: "pseudonymous",
     payloadFields: ["releaseId", "artistId", "status", "trackIds", "trackCount", "stemCount"],
+  },
+  {
+    eventName: "catalog.ai_disclosure_recorded",
+    eventVersion: 1,
+    producer: "catalog-service",
+    privacyTier: "pseudonymous",
+    payloadFields: ["releaseId", "trackId", "level", "source", "facets"],
   },
 ] as const;
 

@@ -111,24 +111,83 @@ if [[ ! -f "$BROADCAST_FILE" ]]; then
 fi
 
 STEM_NFT=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemNFT") | .contractAddress' "$BROADCAST_FILE")
-MARKETPLACE=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE")
+MARKETPLACE_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "StemMarketplaceV2") | .contractAddress' "$BROADCAST_FILE" | head -1)
+MARKETPLACE_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "StemMarketplaceV2")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
+MARKETPLACE=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "StemMarketplaceV2")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 TRANSFER_VALIDATOR=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "TransferValidator") | .contractAddress' "$BROADCAST_FILE")
-CONTENT_PROTECTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy") | .contractAddress' "$BROADCAST_FILE" | head -1)
+CONTENT_PROTECTION_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "ContentProtection") | .contractAddress' "$BROADCAST_FILE" | head -1)
+CONTENT_PROTECTION_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
+CONTENT_PROTECTION=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "ContentProtection")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 DISPUTE_RESOLUTION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "DisputeResolution") | .contractAddress' "$BROADCAST_FILE")
 CURATION_REWARDS=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "CurationRewards") | .contractAddress' "$BROADCAST_FILE")
-REVENUE_ESCROW=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE")
+REVENUE_ESCROW_IMPLEMENTATION=$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "RevenueEscrow") | .contractAddress' "$BROADCAST_FILE" | head -1)
+REVENUE_ESCROW_TIMELOCK=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "TimelockController"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
+REVENUE_ESCROW=$(jq -r '
+  .transactions as $txs
+  | (first($txs | to_entries[] | select(.value.transactionType == "CREATE" and .value.contractName == "RevenueEscrow")) | .key) as $implementation_index
+  | first($txs | to_entries[] | select(.key > $implementation_index and .value.transactionType == "CREATE" and .value.contractName == "ERC1967Proxy"))
+  | .value.contractAddress
+' "$BROADCAST_FILE")
 DEPLOY_TX=$(jq -r '.transactions[0].hash' "$BROADCAST_FILE")
 DEPLOY_BLOCK=$(jq -r '.receipts[0].blockNumber' "$BROADCAST_FILE" 2>/dev/null || echo "unknown")
+
+for graph_address in \
+    "ContentProtection implementation:$CONTENT_PROTECTION_IMPLEMENTATION" \
+    "ContentProtection timelock:$CONTENT_PROTECTION_TIMELOCK" \
+    "ContentProtection proxy:$CONTENT_PROTECTION" \
+    "RevenueEscrow implementation:$REVENUE_ESCROW_IMPLEMENTATION" \
+    "RevenueEscrow timelock:$REVENUE_ESCROW_TIMELOCK" \
+    "RevenueEscrow proxy:$REVENUE_ESCROW" \
+    "StemMarketplaceV2 implementation:$MARKETPLACE_IMPLEMENTATION" \
+    "StemMarketplaceV2 timelock:$MARKETPLACE_TIMELOCK" \
+    "StemMarketplaceV2 proxy:$MARKETPLACE"; do
+    graph_name="${graph_address%%:*}"
+    graph_value="${graph_address#*:}"
+    if [[ ! "$graph_value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+        echo -e "${RED}Error: could not distinguish $graph_name in $BROADCAST_FILE${NC}"
+        exit 1
+    fi
+done
 
 echo -e "${GREEN}=== Deployment Successful ===${NC}"
 echo ""
 echo -e "  StemNFT:             ${GREEN}$STEM_NFT${NC}"
 echo -e "  StemMarketplaceV2:   ${GREEN}$MARKETPLACE${NC}"
+echo -e "    implementation:    ${GREEN}$MARKETPLACE_IMPLEMENTATION${NC}"
+echo -e "    timelock:          ${GREEN}$MARKETPLACE_TIMELOCK${NC}"
 echo -e "  TransferValidator:   ${GREEN}$TRANSFER_VALIDATOR${NC}"
 echo -e "  ContentProtection:   ${GREEN}$CONTENT_PROTECTION${NC}"
+echo -e "    implementation:    ${GREEN}$CONTENT_PROTECTION_IMPLEMENTATION${NC}"
 echo -e "  DisputeResolution:   ${GREEN}$DISPUTE_RESOLUTION${NC}"
 echo -e "  CurationRewards:     ${GREEN}$CURATION_REWARDS${NC}"
 echo -e "  RevenueEscrow:       ${GREEN}$REVENUE_ESCROW${NC}"
+echo -e "    implementation:    ${GREEN}$REVENUE_ESCROW_IMPLEMENTATION${NC}"
+echo -e "    timelock:          ${GREEN}$REVENUE_ESCROW_TIMELOCK${NC}"
 echo -e "  First TX:            $DEPLOY_TX"
 echo ""
 
@@ -146,11 +205,17 @@ cat > "$DEPLOY_RECORD" <<EOF
   "contracts": {
     "StemNFT": "$STEM_NFT",
     "StemMarketplaceV2": "$MARKETPLACE",
+    "StemMarketplaceV2Implementation": "$MARKETPLACE_IMPLEMENTATION",
+    "StemMarketplaceV2Timelock": "$MARKETPLACE_TIMELOCK",
     "TransferValidator": "$TRANSFER_VALIDATOR",
     "ContentProtection": "$CONTENT_PROTECTION",
+    "ContentProtectionImplementation": "$CONTENT_PROTECTION_IMPLEMENTATION",
+    "ContentProtectionTimelock": "$CONTENT_PROTECTION_TIMELOCK",
     "DisputeResolution": "$DISPUTE_RESOLUTION",
     "CurationRewards": "$CURATION_REWARDS",
-    "RevenueEscrow": "$REVENUE_ESCROW"
+    "RevenueEscrow": "$REVENUE_ESCROW",
+    "RevenueEscrowImplementation": "$REVENUE_ESCROW_IMPLEMENTATION",
+    "RevenueEscrowTimelock": "$REVENUE_ESCROW_TIMELOCK"
   },
   "verification": {
     "etherscan": "https://sepolia.etherscan.io/address/$STEM_NFT",

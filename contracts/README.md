@@ -9,30 +9,42 @@ Solidity contracts powering the Resonate music platform: NFT stems, marketplace,
 | Contract              | File                                | Description                                                 |
 | --------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | **StemNFT**           | `src/core/StemNFT.sol`              | ERC-1155 NFT for music stems. Gates minting on attestation. |
-| **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | List / buy / resale with protocol fees.                     |
-| **ContentProtection** | `src/core/ContentProtection.sol`    | UUPS proxy. Attest, stake, slash (60/30/10), blacklist.     |
-| **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | Per-token escrow. Deposit, freeze, release, redirect.       |
-| **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release. |
+| **StemMarketplaceV2** | `src/core/StemMarketplaceV2.sol`    | Guarded UUPS proxy for list / buy / resale with protocol fees and fast pause. |
+| **ContentProtection** | `src/core/ContentProtection.sol`    | Guarded UUPS proxy. Attest (registrar-voucher gated), stake, slash (60/30/10), blacklist, owner pause, and delayed upgrade authority. |
+| **RevenueEscrow**     | `src/core/RevenueEscrow.sol`        | UUPS proxy (timelock + guardian). Per-token escrow with global pause, freeze, release, and redirect. |
+| **ShowCampaignEscrow** | `src/core/ShowCampaignEscrow.sol`  | UUPS proxy (timelock upgrade authority + guardian veto, #1497). Fan-funded show escrow. Thresholds, refunds, booking/fulfillment-gated release; `setPaused` freezes all money movement. |
 | **TransferValidator** | `src/modules/TransferValidator.sol` | Transfer hook: whitelist + blacklist enforcement.           |
 
-## Shared Interfaces
+## Shared Solidity Surfaces
 
 Each contract's **shared surface** — events, custom errors, and any enums/structs
 consumed outside the contract (tests, indexers, the backend, the frontend) — lives
-in a canonical interface under `src/interfaces/`. Production contracts inherit the
-interface and tests import it, so the event/error contract has exactly one
-definition and cannot silently drift.
+in a canonical interface. Definitions with identical semantics across multiple
+production contracts live in focused capability interfaces under `src/common/`;
+contract-specific surfaces remain under `src/interfaces/`. Production contracts
+and tests inherit the domain interface, so every event/error has one declaration
+and cannot silently drift.
+
+| Common capability | Owns | Used by |
+| --- | --- | --- |
+| `IAddressGuard` / `IAmountGuard` / `IPausableGuard` | Generic precondition errors | Only domain interfaces that enforce each guard |
+| `INativePayment` / `IFeeOnTransferGuard` | Native-token and exact ERC-20 transfer errors | Payment and custody domains |
+| `IFailedPaymentRecovery` | Pull-payment escrow events and errors | Content protection, revenue escrow, marketplace |
+| `IStakeGuards` / `IDisputeGuards` | Shared stake and dispute precondition errors | Content protection, curation, dispute resolution |
+| `IOwnershipTransfer` | Standard ownership-transfer event | Content protection, payment registry |
+| `IPaymentAssetRegistryConsumer` | Registry-rotation event | Content protection, marketplace |
+| `IUpgradeAuthority` | Upgrade-authority event and error | Guarded UUPS implementations |
 
 | Interface | Owns | Inherited by |
 | --- | --- | --- |
-| `IShowCampaignEscrow` | `CampaignStatus`, `Campaign`, events, errors | `ShowCampaignEscrow` + tests |
-| `IRevenueEscrow` | `EscrowInfo`, events, errors | `RevenueEscrow` + tests |
+| `IShowCampaignEscrow` | `CampaignStatus`, `Campaign`, campaign events/errors + common capabilities | `ShowCampaignEscrow` + tests |
+| `IRevenueEscrow` | `EscrowInfo`, escrow events/errors + common capabilities | `RevenueEscrow` + tests |
 | `IStemNFT` | events, errors | `StemNFT` + tests |
-| `IStemMarketplaceV2` | `Listing`, events, errors | `StemMarketplaceV2` + tests |
-| `ICurationRewards` | events, errors | `CurationRewards` + tests |
+| `IStemMarketplaceV2` | `Listing`, marketplace events/errors + common capabilities | `StemMarketplaceV2` + tests |
+| `ICurationRewards` | curation events/errors + common capabilities | `CurationRewards` + tests |
 | `IPaymentAssetRegistry` | `PaymentAsset`, events | `PaymentAssetRegistry` + tests |
-| `IContentProtectionEvents` | events, errors | `ContentProtection` + tests; extended by `IContentProtection` |
-| `IDisputeResolutionEvents` | enums, events, errors | `DisputeResolution` + tests; extended by `IDisputeResolution` |
+| `IContentProtectionEvents` | content-protection events/errors + common capabilities | `ContentProtection` + tests; extended by `IContentProtection` |
+| `IDisputeResolutionEvents` | enums, dispute events/errors + common capabilities | `DisputeResolution` + tests; extended by `IDisputeResolution` |
 | `IChainlinkPriceOracleAdapter` | errors | `ChainlinkPriceOracleAdapter` + tests |
 
 `IContentProtection` and `IDisputeResolution` are **consumer** interfaces (function
@@ -43,8 +55,8 @@ carry function signatures, so a test can't inherit them directly — the events/
 DisputeResolution enums via `IDisputeResolutionEvents.Outcome` (an inherited enum is
 not reachable through the derived `IDisputeResolution` name).
 
-**Intentionally kept local** (not extracted — not consumed elsewhere as named types,
-or extracting would change behavior):
+**Intentionally kept local** (not extracted — not consumed elsewhere as named
+types, extracting would change behavior, or the declaration owns storage):
 
 - `StemNFT.MintAuthorization` / `StemData` / `RemixInfo` — internal storage and
   EIP-712 signing structs, accessed only through getters.
@@ -55,8 +67,42 @@ or extracting would change behavior):
   errors; converting them would change revert data, so they stay as-is.
 - `ChainlinkPriceOracleAdapter.AggregatorV3Interface` — the external Chainlink feed
   read interface, an upstream standard rather than Resonate's own surface.
+- `NotAttested` stays domain-specific: `StemNFT` includes a token id while
+  `ContentProtection` uses a parameterless local-state guard.
+- `InvalidRecipient` stays separate between account-abstraction recovery and
+  marketplace settlement because those domains do not share a protocol surface.
+
+ERC-7201 namespace structs always remain inside their owning upgradeable contract.
+New upgradeable implementations use namespaced storage from their first deployment.
+Existing deployed linear layouts are never relocated mechanically: mappings and
+dynamic collections require a contract-specific compatibility or replacement plan.
 
 ## Deployment
+
+### Kernel dependency boundary
+
+The `lib/kernel` gitlink is pinned to the Kernel v4 development commit
+`f2a84a332ec5a722e7e95a0d64601905c3c87fe9`. It is compiled only by the
+isolated `kernel-v4/` compatibility harness with Solidity 0.8.33, Prague, and
+EntryPoint v0.9. This is compatibility and tooling coverage; it is not a
+production deployment path and does not migrate, authorize, or replace any
+existing account.
+
+The application deployment profile uses the official Kernel v3.1 tag at commit
+`03f7f5cf5871cda0070e4223f196f5b577f6cde2` and the official
+`account-abstraction` v0.7 tag at commit
+`7af70c8993a6f42973f520ae0752386a5032abe7`. `DeployLocalAA.s.sol`, the
+repository-owned `src/aa/KernelFactory.sol`, and `UniversalSigValidator` deploy
+that exact EntryPoint v0.7/Kernel v3.1 boundary. App SDK calls use Kernel
+version `0.3.1`, the explicit implementation and factory addresses, and direct
+factory mode on repository-owned networks.
+
+Run the isolated checks after installing dependencies with:
+
+```bash
+make kernel-v4-build
+make kernel-v4-test
+```
 
 ### Prerequisites
 
@@ -65,8 +111,9 @@ curl -L https://foundry.paradigm.xyz | bash && foundryup
 cd contracts && ./scripts/install-deps.sh
 ```
 
-This bootstrap script installs the pinned Forge libraries and the Kernel `I4337`
-nested dependency that CI also relies on.
+This bootstrap script checks out every Forge git dependency at its exact pinned
+commit and installs the locked v4 harness inputs from `kernel-v4/soldeer.lock`.
+It fails closed rather than replacing an unmanaged dependency directory.
 
 ### Local (Anvil)
 
@@ -74,7 +121,7 @@ nested dependency that CI also relies on.
 # 1. Start local node
 anvil
 
-# 2. Deploy AA infrastructure (EntryPoint + Kernel) — only needed once
+# 2. Deploy AA infrastructure (EntryPoint v0.7 + Kernel v3.1) — only needed once
 forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
 
 # 3. Deploy protocol contracts
@@ -106,10 +153,10 @@ forge script script/DeployProtocol.s.sol \
 ### Deployment Order (automated by script)
 
 1. **TransferValidator** — standalone module
-2. **ContentProtection** — UUPS proxy (implementation + ERC1967Proxy)
-3. **RevenueEscrow** — initialized with owner + escrow period
+2. **ContentProtection** — guarded UUPS graph (implementation + 48h timelock + ERC1967Proxy)
+3. **RevenueEscrow** — UUPS proxy initialized with operational owner, escrow period, and timelocked upgrade authority
 4. **StemNFT** — core NFT contract
-5. **StemMarketplaceV2** — linked to StemNFT
+5. **StemMarketplaceV2** — guarded implementation + timelock + proxy linked to StemNFT
 6. **Configure:**
    - `stemNFT.setTransferValidator(validator)`
    - `stemNFT.setContentProtection(contentProtection)`
@@ -122,8 +169,25 @@ forge script script/DeployProtocol.s.sol \
 | ------------------------------- | -------------------------------------------------------------------- |
 | `DeployProtocol.s.sol`          | Full protocol from scratch (NFT + Marketplace + Protection + Escrow) |
 | `DeployContentProtection.s.sol` | Phase 2 only — add ContentProtection + Escrow to existing deployment |
-| `DeployShowCampaignEscrow.s.sol` | Shows only — deploy standalone campaign funding escrow |
+| `ContentProtectionDeployment.s.sol` | Shared guarded ContentProtection implementation/timelock/proxy deployment policy |
+| `MigrateContentProtectionV6.s.sol` | One-time legacy proxy bootstrap: prepare verified candidates, then atomic V6 execute |
+| `UpgradeContentProtection.s.sol` | Schedule/execute post-V6 upgrades through the ContentProtection timelock |
+| `SetContentProtectionPaused.s.sol` | Operational-owner ContentProtection emergency pause/unpause |
+| `SmokeContentProtection.s.sol` | Read-only ContentProtection implementation and authority-graph validation |
+| `DeployRevenueEscrow.s.sol` | Revenue escrow only — deploy UUPS implementation, timelock, and proxy |
+| `UpgradeRevenueEscrow.s.sol` | Timelocked RevenueEscrow UUPS upgrade: `UPGRADE_ACTION=schedule` then `execute` |
+| `SetRevenueEscrowPaused.s.sol` | Owner-controlled global custody pause/unpause |
+| `StemMarketplaceDeployment.s.sol` | Shared marketplace implementation/timelock/proxy deployment policy |
+| `SetStemMarketplacePaused.s.sol` | Owner-controlled marketplace listing/purchase pause |
+| `UpgradeStemMarketplace.s.sol` | Schedule/execute marketplace upgrades through the timelock |
+| `SmokeStemMarketplace.s.sol` | Read-only marketplace dependency and authority-graph validation |
+| `DeployShowCampaignEscrow.s.sol` | Shows only — deploy the UUPS escrow proxy + TimelockController upgrade authority (+ guardian CANCELLER) |
+| `UpgradeShowCampaignEscrow.s.sol` | Timelocked UUPS upgrade of the escrow: `UPGRADE_ACTION=schedule` then `execute` |
 | `DeployLocalAA.s.sol`           | ERC-4337 Account Abstraction infra (EntryPoint, Kernel, Factory)     |
+
+`DeployLocalAA.s.sol` is the application-local v3.1 path. Kernel v4's
+`KernelFactory`, `KernelUUPS`, and `KernelImmutableECDSA` are not authorized by
+this script and are not deployed by any application workflow.
 
 ### Add to Existing Deployment (Phase 2 only)
 
@@ -141,7 +205,7 @@ forge script script/DeployContentProtection.s.sol \
 This will:
 
 1. Deploy ContentProtection (UUPS proxy)
-2. Deploy RevenueEscrow
+2. Deploy RevenueEscrow implementation + timelock + proxy
 3. Grant ContentProtection registrar access to StemNFT and, when provided, marketplace
 4. Link both to your existing StemNFT and TransferValidator
 
@@ -175,6 +239,9 @@ reconciliation is enabled.
 | `STAKE_AMOUNT`     | `0.005 ether`                       | Default stake amount for new creators |
 | `STAKE_USDC_AMOUNT` | `5000000` (5 USDC)                 | USDC stake amount when USDC is enabled |
 | `ESCROW_PERIOD`    | `30 days`                           | Default escrow hold duration          |
+| `REVENUE_ESCROW_OWNER` | Deployer on local chains only | Operational owner/multisig; required on shared networks |
+| `REVENUE_ESCROW_GUARDIAN` | Owner on local chains only | Independent timelock proposer/executor/canceller; required and distinct on shared networks |
+| `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` | `172800` | Upgrade delay in seconds; shared networks require at least 48 hours |
 
 ### Update Stablecoin Stake on an Existing Deployment
 
@@ -214,6 +281,9 @@ forge test --match-path 'test/fuzz/*' --fuzz-runs 1024
 
 # Invariant tests
 forge test --match-path 'test/invariant/*' --invariant-runs 256
+
+# Isolated Kernel v4 compatibility checks (after ./scripts/install-deps.sh)
+make kernel-v4-test
 
 # Formal/symbolic tests currently written in Foundry style for Halmos
 halmos --contract StemNFTFormalTest
@@ -288,22 +358,40 @@ cast send $REVENUE_ESCROW "release(uint256)" 1 --rpc-url $RPC_URL
 
 ## Upgradeability
 
-**ContentProtection** uses the UUPS proxy pattern (OpenZeppelin). Only the owner can authorize upgrades via `_authorizeUpgrade()`.
+**ContentProtection**, **ShowCampaignEscrow**, **RevenueEscrow**, and
+**StemMarketplaceV2** use the OpenZeppelin UUPS proxy pattern. All four
+custody/routing contracts separate their operational owner from a guarded
+timelock upgrade authority with an independent guardian recovery path. See
+`docs/features/custody_upgrade_recovery.md` for the current posture.
 
-```solidity
-ContentProtection newImpl = new ContentProtection();
-contentProtection.upgradeToAndCall(address(newImpl), "");
-```
+ContentProtection's existing proxies require the explicit one-time
+`MigrateContentProtectionV6.s.sol` prepare/verify/execute bootstrap. Subsequent
+upgrades use `UpgradeContentProtection.s.sol` to schedule and execute identical
+calldata through the configured timelock; the owner cannot upgrade directly.
+
+**Reinitializer migrations.** New logic that needs one-time state setup on already
+deployed proxies runs through a versioned `reinitializer`. The CP-1 attestation-voucher
+change (#1271) initialized the EIP-712 domain via `reinitializeV5()` (versions 2–4 were
+consumed by earlier upgrades). The guarded-authority migration uses
+`reinitializeV6(timelock)`, which also initializes the same domain for older proxies.
+Fresh deployments consume version 6 in `initializeFresh`.
 
 ### Storage-layout safety
 
-The contract reserves a trailing `__gap` and follows append-only storage
-discipline. A CI gate (`scripts/check-storage-layout.sh`, run in the
-`Smart Contract Tests` job) diffs each upgradeable contract's layout against a
-committed baseline under `contracts/storage-layout/` and **fails on any drift**,
-so a layout-breaking change can't reach a proxy unnoticed. After an intentional,
-upgrade-safe change (append a variable, shrink `__gap`), regenerate and commit the
-baseline:
+Upgradeable contracts follow append-only storage discipline. Existing
+linear-layout proxies reserve a trailing `__gap`; the fresh
+`StemMarketplaceV2` proxy baseline instead keeps all marketplace-owned state in
+the ERC-7201 namespace `resonate.storage.StemMarketplaceV2`, isolated from
+inherited OpenZeppelin storage. A CI gate (`scripts/check-storage-layout.sh`, run
+in the `Smart Contract Tests` job) diffs each upgradeable contract's linear or
+namespace-relative layout against a committed baseline under
+`contracts/storage-layout/` and **fails on any drift**, so a layout-breaking
+change can't reach a proxy unnoticed.
+
+For a linear layout, append a variable and shrink `__gap`. For an ERC-7201
+namespace, append fields to the namespace struct; never reorder, remove, or
+change existing fields. After any intentional upgrade-safe change, regenerate
+and commit the baseline:
 
 ```bash
 forge build --extra-output storageLayout

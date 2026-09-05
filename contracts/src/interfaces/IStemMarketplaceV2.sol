@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IFailedPaymentRecovery} from "../common/IFailedPaymentRecovery.sol";
+import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
+import {INativePayment} from "../common/INativePayment.sol";
+import {IPausableGuard} from "../common/IPausableGuard.sol";
+import {IPaymentAssetRegistryConsumer} from "../common/IPaymentAssetRegistryConsumer.sol";
+import {IUpgradeAuthority} from "../common/IUpgradeAuthority.sol";
+
 /// @title IStemMarketplaceV2
 /// @notice Canonical shared surface (struct, events, errors) for StemMarketplaceV2.
 /// Production code, tests, indexers, and the backend import this so the
 /// listing/event/error contract cannot silently drift. `Listing` is the public
 /// return type of `getListing`, so it lives here too.
-interface IStemMarketplaceV2 {
+interface IStemMarketplaceV2 is
+    IAddressGuard,
+    IFailedPaymentRecovery,
+    IFeeOnTransferGuard,
+    INativePayment,
+    IPausableGuard,
+    IPaymentAssetRegistryConsumer,
+    IUpgradeAuthority
+{
     // ============ Structs ============
 
     struct Listing {
@@ -24,8 +40,7 @@ interface IStemMarketplaceV2 {
     event Cancelled(uint256 indexed listingId);
     event Sold(uint256 indexed listingId, address indexed buyer, uint256 amount, uint256 totalPaid);
     event RoyaltyPaid(uint256 indexed tokenId, address indexed recipient, uint256 amount);
-    event PaymentEscrowed(address indexed token, address indexed recipient, uint256 amount);
-    event FailedPaymentClaimed(address indexed token, address indexed recipient, uint256 amount);
+    event MarketplacePaused(bool paused);
 
     // ============ Errors ============
 
@@ -34,18 +49,12 @@ interface IStemMarketplaceV2 {
     error Expired();
     error InsufficientPayment();
     error InsufficientAmount();
-    error TransferFailed();
     error InvalidFee();
     error InvalidRecipient();
     error MarketplaceNotApproved();
     error CannotBuyOwnListing();
-    error UnexpectedETH();
     error NoRecentMint();
     error PriceExceedsStakeCap();
-    error ZeroAddress();
     error UnsupportedPaymentAsset();
     error ListingExpiryOverflow();
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
-    error NothingToClaim();
-    error OnlySelf();
 }

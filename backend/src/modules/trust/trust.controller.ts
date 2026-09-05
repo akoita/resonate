@@ -1,15 +1,41 @@
-import { Controller, Get, Param, Post, UseGuards, Logger } from "@nestjs/common";
+import {
+  Controller,
+  Get,
+  Param,
+  Post,
+  Request,
+  UseGuards,
+  Logger,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { TrustService } from "./trust.service";
+import { PayoutEligibilityService } from "./payout-eligibility.service";
 import { deriveCreatorVerificationStates } from "./verification-semantics";
 
 @Controller("api/trust")
 export class TrustController {
   private readonly logger = new Logger(TrustController.name);
 
-  constructor(private readonly trustService: TrustService) {}
+  constructor(
+    private readonly trustService: TrustService,
+    private readonly payoutEligibilityService: PayoutEligibilityService,
+  ) {}
+
+  /**
+   * GET /api/trust/me/payout-eligibility
+   * Self-serve, explainable payout eligibility for the authenticated caller's
+   * artist profile (ADR-BM-5, #1498). Returns `eligible`, the full reason list
+   * with resolutions, and the input states used — so the artist sees an honest
+   * "why + how to fix". A caller with no artist profile gets a 200 with
+   * `eligible:false` and an `artist_profile_required` reason (never a 404).
+   */
+  @Get("me/payout-eligibility")
+  @UseGuards(AuthGuard("jwt"))
+  async getMyPayoutEligibility(@Request() req: any) {
+    return this.payoutEligibilityService.checkForUser(req.user.userId);
+  }
 
   /**
    * GET /api/trust/:artistId

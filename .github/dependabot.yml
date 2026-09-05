@@ -1,0 +1,72 @@
+version: 2
+
+# Routine version updates are consolidated into one monthly cross-ecosystem PR.
+# Security updates remain event-driven through GitHub's enabled native setting
+# and are grouped into one PR per affected ecosystem.
+multi-ecosystem-groups:
+  monthly-routine-updates:
+    schedule:
+      interval: monthly
+      time: "04:00"
+      timezone: Europe/Paris
+    commit-message:
+      prefix: deps
+
+updates:
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - /backend
+      - /web
+      - /desktop
+      - /examples/mcp-client
+      - /scripts/staging-smoke
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  # The archived experiments/stable-audio-3-spike tree is intentionally not
+  # configured: it is outside the production policy and maintained graph.
+  - package-ecosystem: pip
+    directories:
+      - /workers/analytics-dataflow
+      - /workers/demucs
+      - /workers/stable-audio
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
+    groups:
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /web
+      - /workers/analytics-dataflow
+      - /workers/demucs
+      - /workers/stable-audio
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
+    groups:
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: monthly-routine-updates
+    open-pull-requests-limit: 5

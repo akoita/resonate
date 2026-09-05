@@ -106,6 +106,7 @@ add_generation_tests() {
       "src/modules/agents/agent_wallet.spec.ts" \
       "src/tests/agent_evaluation.spec.ts" \
       "src/tests/agent_golden_eval.spec.ts" \
+      "src/tests/agent_identity.spec.ts" \
       "src/tests/agents.spec.ts" \
       "src/tests/embeddings.spec.ts" \
       "src/tests/generation.controller.http.spec.ts" \
@@ -130,6 +131,7 @@ add_marketplace_tests() {
       "src/tests/analytics.spec.ts" \
       "src/tests/artist.controller.spec.ts" \
       "src/tests/curation.spec.ts" \
+      "src/tests/mcp.controller.http.spec.ts" \
       "src/modules/notifications/notification.service.spec.ts" \
       "src/tests/payments.spec.ts" \
       "src/tests/playlist.controller.http.spec.ts" \
@@ -153,6 +155,7 @@ add_marketplace_tests() {
       "src/tests/artist.integration.spec.ts" \
       "src/tests/curator-reputation.integration.spec.ts" \
       "src/tests/dmca.service.integration.spec.ts" \
+      "src/tests/mcp.stem.integration.spec.ts" \
       "src/tests/playlist.integration.spec.ts" \
       "src/tests/recommendations.integration.spec.ts"
   fi

@@ -1,44 +1,64 @@
+#!/usr/bin/env node
 import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
-const lockfiles = [
-  'package-lock.json',
-  'backend/package-lock.json',
-  'desktop/package-lock.json',
-  'web/package-lock.json',
-];
+import { FIRST_PARTY_PROJECTS, REPOSITORY_ROOT } from './npm-lifecycle-policy.mjs';
 
-const allowedPrefixes = [
+export const ALLOWED_LOCKFILE_SOURCE_PREFIXES = Object.freeze([
   'https://registry.npmjs.org/',
   'file:',
-];
+]);
 
-const failures = [];
+export function validateNpmLockSources(repositoryRoot = REPOSITORY_ROOT) {
+  const failures = [];
 
-for (const lockfile of lockfiles) {
-  if (!fs.existsSync(lockfile)) {
-    failures.push(`${lockfile}: missing lockfile`);
-    continue;
-  }
-
-  const lock = JSON.parse(fs.readFileSync(lockfile, 'utf8'));
-  for (const [packagePath, metadata] of Object.entries(lock.packages ?? {})) {
-    const resolved = metadata?.resolved;
-    if (!resolved) {
+  for (const { lockfile } of FIRST_PARTY_PROJECTS) {
+    const absoluteLockfile = path.join(repositoryRoot, lockfile);
+    if (!fs.existsSync(absoluteLockfile)) {
+      failures.push(`${lockfile}: missing lockfile`);
       continue;
     }
 
-    if (!allowedPrefixes.some((prefix) => resolved.startsWith(prefix))) {
-      failures.push(`${lockfile}:${packagePath || '<root>'} -> ${resolved}`);
+    let lock;
+    try {
+      lock = JSON.parse(fs.readFileSync(absoluteLockfile, 'utf8'));
+    } catch (error) {
+      failures.push(`${lockfile}: ${error.message}`);
+      continue;
+    }
+
+    for (const [packagePath, metadata] of Object.entries(lock.packages ?? {})) {
+      const resolved = metadata?.resolved;
+      if (!resolved) {
+        continue;
+      }
+
+      if (!ALLOWED_LOCKFILE_SOURCE_PREFIXES.some((prefix) => resolved.startsWith(prefix))) {
+        failures.push(`${lockfile}:${packagePath || '<root>'} -> ${resolved}`);
+      }
     }
   }
+
+  return failures;
 }
 
-if (failures.length > 0) {
-  console.error('Unexpected package-lock source entries found:');
-  for (const failure of failures) {
-    console.error(`- ${failure}`);
+export function assertNpmLockSources(repositoryRoot = REPOSITORY_ROOT) {
+  const failures = validateNpmLockSources(repositoryRoot);
+  if (failures.length > 0) {
+    throw new Error(`Unexpected package-lock source entries found:\n- ${failures.join('\n- ')}`);
   }
-  process.exit(1);
 }
 
-console.log('All npm lockfile sources resolve to the public npm registry or local file references.');
+const isMain = process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isMain) {
+  try {
+    assertNpmLockSources();
+    console.log('All first-party npm lockfile sources resolve to the public npm registry or local file references.');
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}

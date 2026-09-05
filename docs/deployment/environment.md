@@ -2,13 +2,17 @@
 
 Application environment variables live here when they affect app code, local
 runtime behavior, or contract-adjacent tooling. Infrastructure-only variables
-belong in `resonate-iac`.
+belong in `resonate-iac`. A non-secret build-time variable consumed by an
+application build belongs in the application's protected GitHub Actions
+environment; IaC may deploy the resulting immutable image without requiring a
+separate source change.
 
 When adding a new environment variable:
 
 1. Document it in the table below.
-2. Add it to the relevant Terraform or service configuration in `resonate-iac`
-   when it is used by deployed infrastructure.
+2. Add it to the relevant application build/deploy workflow or service
+   configuration. Add a corresponding `resonate-iac` change only when IaC
+   itself owns or consumes the variable.
 3. Keep secrets in secret managers or GitHub environment secrets, never in
    source.
 
@@ -18,11 +22,19 @@ When adding a new environment variable:
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | Frontend | Defaults to `http://localhost:3001` in local app workflows. This is the only browser API base URL: `NEXT_PUBLIC_BACKEND_URL` is not a Resonate variable (removed from code in #1145 after it silently broke browser metadata fetches on deployed environments) |
 | `NEXT_PUBLIC_X402_RPC_URL` | Frontend | Optional browser RPC URL for x402 wallet network switching when using a non-default x402 chain |
+| `NEXT_PUBLIC_SITE_URL` | Frontend | Absolute public origin of the web app (e.g. `https://app.resonate.example`). Sets the canonical origin and Next `metadataBase` so canonical links and relative Open Graph / Twitter image URLs — including the per-moment share OG card at `/moments/[momentId]/opengraph-image` — resolve correctly for crawlers and shared links. Defaults to `http://localhost:3001`. See [SEO Metadata Management](../features/seo_metadata.md). |
+| `IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL` | Frontend build-time | Non-secret GitHub Actions environment variable in `akoita/resonate`, consumed while building the frontend. Optional Next image optimizer cache TTL in seconds; defaults to `0` and clamps to `0..86400`. Release covers and Shows campaign visuals use server-owned revision path segments, so a successful replacement produces a new optimizer key without waiting for expiry; legacy unversioned paths remain readable and resolve the current image. The post-fix [#1666 staging trial](../issue-1666-staging-validation-plan.md) passed the TTL `0` image budget, but the staging-only TTL `300` candidate produced zero warm optimizer hits and did not improve warm reuse, so it was rejected. The staging Actions variable was deleted and staging remains at the default/rollback value `0`; no production value is configured. Terraform in `resonate-iac` deploys the immutable image and did not require a separate source issue, PR, or change. |
+| `IMAGE_OPTIMIZER_SHARP_CONCURRENCY` | Frontend build-time | Optional Sharp image optimizer concurrency per process. Defaults to `1` and clamps to `1..4`; this is a per-process memory/CPU bound. |
 | `NEXT_PUBLIC_CHAIN_ID` | Frontend | `31337` for local Anvil, `11155111` for Sepolia fork mode, `84532` for Base Sepolia staging |
 | `NEXT_PUBLIC_RPC_URL` | Frontend | Optional RPC override. Use for local/fork AA flows; deployed builds otherwise fall back to the chain default RPC. |
-| `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional block explorer base URL used for address and transaction links. Leave unset for local Anvil. |
-| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional block explorer address base URL used by Shows campaign contract links. Defaults to Sepolia Etherscan for local seeded demos. |
+| `NEXT_PUBLIC_EXPLORER_URL` | Frontend | Optional HTTP(S) block explorer root for the exact chain in `NEXT_PUBLIC_CHAIN_ID` (for example, `https://base-sepolia.blockscout.com` for Base Sepolia). The override applies only when a link's requested chain matches that safely parsed chain ID; other known chains keep their viem explorer metadata, and an invalid URL falls back to that metadata. Shows contract links to Blockscout open the contract tab. Leave unset for local Anvil. |
+| `NEXT_PUBLIC_SHOWS_EXPLORER_BASE_URL` | Frontend | Optional legacy fallback for Shows campaign contract links when a campaign has an unknown or missing chain ID. Known chains use the matching `NEXT_PUBLIC_EXPLORER_URL` override or their authoritative viem metadata, and local chains have no explorer link. Accepts either an explorer root or a base ending in `/address`. Seeded offline samples do not expose a live escrow link. |
 | `NEXT_PUBLIC_AA_BUNDLER` | Frontend | Optional public bundler override; when unset the browser falls back to `/api/bundler` unless a public Pimlico key is provided |
+| `NEXT_PUBLIC_AA_ENTRY_POINT` | Frontend | EntryPoint address for repository-owned local/custom AA deployments. The supported boundary is EntryPoint v0.7. |
+| `NEXT_PUBLIC_AA_FACTORY` | Frontend | Kernel factory deployed on the selected local/custom chain. Generated local config passes this factory directly instead of assuming the public ZeroDev MetaFactory exists. |
+| `NEXT_PUBLIC_AA_KERNEL` | Frontend | Kernel implementation behind `NEXT_PUBLIC_AA_FACTORY`; generated from the same `DeployLocalAA` broadcast as the factory. |
+| `NEXT_PUBLIC_AA_KERNEL_VERSION` | Frontend | Must be `0.3.1` for the current app SDK boundary. The app fails fast instead of constructing calldata for another Kernel surface. |
+| `NEXT_PUBLIC_AA_USE_META_FACTORY` | Frontend | `false` for repository-owned Anvil/custom-chain deployments; `true` for canonical public ZeroDev deployments such as the Sepolia fork. |
 | `NEXT_PUBLIC_AA_PAYMASTER_ENABLED` | Frontend | Optional flag (`true` / `1` / `yes`) to attach a ZeroDev paymaster client to browser UserOps. Leave unset when wallet gas sponsorship is not configured so transactions self-pay from the smart account ETH balance |
 | `NEXT_PUBLIC_PIMLICO_API_KEY` | Frontend | Optional public Pimlico key. Leave unset when using server-side bundler config via `/api/bundler` |
 | `NEXT_PUBLIC_ZERODEV_PROJECT_ID` | Frontend | Optional ZeroDev project ID. When set, passkey login uses the hosted ZeroDev passkey server instead of the self-hosted backend passkey store |
@@ -62,6 +74,9 @@ When adding a new environment variable:
 | `AGENT_TASTE_BIGQUERY_QUERY_TIMEOUT_MS` | Backend | Optional timeout for agent taste score queries. Defaults to `5000`. |
 | `AGENT_TASTE_BIGQUERY_ROW_LIMIT` | Backend | Optional maximum taste score rows returned per selector call. Defaults to `100`. |
 | `AGENT_TASTE_BIGQUERY_API_BASE_URL` | Backend | Optional BigQuery API base URL override for tests or private endpoints. Defaults to the analytics BigQuery API base URL, then the public BigQuery API. |
+| `DISCOVERY_MIN_AUDIENCE` | Backend | Minimum unique listeners before a track/artist may appear in Trending Now / Top Artists (`/catalog/trending`, `/catalog/top-artists`). Below it, rows are never written and the UI shows an honest low-data state. Defaults to `3`. |
+| `DISCOVERY_POPULARITY_REFRESH_MINUTES` | Backend | Cadence of the interim popularity aggregation that fills the `TrackPopularity`/`ArtistEngagement` serving tables from local analytics facts (replaced by the #1450 warehouse marts). `0` disables the scheduler (tests). Defaults to `15`. |
+| `DISCOVERY_EXPLORATION_COUNT` | Backend | Size of the Home feed's exploration slice — fresh/low-data tracks mixed into every personalized render to escape feedback loops (#1454). `0` disables the rail. Defaults to `4`. |
 | `ANALYTICS_EVENT_PUBLISHING_ENABLED` | Backend | Enables publishing validated analytics event envelopes to Pub/Sub after ledger persistence. Defaults to disabled. |
 | `ANALYTICS_EVENT_PUBLISHING_STRICT` | Backend | When true, Pub/Sub publish failures fail analytics ingestion. Defaults to false so user flows keep working while failures are logged. |
 | `ANALYTICS_EVENT_PUBSUB_PROJECT_ID` | Backend | Optional Pub/Sub project override for analytics event publishing. Falls back to `GCP_PROJECT_ID`, `GOOGLE_CLOUD_PROJECT`, or `GCLOUD_PROJECT`. |
@@ -77,14 +92,21 @@ When adding a new environment variable:
 | `DEMUCS_WORKER_URL` | Backend | Demucs worker base URL for separation requests and the stem feature backfill (`POST /admin/stems/backfill-audio-features` → worker `/analyze`). Defaults to `http://localhost:8000` |
 | `WORKER_MAX_UPLOAD_BYTES` | Demucs worker | Optional upload ceiling for the worker's `/separate` and `/analyze` endpoints (default `209715200` = 200 MiB). Oversized uploads are refused with HTTP 413 before touching disk-backed processing (#1184) |
 | `DEMUCS_CLOUD_RUN_JOB_NAME` | Backend | Cloud Run Job name to execute after publishing each `stem-separate` message |
-| `GCP_BILLING_QUOTA_PROJECT` | CI | Optional quota/billing project for Cloud Build submission; deploy CI defaults it to `GCP_PROJECT_ID` |
-| `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | CI | Optional Cloud Storage prefix for `gcloud builds submit` source archives; deploy CI defaults it from `GCP_PROJECT_ID` |
-| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | CI | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
-| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | CI | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | CI | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | CI | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
-| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | CI | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
+| `GCP_BILLING_QUOTA_PROJECT` | Release image publisher | Optional quota/billing project for Cloud Build submission; release publication defaults it to `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR` | Release image publisher | Optional Cloud Storage prefix for `gcloud builds submit` source archives; release publication defaults it from `GCP_PROJECT_ID` |
+| `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | Release image publisher | Optional Cloud Build polling interval for image publishing. Defaults to `10` seconds to avoid Cloud Build get-request quota spikes when multiple images publish in parallel |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY` | Analytics Dataflow publication | Optional Artifact Registry repository for the analytics Dataflow Flex Template image. Defaults to `resonate-<environment>` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET` | Analytics Dataflow publication | Optional GCS bucket for analytics Dataflow template, staging, and temp artifacts. Defaults to `<GCP_PROJECT_ID>-analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX` | Analytics Dataflow publication | Optional GCS prefix for analytics Dataflow `template.json`. Defaults to `templates/<environment>/analytics-dataflow` |
+| `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Analytics Dataflow publication | Optional full `gs://.../template.json` override for the analytics Dataflow Flex Template publish workflow |
 | `AA_BUNDLER` | Backend / frontend server runtime | Server-side bundler URL used by account-abstraction flows and the `/api/bundler` proxy |
+| `AA_ENTRY_POINT` | Backend | EntryPoint v0.7 address used by AA services and exposed runtime configuration. |
+| `AA_FACTORY` | Backend | Kernel v3.1 factory address paired with `AA_ENTRY_POINT`. |
+| `AA_KERNEL` | Backend | Kernel v3.1 implementation address produced by the local/custom deployment. |
+| `AA_KERNEL_VERSION` | Backend | Must be `0.3.1`; backend session-key flows reject a different configured account surface. |
+| `AA_CHAIN_ID` | Backend | Positive execution-chain ID used by AA clients. Custom devnet IDs are preserved rather than mapped to Sepolia. |
+| `AA_FUNDER_KEY` | Backend secret | Optional explicit 32-byte key for local/custom-chain account funding. The well-known Anvil key is used automatically only on chain `31337`; every other chain requires this explicit value or external funding. |
+| `AA_STRICT_MODE` | Backend | When `true`, disables all automatic local account funding so tests exercise production-style gas ownership. |
 | `PIMLICO_API_KEY` | Frontend server runtime | Optional server-side Pimlico key used by `/api/bundler` without exposing it to the browser |
 | `FRONTEND_URL` | Backend | Public frontend origin used for generated metadata links, self-hosted WebAuthn fallback, and CORS allowlisting |
 | `CORS_ORIGIN` | Backend | Optional comma-separated browser origins allowed to call the backend. Defaults include local dev and also derives from `FRONTEND_URL` / `WEBAUTHN_ORIGIN` |
@@ -95,6 +117,13 @@ When adding a new environment variable:
 | `BASE_SEPOLIA_RPC_URL` | Contracts / backend | Required for Base Sepolia protocol deploys and single-chain x402 staging |
 | `CONTRACT_DEPLOYER_PRIVATE_KEY` | Contracts secret | Preferred GitHub Actions deployer key for `.github/workflows/contracts-deploy.yml`. Use protected GitHub environments; do not store in source. Existing local scripts still read `PRIVATE_KEY` |
 | `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` | Contracts | Explicit override that lets Forge scripts use the default Anvil key on a non-local RPC. Leave unset in shared remote environments. |
+| `AA_RPC_URL` | Local AA operator | Host-visible execution RPC used by Forge and app config in `make local-aa-deploy-custom` / `make local-aa-config-custom`. |
+| `AA_ALTO_RPC_URL` | Local AA operator | Docker-visible execution RPC used by the `custom-aa` Alto profile. For a host-published Kurtosis port, use `http://host.docker.internal:<port>`. |
+| `AA_EXECUTOR_PRIVATE_KEY` / `AA_UTILITY_PRIVATE_KEY` | Local AA secrets | Explicit funded keys required by the custom-chain Alto profile. No default development keys are supplied for custom chain IDs. |
+| `AA_BUNDLER_PORT` | Local AA operator | Optional host port for custom-chain Alto; defaults to `4337`. |
+| `AA_NETWORK_NAME` | Local AA operator | Optional diagnostic network name passed to custom-chain Alto; defaults to `custom-local`. |
+| `AA_EXECUTOR_GAS_MULTIPLIER` | Local AA operator | Optional Alto bundle gas multiplier percentage; use `1500` for the current Platåberget EIP-8037 characterization network. |
+| `AA_V7_VERIFICATION_GAS_MULTIPLIER` | Local AA operator | Optional Alto ERC-4337 v0.7 verification-gas multiplier percentage; use `1500` when counterfactual deployment needs Platåberget state-gas headroom. |
 | `ETHERSCAN_API_KEY` | Contracts secret | Optional Etherscan API v2 key used for Base Sepolia contract verification. Store in secret manager/GitHub environment secrets when used in CI |
 | `BASESCAN_API_KEY` | Contracts secret | Backward-compatible alias for `ETHERSCAN_API_KEY` in Base Sepolia verification scripts |
 | `BASESCAN_API_URL` | Contracts | Optional verification API override. Defaults to `https://api.etherscan.io/v2/api`, which requires a key/plan with Base Sepolia API access |
@@ -104,12 +133,33 @@ When adding a new environment variable:
 | `SOURCIFY_API_URL` | Contracts | Optional Sourcify server override for `make verify-base-sepolia-sourcify`; defaults to `https://sourcify.dev/server` |
 | `SOURCIFY_RETRIES` / `SOURCIFY_DELAY_SECONDS` | Contracts | Optional Sourcify retry tuning for `make verify-base-sepolia-sourcify`; defaults to `12` retries and `5` seconds |
 | `STEM_NFT_ADDRESS` / `MARKETPLACE_ADDRESS` / `TRANSFER_VALIDATOR_ADDRESS` | Contracts | Required/optional references for the partial `deploy-content-protection` GitHub workflow operation; set `MARKETPLACE_ADDRESS` when the existing marketplace must receive registrar permission |
-| `CONTENT_PROTECTION_PROXY` | Contracts | Required for the `upgrade-content-protection` GitHub workflow operation |
+| `MARKETPLACE_OWNER` / `MARKETPLACE_GUARDIAN` / `MARKETPLACE_TIMELOCK_MIN_DELAY` | Contracts | Guarded StemMarketplaceV2 deployment authority. Shared networks require an independent guardian and a delay of at least 172800 seconds. |
+| `MARKETPLACE_IMPLEMENTATION` / `MARKETPLACE_TIMELOCK_ADDRESS` / `MARKETPLACE_DEPLOYER` / `MARKETPLACE_PAUSED` | Contracts handoff | Expected implementation, authority graph, original deployer, and pause state used by marketplace smoke checks and upgrade operations. Applications continue using the stable `MARKETPLACE_ADDRESS` proxy. |
+| `MARKETPLACE_UPGRADE_SALT` / `NEW_IMPLEMENTATION` | Contracts | Optional operation salt and reviewed candidate implementation for the schedule/execute marketplace upgrade workflow. |
+| `CONTENT_PROTECTION_PROXY` | Contracts | Stable proxy address used by ContentProtection migration, pause, smoke, and upgrade operations |
+| `CONTENT_PROTECTION_OWNER` | Contracts | Operational owner/multisig; required for shared-network guarded deployments and migration |
+| `CONTENT_PROTECTION_LIVE_OWNER` | Contracts | Expected current on-chain owner during smoke; may be the deployer until the two-step handoff is accepted |
+| `CONTENT_PROTECTION_PENDING_OWNER` | Contracts | Expected staged owner during a two-step post-deploy handoff; zero/empty after acceptance |
+| `CONTENT_PROTECTION_GUARDIAN` | Contracts | Independent timelock proposer/executor/canceller; must differ from owner and deployer remotely |
+| `CONTENT_PROTECTION_TIMELOCK_ADDRESS` | Contracts | Sole post-V6 UUPS upgrade authority |
+| `CONTENT_PROTECTION_TIMELOCK_MIN_DELAY` | Contracts | Timelock delay in seconds; shared networks require at least `172800` (48 hours) |
+| `CONTENT_PROTECTION_IMPLEMENTATION` | Contracts | Reviewed implementation expected in the proxy's ERC-1967 slot for smoke validation |
+| `CONTENT_PROTECTION_DEPLOYER` | Contracts | Bootstrap deployer recorded for checking timelock admin renunciation |
+| `CONTENT_PROTECTION_PAUSED` | Contracts | Expected pause state for read-only smoke checks (default `false`) |
+| `CONTENT_PROTECTION_UPGRADE_SALT` / `NEW_IMPLEMENTATION` | Contracts | Optional operation salt and exact reviewed implementation used by ContentProtection schedule/execute or legacy migration execution |
 | `CONTENT_PROTECTION_ADDRESS` | Contracts / backend | Existing ContentProtection proxy address; required for stake-policy update workflows and backend contract-aware flows |
+| `MINT_AUTHORIZER_ADDRESS` | Contracts / operations public config | Public address derived from `MINT_AUTHORIZER_PRIVATE_KEY`. Fresh full and isolated ContentProtection deployments register it as a registrar (default: deployer); V6 migration execution requires it and registers it in a separate transaction after the upgrade within the same workflow run; and `smoke-content-protection` requires it to verify voucher compatibility. Keep it aligned with the backend signing key on every chain. |
 | `STAKE_ASSET_ADDRESS` / `STAKE_ASSET_AMOUNT` / `STAKE_ASSET_SYMBOL` | Contracts | Optional stake-policy update workflow inputs; `STAKE_ASSET_ADDRESS` can fall back to `PAYMENT_USDC_ADDRESS` |
-| `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Optional owner/multisig for deploying `ShowCampaignEscrow`; defaults to the deployer |
+| `MINT_AUTHORIZER_PRIVATE_KEY` | Backend secret | Registrar/authorizer signer key reused by both `POST /contracts/mint-authorizations` and the CP-1 `POST /contracts/attestation-vouchers` endpoint. Falls back to `PRIVATE_KEY`. **Its address MUST be registered on ContentProtection via `setRegistrar(signer, true)`** or every attestation voucher reverts `InvalidAttestationSignature` on-chain. Store in secret manager/GitHub environment secrets, never source. Per-chain ContentProtection proxy resolution uses `CONTENT_PROTECTION_ADDRESS` (31337) / `SEPOLIA_CONTENT_PROTECTION_ADDRESS` / `BASE_SEPOLIA_CONTENT_PROTECTION_ADDRESS` |
+| `ATTESTATION_VOUCHER_TTL_SECONDS` | Backend | Validity window (seconds) of a CP-1 attestation authorization voucher signed by `POST /contracts/attestation-vouchers`. Bounds how long a signed `(attester, tokenId, deadline)` voucher can be replayed before the caller must re-request. Defaults to `600` (10 minutes) |
+| `SHOW_CAMPAIGN_ESCROW_OWNER` | Contracts | Owner/ops multisig for deploying `ShowCampaignEscrow`; required on shared networks, local deployments default to the deployer |
 | `SHOW_CAMPAIGN_ESCROW_ADDRESS` | Backend / frontend | Deployed Shows escrow address (chain-agnostic fallback) used by pledge execution and event reconciliation once Shows moves beyond backend receipts. The backend resolver `configuredShowCampaignEscrowAddress(chainId)` prefers per-chain overrides `SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS` / `BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS` / `ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS`, fails closed on unset/zero/malformed values, and supplies the default `contractAddress` at campaign activation |
 | `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` | Frontend | Public default Shows escrow address promoted from `contracts/deployments/show-campaign-escrow.<network>.remote.env`; individual campaigns still come from backend `contractAddress` / `contractCampaignId` records |
+| `SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK` | Backend / contracts handoff | Exact deployment block for the current escrow. Used as the replay origin when the backend-only multi-address target list is not configured; per-chain overrides follow the address naming pattern |
+| `SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS` | Backend | Comma-separated `address:deploymentBlock` targets watched by the Shows escrow indexer. Per-chain overrides such as `BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS` take precedence. Every entry requires an exact block, and the current escrow address must be included. Keep legacy escrows listed until all campaigns and refund claims on them are terminal; never expose this list to the frontend |
+| `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` | Contracts | UUPS upgrade timelock delay in seconds; defaults to and may not be below `172800` (48 hours) on shared networks |
+| `SHOW_CAMPAIGN_GUARDIAN` | Contracts | Independent non-zero recovery authority for the escrow upgrade timelock; required on shared networks and must differ from the owner and deployer |
+| `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` | Contracts | Seconds after booking confirmation before the permissionless refund escape opens; defaults to `2592000` (30 days) and is bounded by the contract |
 | `SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS` | Backend | Optional default ERC-20 payment token for artist-created show campaigns; normal artists cannot choose arbitrary payment token addresses |
 | `SHOWS_ALLOWED_PAYMENT_TOKEN_ADDRESSES` | Backend | Optional comma-separated allowlist of ERC-20 payment tokens accepted by Shows campaign drafts and pledge intents |
 | `TRUST_STAKE_WEI_NEW` | Backend | Optional override for the new-creator content-protection stake requirement |
@@ -160,6 +210,13 @@ When adding a new environment variable:
 | `SHOWS_DEFAULT_CHAIN_ID` | Backend | Optional chain ID default for newly created Shows signals/campaign drafts. Falls back to `PAYMENT_CHAIN_ID`, `AA_CHAIN_ID`, `CHAIN_ID`, then Base Sepolia local/staging default. |
 | `SHOWS_DEFAULT_PAYMENT_ASSET_SYMBOL` | Backend | Optional display symbol default for newly created Shows signals/campaign drafts. Defaults to `USDC`. |
 | `SHOWS_VISUAL_MAX_BYTES` | Backend | Optional maximum size in bytes for each uploaded Shows campaign hero/preview visual. Defaults to `8388608` (8 MiB). |
+| `SHOWS_VISUAL_MAX_TOTAL_BYTES` | Backend | Optional aggregate encoded-size ceiling for one Shows campaign visual upload request. Defaults to `33554432` (32 MiB), before multipart overhead. |
+| `RELEASE_ARTWORK_MAX_BYTES` | Backend | Optional maximum encoded size in bytes for release artwork uploads and AI-generation artwork publishing. Defaults to `8388608` (8 MiB). |
+| `ARTWORK_MAX_INPUT_PIXELS` | Backend | Optional decoded pixel ceiling for uploaded artwork before persistence. Defaults to `16777216` (`4096 × 4096`), matching the frontend optimizer guard. |
+| `INGESTION_MULTIPART_TEMP_DIR` | Backend | Optional root for request-owned temporary multipart directories. Each upload uses a unique child directory and cleanup never targets the configured root itself. Defaults to the operating-system temporary directory under `resonate-ingestion`. |
+| `INGESTION_MULTIPART_TIMEOUT_MS` | Backend | Optional lifetime timeout for an in-progress ingestion multipart request. Defaults to `900000` (15 minutes) and clamps to `1000..3600000` milliseconds. This is a request-lifecycle safety limit, not an audio-size limit. |
+| `INGESTION_MULTIPART_STALE_TTL_MS` | Backend | Optional age before an opportunistic sweep removes a stale generated `request-*` multipart directory. Defaults to `7200000` (2 hours), clamps to `3601000..604800000` milliseconds, and is always greater than the maximum live request timeout. The sweep never targets the configured root or non-generated children. |
+| `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS` | Backend | Optional maximum number of simultaneous ingestion multipart stream writers. Defaults to `4` and clamps to `1..20`; additional file streams remain paused under backpressure until a writer slot is available. This does not cap aggregate audio bytes. |
 | `ALLOW_SAMPLE_SHOW_FIXTURES` | Backend fixture tooling | Required as `true` before `npm run fixtures:shows` may write to a shared `dev`, `staging`, `test`, or production-labelled environment. Leave unset for normal runtime and local fixture creation. |
 | `SAMPLE_SHOWS_CHAIN_ID` | Backend fixture tooling | Optional positive chain ID recorded on sample Shows campaigns. Falls back to `AA_CHAIN_ID`, then local Anvil `31337`. |
 | `SAMPLE_SHOWS_ASSET_DIR` | Backend fixture tooling | Optional path to a reviewed sample Shows asset directory. Defaults to `backend/fixtures/show-campaigns/assets` when the command runs from `backend/`. |
@@ -202,10 +259,13 @@ When adding a new environment variable:
 | `INTERNAL_SERVICE_KEY` | Backend + internal workers | Shared secret for backend-originated privileged requests and Demucs callback authentication; required in production for internal worker callbacks |
 | `STEM_WATCHDOG_TIMEOUT_MS` | Backend | Optional timeout before active stem-processing tracks are failed as stale; defaults to `900000` locally |
 | `STEM_WATCHDOG_INTERVAL_MS` | Backend | Optional watchdog sweep interval for stale stem-processing tracks; defaults to `60000` locally |
+| `X402_REFUND_DUE_ALERT_INTERVAL_MS` | Backend | Optional sweep interval for the x402 `refund_due` reconciliation watchdog (#1506); defaults to `900000` (15 min) |
+| `X402_REFUND_DUE_ALERT_AFTER_HOURS` | Backend | Optional age threshold before an unresolved `refund_due` x402 settlement alerts operators via `x402.refund_due_stale`; defaults to `2` hours. Alerts fan out to `OPERATOR_ADDRESSES` / `ADMIN_ADDRESSES` |
 | `ENABLE_CONTRACT_INDEXER` | Backend | Enables background contract event indexing when set to `true`; deployed environments should only enable it when contract addresses are configured |
 | `INDEXER_POLL_INTERVAL_MS` | Backend | Optional contract indexer poll interval in milliseconds; defaults to `5000` |
-| `ENABLE_SHOWS_ESCROW_INDEXER` | Backend | Enables the `ShowCampaignEscrow` event indexer + on-chain campaign/pledge reconciliation (#948) when `true`; only enable once `SHOW_CAMPAIGN_ESCROW_ADDRESS` (or a per-chain override) is configured. Watches the chain from `INDEXER_CHAIN_ID`/`CHAIN_ID` |
+| `ENABLE_SHOWS_ESCROW_INDEXER` | Backend | Enables the `ShowCampaignEscrow` event indexer + on-chain campaign/pledge reconciliation (#948) when `true`; only enable once the current address and any legacy `SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS` are configured. Watches the chain from `INDEXER_CHAIN_ID`/`CHAIN_ID`. Each chain/address target uses a database-clock lease and fencing epoch, so lease-aware backend revisions can autoscale safely (#1567) |
 | `SHOWS_ESCROW_INDEXER_POLL_INTERVAL_MS` | Backend | Optional Shows escrow indexer poll interval in milliseconds; defaults to `5000` |
+| `SHOWS_ESCROW_LEASE_TTL_MS` | Backend | Optional per-target lease TTL in milliseconds; defaults to the greater of `30000` or three times `SHOWS_ESCROW_INDEXER_POLL_INTERVAL_MS`, accepts `5000`–`300000`, and when explicitly set must exceed twice the poll interval. Database time is authoritative; expiry bounds crash takeover latency |
 | `SHOWS_ESCROW_BLOCKS_PER_BATCH` | Backend | Optional Shows escrow indexer block batch size; defaults to `1000` |
 | `SHOWS_ESCROW_MAX_BATCHES_PER_CYCLE` | Backend | Optional Shows escrow indexer max batches per poll cycle; defaults to `20` |
 | `INDEXER_BLOCKS_PER_BATCH` | Backend | Optional maximum block range fetched per indexer batch; defaults to `1000` |
@@ -240,6 +300,11 @@ When adding a new environment variable:
 | `RESONATE_DESKTOP_DEVTOOLS` | Desktop shell | Optional local debugging flag; set to `true` to open Chromium DevTools on launch |
 | `DESKTOP_WEB_URL` | GitHub repository variable | Deployed web URL used by the `Desktop Release Artifacts` workflow when baking desktop packages from tags or manual runs. Manual workflow input `desktop_web_url` takes precedence |
 | `DESKTOP_ALLOWED_ORIGINS` | GitHub repository variable | Optional comma-separated extra origins passed to `RESONATE_DESKTOP_ALLOWED_ORIGINS` during desktop artifact builds |
+| `RELEASE_AUTOMATION_ENABLED` | GitHub repository variable | Safety switch for automatic Release Please pull-request updates after `main` changes. Leave unset/`false` until the release token and protected release environment are configured; manual preview remains available while disabled |
+| `RELEASE_PLEASE_TOKEN` | GitHub Actions repository secret | Dedicated least-privilege token used only to create/update the Release Please version pull request. Never store the value in source |
+| `SOFTWARE_RELEASE_TOKEN` | GitHub Actions secret in the protected `software-release` environment | Separate release-publisher credential used only after environment approval to create the immutable software tag and draft release. It must not be exposed to the automatic Release Please job |
+| `RELEASE_TAG_RULESET_ID` | GitHub Actions variable in the protected `software-release` environment | Positive numeric ID of the active tag ruleset that includes `refs/tags/v*`, protects creation/deletion/non-fast-forward updates, and has an always-enabled bypass actor. The publish workflow fetches and validates it before creating a tag |
+| `MILESTONE_TAG_RULESET_ID` | GitHub Actions variable in the protected `software-release` environment | Positive numeric ID of the active tag ruleset that includes `refs/tags/milestone-*`, protects creation/deletion/non-fast-forward updates, and has an always-enabled bypass actor. The publish workflow fetches and validates it before creating a tag |
 | `ERC8004_ENABLED` | Backend | Enables ERC-8004 identity registration and reputation metadata writes. Defaults to disabled |
 | `ERC8004_IDENTITY_REGISTRY_ADDRESS` | Backend | Optional ERC-8004 Identity Registry override. When omitted, the backend selects the official mainnet or testnet registry for supported chain IDs |
 | `ERC8004_CHAIN_ID` | Backend | Optional ERC-8004 chain override; falls back to `AA_CHAIN_ID`, then `CHAIN_ID`, then local Anvil |
@@ -249,6 +314,57 @@ When adding a new environment variable:
 | `ERC8004_REPUTATION_SCHEDULER_INTERVAL_MS` | Backend | Optional scheduler interval; defaults to `21600000` (6 hours) when the scheduler is enabled |
 | `ERC8004_REPUTATION_FRESHNESS_MS` | Backend | Optional freshness window before an agent is eligible for another reputation attestation; defaults to `86400000` (24 hours) |
 | `ERC8004_REPUTATION_SCHEDULER_BATCH_SIZE` | Backend | Optional maximum active minted agents refreshed per scheduler sweep; defaults to `25` |
+
+The CI-built standalone frontend bundle includes glibc-linked Sharp binaries, so
+the runtime defined by `web/Dockerfile.runtime` must provide the matching glibc
+ABI. The deployable frontend job builds that runtime context and exercises a
+real Sharp resize/WebP encode before the artifact is uploaded. The
+image-optimizer TTL policy above is unchanged.
+
+When an ingestion multipart request is rejected, the storage engine marks the
+request terminal, destroys every active or queued file stream, and destroys
+each active disk writer before removing the request directory. The writer
+high-water mark is fixed at `65536` bytes, so post-rejection disk growth is
+bounded by `INGESTION_MULTIPART_MAX_ACTIVE_WRITERS × 65536` bytes (256 KiB at
+the default of four writers); no later chunks are accepted or written. The
+bound covers bytes already handed to a writer when the rejection is observed,
+not the bytes received before rejection.
+
+## Release-Gated Deployment Workflows
+
+Ordinary CI validates source only. Image publication, deploy-manifest creation,
+and non-production handoff use explicit release workflows and the exact source
+SHA selected by an operator. The manual **Release Deployment** inputs are
+`mode` (`preview` or `publish`), `release_kind` (`planned` or `on-demand`),
+full `source_sha`, successful exact-SHA `ci_run_id`, `environment` (`dev` or
+`staging`), canonical service selection (all four services by default), and `deploy`.
+`dev` maps to `develop`; `staging` maps to `main`.
+
+### Target GitHub environment configuration
+
+The `dev` and `staging` GitHub environments are the publisher boundaries for
+Release Deployment and Analytics Dataflow publication. Environment reviewers,
+branch restrictions, wait timers, and approval rules are GitHub settings rather
+than environment variables; configure and review them outside this document.
+
+| Name | Location | Purpose |
+| --- | --- | --- |
+| `GCP_WIF_PROVIDER` | `dev`/`staging` GitHub environment secret | Workload Identity Federation provider used by GitHub Actions to authenticate to GCP. |
+| `GCP_ARTIFACT_REGISTRY_SA_EMAIL` | `dev`/`staging` GitHub environment secret | Dedicated Cloud Build/Artifact Registry publisher service account. |
+| `GCP_PROJECT_ID`, `GCP_REGION` | `dev`/`staging` GitHub environment variables | Target project and region; both are required by image and Analytics Dataflow publication. |
+| `NEXT_PUBLIC_*` build variables | `dev`/`staging` GitHub environment variables | Frontend build configuration, including API, chain, contract, and optimizer values listed above. |
+| `CI_FORCE_IMAGE_REBUILD` | Optional `dev`/`staging` GitHub environment variable | Set to `true` to bypass content-addressed image reuse for a release publication; leave unset to reuse unchanged image content safely. |
+| `GCP_BILLING_QUOTA_PROJECT`, `GCP_CLOUD_BUILD_SOURCE_STAGING_DIR`, `GCP_CLOUD_BUILD_POLLING_INTERVAL_SECONDS` | Optional `dev`/`staging` variables | Cloud Build quota, source-staging, and polling overrides. |
+| `ANALYTICS_DATAFLOW_ARTIFACT_REGISTRY_REPOSITORY`, `ANALYTICS_DATAFLOW_TEMPLATE_BUCKET`, `ANALYTICS_DATAFLOW_TEMPLATE_PREFIX`, `ANALYTICS_DATAFLOW_TEMPLATE_GCS_PATH` | Optional `dev`/`staging` variables | Analytics Dataflow image repository and Flex Template storage coordinates; the corresponding variable descriptions are listed above. |
+| `RESONATE_IAC_DISPATCH_TOKEN` | Actions secret available to Deploy Handoff | Repository-dispatch credential for `akoita/resonate-iac`; used only when a successful release has `deploy=true`, never for image publication. |
+
+Publish Analytics Dataflow Flex Template is `workflow_dispatch` only. Its
+required full `source_sha` must equal the dispatch revision and use the matching
+branch (`develop` for `dev`, `main` for `staging`). Deploy Handoff is reusable
+via `workflow_call` only from a successful explicitly dispatched Release
+Deployment run; its manual `workflow_dispatch` `release_run_id` path supports
+retry and rollback without rebuilding. It has no `workflow_run` trigger, and
+retries and rollbacks reuse the retained immutable manifest.
 
 ## Lyria Auth Modes
 

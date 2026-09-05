@@ -37,6 +37,14 @@ type DomainBridgeConfig = {
 
 const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
   {
+    eventName: "catalog.ai_disclosure_recorded",
+    producer: "catalog-service",
+    subjectType: "track",
+    subjectIdKeys: ["trackId"],
+    payloadKeys: ["releaseId", "trackId", "level", "source", "facets"],
+    sourceRefKeys: ["releaseId", "trackId"],
+  },
+  {
     eventName: "identity.authenticated",
     producer: "auth-service",
     subjectType: "user",
@@ -126,6 +134,32 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "blockNumber",
     ],
     sourceRefKeys: ["campaignId", "contractCampaignId", "chainId", "contractAddress", "transactionHash", "blockNumber"],
+  },
+  {
+    // #1271 ops/audit: durable, queryable record of every reconciliation
+    // mismatch the escrow indexer detects. Powers the operator endpoint
+    // GET /shows/operator/reconciliation-mismatches and the drift drill's
+    // assertion surface. Identifiers + coarse reason only — never PII/secrets.
+    eventName: "shows.campaign_reconciliation_mismatch",
+    producer: "shows-escrow-indexer",
+    subjectType: "show_campaign",
+    subjectIdKeys: ["contractCampaignId"],
+    payloadKeys: [
+      "chainId",
+      "contractAddress",
+      "contractCampaignId",
+      "escrowEventName",
+      "transactionHash",
+      "blockNumber",
+      "reason",
+    ],
+    sourceRefKeys: [
+      "chainId",
+      "contractAddress",
+      "contractCampaignId",
+      "transactionHash",
+      "blockNumber",
+    ],
   },
   {
     eventName: "taste_memory.settings_updated",
@@ -962,6 +996,82 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     sourceRefKeys: ["userId"],
   },
   {
+    // #489 Punchline Drops lifecycle → analytics facts.
+    eventName: "punchline.drop_published",
+    producer: "punchline-service",
+    subjectType: "punchline_drop",
+    subjectIdKeys: ["dropId"],
+    actorIdKeys: ["artistId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["dropId", "trackId", "artistId", "momentCount", "totalEditions"],
+    sourceRefKeys: ["dropId", "trackId", "artistId"],
+  },
+  {
+    eventName: "punchline.moment_collected",
+    producer: "punchline-service",
+    subjectType: "punchline_moment",
+    subjectIdKeys: ["momentId"],
+    actorIdKeys: ["collectorUserId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: [
+      "momentId",
+      "dropId",
+      "trackId",
+      "artistId",
+      "collectorUserId",
+      "editionNumber",
+      "pricePaidCents",
+      "paymentRail",
+    ],
+    sourceRefKeys: ["momentId", "dropId", "collectorUserId"],
+  },
+  {
+    eventName: "punchline.set_completed",
+    producer: "punchline-service",
+    subjectType: "punchline_drop",
+    subjectIdKeys: ["dropId"],
+    actorIdKeys: ["collectorUserId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["dropId", "trackId", "artistId", "collectorUserId"],
+    sourceRefKeys: ["dropId", "collectorUserId"],
+  },
+  {
+    eventName: "punchline.unlock_granted",
+    producer: "punchline-service",
+    subjectType: "punchline_unlock",
+    subjectIdKeys: ["unlockId"],
+    actorIdKeys: ["collectorUserId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: ["unlockId", "dropId", "trackId", "artistId", "collectorUserId"],
+    sourceRefKeys: ["unlockId", "dropId", "collectorUserId"],
+  },
+  {
+    // #1421 realized-cost telemetry bridged to analytics for cost/margin
+    // reconciliation.
+    eventName: "generation.cost_recorded",
+    producer: "generation-service",
+    subjectType: "generation_job",
+    subjectIdKeys: ["jobId"],
+    actorIdKeys: ["userId"],
+    consentBasis: "platform_analytics:v1",
+    privacyTier: "personal",
+    payloadKeys: [
+      "userId",
+      "jobId",
+      "path",
+      "durationSeconds",
+      "wallClockMs",
+      "estimatedCostUsd",
+      "sellPriceCents",
+      "coldStart",
+    ],
+    sourceRefKeys: ["jobId", "userId"],
+  },
+  {
     eventName: "recommendation.generated",
     producer: "recommendations-service",
     actorIdKeys: ["userId"],
@@ -1015,10 +1125,13 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     eventName: "x402.purchase",
     producer: "x402-controller",
     subjectType: "stem",
-    subjectIdKeys: ["stemId"],
+    // Moments settle on the same rail (#1462); fall back to momentId as subject.
+    subjectIdKeys: ["stemId", "momentId"],
     actorIdKeys: ["payer"],
     payloadKeys: [
+      "resourceKind",
       "stemId",
+      "momentId",
       "trackId",
       "releaseId",
       "artistId",
@@ -1038,15 +1151,18 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "settlementStatus",
       "entitlement",
     ],
-    sourceRefKeys: ["stemId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
+    sourceRefKeys: ["stemId", "momentId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
   },
   {
     eventName: "x402.purchase_failed",
     producer: "x402-controller",
     subjectType: "stem",
-    subjectIdKeys: ["stemId"],
+    // Moments settle on the same rail (#1462); fall back to momentId as subject.
+    subjectIdKeys: ["stemId", "momentId"],
     payloadKeys: [
+      "resourceKind",
       "stemId",
+      "momentId",
       "trackId",
       "releaseId",
       "artistId",
@@ -1057,7 +1173,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
       "status",
       "reason",
     ],
-    sourceRefKeys: ["stemId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
+    sourceRefKeys: ["stemId", "momentId", "trackId", "releaseId", "artistId", "listingId", "receiptId", "transactionHash"],
   },
   {
     eventName: "curator.staked",

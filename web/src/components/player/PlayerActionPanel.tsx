@@ -110,11 +110,13 @@ export function PlayerActionPanel({
   actionState,
   loading,
   saved = false,
+  saving = false,
   onAction,
 }: {
   actionState: PlayerTrackActionsResponse | null;
   loading: boolean;
   saved?: boolean;
+  saving?: boolean;
   onAction: (action: PlayerTrackAction) => void;
 }) {
   if (loading) {
@@ -153,18 +155,29 @@ export function PlayerActionPanel({
         <div className="player-action-row" aria-label="Available actions">
           {primaryActions.map((action) => {
             const isSavedAction = action.key === "save" && saved;
+            const isBusy = saving && action.key === "save";
             const detail = getActionDetail(action);
+            const hint = detail || action.reason;
             return (
               <button
                 key={action.key}
-                className={`player-action-chip player-action-chip--available ${isSavedAction ? "is-saved" : ""}`}
+                className={`player-action-chip player-action-chip--available ${isSavedAction ? "is-saved" : ""} ${isBusy ? "is-busy" : ""}`}
                 type="button"
                 onClick={() => onAction(action)}
-                disabled={isSavedAction}
+                disabled={isBusy}
                 aria-pressed={isSavedAction || undefined}
-                title={detail || action.reason ? `${action.label} — ${detail || action.reason}` : action.label}
+                aria-busy={isBusy || undefined}
+                /* The accessible name has to contain the visible label
+                 * (WCAG 2.5.3), so the saved chip extends "Saved" rather than
+                 * replacing it with an unrelated "Remove from library". */
+                aria-label={isSavedAction ? `${action.label} — remove from library` : undefined}
+                title={isSavedAction
+                  ? `${action.label} — remove from library`
+                  : hint ? `${action.label} — ${hint}` : action.label}
               >
-                <ActionIcon k={action.key} />
+                {isBusy
+                  ? <span className="player-action-chip__spinner" aria-hidden="true" />
+                  : <ActionIcon k={action.key} />}
                 <span className="player-action-chip-copy">
                   <span>{action.label}</span>
                   {detail && <small>{detail}</small>}

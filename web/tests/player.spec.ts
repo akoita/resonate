@@ -21,7 +21,7 @@ test.describe("Player Page", () => {
         await page.goto("/player");
         // Use main role to scope to player area and avoid sidebar matches
         const main = page.getByRole("main");
-        await expect(main.getByRole("button", { name: "Play" })).toBeVisible();
+        await expect(main.getByRole("button", { name: "Play", exact: true })).toBeVisible();
         await expect(main.getByRole("button", { name: "Prev" })).toBeVisible();
         await expect(main.getByRole("button", { name: "Next" })).toBeVisible();
     });

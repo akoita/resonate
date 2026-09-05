@@ -1,0 +1,5 @@
+# Resolved for the digest-pinned Dataflow Python 3.12 launcher image.
+# Beam 2.75.0 requires this beta transitively through envoy-data-plane. Keeping
+# it explicit prevents the resolver from selecting a newer Beam release candidate.
+betterproto==2.0.0b6
+apache-beam[gcp]==2.75.0

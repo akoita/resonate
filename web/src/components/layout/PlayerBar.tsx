@@ -7,6 +7,7 @@ import { libraryArtistHref } from "../../lib/artistRoutes";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
+import { VolumeIcon } from "../player/VolumeIcon";
 
 export default function PlayerBar() {
   const router = useRouter();
@@ -15,7 +16,7 @@ export default function PlayerBar() {
     currentTrack, isPlaying, artworkUrl, togglePlay, nextTrack, prevTrack,
     progress, queue, currentIndex, seek,
     shuffle, repeatMode, toggleShuffle, toggleRepeatMode,
-    volume, setVolume,
+    volume, muted, setVolume, toggleMute,
     mixerMode, toggleMixerMode
   } = usePlayer();
   const { addToast } = useToast();
@@ -50,8 +51,8 @@ export default function PlayerBar() {
   return (
     <div
       className="app-player"
-      role="button"
-      tabIndex={0}
+      role="region"
+      aria-label="Now playing"
       onDoubleClick={() => router.push("/player")}
       style={{ cursor: "pointer" }}
       title="Double-click to open player"
@@ -59,17 +60,21 @@ export default function PlayerBar() {
       {/* Progress Line */}
       <div
         className="player-progress-container"
-        onClick={(e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const rect = e.currentTarget.getBoundingClientRect();
-          const x = e.clientX - rect.left;
-          const percent = (x / rect.width) * 100;
-          seek(percent);
-        }}
         style={{ cursor: 'pointer' }}
       >
         <div className="player-progress-bar" style={{ width: `${progress}%` }} />
+        <input
+          type="range"
+          className="player-progress-input"
+          min="0"
+          max="100"
+          step="0.1"
+          value={progress}
+          onChange={(event) => seek(Number(event.currentTarget.value))}
+          onClick={(event) => event.stopPropagation()}
+          aria-label="Playback position"
+          aria-valuetext={`${Math.round(progress)} percent`}
+        />
 
         {/* Floating Queue Indicator */}
         <div className="queue-indicator">
@@ -115,6 +120,8 @@ export default function PlayerBar() {
           <button
             className={`player-btn-side ${shuffle ? 'active' : ''}`}
             onClick={toggleShuffle}
+            aria-label={shuffle ? "Turn shuffle off" : "Turn shuffle on"}
+            aria-pressed={shuffle}
             title="Shuffle"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -125,13 +132,19 @@ export default function PlayerBar() {
             className="player-btn-side"
             onClick={prevTrack}
             disabled={currentIndex <= 0 && repeatMode !== "all"}
+            aria-label="Previous track"
             title="Previous"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polygon points="19 20 9 12 19 4 19 20" /><line x1="5" y1="19" x2="5" y2="5" />
             </svg>
           </button>
-          <button className="player-btn-play" onClick={togglePlay}>
+          <button
+            className="player-btn-play"
+            onClick={togglePlay}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            aria-pressed={isPlaying}
+          >
             {isPlaying ? (
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" />
@@ -144,8 +157,9 @@ export default function PlayerBar() {
           </button>
           <button
             className="player-btn-side"
-            onClick={nextTrack}
-            disabled={currentIndex >= queue.length - 1 && repeatMode !== "all"}
+            onClick={() => nextTrack()}
+            disabled={!shuffle && currentIndex >= queue.length - 1 && repeatMode !== "all"}
+            aria-label="Next track"
             title="Next"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -155,6 +169,8 @@ export default function PlayerBar() {
           <button
             className={`player-btn-side ${repeatMode !== 'none' ? 'active' : ''}`}
             onClick={handleToggleRepeat}
+            aria-label={`Repeat mode: ${repeatMode}. Change repeat mode`}
+            aria-pressed={repeatMode !== "none"}
             title={`Repeat: ${repeatMode}`}
           >
             {repeatMode === 'one' ? (
@@ -189,6 +205,7 @@ export default function PlayerBar() {
           <button
             className="player-btn-side"
             onClick={() => currentTrack && setTracksToAddToPlaylist([currentTrack])}
+            aria-label="Add current track to playlist"
             title="Add to Playlist"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -200,10 +217,20 @@ export default function PlayerBar() {
         </div>
       </div>
 
-      <div className="player-volume">
-        <span className="volume-icon">
-          {volume === 0 ? "🔇" : volume < 0.5 ? "🔉" : "🔊"}
-        </span>
+      <div className={`player-volume ${muted ? "is-muted" : ""}`}>
+        <button
+          type="button"
+          className="volume-icon"
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleMute();
+          }}
+          aria-label={muted ? "Unmute" : "Mute"}
+          aria-pressed={muted}
+          title={muted ? "Unmute" : "Mute"}
+        >
+          <VolumeIcon volume={volume} muted={muted} size={17} />
+        </button>
         <input
           type="range"
           min="0"
@@ -214,7 +241,15 @@ export default function PlayerBar() {
           className="volume-slider"
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => e.stopPropagation()}
+          aria-label="Volume"
+          aria-valuetext={`${Math.round(volume * 100)} percent`}
         />
+      </div>
+
+      <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+        {currentTrack
+          ? `${isPlaying ? "Playing" : "Paused"}: ${currentTrack.title} by ${currentTrack.artist || "Unknown Artist"}`
+          : "No track selected"}
       </div>
 
       {mixerMode && !isPlayerPage && !isReleasePage && (

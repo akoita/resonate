@@ -243,7 +243,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (activeAccount) return activeAccount;
 
     const sdk = await import("@zerodev/sdk");
-    const { createKernelAccount, constants } = sdk;
+    const { createKernelAccount } = sdk;
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
@@ -251,8 +251,8 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     // This ensures local dev validates the same auth path as production.
 
     // Path 2 & 3: Real Passkeys (either self-hosted or ZeroDev)
-    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-    const kernelVersion = constants.KERNEL_V3_1;
+    const accountConfig = getKernelAccountConfig(chainId);
+    const { entryPoint, kernelVersion } = accountConfig;
 
     const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
@@ -277,9 +277,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       const account = await createKernelAccount(publicClient, {
         plugins: { sudo: passkeyValidator },
-        entryPoint,
-        kernelVersion,
-        factoryAddress,
+        ...accountConfig,
       });
 
       return { account, webAuthnKey };
@@ -380,7 +378,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
 
       void recordProductAnalytics(result.accessToken, "wallet.connected", {
         source: "auth",
-        subjectType: "wallet",
         payload: {
           authMode: mode === "register" ? "register" : "login",
           chainId,
@@ -393,7 +390,6 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         const { amountEth, chainId: fundedChainId } = result.signupFaucet;
         void recordProductAnalytics(result.accessToken, "wallet.faucet_requested", {
           source: "auth",
-          subjectType: "wallet",
           payload: {
             surface: "signup_faucet",
             status: "sent",

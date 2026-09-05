@@ -9,11 +9,13 @@ import type { HelpArticle } from "./types";
  * article here in the same PR (see CLAUDE.md → Feature Catalog rules).
  *
  * Screenshots live in `web/public/help/screenshots/` and are captured from
- * the public surfaces of staging with `scripts/capture-help-screenshots.mjs`.
+ * staging, or from a local public preview before a new route is first deployed,
+ * with `scripts/capture-help-screenshots.mjs`.
  */
 
 const SHOT = "/help/screenshots";
 const STAGING = "Staging";
+const LOCAL_PUBLIC = "Local preview";
 // Authenticated-only screens, captured from a local instance in a signed-in
 // preview state (sample data), since signed-in screens aren't publicly reachable.
 const LOCAL = "Signed-in preview";
@@ -175,10 +177,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "discover-music",
     title: "Discover & browse music",
     summary:
-      "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks once you start listening.",
+      "Find new releases and stems from the home page, by mood, or in the full catalog — with personalized picks and clear AI-contribution labels.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["discover", "home", "browse", "catalog", "trending", "mood", "vibe", "search", "recommended", "explore", "genre", "playlists"],
+    status: "partial",
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "home",
@@ -186,7 +189,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by trending and mood chips, then Recommended for You — personalized picks that improve as you listen.",
+            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by trending and mood chips, then your personalized feed — several themed rows like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each row says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
+          },
+          {
+            kind: "paragraph",
+            text: "Every visit also includes a small \"Step outside your lanes\" row of fresh, barely-played tracks so your feed never becomes an echo chamber, and rows rotate between visits instead of repeating the same picks. If you're new and we don't know your taste yet, the feed says \"Catalog signal\" honestly — play a few tracks or save a genre and it gets personal.",
           },
           {
             kind: "figure",
@@ -202,12 +209,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "trending",
+        heading: "Trending Now & Top Artists",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The Trending Now and Top Artists rails rank tracks and artists by what listeners actually played over the last 7 days — completed listens and playlist saves, not upload dates. Each card shows its chart position and how many people listened.",
+          },
+          {
+            kind: "paragraph",
+            text: "These charts are honest: if not enough different people have listened yet (overall or in a genre you selected), the rail says \"not enough listening yet\" instead of showing a made-up ranking. Charts fill in as the community listens more.",
+          },
+        ],
+      },
+      {
         id: "mood",
         heading: "Browse by mood & vibe",
         blocks: [
           {
             kind: "paragraph",
-            text: "Tap a mood chip (Focus, Hype, Chill, Late Night, and more) to reshape your recommendations and start a vibe session that keeps a consistent feel as you listen.",
+            text: "Tap a mood chip (Focus, Hype, Chill, Late Night, and more) to reshape your recommendations and start a vibe session that keeps a consistent feel as you listen. Genre chips also re-rank Trending Now and Top Artists for that genre.",
           },
         ],
       },
@@ -232,6 +253,39 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "ai-disclosure",
+        heading: "Understanding AI labels",
+        blocks: [
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "AI-assisted",
+                description: "The artist declared that AI contributed to part of the track, such as vocals, instruments, writing, production, or post-production.",
+              },
+              {
+                term: "AI-generated",
+                description: "The artist or Resonate's own creation tools declared that the track was fully AI-generated.",
+              },
+              {
+                term: "AI disclosure unavailable",
+                description: "The track is older or its declaration is incomplete. This does not mean Resonate verified it as human-made.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Fully AI-generated tracks stay available through the catalog, search, artist pages, playlists, direct links, playback, and the Marketplace. They are not placed in personalized recommendations, AI DJ picks, Trending, or the activity used to rank Top Artists. AI-assisted tracks remain eligible for those discovery surfaces and keep their label.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Labels are declarations",
+            text: "A label records the disclosed creative process. Automated detection, declaration disputes, enforcement, and appeals are still being developed.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Discover", href: "/", description: "Featured, trending, and recommended music." },
@@ -243,10 +297,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "playing-music",
     title: "Playing music & the Now Playing console",
     summary:
-      "Play any track and use the Now Playing console to manage your queue, inspect stems, save tracks, take licensing actions, and back live show campaigns.",
+      "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["play", "player", "now playing", "queue", "controls", "stem", "listen", "playback", "live sync", "shows", "campaign", "support a show"],
+    keywords: ["play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "playing",
@@ -270,6 +324,23 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "queue-controls",
+        heading: "Build and control your listening session",
+        blocks: [
+          {
+            kind: "list",
+            items: [
+              "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
+              "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
+              "Select the sound icon to mute; select it again to restore your previous volume. The slider stays synchronized.",
+              "With a keyboard, use Tab to reach named playback controls and the position or volume sliders, then use the arrow keys to adjust a slider. A Skip to main content link appears when it receives focus, and the current navigation page and open playlist panel are announced to assistive technology.",
+              "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",
+              "Signed-in listeners see Saved in green when the current track is already in their library. Select Saved to remove it again.",
+            ],
+          },
+        ],
+      },
+      {
         id: "actions",
         heading: "Actions while you listen",
         blocks: [
@@ -278,6 +349,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "Save the track to your library or add it to a playlist.",
               "Inspect the track's stems to hear the individual parts.",
+              "Check the AI-contribution badge without leaving the player.",
               "Open licensing actions when a stem is available to collect or license in the Marketplace.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
             ],
@@ -287,6 +359,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Live sync & AI DJ",
             text: "When the console shows it is an active device, a trusted AI DJ session can queue and start playback for you — and you always confirm before sound starts.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Fully AI-generated music",
+            text: "You can still open and play fully AI-generated tracks directly. The AI DJ does not choose them as its next promoted pick.",
           },
         ],
       },
@@ -304,7 +382,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick"],
+    keywords: ["ai dj", "agent", "session", "sonic radar", "recommendations", "neural flow", "pulse raid", "taste", "discovery", "next pick", "ai-generated", "ai disclosure"],
     sections: [
       {
         id: "sessions",
@@ -322,6 +400,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Choose a session intent or a mood to set the direction.",
               "Press play — use Next AI Pick to skip ahead, and your feedback shapes future picks.",
             ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What the AI DJ promotes",
+            text: "The AI DJ can recommend human-made and AI-assisted tracks. Tracks declared fully AI-generated stay available for direct listening but are not selected as promoted AI DJ picks.",
           },
           {
             kind: "figure",
@@ -506,7 +590,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "steps",
             items: [
               "Open a listing and choose its license tier.",
-              "Confirm the price (shown in a stablecoin) and pay from your wallet balance.",
+              "Choose x402 or direct wallet checkout when both are available. In x402 checkout, review the platform fee marked as included and the unchanged stablecoin total.",
+              "Confirm the total and pay from your wallet balance. Resonate disables payment if it cannot verify the current quote details.",
               "Approve with your passkey — your collected stem and receipt appear in your wallet and library.",
             ],
           },
@@ -526,7 +611,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "marketplace",
     audiences: ["artist"],
     status: "partial",
-    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "marketplace"],
+    keywords: ["sell", "list", "listing", "mint", "manage listings", "relist", "expire", "price", "license tier", "marketplace", "payout", "verified human", "eligible for payouts"],
     sections: [
       {
         id: "listing",
@@ -549,6 +634,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "note",
             title: "Remix-tier listings power Remix Studio",
             text: "When you list a stem at the remix tier, buyers of that listing can open it in Remix Studio.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Payouts need a verified-human account",
+            text: "Because a sale sends money to you, minting a stem for sale requires your account to be human-verified and your catalog rights to allow payouts. Run the human-verification check on your artist profile first; if you're not eligible yet, the app tells you exactly what's missing.",
           },
         ],
       },
@@ -756,10 +847,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "upload-music",
     title: "Upload & publish your music",
     summary:
-      "Upload a track, let Resonate split it into stems, credit the right artists, tag the mood, and publish with content protection.",
+      "Upload tracks, declare how AI contributed to each one, credit the right artists, and publish with content protection.",
     category: "artists",
     audiences: ["artist"],
-    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs"],
+    status: "partial",
+    keywords: ["upload", "publish", "release", "stems", "separation", "credits", "featured artist", "mood tags", "metadata", "demucs", "ai-assisted", "ai-generated", "ai disclosure", "human-made", "contribution"],
     sections: [
       {
         id: "upload",
@@ -787,6 +879,45 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "ai-disclosure",
+        heading: "Declare AI involvement for each track",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Before publishing a new upload, choose Human-made, AI-assisted, or Fully AI-generated for every track. For a multi-track release, you can apply one choice to all tracks and then adjust individual tracks.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Human-made",
+                description: "Choose this when you are declaring that AI did not contribute to the track.",
+              },
+              {
+                term: "AI-assisted",
+                description: "Choose this when AI contributed to part of the track, then select at least one affected area: vocals, instruments, writing, production, or post-production.",
+              },
+              {
+                term: "Fully AI-generated",
+                description: "Choose this when the whole recording was generated with AI.",
+              },
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What a fully AI-generated declaration changes",
+            text: "The track can still appear in the catalog and Marketplace and can still be opened and played directly. It will carry an AI-generated label and will not be promoted in recommendations, AI DJ, Trending, or Top Artists.",
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Resonate-created music is labeled automatically",
+            text: "When Resonate's own creation tools already know the track's origin, they record the AI declaration for you. Published remixes derive their label from how the remix was created.",
+          },
+        ],
+      },
+      {
         id: "credits",
         heading: "Crediting artists",
         blocks: [
@@ -808,7 +939,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Before a release goes public, Resonate checks publishing rights. Depending on your account's verification, you may attest to ownership or provide proof of control. Once cleared, your release and its stems are published to the catalog and can be listed in the Marketplace.",
+            text: "Publishing uses a release-specific route. You may self-attest provenance for an upload, but self-attestation is not independent rights verification. Depending on account trust and release signals, Resonate may publish with limited monitoring, request evidence, or route the release for review. Marketplace access and payout eligibility remain gated by the release's rights state; account verification alone does not clear release rights.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-catalog.png`,
+              alt: "The Managed Catalog page for Test Artist showing one ready release, one track, three resources, and a release inventory row for Test Release.",
+              caption: "Managed Catalog: review release status, track counts, resources, and rights routing after publishing.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
         ],
       },
@@ -883,6 +1025,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Content-protection activity and your staking history.",
             ],
           },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-analytics.png`,
+              alt: "The Artist Analytics page showing seven recent plays, a USDC payout total, Groove Track as the top track, a plays-over-time chart, playback sources, and content-protection status.",
+              caption: "Artist Analytics: recent plays, payouts, playback sources, and protection signals in one view.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
+          },
         ],
       },
       {
@@ -902,6 +1055,126 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["marketplace-sell", "upload-music", "shows-run", "community"],
   },
   {
+    slug: "punchline-drops",
+    title: "Drops: turn your track's best moments into collectibles",
+    summary:
+      "Pick the hook, the punchline, the line everyone quotes — and release it as a small set of collectible moments fans can own, free or paid.",
+    category: "artists",
+    audiences: ["artist", "listener"],
+    status: "partial",
+    keywords: ["punchline", "drops", "browse", "gallery", "genre", "sold out", "availability", "collectible", "moments", "vocal", "clip", "hook", "edition", "limited", "publish", "collect", "own", "free", "paid", "price", "usdc"],
+    sections: [
+      {
+        id: "what",
+        heading: "What a Drop is",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A Drop is a small collection of \"moments\" cut from your track — each a short clip (a few seconds) with a title, the lyric, optional artwork, a limited edition size, and a price you choose (including free). The first kind of drop is the Punchline drop, cut from your vocals: the hook, the punchline, the line fans scream back at you. More kinds — like epic orchestral moments — are on the way, and every drop shows its kind.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Available on rights-clean tracks",
+            text: "Drops are only available on published tracks you own with a processed vocals stem and a clean rights status. If a track isn't eligible, the panel tells you exactly why.",
+          },
+        ],
+      },
+      {
+        id: "create",
+        heading: "Creating a drop",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open one of your releases — as the owner you'll see a Punchline Drops panel below your tracks.",
+              "Pick a track, then create a drop (or resume the draft you started earlier).",
+              "Select the moment on the vocal timeline by dragging the start and end handles, and hit Preview to hear exactly what fans will get.",
+              "Add the title, the lyric line, optional artwork, the edition size, and the price — the live card shows exactly how the collectible will look.",
+              "Add more moments if you like (they can become a set), and optionally add a Set bonus — an extra vocal clip and a note that only fans who collect the whole set will unlock.",
+              "Hit Publish when everything looks right.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Publishing shows you a review of everything in the drop, then cuts the audio clips and makes the drop public. Published drops can't be edited, so give the preview a real listen first.",
+          },
+        ],
+      },
+      {
+        id: "rights",
+        heading: "What buyers actually get",
+        blocks: [
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Personal collectible only",
+            text: "Every moment is sold as a personal collectible: fans can play it and show it off on their profile. It carries no commercial-use, remix, or sampling rights, and never transfers your copyright or master ownership. The same promise is shown to you at publish time and to fans on every card.",
+          },
+        ],
+      },
+      {
+        id: "collecting",
+        heading: "Collecting moments (for fans)",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: 'On a release with a published drop, everyone sees a "Collect moments" section: lyric-first cards you can play, with how many editions are left. Sign in, tap Collect, and the edition number is yours. Free moments are claimed instantly; priced moments show their price and check out with your Resonate passkey wallet — you pay in USDC and the edition is granted the moment the payment clears. Each fan can collect one edition per moment, and when they are gone, they are gone.',
+          },
+          {
+            kind: "paragraph",
+            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Filter by drop kind, genre, or free and paid moments; turn on Include sold out when you want to see completed editions too. Your filters and page stay in the web address, so you can share the view. Use the play button to preview a Drop without leaving the gallery, or tap the rest of the card to open that release's collect section. The Home page also shows a smaller shelf of available Drops.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/drops.png`,
+              alt: "The Drops collection gallery with kind, genre, price, and sold-out filters above three collectible moment cards.",
+              caption: "Browse collectible moments by kind, genre, price, and availability.",
+              width: 1440,
+              height: 900,
+              source: LOCAL_PUBLIC,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "One note on lyrics: cards mask a small set of socially weighted words with asterisks on screen. The audio and the artist's original text are untouched — the card display just doesn't spell them out.",
+          },
+          {
+            kind: "paragraph",
+            text: "Want to show off what you own? Turn on \"Show owned items\" in your community profile settings and your newest collected moments appear on your public listener profile — never your wallet or what you paid.",
+          },
+          {
+            kind: "paragraph",
+            text: "Collected a moment you love? Every moment has its own shareable link — open it from the \u201cMoments\u201d tab in your Library (or the Collect section on the release) and tap Share. Whoever opens the link sees a branded preview card with the lyric, the artist, and how many editions are left, and can jump straight to collecting one. If you have made your community profile and collection public, your edition number and name ride along on the card; otherwise the link just shows the moment.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Priced moments (paid collecting)",
+            text: "Artists set each moment's price — free, or between $0.50 and $9.99 per edition. Priced moments check out in USDC from your Resonate passkey wallet; the artist keeps at least 85% of every sale. If a payment clears but the edition just sold out or you already own it, no edition is granted and support will refund you.",
+          },
+        ],
+      },
+      {
+        id: "next",
+        heading: "What's coming next",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Everything you collect lives in your Library under the Moments tab — grouped by drop, with your edition number and your progress toward each set. Complete a whole set and the artist's bonus unlocks instantly: a hidden extra clip and a personal note, shown right on the release page and in your Library.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Browse Drops", href: "/drops", description: "Explore available and sold-out collectible moments." },
+      { label: "Your catalog", href: "/artist/catalog", description: "Open a release to find its Punchline Drops panel." },
+      { label: "Your moments", href: "/library?tab=moments", description: "The Punchline moments you have collected." },
+    ],
+    related: ["upload-music", "artist-profile", "marketplace-sell", "library-playlists"],
+  },
+  {
     slug: "rights-protection",
     title: "Rights & content protection",
     summary:
@@ -917,7 +1190,36 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Accounts carry a verification level that decides how much proof a release needs — from an unverified uploader, to a verified independent artist, to a trusted creator or trusted source. Higher trust means a smoother publishing path.",
+            text: "These signals answer different questions and are not interchangeable. Account trust can make a publishing route smoother, but every release keeps its own rights state.",
+          },
+          {
+            kind: "definitions",
+            items: [
+              {
+                term: "Account trust",
+                description: "Independent Account Trust, Trusted Creator, and Trusted Source Account describe the account route and its controls. They do not clear rights for a particular release.",
+              },
+              {
+                term: "Human/personhood",
+                description: "Human Verified means the wallet passed a personhood or anti-sybil check. It does not prove music ownership or publishing authority.",
+              },
+              {
+                term: "Provenance",
+                description: "Self-Attested On-Chain records the creator wallet's statement about a release. Fingerprint Cleared means configured checks found no conflicting match. Neither is independent rights approval.",
+              },
+              {
+                term: "Economic trust",
+                description: "Verified Economic Tier and stake/escrow signals describe economic controls and account history. They do not prove release rights.",
+              },
+              {
+                term: "Release-scoped rights review",
+                description: "Rights Verified is reserved for a release whose submitted evidence was reviewed and supports likely recording ownership or publishing authority. Other release states can be under review, approved with limits, denied, or disputed.",
+              },
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "Marketplace listing and payout eligibility use release-scoped rights and policy gates. A human check, self-attestation, account tier, or technical provenance signal cannot substitute for that review.",
           },
         ],
       },
@@ -1002,7 +1304,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Pledging only opens once a campaign is an artist-authorized escrow campaign. Until then — while it's still a demand signal or awaiting artist authority — the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
+            text: "Pledging only opens once a campaign is artist-authorized and its on-chain escrow has been linked. Until then — while it's still a demand signal, awaiting artist authority, or awaiting its escrow link — the campaign page explains why backing isn't open yet instead of showing a pledge form. If a campaign was cancelled or didn't meet its goal, the page shows that and lets any existing backers claim a refund.",
           },
           {
             kind: "paragraph",
@@ -1030,7 +1332,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             items: [
               "The fan-risk terms are approved by the artist and then locked — they can't be quietly changed after you pledge.",
               "The campaign page shows any success-only platform fee up front, including that it comes from the artist payout and never from failed-campaign refunds.",
-              "You can view the escrow contract that holds the funds.",
+              "You can open the escrow contract in a block explorer to see its verified code, transactions, and events.",
               "If the goal isn't met or the show isn't confirmed, your pledge is refunded automatically.",
               "A campaign page shows a trust badge (demand signal, provisional, or artist-authorized escrow) so you always know what stage you're backing.",
               "After a show is marked fulfilled, funds release only once a dispute window closes; while a dispute is under review, release stays paused. The campaign page shows the dispute status and the window's close date.",
@@ -1053,7 +1355,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "shows",
     audiences: ["artist", "operator"],
     status: "partial",
-    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee"],
+    keywords: ["shows", "create campaign", "promoter", "booking", "fulfillment", "terms", "escrow", "campaign management", "artist", "fee", "payout", "verified human", "human verification", "eligible for payouts", "get paid"],
     sections: [
       {
         id: "create",
@@ -1092,6 +1394,30 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Admin and operator accounts can use the Shows list filter to switch from the default actionable campaign view to all campaigns or to a specific status such as cancelled, refunds, or released. If a linked escrow campaign looks stale, operators can re-sync it from the chain to refresh the fee and escrow status shown to fans.",
+          },
+        ],
+      },
+      {
+        id: "payout-eligibility",
+        heading: "Getting paid: verified-human check",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Before your account can be the destination for campaign money, it has to be eligible for payouts. This protects fans and keeps payouts going to real people.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Your account must pass the human-verification (personhood) check.",
+              "Your catalog must have a release whose rights review allows payouts.",
+              "There must be no open rights restriction on your catalog.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Where to verify",
+            text: "Run the human-verification check on your artist profile (artist onboarding). If you open a campaign before you're eligible, the form shows exactly what's missing and the single step that unblocks it — so a submit never fails silently.",
           },
         ],
       },
@@ -1155,6 +1481,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Cohorts group listeners with similar taste, and city scenes group fans by place. Browse suggestions, join the ones that fit, and leave or hide any you don't want. Cohorts are opt-in and only form once enough people are in them.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/community.png`,
+              alt: "The Community page showing an unlocked Test Artist holder room benefit and a joined Groove Track listeners cohort, with privacy indicators for proofs, wallet, and ownership.",
+              caption: "Community: review private benefits and join privacy-safe listener cohorts from one hub.",
+              width: 1440,
+              height: 1200,
+              source: LOCAL,
+            },
           },
         ],
       },

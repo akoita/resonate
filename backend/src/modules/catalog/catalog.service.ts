@@ -1,9 +1,14 @@
-import { BadRequestException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import { LicenseType, Prisma, type ShowArtistAuthorityStatus } from "@prisma/client";
+import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
+import { LicenseType, Prisma, type AiDisclosureLevel, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
+import { validateArtworkUpload } from "../shared/artwork-validation";
 import { prisma } from "../../db/prisma";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
+import {
+  assertSafeLocalFilename,
+  resolveLocalStorageUri,
+} from "../storage/storage_uri_policy";
 import {
   CatalogTrackStatusEvent,
   IpNftMintedEvent,
@@ -16,6 +21,18 @@ import {
   getUploadRightsActions,
   type UploadRightsRoute,
 } from "../rights/upload-rights-policy";
+import {
+  normalizeCreditName,
+  resolveCreditedArtistName,
+} from "../shared/artist_attribution";
+import {
+  AI_DISCLOSURE_VERSION,
+  AiDisclosureValidationError,
+  deriveReleaseAiDisclosureSummary,
+  normalizeAiDisclosureInput,
+  toAiDisclosureRecord,
+  type AiDisclosureInput,
+} from "./ai-disclosure.policy";
 
 const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "LIMITED_MONITORING",
@@ -23,7 +40,6 @@ const PUBLIC_RELEASE_ROUTES: UploadRightsRoute[] = [
   "TRUSTED_FAST_PATH",
 ];
 const SOURCE_STEM_TYPES = new Set(["original", "master"]);
-const MAIN_ARTIST_CREDIT_ROLES = new Set(["main", "primary"]);
 // Mirrors AUTHORIZED_STATUSES in ../shows/shows.service.ts; keep local to avoid importing service internals.
 const PLEDGE_OPEN_ARTIST_AUTHORITY_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
@@ -52,6 +68,36 @@ type ReleaseArtistCreditInput = {
   sortOrder?: number;
 };
 
+type AiDisclosureDbFields = {
+  aiDisclosureLevel: AiDisclosureLevel;
+  aiContributionFacets: string[];
+  aiDisclosureSource: string;
+  aiDisclosureVersion: string | null;
+  aiDeclaredAt: Date | null;
+};
+
+function withNormalizedAiDisclosure<T extends AiDisclosureDbFields>(track: T) {
+  const {
+    aiDisclosureLevel: _level,
+    aiContributionFacets: _facets,
+    aiDisclosureSource: _source,
+    aiDisclosureVersion: _version,
+    aiDeclaredAt: _declaredAt,
+    ...rest
+  } = track;
+  return { ...rest, aiDisclosure: toAiDisclosureRecord(track) };
+}
+
+function withReleaseAiDisclosure<
+  T extends { tracks: Array<AiDisclosureDbFields> },
+>(release: T) {
+  return {
+    ...release,
+    tracks: release.tracks.map(withNormalizedAiDisclosure),
+    aiDisclosure: deriveReleaseAiDisclosureSummary(release.tracks),
+  };
+}
+
 const RELEASE_ARTIST_CREDITS_SELECT = {
   orderBy: [{ sortOrder: "asc" as const }, { role: "asc" as const }],
   select: {
@@ -74,6 +120,14 @@ const RELEASE_ARTIST_CREDITS_SELECT = {
   },
 };
 
+const AI_DISCLOSURE_SELECT = {
+  aiDisclosureLevel: true,
+  aiContributionFacets: true,
+  aiDisclosureSource: true,
+  aiDisclosureVersion: true,
+  aiDeclaredAt: true,
+} as const;
+
 function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
 }
@@ -83,10 +137,6 @@ function normalizeMoodTags(value?: string[] | null) {
     .map((entry) => entry.trim())
     .filter(Boolean);
   return Array.from(new Set(normalized)).slice(0, 8);
-}
-
-function normalizeCreditName(value?: string | null) {
-  return (value || "").trim().replace(/\s+/g, " ");
 }
 
 function splitFeaturedArtists(value?: string[] | string | null) {
@@ -101,15 +151,16 @@ function publicArtistCreditName(
     artistCredits?: Array<{ role: string; displayName: string }> | null;
   },
 ) {
-  const mainCredits = (release.artistCredits || [])
-    .filter((credit) => MAIN_ARTIST_CREDIT_ROLES.has(credit.role.toLowerCase()))
-    .map((credit) => normalizeCreditName(credit.displayName))
-    .filter(Boolean);
-
-  return mainCredits.join(", ")
-    || normalizeCreditName(release.primaryArtist)
-    || normalizeCreditName(release.artist?.displayName)
-    || "Unknown Artist";
+  // Canonical credited-artist rule (#1492): delegate to the shared helper. This
+  // caller has no per-track `artist` scalar, so behavior is identical to before;
+  // the local "Unknown Artist" fallback stays here.
+  return (
+    resolveCreditedArtistName({
+      credits: release.artistCredits,
+      primaryArtist: release.primaryArtist,
+      accountDisplayName: release.artist?.displayName,
+    }) || "Unknown Artist"
+  );
 }
 
 function sanitizeRecommendationReasons(value?: string[] | null) {
@@ -148,8 +199,10 @@ export type McpCatalogSearchItem = {
   moods: string[];
   releaseDate: string | null;
   artworkUrl: string | null;
+  artworkRevision: number;
   trackCount: number;
   licensable: boolean;
+  aiDisclosure: ReturnType<typeof deriveReleaseAiDisclosureSummary>;
   deeplink: string;
 };
 
@@ -184,11 +237,16 @@ export type PlayerTrackActionsResponse = {
     artistName: string | null;
     genre: string | null;
     moods: string[];
+    aiDisclosure: ReturnType<typeof toAiDisclosureRecord>;
   };
   recommendation?: {
     summary: string;
     reasons: string[];
   };
+  library: {
+    saved: boolean;
+    libraryTrackId: string | null;
+  } | null;
   actions: PlayerTrackAction[];
 };
 
@@ -233,67 +291,26 @@ export class CatalogService implements OnModuleInit {
     `;
   }
 
-  private resolveInternalUri(uri: string): string {
-    const trimmedUri = uri.trim();
-    const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
-
-    if (trimmedUri.startsWith("/")) {
-      return `${baseUrl}${trimmedUri}`;
-    }
-
-    if (trimmedUri.startsWith("catalog/")) {
-      return `${baseUrl}/${trimmedUri}`;
-    }
-
-    return trimmedUri;
-  }
-
   private async fetchStemSourceBuffer(uri: string): Promise<Buffer> {
-    const trimmedUri = uri.trim();
-    if (!trimmedUri) {
+    if (typeof uri !== "string" || !uri.trim()) {
       throw new BadRequestException("Stem has no source URI");
     }
 
-    try {
-      const downloaded = await this.storageProvider.download(trimmedUri);
-      if (downloaded) {
-        return downloaded;
-      }
-    } catch (error) {
-      console.warn(`[Catalog] Storage provider download failed for ${trimmedUri}:`, error);
-    }
-
-    const resolvedUri = this.resolveInternalUri(trimmedUri);
-    if (!/^https?:\/\//i.test(resolvedUri)) {
-      throw new BadRequestException(`Unsupported stem source URI: ${trimmedUri}`);
-    }
-
-    const response = await fetch(resolvedUri);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch stem content: ${response.status}`);
-    }
-
-    return Buffer.from(await response.arrayBuffer());
+    // All complete source reads go through EncryptionService so provider
+    // selection, URI policy, redirects, response limits, and local
+    // compatibility handling stay in one boundary.  In particular, do not
+    // fall back to a generic fetch after a provider rejection.
+    return this.encryptionService.loadSourceBuffer(uri);
   }
 
   private getLocalStemFilename(stem: { id: string; uri: string }) {
     const trimmedUri = stem.uri.trim();
-    if (!trimmedUri) {
-      return stem.id;
-    }
-
-    // Bare local filenames are stored directly for original uploads.
     if (!trimmedUri.includes("/")) {
-      return trimmedUri;
+      return assertSafeLocalFilename(trimmedUri || stem.id);
     }
 
-    const parts = trimmedUri.split("/").filter(Boolean);
-    const blobIndex = parts.lastIndexOf("blob");
-    if (blobIndex > 0) {
-      return parts[blobIndex - 1];
-    }
-
-    return parts[parts.length - 1] || stem.id;
+    const backendOrigin = `http://localhost:${process.env.PORT || 3000}`;
+    return resolveLocalStorageUri(trimmedUri, { backendOrigin }).filename;
   }
 
   constructor(
@@ -513,22 +530,34 @@ export class CatalogService implements OnModuleInit {
               artworkData: event.artworkData,
               artworkMimeType: event.artworkMimeType,
               tracks: {
-                create: event.metadata?.tracks?.map((t: any) => ({
-                  id: t.id,
-                  title: t.title,
-                  artist: t.artist,
-                  position: t.position,
-                  explicit: t.explicit ?? false,
-                  isrc: t.isrc,
-                  stems: {
-                    create: t.stems?.map((s: any) => ({
-                      id: s.id,
-                      type: s.type,
-                      uri: s.uri,
-                      storageProvider: s.storageProvider || "local"
-                    }))
-                  }
-                })),
+                create: event.metadata?.tracks?.map((t: any) => {
+                  const disclosure = normalizeAiDisclosureInput(t.aiDisclosure);
+                  return {
+                    id: t.id,
+                    title: t.title,
+                    artist: t.artist,
+                    position: t.position,
+                    explicit: t.explicit ?? false,
+                    isrc: t.isrc,
+                    aiDisclosureLevel: disclosure.level,
+                    aiContributionFacets: disclosure.facets,
+                    aiDisclosureSource:
+                      t.aiDisclosure?.source === "resonate_native" ||
+                      t.aiDisclosure?.source === "remix_derived"
+                        ? t.aiDisclosure.source
+                        : "artist",
+                    aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+                    aiDeclaredAt: new Date(event.occurredAt),
+                    stems: {
+                      create: t.stems?.map((s: any) => ({
+                        id: s.id,
+                        type: s.type,
+                        uri: s.uri,
+                        storageProvider: s.storageProvider || "local"
+                      }))
+                    }
+                  };
+                }),
               },
             },
           });
@@ -546,6 +575,19 @@ export class CatalogService implements OnModuleInit {
           primaryArtist: event.metadata?.primaryArtist,
           sourceType: event.sourceType,
         });
+        for (const track of event.metadata?.tracks ?? []) {
+          if (!track.id || !track.aiDisclosure) continue;
+          this.eventBus.publish({
+            eventName: "catalog.ai_disclosure_recorded",
+            eventVersion: 1,
+            occurredAt: event.occurredAt,
+            releaseId: event.releaseId,
+            trackId: track.id,
+            level: track.aiDisclosure.level,
+            source: track.aiDisclosure.source,
+            facets: track.aiDisclosure.facets,
+          });
+        }
         console.log(`[Catalog] Created/Updated release ${event.releaseId} with ${event.metadata?.tracks?.length} tracks`);
       } catch (err) {
         console.error(`[Catalog] Failed to create/update release ${event.releaseId}:`, err);
@@ -816,6 +858,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true, // Useful for frontend to know, but DATA must be excluded
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true, userId: true, payoutAddress: true }
         },
@@ -833,6 +876,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -868,7 +912,7 @@ export class CatalogService implements OnModuleInit {
       return this.listPublished(limit, primaryArtist);
     }
 
-    return releases;
+    return releases.map(withReleaseAiDisclosure);
   }
 
   async createRelease(input: {
@@ -883,7 +927,12 @@ export class CatalogService implements OnModuleInit {
     label?: string;
     releaseDate?: string;
     explicit?: boolean;
-    tracks?: Array<{ title: string; position: number; explicit?: boolean }>;
+    tracks?: Array<{
+      title: string;
+      position: number;
+      explicit?: boolean;
+      aiDisclosure: AiDisclosureInput;
+    }>;
   }) {
     const artist = await prisma.artist.findUnique({
       where: { userId: input.userId },
@@ -894,9 +943,26 @@ export class CatalogService implements OnModuleInit {
     }
 
     const primaryArtist = input.primaryArtist?.trim() || artist.displayName;
+    let normalizedTracks: Array<{
+      title: string;
+      position: number;
+      explicit?: boolean;
+      disclosure: ReturnType<typeof normalizeAiDisclosureInput>;
+    }>;
+    try {
+      normalizedTracks = (input.tracks ?? []).map((track) => ({
+        ...track,
+        disclosure: normalizeAiDisclosureInput(track.aiDisclosure),
+      }));
+    } catch (error) {
+      if (error instanceof AiDisclosureValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
 
     this.clearCache();
-    return prisma.$transaction(async (tx) => {
+    const created = await prisma.$transaction(async (tx) => {
       const release = await tx.release.create({
         data: {
           artistId: artist.id,
@@ -911,11 +977,16 @@ export class CatalogService implements OnModuleInit {
           releaseDate: input.releaseDate ? new Date(input.releaseDate) : undefined,
           explicit: input.explicit ?? false,
           tracks: {
-            create: input.tracks?.map(t => ({
+            create: normalizedTracks.map(t => ({
               title: t.title,
               position: t.position,
               explicit: t.explicit ?? false,
               artist: primaryArtist,
+              aiDisclosureLevel: t.disclosure.level,
+              aiContributionFacets: t.disclosure.facets,
+              aiDisclosureSource: "artist",
+              aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+              aiDeclaredAt: new Date(),
             }))
           }
         },
@@ -923,8 +994,14 @@ export class CatalogService implements OnModuleInit {
           id: true,
           title: true,
           status: true,
+          artworkRevision: true,
           tracks: {
-            select: { id: true, title: true, position: true }
+            select: {
+              id: true,
+              title: true,
+              position: true,
+              ...AI_DISCLOSURE_SELECT,
+            }
           }
         }
       });
@@ -937,6 +1014,19 @@ export class CatalogService implements OnModuleInit {
       });
       return release;
     });
+    for (const track of created.tracks) {
+      this.eventBus.publish({
+        eventName: "catalog.ai_disclosure_recorded",
+        eventVersion: 1,
+        occurredAt: track.aiDeclaredAt?.toISOString() ?? new Date().toISOString(),
+        releaseId: created.id,
+        trackId: track.id,
+        level: track.aiDisclosureLevel as "NONE" | "PARTLY" | "ALL",
+        source: "artist",
+        facets: track.aiContributionFacets,
+      });
+    }
+    return withReleaseAiDisclosure(created);
   }
 
   private async syncReleaseArtistCredits(
@@ -1047,6 +1137,7 @@ export class CatalogService implements OnModuleInit {
         processingStatus: true,
         processingError: true,
         contentStatus: true,
+        ...AI_DISCLOSURE_SELECT,
         rightsRoute: true,
         rightsFlags: true,
         rightsReason: true,
@@ -1077,6 +1168,7 @@ export class CatalogService implements OnModuleInit {
             rightsSourceType: true,
             rightsEvaluatedAt: true,
             artworkMimeType: true,
+            artworkRevision: true,
             artist: { select: { id: true, displayName: true, userId: true } }
           }
         }
@@ -1095,12 +1187,12 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
-    return track;
+    return withNormalizedAiDisclosure(track);
   }
 
   async getPlayerTrackActions(
     trackId: string,
-    options?: { recommendationReasons?: string[] },
+    options?: { recommendationReasons?: string[]; userId?: string },
   ): Promise<PlayerTrackActionsResponse | null> {
     const track = await prisma.track.findUnique({
       where: { id: trackId },
@@ -1110,6 +1202,7 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         processingStatus: true,
         contentStatus: true,
+        ...AI_DISCLOSURE_SELECT,
         rightsRoute: true,
         stems: {
           select: {
@@ -1179,6 +1272,17 @@ export class CatalogService implements OnModuleInit {
     const hasRemixListing = activeListings.some((listing) => listing.licenseType === LicenseType.remix);
     const hasRemixableMint = track.stems.some((stem) => stem.nftMint?.remixable);
     const safeRecommendationReasons = sanitizeRecommendationReasons(options?.recommendationReasons);
+    const savedLibraryTrack = options?.userId
+      ? await prisma.libraryTrack.findUnique({
+          where: {
+            userId_catalogTrackId: {
+              userId: options.userId,
+              catalogTrackId: track.id,
+            },
+          },
+          select: { id: true },
+        })
+      : null;
     // #1379: campaigns link to the public catalog artist credit, which can be
     // a different Artist row than the uploader-profile release.artistId —
     // match against every credited artist plus the profile fallback.
@@ -1230,6 +1334,7 @@ export class CatalogService implements OnModuleInit {
         artistName: publicArtistCreditName(track.release),
         genre: track.release.genre,
         moods: track.release.moods,
+        aiDisclosure: toAiDisclosureRecord(track),
       },
       ...(safeRecommendationReasons.length
         ? {
@@ -1239,6 +1344,9 @@ export class CatalogService implements OnModuleInit {
             },
           }
         : {}),
+      library: options?.userId
+        ? { saved: Boolean(savedLibraryTrack), libraryTrackId: savedLibraryTrack?.id ?? null }
+        : null,
       actions: [
         {
           key: "save",
@@ -1370,6 +1478,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true, userId: true }
         },
@@ -1387,6 +1496,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             // Remix lineage (#1196): source attribution + AI-provenance
             // label for published remix releases.
             generationMetadata: true,
@@ -1444,6 +1554,7 @@ export class CatalogService implements OnModuleInit {
             rightsSourceType: true,
             rightsEvaluatedAt: true,
             artworkMimeType: true,
+            artworkRevision: true,
             artist: {
               select: { id: true, displayName: true, userId: true }
             },
@@ -1461,6 +1572,7 @@ export class CatalogService implements OnModuleInit {
                 processingStatus: true,
                 processingError: true,
                 contentStatus: true,
+                ...AI_DISCLOSURE_SELECT,
                 // Remix lineage (#1196): keep parity with the primary select.
                 generationMetadata: true,
                 rightsRoute: true,
@@ -1501,9 +1613,12 @@ export class CatalogService implements OnModuleInit {
     // seed) that must never reach this unauthenticated public read.
     const remix = this.deriveRemixProvenance(release);
     const { tracks, ...rest } = release;
-    return {
+    const safeRelease = {
       ...rest,
-      tracks: tracks?.map(({ generationMetadata: _omit, ...track }) => track),
+      tracks: tracks.map(({ generationMetadata: _omit, ...track }) => track),
+    };
+    return {
+      ...withReleaseAiDisclosure(safeRelease),
       remix,
     };
   }
@@ -1601,7 +1716,7 @@ export class CatalogService implements OnModuleInit {
           ],
         };
 
-    return prisma.release.findMany({
+    const releases = await prisma.release.findMany({
       where: {
         ...ownershipFilter,
         ...(andFilters.length > 0 ? { AND: andFilters } : {}),
@@ -1632,6 +1747,7 @@ export class CatalogService implements OnModuleInit {
         rightsSourceType: true,
         rightsEvaluatedAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         tracks: {
           orderBy: { position: "asc" },
           select: {
@@ -1642,6 +1758,7 @@ export class CatalogService implements OnModuleInit {
             processingStatus: true,
             processingError: true,
             contentStatus: true,
+            ...AI_DISCLOSURE_SELECT,
             rightsRoute: true,
             rightsFlags: true,
             rightsReason: true,
@@ -1662,6 +1779,7 @@ export class CatalogService implements OnModuleInit {
       },
       orderBy: { createdAt: "desc" },
     });
+    return releases.map(withReleaseAiDisclosure);
   }
 
   async listByUserId(userId: string) {
@@ -1677,17 +1795,130 @@ export class CatalogService implements OnModuleInit {
 
   async updateRelease(
     releaseId: string,
+    userId: string,
     input: Partial<{
       title: string;
       status: string;
+      /** Post-hoc credited-artist correction (#1492). */
+      primaryArtist: string;
+      tracks: Array<{ id: string; aiDisclosure: AiDisclosureInput }>;
     }>,
   ) {
-    this.clearCache();
-    return prisma.release.update({
+    // Ownership check (same pattern as deleteRelease): only the release's
+    // managing artist account can update it.
+    const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      data: input,
-      include: { tracks: true },
+      include: {
+        artist: { select: { userId: true } },
+        tracks: { select: { id: true } },
+      },
     });
+    if (!release) {
+      throw new NotFoundException("Release not found");
+    }
+    if (!sameUserId(release.artist?.userId, userId)) {
+      throw new ForbiddenException("Not authorized to update this release");
+    }
+
+    if (
+      input.status !== undefined &&
+      input.status !== release.status &&
+      (release.status === "published" ||
+        (release.status === "ready" && input.status !== "published"))
+    ) {
+      throw new BadRequestException(
+        "Ready or published releases cannot return to an editable lifecycle state.",
+      );
+    }
+
+    let disclosureCorrections: Array<{
+      id: string;
+      disclosure: ReturnType<typeof normalizeAiDisclosureInput>;
+    }> = [];
+    try {
+      disclosureCorrections = (input.tracks ?? []).map((track) => ({
+        id: track.id,
+        disclosure: normalizeAiDisclosureInput(track.aiDisclosure),
+      }));
+    } catch (error) {
+      if (error instanceof AiDisclosureValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+    if (
+      disclosureCorrections.length > 0 &&
+      ["ready", "published"].includes(release.status)
+    ) {
+      throw new BadRequestException(
+        "Published AI disclosures cannot be silently replaced; use the audited correction workflow.",
+      );
+    }
+    const releaseTrackIds = new Set(release.tracks.map((track) => track.id));
+    const unknownTrack = disclosureCorrections.find(
+      (track) => !releaseTrackIds.has(track.id),
+    );
+    if (unknownTrack) {
+      throw new BadRequestException(
+        `Track ${unknownTrack.id} does not belong to this release.`,
+      );
+    }
+
+    const data: { title?: string; status?: string; primaryArtist?: string } = {};
+    if (input.title !== undefined) data.title = input.title;
+    if (input.status !== undefined) data.status = input.status;
+    if (input.primaryArtist !== undefined) {
+      if (typeof input.primaryArtist !== "string") {
+        throw new BadRequestException("primaryArtist must be a string.");
+      }
+      const primaryArtist = normalizeCreditName(input.primaryArtist);
+      if (!primaryArtist) {
+        throw new BadRequestException(
+          "primaryArtist must be a non-empty string.",
+        );
+      }
+      if (primaryArtist.length > 200) {
+        throw new BadRequestException(
+          "primaryArtist must be at most 200 characters.",
+        );
+      }
+      data.primaryArtist = primaryArtist;
+    }
+
+    this.clearCache();
+    const declaredAt = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      for (const correction of disclosureCorrections) {
+        await tx.track.update({
+          where: { id: correction.id },
+          data: {
+            aiDisclosureLevel: correction.disclosure.level,
+            aiContributionFacets: correction.disclosure.facets,
+            aiDisclosureSource: "artist",
+            aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+            aiDeclaredAt: declaredAt,
+          },
+        });
+      }
+      return tx.release.update({
+        where: { id: releaseId },
+        data,
+        include: { tracks: true },
+      });
+    });
+    for (const correction of disclosureCorrections) {
+      this.eventBus.publish({
+        eventName: "catalog.ai_disclosure_recorded",
+        eventVersion: 1,
+        occurredAt: declaredAt.toISOString(),
+        releaseId,
+        trackId: correction.id,
+        level: correction.disclosure.level as "NONE" | "PARTLY" | "ALL",
+        source: "artist",
+        facets: correction.disclosure.facets,
+      });
+    }
+    return withReleaseAiDisclosure(updated);
   }
 
   async deleteRelease(releaseId: string, userId: string) {
@@ -1816,20 +2047,24 @@ export class CatalogService implements OnModuleInit {
       throw new BadRequestException("Not authorized to update this release");
     }
 
+    const validatedArtwork = validateArtworkUpload(artwork, { field: "Artwork" });
+
     const updated = await prisma.release.update({
       where: { id: releaseId },
       data: {
         artworkData: artwork.buffer,
-        artworkMimeType: artwork.mimetype
+        artworkMimeType: validatedArtwork.mimeType,
+        artworkRevision: { increment: 1 },
       },
-      select: { id: true, artworkMimeType: true }
+      select: { id: true, artworkMimeType: true, artworkRevision: true }
     });
 
     this.clearCache();
     return {
       success: true,
       id: updated.id,
-      artworkUrl: `/catalog/releases/${releaseId}/artwork?t=${Date.now()}`
+      artworkRevision: updated.artworkRevision,
+      artworkUrl: `/catalog/releases/${releaseId}/artwork/v${updated.artworkRevision}`,
     };
   }
 
@@ -1887,6 +2122,7 @@ export class CatalogService implements OnModuleInit {
         explicit: true,
         createdAt: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { id: true, displayName: true }
         },
@@ -1898,6 +2134,7 @@ export class CatalogService implements OnModuleInit {
             title: true,
             position: true,
             explicit: true,
+            ...AI_DISCLOSURE_SELECT,
             stems: {
               select: {
                 id: true,
@@ -1914,8 +2151,9 @@ export class CatalogService implements OnModuleInit {
       take: cappedLimit,
     });
 
-    this.searchCache.set(cacheKey, { items, cachedAt: Date.now() });
-    return { items };
+    const normalizedItems = items.map(withReleaseAiDisclosure);
+    this.searchCache.set(cacheKey, { items: normalizedItems, cachedAt: Date.now() });
+    return { items: normalizedItems };
   }
 
   async searchMcpCatalog(
@@ -2003,6 +2241,7 @@ export class CatalogService implements OnModuleInit {
         releaseDate: true,
         artworkUrl: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { displayName: true },
         },
@@ -2010,6 +2249,7 @@ export class CatalogService implements OnModuleInit {
         tracks: {
           select: {
             id: true,
+            ...AI_DISCLOSURE_SELECT,
             stems: {
               select: {
                 listings: {
@@ -2039,10 +2279,12 @@ export class CatalogService implements OnModuleInit {
         moods: release.moods,
         releaseDate: release.releaseDate?.toISOString() ?? null,
         artworkUrl: this.buildMcpArtworkUrl(release),
+        artworkRevision: release.artworkRevision,
         trackCount: release.tracks.length,
         licensable: release.tracks.some((track) =>
           track.stems.some((stem) => stem.listings.length > 0),
         ),
+        aiDisclosure: deriveReleaseAiDisclosureSummary(release.tracks),
         deeplink: this.buildMcpReleaseDeeplink(release.id),
       })),
     };
@@ -2085,23 +2327,27 @@ export class CatalogService implements OnModuleInit {
     }
   }
 
-  async getReleaseArtwork(releaseId: string) {
+  async getReleaseArtwork(releaseId: string, _artworkRevision?: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
-      select: { artworkData: true, artworkMimeType: true, rightsRoute: true },
+      select: { artworkData: true, artworkMimeType: true, artworkRevision: true, rightsRoute: true },
     });
     if (!release || !release.artworkData || !this.isPubliclyVisible(release.rightsRoute)) {
+      return null;
+    }
+    if (!this.isReadableArtworkRevision(_artworkRevision, release.artworkRevision)) {
       return null;
     }
     return { data: release.artworkData, mimeType: release.artworkMimeType || "image/jpeg" };
   }
 
-  async getReleaseArtworkForUser(releaseId: string, userId: string) {
+  async getReleaseArtworkForUser(releaseId: string, userId: string, _artworkRevision?: string) {
     const release = await prisma.release.findUnique({
       where: { id: releaseId },
       select: {
         artworkData: true,
         artworkMimeType: true,
+        artworkRevision: true,
         artist: {
           select: { userId: true },
         },
@@ -2112,10 +2358,21 @@ export class CatalogService implements OnModuleInit {
       return null;
     }
 
+    if (!this.isReadableArtworkRevision(_artworkRevision, release.artworkRevision)) {
+      return null;
+    }
+
     return {
       data: release.artworkData,
       mimeType: release.artworkMimeType || "image/jpeg",
     };
+  }
+
+  private isReadableArtworkRevision(requested: string | undefined, current: number): boolean {
+    if (requested === undefined) return true;
+    if (!/^[1-9]\d*$/.test(requested)) return false;
+    const parsed = Number(requested);
+    return Number.isSafeInteger(parsed) && parsed <= current;
   }
 
   async getTrackStreamForUser(
@@ -2272,9 +2529,16 @@ export class CatalogService implements OnModuleInit {
       } catch (err) {
         console.error(`[Catalog] Failed to read stem ${stem.id} from disk:`, err);
       }
+
+      // A local catalog URI points back to this handler. Once its contained
+      // disk lookup misses, fetching the URI would recursively call this same
+      // route rather than discover another source.
+      return null;
     }
 
-    // 3. Remote storage providers (GCS/IPFS/etc.) - prefer provider-aware download first.
+    // 3. Provider-aware range reads remain available for callers that request
+    // a byte range.  Full reads below use EncryptionService so a range
+    // failure can never turn into an arbitrary network fetch.
     if (stem.uri && stem.storageProvider && stem.storageProvider !== "local") {
       if (options?.range) {
         try {
@@ -2294,31 +2558,20 @@ export class CatalogService implements OnModuleInit {
           console.error(`[Catalog] Failed to fetch range for stem ${stem.id} via storage provider:`, err);
         }
       }
+    }
 
+    // 4. Complete reads use the contained source loader.  Operational
+    // failures retain the existing null result expected by catalog callers;
+    // there is deliberately no generic HTTP fallback here.
+    if (stem.uri) {
       try {
-        console.log(`[Catalog] Fetching stem ${stem.id} via storage provider: ${stem.uri}`);
-        const fetchedData = await this.storageProvider.download(stem.uri);
+        console.log(`[Catalog] Fetching stem ${stem.id} through contained source loader: ${stem.uri}`);
+        const fetchedData = await this.encryptionService.loadSourceBuffer(stem.uri);
         if (fetchedData) {
           return { data: fetchedData, mimeType: stem.mimeType || "audio/mpeg" };
         }
       } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} via storage provider:`, err);
-      }
-    }
-
-    // 4. Generic HTTP URI fallback
-    if (stem.uri && stem.uri.startsWith("http")) {
-      try {
-        console.log(`[Catalog] Fetching stem ${stem.id} from HTTP URI: ${stem.uri}`);
-        const response = await fetch(stem.uri, {
-          signal: AbortSignal.timeout(120000), // 2 minutes for large files
-        });
-        if (response.ok) {
-          const buffer = Buffer.from(await response.arrayBuffer());
-          return { data: buffer, mimeType: stem.mimeType || "audio/mpeg" };
-        }
-      } catch (err) {
-        console.error(`[Catalog] Failed to fetch stem ${stem.id} from HTTP:`, err);
+        console.error(`[Catalog] Failed to load stem ${stem.id} through source loader:`, err);
       }
     }
 

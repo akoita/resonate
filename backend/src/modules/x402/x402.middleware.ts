@@ -115,6 +115,7 @@ export class X402Middleware implements NestMiddleware {
           statusCode: 402,
           reason: result.reason,
         });
+        res.setHeader('Cache-Control', 'no-store');
         return res.status(402).json({
           error: 'Payment verification failed',
           message: result.reason,
@@ -160,6 +161,9 @@ export class X402Middleware implements NestMiddleware {
       'PAYMENT-REQUIRED, X-Payment-Response',
     );
     res.setHeader('PAYMENT-REQUIRED', encodedPaymentRequired);
+    // A challenge carries the amount, payee and resource for one attempt; a
+    // cached copy would replay stale payment instructions to a later caller.
+    res.setHeader('Cache-Control', 'no-store');
     res.status(402).json(paymentRequired);
   }
 
@@ -212,6 +216,7 @@ export class X402Middleware implements NestMiddleware {
       },
       select: {
         paymentToken: true,
+        chainId: true,
       },
       orderBy: { listedAt: 'desc' },
     });
@@ -248,6 +253,15 @@ export class X402Middleware implements NestMiddleware {
         error: 'Unsupported listing payment asset',
         message:
           'The active marketplace listing is not priced in the configured x402 stablecoin asset.',
+      };
+    }
+    if (listing.chainId !== this.x402Config.chainId) {
+      return {
+        ok: false as const,
+        status: 409,
+        error: 'Unsupported listing chain',
+        message:
+          'The active marketplace listing is on a different chain than the configured x402 network.',
       };
     }
 

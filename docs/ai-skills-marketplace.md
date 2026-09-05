@@ -1,21 +1,113 @@
-# AI skills and project workflows
+# AI Skills Marketplace — Trail of Bits Curated Plugins
 
-Project instructions live in [AGENTS.md](../AGENTS.md). See the
-[agent configuration guide](../.agents/README.md) for the current workflow list,
-rule ownership, and maintenance guidance.
+> Vetted Claude Code plugins from [Trail of Bits' Curated Skills](https://github.com/trailofbits/skills-curated).
+> Every skill is code-reviewed by Trail of Bits staff to prevent backdoors and malicious hooks.
 
-The repository uses portable Markdown workflows under `.agents/workflows/`;
-it does not vendor skill packages. Follow the corresponding file when a client
-does not support slash-command discovery. Installed skills are supplied by the
-active client and may differ between machines.
+> [!IMPORTANT]
+> **Superseded for security work.** Resonate used to carry three of these
+> prompts as local slash commands under `.agents/workflows/`. They have been
+> deleted: they were one-time ports that drifted from upstream and duplicated
+> skills we now maintain in [`agent-toolkit`](https://github.com/akoita/agent-toolkit).
+> Use the shared skills instead — see
+> [Agent Skills](engineering/agent-skills.md) for install, per-skill scope, and
+> the local/CI lifecycle.
+>
+> | Old command (deleted) | Use instead |
+> | --- | --- |
+> | `/smart-contract-scan` | `security-smart-contracts` |
+> | `/security-best-practices` | `security-review` (diff) or `security-audit` (repository) |
+> | `/security-threat-model` | `security-threat-model` |
+>
+> The plugin recommendations below are still a useful survey of what is
+> available in the Trail of Bits marketplace; they are not a description of what
+> Resonate has installed.
 
-## External skills
+## Installation
 
-Install or update external plugins through your client's supported mechanism.
-Inspect the package source, permissions, scripts, and hooks before enabling it.
-A marketplace listing does not guarantee safety or compatibility. Keep local
-installation paths and machine-specific settings out of project instructions.
+> [!NOTE]
+> These plugins require **Claude Code**. The `/plugin` commands below are Claude Code-specific.
 
-The security workflow files retain their original adaptation attribution.
-Historical marketplace integration work is tracked in
-[issue #353](https://github.com/akoita/resonate/issues/353).
+```
+/plugin marketplace add trailofbits/skills-curated
+/plugin menu
+```
+
+After adding the marketplace, use `/plugin menu` to browse and install individual plugins.
+
+---
+
+## Agent-agnostic security skills
+
+Resonate no longer keeps ported security prompts in this repository. The seven
+maintained security skills — repository audit, diff review, the deterministic
+toolchain, supply chain, threat modeling, smart contracts, and AI systems —
+live in [`agent-toolkit`](https://github.com/akoita/agent-toolkit) and ship as
+one plugin per platform (`security@agent-toolkit` for Claude Code,
+`codex-security@agent-toolkit` for Codex). The skill bodies are identical on
+both, so the coverage stays agent-agnostic.
+
+See [Agent Skills](engineering/agent-skills.md) for the install commands, what
+each skill is (and is not) for, when to run each one locally, and the proposed
+CI wiring.
+
+---
+
+## Recommended Plugins
+
+### ⭐ Critical — Smart Contract Security
+
+| Plugin                           | What it does                          | Why we need it                                                                                                                         |
+| -------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `scv-scan`                       | Smart contract vulnerability scanning | Directly scans our Solidity contracts (`StemNFT`, `StemMarketplaceV2`) for known vulnerability patterns                                |
+| `evmbench`                       | AI-driven smart contract auditing     | OpenAI × Paradigm benchmark — deep semantic analysis complementing pattern-based scans ([evaluation](../audit/evmbench-evaluation.md)) |
+| `openai-security-best-practices` | General security best practices       | Superseded for us by `security-review` / `security-audit` in `agent-toolkit`                                                          |
+| `openai-security-threat-model`   | Threat modeling assistance            | Superseded for us by `security-threat-model` in `agent-toolkit`                                                                        |
+
+### 👍 Recommended — Development Workflow
+
+| Plugin                          | What it does                 | Why it helps                                                |
+| ------------------------------- | ---------------------------- | ----------------------------------------------------------- |
+| `openai-security-ownership-map` | Security ownership mapping   | Maps who owns what across our codebase — useful for reviews |
+| `openai-gh-fix-ci`              | Diagnose and fix CI failures | Speeds up fixing our GitHub Actions pipeline                |
+| `openai-gh-address-comments`    | Address PR review comments   | Streamlines the code review cycle                           |
+| `security-awareness`            | Security awareness guidance  | General security hygiene reminders                          |
+
+### 💡 Optional — Situational Use
+
+| Plugin                | What it does                      | When to use                                                                     |
+| --------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
+| `planning-with-files` | Structured file-based planning    | Complex multi-phase features (we cover this with `.agents/skills/`) |
+| `openai-playwright`   | Playwright test generation        | When writing new E2E tests (we already use Playwright)                          |
+| `ffuf-web-fuzzing`    | Web fuzzing with ffuf             | Security audits on API endpoints                                                |
+| `humanizer`           | Humanize AI-generated text        | Documentation and content writing                                               |
+| `last30days`          | Research last 30 days of activity | Market research and trend analysis                                              |
+
+### ⏭️ Not Recommended
+
+| Plugin                   | Reason                                               |
+| ------------------------ | ---------------------------------------------------- |
+| `ghidra-headless`        | Reverse engineering — not relevant to our stack      |
+| `wooyun-legacy`          | Chinese legacy vuln database — limited applicability |
+| `x-research`             | X/Twitter research — niche, not a primary need       |
+| `python-code-simplifier` | Python-specific — our stack is TypeScript/Solidity   |
+| `react-pdf`              | PDF generation — no current requirement              |
+| `skill-extractor`        | Skill extraction from repos — meta-tooling           |
+
+---
+
+## Custom Skill Opportunities
+
+Gaps where we could create project-specific skills or contribute back:
+
+1. **Solidity/Foundry testing** — A skill for running `forge test` with pattern-based analysis of failures
+2. **NestJS module scaffolding** — Generate NestJS modules/services following our conventions from `AGENTS.md`
+3. **Prisma migration checker** — Validate schema changes and generate migration scripts
+4. **Account abstraction patterns** — Codify our passkey-first AA patterns for consistent implementation
+
+---
+
+## References
+
+- [Trail of Bits Curated Skills repo](https://github.com/trailofbits/skills-curated)
+- [OpenAI Skills source repo](https://github.com/openai/skills) (original, before Trail of Bits conversion)
+- Related issue: [#353](https://github.com/akoita/resonate/issues/353)

@@ -1,7 +1,7 @@
 # GPU-enabled Demucs worker using NVIDIA CUDA
 # Use via the GPU-enabled local infrastructure stack in resonate-iac
 
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime@sha256:e4aaefef0c96318759160ff971b527ae61ee306a1204c5f6e907c4b45f05b8a3
 
 # Build argument to control model pre-caching
 ARG CACHE_MODEL=1
@@ -20,12 +20,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Demucs and dependencies (PyTorch already included in base image)
-COPY requirements.txt patch_demucs.py ./
-# Install all dependencies from requirements.txt (google-cloud-pubsub, etc.)
-# then patch demucs for torchaudio 2.x compatibility
-# soundfile provides the audio I/O backend for torchaudio 2.x
-RUN pip install --no-cache-dir -r requirements.txt soundfile \
+# Install the CUDA-base graph without replacing the base-provided Torch ABI.
+# soundfile is a reviewed input in requirements-gpu.in rather than an
+# untracked command-line addition.
+COPY requirements-build.lock requirements-gpu.lock constraints-gpu.txt patch_demucs.py ./
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements-build.lock \
+    && python -m pip install --no-cache-dir --require-hashes --no-deps --no-build-isolation \
+        --constraint constraints-gpu.txt -r requirements-gpu.lock \
     && python patch_demucs.py
 
 # Create models directory

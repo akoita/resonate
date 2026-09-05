@@ -1,0 +1,757 @@
+/* ======================================================================
+ * Player console: queue rows, icon buttons, gain, split buttons.
+ *
+ * The queue/controls work shipped its markup ahead of its styling — the
+ * queue remove control had no rule at all, so it inherited `.ui-btn`
+ * (12/24px padding, 14px radius) and rendered as a pill wider than the
+ * track duration beside it, and the two console toggles duplicated the
+ * same hardcoded `rgba(255,255,255,0.06)` block at 32px, under the 44px
+ * touch target the design system already defines. Everything here is
+ * token-driven so the console reads as one instrument.
+ *
+ * Loaded after identity-refresh.css.
+ * ==================================================================== */
+
+/* ---- Console status header ------------------------------------------
+ * Label left, live signal and immersive toggle right. The toggle used to
+ * sit inside an inline-flex wrapper around the label, which parked it in
+ * the middle of the row instead of on the console edge. */
+
+.player-status-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.player-status-signal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+/* ---- Shared console icon button (immersive, mute) --------------------
+ * Compact on screen; the ::after halo lifts the pointer/touch target to
+ * var(--touch-target) without a 44px visual footprint. */
+
+.console-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease, transform 0.18s var(--r-ease-out);
+}
+
+.console-icon-btn::after {
+  content: "";
+  position: absolute;
+  inset: -6px; /* 32 + 12 = 44px */
+}
+
+.console-icon-btn:hover {
+  color: var(--r-on-surface);
+  background: var(--r-chrome-hover);
+  border-color: rgba(124, 92, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.console-icon-btn:active {
+  transform: translateY(0);
+}
+
+.console-icon-btn:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+.console-icon-btn[aria-pressed="true"] {
+  color: var(--r-primary-soft);
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.14);
+  box-shadow: var(--r-glow-violet);
+}
+
+/* ---- Output gain ----------------------------------------------------- */
+
+.console-gain {
+  margin-bottom: var(--space-1);
+}
+
+.console-gain__label {
+  margin-bottom: 6px;
+}
+
+.console-gain__row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.console-gain__row .player-range {
+  flex: 1 1 auto;
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+/* Muted should be legible at a glance, not only from the icon. */
+.console-gain.is-muted .player-range {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+/* Speaker glyph: waves track the level, slash fades in on mute. */
+.volume-glyph__wave,
+.volume-glyph__slash {
+  transition: opacity 0.18s var(--r-ease-out);
+}
+
+/* ---- Player bar volume (was a 🔇/🔉/🔊 emoji) ------------------------ */
+
+.player-volume .volume-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-radius-full);
+  background: transparent;
+  color: var(--r-on-surface-muted);
+  cursor: pointer;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.player-volume .volume-icon::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+.player-volume .volume-icon:hover {
+  color: var(--r-on-surface);
+  background: var(--r-chrome-hover);
+}
+
+.player-volume .volume-icon:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+.player-volume .volume-icon[aria-pressed="true"] {
+  color: var(--r-primary-soft);
+}
+
+.player-volume .volume-slider {
+  transition: opacity 0.18s ease, filter 0.18s ease;
+}
+
+.player-volume.is-muted .volume-slider {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+/* ---- Queue rows ------------------------------------------------------ */
+
+.queue-item-name {
+  color: var(--r-on-surface);
+}
+
+.queue-item-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--r-on-surface-muted);
+}
+
+.queue-item-duration {
+  min-width: 34px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+/* Remove stays out of the way until the row is hovered or focused, and
+ * always occupies its slot, so revealing it never reflows the duration. */
+.queue-remove-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-radius-full);
+  background: transparent;
+  color: var(--r-on-surface-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease,
+    transform 0.16s var(--r-ease-out);
+}
+
+.queue-remove-button::after {
+  content: "";
+  position: absolute;
+  inset: -10px; /* 24 + 20 = 44px */
+}
+
+.queue-item:hover .queue-remove-button,
+.queue-item:focus-within .queue-remove-button,
+.queue-remove-button:focus-visible {
+  opacity: 1;
+}
+
+.queue-remove-button:hover {
+  color: var(--r-error);
+  background: rgba(255, 107, 107, 0.14);
+  transform: scale(1.08);
+}
+
+.queue-remove-button:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 1px;
+}
+
+/* No hover to reveal it on touch, so keep it quietly present. */
+@media (hover: none) {
+  .queue-remove-button {
+    opacity: 0.7;
+  }
+}
+
+/* ---- Immersive stage -------------------------------------------------- */
+
+.player-master-stage.is-immersive {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* mobile browser chrome must not crop the console */
+  max-width: none;
+  overflow: auto;
+  background: var(--r-canvas);
+}
+
+.player-master-stage.is-immersive-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 10000; /* app top layer, above the player bar and modals */
+}
+
+/* Immersive was only hiding the app chrome: the artwork stayed at its
+ * windowed size, and the hero kept reserving room for a player bar that
+ * isn't rendered here. Reclaim that space and let the record be the page. */
+
+.player-master-stage.is-immersive .player-hero-stage {
+  height: 100%;
+  justify-content: center;
+  /* Vertical air scales with the viewport so the art never sits flush
+   * against the top edge with the title jammed under it. */
+  padding: clamp(20px, 4vh, 56px) var(--r-lg);
+  padding-right: clamp(340px, 32vw, 520px);
+  gap: clamp(12px, 2vh, 28px);
+  transition: padding 0.9s var(--r-ease-out);
+}
+
+/* The record takes whatever height the title block leaves, rather than a
+ * fixed vh fraction that clips the title on shorter viewports. Shrinking is
+ * the container's job; the 1:1 ratio keeps the art square as it does it. */
+.player-master-stage.is-immersive .player-art-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Grows, not just shrinks: the container has to claim the leftover height
+   * so the artwork below has a definite box to fill. */
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Deliberately NOT width: 100%. The Stem Mixer button is positioned
+   * absolutely against this container, so stretching it to the hero's full
+   * width threw the button out to the screen edge, away from the artwork.
+   * Shrink-wrapping keeps the button on the art where it belongs. */
+  width: auto;
+  max-width: 100%;
+  /* No max-height cap: the stage's vertical padding already guarantees the
+   * air above and below, so capping the column as well only shrank the
+   * record twice for the same breathing room. */
+  margin-bottom: 0;
+}
+
+/* `height`, not `max-height`. An <img> sized `width/height: auto` renders at
+ * its intrinsic pixel size and a max-* only ever caps it — so artwork stored
+ * at e.g. 500px stayed 500px no matter how much room immersive freed. A
+ * definite height scales it up, and aspect-ratio: 1/1 keeps it square. */
+.player-master-stage.is-immersive .player-art-master {
+  height: 100%;
+  width: auto;
+  max-width: min(62vw, 100%);
+  border-radius: var(--r-radius-hero);
+  box-shadow:
+    0 80px 160px rgba(0, 0, 0, 0.95),
+    0 0 120px rgba(124, 92, 255, 0.22);
+  transition: max-width 0.9s var(--r-ease-out), box-shadow 0.9s ease;
+  animation: immersive-float 16s ease-in-out infinite;
+}
+
+.player-master-stage.is-immersive .hero-title {
+  font-size: clamp(2.6rem, 1.4rem + 3vw, 4.25rem);
+  letter-spacing: -0.055em;
+  line-height: 1.02;
+  margin-top: var(--r-md);
+}
+
+.player-master-stage.is-immersive .hero-artist {
+  font-size: clamp(1.05rem, 0.9rem + 0.6vw, 1.5rem);
+  color: var(--r-secondary);
+}
+
+/* The blurred artwork behind the stage becomes the room's light source. */
+.player-master-stage.is-immersive .player-mesh-bg {
+  filter: blur(140px) saturate(210%) brightness(0.52);
+  opacity: 0.95;
+  animation: immersive-bloom 34s ease-in-out infinite;
+}
+
+.player-master-stage.is-immersive .player-mesh-overlay {
+  background: radial-gradient(
+    ellipse at 50% 45%,
+    transparent 0%,
+    rgba(5, 5, 8, 0.35) 45%,
+    rgba(5, 5, 8, 0.88) 100%
+  );
+}
+
+/* ---- Settled: nothing but the record ---------------------------------
+ * After a few idle seconds the console drifts out and the artwork slides
+ * to true centre. Any pointer move, key or focus brings it straight back. */
+
+.player-master-stage.is-immersive.is-settled {
+  cursor: none;
+}
+
+.player-master-stage.is-immersive.is-settled
+  .player-floating-console:not(:focus-within) {
+  opacity: 0;
+  transform: translateX(24px) scale(0.985);
+  pointer-events: none;
+}
+
+.player-master-stage.is-immersive .player-floating-console {
+  transition: opacity 0.7s var(--r-ease-out), transform 0.7s var(--r-ease-out);
+}
+
+/* With the console gone the hero re-centres instead of sitting off-axis. */
+.player-master-stage.is-immersive.is-settled:not(:focus-within)
+  .player-hero-stage {
+  padding-right: var(--r-lg);
+}
+
+.player-master-stage.is-immersive.is-settled:not(:focus-within)
+  .player-art-master {
+  max-width: min(74vw, 100%);
+}
+
+/* Playhead survives the fade, as a hairline on the very bottom edge. */
+.immersive-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  z-index: 1001;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
+.immersive-progress span {
+  display: block;
+  height: 100%;
+  transform-origin: left center;
+  background: var(--r-grad-brand-bright);
+  box-shadow: 0 0 12px rgba(124, 92, 255, 0.55);
+}
+
+@keyframes immersive-float {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  50% {
+    transform: translateY(-14px) scale(1.014);
+  }
+}
+
+@keyframes immersive-bloom {
+  0%,
+  100% {
+    transform: scale(1.1) translate3d(0, 0, 0);
+    filter: blur(140px) saturate(210%) brightness(0.52);
+  }
+
+  50% {
+    transform: scale(1.22) translate3d(2%, -2%, 0);
+    filter: blur(160px) saturate(240%) brightness(0.62);
+  }
+}
+
+/* Motion here is ambience, never information — drop it on request, but keep
+ * the extra room, which is the point of immersive mode. */
+@media (prefers-reduced-motion: reduce) {
+  .player-master-stage.is-immersive .player-art-master,
+  .player-master-stage.is-immersive .player-mesh-bg {
+    animation: none;
+  }
+
+  .player-master-stage.is-immersive .player-hero-stage,
+  .player-master-stage.is-immersive .player-art-master,
+  .player-master-stage.is-immersive .player-floating-console {
+    transition: none;
+  }
+}
+
+/* ---- Split button ------------------------------------------------------
+ * One control, two tiers: the common action stays a single click and its
+ * rarer sibling lives behind a caret, instead of every queue action
+ * claiming its own equally-weighted slot in a page header. */
+
+.split-button {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  overflow: hidden;
+  transition: border-color 0.18s ease, background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.split-button--primary {
+  border-color: transparent;
+  background: var(--r-grad-brand);
+  box-shadow: 0 10px 24px rgba(124, 92, 255, 0.22);
+}
+
+.split-button:hover:not(.is-disabled),
+.split-button.is-open {
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.16);
+}
+
+.split-button--primary:hover:not(.is-disabled),
+.split-button--primary.is-open {
+  background: var(--r-grad-brand-bright);
+}
+
+.split-button.is-disabled {
+  opacity: 0.55;
+}
+
+.split-button__action,
+.split-button__caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.split-button__action {
+  padding: 12px 16px 12px 18px;
+  min-height: var(--touch-target);
+}
+
+.split-button__caret {
+  width: 38px;
+  padding: 0;
+}
+
+.split-button__action:hover:not(:disabled),
+.split-button__caret:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.split-button__action:disabled,
+.split-button__caret:disabled {
+  cursor: not-allowed;
+}
+
+.split-button__action:focus-visible,
+.split-button__caret:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: -2px;
+}
+
+.split-button__icon {
+  display: inline-flex;
+  opacity: 0.85;
+}
+
+.split-button__divider {
+  width: 1px;
+  margin: 8px 0;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.split-button__caret svg {
+  transition: transform 0.18s var(--r-ease-out);
+}
+
+.split-button.is-open .split-button__caret svg {
+  transform: rotate(180deg);
+}
+
+.split-button__menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 240px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(22, 22, 30, 0.95);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  animation: actionMenuFadeIn 0.15s ease-out;
+}
+
+.split-button__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--r-on-surface);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.split-button__menu-item:hover:not(:disabled),
+.split-button__menu-item:focus-visible {
+  background: rgba(124, 92, 255, 0.16);
+  outline: none;
+}
+
+.split-button__menu-item:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.5);
+}
+
+.split-button__menu-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.split-button__menu-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--r-on-surface-variant);
+}
+
+.split-button__menu-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.split-button__menu-copy small {
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+/* ---- Library artist / album cards -------------------------------------
+ * Queueing a whole artist or album was reachable only by right-click, which
+ * almost nobody discovers. The overflow menu sits in the card corner and
+ * surfaces on hover or keyboard focus, so it never competes with the
+ * artwork it sits on. */
+
+.library-card {
+  position: relative;
+}
+
+.library-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+
+.library-card:hover .library-card-actions,
+.library-card:focus-within .library-card-actions {
+  opacity: 1;
+}
+
+/* No hover on touch, so keep it discoverable there. */
+@media (hover: none) {
+  .library-card-actions {
+    opacity: 0.75;
+  }
+}
+
+/* Album cards that navigate: the whole card is one link, so the overflow
+ * menu has to sit outside it rather than nest a button inside an anchor. */
+.library-card--linked {
+  padding: 0;
+}
+
+.library-card-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 100%;
+  padding: var(--space-4);
+  color: inherit;
+  text-decoration: none;
+  border-radius: inherit;
+}
+
+.library-card-link:hover {
+  text-decoration: none;
+}
+
+/* ---- Library artist page ---------------------------------------------
+ * The page listed every track flat, with no cover, no way into an album and
+ * nothing to play. */
+
+.library-artist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.library-artist-track {
+  grid-template-columns: 48px 1fr auto auto;
+  gap: var(--space-4);
+  align-items: center;
+  cursor: pointer;
+}
+
+.library-artist-track .library-item-artwork {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.library-artist-track .library-item-artwork img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.library-artist-track .library-item-artwork-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 20px;
+}
+
+.library-artist-track .library-item-info {
+  min-width: 0;
+}
+
+.library-artist-track .library-item-meta {
+  font-size: 12px;
+  color: var(--r-on-surface-muted);
+}
+
+.library-artist-track.playing .library-item-title {
+  color: var(--color-accent);
+}
+
+.library-artist-track:focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: -2px;
+}
+
+/* ---- Saved chip is a toggle, not a dead end --------------------------
+ * It kept `cursor: default` from when "Saved" was terminal; it now reads
+ * as something you can press again to undo. */
+
+.player-action-chip.is-saved {
+  cursor: pointer;
+}
+
+.player-action-chip.is-saved:hover:not(:disabled) {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.12);
+  color: #fecaca;
+}
+
+.player-action-chip.is-busy {
+  cursor: progress;
+}
+
+.player-action-chip__spinner {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: currentColor;
+  animation: consoleSpin 0.7s linear infinite;
+}
+
+@keyframes consoleSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-button__menu {
+    animation: none;
+  }
+
+  .split-button__caret svg,
+  .console-icon-btn,
+  .queue-remove-button,
+  .volume-glyph__wave,
+  .volume-glyph__slash {
+    transition: none;
+  }
+
+  .player-action-chip__spinner {
+    animation-duration: 2.4s;
+  }
+}

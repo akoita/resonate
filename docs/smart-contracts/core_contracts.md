@@ -88,8 +88,18 @@ Native marketplace with enforced royalties:
 - Reads royalty info from EIP-2981
 - Automatically routes royalties on every sale
 - Caps royalties at 25% to prevent abuse
-- Protocol fee (configurable, max 5%)
+- Protocol fee (configurable, max 15%; current accepted marketplace rate remains 10%)
 - **Stake-to-price enforcement** — listing price per unit cannot exceed `maxPriceMultiplier × stake` (via `ContentProtection.getMaxListingPrice()`)
+- **Guarded upgrades** — the app uses a stable ERC1967 proxy; upgrades execute
+  only through the owner/guardian timelock after the configured delay
+- **Namespaced storage** — marketplace-owned state lives in the ERC-7201
+  `resonate.storage.StemMarketplaceV2` namespace, isolated from inherited
+  OpenZeppelin storage; future upgrades append namespace members only
+- **Fast pause** — the operational owner can stop every listing and purchase
+  entry point immediately while preserving seller cancellation and existing
+  failed-payment claims
+- **Replaceable payment policy** — the owner can rotate the
+  `PaymentAssetRegistry` without replacing the marketplace proxy
 
 ```solidity
 // List stems for sale (price must be within stake cap)
@@ -137,7 +147,23 @@ validator.setContentProtection(address(contentProtection));
 
 UUPS-upgradeable contract for anti-piracy enforcement:
 
-- **Attestation** — Creators register release / content provenance on-chain
+- **Attestation** — Creators register release / content provenance on-chain.
+  `attest` / `attestRelease` are open entrypoints, but tokenIds are predictable, so
+  a caller must present an **EIP-712 authorization voucher signed by a registered
+  registrar** that binds `(attester = msg.sender, tokenId, deadline)` — this stops an
+  attacker front-running a creator to squat the single-use attester slot (CP-1,
+  #1271). The artist stays `msg.sender` = attester = staker; attestation is **not**
+  moved server-side. The EIP-712 domain is `("ContentProtection", "1")` and includes
+  `chainId` + contract address, so a voucher cannot be replayed cross-chain,
+  cross-contract, or by a different caller. Invalid, expired, wrong-signer, or
+  wrong-caller vouchers revert `InvalidAttestationSignature` /
+  `AttestationAuthorizationExpired`. The voucher is issued by the backend
+  `POST /contracts/attestation-vouchers` endpoint (CP-1, body `{ releaseId, attester,
+  contentHash, metadataURI, chainId? }`), which signs only after verifying the caller
+  controls `attester` and that `releaseId` re-derives from that attester — so a foreign
+  creator's predictable id can never be squatted, and no persisted release is required
+  for the first attestation. The signer must be registered via `setRegistrar` — see the
+  [operations runbook](operations-runbook.md#cp-1-attestation-registrar-backend-voucher-signer).
 - **Staking** — fixed ETH or ERC-20 deposit required per tokenId (anti-spam
   deterrent). The contract records and holds only the configured required stake:
   a native overpayment is refunded at stake time, and the ERC-20 path pulls only
@@ -153,12 +179,17 @@ UUPS-upgradeable contract for anti-piracy enforcement:
 - **Stake-to-price proportionality** — `maxPriceMultiplier` (default 10×) caps listing price relative to staked amount, preventing high-price listings with minimal stakes
 
 ```solidity
-// 1. Attest the release root / protected content record
+// 1. Attest the release root / protected content record. `deadline` + `signature`
+//    are a registrar-signed EIP-712 AttestationAuthorization voucher bound to
+//    (msg.sender, releaseId, deadline); the backend registrar signs it after the
+//    off-chain ownership check (CP-1, #1271).
 contentProtection.attestRelease(
     releaseId,
     contentHash,      // keccak256 of audio
     fingerprintHash,  // acoustic fingerprint hash
-    "ipfs://Qm..."    // metadata URI
+    "ipfs://Qm...",   // metadata URI
+    deadline,         // voucher expiry (unix seconds)
+    signature         // registrar EIP-712 signature (r,s,v)
 );
 
 // 2. Stake ETH for the protected release root
@@ -196,6 +227,14 @@ Hierarchy model:
 
 Holds sale revenue per tokenId until escrow period expires:
 
+- **Guarded upgrades** — The application address is an ERC1967 proxy. Only its
+  `upgradeAuthority` timelock can authorize UUPS upgrades; the operational owner
+  and an independent guardian mutually cancel scheduled changes and can each
+  drive a delay-protected recovery.
+- **Global pause** — The operational owner can immediately stop every custody
+  movement: native/ERC-20 deposits, releases, redirects, and failed-payment
+  claims. Views, dispute freeze controls, configuration, two-step ownership,
+  pause recovery, and upgrade governance remain available while paused.
 - **Deposit** — Accumulates revenue per token. **Permissioned**: only the owner or
   an allowlisted depositor (`setDepositor`) may deposit, because the first deposit
   binds the escrow's beneficiary — leaving it open would let an attacker front-run
@@ -205,8 +244,11 @@ Holds sale revenue per tokenId until escrow period expires:
 - **Release** — Permissionless after escrow period (anyone can call)
 - **Redirect** — Admin sends frozen funds to rightful owner on confirmed theft
 
-> **Deploy/ops:** after deploying `RevenueEscrow`, allowlist the revenue-routing
+> **Deploy/ops:** promote the proxy address, never the implementation. After a
+> fresh deployment, link `ContentProtection` and allowlist each revenue-routing
 > address with `setDepositor(router, true)` (the owner is implicitly authorized).
+> A historical standalone escrow cannot be upgraded in place; audit/settle its
+> liabilities before retiring or replacing that address.
 
 ```solidity
 // Authorize the revenue router once (owner only)
@@ -246,6 +288,22 @@ Core behavior:
   but does not release funds;
 - anyone can open refunds when an active campaign misses its deadline or a
   funded campaign misses its booking deadline;
+- **anyone can also open refunds when a confirmed booking misses its fulfillment
+  deadline** (`openRefundsAfterMissedFulfillment`, issue #1271 / SCE-1). Booking
+  confirmation snapshots `fulfillmentDeadline = block.timestamp +
+  fulfillmentWindow`; once it passes, a stalled `BookingConfirmed` or
+  `DepositReleased` campaign can be forced to `RefundAvailable` by any caller, so
+  backers are never trapped if the operator's confirmer keys **and** the ops owner
+  both go silent after booking. The window is a global, owner-tunable value
+  (`setFulfillmentWindow`, bounded `MIN_FULFILLMENT_WINDOW (1d) …
+  MAX_FULFILLMENT_WINDOW (180d)`) — **not** a `createCampaign` parameter, so the
+  creation ABI is unchanged. It is inert while `fulfillmentWindow == 0` (the
+  deadline stays 0 and the escape reverts `FulfillmentDeadlineNotPassed`).
+  Campaigns already in `BookingConfirmed`/`DepositReleased` at the 2.1.0 upgrade
+  carry `fulfillmentDeadline == 0` and are **not** retro-covered (they remain
+  governed by the owner/confirmer exits); this is accepted, not backfilled. From
+  `DepositReleased`, `claimRefund` distributes only the un-released remainder
+  (`totalPledged − totalReleased`), so the released deposit stays with the artist;
 - owner or authorized confirmers can confirm booking and fulfillment;
 - optional deposit release is capped at 30% and only available after booking
   confirmation when disclosed in campaign terms;
@@ -392,11 +450,23 @@ For material contract changes, Resonate expects a risk-scaled test ladder:
 - mutation testing with Certora Gambit for high-value contracts/specs when we
   need evidence that tests or formal rules catch intentionally injected faults.
 
-Shared contract surfaces such as events, errors, enums, and structs should live
-in interfaces under `contracts/src/interfaces/` so tests and production code do
-not duplicate declarations. Custom errors should include identifying parameters
-when they materially improve debugging, for example campaign id, caller,
+Shared contract surfaces use two levels. Capability interfaces under
+`contracts/src/common/` own declarations whose semantics are identical across
+multiple production contracts, such as upgrade authority, failed-payment
+recovery, and exact-transfer guards. Domain interfaces under
+`contracts/src/interfaces/` inherit those capabilities and own the remaining
+contract-specific events, errors, enums, structs, and function signatures. This
+keeps production and tests on one canonical declaration without creating a
+catch-all common module. Custom errors should include identifying parameters when
+they materially improve debugging, for example campaign id, caller,
 expected/current status, or requested/max basis points.
+
+ERC-7201 namespace structs are a separate implementation concern: the annotated
+storage struct, namespace constant, and accessor stay inside the owning contract.
+New upgradeable contracts adopt that layout from their first deployment. Existing
+deployed linear proxy state is not moved into a namespace without an explicit
+compatibility or replacement strategy, because mappings and dynamic collections
+cannot be enumerated by a normal reinitializer.
 
 Certora Prover specs use the `contracts/certora/conf/` and
 `contracts/certora/specs/` layout. Use that layer for high-value custody,
@@ -425,7 +495,7 @@ evaluate whether those specs or the Solidity tests kill meaningful mutants.
 4. **CEI pattern** - All contracts follow Checks-Effects-Interactions
 5. **Access control** - Role-based permissions for admin functions
 6. **Transfer validation** - Whitelist + blacklist enforcement
-7. **UUPS upgrade safety** - Only owner can authorize ContentProtection upgrades
+7. **UUPS upgrade safety** - ContentProtection upgrades are authorized only by its delayed timelock; the operational owner controls the independent fast pause
 8. **Blacklist propagation** - TransferValidator checks ContentProtection blacklist on every transfer
 9. **Stake-to-price cap** - `PriceExceedsStakeCap` revert prevents listings with price > `stake × maxPriceMultiplier`
 10. **Upgrade continuity** - `reinitializeV2()` seeds `maxPriceMultiplier = 10` on existing deployments via UUPS upgrade

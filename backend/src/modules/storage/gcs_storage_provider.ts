@@ -2,6 +2,17 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleAuth } from 'google-auth-library';
 import { StorageProvider, StorageRangeResult, StorageResult } from './storage_provider';
+import {
+    BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
+    fetchBoundedRemote,
+    GCS_REMOTE_FETCH_TIMEOUT_MS,
+    BoundedRemoteResponseLimitError,
+} from './bounded_remote_fetch';
+import {
+    GcsStorageUri,
+    resolveGcsStorageUri,
+    StorageUriPolicyError,
+} from './storage_uri_policy';
 
 @Injectable()
 export class GcsStorageProvider extends StorageProvider {
@@ -44,63 +55,23 @@ export class GcsStorageProvider extends StorageProvider {
         return headers;
     }
 
-    private normalizeObjectPath(uri: string): string | null {
-        const trimmed = uri.trim();
-        if (!trimmed) return null;
-
-        if (trimmed.startsWith(`gs://${this.bucket}/`)) {
-            return trimmed.slice(`gs://${this.bucket}/`.length);
-        }
-
-        if (trimmed.startsWith('gs://')) {
-            const withoutScheme = trimmed.slice('gs://'.length);
-            const firstSlash = withoutScheme.indexOf('/');
-            return firstSlash >= 0 ? withoutScheme.slice(firstSlash + 1) : null;
-        }
-
-        if (trimmed.startsWith(`https://storage.googleapis.com/${this.bucket}/`)) {
-            return trimmed.slice(`https://storage.googleapis.com/${this.bucket}/`.length);
-        }
-
-        if (trimmed.startsWith(`http://storage.googleapis.com/${this.bucket}/`)) {
-            return trimmed.slice(`http://storage.googleapis.com/${this.bucket}/`.length);
-        }
-
-        const withoutLeadingSlash = trimmed.replace(/^\/+/, '');
-        if (withoutLeadingSlash.startsWith(`${this.bucket}/`)) {
-            return withoutLeadingSlash.slice(this.bucket.length + 1);
-        }
-
-        if (/^https?:\/\//i.test(trimmed)) {
-            try {
-                const url = new URL(trimmed);
-                const path = url.pathname.replace(/^\/+/, '');
-                if (path.startsWith(`${this.bucket}/`)) {
-                    return path.slice(this.bucket.length + 1);
-                }
-            } catch {
-                return null;
-            }
-            return null;
-        }
-
-        return withoutLeadingSlash || null;
+    private resolveStorageUri(uri: string): GcsStorageUri {
+        return resolveGcsStorageUri(uri, this.bucket);
     }
 
-    private resolveDownloadUrl(uri: string): string | null {
-        const trimmed = uri.trim();
-        if (!trimmed) return null;
+    private normalizeObjectPath(uri: string): string {
+        return this.resolveStorageUri(uri).objectPath;
+    }
 
-        if (/^https?:\/\//i.test(trimmed)) {
-            return trimmed;
+    private resolveDownloadUrl(uri: string): string {
+        return this.resolveStorageUri(uri).target;
+    }
+
+    private validateRedirectTarget(target: string): void {
+        const resolved = this.resolveStorageUri(target);
+        if (resolved.target !== target) {
+            throw new StorageUriPolicyError('gcs', 'redirect target is not canonical');
         }
-
-        const objectPath = this.normalizeObjectPath(trimmed);
-        if (!objectPath) {
-            return null;
-        }
-
-        return `https://storage.googleapis.com/${this.bucket}/${objectPath}`;
     }
 
     async upload(data: Buffer, filename: string, _mimeType: string): Promise<StorageResult> {
@@ -128,43 +99,46 @@ export class GcsStorageProvider extends StorageProvider {
     }
 
     async download(uri: string): Promise<Buffer | null> {
+        const resolved = this.resolveStorageUri(uri);
         try {
-            const downloadUrl = this.resolveDownloadUrl(uri);
-            if (!downloadUrl) {
-                this.logger.warn(`Could not resolve GCS download URL for ${uri}`);
-                return null;
-            }
-
             const token = await this.getAccessToken();
             const headers = this.authHeaders(token);
 
-            const response = await fetch(downloadUrl, { headers, signal: AbortSignal.timeout(30000) });
-            if (!response.ok) return null;
-            return Buffer.from(await response.arrayBuffer());
+            const response = await fetchBoundedRemote(resolved.target, {
+                timeoutMs: GCS_REMOTE_FETCH_TIMEOUT_MS,
+                maxBytes: BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
+                headers,
+                validateTarget: (target) => this.validateRedirectTarget(target),
+            });
+            if (response.status < 200 || response.status >= 300) return null;
+            return response.data;
         } catch (err) {
+            if (err instanceof StorageUriPolicyError || err instanceof BoundedRemoteResponseLimitError) {
+                throw err;
+            }
             this.logger.error(`Download failed for ${uri}: ${err}`);
             return null;
         }
     }
 
     async downloadRange(uri: string, range: string): Promise<StorageRangeResult | null> {
+        const resolved = this.resolveStorageUri(uri);
         try {
-            const downloadUrl = this.resolveDownloadUrl(uri);
-            if (!downloadUrl) {
-                this.logger.warn(`Could not resolve GCS download URL for ${uri}`);
-                return null;
-            }
-
             const token = await this.getAccessToken();
             const headers = {
                 ...this.authHeaders(token),
                 Range: range,
             };
 
-            const response = await fetch(downloadUrl, { headers, signal: AbortSignal.timeout(30000) });
-            if (!response.ok) return null;
+            const response = await fetchBoundedRemote(resolved.target, {
+                timeoutMs: GCS_REMOTE_FETCH_TIMEOUT_MS,
+                maxBytes: BOUNDED_REMOTE_RESPONSE_CEILING_BYTES,
+                headers,
+                validateTarget: (target) => this.validateRedirectTarget(target),
+            });
+            if (response.status < 200 || response.status >= 300) return null;
 
-            const data = Buffer.from(await response.arrayBuffer());
+            const data = response.data;
             const contentRange = response.headers.get('content-range');
             const contentType = response.headers.get('content-type');
 
@@ -189,6 +163,9 @@ export class GcsStorageProvider extends StorageProvider {
                 mimeType: contentType,
             };
         } catch (err) {
+            if (err instanceof StorageUriPolicyError || err instanceof BoundedRemoteResponseLimitError) {
+                throw err;
+            }
             this.logger.error(`Range download failed for ${uri}: ${err}`);
             return null;
         }
@@ -196,7 +173,6 @@ export class GcsStorageProvider extends StorageProvider {
 
     async delete(uri: string): Promise<void> {
         const objectPath = this.normalizeObjectPath(uri);
-        if (!objectPath) return;
 
         try {
             const token = await this.getAccessToken();

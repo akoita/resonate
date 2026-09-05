@@ -12,9 +12,12 @@ owner: "@akoita"
 
 The fan-funded campaign loop is implemented end to end and validated on
 **test/staging** (CI green on `main` across lint, contracts
-unit/fuzz/invariant, backend unit + integration, e2e, and build). It is **not
-yet in production for real users** — production (real-user) launch is a later
-phase, pending the go-live follow-ups below. A fan can discover a campaign, read its
+unit/fuzz/invariant, blocking Halmos, backend unit + integration, e2e, and
+build). The current Base Sepolia UUPS proxy has passed both the automatic
+refund path and the full 6%-fee/release path with backend indexer
+reconciliation. It is **not yet in production for real users** — production
+(real-user) launch is separately gated in
+[#1583](https://github.com/akoita/resonate/issues/1583). A fan can discover a campaign, read its
 artist-approved immutable terms, pledge on-chain into the campaign-specific
 `ShowCampaignEscrow` through their smart account, receive a durable receipt
 reconciled from the indexed `Pledged` event, and claim an automatic refund when
@@ -27,7 +30,11 @@ time-lock.
 Surfaces: home campaign hero, `/shows`, `/shows/create`, `/shows/:slug/edit`,
 and the campaign detail page (for example `/shows/sennarin-paris`). The web app
 reads the backend Shows API as the source of truth and keeps seeded sample data
-only as a local/offline fallback. The campaign trust model and fund-release
+only as a local/offline fallback. Contract explorer links follow each
+campaign's recorded chain, using its configured explorer when available and
+otherwise the chain's standard explorer. Blockscout links open the contract
+view for verified source code, transactions, and events. Campaigns without a
+linked on-chain escrow show no explorer action and cannot accept pledges. The campaign trust model and fund-release
 policy are defined in
 [Show Campaign Trust And Escrow Policy](../rfc/show-campaign-trust-escrow.md);
 show attendance credential boundaries are defined in
@@ -37,16 +44,14 @@ attendance history stay off-chain).
 
 **Before production (real-user) go-live (not feature gaps):**
 
-- promote the deployed `ShowCampaignEscrow` address into production config and
+- record the explicit owner GO and complete the application-wide launch package
+  in [#1583](https://github.com/akoita/resonate/issues/1583);
+- deploy and promote the production `ShowCampaignEscrow` proxy into production config and
   wire each campaign's `contractCampaignId` (a deploy-time step). The operator
   activation panel now removes the copy-paste from this step (#1390): the escrow
   input is prefilled from the platform-configured escrow for the campaign's
   chain, and a "Find on-chain campaign" button discovers the `contractCampaignId`
   by matching the draft's deterministic terms — see the operator controls below;
-- expand formal (Halmos/Certora) and mutation (Gambit) coverage — currently
-  outside the CI gate (`forge test --no-match-path "test/formal/*"`), tracked in
-  [#943](https://github.com/akoita/resonate/issues/943) and
-  [#944](https://github.com/akoita/resonate/issues/944);
 - optionally gate or remove the seeded `CAMPAIGNS[]` web fallback for production
   builds.
 
@@ -58,6 +63,13 @@ teams add, replace, delete, and reorder gallery visuals before activation. When
 a compact preview is not supplied, the UI reuses the hero or gallery visual
 with a safe crop and falls back to the generated concert-card atmosphere only
 as a last resort.
+
+Each hero, card, or gallery visual carries a server-owned artwork revision.
+Replacement increments that revision in the same database update that points
+the campaign at the new storage object, and public clients include it in the
+canonical `/shows/campaigns/:id/visuals/:visualRef/v:revision` path. Reordering
+and metadata-only edits do not change image identity. Legacy unversioned visual
+routes remain readable for rollback and older clients.
 
 Campaign detail pages use a conversion-first layout (#1365, #1373, #1383):
 the page opens with a clean full-width visual banner (title, date/venue on
@@ -96,6 +108,16 @@ per-slug `SAMPLE_SHOWS_ESCROW_LINKS` JSON map (`contractCampaignId` +
 `beneficiaryAddress`), the mapped fixtures are promoted to artist-authorized
 `active_escrow_campaign` records linked to that escrow so hydration can
 reconcile fee/terms from the contract. Unmapped slugs stay provisional.
+
+The backend indexer can reconcile more than one escrow on the same chain during
+a contract replacement. The current escrow remains the default for newly
+activated campaigns, while a backend-only `address:deploymentBlock` target list
+keeps legacy campaign events and refund claims live until that escrow is fully
+drained. Each address has an independent cursor, fee snapshot, and database-backed
+lease. The lease uses the database clock plus an owner id and monotonically
+increasing epoch to fence both reconciliation and cursor writes. That lets backend
+instances divide targets safely; after a crash, a new instance can take over an
+expired target without allowing the previous epoch to resume writing (#1567).
 
 ## Who It Is For
 
@@ -304,9 +326,10 @@ settlement is a later protocol slice rather than MVP scope.
 | `/shows` | implemented | Campaign explorer reads the backend Shows API and falls back to four researched sample concepts for local/offline demos. The public default list hides refund/terminal campaigns, while admin/operator users get a status filter for Default, All, Active, Funded, Cancelled, Refunds, and Released views. Uploaded campaign preview visuals appear on campaign cards when available, with non-actionable status badges when terminal/refund campaigns are shown. |
 | `/shows/create` | implemented | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, a hero visual, a compact preview visual, and an ordered gallery visual set. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. Creating a campaign already marked `artist_authorized`/`trusted_source_authorized` is operator-only (#946) — a non-operator self-issuing an authorized status is rejected the same way `request-authority` rejects it. |
 | `/shows/:slug/edit` | implemented | Draft campaigns can be edited before activation, including public campaign title/copy, hero/preview visuals, gallery add/replace/delete/reorder controls, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. Once artist authority is approved, the critical fan-risk terms are locked (#946): edits that change goal, deadline, beneficiary, deposit-release %, release policy, dispute window, booking deadline, or tier financials are refused until an operator revokes authority; non-risk fields (copy, visuals) stay editable. |
-| `/shows/sennarin-paris` | implemented | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, expanded campaign pitch, dense-title treatment, and campaign image metadata for large social previews when available. A trust/terms panel (#949) shows the campaign trust state (demand signal / provisional / artist-authorized escrow / authority-revoked / refund-available / cancelled), an artist-authority + masked-beneficiary summary (no sensitive evidence ids), and the immutable terms a fan reads before signing (goal, deadline, minimum backers, payment asset/network, deposit-release %, dispute window, booking deadline, refund policy), with honest copy that funding never guarantees a ticket. The pledge panel renders the full pledge lifecycle state (`pledgeStateLabel`), and gates the pledge form on `campaignPledgeAvailability` (#949): when the campaign isn't open for pledging it shows an honest empty state instead of a live form — awaiting artist authority, not authorized (revoked/rejected/expired), open demand signal (no escrow), or terminal/refund — while still surfacing the refund action for existing backers. Before the wallet signature, a pre-sign confirmation dialog (#1240, `pledgeConfirmSummary` + the shared `ConfirmDialog`) recaps the selected tier amount and the fan-risk terms (payment asset/network, deposit-on-booking %, refund policy, dispute window) with honest no-guaranteed-ticket copy; cancelling aborts before any intent is created. |
+| `/shows/sennarin-paris` | implemented | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, expanded campaign pitch, dense-title treatment, and campaign image metadata for large social previews when available. Linked escrows expose a chain-aware contract explorer action; configured Blockscout links open the contract tab for verified source, transactions, and events, while campaigns without a linked escrow omit the action. A trust/terms panel (#949) shows the campaign trust state (demand signal / provisional / artist-authorized escrow / authority-revoked / refund-available / cancelled), an artist-authority + masked-beneficiary summary (no sensitive evidence ids), and the immutable terms a fan reads before signing (goal, deadline, minimum backers, payment asset/network, deposit-release %, dispute window, booking deadline, refund policy), with honest copy that funding never guarantees a ticket. The pledge panel renders the full pledge lifecycle state (`pledgeStateLabel`), and gates the pledge form on `campaignPledgeAvailability` (#949): when the campaign isn't open for pledging it shows an honest empty state instead of a live form — awaiting artist authority, not authorized (revoked/rejected/expired), open demand signal (no escrow), or terminal/refund — while still surfacing the refund action for existing backers. Before the wallet signature, a pre-sign confirmation dialog (#1240, `pledgeConfirmSummary` + the shared `ConfirmDialog`) recaps the selected tier amount and the fan-risk terms (payment asset/network, deposit-on-booking %, refund policy, dispute window) with honest no-guaranteed-ticket copy; cancelling aborts before any intent is created. |
 | Escrow contract | implemented | `ShowCampaignEscrow.sol` now exists with threshold, refund, booking, fulfillment, and release-gating unit/fuzz/invariant/formal coverage. Deployment now emits JSON, `.remote.env`, and ABI handoffs; production activation still needs the promoted escrow address plus per-campaign `contractCampaignId` wiring. |
-| Escrow event indexer | implemented | `ShowsEscrowIndexerService` (#948) polls `ShowCampaignEscrow` logs (gated by `ENABLE_SHOWS_ESCROW_INDEXER`), records them idempotently in `ShowCampaignEscrowEvent` (unique `(txHash, logIndex)`), advances a per-chain `ShowEscrowIndexerState` cursor with reorg jump-back, and reconciles campaign status/accounting (`onChainStatus`, `raisedAmountUnits`, `uniqueBackerCount`, `totalRefundedUnits`, `totalReleasedUnits`) plus pledge status from on-chain truth. Activation/link also hydrates the linked campaign directly from `campaigns`, `campaignFees`, and `campaignStatus`, and operators can retry that snapshot through `POST /shows/campaigns/:id/resync-chain` if an event-order gap or RPC outage leaves a campaign stale. Drift (no bound campaign, or an on-chain pledge with no backend intent) emits `shows.campaign_reconciliation_mismatch`. |
+| Escrow event indexer | implemented | `ShowsEscrowIndexerService` (#948, #1567) polls `ShowCampaignEscrow` logs (gated by `ENABLE_SHOWS_ESCROW_INDEXER`), records them idempotently in `ShowCampaignEscrowEvent` (unique `(txHash, logIndex)`), advances a per-chain `ShowEscrowIndexerState` cursor with reorg jump-back, and reconciles campaign status/accounting (`onChainStatus`, `raisedAmountUnits`, `uniqueBackerCount`, `totalRefundedUnits`, `totalReleasedUnits`) plus pledge status from on-chain truth. A per-chain/address database lease uses the database clock, owner id, expiry, and monotonically increasing epoch to divide targets across instances and fence stale reconciliation/cursor writes. Activation/link also hydrates the linked campaign directly from `campaigns`, `campaignFees`, and `campaignStatus`, and operators can retry that snapshot through `POST /shows/campaigns/:id/resync-chain` if an event-order gap or RPC outage leaves a campaign stale. Drift (no bound campaign, or an on-chain pledge with no backend intent) emits `shows.campaign_reconciliation_mismatch`. |
+| Reconciliation-mismatch alerting | implemented | Every detected drift (#1271) fans out three ways: (1) a structured app-event log line (`jsonPayload.event="shows.campaign_reconciliation_mismatch"`, `service="resonate-backend"`) that the `resonate-iac` log-based metric parses into a Cloud Monitoring email alert; (2) a durable, queryable analytics fact via the domain-event bridge; (3) the operator read endpoint `GET /shows/operator/reconciliation-mismatches` (admin/operator, filters `contractCampaignId`/`sinceMinutes`/`limit`, newest first) so on-call can inspect drifts without tailing Cloud Logging. Operators can idempotently acknowledge a chain/escrow/campaign triple proven to be known-foreign through `POST /shows/operator/reconciliation-mismatches/:contractCampaignId/acknowledge` and revoke it through `DELETE .../:contractCampaignId/acknowledgement`; historical facts remain visible with acknowledgement metadata, while suppression applies only to future no-backend-campaign-bound alerts for that exact identity—never pledge, dispute, or duplicate-binding drift. The [staging reconciliation drill](staging_reconciliation_drill.md) (`.github/workflows/staging-reconciliation-drill.yml`, `workflow_dispatch`) provokes a genuine on-chain-pledge-without-intent drift on staging, asserts the endpoint surfaces it, completes cleanup, and only then acknowledges its burned campaign — preserving the end-to-end proof without leaving permanent alert noise. Response procedure: [operations runbook](../smart-contracts/operations-runbook.md). |
 | Pledge flow | implemented | Backend pledge intent, transaction submission, refund confirmation, and authenticated receipt reads are implemented. The detail page lets connected fans select a tier, create a receipt-ready pledge intent, execute the ERC-20 approval plus escrow pledge through the smart account, and attach the mined transaction to the backend receipt. A pledge intent's `walletAddress` must match the caller's own registered wallet (#1221), so a backer's on-chain pledge cannot be attributed to another account. **A wallet user's pledge reaches `confirmed` only from the indexed on-chain `Pledged` event (#948), never from a client-submitted claim; operators retain a manual confirm/fail override.** Fans see their latest campaign pledge and claim refunds when the campaign/pledge is refund-available and linked contract call data exists. |
 | Campaign community | implemented | Shows detail pages expose a connected campaign-community panel. Any authenticated fan can join the open campaign-owned `show_city_demand` room to signal coarse city interest without pledging. Confirmed backers can join the private `show_campaign_supporter` room, artists/operators can post `campaign_update` messages, supporters can post room messages, and confirmed or released pledge support derives private supporter badges/roles. Public profiles can show campaign support only through listener `showCampaignSupport` opt-in. Refund-only, refunded, failed, and cancelled support no longer grants private supporter room access or public campaign-support display. Compact `community.show_city_interest_joined`, `community.campaign_room_joined`, `community.campaign_update_viewed`, `community.badge_granted`, `community.role_granted`, and `community.message_created` analytics connect community activity to campaign state without message bodies, raw location, or wallet holdings. |
 | Attendance credentials | planned | [#1098](https://github.com/akoita/resonate/issues/1098) defines the boundary before implementation: no NFT-backed attendance credential yet; start with off-chain opt-in attendance badges backed by confirmed attendance, fulfilled ticket/pledge state, guest-list confirmation, or operator grant. Public display and partner verification must not expose raw location source, ticket price, pledge amount, wallet address, private room membership, city-scene cohort membership, refund/dispute/moderation state, or raw eligibility rules. |

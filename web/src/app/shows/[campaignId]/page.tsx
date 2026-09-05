@@ -13,6 +13,12 @@ import {
   getCampaign,
   type CampaignTier,
 } from "../../../lib/shows";
+import {
+  canonicalPath,
+  decodePathSegment,
+  publicMetadata,
+  safeText,
+} from "../../../lib/seo";
 
 interface Props {
   params: Promise<{ campaignId: string }>;
@@ -20,30 +26,38 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { campaignId } = await params;
-  const campaign = await getCampaign(campaignId);
-  if (!campaign) {
-    return { title: "Show campaign" };
-  }
+  const decodedCampaignId = decodePathSegment(campaignId);
+  try {
+    const campaign = await getCampaign(decodedCampaignId);
+    if (!campaign) {
+      return publicMetadata({
+        title: "Show campaign",
+        description: "Discover fan-funded artist booking campaigns on Resonate.",
+        path: canonicalPath("shows", decodedCampaignId),
+      });
+    }
 
-  const title = campaignDisplayTitle(campaign);
-  const description = campaign.tagline;
-  const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
-  return {
-    title,
-    description,
-    openGraph: {
+    const title = campaignDisplayTitle(campaign);
+    const description = safeText(
+      campaign.tagline,
+      `${campaign.artistName} in ${campaign.city}. Discover this fan-funded show campaign on Resonate.`,
+      200,
+    );
+    const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
+    return publicMetadata({
       title,
       description,
-      type: "website",
-      images: image ? [{ url: image, alt: title }] : undefined,
-    },
-    twitter: {
-      card: image ? "summary_large_image" : "summary",
-      title,
-      description,
-      images: image ? [image] : undefined,
-    },
-  };
+      image,
+      imageAlt: title,
+      path: canonicalPath("shows", decodedCampaignId),
+    });
+  } catch {
+    return publicMetadata({
+      title: "Show campaign",
+      description: "Discover fan-funded artist booking campaigns on Resonate.",
+      path: canonicalPath("shows", decodedCampaignId),
+    });
+  }
 }
 
 export default async function CampaignDetailPage({ params }: Props) {

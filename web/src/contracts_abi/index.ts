@@ -431,6 +431,8 @@ export const ContentProtectionABI = [
       { name: "contentHash", type: "bytes32" },
       { name: "fingerprintHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
+      { name: "deadline", type: "uint256" },
+      { name: "signature", type: "bytes" },
     ],
     outputs: [],
   },
@@ -443,6 +445,8 @@ export const ContentProtectionABI = [
       { name: "contentHash", type: "bytes32" },
       { name: "fingerprintHash", type: "bytes32" },
       { name: "metadataURI", type: "string" },
+      { name: "deadline", type: "uint256" },
+      { name: "signature", type: "bytes" },
     ],
     outputs: [],
   },
@@ -539,6 +543,24 @@ export const ContentProtectionABI = [
     outputs: [{ name: "", type: "uint256[]" }],
   },
   {
+    name: "getTrackStemCount",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "trackId", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "getTrackStemsSlice",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "trackId", type: "uint256" },
+      { name: "start", type: "uint256" },
+      { name: "count", type: "uint256" },
+    ],
+    outputs: [{ name: "slice", type: "uint256[]" }],
+  },
+  {
     name: "isAttested",
     type: "function",
     stateMutability: "view",
@@ -607,6 +629,21 @@ export const ContentProtectionABI = [
     stateMutability: "view",
     inputs: [{ name: "account", type: "address" }],
     outputs: [{ name: "", type: "bool" }],
+  },
+  // Two-step ownership handoff (CP-3, #1271)
+  {
+    name: "pendingOwner",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    name: "acceptOwnership",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
   },
   // Events
   {

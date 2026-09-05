@@ -17,6 +17,7 @@ module.exports = {
   moduleNameMapper: {
     "^@google/adk(.*)$": "<rootDir>/../jest.stubs/google-adk.js",
     "^@google/genai(.*)$": "<rootDir>/../jest.stubs/google-genai.js",
+    "^music-metadata$": "<rootDir>/../jest.stubs/music-metadata.js",
   },
   // Testcontainers lifecycle
   globalSetup: "<rootDir>/tests/globalSetup.js",

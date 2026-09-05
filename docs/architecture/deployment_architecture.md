@@ -1,5 +1,10 @@
 # Deployment Architecture
 
+> **Production target:** The accepted
+> [GCP target decision](production-gcp-target-decision.md) selects a
+> migrate-first path to `resonate-493513` before the first controlled cohort.
+> The decision does not authorize migration, deployment, or go-live.
+
 This diagram is the high-level deployment view for Resonate. It combines the
 application repository, the `resonate-iac` infrastructure repository, the
 Google Cloud edge/runtime platform, smart account infrastructure, protocol
@@ -18,8 +23,14 @@ module diagram. It follows a C4-style container/deployment view:
   stable-audio GPU remix service, Pub/Sub, selectable analytics execution with
   Dataflow streaming or batch BigQuery landing/materialization, BigQuery, Cloud
   SQL, Redis, GCS, Secret Manager, IAM, Artifact Registry, and Monitoring
-- Delivery control plane: `resonate` CI creates immutable images and
-  `resonate-iac` applies Terraform-managed Cloud Run releases
+- Delivery control plane: ordinary `resonate` CI validates source only; the
+  manual Release Deployment workflow gates exact-SHA reusable CI, invokes the
+  workflow-call-only image publisher, and retains SBOM/signature evidence plus
+  a digest-bound manifest. An explicit `deploy=true` may hand off immediately;
+  otherwise publication of the protected stable software release automatically
+  hands the same manifest to private `resonate-iac`. Private reconciliation
+  must verify declared, registry, attestation, and live-revision identity
+  before a deployment is complete
 - Blockchain layer: ERC-4337 bundler, EntryPoint, Kernel smart accounts,
   session keys, and Resonate protocol contracts
 - Payment layer: x402 challenge/verification flow and USDC settlement
@@ -74,14 +85,32 @@ flowchart LR
   Kernel --> Contracts["Resonate protocol contracts"]
   Backend --> Contracts
 
-  CI["resonate CI"] --> Images["Artifact Registry<br>immutable images"]
-  Images --> IaC["resonate-iac Terraform<br>GCS state + WIF"]
+  CI["PR / merge queue / main + develop CI<br>validation only"] --> Gate["Release Deployment<br>manual preview / publish<br>exact SHA + CI run"]
+  Gate --> ReusableCI["Reusable CI<br>exact source validation"]
+  ReusableCI --> Publisher["Publish Deployable Images<br>workflow_call only"]
+  Publisher --> Images["Artifact Registry<br>SHA tags + digest-bound images<br>SBOM/signatures/attestations"]
+  Gate -. "retained read-only plan" .-> Plan["Release plan"]
+  Publisher --> Manifest["Complete immutable<br>deploy manifest"]
+  Manifest --> SoftwareRelease["Protected stable v* release<br>desktop assets complete + published"]
+  SoftwareRelease --> Handoff["Automatic staging Deploy Handoff<br>exact tag/evidence/run/manifest SHA"]
+  Manifest -. "explicit deploy or retry" .-> Handoff
+  Handoff --> IaC["resonate-iac Terraform<br>GCS state + WIF"]
   IaC --> Edge
   IaC --> Frontend
   IaC --> Backend
   IaC --> Worker
   IaC --> StableAudio
+  AnalyticsDispatch["Analytics Dataflow<br>workflow_dispatch + exact source SHA"] --> AnalyticsImage["Analytics image +<br>Flex Template evidence"]
+  AnalyticsImage --> Dataflow
 ```
+
+Release publication is serialized by target environment. `dev` consumes a
+`develop` source and `staging` consumes a `main` source; production is a manual
+IaC operation. A failed image fan-out cannot dispatch a partial manifest. A
+stable protected release promotes a publish-only staging manifest after the
+release is public; prereleases, milestone changelogs, drafts, and generic
+releases do not. Analytics Dataflow uses its own manual exact-SHA publication
+path and is not triggered by a branch push.
 
 ## Components
 
@@ -184,9 +213,20 @@ human app.
 ### Delivery
 
 GitHub Actions, Workload Identity Federation, Artifact Registry, Terraform,
-remote GCS state, and Cloud Run image overrides. App CI produces immutable
-images; `resonate-iac` owns environment deploys, edge changes, and Terraform
-state.
+remote GCS state, and Cloud Run image overrides. Ordinary PR, merge-queue,
+`main`, and `develop` CI validates source only. The manual Release Deployment
+workflow records a read-only preview or, after exact-source reusable CI,
+invokes the workflow-call-only image publisher. That publisher resolves
+selected SHA-tagged images to immutable digests and produces CycloneDX,
+source/build-metadata, signature, and attestation evidence. A complete
+manifest may be handed to `resonate-iac` explicitly, or automatically after
+the matching protected stable GitHub Release becomes public and its desktop
+artifacts are complete. Deploy Handoff revalidates the release, tag, evidence,
+source run, and staging manifest, skips a duplicate if `deploy=true` already
+completed, and retains a manual `workflow_dispatch` path for retry or rollback
+without rebuilding. It has no generic `release` or `workflow_run` trigger.
+`resonate-iac` owns environment deploys, live digest reconciliation, edge
+changes, and Terraform state.
 
 ### Observability
 
@@ -218,3 +258,4 @@ with the batch materializer implementation.
 - IaC delivery model: `resonate-iac/docs/deployment-operating-model.md`
 - IaC edge model: `resonate-iac/docs/cloud-edge-architecture.md`
 - Cross-repo deploy contract: `resonate-iac/docs/cross-repo-deploy-contract.md`
+- Supply-chain incident response: [supply_chain_incident_response.md](../operations/supply_chain_incident_response.md)

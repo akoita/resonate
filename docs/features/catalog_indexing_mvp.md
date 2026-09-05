@@ -50,6 +50,11 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   full inventory when the artist owns more catalog objects than fit there.
 - Full release details, track-level actions, mixer previews, and owner tools
   remain available from `/release/:id`.
+- Release artwork has a persisted, server-owned revision. Canonical clients use
+  `/catalog/releases/:releaseId/artwork/v:revision`, and every successful owner
+  or AI-publication replacement increments the revision atomically. The legacy
+  unversioned read remains available for older clients and rollback, but it
+  resolves the current cover rather than preserving historical bytes.
 
 ## Actions
 

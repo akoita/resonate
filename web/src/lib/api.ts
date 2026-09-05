@@ -15,14 +15,22 @@ const PUBLIC_RELEASE_ROUTES = new Set([
   "TRUSTED_FAST_PATH",
 ]);
 
+export type ReleaseArtworkUrlOptions = {
+  ownerScoped?: boolean;
+  artworkRevision?: number | null;
+};
+
 export function getReleaseArtworkUrl(
   releaseId: string,
-  options?: { ownerScoped?: boolean },
+  options?: ReleaseArtworkUrlOptions,
 ) {
+  const revision = Number.isInteger(options?.artworkRevision) && (options?.artworkRevision ?? 0) > 0
+    ? `/v${options?.artworkRevision}`
+    : "";
   if (options?.ownerScoped) {
-    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork`;
+    return `${API_BASE}/catalog/me/releases/${releaseId}/artwork${revision}`;
   }
-  return `${API_BASE}/catalog/releases/${releaseId}/artwork`;
+  return `${API_BASE}/catalog/releases/${releaseId}/artwork${revision}`;
 }
 
 export function getReleaseTrackStreamUrl(
@@ -114,6 +122,7 @@ function isPublicReleaseRoute(route?: string | null) {
 async function getOwnerScopedArtworkObjectUrl(
   releaseId: string,
   token: string,
+  artworkRevision?: number | null,
 ): Promise<string | undefined> {
   if (
     typeof window === "undefined" ||
@@ -122,7 +131,7 @@ async function getOwnerScopedArtworkObjectUrl(
     return undefined;
   }
 
-  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true }), {
+  const response = await fetch(getReleaseArtworkUrl(releaseId, { ownerScoped: true, artworkRevision }), {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -328,6 +337,54 @@ export async function resetPaymaster(token: string, userId: string) {
 
 // ========== Catalog API ==========
 
+export type AiDisclosureLevel = "undeclared" | "none" | "partly" | "all";
+
+export type AiDisclosureFacet =
+  | "vocals"
+  | "instruments"
+  | "composition_lyrics"
+  | "production"
+  | "post_production";
+
+export type AiDisclosureSource =
+  | "artist"
+  | "resonate_native"
+  | "remix_derived"
+  | "migration";
+
+/**
+ * Listener-safe, DDEX-aligned description of AI involvement in a track.
+ * `undeclared` represents missing legacy provenance and must not be interpreted
+ * as a verified human-made declaration.
+ */
+export type AiDisclosure = {
+  level: AiDisclosureLevel;
+  containsAI?: "None" | "Partly" | "All" | null;
+  facets: AiDisclosureFacet[];
+  source?: AiDisclosureSource | null;
+  schemaVersion?: string | null;
+  declaredAt?: string | null;
+  label?: string;
+};
+
+export type AiDisclosureValidationIssue =
+  | "declaration_required"
+  | "facets_required"
+  | "facets_not_allowed";
+
+export function getAiDisclosureValidationIssue(
+  disclosure: Pick<AiDisclosure, "level" | "facets">,
+): AiDisclosureValidationIssue | null {
+  if (disclosure.level === "undeclared") return "declaration_required";
+  if (disclosure.level === "partly" && disclosure.facets.length === 0) {
+    return "facets_required";
+  }
+  if (disclosure.level === "none" && disclosure.facets.length > 0) {
+    return "facets_not_allowed";
+  }
+  return null;
+}
+
 export type Release = {
   id: string;
   artistId: string;
@@ -345,12 +402,15 @@ export type Release = {
   createdAt: string;
   artworkUrl?: string | null;
   artworkMimeType?: string | null;
+  artworkRevision?: number | null;
   rightsRoute?: string | null;
   rightsFlags?: string[] | null;
   rightsReason?: string | null;
   rightsPolicyVersion?: string | null;
   rightsSourceType?: string | null;
   rightsEvaluatedAt?: string | null;
+  /** Derived summary across the release's tracks. */
+  aiDisclosure?: AiDisclosure | null;
   tracks?: Track[];
   artist?: {
     id: string;
@@ -416,6 +476,7 @@ export type Track = {
   rightsReason?: string | null;
   rightsPolicyVersion?: string | null;
   rightsEvaluatedAt?: string | null;
+  aiDisclosure?: AiDisclosure | null;
   stems?: Array<{
     id: string;
     trackId: string;
@@ -872,7 +933,8 @@ export async function recordPlaybackCompleted(
 }
 
 export type PlaybackLifecycleAnalyticsInput = {
-  action: "started" | "heartbeat";
+  reason?: string;
+  action: "started" | "heartbeat" | "skipped";
   trackId: string;
   artistId?: string;
   releaseId?: string;
@@ -1782,6 +1844,534 @@ export async function getLatestReleaseRightsUpgradeRequest(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Punchline Drops (#483) — vocal-stem clip eligibility + selection
+// ---------------------------------------------------------------------------
+
+/** One explainable eligibility failure reason (mirrors the backend gate). */
+export type PunchlineEligibilityReason = {
+  /** Stable machine code, safe for UI/analytics branching. */
+  code: string;
+  /** Human-readable, UI-renderable message. */
+  message: string;
+};
+
+/** Server-resolved clip length bounds (ms). */
+export type PunchlineClipBoundsMs = {
+  minMs: number;
+  maxMs: number;
+};
+
+/**
+ * Result of `GET /punchline/eligibility?trackId=` — whether a track may become
+ * a Punchline Drop, the rights posture, and the server's clip-length bounds so
+ * the selection UI never hardcodes them.
+ */
+export type PunchlineEligibility = {
+  eligible: boolean;
+  reasons: PunchlineEligibilityReason[];
+  rightsLabel: string;
+  rightsSummary: string;
+  clipBoundsMs: PunchlineClipBoundsMs;
+  track?: {
+    id: string;
+    releaseId: string;
+    releaseStatus: string;
+    contentStatus: string;
+    rightsRoute: string | null;
+    releaseRightsRoute: string | null;
+    hasVocalsStem: boolean;
+  };
+};
+
+/**
+ * Explainable allow/deny for creating a Punchline Drop from a track. JWT
+ * required; the create/publish APIs re-run the same gate server-side.
+ */
+export async function checkPunchlineEligibility(
+  trackId: string,
+  token: string,
+) {
+  return apiRequest<PunchlineEligibility>(
+    `/punchline/eligibility?trackId=${encodeURIComponent(trackId)}`,
+    {},
+    token,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Punchline Drops (#484) — artist drop builder (draft + publish)
+// ---------------------------------------------------------------------------
+
+export type PunchlineDropStatus = "draft" | "published" | "archived";
+
+/** A collectible moment on a drop (mirrors the backend `serializeMoment`). */
+export type PunchlineMoment = {
+  id: string;
+  title: string;
+  lyricText: string;
+  artworkUrl: string | null;
+  sourceStemType: string;
+  startMs: number;
+  endMs: number;
+  /** Populated once the drop is published (the extracted MP3 clip). */
+  clipAssetUri: string | null;
+  editionSize: number;
+  priceCents: number;
+  rightsLabel: string;
+  collectedCount: number;
+};
+
+/** A drop with its moments (mirrors the backend `serializeDrop`). */
+export type PunchlineDrop = {
+  id: string;
+  trackId: string;
+  artistId: string;
+  status: PunchlineDropStatus;
+  title: string | null;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  rightsLabel: string;
+  rightsSummary: string;
+  moments: PunchlineMoment[];
+  /**
+   * Set-bonus summary (#488). Public payloads carry existence only; owner
+   * surfaces also include the reward config.
+   */
+  unlock?: {
+    unlockType: string;
+    reward?: PunchlineUnlockReward | null;
+  } | null;
+};
+
+/** A featured drop for the Home shelf (#1479): public drop + display context. */
+export type FeaturedDrop = PunchlineDrop & {
+  context: {
+    trackTitle: string;
+    releaseId: string;
+    releaseTitle: string;
+    releaseHasArtwork: boolean;
+    artistName: string | null;
+  };
+};
+
+export type DropsBrowseKind = "all" | "punchline";
+export type DropsBrowsePrice = "all" | "free" | "paid";
+export type DropsBrowseAvailability = "available" | "sold_out" | "all";
+
+/** One momentum-ranked item in the public Drops collection gallery (#1510). */
+export type BrowseDrop = PunchlineDrop & {
+  kind: "punchline";
+  availability: {
+    soldOut: boolean;
+    totalEditions: number;
+    collectedCount: number;
+    remainingEditions: number;
+  };
+  context: FeaturedDrop["context"] & {
+    genre: string | null;
+  };
+};
+
+export type DropsBrowseOptions = {
+  page?: number;
+  limit?: number;
+  kind?: DropsBrowseKind;
+  genre?: string;
+  price?: DropsBrowsePrice;
+  availability?: DropsBrowseAvailability;
+};
+
+export type DropsBrowseResponse = {
+  items: BrowseDrop[];
+  meta: {
+    count: number;
+    page: number;
+    limit: number;
+    totalCount: number;
+    totalPages: number;
+    hasNextPage: boolean;
+  };
+  facets: { genres: string[] };
+};
+
+/** Public, server-renderable Drops gallery feed. */
+export async function fetchDropsBrowse(
+  options: DropsBrowseOptions = {},
+): Promise<DropsBrowseResponse> {
+  const query = new URLSearchParams();
+  if (options.page !== undefined) query.set("page", String(options.page));
+  if (options.limit !== undefined) query.set("limit", String(options.limit));
+  if (options.kind) query.set("kind", options.kind);
+  if (options.genre) query.set("genre", options.genre);
+  if (options.price) query.set("price", options.price);
+  if (options.availability) query.set("availability", options.availability);
+
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  return apiRequest<DropsBrowseResponse>(`/punchline/drops${suffix}`, {
+    cache: "no-store",
+  });
+}
+
+/** Momentum-ranked published drops for the Home shelf (#1479). Public. */
+export async function fetchFeaturedDrops(limit = 6): Promise<{ items: FeaturedDrop[] }> {
+  return apiRequest<{ items: FeaturedDrop[] }>(
+    `/punchline/featured?limit=${encodeURIComponent(String(limit))}`,
+    {},
+  );
+}
+
+/** The complete-set bonus reward (#488): a bonus vocal clip + optional note. */
+export type PunchlineUnlockReward = {
+  kind: "bonus_clip";
+  startMs: number;
+  endMs: number;
+  message: string | null;
+  clipAssetUri: string | null;
+};
+
+/** One granted set reward with drop/track context. */
+export type PunchlineUnlockGrantItem = {
+  id: string;
+  grantedAt: string;
+  unlockId: string;
+  unlockType: string;
+  reward: PunchlineUnlockReward | null;
+  drop: {
+    id: string;
+    title: string | null;
+    trackId: string;
+    trackTitle: string | null;
+    releaseId: string | null;
+    artistId: string;
+    artistName: string | null;
+  };
+};
+
+/** Add/edit payload for a moment. On add all fields are required. */
+export type PunchlineMomentInput = {
+  title: string;
+  lyricText: string;
+  artworkUrl?: string | null;
+  startMs: number;
+  endMs: number;
+  editionSize: number;
+  priceCents: number;
+};
+
+export type PunchlineDropListResult = {
+  items: PunchlineDrop[];
+  meta: { count: number; limit?: number };
+};
+
+/** Create a draft drop on an owned, eligible track. */
+export async function createPunchlineDraft(
+  input: { trackId: string; title?: string | null; description?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    "/punchline/drops",
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Update a draft drop's title/description. */
+export async function updatePunchlineDraft(
+  dropId: string,
+  input: { title?: string | null; description?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Add a collectible moment to a draft drop. Returns the full updated drop. */
+export async function addPunchlineMoment(
+  dropId: string,
+  input: PunchlineMomentInput,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments`,
+    { method: "POST", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Edit a moment on a draft drop. Omitted fields keep their stored value. */
+export async function updatePunchlineMoment(
+  dropId: string,
+  momentId: string,
+  input: Partial<PunchlineMomentInput>,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments/${encodeURIComponent(momentId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Remove a moment from a draft drop. Returns the full updated drop. */
+export async function removePunchlineMoment(
+  dropId: string,
+  momentId: string,
+  token: string,
+) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/moments/${encodeURIComponent(momentId)}`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
+/** Publish a draft: re-gate, extract each clip, persist, emit the event. */
+export async function publishPunchlineDrop(dropId: string, token: string) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/publish`,
+    { method: "POST" },
+    token,
+  );
+}
+
+/** Drop detail. Published drops are public; drafts only for the owner. */
+export async function getPunchlineDrop(dropId: string, token?: string | null) {
+  return apiRequest<PunchlineDrop>(
+    `/punchline/drops/${encodeURIComponent(dropId)}`,
+    {},
+    token,
+  );
+}
+
+/** The caller's own drops (any status) on a track — the builder resume feed. */
+export async function listMyPunchlineTrackDrops(trackId: string, token: string) {
+  return apiRequest<PunchlineDropListResult>(
+    `/punchline/me/track-drops?trackId=${encodeURIComponent(trackId)}`,
+    {},
+    token,
+  );
+}
+
+/** Public list of published drops for a track. */
+export async function listTrackPunchlineDrops(trackId: string) {
+  return apiRequest<PunchlineDropListResult>(
+    `/punchline/tracks/${encodeURIComponent(trackId)}/drops`,
+  );
+}
+
+/** Result of collecting one edition of a published moment (#485). */
+export type PunchlineCollectResult = {
+  collectible: {
+    id: string;
+    momentId: string;
+    dropId: string;
+    editionNumber: number;
+    editionSize: number;
+    status: string;
+    paymentRail: string;
+    pricePaidCents: number;
+    acquiredAt: string | null;
+  };
+  /** True when this collect completed the drop's full set (#488 hook). */
+  setCompleted: boolean;
+  /** The granted set reward when this collect completed the set (#488). */
+  unlock: {
+    unlockId: string;
+    unlockType: string;
+    newlyGranted: boolean;
+    reward: PunchlineUnlockReward | null;
+  } | null;
+  rightsSummary: string;
+};
+
+/** One owned collectible with its moment/drop/track context (#485/#487). */
+export type PunchlineCollectibleItem = {
+  id: string;
+  editionNumber: number;
+  editionSize: number;
+  acquiredAt: string | null;
+  paymentRail: string;
+  pricePaidCents: number;
+  moment: {
+    id: string;
+    title: string;
+    lyricText: string;
+    artworkUrl: string | null;
+    startMs: number;
+    endMs: number;
+    clipAssetUri: string | null;
+    rightsLabel: string;
+  };
+  drop: {
+    id: string;
+    title: string | null;
+    trackId: string;
+    trackTitle: string | null;
+    releaseId: string | null;
+    artistId: string;
+    artistName: string | null;
+    /** Total moments in the drop — drives "you own N of M" set progress. */
+    momentCount: number;
+  };
+};
+
+/**
+ * Collect one edition of a published moment. Free moments grant immediately;
+ * paid moments currently return the `payment_rail_pending` denial (#1462).
+ */
+export async function collectPunchlineMoment(
+  momentId: string,
+  token: string,
+  collectorWallet?: string | null,
+) {
+  return apiRequest<PunchlineCollectResult>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect`,
+    {
+      method: "POST",
+      body: JSON.stringify({ collectorWallet: collectorWallet ?? null }),
+    },
+    token,
+  );
+}
+
+/** x402 quote for a priced moment (#1462): amount, take breakdown, USDC asset. */
+export type PunchlineMomentQuote = {
+  momentId: string;
+  resourceKind: "punchline_moment";
+  priceCents: number;
+  amountUsd: number;
+  currency: string;
+  displayPrice: string;
+  breakdown: {
+    feeBps: number;
+    platformFee: { currency: string; amount: string; usd: number };
+    netToSeller: { currency: string; amount: string; usd: number };
+  };
+  network: string;
+  chainId: number;
+  payTo: string;
+  asset: {
+    assetId: string;
+    address: string;
+    symbol: string;
+    name: string;
+    version: string;
+    decimals: number;
+  };
+  amountUnits: string;
+  editionSize: number;
+  collected: number;
+  editionsRemaining: number;
+  collectEndpoint: string;
+};
+
+/**
+ * Fetch the x402 quote for a priced moment. Public (no auth). Throws an
+ * ApiError carrying the backend `{ code }` for free / sold-out / not-published.
+ */
+export async function fetchPunchlineMomentQuote(momentId: string) {
+  return apiRequest<PunchlineMomentQuote>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect/quote`,
+  );
+}
+
+/**
+ * Paid collect (#1462): the passkey wallet already sent USDC; this verifies the
+ * on-chain payment and grants the edition. Idempotent on txHash. Errors carry a
+ * `{ code }` (payment_verification_failed, paid_but_unfulfilled, …).
+ */
+export async function collectPunchlineMomentWithSmartAccount(
+  momentId: string,
+  body: { txHash: string; payer: string; collectorWallet?: string | null },
+  token: string,
+) {
+  return apiRequest<PunchlineCollectResult>(
+    `/punchline/moments/${encodeURIComponent(momentId)}/collect/smart-account`,
+    { method: "POST", body: JSON.stringify(body) },
+    token,
+  );
+}
+
+/** The caller's owned collectibles — the inventory read (#485/#487). */
+export async function listMyPunchlineCollectibles(token: string) {
+  return apiRequest<{
+    items: PunchlineCollectibleItem[];
+    meta: { count: number };
+  }>(`/punchline/me/collectibles`, {}, token);
+}
+
+/** Configure (create/replace) a draft drop's complete-set bonus (#488). */
+export async function setPunchlineDropUnlock(
+  dropId: string,
+  input: { startMs: number; endMs: number; message?: string | null },
+  token: string,
+) {
+  return apiRequest<{
+    id: string;
+    unlockType: string;
+    reward: PunchlineUnlockReward | null;
+    grantedCount: number;
+  } | null>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/unlock`,
+    { method: "PUT", body: JSON.stringify(input) },
+    token,
+  );
+}
+
+/** Remove a draft drop's complete-set bonus. */
+export async function removePunchlineDropUnlock(dropId: string, token: string) {
+  return apiRequest<{ removed: boolean }>(
+    `/punchline/drops/${encodeURIComponent(dropId)}/unlock`,
+    { method: "DELETE" },
+    token,
+  );
+}
+
+/** Per-moment funnel metrics for one drop (#489). */
+export type PunchlineDropMetrics = {
+  dropId: string;
+  views: number;
+  previews: number;
+  collectStarts: number;
+  collected: number;
+  totalEditions: number;
+  /** collected / views, 0..1; null when there are no views yet. */
+  conversion: number | null;
+  setCompletions: number;
+  moments: Array<{
+    momentId: string;
+    title: string;
+    previews: number;
+    collectStarts: number;
+    collected: number;
+    editionSize: number;
+    soldOut: boolean;
+  }>;
+};
+
+/** Owner-only funnel metrics for a drop (#489). */
+export async function getPunchlineDropMetrics(dropId: string, token: string) {
+  return apiRequest<PunchlineDropMetrics>(
+    `/punchline/me/drops/${encodeURIComponent(dropId)}/metrics`,
+    {},
+    token,
+  );
+}
+
+/** The caller's granted set rewards, revealed (#488). */
+export async function listMyPunchlineUnlocks(token: string) {
+  return apiRequest<{
+    items: PunchlineUnlockGrantItem[];
+    meta: { count: number };
+  }>(`/punchline/me/unlocks`, {}, token);
+}
+
 export async function submitReleaseRightsUpgradeRequest(
   releaseId: string,
   input: {
@@ -1901,10 +2491,12 @@ export async function getRelease(releaseId: string, token?: string | null) {
       !isPublicReleaseRoute(release.rightsRoute)
     ) {
       release.artworkUrl =
-        (await getOwnerScopedArtworkObjectUrl(release.id, token)) ||
+        (await getOwnerScopedArtworkObjectUrl(release.id, token, release.artworkRevision)) ||
         undefined;
     } else {
-      release.artworkUrl = getReleaseArtworkUrl(release.id);
+      release.artworkUrl = getReleaseArtworkUrl(release.id, {
+        artworkRevision: release.artworkRevision,
+      });
     }
   }
   return release;
@@ -1941,7 +2533,9 @@ export async function waitForReleaseAvailability(
 export async function getTrack(trackId: string, token?: string | null) {
   const track = await apiRequest<Track>(`/catalog/tracks/${trackId}`, {}, token);
   if (track && track.release && track.release.artworkMimeType) {
-    track.release.artworkUrl = getReleaseArtworkUrl(track.release.id);
+    track.release.artworkUrl = getReleaseArtworkUrl(track.release.id, {
+      artworkRevision: track.release.artworkRevision,
+    });
   }
   return track;
 }
@@ -1982,12 +2576,17 @@ export type PlayerTrackActionsResponse = {
     summary: string;
     reasons: string[];
   };
+  library: {
+    saved: boolean;
+    libraryTrackId: string | null;
+  } | null;
   actions: PlayerTrackAction[];
 };
 
 export async function getPlayerTrackActions(
   trackId: string,
   input: { reasons?: string[] } = {},
+  token?: string | null,
 ) {
   const params = new URLSearchParams();
   for (const reason of input.reasons ?? []) {
@@ -1996,6 +2595,8 @@ export async function getPlayerTrackActions(
   const query = params.toString();
   return apiRequest<PlayerTrackActionsResponse>(
     `/catalog/tracks/${encodeURIComponent(trackId)}/actions${query ? `?${query}` : ""}`,
+    {},
+    token,
   );
 }
 
@@ -2003,7 +2604,9 @@ export async function listArtistReleases(artistId: string, token?: string | null
   const releases = await apiRequest<Release[]>(`/catalog/artist/${artistId}`, {}, token);
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
 }
 
@@ -2011,7 +2614,9 @@ export async function listMyReleases(token: string) {
   const releases = await apiRequest<Release[]>("/catalog/me", {}, token);
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
 }
 
@@ -2021,8 +2626,88 @@ export async function listPublishedReleases(limit = 20, primaryArtist?: string) 
   const releases = await apiRequest<Release[]>(`/catalog/published?${params}`, {});
   return releases.map(r => ({
     ...r,
-    artworkUrl: r.artworkMimeType ? getReleaseArtworkUrl(r.id) : null
+    artworkUrl: r.artworkMimeType
+      ? getReleaseArtworkUrl(r.id, { artworkRevision: r.artworkRevision })
+      : null
   }));
+}
+
+export type PopularityWindow = "24h" | "7d" | "30d";
+
+export interface TrendingTrackItem {
+  rank: number;
+  trackId: string;
+  title: string;
+  artist: string | null;
+  artistId: string;
+  releaseId: string;
+  releaseTitle: string;
+  genre: string | null;
+  artworkUrl: string | null;
+  artworkMimeType: string | null;
+  artworkRevision?: number | null;
+  aiDisclosure?: AiDisclosure | null;
+  score: number;
+  plays: number;
+  uniqueListeners: number;
+  saves: number;
+}
+
+export interface TopArtistItem {
+  rank: number;
+  /**
+   * The matching account profile id when a claimed/self-managed artist's
+   * displayName equals the credited name; null when the credited artist has no
+   * matching account (#1492 — `name` is the credited artist, not an account).
+   */
+  artistId: string | null;
+  name: string;
+  imageUrl: string | null;
+  score: number;
+  plays: number;
+  uniqueListeners: number;
+  saves: number;
+}
+
+export interface PopularityResponse<T> {
+  window: PopularityWindow;
+  genre: string | null;
+  minimumAudience: number;
+  items: T[];
+}
+
+/** Engagement-ranked trending tracks (empty items = not enough listening data yet). */
+export async function fetchTrendingTracks(options?: {
+  window?: PopularityWindow;
+  genre?: string;
+  limit?: number;
+}): Promise<PopularityResponse<TrendingTrackItem>> {
+  const params = new URLSearchParams();
+  if (options?.window) params.set("window", options.window);
+  if (options?.genre) params.set("genre", options.genre);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return apiRequest<PopularityResponse<TrendingTrackItem>>(
+    `/catalog/trending${query ? `?${query}` : ""}`,
+    {},
+  );
+}
+
+/** Engagement-ranked top artists (empty items = not enough listening data yet). */
+export async function fetchTopArtists(options?: {
+  window?: PopularityWindow;
+  genre?: string;
+  limit?: number;
+}): Promise<PopularityResponse<TopArtistItem>> {
+  const params = new URLSearchParams();
+  if (options?.window) params.set("window", options.window);
+  if (options?.genre) params.set("genre", options.genre);
+  if (options?.limit) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return apiRequest<PopularityResponse<TopArtistItem>>(
+    `/catalog/top-artists${query ? `?${query}` : ""}`,
+    {},
+  );
 }
 
 type PublicPlaylistSummaryResponse = Omit<PublicPlaylistSummary, "coverArtworkUrls"> & {
@@ -2056,12 +2741,15 @@ export type SongRecommendationItem = {
   releaseTitle?: string;
   genre?: string | null;
   moods?: string[];
+  aiDisclosure?: AiDisclosure | null;
   score?: number;
   reasons?: string[];
 };
 
 export type SongRecommendationsResponse = {
   userId: string;
+  /** #1449: correlates recommendation.served / .clicked impressions. */
+  requestId?: string;
   preferences: {
     mood?: string;
     energy?: "low" | "medium" | "high";
@@ -2080,6 +2768,53 @@ export type SongRecommendationsResponse = {
   };
   items: SongRecommendationItem[];
 };
+
+export type HomeFeedRailKind =
+  | "because_genre"
+  | "new_from_artists"
+  | "trending_genre"
+  | "exploration"
+  | "catalog_signal";
+
+export interface HomeFeedItem {
+  id: string;
+  title: string;
+  artist: string | null;
+  artistId: string;
+  releaseId: string;
+  releaseTitle: string;
+  genre: string | null;
+  moods: string[];
+  artworkMimeType: string | null;
+  artworkRevision?: number | null;
+  aiDisclosure?: AiDisclosure | null;
+  reasons: string[];
+}
+
+export interface HomeFeedRail {
+  id: string;
+  kind: HomeFeedRailKind;
+  title: string;
+  /** Categorical, human-readable — never itemized listener history. */
+  explanation: string;
+  items: HomeFeedItem[];
+}
+
+export interface HomeFeedResponse {
+  userId: string;
+  requestId: string;
+  cold: boolean;
+  rails: HomeFeedRail[];
+}
+
+/** Multi-rail personalized Home feed (#1454 WS-7). */
+export async function fetchHomeFeed(userId: string, token: string): Promise<HomeFeedResponse> {
+  return apiRequest<HomeFeedResponse>(
+    `/recommendations/${encodeURIComponent(userId)}/home-feed`,
+    {},
+    token,
+  );
+}
 
 export async function getSongRecommendations(
   userId: string,
@@ -2228,6 +2963,35 @@ export type PublicCommunityProfileResponse = {
   showcase: {
     tasteBadgesVisible: boolean;
     ownedItemsVisible: boolean;
+    // Present only when the collector opted in (showOwnedItems). Absent — not
+    // `[]` — when hidden; the `owned_items_hidden` redaction is the signal.
+    // Never carries payment provenance or a wallet (#1477 slice 1).
+    ownedMoments?: Array<{
+      collectibleId: string;
+      editionNumber: number;
+      editionSize: number;
+      acquiredAt: string | null;
+      moment: {
+        id: string;
+        title: string;
+        lyricText: string;
+        artworkUrl: string | null;
+        startMs: number;
+        endMs: number;
+        clipAssetUri: string | null;
+        rightsLabel: string;
+        priceCents: number;
+        collectedCount: number;
+      };
+      drop: {
+        id: string;
+        title: string | null;
+        trackId: string;
+        trackTitle: string | null;
+        releaseId: string | null;
+        artistName: string | null;
+      };
+    }>;
     campaignSupportVisible: boolean;
     campaignSupport: Array<{
       campaignId: string;
@@ -3189,7 +3953,11 @@ export async function updateReleaseArtwork(
   releaseId: string,
   formData: FormData
 ) {
-  return apiRequest<{ success: boolean; artworkUrl: string }>(
+  return apiRequest<{
+    success: boolean;
+    artworkUrl?: string;
+    artworkRevision?: number | null;
+  }>(
     `/catalog/releases/${releaseId}/artwork`,
     { method: "PATCH", body: formData },
     token
@@ -3214,6 +3982,23 @@ export async function cancelProcessing(
   return apiRequest<{ success: boolean; message: string }>(
     `/ingestion/cancel/${releaseId}`,
     { method: "POST" },
+    token
+  );
+}
+
+/**
+ * Owner-scoped release update (PATCH /catalog/releases/:id). Supports the
+ * post-hoc credited-artist correction (#1492): `primaryArtist` is the artist
+ * the release is credited to, not the managing account's name.
+ */
+export async function updateRelease(
+  token: string,
+  releaseId: string,
+  input: { title?: string; status?: string; primaryArtist?: string }
+) {
+  return apiRequest<Release>(
+    `/catalog/releases/${releaseId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
     token
   );
 }
@@ -3429,6 +4214,38 @@ export async function createStemMintAuthorization(
   );
 }
 
+/**
+ * EIP-712 voucher authorizing a ContentProtection `attestRelease`/`attest`
+ * call. The backend (which holds the attestation-signer key) verifies the
+ * caller's right to attest the release and returns a signed `(deadline,
+ * signature)` pair the on-chain contract checks against `msg.sender`.
+ */
+export type AttestationVoucher = {
+  attester: `0x${string}`;
+  tokenId: string;
+  deadline: number;
+  signature: `0x${string}`;
+};
+
+export async function createAttestationVoucher(
+  token: string,
+  input: {
+    releaseId: string;
+    attester: string;
+    /** keccak256 of the audio content — lets the backend re-derive releaseId. */
+    contentHash: string;
+    /** Release metadata URI — part of the releaseId derivation. */
+    metadataURI: string;
+    chainId?: number;
+  }
+) {
+  return apiRequest<AttestationVoucher>(
+    "/contracts/attestation-vouchers",
+    { method: "POST", body: JSON.stringify(input) },
+    token
+  );
+}
+
 export async function createBatchStemMintAuthorizations(
   token: string,
   input: {
@@ -3450,6 +4267,55 @@ export async function createBatchStemMintAuthorizations(
     "/contracts/mint-authorizations/batch",
     { method: "POST", body: JSON.stringify(input) },
     token
+  );
+}
+
+// ========== Payout Eligibility API (#1498, ADR-BM-5) ==========
+
+/** Stable machine codes for why an artist can/can't receive payouts. */
+export type PayoutEligibilityReasonCode =
+  | "human_verification_required"
+  | "rights_review_required"
+  | "payout_release_blocked"
+  | "payouts_restricted"
+  | "artist_profile_required";
+
+export type PayoutEligibilityReason = {
+  code: PayoutEligibilityReasonCode;
+  /** Plain-language explanation. */
+  message: string;
+  /** The exact next step that unblocks this reason. */
+  resolution: string;
+};
+
+/** The input states the gate evaluated, surfaced for honest display. */
+export type PayoutEligibilityInputs = {
+  humanVerificationState: "unverified" | "human_verified";
+  rightsReviewState: string;
+  payoutRelease: "none" | "held" | "standard" | "trusted";
+  rightsFlags: string[];
+  rightsRoute: string | null;
+  hasReleases: boolean;
+};
+
+export type PayoutEligibility = {
+  artistId: string | null;
+  eligible: boolean;
+  reasons: PayoutEligibilityReason[];
+  inputs: PayoutEligibilityInputs | null;
+};
+
+/**
+ * Self-serve payout eligibility for the signed-in caller's artist profile.
+ * Never 404s: a user with no artist profile returns `eligible:false` with an
+ * `artist_profile_required` reason. The backend gate remains authoritative —
+ * this is for showing an honest "why + how to fix" before a paid action.
+ */
+export async function fetchPayoutEligibility(token: string) {
+  return apiRequest<PayoutEligibility>(
+    "/api/trust/me/payout-eligibility",
+    {},
+    token,
   );
 }
 
@@ -3606,7 +4472,13 @@ export interface AgentSessionLicense {
     title: string;
     artist: string | null;
     releaseId: string;
-    release: { id: string; artworkMimeType: string | null; artworkUrl?: string | null; title: string };
+    release: {
+      id: string;
+      artworkMimeType: string | null;
+      artworkRevision?: number | null;
+      artworkUrl?: string | null;
+      title: string;
+    };
   };
 }
 
@@ -3693,7 +4565,9 @@ export async function getAgentHistory(token: string): Promise<AgentSession[]> {
   for (const session of sessions) {
     for (const lic of session.licenses) {
       if (lic.track.release?.artworkMimeType) {
-        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id);
+        lic.track.release.artworkUrl = getReleaseArtworkUrl(lic.track.release.id, {
+          artworkRevision: lic.track.release.artworkRevision,
+        });
       }
     }
   }
@@ -4003,6 +4877,40 @@ export async function getCreditsBalance(token: string) {
   return apiRequest<GenerationCreditBalance>("/credits/balance", {}, token);
 }
 
+/**
+ * A single metered-action rate quota, sourced from the backend metered-action
+ * registry (#1422). Independent of the monetary credit balance — hitting a
+ * limit means "wait for reset", not "top up".
+ */
+export type UsageLimit = {
+  kind: "lyria" | "remix_draft";
+  label: string;
+  remaining: number;
+  limit: number;
+  windowSeconds: number;
+  /** ISO timestamp of when the window resets, or null when idle (no requests). */
+  resetsAt: string | null;
+};
+
+/**
+ * Unified Usage & Billing snapshot for the current user (#1422): the monetary
+ * credit balance + ledger, per-kind usage limits with reset timers, and the
+ * current plan tier. Read from `GET /usage/summary`.
+ */
+export type UsageSummary = {
+  credits: GenerationCreditBalance;
+  limits: UsageLimit[];
+  plan: { tier: "free"; monthlyAllowanceCents: number | null };
+};
+
+/**
+ * The caller's unified Usage & Billing summary (#1422) — credits, usage limits,
+ * and plan tier in one read. Backs the Settings → Usage & Billing panel.
+ */
+export async function getUsageSummary(token: string) {
+  return apiRequest<UsageSummary>("/usage/summary", {}, token);
+}
+
 export type GenerationListItem = {
   releaseId: string;
   trackId: string;
@@ -4049,7 +4957,12 @@ export async function publishAiGeneration(
   trackId: string,
   formData: FormData
 ) {
-  return apiRequest<{ success: boolean; releaseId: string }>(
+  return apiRequest<{
+    success: boolean;
+    releaseId: string;
+    artworkRevision?: number | null;
+    artworkUrl?: string | null;
+  }>(
     `/generation/${trackId}/publish`,
     { method: "PATCH", body: formData },
     token

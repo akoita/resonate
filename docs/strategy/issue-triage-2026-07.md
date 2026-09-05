@@ -153,5 +153,5 @@ Every open triaged issue now carries a GitHub label matching its verdict:
 
 New issues must be labeled on creation — see the "💰 Business Model
 Conformance" section in `CLAUDE.md` and the conformance steps in
-`.agents/workflows/start-issue.md` / `finish-issue.md`. An issue that fits
+`.agents/skills/start-issue/` / `finish-issue/`. An issue that fits
 neither label should be challenged before work starts.

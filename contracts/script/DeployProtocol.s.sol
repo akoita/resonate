@@ -3,16 +3,15 @@ pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
 import {StemNFT} from "../src/core/StemNFT.sol";
-import {StemMarketplaceV2} from "../src/core/StemMarketplaceV2.sol";
 import {ContentProtection} from "../src/core/ContentProtection.sol";
 import {DisputeResolution} from "../src/core/DisputeResolution.sol";
 import {CurationRewards} from "../src/core/CurationRewards.sol";
-import {RevenueEscrow} from "../src/core/RevenueEscrow.sol";
 import {TransferValidator} from "../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../src/payments/PaymentAssetRegistry.sol";
 import {ChainlinkPriceOracleAdapter} from "../src/payments/ChainlinkPriceOracleAdapter.sol";
-import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import {DeploymentKey} from "./DeploymentKey.s.sol";
+import {ContentProtectionDeployment} from "./ContentProtectionDeployment.s.sol";
+import {RevenueEscrowDeployment} from "./RevenueEscrowDeployment.s.sol";
+import {StemMarketplaceDeployment} from "./StemMarketplaceDeployment.s.sol";
 
 /**
  * @title DeployProtocol
@@ -31,7 +30,7 @@ import {DeploymentKey} from "./DeploymentKey.s.sol";
  * Run:
  *   forge script script/DeployProtocol.s.sol --rpc-url $RPC_URL --broadcast --verify
  */
-contract DeployProtocol is DeploymentKey {
+contract DeployProtocol is ContentProtectionDeployment, RevenueEscrowDeployment, StemMarketplaceDeployment {
     bytes32 private constant BASE_SEPOLIA_ETH = keccak256("base-sepolia:eth");
     bytes32 private constant BASE_SEPOLIA_USDC = keccak256("base-sepolia:usdc");
     bytes32 private constant BASE_SEPOLIA_WETH = keccak256("base-sepolia:weth");
@@ -54,7 +53,9 @@ contract DeployProtocol is DeploymentKey {
         address mintAuthorizer = vm.envOr("MINT_AUTHORIZER_ADDRESS", deployer);
         uint256 protocolFeeBps = vm.envOr("PROTOCOL_FEE_BPS", uint256(1000)); // 10% — ADR-BM-2
         uint256 stakeAmountWei = vm.envOr("STAKE_AMOUNT", uint256(0.005 ether)); // Default 0.005 ETH
-        uint256 escrowPeriod = vm.envOr("ESCROW_PERIOD", uint256(30 days)); // Default 30 days
+        RevenueEscrowConfig memory revenueEscrowConfig = _revenueEscrowConfig(deployer);
+        StemMarketplaceConfig memory marketplaceConfig = _stemMarketplaceConfig(deployer);
+        ContentProtectionConfig memory contentProtectionConfig = _contentProtectionConfig(deployer);
         address usdcAddress = vm.envOr("PAYMENT_USDC_ADDRESS", address(0));
         address wethAddress = vm.envOr("PAYMENT_WETH_ADDRESS", address(0));
         bool enableWeth = vm.envOr("PAYMENT_ENABLE_WETH", false);
@@ -74,10 +75,11 @@ contract DeployProtocol is DeploymentKey {
         console.log("TransferValidator:", address(validator));
 
         // 2. Deploy ContentProtection (UUPS proxy)
-        ContentProtection cpImpl = new ContentProtection();
-        bytes memory cpInit = abi.encodeCall(ContentProtection.initialize, (deployer, feeRecipient, stakeAmountWei));
-        ERC1967Proxy cpProxy = new ERC1967Proxy(address(cpImpl), cpInit);
-        ContentProtection contentProtection = ContentProtection(address(cpProxy));
+        ContentProtectionDeploymentResult memory contentProtectionDeployment =
+            _deployContentProtection(deployer, contentProtectionConfig, feeRecipient, stakeAmountWei);
+        ContentProtection contentProtection = contentProtectionDeployment.contentProtection;
+        console.log("ContentProtection implementation:", address(contentProtectionDeployment.implementation));
+        console.log("ContentProtection timelock:", address(contentProtectionDeployment.timelock));
         console.log("ContentProtection (proxy):", address(contentProtection));
 
         // 3. Deploy DisputeResolution
@@ -89,9 +91,12 @@ contract DeployProtocol is DeploymentKey {
             new CurationRewards(deployer, address(contentProtection), address(disputeResolution), feeRecipient);
         console.log("CurationRewards:", address(curationRewards));
 
-        // 5. Deploy RevenueEscrow
-        RevenueEscrow escrow = new RevenueEscrow(deployer, escrowPeriod);
-        console.log("RevenueEscrow:", address(escrow));
+        // 5. Deploy RevenueEscrow UUPS graph
+        RevenueEscrowDeploymentResult memory revenueEscrowDeployment =
+            _deployRevenueEscrow(deployer, revenueEscrowConfig);
+        console.log("RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
+        console.log("RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
 
         // 6. Deploy StemNFT (core)
         StemNFT stemNFT = new StemNFT(baseUri);
@@ -128,11 +133,19 @@ contract DeployProtocol is DeploymentKey {
         console.log("ETH/USD Oracle Adapter:", ethUsdAdapter);
         console.log("USDC/USD Oracle Adapter:", usdcUsdAdapter);
 
-        // 8. Deploy StemMarketplaceV2 (core)
-        StemMarketplaceV2 marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, protocolFeeBps
+        // 8. Deploy StemMarketplaceV2 guarded UUPS graph
+        StemMarketplaceDeploymentResult memory marketplaceDeployment = _deployStemMarketplace(
+            deployer,
+            marketplaceConfig,
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            protocolFeeBps
         );
-        console.log("StemMarketplaceV2:", address(marketplace));
+        console.log("StemMarketplaceV2 implementation:", address(marketplaceDeployment.implementation));
+        console.log("StemMarketplaceV2 timelock:", address(marketplaceDeployment.timelock));
+        console.log("StemMarketplaceV2 (proxy):", address(marketplaceDeployment.marketplace));
 
         // 9. Configure
         stemNFT.setTransferValidator(address(validator));
@@ -149,17 +162,31 @@ contract DeployProtocol is DeploymentKey {
         contentProtection.setRegistrar(address(stemNFT), true);
         console.log("  -> StemNFT granted ContentProtection registrar role");
 
-        contentProtection.setRegistrar(address(marketplace), true);
+        contentProtection.setRegistrar(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace granted ContentProtection registrar role");
 
-        validator.setWhitelist(address(marketplace), true);
+        contentProtection.setRegistrar(mintAuthorizer, true);
+        console.log(
+            "  -> Mint/attestation voucher authorizer granted ContentProtection registrar role:", mintAuthorizer
+        );
+
+        validator.setWhitelist(address(marketplaceDeployment.marketplace), true);
         console.log("  -> Marketplace whitelisted in validator");
 
         validator.setContentProtection(address(contentProtection));
         console.log("  -> ContentProtection linked to TransferValidator");
 
-        escrow.setContentProtection(address(contentProtection));
-        console.log("  -> ContentProtection linked to RevenueEscrow");
+        if (revenueEscrowConfig.owner == deployer) {
+            revenueEscrowDeployment.escrow.setContentProtection(address(contentProtection));
+            console.log("  -> ContentProtection linked to RevenueEscrow");
+        } else {
+            console.log("  -> RevenueEscrow owner must link ContentProtection after deployment");
+        }
+
+        if (contentProtectionConfig.owner != deployer) {
+            contentProtection.transferOwnership(contentProtectionConfig.owner);
+            console.log("  -> ContentProtection ownership transfer pending:", contentProtectionConfig.owner);
+        }
 
         vm.stopBroadcast();
 
@@ -168,14 +195,20 @@ contract DeployProtocol is DeploymentKey {
         console.log("");
         console.log("Core Contracts:");
         console.log("  StemNFT:", address(stemNFT));
-        console.log("  StemMarketplaceV2:", address(marketplace));
+        console.log("  StemMarketplaceV2 (proxy):", address(marketplaceDeployment.marketplace));
+        console.log("  StemMarketplaceV2 implementation:", address(marketplaceDeployment.implementation));
+        console.log("  StemMarketplaceV2 timelock:", address(marketplaceDeployment.timelock));
         console.log("  PaymentAssetRegistry:", address(paymentAssetRegistry));
         console.log("");
         console.log("Content Protection:");
         console.log("  ContentProtection (proxy):", address(contentProtection));
+        console.log("  ContentProtection implementation:", address(contentProtectionDeployment.implementation));
+        console.log("  ContentProtection timelock:", address(contentProtectionDeployment.timelock));
         console.log("  DisputeResolution:", address(disputeResolution));
         console.log("  CurationRewards:", address(curationRewards));
-        console.log("  RevenueEscrow:", address(escrow));
+        console.log("  RevenueEscrow (proxy):", address(revenueEscrowDeployment.escrow));
+        console.log("  RevenueEscrow implementation:", address(revenueEscrowDeployment.implementation));
+        console.log("  RevenueEscrow timelock:", address(revenueEscrowDeployment.timelock));
         console.log("");
         console.log("Modules:");
         console.log("  TransferValidator:", address(validator));
@@ -185,6 +218,15 @@ contract DeployProtocol is DeploymentKey {
         console.log("  Fee Recipient:", feeRecipient);
         console.log("  Mint Authorizer:", mintAuthorizer);
         console.log("  Stake Amount:", stakeAmountWei, "wei");
-        console.log("  Escrow Period:", escrowPeriod, "seconds");
+        console.log("  Escrow Period:", revenueEscrowConfig.escrowPeriod, "seconds");
+        console.log("  RevenueEscrow owner:", revenueEscrowConfig.owner);
+        console.log("  RevenueEscrow guardian:", revenueEscrowConfig.guardian);
+        console.log("  RevenueEscrow timelock delay:", revenueEscrowConfig.timelockMinDelay, "seconds");
+        console.log("  ContentProtection owner:", contentProtectionConfig.owner);
+        console.log("  ContentProtection guardian:", contentProtectionConfig.guardian);
+        console.log("  ContentProtection timelock delay:", contentProtectionConfig.timelockMinDelay, "seconds");
+        console.log("  Marketplace owner:", marketplaceConfig.owner);
+        console.log("  Marketplace guardian:", marketplaceConfig.guardian);
+        console.log("  Marketplace timelock delay:", marketplaceConfig.timelockMinDelay, "seconds");
     }
 }

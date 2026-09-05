@@ -43,7 +43,6 @@ Core GitHub environment variables:
 
 | Variable | Used by |
 | --- | --- |
-| `BROADCAST_FILE` | Optional verification broadcast override. |
 | `VERIFY_ONLY` | Optional contract-name filter for verification scripts. |
 | `VERIFY_RETRIES`, `VERIFY_DELAY_SECONDS` | BaseScan/Etherscan retry tuning. |
 | `SOURCIFY_API_URL`, `SOURCIFY_RETRIES`, `SOURCIFY_DELAY_SECONDS` | Sourcify endpoint and retry tuning. |
@@ -54,11 +53,18 @@ Core GitHub environment variables:
 | Operation | When to use | Inputs and environment | Outputs | Follow-through |
 | --- | --- | --- | --- | --- |
 | `preflight` | Always run before a write operation after changing env vars, RPCs, or signer keys. | Workflow: `environment`, `target_network`, `operation=preflight`. Secrets: deployer key and target RPC. | Step summary with chain ID, signer address, ETH balance, and selected operation. | If signer, chain ID, or balance is wrong, fix the GitHub environment before running a write op. |
-| `deploy-protocol` | Fresh full protocol graph deployment when constructor immutables or tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify via Sourcify or BaseScan as needed. |
-| `deploy-content-protection` | Add or replace ContentProtection for an existing `StemNFT` and `TransferValidator` without replacing the whole graph. | Workflow: `operation=deploy-content-protection`. Vars: `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`; optional `MARKETPLACE_ADDRESS`, `EXISTING_ADMIN`. Secret: owner/admin signer. | Forge broadcast files and console summary. | Promote any changed ContentProtection/RevenueEscrow references through IaC and app config if downstream code consumes them. |
-| `deploy-show-campaign-escrow` | Deploy the standalone Shows escrow for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Vars: optional `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_BPS`, required remote `SHOW_CAMPAIGN_FEE_RECIPIENT`. Secret: deployer key. | `contracts/deployments/show-campaign-escrow.<network>.json`, `.remote.env`, `show-campaign-escrow.abi.json`, broadcast files. | Promote `SHOW_CAMPAIGN_ESCROW_ADDRESS` and `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS` through `resonate-iac`. |
-| `deploy-stem-marketplace` | Surgically deploy a new `StemMarketplaceV2` against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Vars: `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`. Secret: owner/admin signer. | `contracts/deployments/stem-marketplace.<network>.json`, `.remote.env`, `stem-marketplace.abi.json`, broadcast files. | Promote `MARKETPLACE_ADDRESS` and `NEXT_PUBLIC_MARKETPLACE_ADDRESS` through `resonate-iac`; confirm ContentProtection registrar and validator whitelist effects. |
-| `upgrade-content-protection` | Upgrade the UUPS implementation behind an existing ContentProtection proxy. | Workflow: `operation=upgrade-content-protection`. Vars: `CONTENT_PROTECTION_PROXY`. Secret: proxy owner/admin signer. | Forge broadcast files and console summary. Proxy address stays the same. | No address promotion unless implementation metadata is tracked elsewhere. Keep the broadcast artifact for audit. |
+| `deploy-protocol` | Fresh full protocol graph deployment when tightly coupled addresses change. | Workflow: `operation=deploy-protocol`. Secrets: deployer key and RPC. Vars: optional `MINT_AUTHORIZER_ADDRESS` (defaults to deployer), payment registry/oracle inputs, `FEE_RECIPIENT`, `PROTOCOL_FEE_BPS`, RevenueEscrow and marketplace owner/guardian/timelock inputs, `X402_FACILITATOR_URL`, verification vars. | `contracts/deployments/base-sepolia.json`, `contracts/deployments/base-sepolia.remote.env`, Forge broadcast files; Sepolia writes `contracts/deployments/sepolia.json`. | Promote changed app/runtime addresses through `resonate-iac` before app deploy. Verify both guarded proxy graphs, the registered voucher signer, and all implementations through Sourcify. |
+| `deploy-content-protection` | Add or replace ContentProtection for an existing `StemNFT` and `TransferValidator` without replacing the whole graph. | Workflow: `operation=deploy-content-protection`. Vars: `STEM_NFT_ADDRESS`, `TRANSFER_VALIDATOR_ADDRESS`; optional `MINT_AUTHORIZER_ADDRESS` (defaults to deployer), `MARKETPLACE_ADDRESS`, `EXISTING_ADMIN`. Secret: owner/admin signer. | Forge broadcast files and console summary. | Smoke the registered voucher signer, then promote any changed ContentProtection/RevenueEscrow references through IaC and app config if downstream code consumes them. |
+| `deploy-revenue-escrow` | Deploy an isolated guarded RevenueEscrow replacement graph. | Workflow: `operation=deploy-revenue-escrow`. Required remote vars: `REVENUE_ESCROW_OWNER`, independent `REVENUE_ESCROW_GUARDIAN`; optional `REVENUE_ESCROW_PERIOD` (2592000) and `REVENUE_ESCROW_TIMELOCK_MIN_DELAY` (minimum/default 172800). Secret: deployer key. | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast files, authority smoke, and Sourcify verification. | Link ContentProtection and depositors, audit/settle any standalone predecessor, then promote only the proxy through `resonate-iac`. No state moves automatically. |
+| `upgrade-revenue-escrow` | Schedule or execute a reviewed RevenueEscrow implementation upgrade. | Vars: `REVENUE_ESCROW_ADDRESS`, `REVENUE_ESCROW_TIMELOCK_ADDRESS`, `UPGRADE_ACTION`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must be an owner/guardian timelock proposer/executor. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy address stable. | Re-run storage/formal/security gates before scheduling. Guardian or owner cancels a bad operation during the delay. |
+| `pause-revenue-escrow` | Stop or resume all RevenueEscrow fund movement during incident response. | Vars: `REVENUE_ESCROW_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Diagnose while paused. Unpause only after remediation or a timelocked recovery upgrade; coordinate deposit/release operators. |
+| `deploy-show-campaign-escrow` | Deploy the UUPS Shows escrow graph for an environment. | Workflow: `operation=deploy-show-campaign-escrow`. Required remote vars: `SHOW_CAMPAIGN_ESCROW_OWNER`, `SHOW_CAMPAIGN_FEE_RECIPIENT`, independent `SHOW_CAMPAIGN_GUARDIAN`; optional `SHOW_CAMPAIGN_FEE_BPS` (600), `SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY` (minimum/default 172800), `SHOW_CAMPAIGN_FULFILLMENT_WINDOW` (2592000). Secret: deployer key. | Proxy, implementation, timelock, exact deployment block, governance config, JSON/`.remote.env`/ABI handoffs, broadcast files, and automatic Sourcify verification. | First deploy the migration + lease-aware backend at one instance with targets unset. Then merge the new `address:deploymentBlock` entry with every live legacy target, verify lease acquisition, and wait both cursors reach tip. Promote the proxy and restore normal backend autoscaling through `resonate-iac`; return to one instance if lease-loss/churn alerts fire. |
+| `deploy-stem-marketplace` | Surgically deploy a guarded `StemMarketplaceV2` proxy against an existing protocol graph. | Workflow: `operation=deploy-stem-marketplace`. Required remote vars: `MARKETPLACE_OWNER`, independent `MARKETPLACE_GUARDIAN`, `STEM_NFT_ADDRESS`, `CONTENT_PROTECTION_ADDRESS` or `CONTENT_PROTECTION_PROXY`, `PAYMENT_ASSET_REGISTRY_ADDRESS`, `FEE_RECIPIENT`; optional `PROTOCOL_FEE_BPS`, `TRANSFER_VALIDATOR_ADDRESS`, `MARKETPLACE_TIMELOCK_MIN_DELAY` (minimum/default 172800). | Proxy, implementation, timelock, governance config, deployment block, JSON/`.remote.env`/ABI handoffs, broadcast, authority smoke, and Sourcify verification. | Grant the proxy ContentProtection registrar and validator whitelist permissions, then promote only it as `MARKETPLACE_ADDRESS` / `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. Audit any failed-payment liabilities on the standalone predecessor. |
+| `schedule-stem-marketplace-upgrade` / `execute-stem-marketplace-upgrade` | Schedule or execute a reviewed marketplace implementation upgrade. | Vars: `MARKETPLACE_ADDRESS`, `MARKETPLACE_TIMELOCK_ADDRESS`; optional salt; execute also requires `NEW_IMPLEMENTATION`. Signer must hold the relevant timelock role. | Schedule logs implementation, operation id, delay, and ETA; execute keeps the proxy stable. | Run storage/formal/security gates and verify the candidate before execution; owner or guardian can cancel during the delay. |
+| `pause-stem-marketplace` | Stop or resume new marketplace listings and purchases. | Vars: `MARKETPLACE_ADDRESS`, `PAUSED`; owner signer. | Broadcast and workflow summary; no address change. | Sellers retain cancellation and recipients retain failed-payment claims. Unpause only after remediation and smoke verification. |
+| `prepare-content-protection-v6-migration` / `execute-content-protection-v6-migration` | One-time bootstrap of a legacy owner-authorized proxy into guarded V6 governance. | Prepare with `CONTENT_PROTECTION_PROXY`, owner, independent guardian and 48h delay; verify the emitted candidate implementation + timelock; execute separately with `NEW_IMPLEMENTATION`, `CONTENT_PROTECTION_TIMELOCK_ADDRESS`, and non-zero `MINT_AUTHORIZER_ADDRESS`. Secret: current owner signer. | Candidate JSON + `.candidate.env` + ABI and governance broadcasts, then an atomic `upgradeToAndCall(reinitializeV6)` transaction followed by a separate voucher-signer registrar transaction in the same reviewed workflow run. Proxy address stays unchanged. | Candidate handoffs are not live configuration. Execute requires separate operator approval. The workflow verifies both transactions' resulting state; run `smoke-content-protection` before deploying voucher-aware backend/web code. |
+| `schedule-content-protection-upgrade` / `execute-content-protection-upgrade` | Schedule or execute a post-V6 implementation upgrade. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_TIMELOCK_ADDRESS`, optional `CONTENT_PROTECTION_UPGRADE_SALT`; execute also needs the exact scheduled `NEW_IMPLEMENTATION`. Secret: owner or guardian timelock-role signer. | Timelock operation id, candidate implementation, ETA/broadcast, candidate JSON/env/ABI, and Base Sepolia Sourcify evidence. | Candidate handoffs are not live configuration. Schedule and execute calldata must match exactly; verify the candidate before execution. |
+| `pause-content-protection` | Toggle the fast custody/protection pause. | Vars: `CONTENT_PROTECTION_PROXY`, `CONTENT_PROTECTION_PAUSED`. Secret: operational owner signer. | Pause event and broadcast. | Failed-payment claims and protective blacklist/revocation intentionally remain available while paused. |
 | `set-content-protection-stake` | Change the ERC-20 stake amount required by ContentProtection. | Workflow: `operation=set-content-protection-stake`. Vars: `CONTENT_PROTECTION_ADDRESS`, `STAKE_ASSET_ADDRESS` or `PAYMENT_USDC_ADDRESS`; optional `STAKE_ASSET_AMOUNT`, `STAKE_ASSET_SYMBOL`. Secret: owner signer. | Console summary and broadcast file. No deployment handoff. | Update docs/product copy if the visible stake policy changed. |
 | `set-marketplace-protocol-fee` | Change marketplace protocol fee and optionally rotate the fee recipient. | Workflow: `operation=set-marketplace-protocol-fee`. Vars: `MARKETPLACE_ADDRESS`, `NEW_PROTOCOL_FEE_BPS`; optional `NEW_FEE_RECIPIENT`. Secret: `StemMarketplaceV2` owner signer. | Console summary, workflow summary, broadcast file. | If fee economics changed beyond accepted ADR values, update the business-model RFC first. No address promotion. |
 | `set-show-campaign-fee-config` | Change Shows campaign fee rate for future campaigns or rotate the charge-time fee recipient. | Workflow: `operation=set-show-campaign-fee-config`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEW_FEE_BPS`, `NEW_FEE_RECIPIENT`. Secret: `ShowCampaignEscrow` owner signer. | Console summary, workflow summary, broadcast file. | Fee rate affects future campaigns only; recipient rotation applies when fees are charged. Update public/operator docs if terms changed. |
@@ -68,8 +74,229 @@ Core GitHub environment variables:
 | `confirm-show-campaign-booking` | Move a funded Shows campaign to booked after the venue/show booking is confirmed. | Workflow: `operation=confirm-show-campaign-booking`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | Confirm the campaign id matches the backend/admin tracking source before running. If the transaction reverts, check campaign status, booking deadline, and confirmer allowlist. |
 | `confirm-show-campaign-fulfillment` | Mark a booked Shows campaign fulfilled after the show has happened or the operator has accepted fulfillment evidence. | Workflow: `operation=confirm-show-campaign-fulfillment`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: confirmer signer. | Console summary and workflow summary. Forge logs campaign status before and after the call. | This starts the campaign's dispute window. Do not release funds until the window has elapsed. |
 | `release-show-campaign-funds` | Release the remaining fulfilled campaign balance after the dispute window has elapsed. | Workflow: `operation=release-show-campaign-funds`, `campaign_id=<id>`. Vars: `SHOW_CAMPAIGN_ESCROW_ADDRESS`. Secret: deployment-safe signer key. The contract call is permissionless. | Console summary and workflow summary. Forge logs campaign status before and after the call, plus total released and total fee paid before and after so the run log shows net/fee movement. | Reconcile the Forge log with the campaign ledger/admin record. No address promotion. |
-| `verify-base-sepolia` | Retry BaseScan/Etherscan verification from a prior Base Sepolia broadcast. | Workflow: `operation=verify-base-sepolia`, `target_network=base-sepolia`. Secrets: `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, retry/API URL vars. | Explorer verification logs. No deploy. | If verification fails because the wrong broadcast was selected, set `BROADCAST_FILE` to the exact `contracts/broadcast/.../run-*.json` artifact and rerun. |
-| `verify-base-sepolia-sourcify` | Verify contracts through Sourcify without an explorer API key. Preferred retry path when a broadcast artifact exists. | Workflow: `operation=verify-base-sepolia-sourcify`, `target_network=base-sepolia`. Vars: optional `BROADCAST_FILE`, `VERIFY_ONLY`, Sourcify retry/API URL vars. | Sourcify verification logs. No deploy. | Keep the broadcast artifact with the deployment record. Sourcify reads the broadcast's creation transactions and rebuilt compiler input. |
+
+## RevenueEscrow Incident And Upgrade Procedure
+
+`RevenueEscrow` separates immediate containment from delayed code recovery.
+
+1. **Contain:** the operational owner runs `pause-revenue-escrow` with
+   `PAUSED=true`. Deposits, releases, redirects, and failed-payment claims stop
+   immediately. Read calls and dispute freeze controls remain available.
+2. **Account:** record native/ERC-20 balances, open escrow liabilities, failed
+   payments, the current implementation, owner/pending owner, timelock, and role
+   members. Do not infer liability solely from the contract's total balance.
+3. **Prepare and verify:** implement the smallest recovery, then run unit, fuzz,
+   invariant, timelock integration, Halmos, Certora, mutation, storage-layout,
+   and diff security gates. Publish the new implementation source through
+   Sourcify before execution when practical.
+4. **Schedule:** an owner or guardian timelock proposer runs
+   `upgrade-revenue-escrow` with `UPGRADE_ACTION=schedule`. Preserve the logged
+   implementation, operation id, salt, calldata, and ETA.
+5. **Veto when needed:** either authority uses `timelock.cancel(operationId)`
+   during the delay if the implementation, verification, or intent is wrong.
+6. **Execute:** after the delay, an authorized executor reruns the operation with
+   `UPGRADE_ACTION=execute` and the exact `NEW_IMPLEMENTATION`/salt inputs.
+7. **Recover:** verify the authority graph and stored liabilities again, exercise
+   the intended settlement path, then unpause with `PAUSED=false` only when safe.
+
+If the operational owner is unavailable, the independent guardian can schedule
+and execute the delayed recovery without it. The new implementation may provide
+the narrowly reviewed ownership/unpause recovery, but no upgrade bypasses the
+timelock. Owner rotation itself is two-step: the current owner calls
+`transferOwnership(newOwner)` and the new owner must call `acceptOwnership()`.
+
+### Replacing a standalone RevenueEscrow
+
+The historical constructor-deployed contract is not a proxy and cannot be
+converted in place. Before promoting a new proxy:
+
+- enumerate and settle, redirect, or explicitly retain every outstanding native,
+  token, and failed-payment liability at the old address;
+- deploy and smoke-test the new implementation/timelock/proxy graph;
+- set ContentProtection and every authorized depositor on the new proxy;
+- update `REVENUE_ESCROW_ADDRESS` through the reviewed infrastructure path;
+- keep the old address and liability audit in durable deployment records.
+
+The deployment workflow does not migrate balances automatically.
+
+## StemMarketplaceV2 Incident And Upgrade Procedure
+
+1. **Contain:** the operational owner runs `pause-stem-marketplace` with
+   `PAUSED=true`. Every list and buy entry point stops immediately. Sellers can
+   still cancel, and recipients can still claim previously escrowed failed
+   payments.
+2. **Account:** record active listings, the listing sequence, marketplace token
+   balances, failed-payment liabilities by asset/recipient, fee configuration,
+   dependencies, owner, implementation, timelock, and role members.
+3. **Prepare and verify:** implement the smallest recovery and run marketplace
+   unit, fuzz, invariant, timelock integration, Halmos/Certora, mutation,
+   storage-layout, and diff security gates. Verify the candidate implementation
+   through Sourcify before execution when practical.
+4. **Schedule:** an owner or guardian proposer runs
+   `schedule-stem-marketplace-upgrade`; preserve the implementation, operation
+   id, salt, calldata, delay, and ETA.
+5. **Veto when needed:** either authority cancels a queued operation whose code,
+   verification, or intent is wrong.
+6. **Execute and smoke:** after the delay, an authorized executor runs
+   `execute-stem-marketplace-upgrade` with the exact implementation/salt, then
+   validates the proxy implementation slot, dependencies, fees, pause state,
+   owner, and authority graph with `smoke-stem-marketplace`.
+7. **Recover:** exercise the repaired path on the intended network and unpause
+   only when settlement and permission wiring are confirmed.
+
+If the owner is unavailable, the independent guardian can schedule and execute
+the delayed recovery. Rotating `upgradeAuthority` itself is authority-gated, so
+the operational owner cannot replace the timelock to bypass the delay.
+
+### Replacing a standalone marketplace
+
+An historical constructor-deployed `StemMarketplaceV2` cannot become a proxy in
+place. Before promoting the replacement:
+
+- enumerate active listings and failed-payment liabilities at the predecessor;
+- pause or retire new activity on the predecessor where operationally possible;
+- deploy and smoke the new implementation/timelock/proxy graph;
+- grant the proxy ContentProtection registrar access and TransferValidator
+  whitelist access, and revoke predecessor permissions only after transition;
+- promote the proxy through the reviewed infrastructure path and retain both
+  addresses and the liability audit in durable deployment records.
+
+## ContentProtection Incident And Upgrade Procedure
+
+1. **Contain first:** the operational owner runs `pause-content-protection`
+   with `CONTENT_PROTECTION_PAUSED=true`. New attestations/stakes, hierarchy
+   registrations, slashing, refunds, and burned-balance sweeps stop. Reads,
+   protective blacklist/revocation, recipient-owned failed-payment claims, and
+   upgrade governance remain available.
+2. **Account:** record the implementation slot, owner/pending owner, timelock and
+   role members, treasury, registrars, payment registry, stake/tier policy,
+   active stakes, burned balances, failed payments, and hierarchy checkpoints.
+3. **Prepare and verify:** implement the smallest recovery; run unit, fuzz,
+   invariant, timelock integration, Halmos/Certora, mutation, storage-layout,
+   and diff security gates. Verify the exact candidate through Sourcify.
+4. **Schedule:** an owner or guardian proposer runs
+   `schedule-content-protection-upgrade`. Preserve the candidate, operation id,
+   salt, calldata, live delay, and ETA.
+5. **Veto when needed:** either authority cancels a queued operation whose code,
+   verification, or intent is wrong. The workflow refuses upgrade operations if
+   the live timelock delay is below 48 hours.
+6. **Execute and smoke:** after the delay, an authorized executor runs
+   `execute-content-protection-upgrade` with the exact candidate/salt and then
+   `smoke-content-protection` to validate implementation, pause, owner, delay,
+   admin renunciation, and both recovery-role sets.
+7. **Recover:** compare custody/protection state to the incident snapshot,
+   exercise the repaired path, and unpause with
+   `CONTENT_PROTECTION_PAUSED=false` only after remediation is verified.
+
+If the operational owner is unavailable, the independent guardian can schedule
+and execute a delayed recovery implementation. Rotating `upgradeAuthority` is
+itself authority-gated, so the owner cannot bypass the timelock. The one-time
+legacy V6 bootstrap follows the separately approved migration procedure above;
+it is not an incident shortcut.
+
+## CP-1 Attestation Registrar (backend voucher signer)
+
+The backend `POST /contracts/attestation-vouchers` endpoint (CP-1, #1271) signs the
+EIP-712 `AttestationAuthorization` voucher that `ContentProtection.attest` /
+`attestRelease` now require before an artist can attest. Its JWT-authenticated request
+body is `{ releaseId, attester, contentHash, metadataURI, chainId? }` (`releaseId` is
+the on-chain uint256 token id as a decimal string; `contentHash` is the 0x bytes32 of
+the audio; `metadataURI` is `resonate://release/<slug>`). It signs only after verifying
+(a) `attester` is a wallet the caller controls and (b) `releaseId ==
+uint256(keccak256(abi.encodePacked(attester, contentHash, keccak256(bytes(metadataURI)))))`
+— i.e. the id sits in the caller's own address partition, which is what prevents
+squatting a foreign creator's predictable id and works for the first-ever attestation
+(no `Release` row exists yet). It signs with the **same key
+`POST /contracts/mint-authorizations` uses** — `MINT_AUTHORIZER_PRIVATE_KEY` (falling
+back to `PRIVATE_KEY`). No new key is introduced.
+
+That signer address **must be a registered ContentProtection registrar**, or every
+voucher reverts `InvalidAttestationSignature` on-chain and no artist can attest.
+Register it once per ContentProtection proxy, as the proxy owner:
+
+```bash
+cast send "$CONTENT_PROTECTION_ADDRESS" "setRegistrar(address,bool)" "$VOUCHER_SIGNER" true \
+  --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+```
+
+- `$VOUCHER_SIGNER` = the address of `MINT_AUTHORIZER_PRIVATE_KEY` (the backend voucher signer).
+- Fresh `deploy-protocol` and `deploy-content-protection` runs register
+  `MINT_AUTHORIZER_ADDRESS` automatically (defaulting to the deployer).
+  `execute-content-protection-v6-migration` requires and registers it in the
+  same reviewed workflow run after the `reinitializeV6` transaction; the
+  registrar grant is a separate transaction, not part of the atomic
+  `upgradeToAndCall`. Use the manual command **per chain** for signer rotations,
+  older migration runs, or a separate V5-only upgrade, because each proxy keeps
+  its own `registrars[]` set.
+- Migration/release order is mandatory: upgrade and execute the matching V5/V6
+  reinitializer and registrar setup first (verified in the same V6 workflow
+  run); then run `smoke-content-protection` with the public
+  `MINT_AUTHORIZER_ADDRESS`; only after that should backend/web code that
+  requests and submits six-argument attestation vouchers be deployed.
+- Rotation: `setRegistrar(oldSigner, false)`, register the new signer, then rotate the
+  backend secret. Vouchers already signed by the old signer stay valid until their
+  `ATTESTATION_VOUCHER_TTL_SECONDS` deadline passes.
+
+## ContentProtection Ownership Handoff (two-step, CP-3)
+
+`ContentProtection.transferOwnership(newOwner)` no longer transfers ownership in one
+step (CP-3, #1271). It only **stages** `newOwner` as `pendingOwner` and emits
+`OwnershipTransferStarted`; the current owner keeps operational authority until the
+new owner completes the handoff. UUPS upgrade authorization remains independently
+bound to the delayed timelock. This prevents a mistyped or unusable address from
+irreversibly bricking day-to-day administration without weakening upgrade governance.
+
+Procedure (per chain / per proxy):
+
+```bash
+# 1. Current owner stages the new owner.
+cast send "$CONTENT_PROTECTION_ADDRESS" "transferOwnership(address)" "$NEW_OWNER" \
+  --rpc-url "$RPC_URL" --private-key "$CURRENT_OWNER_KEY"
+
+# 2. Verify the staging took effect.
+cast call "$CONTENT_PROTECTION_ADDRESS" "pendingOwner()(address)" --rpc-url "$RPC_URL"
+
+# 3. The NEW owner accepts — this is the step that actually moves ownership
+#    (emits OwnershipTransferred and clears pendingOwner).
+cast send "$CONTENT_PROTECTION_ADDRESS" "acceptOwnership()" \
+  --rpc-url "$RPC_URL" --private-key "$NEW_OWNER_KEY"
+
+# 4. Confirm.
+cast call "$CONTENT_PROTECTION_ADDRESS" "owner()(address)" --rpc-url "$RPC_URL"
+```
+
+- A pending handoff can be **replaced or cancelled** at any time before acceptance by
+  the current owner calling `transferOwnership` again (a different address replaces the
+  pending owner; there is no separate cancel — staging an owner-controlled address is
+  the cancel path).
+- Treat an unaccepted `pendingOwner` as an open operational task: the handoff is not
+  done, and the old key must stay secured until `acceptOwnership` has confirmed.
+- `PaymentAssetRegistry` still uses single-step `transferOwnership`; double-check the
+  address before any handoff there.
+
+## Emergency Freeze for Large Tracks (RE-1)
+
+`RevenueEscrow.freezeByTrack(trackId)` freezes the track's escrows and every registered
+stem's escrows in a single transaction. For tracks with very many stems this single
+unbounded loop can exceed the block gas limit. Use the paginated variant
+`freezeByTrackRange(trackId, startIndex, maxStems)` (RE-1, #1271) in that case:
+
+```bash
+# Page through the stems until the call reports 0 processed.
+# Page 0 (startIndex = 0) also freezes the root track's own escrows.
+cast send "$REVENUE_ESCROW_ADDRESS" "freezeByTrackRange(uint256,uint256,uint256)" \
+  "$TRACK_ID" 0 100 --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+cast send "$REVENUE_ESCROW_ADDRESS" "freezeByTrackRange(uint256,uint256,uint256)" \
+  "$TRACK_ID" 100 100 --rpc-url "$RPC_URL" --private-key "$OWNER_KEY"
+# ... advance startIndex by the page size until the returned `processed` is 0.
+```
+
+- The function returns the number of stems processed; `0` means the sweep is complete.
+- `ContentProtection.getTrackStemCount(trackId)` tells you the total stem count up
+  front so you can size the loop.
+- Freezing is idempotent per escrow — re-running a page is safe.
+- `maxStems` must be non-zero (`ZeroMaxStems`); `type(uint256).max` means
+  "everything from startIndex" in one page when gas allows.
 
 ## Staging Lifecycle Smoke
 
@@ -98,6 +325,138 @@ runbook: [`docs/features/staging_lifecycle_smoke.md`](../features/staging_lifecy
 On failure it opens/comments a `smoke-failure`-labeled issue linking the run;
 look for the `SMOKE_FAIL <step>: <reason>` line in the run log.
 
+## Reconciliation-Mismatch Alert (Shows drift)
+
+The escrow indexer reconciles on-chain truth against backend state. When it
+finds drift — an on-chain event on a campaign with **no bound backend row**, or
+an **on-chain pledge with no matching backend intent** — it emits
+`shows.campaign_reconciliation_mismatch` (#1271). This is a **fan-safety** signal:
+a real pledge (or fund movement) the backend didn't originate, or can't match.
+
+**How the alert reaches you.** The indexer writes a structured app-event log
+line (`jsonPayload.event = "shows.campaign_reconciliation_mismatch"`,
+`service = "resonate-backend"`). `resonate-iac`'s log-based metric
+(`backend_app_events{event="shows.campaign_reconciliation_mismatch"}`) turns any
+occurrence into a **Cloud Monitoring email alert** to the ops channel. The same
+drift is also written as a durable analytics fact.
+
+**Responding to an alert:**
+
+1. **Inspect the drift.** Call the operator endpoint (admin/operator JWT):
+
+   ```bash
+   curl -s -H "Authorization: Bearer $OPERATOR_JWT" \
+     "$API_BASE/shows/operator/reconciliation-mismatches?sinceMinutes=120&limit=50" | jq .
+   # Optionally filter to one campaign: &contractCampaignId=<id>
+   ```
+
+   Each row is `{ occurredAt, contractCampaignId, escrowEventName,
+   transactionHash, blockNumber, reason }`. The `reason` tells you which drift
+   variety it is.
+
+2. **If the reason is "no matching backend intent"** — a pledge landed on-chain
+   without a backend intent (an out-of-band pledge, a client that never called
+   `/pledges/intent`, or a lost intent write). Confirm the on-chain pledge
+   (`transactionHash`) is real, then `POST /shows/campaigns/:id/resync-chain` to
+   re-hydrate the campaign from chain. The pledge amount is authoritative from
+   chain; the fan's on-chain funds are safe in escrow. Reconcile the backer
+   record manually if needed.
+
+3. **If the reason is "no backend campaign bound…"** — an on-chain campaign has
+   no linked backend row. Bind/activate the campaign (operator activation with
+   the `contractCampaignId`) when it is ours. If chain inspection proves it is a
+   known-foreign or intentionally burned artifact, acknowledge the exact chain,
+   escrow, and campaign identity with an admin/operator JWT:
+
+   ```bash
+   curl -sS -X POST \
+     -H "Authorization: Bearer $OPERATOR_JWT" \
+     -H "Content-Type: application/json" \
+     -d "$(jq -nc \
+       --argjson chainId "$CHAIN_ID" \
+       --arg contractAddress "$SHOW_CAMPAIGN_ESCROW_ADDRESS" \
+       --arg note "Known-foreign campaign verified against chain" \
+       '{chainId: $chainId, contractAddress: $contractAddress, note: $note}')" \
+     "$API_BASE/shows/operator/reconciliation-mismatches/$CONTRACT_CAMPAIGN_ID/acknowledge" | jq .
+   ```
+
+   Confirm the response contains the exact `chainId`, `contractAddress`, and
+   `contractCampaignId` plus `acknowledged: true`. The action is idempotent.
+   Acknowledged mismatches remain visible in the operator listing, flagged with
+   their acknowledgement metadata; acknowledgement suppresses only future
+   **no-backend-campaign-bound** alerts for that exact identity. It never
+   suppresses pledge-without-intent, open-dispute release, or duplicate-binding
+   mismatches.
+
+   If the campaign later becomes ours, or the acknowledgement was mistaken,
+   revoke it before relying on the alert again:
+
+   ```bash
+   curl -sS -X DELETE \
+     -H "Authorization: Bearer $OPERATOR_JWT" \
+     -H "Content-Type: application/json" \
+     -d "$(jq -nc \
+       --argjson chainId "$CHAIN_ID" \
+       --arg contractAddress "$SHOW_CAMPAIGN_ESCROW_ADDRESS" \
+       '{chainId: $chainId, contractAddress: $contractAddress}')" \
+     "$API_BASE/shows/operator/reconciliation-mismatches/$CONTRACT_CAMPAIGN_ID/acknowledgement" | jq .
+   ```
+
+   Revocation idempotently marks the acknowledgement inactive and restores
+   future no-backend-campaign alerting. The acknowledgement and revocation audit
+   metadata remain available, and historical mismatch facts are not deleted
+   from the operator listing.
+
+4. **If the reason is "funds released … while an off-chain dispute is open"** —
+   chain released despite an open dispute (release is time-locked, not
+   dispute-blocked on-chain). Escalate: this is a governance/dispute-window gap,
+   not an indexer bug.
+
+5. **Escalate** any drift you cannot explain from chain data — treat unexplained
+   fund movement as a security event.
+
+**Proving the alert works.** The **Staging Reconciliation Drill**
+(`.github/workflows/staging-reconciliation-drill.yml`, `workflow_dispatch` only)
+provokes a genuine pledge-without-intent drift on staging and asserts the
+operator endpoint surfaces it. Only after the exact assertion and all cleanup
+checks pass does the drill acknowledge its triple-scoped burned campaign, so a
+failed assertion cannot hide itself and the successful test does not leave
+permanent no-backend-campaign noise. Run it after any deploy that touches the
+escrow indexer. Full guide:
+[`docs/features/staging_reconciliation_drill.md`](../features/staging_reconciliation_drill.md).
+
+## Shows Escrow Indexer Lease
+
+Every configured chain/address target has an independent database-backed lease.
+The database clock determines expiry, and a monotonically increasing epoch fences
+reconciliation and cursor writes from an instance that lost ownership. A normal
+deployment may produce one acquisition or takeover per target; it must not produce
+sustained ownership churn.
+
+Monitor these structured app events:
+
+- `shows.escrow_indexer.lease_acquired`: a previously unowned target was claimed.
+- `shows.escrow_indexer.lease_takeover`: an expired owner was replaced.
+- `shows.escrow_indexer.lease_lost`: the active worker was fenced; page on any
+  occurrence and inspect database availability, transaction latency, RPC latency,
+  poll duration, and recent revisions.
+- `shows.escrow_indexer.lease_released`: graceful shutdown released ownership.
+
+Repeated acquisitions/takeovers outside a rollout indicate churn. Confirm that
+`SHOWS_ESCROW_LEASE_TTL_MS` is greater than twice the polling interval and that a
+full index cycle fits comfortably inside the TTL. A crashed owner needs no manual
+cleanup: the next instance takes over after expiry. Do not manually reset
+`leaseEpoch` or clear an active lease.
+
+If ownership is unstable, set the backend maximum instance count to one through
+`resonate-iac`, keep the indexer enabled so reconciliation continues, and diagnose
+before restoring autoscaling. A graceful shutdown releases only leases still owned
+by that process; correctness after a hard crash relies on expiry and epoch fencing.
+
+The same structured-app-event + log-based-metric + email-alert path also covers
+`x402.refund_due_stale` (#1506) — a paid Punchline collect that could not be
+fulfilled and owes an out-of-band refund; respond via the x402 refund runbook.
+
 ## Address Promotion Through IaC
 
 Do not copy console output straight into Cloud Run or GitHub variables by hand.
@@ -124,7 +483,7 @@ handoffs, especially:
 | Handoff | Promote |
 | --- | --- |
 | `contracts/deployments/base-sepolia.remote.env` | Protocol graph addresses, chain ID, x402 network values. |
-| `contracts/deployments/show-campaign-escrow.<network>.remote.env` | `SHOW_CAMPAIGN_ESCROW_ADDRESS`, `NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS`. |
+| `contracts/deployments/show-campaign-escrow.<network>.remote.env` | Proxy/current app addresses, exact deployment block, one-entry indexer target, implementation/timelock governance metadata, and fee/lifecycle config. Merge—not replace—the target entry with legacy escrow targets during a replacement cutover. |
 | `contracts/deployments/stem-marketplace.<network>.remote.env` | `MARKETPLACE_ADDRESS`, `NEXT_PUBLIC_MARKETPLACE_ADDRESS`. |
 
 Admin/config operations normally do not need IaC promotion because they do not
@@ -136,21 +495,26 @@ runbook updates when they change visible product terms.
 Foundry writes broadcast JSON under `contracts/broadcast/<Script>/<chain-id>/`.
 The workflow uploads those files as artifacts after deploy/update operations.
 
-Sourcify verification is broadcast-driven:
+Sourcify verification is broadcast-driven. The Shows deployment operation runs
+it automatically against the broadcast created in that same job. For a later
+retry:
 
-1. Identify the exact broadcast file for the deployment, for example
-   `contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json`.
-2. Set `BROADCAST_FILE` in the GitHub environment if the default is not the
-   correct file.
-3. Optionally set `VERIFY_ONLY=<ContractName>` to verify one contract from the
-   broadcast.
-4. Dispatch `verify-base-sepolia-sourcify`.
+1. Read the deployment run's `headSha` and use a clean worktree at that exact
+   revision; verification rebuilds compiler input from the checked-out source.
+2. Download `contract-deployment-base-sepolia-<run-id>` into a new isolated
+   directory outside the checkout. Never extract a workflow artifact over
+   executable repository files.
+3. Select the timestamped broadcast, not `run-latest.json`, for example
+   `<artifact-dir>/broadcast/DeployShowCampaignEscrow.s.sol/84532/run-<timestamp>.json`.
+4. Optionally set `VERIFY_ONLY=<ContractName>`, then run
+   `BROADCAST_FILE=<exact-path> make verify-base-sepolia-sourcify`.
 
 The Sourcify script rebuilds the compiler input from local Foundry metadata and
 submits each broadcast creation transaction to Sourcify. It does not need an API
 key.
 
-BaseScan/Etherscan verification also reads the broadcast file, but it uses the
-CI explorer key from `ETHERSCAN_API_KEY` or `BASESCAN_API_KEY`. Use
-`verify-base-sepolia` when explorer verification is required or when a deploy's
-automatic `verify_contracts=auto` step could not complete.
+BaseScan/Etherscan verification uses the same local procedure with
+`ETHERSCAN_API_KEY` or `BASESCAN_API_KEY` and `make verify-base-sepolia`.
+Cross-run artifacts are deliberately not accepted as executable GitHub workflow
+inputs; this prevents an untrusted artifact from overwriting source or scripts
+in a deployment job that holds a signing key.

@@ -116,6 +116,75 @@ docker build \
   workers/demucs
 ```
 
+### Dependency lock maintenance
+
+The CPU and GPU images intentionally use different reviewed inputs and locks:
+
+- `requirements-cpu.in` / `requirements-cpu.lock` target the digest-pinned
+  Python 3.10 CPU image and contain checksum-bound CPU-only Torch wheels.
+- `requirements-gpu.in` / `requirements-gpu.lock` target the CUDA 12.1 image.
+  `constraints-gpu.txt` keeps its preinstalled Torch 2.1.0, torchaudio 2.1.0,
+  and torchvision 0.16.0 ABI; those packages are excluded from the compiled
+  GPU graph. `soundfile` is an explicit GPU input.
+- `requirements-test.in` / `requirements-test.lock` are the minimal Python
+  3.12/Linux graph for `test_main.py`; CI must not install floating FastAPI or
+  httpx releases directly.
+- `requirements-build.in` / `requirements-build.lock` pin Hatchling and its
+  build-time graph. Both images install this lock first and disable PEP 517
+  build isolation, preventing an untracked backend download while preparing
+  the Demucs archive.
+- Both runtime images install the complete compiled lock with `--no-deps`.
+  Dependency resolution belongs to `uv pip compile`; image builds consume only
+  the reviewed, hash-bound closure and cannot re-resolve optional transitive
+  dependencies after a new release appears on an index.
+
+The Demucs source archive is commit-addressed and independently SHA-256
+verified before its checksum is placed in either input. Refresh both locks
+with `uv 0.11.24`:
+
+```bash
+cd workers/demucs
+uv pip compile requirements-build.in \
+  --python-version 3.10 --python-platform x86_64-manylinux_2_31 \
+  --generate-hashes --no-emit-index-url \
+  --output-file requirements-build.lock \
+  --custom-compile-command 'uv pip compile requirements-build.in --python-version 3.10 --python-platform x86_64-manylinux_2_31 --generate-hashes --no-emit-index-url --output-file requirements-build.lock'
+uv pip compile requirements-cpu.in \
+  --python-version 3.10 --python-platform x86_64-manylinux_2_40 \
+  --generate-hashes --no-emit-index-url \
+  --output-file requirements-cpu.lock \
+  --custom-compile-command 'uv pip compile requirements-cpu.in --python-version 3.10 --python-platform x86_64-manylinux_2_40 --generate-hashes --no-emit-index-url --output-file requirements-cpu.lock'
+uv pip compile requirements-gpu.in \
+  --python-version 3.10 --python-platform x86_64-manylinux_2_31 \
+  --constraints constraints-gpu.txt --excludes constraints-gpu.txt \
+  --generate-hashes --no-emit-index-url \
+  --output-file requirements-gpu.lock \
+  --custom-compile-command 'uv pip compile requirements-gpu.in --python-version 3.10 --python-platform x86_64-manylinux_2_31 --constraints constraints-gpu.txt --excludes constraints-gpu.txt --generate-hashes --no-emit-index-url --output-file requirements-gpu.lock'
+uv pip compile requirements-test.in \
+  --python-version 3.12 --python-platform x86_64-manylinux_2_39 \
+  --generate-hashes --no-emit-index-url \
+  --output-file requirements-test.lock \
+  --custom-compile-command 'uv pip compile requirements-test.in --python-version 3.12 --python-platform x86_64-manylinux_2_39 --generate-hashes --no-emit-index-url --output-file requirements-test.lock'
+```
+
+The CPU base uses glibc 2.41, while this uv release exposes target names only
+through manylinux 2.40. The lock is therefore cross-resolved at the newest
+available compatible target and must be install-tested in the exact
+digest-pinned base. Independently download and hash both direct PyTorch wheels
+when refreshing their URL fragments; do not rely on version text alone.
+
+```bash
+docker build --build-arg CACHE_MODEL=0 -t resonate-demucs:cpu-lock -f workers/demucs/Dockerfile workers/demucs
+docker build --build-arg CACHE_MODEL=0 -t resonate-demucs:gpu-lock -f workers/demucs/Dockerfile.gpu workers/demucs
+python scripts/check-python-worker-locks.py
+```
+
+The CI unit-test install command, run from `workers/demucs`, is:
+
+```bash
+python -m pip install --require-hashes -r requirements-test.lock
+```
+
 To force a clean rebuild when you suspect a stale or invalid image:
 
 ```bash
@@ -498,4 +567,8 @@ The `DEBIAN_FRONTEND=noninteractive` env var should prevent this. If stuck, canc
 | `Dockerfile.gpu`   | GPU-enabled build with CUDA 12.1                   |
 | `main.py`          | FastAPI + Pub/Sub consumer with progress reporting |
 | `patch_demucs.py`  | Fixes torchaudio 2.x compatibility                 |
-| `requirements.txt` | Python dependencies                                |
+| `requirements-cpu.in` / `requirements-cpu.lock` | CPU input and hashed graph |
+| `requirements-gpu.in` / `requirements-gpu.lock` | GPU input and hashed graph |
+| `requirements-test.in` / `requirements-test.lock` | Python 3.12 CI test graph |
+| `requirements-build.in` / `requirements-build.lock` | Hashed PEP 517 backend graph |
+| `constraints-gpu.txt` | Base-provided CUDA/Torch ABI constraints        |

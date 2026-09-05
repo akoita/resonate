@@ -9,6 +9,7 @@
 import { prisma } from '../db/prisma';
 import { RecommendationsService } from '../modules/recommendations/recommendations.service';
 import { EventBus } from '../modules/shared/event_bus';
+import { DiscoveryRankingService } from '../modules/recommendations/discovery-ranking.service';
 import { TasteMemoryService } from '../modules/recommendations/taste_memory.service';
 import { CommunityCohortService } from '../modules/community/community_cohort.service';
 
@@ -42,6 +43,14 @@ describe('RecommendationsService (integration)', () => {
         { id: `${TEST_PREFIX}track1`, title: 'Pulse', releaseId: release.id, position: 1 },
         { id: `${TEST_PREFIX}track2`, title: 'Glow', releaseId: release.id, position: 2 },
         { id: `${TEST_PREFIX}track3`, title: 'Drift', releaseId: release.id, position: 3 },
+        {
+          id: `${TEST_PREFIX}track_ai`,
+          title: 'Generated Pulse',
+          releaseId: release.id,
+          position: 4,
+          aiDisclosureLevel: 'ALL',
+          aiDisclosureSource: 'artist',
+        },
       ],
     });
   });
@@ -57,12 +66,13 @@ describe('RecommendationsService (integration)', () => {
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}cohort_release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
+    await prisma.recommendationProfile.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
   });
 
   it('returns recommended tracks with preferences', async () => {
-    const service = new RecommendationsService(new EventBus());
-    service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high', genres: ['Hip Hop'], mood: 'Focus' });
+    const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+    await service.setPreferences(`${TEST_PREFIX}user`, { energy: 'high', genres: ['Hip Hop'], mood: 'Focus' });
 
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
@@ -74,8 +84,8 @@ describe('RecommendationsService (integration)', () => {
   });
 
   it('accepts per-request vibe overrides without replacing stored preferences', async () => {
-    const service = new RecommendationsService(new EventBus());
-    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Jazz'] });
+    const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+    await service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Jazz'] });
 
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2, {
       mood: 'Late Night',
@@ -84,14 +94,24 @@ describe('RecommendationsService (integration)', () => {
 
     expect(result.preferences.genres).toEqual(['Hip Hop']);
     expect(result.preferences.mood).toBe('Late Night');
-    expect(service.getPreferences(`${TEST_PREFIX}user`).genres).toEqual(['Jazz']);
+    expect((await service.getPreferences(`${TEST_PREFIX}user`)).genres).toEqual(['Jazz']);
     expect(result.items[0].reasons).toEqual(expect.arrayContaining(['mood:Late Night']));
   });
 
   it('returns tracks from real DB when no preferences set', async () => {
-    const service = new RecommendationsService(new EventBus());
+    const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
     expect(result.items.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('excludes fully AI-generated tracks from recommendations without hiding catalog peers', async () => {
+    const service = new RecommendationsService(new EventBus(), new DiscoveryRankingService());
+    const result = await service.getRecommendations(`${TEST_PREFIX}user`, 10);
+
+    expect(result.items.map((item) => item.id)).not.toContain(`${TEST_PREFIX}track_ai`);
+    expect(result.items.map((item) => item.id)).toEqual(
+      expect.arrayContaining([`${TEST_PREFIX}track1`]),
+    );
   });
 
   it('uses joined cohort context as a safe additive recommendation signal', async () => {
@@ -135,8 +155,14 @@ describe('RecommendationsService (integration)', () => {
       },
     });
     const eventBus = { publish: jest.fn() };
+    // #1448: preferences are DURABLE now — clear the profile persisted by the
+    // earlier tests so this case exercises the pure cohort-context strategy.
+    await prisma.recommendationProfile.deleteMany({
+      where: { userId: `${TEST_PREFIX}user` },
+    });
     const service = new RecommendationsService(
       eventBus as any,
+      new DiscoveryRankingService(),
       undefined,
       new CommunityCohortService(eventBus as any),
     );
@@ -177,13 +203,13 @@ describe('RecommendationsService (integration)', () => {
   it('excludes hidden taste signals from recommendation reasons', async () => {
     const eventBus = new EventBus();
     const tasteMemory = new TasteMemoryService(eventBus);
-    const service = new RecommendationsService(eventBus, tasteMemory);
+    const service = new RecommendationsService(eventBus, new DiscoveryRankingService(), tasteMemory);
     await tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
       signalType: 'genre',
       value: 'Hip Hop',
       action: 'hidden',
     });
-    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
+    await service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
 
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);
 
@@ -192,11 +218,44 @@ describe('RecommendationsService (integration)', () => {
     expect(result.items[0].reasons).toContain('mood:Focus');
   });
 
+  it('persists an exact-limit taste signal and rejects an over-limit value', async () => {
+    const tasteMemory = new TasteMemoryService(new EventBus());
+    const exactValue = 'g'.repeat(80);
+
+    const control = await tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
+      signalType: 'genre',
+      value: exactValue,
+      source: 's'.repeat(80),
+    });
+
+    expect(control.value).toBe(exactValue);
+    await expect(tasteMemory.upsertSignalControl(`${TEST_PREFIX}user`, {
+      signalType: 'genre',
+      value: `${exactValue}x`,
+    })).rejects.toThrow('signalType and value are required');
+
+    const persisted = await prisma.listenerTasteSignalControl.findUnique({
+      where: {
+        userId_signalType_value: {
+          userId: `${TEST_PREFIX}user`,
+          signalType: 'genre',
+          value: exactValue,
+        },
+      },
+    });
+    expect(persisted?.value).toBe(exactValue);
+    expect(persisted?.source).toBe('s'.repeat(80));
+    const overLimit = await prisma.listenerTasteSignalControl.findFirst({
+      where: { userId: `${TEST_PREFIX}user`, signalType: 'genre', value: `${exactValue}x` },
+    });
+    expect(overLimit).toBeNull();
+  });
+
   it('falls back after reset instead of using older stored preferences', async () => {
     const eventBus = new EventBus();
     const tasteMemory = new TasteMemoryService(eventBus);
-    const service = new RecommendationsService(eventBus, tasteMemory);
-    service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
+    const service = new RecommendationsService(eventBus, new DiscoveryRankingService(), tasteMemory);
+    await service.setPreferences(`${TEST_PREFIX}user`, { genres: ['Hip Hop'], mood: 'Focus' });
 
     await tasteMemory.resetTasteMemory(`${TEST_PREFIX}user`);
     const result = await service.getRecommendations(`${TEST_PREFIX}user`, 2);

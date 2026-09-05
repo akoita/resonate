@@ -7,6 +7,7 @@ import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol"
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Formal Verification Tests
@@ -35,9 +36,14 @@ contract ContentProtectionFormalTest is Test, SymTest {
     uint256 public constant TREASURY_BPS = 3000;
     uint256 public constant BPS = 10000;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     function setUp() public {
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (owner, treasury, 0.01 ether));
+        bytes memory initData =
+            abi.encodeCall(ContentProtection.initializeFresh, (owner, treasury, 0.01 ether, address(0x7000)));
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
 
         usdc = new MockUSDC();
@@ -47,12 +53,14 @@ contract ContentProtectionFormalTest is Test, SymTest {
         registry.configureAsset(keccak256("local:usdc"), address(usdc), "USDC", 6, true, true);
         cp.setPaymentAssetRegistry(address(registry));
         cp.setStakeAmountForAsset(address(usdc), MIN_STAKE);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
         vm.stopPrank();
     }
 
     function _attestAndStakeAsset(uint256 tokenId, uint256 amount) internal {
+        bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
         vm.prank(attester);
-        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta");
+        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
 
         usdc.mint(attester, amount);
         vm.startPrank(attester);
@@ -94,5 +102,42 @@ contract ContentProtectionFormalTest is Test, SymTest {
 
         assert(usdc.balanceOf(attester) == amount);
         assert(usdc.balanceOf(address(cp)) == 0);
+    }
+
+    /// A paused contract cannot accept new native custody, even for an arbitrary token.
+    function check_pausedStakePreservesBalance(uint256 tokenId, uint256 amount) public {
+        vm.assume(amount <= 1e24);
+        vm.prank(owner);
+        cp.setPaused(true);
+        vm.deal(attester, amount);
+        vm.prank(attester);
+        (bool success,) = address(cp).call{value: amount}(abi.encodeCall(ContentProtection.stake, (tokenId)));
+        assert(!success);
+        assert(address(cp).balance == 0);
+    }
+
+    /// Pausing cannot be bypassed by the owner to refund an existing stake.
+    function check_pausedRefundPreservesStake(uint256 tokenId, uint256 amount) public {
+        vm.assume(amount >= MIN_STAKE && amount <= 1e24);
+        _attestAndStakeAsset(tokenId, amount);
+        vm.prank(owner);
+        cp.setPaused(true);
+
+        vm.prank(owner);
+        (bool success,) = address(cp).call(abi.encodeCall(ContentProtection.refundStake, (tokenId)));
+        (uint256 recorded,, bool active) = cp.stakes(tokenId);
+        assert(!success);
+        assert(active);
+        assert(recorded == MIN_STAKE);
+        assert(usdc.balanceOf(address(cp)) == MIN_STAKE);
+    }
+
+    /// The operational owner cannot replace delayed upgrade governance.
+    function check_ownerCannotRotateUpgradeAuthority(address candidate) public {
+        address authorityBefore = cp.upgradeAuthority();
+        vm.prank(owner);
+        (bool success,) = address(cp).call(abi.encodeCall(ContentProtection.setUpgradeAuthority, (candidate)));
+        assert(!success);
+        assert(cp.upgradeAuthority() == authorityBefore);
     }
 }

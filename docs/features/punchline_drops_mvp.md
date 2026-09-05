@@ -1,6 +1,6 @@
 ---
 title: "Phase 1: Punchline Drops MVP"
-status: draft
+status: in-progress
 owner: "@akoita"
 depends_on:
   - artist_upload_flow_mvp
@@ -9,6 +9,274 @@ depends_on:
 ---
 
 # Phase 1: Punchline Drops MVP
+
+> **Status:** `in-progress`. The backend (Sprint 7, #479–#482, #485) and the
+> artist UI (#483–#484) are shipped — an artist can build + publish a drop and
+> fans can discover, play, and collect moments — free or paid — right on release pages (#486) and browse everything they own in the Library's Moments tab (#487). Paid collecting is live on the x402 personal rail (#1462); analytics (#489) shipped too. The [Implementation Status](#implementation-status-sprint-7) section
+> below is the practical, current-state reference for what works today and how
+> to exercise it. The rest of this page is the product design/RFC intent that
+> the slices implement toward.
+
+## Implementation Status (Sprint 7)
+
+**Naming (operator decision 2026-07-11):** the umbrella product is **"Drops"**;
+**"Punchline"** is the first drop *kind*, shown as a per-drop chip in the UI.
+Surfaces (home shelf #1479, collect module, builder, hero buttons) use the
+umbrella name so new kinds (#1476: Crescendo, Hook, Solo…) need no renaming;
+internal code keeps the `Punchline*` names (no churn). The brand name itself
+may be revisited later.
+
+Drops let an artist turn a track's golden moments into scarce, non-commercial
+fan collectibles — starting with the Punchline kind (vocal-stem punchlines).
+This section tracks what is actually built.
+
+### Slice status
+
+| Slice | Issue | Status | What it shipped |
+| --- | --- | --- | --- |
+| Persistence models | [#479](https://github.com/akoita/resonate/issues/479) | ✅ done | `PunchlineDrop` / `PunchlineMoment` / `PunchlineCollectible` / `PunchlineUnlock` Prisma models. |
+| Eligibility + rights gate | [#480](https://github.com/akoita/resonate/issues/480) | ✅ done | `checkEligibility(trackId)` — explainable allow/deny on ownership, published release, vocals stem, content safety, and rights route. |
+| Clip extraction | [#481](https://github.com/akoita/resonate/issues/481) | ✅ done | Server-side ffmpeg trim + re-encode of a `[startMs,endMs)` range from the `vocals` stem into a stored MP3. |
+| Draft + publish APIs | [#482](https://github.com/akoita/resonate/issues/482) | ✅ done | Owner-scoped draft lifecycle, moment validation, and publish (re-gate → extract clips → persist → event). This slice. |
+| Vocal clip selection + preview UI | [#483](https://github.com/akoita/resonate/issues/483) | ✅ done | Owner-only release-page panel: pick a vocals-stem track, see explainable eligibility, drag a `[startMs,endMs]` clip range, and preview exactly that range in-browser. Eligibility now also returns the server's `clipBoundsMs` so the client never hardcodes them. |
+| Artist drop builder | [#484](https://github.com/akoita/resonate/issues/484) | ✅ done | Full drop builder on the release page: create/resume a draft, moment editor (clip range + title/lyric/artwork/edition/price) with a live collectible-card preview, publish behind a review dialog with the verbatim non-commercial rights warning. Owner draft resume via `GET /punchline/me/track-drops`. |
+| Purchase + ownership grant | [#485](https://github.com/akoita/resonate/issues/485) | ✅ done | Race-safe collect endpoint: DB-enforced edition scarcity + one-per-fan cap, `owned` grant with payment provenance, sold-out handling, set-completion unlock hook + events, queryable inventory API. Free moments grant via `free_claim`; priced moments now settle on the x402 rail ([#1462](https://github.com/akoita/resonate/issues/1462)). |
+| Paid moment collects (x402 rail) | [#1462](https://github.com/akoita/resonate/issues/1462) | ✅ done | Generalized the x402 personal rail beyond stems so priced moments charge for real. Artist-set band $0.50–$9.99 per edition (free still allowed), settled in USDC at the existing 15% personal take (`personal.feeBps=1500`, artist ≥85% per ADR-BM-4). Public quote endpoint, JWT smart-account collect that verifies the on-chain USDC transfer then grants the edition **and** records the `X402Settlement` in one transaction, idempotent on txHash. A verified payment that can't be fulfilled (sold out / already owned) is recorded `refund_due` and returns `paid_but_unfulfilled` — **automatic refunds are out of scope**; the settlement row is the operator's reconciliation record. |
+| Track-page "collect moments" module | [#486](https://github.com/akoita/resonate/issues/486) | ✅ done | Fan-facing "Collect moments" section on the release page: lyric-first collectible cards with clip playback, live "N of M left"/sold-out scarcity, per-set progress, and the Collect CTA. Free moments collect end-to-end; priced moments show their price and check out with the Resonate passkey wallet on the x402 rail ([#1462](https://github.com/akoita/resonate/issues/1462)); signed-out visitors get a working sign-in CTA. |
+| Collector inventory view | [#487](https://github.com/akoita/resonate/issues/487) | ✅ done | "🎤 Moments" tab in the Library: owned moments grouped by drop with set progress ("you own N of M" / "Set complete"), edition number, acquisition date, clip playback, and a link back to the release. Deep-linkable via `/library?tab=moments`. |
+| Complete-set unlock rewards | [#488](https://github.com/akoita/resonate/issues/488) | ✅ done | Artist attaches an optional set bonus (bonus vocal clip + note, extracted at publish with the #481 primitive); completing the set grants it **exactly once** (DB-unique `PunchlineUnlockGrant`), emits `punchline.unlock_granted`, and reveals it in the collect module + Moments tab. Reward content is gated: public payloads carry existence only. |
+| Analytics events + artist metrics | [#489](https://github.com/akoita/resonate/issues/489) | ✅ done | Full funnel instrumentation: the 4 domain events registered + bridged into the analytics fact store, 4 client funnel events (`drop_viewed` → `preview_played` → `collect_started` → `collect_completed`) through the product-analytics rail, and an owner metrics endpoint + builder strip (views/previews/collected/conversion/sets completed, per drop and per moment). |
+| Home "Drops" shelf | [#1479](https://github.com/akoita/resonate/issues/1479) | ✅ done | First-class Home discovery surface: public `GET /punchline/featured` ranks published drops by a deterministic momentum heuristic (sold-out excluded → 7-day collect activity from `PunchlineCollectible.acquiredAt` → scarcity urgency → `publishedAt` desc, ≤2 drops per artist). The shelf (umbrella-named "Drops", per-card kind chip) reuses the living collectible card + a context footer (artist · track · scarcity · price) and deep-links to `/release/[id]?focus=moments`, which scroll-pulses the collect module. Renders nothing when no collectable drops exist. Emits `punchline.drop_viewed` with `source: "home"` for Home-vs-release funnel comparison. |
+| Full Drops browse gallery | [#1510](https://github.com/akoita/resonate/issues/1510) | ✅ done | Public `/drops` collection gallery with momentum-ranked cards, URL-shareable kind/genre/price/availability filters, 24-item paging, explicit empty/error/loading states, and sold-out visibility. Each gallery card can preview its selected moment in place without navigation, while the rest of the card deep-links to the release collect module. Sidebar, Home, and release collect-module links expose it. Browse impressions emit `punchline.drop_viewed`; successful gallery previews emit `punchline.preview_played`; both use `source: "drops_browse"`. |
+| Owned-moments profile showcase (slice 1) | [#1477](https://github.com/akoita/resonate/issues/1477) | 🟡 partial | Public listener profile (`/community/profile/[userId]`) surfaces a collector's newest owned moments (≤12, newest-first) as living collectible cards with edition line, credited artist, acquired date, and a `/release/[id]?focus=moments` link. Strictly behind the existing `showOwnedItems` community-visibility opt-in and the `public` profile gate: consent off → field absent + `owned_items_hidden` redaction; non-public profile → 404. The public shape carries **no wallet and no payment provenance** (`paymentRail`/`pricePaidCents`/`paymentRef` excluded). Slice 2 (shareable moment cards / share buttons) is pending. |
+
+Epic: [#490](https://github.com/akoita/resonate/issues/490). Sprint plan:
+[Vision Sprint 7 — Punchline Drops](../sprints/2026-07-10-vision-sprint-7-punchline-drops.md).
+
+### Rights posture
+
+Every drop and moment is minted under a single, deliberately restrictive rights
+class: `NON_COMMERCIAL_COLLECTIBLE`. The UI-safe summary rendered verbatim on a
+collectible card is:
+
+> Personal collectible for playback and profile display only — no commercial
+> use, no remix or sampling rights, and no transfer of copyright or master
+> ownership.
+
+Only verified/trusted catalogs are eligible (the gate defers to the shared
+upload-rights routing engine). A collectible is **utility, not yield** — it
+grants access and display, never income or a revenue share (ADR-BM-4).
+Ownership is an off-chain DB grant by design in Phase 1; the staged path to
+optional on-chain claims (ERC-1155 editions) and its hard triggers are recorded
+in [#1467](https://github.com/akoita/resonate/issues/1467). The
+artist keeps 85%+ of every transaction. Paid collects settle on the x402
+personal rail at the 15% personal take (`personal.feeBps=1500`), wired in
+[#1462](https://github.com/akoita/resonate/issues/1462); free moments carry no
+fee.
+
+### Backend API surface (implemented)
+
+| Method | Route | Auth | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/punchline/eligibility?trackId=` | JWT | Explainable allow/deny for creating a drop on a track (#480). Response also carries `clipBoundsMs: { minMs, maxMs }` — the server-resolved, env-tunable clip-length bounds the selection UI reads so it never hardcodes them (#483). |
+| `GET` | `/punchline/drops` | Public | Momentum-ranked browse feed (#1510). Query: `page` (default 1), `limit` (default 24, max 48), `kind=all|punchline`, exact `genre`, `price=all|free|paid`, and `availability=available|sold_out|all`. Returns page metadata and genre facets for the server-rendered `/drops` gallery. |
+| `POST` | `/punchline/drops` | JWT (owner) | Create a draft drop on an owned, eligible track. |
+| `PATCH` | `/punchline/drops/:dropId` | JWT (owner) | Update a draft drop's title/description. |
+| `POST` | `/punchline/drops/:dropId/moments` | JWT (owner) | Add a collectible moment to a draft. |
+| `PATCH` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Edit a moment on a draft. |
+| `DELETE` | `/punchline/drops/:dropId/moments/:momentId` | JWT (owner) | Remove a moment from a draft. |
+| `POST` | `/punchline/drops/:dropId/publish` | JWT (owner) | Re-run the gate, extract each clip, persist, emit the event. |
+| `GET` | `/punchline/me/track-drops?trackId=` | JWT (owner) | The caller's drops on a track, any status, newest first — powers the builder's draft resume + published summaries (#484). |
+| `POST` | `/punchline/moments/:momentId/collect` | JWT | Collect one edition of a **free** published moment (#485, `free_claim`). Priced moments are rejected here with `payment_required` and must use the paid checkout below. Codes: `moment_not_found`, `drop_not_published`, `sold_out`, `already_collected`, `payment_required`, `collect_failed`. |
+| `GET` | `/punchline/moments/:momentId/collect/quote` | Public | x402 quote for a priced moment (#1462): USD amount, 15% personal-take breakdown, USDC asset, payout address, amount in token units, editions remaining. Honest 4xx: `moment_not_found`, `drop_not_published`, `free_moment`, `sold_out`. |
+| `POST` | `/punchline/moments/:momentId/collect/smart-account` | JWT | Paid collect (#1462): body `{ txHash, payer, collectorWallet? }`. Verifies the on-chain USDC transfer to the payout address, then grants the edition **and** records the `X402Settlement` in one transaction; idempotent on `txHash`. Codes: `payment_verification_failed` (402), `paid_but_unfulfilled` (409, verified but sold out / already owned — support refund), `payment_redeemed_elsewhere`, `payments_unavailable`, plus the shared collect codes. |
+| `GET` | `/punchline/me/collectibles` | JWT | The caller's owned collectibles with moment/drop/track context — the inventory read (#485/#487). |
+| `PUT` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Create/replace the drop's single `complete_set` bonus: clip range (same bounds as moments) + optional note ≤500 chars (#488). |
+| `DELETE` | `/punchline/drops/:dropId/unlock` | JWT (owner, draft) | Remove the set bonus. |
+| `GET` | `/punchline/me/unlocks` | JWT | The caller's granted set rewards, revealed, with drop/track context (#488). |
+| `GET` | `/punchline/me/drops/:dropId/metrics` | JWT (owner) | Funnel metrics for one drop (#489): views → previews → collect starts (analytics facts) joined with collected editions + set completions (DB truth), per drop and per moment; server-computed conversion. |
+| `GET` | `/punchline/moments/:momentId/public` | Public | Single-moment share payload for the permalink + OG card (#1477): moment card fields (masked client-side), credited artist, and drop/track/release context. Published-drop moments only; anything else 404s. |
+| `GET` | `/punchline/collectibles/:collectibleId/public` | Public | Edition-pride share (#1477): the moment card **plus** `{ editionNumber, collectorDisplayName, acquiredAt }`, but only when the collector opted in (public community profile **and** `showOwnedItems`). Otherwise 404, indistinguishable from not-found. Never returns wallet or payment provenance. |
+| `GET` | `/punchline/drops/:dropId` | Optional JWT | Drop detail; published drops are public, drafts only for the owner. |
+| `GET` | `/punchline/tracks/:trackId/drops` | Public | Published drops for a track (`{ items, meta:{count,limit} }`). |
+
+Ownership/eligibility rules enforced server-side: only the track's artist can
+create; only draft drops can be mutated; create **and** publish both run the
+#480 gate; moment ranges are validated against the same clip-length bounds the
+extractor enforces (so publish can't fail on a range the draft accepted); at
+most 20 moments per drop.
+
+### Public share surfaces (#1477 slice 2)
+
+Every published moment has a public permalink at `/moments/[momentId]` — a
+server component that renders the same collectible card (lyric masked exactly
+like the in-app cards), the credited artist · track footer, editions-left +
+price, the rights label, and a **Collect this moment** CTA to
+`/release/[id]?focus=moments`. `generateMetadata` sets the title/description and
+the sibling `opengraph-image.tsx` route renders a 1200×630 branded OG card
+(`next/og` `ImageResponse`, the repo's first) with a seeded-hue gradient, the
+masked lyric as slogan-scale poster text, a serial chip, the artist · track
+line, the `RESONATE · DROPS` wordmark, and the rights label. `metadataBase`
+(from `NEXT_PUBLIC_SITE_URL`) makes the image URL absolute for crawlers.
+
+`?c=<collectibleId>` upgrades the page to the edition-pride view
+(“№ N of M — collected by <name>”) when the consent-gated collectible endpoint
+returns 200; it silently falls back to the plain moment view on 404. **Share**
+buttons on the Library Moments tab (edition link) and the release collect
+module's owned state (plain link) use the Web Share sheet with a clipboard
+fallback and emit `punchline.moment_shared`; the shared link's
+`drop_viewed(source:"share")` closes the #489 funnel loop. The masked-lyric,
+OG-ingredient, and share helpers live in `web/src/lib/momentShare.ts` (unit
+tested), and the OG image never broadcasts a socially-weighted word the in-app
+card masks.
+
+### Artist UI (so far)
+
+The first artist-facing surface ships on the release page (#483). When the
+signed-in owner views their own release, a **Punchline Drops** panel appears for
+any track that has a processed `vocals` stem:
+
+- pick a track (auto-selected when only one qualifies), which runs the #480
+  eligibility check and renders it explainably — the rights summary plus the
+  clip selector when eligible, or the human-readable `reasons[]` list when not;
+- select a `[startMs, endMs]` range on a draggable timeline over the vocals
+  stem (pointer + touch + keyboard-accessible `role="slider"` handles), with
+  live, human-phrased validation that mirrors the backend clip-length bounds so
+  any accepted range is publishable;
+- preview **exactly** that range in the browser — one `HTMLAudioElement` seeked
+  to the selection, using the existing unauthenticated stem-preview endpoint
+  (`GET /catalog/stems/:stemId/preview`, which decrypts server-side and supports
+  Range seeking); no new backend preview endpoint was added.
+
+The **drop builder** (#484) completes the flow in the same panel. From the
+eligibility overview the artist creates a drop (or resumes the newest draft —
+drafts survive reloads via the owner-scoped `GET /punchline/me/track-drops`):
+
+- drop title/description with an explicit Save;
+- a **moment editor** composing the #483 clip selector per moment plus title
+  and lyric (live character counters), optional artwork URL (http(s)/ipfs, live
+  thumbnail), edition size ("Limited edition" is the only MVP edition model),
+  and a price entered in dollars and stored as integer cents (`0` renders
+  "Free to claim"; no suggested price — canonical pricing is a pending operator
+  decision);
+- a live **collectible-card preview** rendered from the editor fields (artwork,
+  lyric, duration badge, edition, price, rights chip) — what fans will see;
+- a moment list with edit/remove (ConfirmDialog-confirmed) while the drop is a
+  draft;
+- **Publish** behind a review dialog (a purpose-built modal following
+  ConfirmDialog styling): moment count, total editions, per-moment one-liners,
+  the **verbatim `NON_COMMERCIAL_COLLECTIBLE` rights warning**, an honest note
+  that set-unlock rewards arrive later (#488), and an "Extracting clips…"
+  loading state. Failures (re-gate `track_not_eligible` reasons, per-moment
+  clip-extraction errors) surface inline and the drop stays an editable draft.
+
+All builder validation mirrors the backend limits exactly (shared helpers in
+`punchlineDropHelpers.ts`), so anything the UI accepts is publishable.
+
+### Environment variables
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `PUNCHLINE_CLIP_MIN_MS` | `2000` | Minimum moment/clip length. |
+| `PUNCHLINE_CLIP_MAX_MS` | `15000` | Maximum moment/clip length (keeps a collectible a punchline, not a song). |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Absolute public origin; sets Next `metadataBase` so the moment OG image URL resolves for crawlers, and the server-side base for shareable moment permalinks (#1477). |
+
+### Events
+
+- `punchline.drop_published` (v1) — emitted on publish with
+  `{ dropId, trackId, artistId, momentCount, totalEditions }` (identifiers +
+  aggregate counts only; no lyrics, artwork, clip bytes, or pricing). The full
+  product-analytics taxonomy is #489.
+- `punchline.moment_collected` (v1) — emitted on every successful collect with
+  identifiers, the edition number, and payment provenance
+  (`pricePaidCents`, `paymentRail`) — real amounts for paid collects (#1462).
+- `x402.purchase` / `x402.purchase_failed` (v1) — the shared x402 rail events,
+  generalized in #1462 with optional `resourceKind`/`momentId` so a paid moment
+  emits `purchase` on grant and `purchase_failed` (`refund_due`) when a verified
+  payment can't be fulfilled. Stems are unchanged.
+- `punchline.set_completed` (v1) — emitted when a collector now owns every
+  moment in a drop.
+- `punchline.unlock_granted` (v1) — the complete-set reward was granted (#488),
+  exactly once per collector per unlock (DB-enforced); identifiers only, never
+  the reward content.
+- All four domain events are registered in the analytics taxonomy and bridged
+  into the fact store (#489). Client funnel events `punchline.drop_viewed`,
+  `punchline.preview_played`, `punchline.collect_started`, and
+  `punchline.collect_completed` flow through the product-analytics rail
+  (allowlisted + declared; pseudonymous tier); the `punchline` event family is
+  registered in the warehouse export matrix. The share event
+  `punchline.moment_shared` `{ momentId, dropId, context, method }` (#1477 slice 2)
+  is declared, allowlisted, and covered by the shared fixture on both the TS
+  warehouse and Python dataflow sides.
+
+### Services, code, and tests
+
+- Services: `backend/src/modules/punchline/punchline-eligibility.service.ts`,
+  `punchline-clip.service.ts`, `punchline-drop.service.ts`,
+  `punchline-collect.service.ts` (#485: race-safe edition allocation, free_claim
+  rail, set-completion hook; #1462: transactional paid allocation + settlement),
+  `punchline-x402.service.ts` (#1462: quote + smart-account verify + settle,
+  reusing the x402 config/asset/verification primitives in
+  `backend/src/modules/x402/x402.smart-account.ts`).
+- Controller: `backend/src/modules/punchline/punchline.controller.ts`.
+- Event: `backend/src/events/event_types.ts` (`PunchlineDropPublishedEvent`,
+  and the widened `X402Purchase*Event` types).
+- Artist UI (#483 + #484): `web/src/components/punchline/` —
+  `PunchlineDropsPanel.tsx` (release-page owner panel + view state machine),
+  `PunchlineDropBuilder.tsx` (draft builder), `PunchlineMomentEditor.tsx`,
+  `PunchlineCollectibleCard.tsx` (live preview + published card),
+  `PunchlinePublishReviewDialog.tsx` (publish review + rights warning),
+  `PunchlineClipSelector.tsx` (reusable clip selector + preview),
+  `punchlineDropHelpers.ts` (pure validation/price/view helpers),
+  `PunchlineCollectModule.tsx` + `punchlineCollectHelpers.ts` (#486 fan module),
+  `PunchlineInventory.tsx` (#487 Library Moments tab),
+  `web/src/styles/punchline.css`; punchline API client in `web/src/lib/api.ts`;
+  wired into `web/src/app/release/[id]/page.tsx`. User Guide article
+  `punchline-drops` in `web/src/lib/help/content.ts`.
+- Browse UI (#1510): `web/src/app/drops/` and `web/src/components/drops/` —
+  server-rendered gallery/filter/paging states, a small client impression island,
+  and the shared discovery card consumed by both `/drops` and Home. Route styles
+  live in `web/src/styles/drops.css`.
+- Tests: `backend/src/tests/punchline-eligibility.integration.spec.ts`,
+  `punchline-clip.integration.spec.ts`, `punchline-drops.integration.spec.ts`,
+  `punchline-collect.integration.spec.ts` (#485: incl. a concurrent-collect race
+  proving editions can never oversell),
+  `punchline-collect-paid.integration.spec.ts` (#1462: verified paid collect
+  grants + records settlement, quote shapes, txHash replay idempotency,
+  post-payment race → `refund_due` + honest error, price-band validation);
+  frontend `web/src/components/punchline/PunchlineClipSelector.test.tsx`,
+  `PunchlineDropsPanel.test.tsx`, and `punchlineDropHelpers.test.tsx`.
+  Browse coverage lives in `web/src/components/drops/DropsBrowse.test.tsx` and
+  shared Home behavior in `web/src/components/home/DropsShelf.test.tsx`.
+  Run backend: `npm run test:integration -- --testPathPattern='punchline'`
+  (the publish/clip render cases require ffmpeg on PATH; CI installs it for the
+  backend-integration job). Run frontend: `npx vitest run src/components/punchline`.
+
+### Business-model note
+
+Revenue line (3) marketplace take-rate. Phase per ADR-BM-6: MVP/experiment.
+Canonical fee/split numbers live in `docs/rfc/business-model.md`. Paid moment
+collects (#1462) settle on the **x402 personal rail** in facilitator mode at the
+existing **15% personal take** (`personal.feeBps=1500`) — no new fee class — so
+the artist keeps **≥85%** of every sale (ADR-BM-4). Collectible pricing is an
+artist-set band of **$0.50–$9.99 per edition** (free still allowed), enforced
+server-side (`punchline-drop.service.ts`) and mirrored in the builder.
+
+A verified payment that cannot be fulfilled (moment sold out / already owned in
+the race window) fails closed: no edition is granted and the settlement is
+recorded `refund_due`. Refunds are still sent **manually** — Resonate never
+auto-moves funds here — but that debt is no longer terminal or invisible (#1506).
+Operators reconcile it through:
+
+- an operator/admin-only surface — `GET /admin/x402-refunds` lists outstanding
+  `refund_due` settlements (payer, amount, moment, age); `POST
+  /admin/x402-refunds/:id/mark-refunded` records the refund tx hash and flips the
+  row to `refunded` (immutable receipt untouched);
+- a watchdog that publishes the aggregate `x402.refund_due_stale` domain event
+  when a `refund_due` row ages past `X402_REFUND_DUE_ALERT_AFTER_HOURS` (default
+  `2`), fanned out to `OPERATOR_ADDRESSES` / `ADMIN_ADDRESSES` via the in-app
+  NotificationBell;
+- the step-by-step [x402 refund runbook](../operations/x402_refund_due_runbook.md).
 
 ## Goal
 

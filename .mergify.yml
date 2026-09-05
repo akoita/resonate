@@ -7,7 +7,31 @@ queue_rules:
     branch_protection_injection_mode: queue
     checks_timeout: 60 min
     queue_branch_prefix: mergify/merge-queue/
+    # Refresh a queued PR against main before validating, so "behind main"
+    # never dequeues a train entry. (Textual conflicts still dequeue — those
+    # need a human rebase by design.)
+    update_method: rebase
     queue_conditions:
       - base = main
       - -draft
       - -conflict
+
+pull_request_rules:
+  # The operator's merge gesture is the `ready-to-merge` label: once applied,
+  # Mergify queues the PR as soon as nothing is red. The queue itself
+  # revalidates everything in a batch train, so pending checks don't block
+  # entry — only a known failure does.
+  - name: queue when the operator labels ready-to-merge
+    conditions:
+      - base = main
+      - label = ready-to-merge
+      - -draft
+      - -conflict
+      - "#check-failure = 0"
+    actions:
+      queue:
+        name: main-batch
+
+# Post-merge branch deletion is handled by GitHub's native repo setting
+# (`delete_branch_on_merge`, enabled 2026-07-13) — Mergify's
+# `delete_head_branch` action is deprecated in favor of it.

@@ -496,10 +496,9 @@ export class McpStemService {
   }
 
   private async readStemAudio(stem: NonNullable<StemRecord>) {
-    const resolvedStemUrl = this.resolveStemUrl(stem.uri);
     if (stem.encryptionMetadata) {
       return this.encryptionService.decrypt(
-        resolvedStemUrl,
+        stem.uri,
         stem.encryptionMetadata,
         [],
         {
@@ -511,21 +510,10 @@ export class McpStemService {
       );
     }
 
-    const response = await fetch(resolvedStemUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch stem: ${response.status}`);
-    }
-    return Buffer.from(await response.arrayBuffer());
-  }
-
-  private resolveStemUrl(uri: string) {
-    if (/^https?:\/\//i.test(uri)) {
-      return uri;
-    }
-
-    const backendUrl =
-      process.env.BACKEND_URL || process.env.PUBLIC_BACKEND_URL || "http://localhost:3000";
-    return new URL(uri, backendUrl).toString();
+    // Keep URI validation, redirects, and response limits in the central
+    // source loader.  A stored relative URI is intentionally not expanded
+    // against request/configurable public origins here.
+    return this.encryptionService.loadSourceBuffer(stem.uri);
   }
 
   private mcpQuoteResourceUrl(stemId: string, licenseType: QuoteLicenseKey) {

@@ -23,6 +23,9 @@ const mockShowsService = {
   activateCampaign: jest.fn(),
   resyncCampaignFromChain: jest.fn(),
   discoverOnChainCampaign: jest.fn(),
+  listReconciliationMismatches: jest.fn(),
+  acknowledgeReconciliationMismatch: jest.fn(),
+  removeReconciliationAcknowledgement: jest.fn(),
   createPledgeIntent: jest.fn(),
   confirmPledge: jest.fn(),
   confirmPledgeRefund: jest.fn(),
@@ -69,6 +72,21 @@ describe("ShowsController (http)", () => {
     await request(app.getHttpServer())
       .get("/shows/campaigns/campaign-1/community")
       .expect(401);
+  });
+
+  it("serves versioned campaign visuals with the legacy public cache semantics", async () => {
+    mockShowsService.getCampaignVisual.mockResolvedValue({
+      data: Buffer.from("visual"),
+      mimeType: "image/webp",
+    });
+
+    const res = await request(app.getHttpServer())
+      .get("/shows/campaigns/campaign-1/visuals/card/v4")
+      .expect(200);
+
+    expect(res.headers["content-type"]).toContain("image/webp");
+    expect(res.headers["cache-control"]).toBe("public, max-age=300");
+    expect(mockShowsService.getCampaignVisual).toHaveBeenCalledWith("campaign-1", "card", "4");
   });
 
   it("loads campaign community state with JWT", async () => {
@@ -209,5 +227,129 @@ describe("ShowsController (http)", () => {
       .expect(403);
 
     expect(mockShowsService.discoverOnChainCampaign).not.toHaveBeenCalled();
+  });
+
+  // #1271: operator reconciliation-mismatch read (drill assertion surface).
+  it("lists reconciliation mismatches for operators with parsed query params", async () => {
+    mockShowsService.listReconciliationMismatches.mockResolvedValue([
+      {
+        occurredAt: "2026-07-13T00:00:00.000Z",
+        contractCampaignId: "42",
+        escrowEventName: "Pledged",
+        transactionHash: "0x" + "a".repeat(64),
+        blockNumber: "1000",
+        reason: "on-chain pledge from 0xabc (99) has no matching backend intent",
+      },
+    ]);
+
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches?contractCampaignId=42&sinceMinutes=60&limit=10")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200)
+      .expect((res) => {
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0].reason).toContain("no matching backend intent");
+      });
+
+    expect(mockShowsService.listReconciliationMismatches).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      { contractCampaignId: "42", sinceMinutes: 60, limit: 10 },
+    );
+  });
+
+  it("allows admin role for reconciliation mismatches", async () => {
+    mockShowsService.listReconciliationMismatches.mockResolvedValue([]);
+
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .expect(200);
+
+    expect(mockShowsService.listReconciliationMismatches).toHaveBeenCalledWith(
+      { userId: "admin-1", role: "admin" },
+      { contractCampaignId: undefined, sinceMinutes: undefined, limit: undefined },
+    );
+  });
+
+  it("requires JWT for reconciliation mismatches", async () => {
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .expect(401);
+
+    expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
+  });
+
+  it("rejects listener role for reconciliation mismatches", async () => {
+    await request(app.getHttpServer())
+      .get("/shows/operator/reconciliation-mismatches")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .expect(403);
+
+    expect(mockShowsService.listReconciliationMismatches).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges an exact reconciliation identity for operators", async () => {
+    const contractAddress = "0x" + "a".repeat(40);
+    mockShowsService.acknowledgeReconciliationMismatch.mockResolvedValue({
+      chainId: 84532,
+      contractAddress,
+      contractCampaignId: "42",
+      acknowledged: true,
+    });
+
+    await request(app.getHttpServer())
+      .post("/shows/operator/reconciliation-mismatches/42/acknowledge")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .send({ chainId: 84532, contractAddress, note: "Known staging artifact" })
+      .expect(201)
+      .expect((res) => expect(res.body.acknowledged).toBe(true));
+
+    expect(mockShowsService.acknowledgeReconciliationMismatch).toHaveBeenCalledWith(
+      { userId: "operator-1", role: "operator" },
+      "42",
+      { chainId: 84532, contractAddress, note: "Known staging artifact" },
+    );
+  });
+
+  it("removes a reconciliation acknowledgement idempotently for admins", async () => {
+    const contractAddress = "0x" + "b".repeat(40);
+    mockShowsService.removeReconciliationAcknowledgement.mockResolvedValue({
+      chainId: 84532,
+      contractAddress,
+      contractCampaignId: "42",
+      acknowledged: false,
+    });
+
+    await request(app.getHttpServer())
+      .delete("/shows/operator/reconciliation-mismatches/42/acknowledgement")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ chainId: 84532, contractAddress })
+      .expect(200)
+      .expect((res) => expect(res.body.acknowledged).toBe(false));
+
+    expect(mockShowsService.removeReconciliationAcknowledgement).toHaveBeenCalledWith(
+      { userId: "admin-1", role: "admin" },
+      "42",
+      { chainId: 84532, contractAddress },
+    );
+  });
+
+  it("protects acknowledgement mutations with JWT and operator roles", async () => {
+    const postRoute = "/shows/operator/reconciliation-mismatches/42/acknowledge";
+    const deleteRoute = "/shows/operator/reconciliation-mismatches/42/acknowledgement";
+    await request(app.getHttpServer()).post(postRoute).send({}).expect(401);
+    await request(app.getHttpServer())
+      .post(postRoute)
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({})
+      .expect(403);
+    await request(app.getHttpServer()).delete(deleteRoute).send({}).expect(401);
+    await request(app.getHttpServer())
+      .delete(deleteRoute)
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({})
+      .expect(403);
+    expect(mockShowsService.acknowledgeReconciliationMismatch).not.toHaveBeenCalled();
+    expect(mockShowsService.removeReconciliationAcknowledgement).not.toHaveBeenCalled();
   });
 });

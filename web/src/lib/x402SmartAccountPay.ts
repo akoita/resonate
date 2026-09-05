@@ -6,7 +6,11 @@ import {
   type Hex,
 } from "viem";
 import { createZeroDevPaymasterClient, createKernelAccountClient } from "@zerodev/sdk";
-import { API_BASE } from "./api";
+import {
+  API_BASE,
+  type PunchlineCollectResult,
+  type PunchlineMomentQuote,
+} from "./api";
 import { getBundlerUrl, isPaymasterEnabled } from "./bundlerConfig";
 import { normalizeContractWriteError } from "./contractErrors";
 import { getX402Chain } from "./x402BrowserWallet";
@@ -14,6 +18,22 @@ import { getX402KernelAccount } from "./x402KernelAccount";
 import { decodeAudioResponse, type X402PaymentResult } from "./x402Pay";
 
 type X402SmartAccountStatus = "signing" | "settling" | "downloading";
+
+type PayWithX402SmartAccountInput = {
+  /** Absolute POST URL that verifies the payment and fulfills the resource. */
+  submitUrl: string;
+  webAuthnKey: unknown;
+  chainId: number;
+  assetAddress: Address;
+  payTo: Address;
+  amountUnits: string;
+  /** Extra fields merged into the POST body (e.g. { collectorWallet }). */
+  extraBody?: Record<string, unknown>;
+  /** Extra request headers (e.g. Authorization for JWT-guarded endpoints). */
+  extraHeaders?: Record<string, string>;
+  onStatus?: (status: X402SmartAccountStatus) => void;
+  onPayer?: (address: Address) => void;
+};
 
 type PayStemWithX402SmartAccountInput = {
   stemId: string;
@@ -39,9 +59,18 @@ const ERC20_TRANSFER_ABI = [
   },
 ] as const;
 
-export async function payStemWithX402SmartAccount(
-  input: PayStemWithX402SmartAccountInput,
-): Promise<X402PaymentResult> {
+/**
+ * Endpoint-agnostic x402 smart-account payer (#1462). Builds the Resonate
+ * passkey (Kernel) account, transfers USDC to `payTo`, then POSTs
+ * `{ txHash, payer, ...extraBody }` to `submitUrl` for server-side verification
+ * and fulfillment. Returns the raw `Response` plus the txHash/payer so each
+ * caller decodes its own body (audio for stems, JSON for moment collects) and
+ * maps its own error codes — this helper only throws on wallet/transfer
+ * failures, never on a non-2xx from `submitUrl`.
+ */
+export async function payWithX402SmartAccount(
+  input: PayWithX402SmartAccountInput,
+): Promise<{ response: Response; txHash: `0x${string}`; payer: Address }> {
   const chain = getX402Chain(input.chainId);
   const publicClient = createPublicClient({
     chain,
@@ -69,17 +98,32 @@ export async function payStemWithX402SmartAccount(
   });
 
   input.onStatus?.("settling");
-  const response = await fetch(
-    `${API_BASE}/api/stems/${encodeURIComponent(input.stemId)}/x402/smart-account`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        txHash,
-        payer: account.address,
-      }),
-    },
-  );
+  const response = await fetch(input.submitUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(input.extraHeaders ?? {}) },
+    body: JSON.stringify({
+      txHash,
+      payer: account.address,
+      ...(input.extraBody ?? {}),
+    }),
+  });
+
+  return { response, txHash, payer: account.address as Address };
+}
+
+export async function payStemWithX402SmartAccount(
+  input: PayStemWithX402SmartAccountInput,
+): Promise<X402PaymentResult> {
+  const { response } = await payWithX402SmartAccount({
+    submitUrl: `${API_BASE}/api/stems/${encodeURIComponent(input.stemId)}/x402/smart-account`,
+    webAuthnKey: input.webAuthnKey,
+    chainId: input.chainId,
+    assetAddress: input.assetAddress,
+    payTo: input.payTo,
+    amountUnits: input.amountUnits,
+    onStatus: input.onStatus,
+    onPayer: input.onPayer,
+  });
 
   if (!response.ok) {
     let reason: string | null = null;
@@ -102,6 +146,67 @@ export async function payStemWithX402SmartAccount(
 
   input.onStatus?.("downloading");
   return decodeAudioResponse(response);
+}
+
+/** An x402 collect error carrying the backend `{ code }` for UI mapping (#1462). */
+export class PunchlineCheckoutError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null,
+  ) {
+    super(message);
+    this.name = "PunchlineCheckoutError";
+  }
+}
+
+/**
+ * Pay for and collect one edition of a priced Punchline moment (#1462): the
+ * Resonate passkey wallet transfers USDC to the payout address, then the
+ * JWT-guarded collect endpoint verifies the on-chain payment and grants the
+ * edition. Throws a `PunchlineCheckoutError` with the backend `code` so the UI
+ * can map verification / paid_but_unfulfilled / sold_out honestly.
+ */
+export async function payMomentWithX402SmartAccount(input: {
+  quote: PunchlineMomentQuote;
+  token: string;
+  webAuthnKey: unknown;
+  chainId: number;
+  collectorWallet?: string | null;
+  onStatus?: (status: X402SmartAccountStatus) => void;
+  onPayer?: (address: Address) => void;
+}): Promise<PunchlineCollectResult> {
+  const { response } = await payWithX402SmartAccount({
+    submitUrl: `${API_BASE}${input.quote.collectEndpoint}`,
+    webAuthnKey: input.webAuthnKey,
+    chainId: input.chainId,
+    assetAddress: input.quote.asset.address as Address,
+    payTo: input.quote.payTo as Address,
+    amountUnits: input.quote.amountUnits,
+    extraHeaders: { Authorization: `Bearer ${input.token}` },
+    extraBody: { collectorWallet: input.collectorWallet ?? null },
+    onStatus: input.onStatus,
+    onPayer: input.onPayer,
+  });
+
+  const text = await response.text().catch(() => "");
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+  }
+
+  if (!response.ok) {
+    const detail = (body ?? {}) as { code?: string; message?: string; error?: string };
+    throw new PunchlineCheckoutError(
+      detail.message || detail.error || `Collect failed (HTTP ${response.status}).`,
+      detail.code ?? null,
+    );
+  }
+
+  return body as PunchlineCollectResult;
 }
 
 function createMappedTransport(bundlerUrl: string) {

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { API_BASE } from '../lib/api';
+import { useAuth } from '../components/auth/AuthProvider';
 
 interface RealtimeControls {
   bpm: number;
@@ -23,7 +24,7 @@ interface UseLyriaRealtimeReturn {
   /** Error message if any */
   error: string | null;
   /** Start a new realtime session */
-  start: (trackId: string, userId: string) => void;
+  start: (trackId: string) => void;
   /** Stop the current session */
   stop: () => void;
   /** Update generation controls */
@@ -44,6 +45,7 @@ interface UseLyriaRealtimeReturn {
  * double-buffered AudioBufferSourceNodes for gapless playback.
  */
 export function useLyriaRealtime(): UseLyriaRealtimeReturn {
+  const { token } = useAuth();
   const [isStreaming, setIsStreaming] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
@@ -129,13 +131,24 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
     const backendUrl = API_BASE;
     const socket = io(backendUrl, {
       transports: ['websocket', 'polling'],
+      auth: { token },
     });
 
     socket.on('connect', () => {
       console.log('[LyriaRealtime] Socket connected');
     });
 
+    socket.on('disconnect', () => {
+      if (socketRef.current !== socket) return;
+      sessionIdRef.current = null;
+      setIsStreaming(false);
+      setIsRecording(false);
+      setRecordedAudio(null);
+      setError(null);
+    });
+
     socket.on('realtime:started', (data: { sessionId: string; available: boolean }) => {
+      if (socketRef.current !== socket) return;
       sessionIdRef.current = data.sessionId;
       setIsStreaming(true);
       setIsAvailable(data.available);
@@ -144,17 +157,20 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
     });
 
     socket.on('realtime:audio', (data: { sessionId: string; chunk: string; timestamp: number }) => {
+      if (socketRef.current !== socket || sessionIdRef.current !== data.sessionId) return;
       // Decode base64 PCM and play via Web Audio API
       playAudioChunk(data.chunk);
     });
 
-    socket.on('realtime:stopped', () => {
+    socket.on('realtime:stopped', (data: { sessionId: string }) => {
+      if (socketRef.current !== socket || sessionIdRef.current !== data.sessionId) return;
       sessionIdRef.current = null;
       setIsStreaming(false);
       setIsRecording(false);
     });
 
     socket.on('realtime:disconnected', (data: { sessionId: string; reason: string }) => {
+      if (socketRef.current !== socket || sessionIdRef.current !== data.sessionId) return;
       console.warn(`[LyriaRealtime] Disconnected: ${data.reason}`);
       sessionIdRef.current = null;
       setIsStreaming(false);
@@ -162,32 +178,39 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
       setError(`Disconnected: ${data.reason}`);
     });
 
-    socket.on('realtime:recording', (data: { isRecording: boolean }) => {
+    socket.on('realtime:recording', (data: { sessionId: string; isRecording: boolean }) => {
+      if (socketRef.current !== socket || sessionIdRef.current !== data.sessionId) return;
       setIsRecording(data.isRecording);
     });
 
-    socket.on('realtime:recorded', (data: { audio: string }) => {
+    socket.on('realtime:recorded', (data: { sessionId: string; audio: string }) => {
+      if (socketRef.current !== socket || sessionIdRef.current !== data.sessionId) return;
       setRecordedAudio(data.audio);
       setIsRecording(false);
     });
 
     socket.on('realtime:error', (data: { message: string }) => {
+      if (socketRef.current !== socket) return;
       setError(data.message);
       console.error(`[LyriaRealtime] Error: ${data.message}`);
     });
 
     socketRef.current = socket;
     return socket;
-  }, [playAudioChunk]);
+  }, [playAudioChunk, token]);
 
 
-  const start = useCallback((trackId: string, userId: string) => {
+  const start = useCallback((trackId: string) => {
+    if (!token) {
+      setError('Authentication required');
+      return;
+    }
+
     setError(null);
     setRecordedAudio(null);
     const socket = getSocket();
     socket.emit('realtime:start', {
       trackId,
-      userId,
       bpm: controls.bpm,
       key: controls.key,
       density: controls.density,
@@ -196,7 +219,7 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
     // Initialize audio context on user gesture
     getAudioContext();
     nextPlayTimeRef.current = 0;
-  }, [getSocket, getAudioContext, controls]);
+  }, [getSocket, getAudioContext, controls, token]);
 
   const stop = useCallback(() => {
     if (sessionIdRef.current && socketRef.current) {
@@ -232,6 +255,19 @@ export function useLyriaRealtime(): UseLyriaRealtimeReturn {
       socketRef.current.emit('realtime:record-stop', { sessionId: sessionIdRef.current });
     }
   }, []);
+
+  // A token change invalidates the connection and any session it carried.
+  // Recreate it lazily only when this hook already had an active socket.
+  useEffect(() => {
+    const hadSocket = socketRef.current !== null;
+    socketRef.current?.disconnect();
+    socketRef.current = null;
+    sessionIdRef.current = null;
+
+    if (hadSocket && token) {
+      getSocket();
+    }
+  }, [getSocket, token]);
 
   // Cleanup on unmount
   useEffect(() => {

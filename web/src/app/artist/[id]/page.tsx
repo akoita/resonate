@@ -165,15 +165,23 @@ export default function ArtistPage() {
 
             <Tabs
                 items={[
-                    { id: "discography", label: "Discography" },
-                    { id: "community", label: "Community" },
+                    { id: "discography", label: "Discography", panelId: "discography-panel" },
+                    { id: "community", label: "Community", panelId: "community-panel" },
                 ]}
                 activeId={activeTab}
                 onChange={(id) => setActiveTab(id as ArtistTab)}
             />
 
-            {activeTab === "discography" && (releases.length > 0 || loading) && (
+            <div
+                id="discography-panel"
+                role="tabpanel"
+                aria-labelledby="discography-tab"
+                hidden={activeTab !== "discography"}
+            >
+              {activeTab === "discography" && (
                 <>
+                  {(releases.length > 0 || loading) && (
+                    <>
                     <div className="section-header border-b border-white/10 pb-4 mb-6">
                         <div className="flex items-center gap-3">
                             <span className="text-xl">🌐</span>
@@ -206,18 +214,28 @@ export default function ArtistPage() {
                             ))}
                         </div>
                     )}
+                    </>
+                  )}
+
+                  {!loading && releases.length === 0 && (
+                    <div className="empty-state">
+                        <p>No official releases found for this artist profile.</p>
+                    </div>
+                  )}
                 </>
-            )}
+              )}
+            </div>
 
-            {activeTab === "discography" && !loading && releases.length === 0 && (
-                <div className="empty-state">
-                    <p>No official releases found for this artist profile.</p>
-                </div>
-            )}
-
-            {activeTab === "community" && artistId && (
-                <ArtistCommunityTab artistId={artistId} artist={artist} />
-            )}
+            <div
+                id="community-panel"
+                role="tabpanel"
+                aria-labelledby="community-tab"
+                hidden={activeTab !== "community"}
+            >
+              {activeTab === "community" && artistId && (
+                  <ArtistCommunityTab artistId={artistId} artist={artist} />
+              )}
+            </div>
         </div>
     );
 }

@@ -8,6 +8,7 @@ import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
 import {PaymentAssetRegistry} from "../../src/payments/PaymentAssetRegistry.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
+import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
 
 /**
  * @title Protocol Invariant Tests
@@ -35,8 +36,14 @@ contract ProtocolInvariantTest is Test {
         contentProtection = new MockContentProtectionMarketplace();
         paymentAssetRegistry = new PaymentAssetRegistry(address(this));
         paymentAssetRegistry.configureAsset(keccak256("local:eth"), address(0), "ETH", 18, true, false);
-        marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(this), 250
+        marketplace = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            address(this),
+            250,
+            address(this),
+            address(0xA11CE)
         );
 
         stemNFT.setTransferValidator(address(validator));
@@ -242,9 +249,6 @@ contract Handler is Test {
 
         // Get quote
         (, uint256 royalty, uint256 fee, uint256 sellerAmt) = marketplace.quoteBuy(listingId, amount);
-
-        // Record balances before
-        uint256 sellerBefore = listing.seller.balance;
 
         // Buy
         marketplace.buy{value: totalPrice}(listingId, amount);

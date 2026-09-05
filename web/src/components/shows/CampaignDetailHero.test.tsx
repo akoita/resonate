@@ -53,7 +53,8 @@ const campaign = {
   status: "active",
   featured: false,
   contractAddress: "0xescrow",
-  etherscanUrl: "https://sepolia.basescan.org/address/0xescrow",
+  contractCampaignId: "1",
+  etherscanUrl: "https://base-sepolia.blockscout.com/address/0xescrow?tab=contract",
   tagline: "A live demand signal.",
   tiers,
 } satisfies Campaign;
@@ -74,7 +75,7 @@ describe("CampaignDetailHero", () => {
     expect(html).toContain("Show X");
     expect(html).toContain("A live demand signal.");
     expect(html).toContain("Le Trianon");
-    expect(html).toContain("View escrow contract");
+    expect(html).toContain("View verified contract");
     expect(html).toContain(campaign.etherscanUrl);
     // #1383: the signal snapshot lives inside the copy panel (2x2 grid) so
     // the lede row has no dead space beside a tall pledge card.
@@ -85,5 +86,27 @@ describe("CampaignDetailHero", () => {
     // No dead or self-linking CTAs.
     expect(html).not.toContain("Send Your Signal");
     expect(html).not.toContain(`href="/shows/${campaign.id}"`);
+  });
+
+  it("omits the explorer anchor when the campaign has no contract link", () => {
+    const campaignWithoutContract = {
+      ...campaign,
+      contractAddress: null,
+      etherscanUrl: undefined,
+    };
+
+    const html = renderToStaticMarkup(
+      <CampaignDetailHero campaign={campaignWithoutContract}>
+        <div>pledge module</div>
+      </CampaignDetailHero>,
+    );
+
+    expect(html).not.toContain("View verified contract");
+    expect(html).not.toContain(
+      'aria-label="View the verified escrow contract on the block explorer"',
+    );
+    expect(html).not.toContain('href=""');
+    expect(html).toContain("Escrow is not linked yet");
+    expect(html).not.toContain("Funds held in a smart contract");
   });
 });

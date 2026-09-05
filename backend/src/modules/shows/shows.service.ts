@@ -21,6 +21,12 @@ import { pseudonymousAnalyticsActorId } from "../analytics/analytics_identity";
 import { AnalyticsInstrumentationService } from "../analytics/analytics_instrumentation.service";
 import { StorageProvider } from "../storage/storage_provider";
 import {
+  getShowsVisualMaxBytes,
+  getShowsVisualMaxTotalBytes,
+  validateArtworkUpload,
+} from "../shared/artwork-validation";
+import { PayoutEligibilityService } from "../trust/payout-eligibility.service";
+import {
   assertShowArtistAuthorityStatus,
   assertShowCampaignBeneficiaryType,
   assertShowCampaignLevel,
@@ -32,6 +38,41 @@ import {
 type Actor = {
   userId: string;
   role?: string;
+};
+
+type ReconciliationMismatchQuery = {
+  contractCampaignId?: string | number | null;
+  sinceMinutes?: number | null;
+  limit?: number | null;
+};
+
+type ReconciliationMismatchRecord = {
+  occurredAt: string;
+  chainId: number | null;
+  contractAddress: string | null;
+  contractCampaignId: string | null;
+  escrowEventName: string | null;
+  transactionHash: string | null;
+  blockNumber: string | null;
+  reason: string | null;
+  acknowledged: boolean;
+  acknowledgedAt: string | null;
+  acknowledgedByUserId: string | null;
+  acknowledgementNote: string | null;
+  revokedAt: string | null;
+  revokedByUserId: string | null;
+};
+
+type ReconciliationAcknowledgementInput = {
+  chainId?: unknown;
+  contractAddress?: unknown;
+  note?: unknown;
+};
+
+type ReconciliationIdentity = {
+  chainId: number;
+  contractAddress: string;
+  contractCampaignId: string;
 };
 
 type CampaignBaseInput = {
@@ -179,6 +220,8 @@ const DEFAULT_DISPUTE_WINDOW_SECONDS = 604800;
 // InvalidDeadline reverts when `deadline <= now || bookingDeadline <= deadline`).
 const MIN_DISPUTE_WINDOW_SECONDS = 3600;
 const MAX_DISPUTE_WINDOW_SECONDS = 7776000;
+const MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH = 1000;
+const MAX_UINT256 = (1n << 256n) - 1n;
 const AUTHORIZED_STATUSES: ShowArtistAuthorityStatus[] = [
   "artist_authorized",
   "trusted_source_authorized",
@@ -407,8 +450,6 @@ function campaignCriticalTerms(
 }
 
 const SHOWS_CATALOG_CONTENT_STATUSES = ["ready", "published"];
-const SHOWS_VISUAL_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const DEFAULT_SHOWS_VISUAL_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_SHOWS_GALLERY_VISUALS = 8;
 const PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES = [
   "refund_available",
@@ -584,6 +625,105 @@ function isPrivilegedActor(actor: Actor) {
   return ["admin", "operator"].includes(actor.role ?? "");
 }
 
+/** Clamp an optional numeric query param to [min, max], falling back on invalid input. */
+function clampInteger(
+  value: number | null | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.trunc(parsed);
+  if (rounded < min) return min;
+  if (rounded > max) return max;
+  return rounded;
+}
+
+/** Normalize a contractCampaignId filter to the canonical string the bridge stores. */
+function normalizeContractCampaignId(
+  value: string | number | null | undefined,
+): string | undefined {
+  if (value === null || value === undefined) return undefined;
+  const text = String(value).trim();
+  return text.length > 0 ? text : undefined;
+}
+
+function normalizeReconciliationContractCampaignId(value: unknown): string {
+  const text = typeof value === "string" || typeof value === "number"
+    ? String(value).trim()
+    : "";
+  if (!/^[0-9]+$/.test(text)) {
+    throw new BadRequestException("contractCampaignId must be a positive uint256");
+  }
+  const parsed = BigInt(text);
+  if (parsed <= 0n || parsed > MAX_UINT256) {
+    throw new BadRequestException("contractCampaignId must be a positive uint256");
+  }
+  return parsed.toString();
+}
+
+function parseReconciliationChainId(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > 2_147_483_647) {
+    throw new BadRequestException("chainId must be a positive PostgreSQL integer");
+  }
+  return parsed;
+}
+
+function parseReconciliationAddress(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new BadRequestException("contractAddress must be a valid nonzero EVM address");
+  }
+  const address = validateOptionalAddress(value, "contractAddress");
+  if (!address || /^0x0{40}$/.test(address)) {
+    throw new BadRequestException("contractAddress must be a valid nonzero EVM address");
+  }
+  return address;
+}
+
+function parseAcknowledgementNote(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("note must be a string");
+  }
+  const note = value.trim();
+  if (!note) return null;
+  if (note.length > MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH) {
+    throw new BadRequestException(
+      `note must be at most ${MAX_RECONCILIATION_ACKNOWLEDGEMENT_NOTE_LENGTH} characters`,
+    );
+  }
+  return note;
+}
+
+function reconciliationIdentityKey(identity: ReconciliationIdentity): string {
+  return `${identity.chainId}:${identity.contractAddress}:${identity.contractCampaignId}`;
+}
+
+function reconciliationIdentityFromUnknown(input: {
+  chainId: unknown;
+  contractAddress: unknown;
+  contractCampaignId: unknown;
+}): ReconciliationIdentity | null {
+  try {
+    return {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(input.contractCampaignId),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function stringOrNull(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
 function configuredNumber(keys: string[], fallback: number) {
   for (const key of keys) {
     const value = process.env[key]?.trim();
@@ -696,6 +836,7 @@ export function serializePublicShowCampaign(campaign: any) {
         role: visual.role,
         publicUrl: visual.publicUrl,
         mimeType: visual.mimeType,
+        artworkRevision: visual.artworkRevision,
         sortOrder: visual.sortOrder,
         caption: visual.caption ?? null,
         credit: visual.credit ?? null,
@@ -862,10 +1003,28 @@ function visualExtension(mimeType: string) {
 export class ShowsService {
   private readonly logger = new Logger(ShowsService.name);
 
+  private lazyPayoutEligibilityService?: PayoutEligibilityService;
+
   constructor(
     @Optional() private readonly analyticsInstrumentationService?: AnalyticsInstrumentationService,
     @Optional() private readonly storageProvider?: StorageProvider,
+    @Optional() private readonly payoutEligibilityService?: PayoutEligibilityService,
   ) {}
+
+  /**
+   * Fail-closed access to the payout-eligibility gate (#1498). Prefers the
+   * DI-provided singleton, but always resolves a working instance so the gate
+   * can never silently no-op — even when ShowsService is `new`'d in a test.
+   */
+  private getPayoutEligibilityService(): PayoutEligibilityService {
+    if (this.payoutEligibilityService) {
+      return this.payoutEligibilityService;
+    }
+    if (!this.lazyPayoutEligibilityService) {
+      this.lazyPayoutEligibilityService = new PayoutEligibilityService();
+    }
+    return this.lazyPayoutEligibilityService;
+  }
 
   async listCampaigns(query: { includeSignals?: boolean; status?: string; scope?: string } = {}) {
     const includeSignals = query.includeSignals === true;
@@ -1008,7 +1167,7 @@ export class ShowsService {
     if (AUTHORIZED_STATUSES.includes(authorityStatus) && !isPrivilegedActor(actor)) {
       throw new ForbiddenException("Authority approval must be performed by an operator");
     }
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input);
     const releasePolicy = input.releasePolicy
       ? assertShowCampaignReleasePolicy(input.releasePolicy)
       : "refund_only_until_booking";
@@ -1119,7 +1278,7 @@ export class ShowsService {
       throw new BadRequestException("depositReleaseBps must be between 0 and 3000");
     }
 
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input, {
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, beneficiaryArtistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
     });
@@ -1221,6 +1380,25 @@ export class ShowsService {
     });
     if (existingGalleryCount + galleryFiles.length > MAX_SHOWS_GALLERY_VISUALS) {
       throw new BadRequestException(`Campaigns can have ${MAX_SHOWS_GALLERY_VISUALS} or fewer gallery visuals`);
+    }
+
+    const visualFiles = [
+      ...(input.hero ? [{ slot: "hero", file: input.hero }] : []),
+      ...(input.card ? [{ slot: "card", file: input.card }] : []),
+      ...galleryFiles.map((file, index) => ({ slot: `gallery-${index + 1}`, file })),
+    ];
+    const totalEncodedBytes = visualFiles.reduce(
+      (total, { file }) => total + Math.max(file.buffer.length, file.size ?? 0),
+      0,
+    );
+    const maxTotalBytes = getShowsVisualMaxTotalBytes();
+    if (totalEncodedBytes > maxTotalBytes) {
+      throw new BadRequestException(
+        `Campaign visuals must total ${Math.floor(maxTotalBytes / (1024 * 1024))} MiB or less`,
+      );
+    }
+    for (const { slot, file } of visualFiles) {
+      validateArtworkUpload(file, { field: `${slot} visual`, maxBytes: getShowsVisualMaxBytes() });
     }
 
     const updates: Prisma.ShowCampaignUpdateInput = {};
@@ -1343,6 +1521,7 @@ export class ShowsService {
               storageUri: stored.storageUri,
               mimeType: stored.mimeType,
               publicUrl: visual.publicUrl,
+              artworkRevision: { increment: 1 },
             },
           },
         },
@@ -1490,7 +1669,7 @@ export class ShowsService {
     return updated;
   }
 
-  async getCampaignVisual(campaignIdOrSlug: string, visualRef: string) {
+  async getCampaignVisual(campaignIdOrSlug: string, visualRef: string, _artworkRevision?: string) {
     if (!this.storageProvider) return null;
     const campaign = await prisma.showCampaign.findFirst({
       where: {
@@ -1504,25 +1683,32 @@ export class ShowsService {
         heroImageMimeType: true,
         cardImageStorageUri: true,
         cardImageMimeType: true,
+        visuals: {
+          where: {
+            OR: [
+              { id: visualRef },
+              ...(visualRef === "hero" || visualRef === "card" ? [{ role: visualRef }] : []),
+            ],
+          },
+          select: { storageUri: true, mimeType: true, artworkRevision: true },
+          take: 1,
+        },
       },
     });
     if (!campaign) return null;
 
+    const visual = campaign.visuals?.[0];
+    if (_artworkRevision !== undefined) {
+      if (!/^[1-9]\d*$/.test(_artworkRevision) || !visual) return null;
+      const requestedRevision = Number(_artworkRevision);
+      if (!Number.isSafeInteger(requestedRevision) || requestedRevision > visual.artworkRevision) {
+        return null;
+      }
+    }
+
     let storageUri = visualRef === "hero" ? campaign.heroImageStorageUri : visualRef === "card" ? campaign.cardImageStorageUri : null;
     let mimeType = visualRef === "hero" ? campaign.heroImageMimeType : visualRef === "card" ? campaign.cardImageMimeType : null;
     if (!storageUri || !mimeType) {
-      const visual = await prisma.showCampaignVisual.findFirst({
-        where: {
-          id: visualRef,
-          campaign: {
-            OR: [
-              { id: campaignIdOrSlug },
-              { slug: campaignIdOrSlug },
-            ],
-          },
-        },
-        select: { storageUri: true, mimeType: true },
-      });
       storageUri = visual?.storageUri ?? null;
       mimeType = visual?.mimeType ?? null;
     }
@@ -1551,7 +1737,7 @@ export class ShowsService {
     const artistIdentity = isPrivilegedActor(actor)
       ? await this.campaignArtistIdentity(campaign.artistId)
       : await this.resolveActorArtistProfile(actor);
-    const beneficiary = this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
+    const beneficiary = await this.normalizeCampaignBeneficiary(actor, artistIdentity, input, {
       address: campaign.beneficiaryAddress,
       type: campaign.beneficiaryType,
     });
@@ -1847,6 +2033,237 @@ export class ShowsService {
     const campaign = await this.findCampaignOrThrow(campaignId);
     const hydrated = await this.hydrateLinkedCampaignFromChain(campaign);
     return serializeManagedShowCampaign(hydrated);
+  }
+
+  /**
+   * #1271 ops tool + drill assertion surface: list reconciliation mismatches the
+   * escrow indexer detected, newest first. Reads the durable analytics facts the
+   * domain-event bridge writes for `shows.campaign_reconciliation_mismatch`, so
+   * an operator (or the staging drift drill) can confirm a specific on-chain
+   * drift was observed without tailing Cloud Logging. Operator/admin only.
+   */
+  async listReconciliationMismatches(
+    actor: Actor,
+    query: ReconciliationMismatchQuery = {},
+  ): Promise<ReconciliationMismatchRecord[]> {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can read reconciliation mismatches");
+    }
+    const sinceMinutes = clampInteger(query.sinceMinutes, 1440, 1, 10080);
+    const limit = clampInteger(query.limit, 50, 1, 200);
+    const since = new Date(Date.now() - sinceMinutes * 60 * 1000);
+
+    const where: Prisma.AnalyticsEventWhereInput = {
+      eventName: "shows.campaign_reconciliation_mismatch",
+      occurredAt: { gte: since },
+    };
+    const contractCampaignId = normalizeContractCampaignId(query.contractCampaignId);
+    if (contractCampaignId !== undefined) {
+      // Bridge stores contractCampaignId as the subjectId (string). Fall back to
+      // a payload match so a record is never missed if the subject is absent.
+      where.OR = [
+        { subjectId: contractCampaignId },
+        { payload: { path: ["contractCampaignId"], equals: contractCampaignId } },
+      ];
+    }
+
+    const rows = await prisma.analyticsEvent.findMany({
+      where,
+      orderBy: { occurredAt: "desc" },
+      take: limit,
+      select: { occurredAt: true, subjectId: true, payload: true },
+    });
+
+    const records = rows.map((row) => {
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      return {
+        occurredAt: row.occurredAt.toISOString(),
+        chainId: null as number | null,
+        contractAddress: null as string | null,
+        contractCampaignId: stringOrNull(payload.contractCampaignId ?? row.subjectId),
+        escrowEventName: stringOrNull(payload.escrowEventName),
+        transactionHash: stringOrNull(payload.transactionHash),
+        blockNumber: stringOrNull(payload.blockNumber),
+        reason: stringOrNull(payload.reason),
+        identity: reconciliationIdentityFromUnknown({
+          chainId: payload.chainId,
+          contractAddress: payload.contractAddress,
+          contractCampaignId: payload.contractCampaignId ?? row.subjectId,
+        }),
+      };
+    });
+
+    // Facts emitted before #1534 do not carry chain/address. Resolve those from
+    // the durable indexed log only when txHash + campaign id identifies exactly
+    // one escrow triple; never guess from campaign id alone.
+    const legacyRecords = records.filter(
+      (record) => !record.identity && record.transactionHash && record.contractCampaignId,
+    );
+    if (legacyRecords.length > 0) {
+      const transactionHashes = [...new Set(legacyRecords.map((record) => record.transactionHash!))];
+      const campaignIds = [...new Set(legacyRecords.map((record) => record.contractCampaignId!))];
+      const escrowEvents = await prisma.showCampaignEscrowEvent.findMany({
+        where: {
+          transactionHash: { in: transactionHashes },
+          contractCampaignId: { in: campaignIds },
+        },
+        select: {
+          transactionHash: true,
+          contractCampaignId: true,
+          chainId: true,
+          contractAddress: true,
+        },
+      });
+      const candidates = new Map<string, Map<string, ReconciliationIdentity>>();
+      for (const event of escrowEvents) {
+        if (!event.contractCampaignId) continue;
+        const identity = reconciliationIdentityFromUnknown(event);
+        if (!identity) continue;
+        const correlationKey = `${event.transactionHash}:${event.contractCampaignId}`;
+        const identities = candidates.get(correlationKey) ?? new Map();
+        identities.set(reconciliationIdentityKey(identity), identity);
+        candidates.set(correlationKey, identities);
+      }
+      for (const record of legacyRecords) {
+        const identities = candidates.get(`${record.transactionHash}:${record.contractCampaignId}`);
+        if (identities?.size === 1) record.identity = [...identities.values()][0];
+      }
+    }
+
+    const identities = new Map<string, ReconciliationIdentity>();
+    for (const record of records) {
+      if (record.identity) identities.set(reconciliationIdentityKey(record.identity), record.identity);
+    }
+    const acknowledgements = identities.size > 0
+      ? await prisma.showEscrowReconciliationAcknowledgement.findMany({
+          where: {
+            OR: [...identities.values()].map((identity) => ({
+              chainId: identity.chainId,
+              contractAddress: identity.contractAddress,
+              contractCampaignId: identity.contractCampaignId,
+            })),
+          },
+        })
+      : [];
+    const acknowledgementByIdentity = new Map(
+      acknowledgements.map((acknowledgement) => [
+        reconciliationIdentityKey(acknowledgement),
+        acknowledgement,
+      ]),
+    );
+
+    return records.map(({ identity, ...record }): ReconciliationMismatchRecord => {
+      const acknowledgement = identity
+        ? acknowledgementByIdentity.get(reconciliationIdentityKey(identity))
+        : undefined;
+      return {
+        ...record,
+        chainId: identity?.chainId ?? null,
+        contractAddress: identity?.contractAddress ?? null,
+        acknowledged: Boolean(acknowledgement && acknowledgement.revokedAt === null),
+        acknowledgedAt: acknowledgement?.acknowledgedAt.toISOString() ?? null,
+        acknowledgedByUserId: acknowledgement?.acknowledgedByUserId ?? null,
+        acknowledgementNote: acknowledgement?.note ?? null,
+        revokedAt: acknowledgement?.revokedAt?.toISOString() ?? null,
+        revokedByUserId: acknowledgement?.revokedByUserId ?? null,
+      };
+    });
+  }
+
+  async acknowledgeReconciliationMismatch(
+    actor: Actor,
+    contractCampaignIdInput: unknown,
+    input: ReconciliationAcknowledgementInput,
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can acknowledge reconciliation mismatches");
+    }
+    const identity: ReconciliationIdentity = {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(contractCampaignIdInput),
+    };
+    const note = parseAcknowledgementNote(input.note);
+    const indexedEvent = await prisma.showCampaignEscrowEvent.findFirst({
+      where: {
+        chainId: identity.chainId,
+        contractAddress: { equals: identity.contractAddress, mode: "insensitive" },
+        contractCampaignId: identity.contractCampaignId,
+      },
+      select: { id: true },
+    });
+    if (!indexedEvent) {
+      throw new NotFoundException("No indexed escrow event exists for this campaign identity");
+    }
+    const acknowledgement = await prisma.$transaction(async (tx) => {
+      // Reactivation is conditional so concurrent/retried POSTs preserve the
+      // first actor/time/note for each active acknowledgement period.
+      await tx.showEscrowReconciliationAcknowledgement.updateMany({
+        where: { ...identity, revokedAt: { not: null } },
+        data: {
+          acknowledgedByUserId: actor.userId,
+          acknowledgedAt: new Date(),
+          note,
+          revokedAt: null,
+          revokedByUserId: null,
+        },
+      });
+      return tx.showEscrowReconciliationAcknowledgement.upsert({
+        where: { chainId_contractAddress_contractCampaignId: identity },
+        create: {
+          ...identity,
+          acknowledgedByUserId: actor.userId,
+          note,
+        },
+        update: {},
+      });
+    });
+    return {
+      chainId: acknowledgement.chainId,
+      contractAddress: acknowledgement.contractAddress,
+      contractCampaignId: acknowledgement.contractCampaignId,
+      acknowledged: true,
+      acknowledgedAt: acknowledgement.acknowledgedAt.toISOString(),
+      acknowledgedByUserId: acknowledgement.acknowledgedByUserId,
+      acknowledgementNote: acknowledgement.note,
+      revokedAt: null,
+      revokedByUserId: null,
+    };
+  }
+
+  async removeReconciliationAcknowledgement(
+    actor: Actor,
+    contractCampaignIdInput: unknown,
+    input: ReconciliationAcknowledgementInput,
+  ) {
+    if (!isPrivilegedActor(actor)) {
+      throw new ForbiddenException("Only operators can remove reconciliation acknowledgements");
+    }
+    const identity: ReconciliationIdentity = {
+      chainId: parseReconciliationChainId(input.chainId),
+      contractAddress: parseReconciliationAddress(input.contractAddress),
+      contractCampaignId: normalizeReconciliationContractCampaignId(contractCampaignIdInput),
+    };
+    const acknowledgement = await prisma.$transaction(async (tx) => {
+      // Conditional update makes repeated/concurrent DELETEs idempotent and
+      // preserves the first revoker and timestamp for the audit trail.
+      await tx.showEscrowReconciliationAcknowledgement.updateMany({
+        where: { ...identity, revokedAt: null },
+        data: { revokedAt: new Date(), revokedByUserId: actor.userId },
+      });
+      return tx.showEscrowReconciliationAcknowledgement.findUnique({
+        where: { chainId_contractAddress_contractCampaignId: identity },
+      });
+    });
+    return {
+      ...identity,
+      acknowledged: false,
+      acknowledgedAt: acknowledgement?.acknowledgedAt.toISOString() ?? null,
+      acknowledgedByUserId: acknowledgement?.acknowledgedByUserId ?? null,
+      acknowledgementNote: acknowledgement?.note ?? null,
+      revokedAt: acknowledgement?.revokedAt?.toISOString() ?? null,
+      revokedByUserId: acknowledgement?.revokedByUserId ?? null,
+    };
   }
 
   /**
@@ -2717,6 +3134,8 @@ export class ShowsService {
     artistAuthorityStatus: ShowArtistAuthorityStatus;
     beneficiaryAddress: string | null;
     beneficiaryType: ShowCampaignBeneficiaryType | null;
+    contractAddress: string | null;
+    contractCampaignId: string | null;
     deadline: Date;
   }) {
     if (campaign.campaignLevel !== "active_escrow_campaign") {
@@ -2730,6 +3149,9 @@ export class ShowsService {
     }
     if (!campaign.beneficiaryAddress || !campaign.beneficiaryType) {
       throw new BadRequestException("Campaign beneficiary must be bound before pledges can be created");
+    }
+    if (!campaign.contractAddress || !campaign.contractCampaignId) {
+      throw new BadRequestException("Campaign escrow must be linked before pledges can be created");
     }
     if (campaign.deadline.getTime() <= Date.now()) {
       throw new BadRequestException("Campaign deadline has passed");
@@ -2788,22 +3210,19 @@ export class ShowsService {
     if (!file.buffer?.length) {
       throw new BadRequestException(`${slot} visual file is empty`);
     }
-    if (!SHOWS_VISUAL_MIME_TYPES.has(file.mimetype)) {
-      throw new BadRequestException(`${slot} visual must be a JPEG, PNG, or WebP image`);
-    }
-    const maxBytes = configuredNumber(["SHOWS_VISUAL_MAX_BYTES"], DEFAULT_SHOWS_VISUAL_MAX_BYTES);
-    if (file.size > maxBytes || file.buffer.length > maxBytes) {
-      throw new BadRequestException(`${slot} visual must be ${Math.floor(maxBytes / (1024 * 1024))}MB or smaller`);
-    }
+    const validatedVisual = validateArtworkUpload(file, {
+      field: `${slot} visual`,
+      maxBytes: getShowsVisualMaxBytes(),
+    });
 
     const storage = await this.storageProvider.upload(
       file.buffer,
-      `show-campaign-${campaignId}-${slot}-${randomUUID()}.${visualExtension(file.mimetype)}`,
-      file.mimetype,
+      `show-campaign-${campaignId}-${slot}-${randomUUID()}.${visualExtension(validatedVisual.mimeType)}`,
+      validatedVisual.mimeType,
     );
     return {
       storageUri: storage.uri,
-      mimeType: file.mimetype,
+      mimeType: validatedVisual.mimeType,
     };
   }
 
@@ -2855,7 +3274,10 @@ export class ShowsService {
     if (existing) {
       return prisma.showCampaignVisual.update({
         where: { id: existing.id },
-        data,
+        data: {
+          ...data,
+          artworkRevision: { increment: 1 },
+        },
       });
     }
     return prisma.showCampaignVisual.create({
@@ -3097,7 +3519,7 @@ export class ShowsService {
     };
   }
 
-  private normalizeCampaignBeneficiary(
+  private async normalizeCampaignBeneficiary(
     actor: Actor,
     artist: Artist | null,
     input: {
@@ -3124,6 +3546,13 @@ export class ShowsService {
           "beneficiaryAddress must match the authenticated artist payout address; update the artist profile or ask an operator to review an override",
         );
       }
+      // #1498 (ADR-BM-5): this is the self-serve branch that binds the artist's
+      // own payout wallet as the money destination. Gate it fail-closed — an
+      // artist who is not human-verified with a payout-eligible rights state
+      // cannot reach an authorized, activatable campaign with themselves as
+      // beneficiary. Operator/admin-designated beneficiaries (privileged actor,
+      // handled below) are intentionally NOT gated here.
+      await this.getPayoutEligibilityService().assertEligible(artist.id, "shows_beneficiary");
       return {
         address: payoutAddress,
         type: "wallet" as ShowCampaignBeneficiaryType,

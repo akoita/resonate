@@ -25,6 +25,9 @@ model User {
   communityModerationReports  CommunityModerationReport[]
   communityVisibilitySettings CommunityVisibilitySettings?
   communityBenefitRedemptions CommunityBenefitRedemption[]
+  punchlineCollectibles       PunchlineCollectible[]
+  punchlineUnlockGrants       PunchlineUnlockGrant[]
+  recommendationProfile       RecommendationProfile?
   tasteMemorySettings         ListenerTasteMemorySettings?
   tasteSignalControls         ListenerTasteSignalControl[]
   folders                     Folder[]
@@ -43,6 +46,7 @@ model User {
   reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
+  generationCostRecords       GenerationCostRecord[]
 }
 
 // Generation-credit meter (#1334, ADR-BM-3). USD-cent balance a user spends on
@@ -72,6 +76,32 @@ model GenerationCreditTransaction {
 
   @@index([userId, createdAt])
   @@index([jobId])
+}
+
+// Realized per-job generation cost telemetry (#1421, ADR-BM-3, RFC
+// docs/rfc/generation-cost-model.md). Append-only observations written on every
+// settled generation (catalog + remix), so the model-estimated COGS and backend
+// wall-clock can later be reconciled against real cloud billing to derive true
+// per-path cost and margin. Pure telemetry: writing a record never affects the
+// generation outcome or the credit ledger.
+model GenerationCostRecord {
+  id               String   @id @default(uuid())
+  jobId            String
+  userId           String
+  // Provider/model path key (e.g. lyria-002, stable-audio-3-medium, remix-stub).
+  path             String
+  durationSeconds  Int
+  wallClockMs      Int
+  estimatedCostUsd Float
+  sellPriceCents   Int
+  // Best-effort: true/false when known, null when the path has no cold-start
+  // concept or wall-clock was not measured.
+  coldStart        Boolean?
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([path, createdAt])
 }
 
 model Wallet {
@@ -449,6 +479,7 @@ model Artist {
   showCampaigns             ShowCampaign[]
   communityBenefitRules     CommunityBenefitRule[]
   communityRooms            CommunityRoom[]
+  punchlineDrops            PunchlineDrop[]
   discordBridge             CommunityDiscordBridge?
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
@@ -475,6 +506,7 @@ model Release {
   artworkUrl            String?
   artworkData           Bytes?
   artworkMimeType       String?
+  artworkRevision       Int                           @default(1)
   attestation           String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
   attestationSignature  String?                       @db.Text // Wallet signature of the attestation
   rightsRoute           String?
@@ -526,6 +558,11 @@ model Track {
   lastProgressAt      DateTime?
   contentStatus       String            @default("clean") // clean, quarantined, dmca_removed
   generationMetadata  Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  aiDisclosureLevel   AiDisclosureLevel @default(UNDECLARED)
+  aiContributionFacets String[]          @default([])
+  aiDisclosureSource  String             @default("migration")
+  aiDisclosureVersion String?
+  aiDeclaredAt        DateTime?
   licenses            License[]
   agentSignals        AgentSignal[]
   stems               Stem[]
@@ -534,6 +571,7 @@ model Track {
   dmcaReports         DmcaReport[]
   release             Release           @relation(fields: [releaseId], references: [id])
   remixProjects       RemixProject[]
+  punchlineDrops      PunchlineDrop[]
   rightsRoute         String?
   rightsFlags         Json?
   rightsReason        String?           @db.Text
@@ -541,6 +579,14 @@ model Track {
   rightsEvaluatedAt   DateTime?
 
   @@index([rightsRoute])
+  @@index([aiDisclosureLevel])
+}
+
+enum AiDisclosureLevel {
+  UNDECLARED
+  NONE
+  PARTLY
+  ALL
 }
 
 model TrackEmbedding {
@@ -787,21 +833,31 @@ model ContractEvent {
   @@index([contractAddress, chainId])
 }
 
+// Off-chain x402 settlement record. Originally stem-keyed (#705); generalized
+// (#1462) so any priced resource can settle on the x402 personal rail.
+// `resourceKind` discriminates the union: "stem" (stemId set) or
+// "punchline_moment" (momentId set). Exactly one resource id is populated per
+// row. `status` values include "download_granted"/"contract_settlement_failed"
+// (stems), "collected" (a moment edition was granted), and "refund_due" (a
+// moment payment verified on-chain but the edition could not be allocated —
+// sold out or already owned — so the fan is owed an out-of-band refund).
 model X402Settlement {
-  id                          String       @id @default(uuid())
-  stemId                      String
+  id                          String           @id @default(uuid())
+  resourceKind                String           @default("stem")
+  stemId                      String?
+  momentId                    String?
   listingId                   String?
   listingChainId              Int?
   listingContractAddress      String?
   listingTokenId              BigInt?
   payerAddress                String?
-  paymentRail                 String       @default("facilitator")
-  paymentProofSha256          String?      @unique
-  paymentTransactionHash      String?      @unique
-  receiptId                   String       @unique
+  paymentRail                 String           @default("facilitator")
+  paymentProofSha256          String?          @unique
+  paymentTransactionHash      String?          @unique
+  receiptId                   String           @unique
   receipt                     Json
-  status                      String       @default("download_granted")
-  contractSettlementStatus    String       @default("not_applicable")
+  status                      String           @default("download_granted")
+  contractSettlementStatus    String           @default("not_applicable")
   contractSettlementTxHash    String?
   contractSettlementEventName String?
   contractSettlementReason    String?
@@ -812,13 +868,22 @@ model X402Settlement {
   settlementAmount            String
   settlementAmountUnits       String
   canonicalAmountUsd          String?
+  // Refund reconciliation (#1506): when a verified payment lands `refund_due`
+  // (moment sold out / already owned in the race window) an operator sends the
+  // out-of-band refund and records it here — the on-chain refund tx and the
+  // moment the settlement flipped to "refunded". Both null until reconciled.
+  refundTxHash                String?
+  refundedAt                  DateTime?
   purchasedAt                 DateTime
-  createdAt                   DateTime     @default(now())
-  updatedAt                   DateTime     @updatedAt
-  stem                        Stem         @relation(fields: [stemId], references: [id])
-  listing                     StemListing? @relation(fields: [listingId], references: [id])
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  stem                        Stem?            @relation(fields: [stemId], references: [id])
+  moment                      PunchlineMoment? @relation(fields: [momentId], references: [id])
+  listing                     StemListing?     @relation(fields: [listingId], references: [id])
 
   @@index([stemId])
+  @@index([momentId])
+  @@index([resourceKind])
   @@index([status])
   @@index([contractSettlementStatus])
 }
@@ -877,13 +942,41 @@ model IndexerState {
 // separate from IndexerState so the escrow poller and the marketplace/content
 // indexer advance independently on the same chain.
 model ShowEscrowIndexerState {
-  id              String   @id @default(uuid())
-  chainId         Int      @unique
-  contractAddress String
-  lastBlockNumber BigInt   @default(0)
-  currentFeeBps   Int?
-  feeRecipient    String?
-  updatedAt       DateTime @updatedAt
+  id               String    @id @default(uuid())
+  chainId          Int
+  contractAddress  String
+  lastBlockNumber  BigInt    @default(0)
+  currentFeeBps    Int?
+  feeRecipient     String?
+  leaseOwnerId     String?
+  leaseExpiresAt   DateTime?
+  leaseHeartbeatAt DateTime?
+  leaseEpoch       BigInt    @default(0)
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([chainId, contractAddress])
+  @@index([leaseExpiresAt])
+}
+
+// Operator acknowledgement for an on-chain Shows campaign that is known not
+// to have a backend campaign. Scoped to the full escrow identity because
+// campaign ids can repeat across chains and legacy/current escrow contracts.
+// The actor is stored as an audit scalar so deleting a user cannot erase the
+// operational record (#1534).
+model ShowEscrowReconciliationAcknowledgement {
+  id                   String   @id @default(uuid())
+  chainId              Int
+  contractAddress      String
+  contractCampaignId   String
+  acknowledgedByUserId String
+  note                 String?  @db.Text
+  acknowledgedAt       DateTime @default(now())
+  revokedByUserId      String?
+  revokedAt            DateTime?
+
+  @@unique([chainId, contractAddress, contractCampaignId])
+  @@index([contractCampaignId])
+  @@index([acknowledgedAt])
 }
 
 // Idempotent processed-event log for ShowCampaignEscrow (#948). The
@@ -1484,6 +1577,7 @@ model ShowCampaignVisual {
   publicUrl  String
   storageUri String
   mimeType   String
+  artworkRevision Int          @default(1)
   sortOrder  Int          @default(0)
   caption    String?      @db.Text
   credit     String?
@@ -2056,4 +2150,169 @@ model NotificationPreference {
   evidenceSubmitted   Boolean @default(true)
   listingExpiringSoon Boolean @default(true)
   listingExpired      Boolean @default(true)
+}
+
+enum PunchlineDropStatus {
+  draft
+  published
+  archived
+}
+
+enum PunchlineCollectibleStatus {
+  pending
+  owned
+  revoked
+}
+
+enum PunchlineUnlockType {
+  complete_set
+}
+
+// A drop groups the collectible moments an artist curates from one track.
+model PunchlineDrop {
+  id          String              @id @default(uuid())
+  trackId     String
+  artistId    String
+  status      PunchlineDropStatus @default(draft)
+  title       String?
+  description String?             @db.Text
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  publishedAt DateTime?
+  track       Track               @relation(fields: [trackId], references: [id])
+  artist      Artist              @relation(fields: [artistId], references: [id])
+  moments     PunchlineMoment[]
+  unlocks     PunchlineUnlock[]
+
+  @@index([trackId])
+  @@index([artistId, status])
+  @@index([status, publishedAt, id])
+}
+
+// A single collectible moment: a clip range on the vocal stem plus the
+// collectible metadata (lyric, artwork, edition size, price). The clip asset
+// is extracted server-side later, so clipAssetUri is nullable until then.
+model PunchlineMoment {
+  id             String                 @id @default(uuid())
+  dropId         String
+  title          String
+  lyricText      String                 @db.Text
+  artworkUrl     String?
+  sourceStemType String                 @default("vocals")
+  startMs        Int
+  endMs          Int
+  clipAssetUri   String?
+  editionSize    Int
+  priceCents     Int
+  rightsLabel    String                 @default("NON_COMMERCIAL_COLLECTIBLE")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  drop           PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  collectibles   PunchlineCollectible[]
+  x402Settlements X402Settlement[]
+
+  @@index([dropId])
+}
+
+// The ownership grant: one row per collected edition. Backend ownership record
+// (Path A); on-chain tokenization is deferred. Unique [momentId, editionNumber]
+// enforces per-moment edition scarcity.
+model PunchlineCollectible {
+  id              String                     @id @default(uuid())
+  momentId        String
+  collectorUserId String
+  collectorWallet String?
+  editionNumber   Int
+  status          PunchlineCollectibleStatus @default(pending)
+  // Payment provenance (#485). Free claims record rail "free_claim" and 0
+  // cents; a paid rail fills paymentRef with its settlement reference once
+  // x402 is generalized beyond stems (follow-up tracked on epic #490).
+  paymentRail     String                     @default("free_claim")
+  pricePaidCents  Int                        @default(0)
+  paymentRef      String?
+  acquiredAt      DateTime?
+  createdAt       DateTime                   @default(now())
+  moment          PunchlineMoment            @relation(fields: [momentId], references: [id])
+  collector       User                       @relation(fields: [collectorUserId], references: [id])
+
+  @@unique([momentId, editionNumber])
+  @@unique([momentId, collectorUserId])
+  @@index([collectorUserId])
+}
+
+// A drop-level unlock rule. v1 supports one type: collect every moment in the
+// drop to earn a bonus reward (rewardMetadata carries the reward payload).
+model PunchlineUnlock {
+  id             String              @id @default(uuid())
+  dropId         String
+  unlockType     PunchlineUnlockType @default(complete_set)
+  rewardMetadata Json?
+  createdAt      DateTime            @default(now())
+  drop           PunchlineDrop       @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  grants         PunchlineUnlockGrant[]
+
+  @@index([dropId])
+}
+
+// Exactly-once reward grant per collector per unlock (#488). The unique pair
+// makes double-granting impossible at the database level — same philosophy as
+// edition scarcity on PunchlineCollectible.
+// Durable discovery state (#1448 WS-1): replaces the per-process in-memory
+// preference/served-history Maps that were lost on restart and incoherent
+// across Cloud Run instances. One row per user; servedTrackIds is capped
+// app-side (most recent first).
+// Discovery popularity serving tables (#1450 WS-3 contract, filled today by
+// the interim local-facts refresher from #1451 WS-4; the warehouse mart
+// export replaces the FILLER, not these tables). genre "" = all genres.
+// Rows below the minimum-audience threshold are never written (RFC §7).
+model TrackPopularity {
+  id              String   @id @default(uuid())
+  trackId         String
+  window          String // "24h" | "7d" | "30d"
+  genre           String   @default("")
+  score           Float
+  plays           Int
+  uniqueListeners Int
+  saves           Int
+  computedAt      DateTime @default(now())
+
+  @@unique([trackId, window, genre])
+  @@index([window, genre, score])
+}
+
+model ArtistEngagement {
+  id              String   @id @default(uuid())
+  artistId        String
+  window          String
+  genre           String   @default("")
+  score           Float
+  plays           Int
+  uniqueListeners Int
+  saves           Int
+  computedAt      DateTime @default(now())
+
+  @@unique([artistId, window, genre])
+  @@index([window, genre, score])
+}
+
+model RecommendationProfile {
+  userId               String    @id
+  preferences          Json?
+  preferencesUpdatedAt DateTime?
+  servedTrackIds       String[]  @default([])
+  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime  @default(now())
+  user                 User      @relation(fields: [userId], references: [id])
+}
+
+model PunchlineUnlockGrant {
+  id              String          @id @default(uuid())
+  unlockId        String
+  collectorUserId String
+  grantedAt       DateTime        @default(now())
+  unlock          PunchlineUnlock @relation(fields: [unlockId], references: [id], onDelete: Cascade)
+  collector       User            @relation(fields: [collectorUserId], references: [id])
+
+  @@unique([unlockId, collectorUserId])
+  @@index([collectorUserId])
 }

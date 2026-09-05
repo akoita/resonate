@@ -1,0 +1,16 @@
+# Python 3.10/Linux x86_64 CPU input. The direct wheels avoid PyPI's CUDA
+# dependency graph and are checksum-verified during lock generation and install.
+demucs @ https://github.com/adefossez/demucs/archive/eeac1d15891af95b1288d2884b95baa3e5baa96c.tar.gz#sha256=36495e8e8e869749b7722bc79be9cbf18a7bed7c5921e417b54c3023e2bde825
+torch @ https://download-r2.pytorch.org/whl/cpu/torch-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl#sha256=5077921fc2b54e69a534f3a9c0b98493c79a5547c49d46f5e77e42da3610e011
+torchaudio @ https://download-r2.pytorch.org/whl/cpu/torchaudio-2.1.0%2Bcpu-cp310-cp310-linux_x86_64.whl#sha256=479bf607276c688db13c3652f36978b06bf9d827763a799b6d6f07d90a794205
+fastapi
+uvicorn
+python-multipart
+numpy<2.0.0
+httpx
+google-cloud-storage
+google-cloud-pubsub
+pyacoustid
+# Stem audio feature extraction (#1184). 0.10.x is the last librosa line
+# compatible with numpy<2 on Python 3.10 (numba/llvmlite resolve from it).
+librosa==0.10.2.post1

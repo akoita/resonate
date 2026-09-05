@@ -58,6 +58,13 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "remix.studio_saved",
   "remix.studio_action_unavailable",
   "remix.published",
+  "punchline.drop_viewed",
+  "punchline.preview_played",
+  "punchline.collect_started",
+  "punchline.collect_completed",
+  "punchline.moment_shared",
+  "recommendation.served",
+  "recommendation.clicked",
 ] as const;
 
 export type ProductAnalyticsEventName = (typeof PRODUCT_ANALYTICS_EVENT_NAMES)[number];
@@ -114,8 +121,10 @@ export async function recordProductAnalytics(
 ) {
   if (!token) return null;
 
+  const { subjectType, subjectId, ...eventInput } = input;
   const event: ProductAnalyticsInput = {
-    ...input,
+    ...eventInput,
+    ...(subjectType && subjectId ? { subjectType, subjectId } : {}),
     eventName,
     sessionId: input.sessionId ?? getProductAnalyticsSessionId(),
     clientEventId: input.clientEventId ?? createProductAnalyticsClientEventId(),

@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {EscrowProxyDeployer} from "../utils/EscrowProxyDeployer.sol";
 import {SymTest} from "halmos-cheatcodes/SymTest.sol";
 
 /**
@@ -27,6 +28,7 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
     address public alice = address(0x4000);
     address public bob = address(0x5000);
     address public feeRecipient = address(0x6000);
+    address public upgradeAuthority = address(0x7000);
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
@@ -34,7 +36,7 @@ contract ShowCampaignEscrowFormalTest is Test, SymTest, IShowCampaignEscrow {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);

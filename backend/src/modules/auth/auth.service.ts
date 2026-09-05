@@ -29,6 +29,68 @@ export class AuthService {
     return this.issueToken(address.toLowerCase(), role);
   }
 
+  /**
+   * Verify a bearer token for non-HTTP transports and return only the
+   * server-derived identity. Callers must not use claims other than `sub` for
+   * authorization decisions.
+   */
+  verifyAccessToken(rawToken: unknown): { userId: string } | null {
+    if (typeof rawToken !== "string" || !rawToken.trim()) {
+      return null;
+    }
+
+    try {
+      const payload = this.jwtService.verify(rawToken);
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+
+      const userId = (payload as { sub?: unknown }).sub;
+      if (typeof userId !== "string" || !userId.trim()) {
+        return null;
+      }
+
+      return { userId: userId.trim() };
+    } catch {
+      // Keep token-validation failures indistinguishable to transport callers.
+      return null;
+    }
+  }
+
+  /**
+   * Resolve whether a claimed wallet address belongs to the authenticated
+   * identity.  Passkey users can have a JWT subject that is the owner EOA
+   * while the persisted wallet row contains the derived smart account (or
+   * vice versa), so subject equality alone is not sufficient.
+   */
+  async isAddressForUser(userId: string, claimedAddress: string): Promise<boolean> {
+    if (
+      typeof userId !== "string" ||
+      typeof claimedAddress !== "string" ||
+      !userId ||
+      !claimedAddress
+    ) {
+      return false;
+    }
+
+    if (userId.toLowerCase() === claimedAddress.toLowerCase()) {
+      return true;
+    }
+
+    const wallet = await prisma.wallet.findFirst({
+      where: {
+        userId: { equals: userId, mode: "insensitive" },
+        OR: [
+          { address: { equals: claimedAddress, mode: "insensitive" } },
+          { ownerAddress: { equals: claimedAddress, mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+    });
+
+    return wallet !== null;
+  }
+
   async upsertWalletIdentity(input: {
     userId: string;
     walletAddress: string;

@@ -150,6 +150,12 @@ export class AesEncryptionProvider extends EncryptionProvider {
                 // before it ever reaches this path; the bypass still requires
                 // INTERNAL_SERVICE_KEY in every environment.
                 'remix-render-authorized',
+                // Backend-initiated Punchline clip extraction (#481/#482): the
+                // publish flow is owner-scoped and re-runs the rights/
+                // eligibility gate before any extraction, and the sentinel is
+                // hardcoded server-side (never caller-supplied). Same
+                // INTERNAL_SERVICE_KEY gate as the remix render bypass.
+                'punchline-clip-authorized',
             ]);
             const isInternalBypass = internalBypassSignatures.has(context.authSig.sig);
             if (internalKey) {

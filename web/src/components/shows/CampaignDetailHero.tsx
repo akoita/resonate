@@ -43,6 +43,7 @@ export function CampaignDetailHero({ campaign, children }: Props) {
   });
   const progressPct = Math.round(progressRatio(campaign) * 100);
   const backersNeeded = Math.max(0, campaign.thresholdBackers - campaign.backerCount);
+  const hasLinkedEscrow = Boolean(campaign.contractAddress && campaign.contractCampaignId);
   const displayTitle = campaignDisplayTitle(campaign);
   const heroVisual = campaign.heroImage || campaign.visuals[0]?.url;
   const hasHeroImage = Boolean(heroVisual);
@@ -131,16 +132,22 @@ export function CampaignDetailHero({ campaign, children }: Props) {
           <p className="campaign-detail-hero__trust-line">
             {campaign.isSample
               ? "Fictional fan-created sample — no artist endorsement, venue hold, or live escrow is implied."
-              : "Funds held in a smart contract, not a company bank account. Miss the threshold and every pledge refunds automatically — enforced by code."}
-            {" "}
-            <a
-              href={campaign.etherscanUrl}
-              target="_blank"
-              rel="noreferrer noopener"
-              aria-label="View the escrow contract on the block explorer"
-            >
-              View escrow contract ↗
-            </a>
+              : hasLinkedEscrow
+                ? "Funds held in a smart contract, not a company bank account. Miss the threshold and every pledge refunds automatically — enforced by code."
+                : "Escrow is not linked yet, so this campaign is not accepting pledges."}
+            {hasLinkedEscrow && campaign.etherscanUrl ? (
+              <>
+                {" "}
+                <a
+                  href={campaign.etherscanUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  aria-label="View the verified escrow contract on the block explorer"
+                >
+                  View verified contract ↗
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
 

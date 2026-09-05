@@ -11,10 +11,9 @@ on:
         options:
           - staging
           - dev
-      image_tag:
-        description: Optional container tag. Defaults to the GitHub SHA.
-        required: false
-        default: ""
+      source_sha:
+        description: Full immutable source SHA. Dispatch this workflow on the same main/develop revision.
+        required: true
         type: string
       artifact_registry_repository:
         description: Optional Artifact Registry repo name. Defaults to resonate-<environment>.
@@ -36,51 +35,72 @@ on:
         required: false
         default: ""
         type: string
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/publish-analytics-dataflow-flex-template.yml"
-      - ".github/scripts/submit-cloud-build.sh"
-      - "workers/analytics-dataflow/**"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
     name: Publish Flex Template
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'staging' }}
+    permissions:
+      contents: read
+      id-token: write
+    environment: ${{ inputs.environment }}
     outputs:
       image_uri: ${{ steps.coordinates.outputs.image_uri }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
       template_gcs_path: ${{ steps.coordinates.outputs.template_gcs_path }}
       staging_location: ${{ steps.coordinates.outputs.staging_location }}
       temp_location: ${{ steps.coordinates.outputs.temp_location }}
       artifact_bucket: ${{ steps.coordinates.outputs.artifact_bucket }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Validate exact release source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          DISPATCH_BRANCH: ${{ github.ref_name }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source_sha must be a full lowercase commit SHA."
+            exit 1
+          fi
+          if [[ "${SOURCE_SHA}" != "${DISPATCH_SHA}" ]]; then
+            echo "::error::Dispatch the workflow on the exact source_sha; moving or ambiguous refs are rejected."
+            exit 1
+          fi
+          expected_branch="main"
+          [[ "${TARGET_ENVIRONMENT}" == "dev" ]] && expected_branch="develop"
+          if [[ "${DISPATCH_BRANCH}" != "${expected_branch}" ]]; then
+            echo "::error::${TARGET_ENVIRONMENT} publication requires the ${expected_branch} branch."
+            exit 1
+          fi
+
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
       - name: Resolve artifact coordinates
         id: coordinates
         env:
-          EVENT_NAME: ${{ github.event_name }}
           INPUT_ENVIRONMENT: ${{ inputs.environment }}
-          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
           INPUT_ARTIFACT_REGISTRY_REPOSITORY: ${{ inputs.artifact_registry_repository }}
           INPUT_TEMPLATE_GCS_PATH: ${{ inputs.template_gcs_path }}
           INPUT_TEMPLATE_BUCKET: ${{ inputs.template_bucket }}
@@ -94,18 +114,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            environment="${INPUT_ENVIRONMENT}"
-          else
-            environment="staging"
-          fi
+          environment="${INPUT_ENVIRONMENT}"
 
           if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
             echo "Missing required GitHub environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
             exit 1
           fi
 
-          tag="${INPUT_IMAGE_TAG:-${GITHUB_SHA}}"
+          tag="${SOURCE_SHA}"
           repository="${INPUT_ARTIFACT_REGISTRY_REPOSITORY:-${DEFAULT_ARTIFACT_REGISTRY_REPOSITORY:-resonate-${environment}}}"
           explicit_template_bucket="${INPUT_TEMPLATE_BUCKET:-${DEFAULT_TEMPLATE_BUCKET:-}}"
           template_gcs_path="${INPUT_TEMPLATE_GCS_PATH:-${DEFAULT_TEMPLATE_GCS_PATH:-}}"
@@ -157,11 +173,12 @@ jobs:
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Build and push analytics Dataflow image
+        id: build
         env:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_SHA: ${{ inputs.source_sha }}
           IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
         run: |
           bash .github/scripts/submit-cloud-build.sh \
@@ -171,11 +188,23 @@ jobs:
             --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
             --git-source-revision "${GITHUB_SHA}" \
             --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${IMAGE_URI}"
+            --image "${IMAGE_URI}" \
+            --metadata-output "${RUNNER_TEMP}/analytics-dataflow-build.json"
+
+      - name: Publish Analytics Dataflow image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: analytics-dataflow
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ steps.coordinates.outputs.image_uri }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/analytics-dataflow
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-analytics-dataflow-flex-template.yml@${{ inputs.source_sha }}
+          source-sha: ${{ inputs.source_sha }}
 
       - name: Publish Dataflow Flex Template spec
         env:
-          IMAGE_URI: ${{ steps.coordinates.outputs.image_uri }}
+          IMAGE_URI: ${{ steps.build.outputs.image_ref }}
           TEMPLATE_GCS_PATH: ${{ steps.coordinates.outputs.template_gcs_path }}
         run: ./build-flex-template.sh
         working-directory: workers/analytics-dataflow

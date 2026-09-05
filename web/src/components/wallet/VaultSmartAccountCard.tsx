@@ -169,25 +169,23 @@ export default function VaultSmartAccountCard({ wallet, address, isDeployed, rec
         const { createKernelAccount, createKernelAccountClient } = await import("@zerodev/sdk");
         const { http, parseGwei } = await import("viem");
         const { sepolia } = await import("viem/chains");
-        const { KERNEL_V3_1 } = await import("@zerodev/sdk/constants");
         const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID || 11155111);
-        const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
+        const accountConfig = getKernelAccountConfig(chainId);
+        const { entryPoint, kernelVersion } = accountConfig;
 
         const bundlerUrl = process.env.NEXT_PUBLIC_BUNDLER_URL || "/api/bundler";
 
         // Build the Passkey validator from the stored webAuthnKey
         const validator = await toPasskeyValidator(publicClient, {
             webAuthnKey,
-            kernelVersion: KERNEL_V3_1,
+            kernelVersion,
             validatorContractVersion: PasskeyValidatorContractVersion.V0_0_1_UNPATCHED,
             entryPoint,
         });
 
         const account = await createKernelAccount(publicClient, {
             plugins: { sudo: validator },
-            kernelVersion: KERNEL_V3_1,
-            entryPoint,
-            factoryAddress,
+            ...accountConfig,
         });
 
         // Validate: the rebuilt account must match the UI's expected address

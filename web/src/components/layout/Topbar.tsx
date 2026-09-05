@@ -19,6 +19,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/library", "Library"],
   ["/create", "Create"],
   ["/shows", "Shows"],
+  ["/drops", "Drops"],
   ["/marketplace", "Marketplace"],
   ["/playlists", "Playlists"],
   ["/artist/analytics", "Analytics"],
@@ -52,6 +53,7 @@ export default function Topbar({ title, actions }: TopbarProps) {
           onClick={toggleSidebar}
           aria-label={isSidebarOpen ? "Close navigation" : "Open navigation"}
           aria-expanded={isSidebarOpen}
+          aria-controls="primary-navigation"
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <line x1="3" y1="6" x2="21" y2="6" />
@@ -63,8 +65,12 @@ export default function Topbar({ title, actions }: TopbarProps) {
       </div>
       <div className="topbar-actions">
         <button
+          type="button"
           className={`topbar-playlist-btn ${isPlaylistPanelOpen ? 'active' : ''}`}
           onClick={togglePlaylistPanel}
+          aria-label={isPlaylistPanelOpen ? "Close playlist panel" : "Open playlist panel"}
+          aria-expanded={isPlaylistPanelOpen}
+          aria-controls="global-playlist-panel"
           title="Toggle Playlist Panel (Ctrl+J)"
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

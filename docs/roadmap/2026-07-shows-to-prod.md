@@ -12,12 +12,22 @@
 > opening a heavy new GPU-bound build (Remix). The custody-contract hardening is
 > a shared prerequisite for both.
 
-## Status snapshot (2026-06-29)
+## Status snapshot (reconciled 2026-08-09)
 
-- **Shows MVP:** built + verified, **validated on test/staging, NOT in production for real users**. Milestone closed. Remaining = production-grade hardening + security (in test); production deploy is gated on a go-decision.
-- **Recently shipped:** custody hardening (RevenueEscrow/ContentProtection/PaymentAssetRegistry fuzz/invariant/formal/Certora/Gambit), stablecoin-default dispute reporting, non-blocking Halmos CI, honest Shows docs.
-- **Only P0:** Remix Studio MVP ([#891](https://github.com/akoita/resonate/issues/891)).
-- **Tracked hardening debt:** [#943](https://github.com/akoita/resonate/issues/943), [#944](https://github.com/akoita/resonate/issues/944), [#1260](https://github.com/akoita/resonate/issues/1260).
+- **Shows readiness gate:** complete in test/staging under
+  [#1271](https://github.com/akoita/resonate/issues/1271); Shows remains **not
+  in production for real users**.
+- **Custody verification:** [#943](https://github.com/akoita/resonate/issues/943),
+  [#944](https://github.com/akoita/resonate/issues/944), and
+  [#1260](https://github.com/akoita/resonate/issues/1260) are closed. Halmos is
+  a blocking PR gate; Certora and mutation remain scheduled/manual
+  complements.
+- **Current staging graph:** the Base Sepolia UUPS proxy deployed through
+  [#1568](https://github.com/akoita/resonate/pull/1568) passed both refund and
+  fee/release lifecycle smokes with backend indexer reconciliation.
+- **Production:** separately tracked in
+  [#1583](https://github.com/akoita/resonate/issues/1583) and blocked pending an
+  explicit owner GO plus the application-wide launch package.
 
 ---
 
@@ -48,13 +58,16 @@
 
 ## Production go-live (GATED — pending an explicit go-decision; NOT in this window)
 
-Tracked in [#1271](https://github.com/akoita/resonate/issues/1271). Run **only** once you decide to take Shows to real users, **after** the Sprint-1 prerequisites are green:
+Tracked in [#1583](https://github.com/akoita/resonate/issues/1583). Run **only** once you decide to take Shows to real users. The Sprint-1 prerequisites are green; that is readiness evidence, not launch authorization.
 
 **Prerequisites (the gate):**
-- [ ] Custody hardening closed (#943/#944).
-- [ ] Halmos promoted to a blocking CI gate (#1260).
-- [ ] Security review — no unresolved high/critical.
-- [ ] Full pledge→escrow→refund/release loop verified on testnet.
+- [x] Custody hardening closed (#943/#944).
+- [x] Halmos promoted to a blocking CI gate (#1260).
+- [x] Security review — no unresolved high/critical; internal findings remediated
+      through #1526/#1528/#1529/#1531.
+- [x] Full pledge→escrow→refund/release loop verified on Base Sepolia against
+      the current UUPS proxy ([refund run](https://github.com/akoita/resonate/actions/runs/30953444911),
+      [fee/release run](https://github.com/akoita/resonate/actions/runs/31294684777)).
 
 **Go-live ops (only on go-decision):**
 - [ ] Deploy production `ShowCampaignEscrow`; promote the address into prod config (`resonate-iac` / Cloud Run / Secret Manager) and `web/src/contracts_abi`.
@@ -66,7 +79,8 @@ Tracked in [#1271](https://github.com/akoita/resonate/issues/1271). Run **only**
 
 ## Risks / gates
 
-- **No production deployment** until the hardening + security gate is green **and** you give the go — this window is test-only.
+- **No production deployment** without the explicit owner GO and launch package
+  tracked in #1583 — a green engineering gate alone is insufficient.
 - **Remix GPU cost/latency** is the Sprint-2 risk — spike #1206 before committing downstream work.
 - **Solo bandwidth:** 4 weeks ≈ 2 sprints; front-loaded on production-grade hardening (lower risk) before opening Remix (higher risk).
 

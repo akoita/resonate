@@ -20,6 +20,7 @@ import {
     getStemPreviewUrl,
     getTrack as getCatalogTrack,
     getReleaseArtworkUrl,
+    type AiDisclosure,
 } from "./api";
 import { sanitizeStemUrl } from "./urlUtils";
 
@@ -58,7 +59,14 @@ export interface PlayerState {
     queue: LocalTrack[];
     currentIndex: number;
     volume: number;
+    muted?: boolean;
+    previousNonZeroVolume?: number;
     shuffle: boolean;
+    shuffleCycle?: {
+        history: string[];
+        position: number;
+        played: string[];
+    };
     repeatMode: "none" | "one" | "all";
 }
 
@@ -77,6 +85,7 @@ export interface LocalTrack {
     catalogTrackId?: string | null;
     artistId?: string | null;
     releaseId?: string | null;
+    aiDisclosure?: AiDisclosure | null;
     remoteUrl?: string; // For streaming catalog
     remoteArtworkUrl?: string; // For streaming catalog
     stems?: Array<{
@@ -243,6 +252,18 @@ export async function saveTrackMetadata(track: LocalTrack): Promise<LocalTrack> 
     return track;
 }
 
+/** Save a catalog track using authenticated server truth without local fallback. */
+export async function saveTrackMetadataAuthenticated(
+    track: LocalTrack,
+    token: string,
+): Promise<LocalTrack> {
+    const apiTrack = await saveLibraryTrackAPI(
+        token,
+        localTrackToApi(track, track.source ?? "remote"),
+    );
+    return apiTrackToLocal(apiTrack);
+}
+
 /**
  * Save multiple track metadata entries to the API (batch)
  */
@@ -304,7 +325,11 @@ export async function getTrack(id: string): Promise<LocalTrack | null> {
                     createdAt: catalogTrack.createdAt || new Date().toISOString(),
                     source: "remote",
                     catalogTrackId: catalogTrack.id,
-                    remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType ? getReleaseArtworkUrl(catalogTrack.release.id) : undefined),
+                    remoteArtworkUrl: catalogTrack.release?.artworkUrl || (catalogTrack.release?.artworkMimeType
+                        ? getReleaseArtworkUrl(catalogTrack.release.id, {
+                            artworkRevision: catalogTrack.release.artworkRevision,
+                        })
+                        : undefined),
                     stems: catalogTrack.stems?.map(s => ({
                         id: s.id,
                         uri: isMixerStemType(s.type) ? getStemPreviewUrl(s.id) : s.uri,

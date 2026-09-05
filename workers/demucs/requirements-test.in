@@ -1,0 +1,3 @@
+# Minimal Python 3.12/Linux dependency set for test_main.py in GitHub Actions.
+fastapi
+httpx

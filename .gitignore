@@ -27,8 +27,10 @@ music/
 # Codex
 .codex
 .codex-tmp/
-.claude/
-.agents/plans/issue-*.md
+# Claude Code — track shared config and the .agents/skills symlink,
+# ignore per-developer state.
+.claude/worktrees/
+.claude/settings.local.json
 
 # Environment & Secrets
 .env

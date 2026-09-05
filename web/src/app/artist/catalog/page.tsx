@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { getArtistMe, listMyReleases, type ArtistProfile, type Release, type Track } from "../../../lib/api";
+import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
 
 type LoadState =
   | { status: "loading" }
@@ -280,6 +281,7 @@ function ReleaseInventory({ releases }: { releases: Release[] }) {
                 <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
                   {release.title}
                 </Link>
+                <AiDisclosureBadge disclosure={release.aiDisclosure} />
               </div>
             </td>
             <td>{release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
@@ -321,6 +323,7 @@ function TrackInventory({ rows }: { rows: TrackRow[] }) {
                 <Link href={`/release/${release.id}`} className="artist-catalog-title-link" style={{ color: "var(--r-on-surface)" }}>
                   {track.title}
                 </Link>
+                <AiDisclosureBadge disclosure={track.aiDisclosure} />
               </div>
             </td>
             <td>{release.title}</td>

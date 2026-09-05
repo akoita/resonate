@@ -6,6 +6,8 @@ import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.s
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {PaymentAssetRegistry} from "../payments/PaymentAssetRegistry.sol";
 import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.sol";
 
@@ -17,12 +19,54 @@ import {IContentProtectionEvents} from "../interfaces/IContentProtectionEvents.s
  *   - Creators attest ownership of protected content / release records
  *   - Stake is required per protected record — slashed on confirmed theft
  *   - Slash split: 60% reporter · 30% treasury · 10% burned
- *   - UUPS upgradeable for parameter tuning (stake amounts, escrow periods)
+ *   - UUPS upgradeable through a dedicated delayed authority; the operational
+ *     owner retains the independent fast-pause lever
  *
- * @custom:version 1.0.0
+ * Attestation authorization (CP-1, #1271):
+ *   `attest` / `attestRelease` are open entrypoints, but the tokenIds they claim are
+ *   predictable, so an attacker could otherwise front-run a creator and seize the
+ *   attester slot (the slot is single-use — `AlreadyAttested`). To prevent squatting
+ *   WITHOUT moving attestation server-side, each call must present an EIP-712
+ *   authorization voucher signed by a registered `registrars[]` signer that binds the
+ *   voucher to the exact `(attester = msg.sender, tokenId, deadline)`. The artist
+ *   remains `msg.sender` = attester = staker, so `_recordStake`'s
+ *   `attester == msg.sender` check is unchanged.
+ *
+ *   Replay / threat model:
+ *     - The struct hashes `msg.sender`, so a voucher issued to artist A cannot be
+ *       replayed by a different party B (B's structHash recovers a non-registrar).
+ *     - The EIP-712 domain includes `chainId` + this contract's address, so a voucher
+ *       cannot be replayed cross-chain or against a different contract.
+ *     - A voucher is single-use in practice: once the slot is attested a second attest
+ *       reverts `AlreadyAttested`, so re-presenting a still-valid voucher is a no-op.
+ *     - A still-valid voucher after an admin `revoke`/blacklist only lets the SAME
+ *       authorized artist re-attest — benign, because squatting requires a DIFFERENT
+ *       party, who cannot forge the registrar's signature.
+ *
+ * Upgrade / migration:
+ *   V5 (`reinitializeV5`) initializes the EIP-712 domain ("ContentProtection", "1") on
+ *   already-deployed proxies so vouchers verify after upgrade. Fresh deploys also set
+ *   the domain in `initializeFresh`. (Versions 2–4 were already consumed by earlier
+ *   reinitializers, so this migration uses reinitializer version 5.) V6
+ *   (`reinitializeV6`) separates the upgrade authority from the operational owner and
+ *   initializes the emergency pause state without moving any legacy linear storage.
+ *
+ * @custom:version 1.2.0
  */
-contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgradeable, ReentrancyGuard {
+contract ContentProtection is
+    IContentProtectionEvents,
+    Initializable,
+    EIP712Upgradeable,
+    UUPSUpgradeable,
+    ReentrancyGuard
+{
     using SafeERC20 for IERC20;
+
+    /// @dev EIP-712 typehash for the registrar-signed attestation authorization voucher.
+    /// Binds a specific caller (`attester`), `tokenId`, and `deadline`; only a signature
+    /// from a registered registrar authorizes the attestation.
+    bytes32 private constant ATTESTATION_AUTHORIZATION_TYPEHASH =
+        keccak256("AttestationAuthorization(address attester,uint256 tokenId,uint256 deadline)");
 
     // ============ Structs ============
 
@@ -81,10 +125,25 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
     /// separately so a sweep never touches active stakes or escrowed failedPayments.
     mapping(address => uint256) public totalBurned;
 
+    /// @notice Pending owner for the two-step ownership handoff (CP-3, #1271). Set by
+    /// `transferOwnership`; promoted to `owner` when that address calls `acceptOwnership`.
+    /// @dev Appended after existing storage (before the gap) to preserve the UUPS layout.
+    address public pendingOwner;
+
+    /// @notice Sole authority allowed to upgrade the implementation or rotate
+    /// upgrade governance. Production deployments use a delayed TimelockController.
+    /// @dev Appended after all legacy state. Packs with `paused` in one storage slot.
+    address public upgradeAuthority;
+
+    /// @notice Global emergency stop for custody and protection-lifecycle mutations.
+    bool public paused;
+
     /// @dev Reserved storage slots so future upgrades can add state without shifting
     /// the existing layout. Must remain the last storage variable; shrink it by the
-    /// number of slots any newly-added state occupies.
-    uint256[50] private __gap;
+    /// number of slots any newly-added state occupies. Shrunk 50 -> 49 when
+    /// `pendingOwner` was added (CP-3, #1271), then 49 -> 48 when the packed
+    /// `upgradeAuthority` + `paused` slot was added (#1579).
+    uint256[48] private __gap;
 
     // Slash distribution (basis points, must sum to 10000)
     uint256 public constant SLASH_REPORTER_BPS = 6000; // 60%
@@ -106,6 +165,16 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         _;
     }
 
+    modifier onlyUpgradeAuthority() {
+        if (msg.sender != upgradeAuthority) revert UnauthorizedUpgrade(msg.sender);
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) revert Paused();
+        _;
+    }
+
     // ============ Initializer (UUPS) ============
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -113,43 +182,88 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         _disableInitializers();
     }
 
-    function initialize(address _owner, address _treasury, uint256 _stakeAmount) external initializer {
+    function initializeFresh(address _owner, address _treasury, uint256 _stakeAmount, address _upgradeAuthority)
+        external
+        reinitializer(6)
+    {
+        if (owner != address(0)) revert FreshInitializationOnly();
         if (_owner == address(0)) revert ZeroAddress();
         if (_treasury == address(0)) revert ZeroAddress();
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        if (_owner == _upgradeAuthority) revert AuthorityMustDifferFromOwner();
+
+        // Fresh deploys get the EIP-712 domain here; already-deployed proxies get it via
+        // the latest applicable reinitializer. See CP-1 (#1271) and #1579.
+        __EIP712_init("ContentProtection", "1");
 
         owner = _owner;
         treasury = _treasury;
         stakeAmount = _stakeAmount;
         maxPriceMultiplier = 10;
+        upgradeAuthority = _upgradeAuthority;
         _initializeTierPoliciesFromStakeAmount(_stakeAmount);
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
     }
 
     // ============ Attestation ============
 
     /**
      * @notice Attest ownership of protected content for staking / provenance.
+     * @dev Requires a registrar-signed EIP-712 authorization voucher bound to
+     *      `(msg.sender, tokenId, deadline)` to prevent attester-slot squatting on
+     *      predictable tokenIds (CP-1, #1271). The caller (artist) stays the attester.
      * @param tokenId Identifier for the protected asset or release record
      * @param contentHash SHA-256 hash of the audio content
      * @param fingerprintHash Chromaprint fingerprint hash
      * @param metadataURI IPFS URI or URL pointing to attestation metadata
+     * @param deadline Unix timestamp after which the authorization voucher is invalid
+     * @param signature Registrar's EIP-712 signature over the authorization voucher
      */
-    function attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
-        external
-    {
+    function attest(
+        uint256 tokenId,
+        bytes32 contentHash,
+        bytes32 fingerprintHash,
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
+    ) external whenNotPaused {
+        _verifyAttestationAuthorization(tokenId, deadline, signature);
         _attest(tokenId, contentHash, fingerprintHash, metadataURI);
     }
 
     /**
      * @notice Canonical release-first attestation entrypoint.
      * @dev Wraps the generic attestation flow while making the protected root explicit.
+     *      Requires the same registrar-signed authorization voucher as {attest}.
      */
     function attestRelease(
         uint256 releaseId,
         bytes32 contentHash,
         bytes32 fingerprintHash,
-        string calldata metadataURI
-    ) external {
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
+    ) external whenNotPaused {
+        _verifyAttestationAuthorization(releaseId, deadline, signature);
         _attest(releaseId, contentHash, fingerprintHash, metadataURI);
+    }
+
+    /// @dev Verify the registrar-signed EIP-712 authorization voucher for this call.
+    /// The struct binds `msg.sender` (the attester), so a voucher issued to one artist
+    /// cannot be used by another party — the only way to seize a slot is a valid
+    /// registrar signature for THIS caller. Any malformed/empty/wrong-signer signature
+    /// reverts `InvalidAttestationSignature`.
+    function _verifyAttestationAuthorization(uint256 tokenId, uint256 deadline, bytes calldata signature)
+        internal
+        view
+    {
+        if (block.timestamp > deadline) revert AttestationAuthorizationExpired(deadline, block.timestamp);
+
+        bytes32 structHash = keccak256(abi.encode(ATTESTATION_AUTHORIZATION_TYPEHASH, msg.sender, tokenId, deadline));
+        (address signer, ECDSA.RecoverError err,) = ECDSA.tryRecover(_hashTypedDataV4(structHash), signature);
+        if (err != ECDSA.RecoverError.NoError || !registrars[signer]) {
+            revert InvalidAttestationSignature();
+        }
     }
 
     function _attest(uint256 tokenId, bytes32 contentHash, bytes32 fingerprintHash, string calldata metadataURI)
@@ -176,7 +290,7 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
      * @notice Stake ETH when publishing protected content.
      * @param tokenId The attested content or release identifier to stake for
      */
-    function stake(uint256 tokenId) external payable nonReentrant {
+    function stake(uint256 tokenId) external payable nonReentrant whenNotPaused {
         _stakeNative(tokenId);
     }
 
@@ -184,15 +298,19 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
      * @notice Canonical release-first staking entrypoint.
      * @dev Keeps the external API aligned with the hierarchical release-root model.
      */
-    function stakeForRelease(uint256 releaseId) external payable nonReentrant {
+    function stakeForRelease(uint256 releaseId) external payable nonReentrant whenNotPaused {
         _stakeNative(releaseId);
     }
 
-    function stakeWithAsset(uint256 tokenId, address token, uint256 amount) external nonReentrant {
+    function stakeWithAsset(uint256 tokenId, address token, uint256 amount) external nonReentrant whenNotPaused {
         _stakeErc20(tokenId, token, amount);
     }
 
-    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount) external nonReentrant {
+    function stakeForReleaseWithAsset(uint256 releaseId, address token, uint256 amount)
+        external
+        nonReentrant
+        whenNotPaused
+    {
         _stakeErc20(releaseId, token, amount);
     }
 
@@ -254,7 +372,7 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
      * @param tokenId The token ID to slash
      * @param reporter The address that reported the theft
      */
-    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant {
+    function slash(uint256 tokenId, address reporter) external onlyOwner nonReentrant whenNotPaused {
         if (!stakes[tokenId].active) revert NotStaked();
         if (reporter == address(0)) revert ZeroAddress();
 
@@ -276,15 +394,18 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         // interactions below (CEI).
         totalBurned[token] += burnedAmount;
 
-        // Transfer (Interactions last — CEI pattern)
-        _pay(token, reporter, reporterAmount);
-        _pay(token, treasury, treasuryAmount);
-
-        // Auto-blacklist the attester
+        // Auto-blacklist the attester (Effect). CP-2 (#1271): this state change must
+        // complete BEFORE the payout interactions below, so a reentrant/observing
+        // reporter or treasury contract already sees the attester blacklisted and can
+        // never observe a window where the slashed attester is still un-blacklisted.
         if (!_blacklisted[attester]) {
             _blacklisted[attester] = true;
             emit Blacklisted(attester);
         }
+
+        // Transfer (Interactions last — CEI pattern)
+        _pay(token, reporter, reporterAmount);
+        _pay(token, treasury, treasuryAmount);
 
         emit StakeSlashed(tokenId, reporter, reporterAmount, treasuryAmount, burnedAmount);
         emit StakeSlashedWithAsset(tokenId, reporter, token, reporterAmount, treasuryAmount, burnedAmount);
@@ -294,7 +415,7 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
      * @notice Refund stake to creator (admin action, e.g., after escrow period).
      * @param tokenId The token ID to refund stake for
      */
-    function refundStake(uint256 tokenId) external onlyOwner nonReentrant {
+    function refundStake(uint256 tokenId) external onlyOwner nonReentrant whenNotPaused {
         if (!stakes[tokenId].active) revert NotStaked();
 
         address attester = attestations[tokenId].attester;
@@ -313,7 +434,7 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
     /// to the treasury. The remainder is retained — not destroyed — so this gives it a
     /// defined exit instead of leaving it permanently locked in the contract.
     /// @param token The asset to sweep (address(0) for native ETH).
-    function sweepBurned(address token) external onlyOwner nonReentrant {
+    function sweepBurned(address token) external onlyOwner nonReentrant whenNotPaused {
         uint256 amount = totalBurned[token];
         if (amount == 0) revert NothingToClaim();
         totalBurned[token] = 0;
@@ -392,15 +513,50 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         treasury = newTreasury;
     }
 
+    /// @notice Fast operational circuit breaker. Upgrade governance remains usable
+    /// while paused so a verified recovery implementation can still be scheduled.
+    function setPaused(bool isPaused) external onlyOwner {
+        paused = isPaused;
+        emit ContentProtectionPaused(isPaused);
+    }
+
+    /// @notice Rotate upgrade governance through the current delayed authority.
+    function setUpgradeAuthority(address newAuthority) external onlyUpgradeAuthority {
+        if (newAuthority == address(0)) revert ZeroAddress();
+        if (newAuthority == owner || newAuthority == pendingOwner) revert AuthorityMustDifferFromOwner();
+        address previousAuthority = upgradeAuthority;
+        upgradeAuthority = newAuthority;
+        emit UpgradeAuthorityUpdated(previousAuthority, newAuthority);
+    }
+
+    /// @notice Start a two-step ownership handoff (CP-3, #1271). Records `newOwner` as
+    /// the pending owner; the current owner keeps operational authority until
+    /// `newOwner` calls {acceptOwnership}. Upgrade authority remains separate. This prevents an
+    /// accidental one-step transfer to an unusable or mistyped address from bricking
+    /// upgrade and admin control. Re-calling replaces any prior pending owner.
+    /// @param newOwner The address that must call {acceptOwnership} to complete the handoff.
     function transferOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
-        emit OwnershipTransferred(owner, newOwner);
-        owner = newOwner;
+        if (newOwner == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner, newOwner);
+    }
+
+    /// @notice Complete a two-step ownership handoff (CP-3, #1271). Only the address
+    /// staged by {transferOwnership} may promote itself to owner. Clears the pending
+    /// slot and emits {OwnershipTransferred}.
+    function acceptOwnership() external {
+        if (msg.sender != pendingOwner) revert NotPendingOwner(msg.sender);
+        if (msg.sender == upgradeAuthority) revert AuthorityMustDifferFromOwner();
+        address previousOwner = owner;
+        owner = pendingOwner;
+        delete pendingOwner;
+        emit OwnershipTransferred(previousOwner, msg.sender);
     }
 
     // ============ UUPS ============
 
-    function _authorizeUpgrade(address) internal override onlyOwner {}
+    function _authorizeUpgrade(address) internal view virtual override onlyUpgradeAuthority {}
 
     function reinitializeV2() external reinitializer(2) {
         if (maxPriceMultiplier == 0) {
@@ -416,9 +572,29 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
 
     function reinitializeV4() external reinitializer(4) {}
 
+    /// @notice V5 migration (CP-1, #1271): initialize the EIP-712 domain on an
+    /// already-deployed proxy so registrar-signed attestation vouchers verify after the
+    /// upgrade. Fresh deploys already set the domain in `initialize`; this runs once per
+    /// existing proxy. Versions 2–4 were consumed by earlier reinitializers.
+    function reinitializeV5() external reinitializer(5) {
+        __EIP712_init("ContentProtection", "1");
+    }
+
+    /// @notice V6 migration for an existing proxy. Must be executed atomically by the
+    /// current owner as part of the final direct-owner upgrade; all later upgrades are
+    /// authorized exclusively by the supplied timelock authority.
+    function reinitializeV6(address _upgradeAuthority) external reinitializer(6) onlyOwner {
+        if (_upgradeAuthority == address(0)) revert ZeroAddress();
+        if (_upgradeAuthority == owner) revert AuthorityMustDifferFromOwner();
+        __EIP712_init("ContentProtection", "1");
+        upgradeAuthority = _upgradeAuthority;
+        paused = false;
+        emit UpgradeAuthorityUpdated(address(0), _upgradeAuthority);
+    }
+
     // ============ Views ============
 
-    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner {
+    function registerTrack(uint256 releaseId, uint256 trackId) external onlyRegistrarOrOwner whenNotPaused {
         if (!_hasAttestation(releaseId) || !_hasAttestation(trackId)) {
             revert NotAttested();
         }
@@ -434,7 +610,7 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         emit TrackRegistered(releaseId, trackId);
     }
 
-    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+    function registerStem(uint256 trackId, uint256 stemTokenId) external onlyRegistrarOrOwner whenNotPaused {
         if (!_hasAttestation(trackId)) revert NotAttested();
         if (trackId == stemTokenId) revert InvalidParent();
 
@@ -448,7 +624,11 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
         emit StemRegistered(trackId, stemTokenId);
     }
 
-    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId) external onlyRegistrarOrOwner {
+    function registerStemProtectionRoot(uint256 releaseId, uint256 stemTokenId)
+        external
+        onlyRegistrarOrOwner
+        whenNotPaused
+    {
         if (!_hasAttestation(releaseId)) revert NotAttested();
         if (releaseId == stemTokenId) revert InvalidParent();
 
@@ -508,6 +688,40 @@ contract ContentProtection is IContentProtectionEvents, Initializable, UUPSUpgra
 
     function getTrackStems(uint256 trackId) external view returns (uint256[] memory) {
         return _trackToStems[trackId];
+    }
+
+    /// @notice Number of stems registered under a track (RE-1, #1271). Lets callers
+    /// paginate over a track's stems without materializing the whole array.
+    function getTrackStemCount(uint256 trackId) external view returns (uint256) {
+        return _trackToStems[trackId].length;
+    }
+
+    /// @notice A bounded slice of a track's stem ids (RE-1, #1271). Enables paginated
+    /// consumers (e.g. RevenueEscrow.freezeByTrackRange) to process very large tracks
+    /// without an unbounded single-call copy that could exceed the block gas limit.
+    /// @param trackId The track whose stems to slice.
+    /// @param start Index of the first stem to return; `start >= length` yields an empty array.
+    /// @param count Max number of stems to return; the slice is clamped to the array end.
+    /// @return slice Stem ids in `[start, min(start + count, length))`.
+    function getTrackStemsSlice(uint256 trackId, uint256 start, uint256 count)
+        external
+        view
+        returns (uint256[] memory slice)
+    {
+        uint256[] storage stems = _trackToStems[trackId];
+        uint256 length = stems.length;
+        if (start >= length || count == 0) {
+            return new uint256[](0);
+        }
+        // Overflow-safe clamp: `start + count` could overflow for a natural
+        // "everything from start" input like count = type(uint256).max.
+        uint256 remaining = length - start; // safe: start < length checked above
+        uint256 take = count < remaining ? count : remaining;
+        uint256 end = start + take;
+        slice = new uint256[](take);
+        for (uint256 i = start; i < end; ++i) {
+            slice[i - start] = stems[i];
+        }
     }
 
     function isAttested(uint256 tokenId) external view returns (bool) {

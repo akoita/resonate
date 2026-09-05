@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import { useToast } from "../ui/Toast";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import { QueueActionsButton } from "../player/QueueActionsButton";
+import { TrackActionMenu } from "../ui/TrackActionMenu";
 import { useAuth } from "../auth/AuthProvider";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
@@ -49,6 +52,7 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
   const { token } = useAuth();
   const { addToast } = useToast();
   const { playQueue, currentTrack } = usePlayer();
+  const queueActions = useQueueActions();
 
   const [playlist, setPlaylist] = useState<PublicPlaylist | null>(null);
   const [loading, setLoading] = useState(true);
@@ -229,6 +233,12 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
             <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
               ▶ Play
             </Button>
+            <QueueActionsButton
+              tracks={playableTracks}
+              label="Add to queue"
+              nextLabel="Play playlist next"
+              disabled={playableTracks.length === 0}
+            />
 
             {playlist.isOwner ? (
               <Link href="/library?tab=playlists" className="ui-btn ui-btn-ghost">
@@ -298,6 +308,9 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
                     </div>
                   </div>
                   <div className="library-item-duration">{formatDuration(track.duration)}</div>
+                  {track.playable && (
+                    <TrackActionMenu actions={queueActions.actionMenuItems(toLocalTrack(track))} />
+                  )}
                 </div>
               );
             })}

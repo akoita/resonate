@@ -8,6 +8,16 @@ How ERC-4337 smart accounts are integrated into Resonate — from user sign-up t
 
 Every Resonate user interacts through a **Kernel v3 Smart Account** (ZeroDev). The system spans four layers:
 
+The dependency boundary is deliberate: application and local runtime flows use
+official Kernel v3.1 commit `03f7f5cf5871cda0070e4223f196f5b577f6cde2`
+with EntryPoint v0.7 commit `7af70c8993a6f42973f520ae0752386a5032abe7`.
+Repository-owned networks pass the deployed implementation and factory to the
+SDK with Kernel version `0.3.1` and direct factory mode. The separate Kernel v4
+gitlink points to development commit
+`f2a84a332ec5a722e7e95a0d64601905c3c87fe9` for an isolated Solidity 0.8.33/Prague,
+EntryPoint v0.9 compatibility harness only. Kernel v4 does not migrate or
+authorize existing v3.1 accounts and is not part of the app deployment path.
+
 ```mermaid
 flowchart TB
     subgraph Frontend["Frontend — Next.js"]
@@ -48,9 +58,9 @@ flowchart TB
 | Contract                  | Purpose                                | Source                                       |
 | ------------------------- | -------------------------------------- | -------------------------------------------- |
 | **EntryPoint v0.7**       | ERC-4337 singleton, validates UserOps  | `@account-abstraction/core`                  |
-| **Kernel v3.1**           | Modular smart account implementation   | `kernel/Kernel.sol`                          |
+| **Kernel v3.1**           | Modular smart account implementation   | `kernel-v3/Kernel.sol` (legacy remapping)    |
 | **KernelFactory**         | Deterministic smart account deployment | `contracts/src/aa/KernelFactory.sol`         |
-| **ECDSAValidator**        | Validates ECDSA signer ownership       | `kernel/validator/ECDSAValidator.sol`        |
+| **ECDSAValidator**        | Validates ECDSA signer ownership       | `kernel-v3/validator/ECDSAValidator.sol`     |
 | **UniversalSigValidator** | ERC-6492 signature validation          | `contracts/src/aa/UniversalSigValidator.sol` |
 
 ---
@@ -374,6 +384,11 @@ All endpoints are under `/wallet` and require JWT authentication.
 
 See [Local AA Development](local-aa-development.md) for setup instructions.
 
+For v4 compatibility checks, install dependencies and run
+`make kernel-v4-test`. The harness uses the pinned v4 `KernelFactory`,
+`KernelUUPS`, and `KernelImmutableECDSA` sources in an isolated project; it is
+not a migration or production deployment path.
+
 ---
 
 ## File Map
@@ -400,6 +415,7 @@ See [Local AA Development](local-aa-development.md) for setup instructions.
 | `contracts/script/DeployLocalAA.s.sol`                                     | Contracts | Deploy AA infra to local Anvil                           |
 | `contracts/src/aa/KernelFactory.sol`                                       | Contracts | Smart account factory                                    |
 | `contracts/src/aa/UniversalSigValidator.sol`                               | Contracts | ERC-6492 signature validation                            |
+| `contracts/kernel-v4/test/KernelFactoryCompatibility.t.sol`                 | Contracts | Isolated Kernel v4 compatibility coverage                |
 | `contracts/scripts/update-aa-config.sh`                                    | Contracts | Auto-configure `.env` from deployed contracts            |
 | `backend/scripts/generate-agent-encryption-key.sh`                         | Backend   | Generate AES-256 encryption key for agent keys           |
 | `docs/security/agent-wallet-security.md`                                   | Docs      | Agent key security architecture                          |

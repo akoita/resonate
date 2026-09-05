@@ -25,6 +25,7 @@ import {
   StemMarketplaceABI,
 } from "../lib/contracts";
 import {
+  createAttestationVoucher,
   createBatchStemMintAuthorizations,
   createStemMintAuthorization,
   type StemMintAuthorization,
@@ -299,7 +300,7 @@ async function sendContractTransaction(
   kernelAccount?: any
 ): Promise<string> {
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccountClient, constants } = sdk;
+  const { createKernelAccountClient } = sdk;
 
   let account = kernelAccount;
 
@@ -309,8 +310,8 @@ async function sendContractTransaction(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-    const kernelVersion = constants.KERNEL_V3_1;
+    const accountConfig = getKernelAccountConfig(chainId);
+    const { entryPoint, kernelVersion } = accountConfig;
 
     const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
@@ -330,9 +331,7 @@ async function sendContractTransaction(
 
     account = await sdk.createKernelAccount(publicClient, {
       plugins: { sudo: passkeyValidator },
-      entryPoint,
-      kernelVersion,
-      factoryAddress,
+      ...accountConfig,
     });
   }
 
@@ -888,7 +887,7 @@ export function useMintStem() {
  */
 export function useAttestAndStake() {
   const { publicClient, chainId } = useZeroDev();
-  const { address, status, kernelAccount, smartAccountAddress } = useAuth();
+  const { address, status, token, kernelAccount, smartAccountAddress } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1042,12 +1041,43 @@ export function useAttestAndStake() {
         const calls: { to: Address; data: Hex; value?: bigint }[] = [];
 
         if (!attestationValid) {
+          // attestRelease is gated by an EIP-712 voucher the backend signs
+          // (CP-1, #1271). The contract checks the signature against the
+          // calling smart account (msg.sender === callerAddress), so the
+          // voucher must be fetched for this exact attester before batching.
+          if (!token) {
+            throw new Error("Not authenticated");
+          }
+          let voucher;
+          try {
+            voucher = await createAttestationVoucher(token, {
+              releaseId: releaseId.toString(),
+              attester: callerAddress,
+              contentHash: params.contentHash,
+              metadataURI: params.metadataURI,
+              chainId,
+            });
+          } catch (voucherErr) {
+            const detail =
+              voucherErr instanceof Error ? voucherErr.message : String(voucherErr);
+            throw new Error(
+              `Could not obtain the attestation authorization required to publish. ${detail}`
+            );
+          }
+
           calls.push({
             to: cpAddress,
             data: encodeFunctionData({
               abi: ContentProtectionABI,
               functionName: "attestRelease",
-              args: [releaseId, params.contentHash, params.fingerprintHash, params.metadataURI],
+              args: [
+                releaseId,
+                params.contentHash,
+                params.fingerprintHash,
+                params.metadataURI,
+                BigInt(voucher.deadline),
+                voucher.signature as Hex,
+              ],
             }),
           });
         }
@@ -1139,7 +1169,7 @@ export function useAttestAndStake() {
         setPending(false);
       }
     },
-    [publicClient, address, status, chainId, kernelAccount, smartAccountAddress]
+    [publicClient, address, status, token, chainId, kernelAccount, smartAccountAddress]
   );
 
   return { attestAndStake, pending, error, txHash };
@@ -2000,7 +2030,7 @@ export async function sendBatchContractTransactions(
   kernelAccount?: any
 ): Promise<string> {
   const sdk = await import("@zerodev/sdk");
-  const { createKernelAccountClient, constants } = sdk;
+  const { createKernelAccountClient } = sdk;
 
   let account = kernelAccount;
 
@@ -2009,8 +2039,8 @@ export async function sendBatchContractTransactions(
     const passkey = await import("@zerodev/passkey-validator");
     const { toPasskeyValidator, toWebAuthnKey, PasskeyValidatorContractVersion } = passkey;
 
-    const { entryPoint, factoryAddress } = getKernelAccountConfig(chainId);
-    const kernelVersion = constants.KERNEL_V3_1;
+    const accountConfig = getKernelAccountConfig(chainId);
+    const { entryPoint, kernelVersion } = accountConfig;
 
     const passkeyServerUrl = getPasskeyServerUrl(projectId);
 
@@ -2030,9 +2060,7 @@ export async function sendBatchContractTransactions(
 
     account = await sdk.createKernelAccount(publicClient, {
       plugins: { sudo: passkeyValidator },
-      entryPoint,
-      kernelVersion,
-      factoryAddress,
+      ...accountConfig,
     });
   }
 

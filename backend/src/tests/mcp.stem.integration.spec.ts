@@ -22,6 +22,10 @@ describe("McpStemService (integration)", () => {
     resolveLicenseAmountUsd: jest.Mock;
     verifyAndSettle: jest.Mock;
   };
+  let encryptionService: {
+    decrypt: jest.Mock;
+    loadSourceBuffer: jest.Mock;
+  };
   const stemId = `${TEST_PREFIX}stem`;
   const noFileStemId = `${TEST_PREFIX}stem_no_file`;
 
@@ -29,7 +33,7 @@ describe("McpStemService (integration)", () => {
     new McpStemService(
       config,
       paymentService as unknown as X402PaymentService,
-      { decrypt: jest.fn() } as any,
+      encryptionService as any,
     );
 
   beforeAll(async () => {
@@ -61,6 +65,10 @@ describe("McpStemService (integration)", () => {
         return pricing?.basePlayPriceUsd ?? 0.05;
       }),
       verifyAndSettle: jest.fn(),
+    };
+    encryptionService = {
+      decrypt: jest.fn(),
+      loadSourceBuffer: jest.fn(),
     };
     service = createService();
 
@@ -144,10 +152,48 @@ describe("McpStemService (integration)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     paymentService.verifyAndSettle.mockResolvedValue({ ok: true });
+    encryptionService.loadSourceBuffer.mockResolvedValue(Buffer.from([1, 2, 3, 4]));
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer,
     } as Response) as jest.Mock;
+  });
+
+  it("passes persisted unencrypted URIs directly to the bounded source loader", async () => {
+    const sourceError = new Error("source policy rejected");
+    encryptionService.loadSourceBuffer.mockRejectedValue(sourceError);
+
+    await expect(
+      (service as any).readStemAudio({
+        uri: "https://evil.example/escape.mp3",
+        encryptionMetadata: null,
+      }),
+    ).rejects.toBe(sourceError);
+    expect(encryptionService.loadSourceBuffer).toHaveBeenCalledWith(
+      "https://evil.example/escape.mp3",
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("passes persisted encrypted URIs directly to decryption", async () => {
+    const metadata = JSON.stringify({ iv: "iv", authTag: "tag", keyId: "key" });
+    const encryptedUri = "/catalog/stems/encrypted.mp3/blob";
+    const decrypted = Buffer.from("decrypted");
+    encryptionService.decrypt.mockResolvedValue(decrypted);
+
+    await expect(
+      (service as any).readStemAudio({
+        uri: encryptedUri,
+        encryptionMetadata: metadata,
+      }),
+    ).resolves.toEqual(decrypted);
+    expect(encryptionService.decrypt).toHaveBeenCalledWith(
+      encryptedUri,
+      metadata,
+      [],
+      expect.objectContaining({ sig: "x402-payment-verified" }),
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it("returns a quote with the requested license price and x402 challenge", async () => {
@@ -322,9 +368,10 @@ describe("McpStemService (integration)", () => {
         amount: "19000000",
       }),
     );
-    expect(global.fetch).toHaveBeenCalledWith(
+    expect(encryptionService.loadSourceBuffer).toHaveBeenCalledWith(
       "https://audio.example.com/paid-vocals.mp3",
     );
+    expect(global.fetch).not.toHaveBeenCalled();
     expect(result.content).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

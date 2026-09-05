@@ -1,0 +1,560 @@
+name: Publish Deployable Images
+
+# This workflow is intentionally callable only by Release Deployment. Ordinary
+# CI pushes and merge-queue validation never receive cloud-write permissions.
+on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Full source commit SHA to check out and publish.
+        required: true
+        type: string
+      environment:
+        description: Already-validated target GitHub environment.
+        required: true
+        type: string
+      services_csv:
+        description: Already-validated comma-separated service selection.
+        required: true
+        type: string
+      should_dispatch:
+        description: Whether the resulting manifest is eligible for deployment handoff.
+        required: true
+        type: boolean
+      release_id:
+        description: Run-scoped release identity for the deploy manifest.
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  publish-plan:
+    name: Resolve Release Image Plan
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      environment: ${{ steps.plan.outputs.environment }}
+      registry: ${{ steps.plan.outputs.registry }}
+      services_csv: ${{ steps.plan.outputs.services_csv }}
+      should_dispatch: ${{ steps.plan.outputs.should_dispatch }}
+      release_sha: ${{ steps.plan.outputs.release_sha }}
+      release_id: ${{ steps.plan.outputs.release_id }}
+      trigger_branch: ${{ steps.plan.outputs.trigger_branch }}
+      demucs_dockerfile: ${{ steps.plan.outputs.demucs_dockerfile }}
+      stable_audio_dockerfile: ${{ steps.plan.outputs.stable_audio_dockerfile }}
+      backend_image: ${{ steps.plan.outputs.backend_image }}
+      frontend_image: ${{ steps.plan.outputs.frontend_image }}
+      demucs_image: ${{ steps.plan.outputs.demucs_image }}
+      stable_audio_image: ${{ steps.plan.outputs.stable_audio_image }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Resolve release image plan
+        id: plan
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          SERVICES: ${{ inputs.services_csv }}
+          SHOULD_DISPATCH: ${{ inputs.should_dispatch }}
+          RELEASE_ID: ${{ inputs.release_id }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "source_sha must be a full lowercase commit SHA" >&2
+            exit 1
+          fi
+          if [[ -z "${RELEASE_ID}" ]]; then
+            echo "release_id must not be empty" >&2
+            exit 1
+          fi
+
+          case "${TARGET_ENVIRONMENT}" in
+            dev)
+              trigger_branch="develop"
+              demucs_dockerfile="Dockerfile"
+              ;;
+            staging)
+              trigger_branch="main"
+              demucs_dockerfile="Dockerfile.gpu"
+              ;;
+            *)
+              echo "Unsupported release environment: ${TARGET_ENVIRONMENT}" >&2
+              exit 1
+              ;;
+          esac
+
+          if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
+            echo "Missing required environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
+            exit 1
+          fi
+
+          # Normalize only the already-validated service selection. The
+          # publisher deliberately does not inspect git diffs: each selected
+          # service is published for this exact release SHA, even when the
+          # deployment handoff flag is false.
+          declare -A seen=()
+          selected_services=()
+          IFS=',' read -r -a requested_services <<< "${SERVICES}"
+          for service in "${requested_services[@]}"; do
+            service="$(printf '%s' "${service}" | tr -d '[:space:]')"
+            if [[ -z "${service}" ]]; then
+              echo "Release service entries must not be empty." >&2
+              exit 1
+            fi
+            case "${service}" in
+              backend|frontend|demucs|stable-audio)
+                ;;
+              *)
+                echo "Unsupported release service: ${service}" >&2
+                exit 1
+                ;;
+            esac
+            if [[ -n "${seen[${service}]:-}" ]]; then
+              echo "Duplicate release service: ${service}" >&2
+              exit 1
+            fi
+            seen["${service}"]=true
+            selected_services+=("${service}")
+          done
+
+          if [[ ${#selected_services[@]} -eq 0 ]]; then
+            echo "At least one release service must be selected." >&2
+            exit 1
+          fi
+
+          services_csv=""
+          if [[ ${#selected_services[@]} -gt 0 ]]; then
+            printf -v services_csv '%s,' "${selected_services[@]}"
+            services_csv="${services_csv%,}"
+          fi
+
+          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/resonate-${TARGET_ENVIRONMENT}"
+          {
+            echo "environment=${TARGET_ENVIRONMENT}"
+            echo "registry=${registry}"
+            echo "services_csv=${services_csv}"
+            echo "should_dispatch=${SHOULD_DISPATCH}"
+            echo "release_sha=${SOURCE_SHA}"
+            echo "release_id=${RELEASE_ID}"
+            echo "trigger_branch=${trigger_branch}"
+            echo "demucs_dockerfile=${demucs_dockerfile}"
+            echo "stable_audio_dockerfile=Dockerfile"
+            echo "backend_image=${registry}/backend:${SOURCE_SHA}"
+            echo "frontend_image=${registry}/frontend:${SOURCE_SHA}"
+            echo "demucs_image=${registry}/demucs-worker:${SOURCE_SHA}"
+            echo "stable_audio_image=${registry}/stable-audio-worker:${SOURCE_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+  publish-backend-image:
+    name: Publish Backend Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: always() && needs.publish-plan.result == 'success' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',backend,')
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish-plan.outputs.release_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # The backend context is self-contained. Its git tree hash is therefore
+      # a complete content key and permits safe reuse across release runs.
+      - name: Resolve backend image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: backend
+          IMAGE_DOCKERFILE: Dockerfile
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push backend image
+        id: build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
+          IMAGE: ${{ needs.publish-plan.outputs.backend_image }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context backend \
+            --dockerfile Dockerfile \
+            --content-tag "${CONTENT_TAG}" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE}" \
+            --metadata-output "${RUNNER_TEMP}/backend-build.json"
+
+      - name: Publish backend image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: backend
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ needs.publish-plan.outputs.registry }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/backend
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-deployable-images.yml@${{ github.ref }}
+          source-sha: ${{ needs.publish-plan.outputs.release_sha }}
+
+  publish-frontend-image:
+    name: Publish Frontend Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: always() && needs.publish-plan.result == 'success' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',frontend,')
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish-plan.outputs.release_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # This artifact was built by the reusable CI validation call earlier in
+      # the same Release Deployment run; it is never rebuilt from a moving ref.
+      - name: Download deployable frontend artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-build-deployable
+          path: ${{ runner.temp }}/web-build-deployable
+
+      - name: Prepare frontend runtime image context
+        run: |
+          bash .github/scripts/prepare-frontend-runtime-context.sh \
+            --artifact-dir "${RUNNER_TEMP}/web-build-deployable" \
+            --dockerfile-source "web/Dockerfile.runtime" \
+            --output-dir "${RUNNER_TEMP}/frontend-runtime-context"
+
+      - name: Resolve frontend image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: ${{ runner.temp }}/frontend-runtime-context
+        run: |
+          set -euo pipefail
+          content_hash="$(tar --sort=name --mtime='@0' --owner=0 --group=0 --numeric-owner -C "${IMAGE_CONTEXT}" -cf - . | sha256sum | cut -d' ' -f1)"
+          echo "content_tag=src-${content_hash}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push frontend image
+        id: build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
+          IMAGE: ${{ needs.publish-plan.outputs.frontend_image }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context "${RUNNER_TEMP}/frontend-runtime-context" \
+            --dockerfile Dockerfile \
+            --content-tag "${CONTENT_TAG}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE}" \
+            --metadata-output "${RUNNER_TEMP}/frontend-build.json"
+
+      - name: Publish frontend image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: frontend
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ needs.publish-plan.outputs.registry }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/frontend
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-deployable-images.yml@${{ github.ref }}
+          source-sha: ${{ needs.publish-plan.outputs.release_sha }}
+
+  publish-demucs-image:
+    name: Publish Demucs Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: always() && needs.publish-plan.result == 'success' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',demucs,')
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish-plan.outputs.release_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # Demucs has two Dockerfiles; include the selected file in the content
+      # key so dev and staging images cannot reuse one another accidentally.
+      - name: Resolve Demucs image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: workers/demucs
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.demucs_dockerfile }}
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push Demucs image
+        id: build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
+          IMAGE: ${{ needs.publish-plan.outputs.demucs_image }}
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.demucs_dockerfile }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context workers/demucs \
+            --dockerfile "${IMAGE_DOCKERFILE}" \
+            --content-tag "${CONTENT_TAG}" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE}" \
+            --metadata-output "${RUNNER_TEMP}/demucs-build.json"
+
+      - name: Publish Demucs image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: demucs
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ needs.publish-plan.outputs.registry }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/demucs
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-deployable-images.yml@${{ github.ref }}
+          source-sha: ${{ needs.publish-plan.outputs.release_sha }}
+
+  publish-stable-audio-image:
+    name: Publish Stable Audio Image
+    runs-on: ubuntu-latest
+    needs: [publish-plan]
+    if: always() && needs.publish-plan.result == 'success' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',stable-audio,')
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_digest: ${{ steps.build.outputs.image_digest }}
+      image_ref: ${{ steps.build.outputs.image_ref }}
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish-plan.outputs.release_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      # Stable Audio is the expensive image; preserve content-addressed reuse
+      # and include its Dockerfile in the cache key.
+      - name: Resolve Stable Audio image content key
+        id: content
+        env:
+          IMAGE_CONTEXT: workers/stable-audio
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.stable_audio_dockerfile }}
+        run: |
+          set -euo pipefail
+          tree_hash="$(git rev-parse "HEAD:${IMAGE_CONTEXT}")"
+          content_tag="src-${tree_hash}--${IMAGE_DOCKERFILE//[^A-Za-z0-9._-]/_}"
+          echo "content_tag=${content_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push Stable Audio image
+        id: build
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          CI_FORCE_IMAGE_REBUILD: ${{ vars.CI_FORCE_IMAGE_REBUILD }}
+          CONTENT_TAG: ${{ steps.content.outputs.content_tag }}
+          IMAGE: ${{ needs.publish-plan.outputs.stable_audio_image }}
+          IMAGE_DOCKERFILE: ${{ needs.publish-plan.outputs.stable_audio_dockerfile }}
+        run: |
+          bash .github/scripts/submit-cloud-build.sh \
+            --project "${GCP_PROJECT_ID}" \
+            --context workers/stable-audio \
+            --dockerfile "${IMAGE_DOCKERFILE}" \
+            --content-tag "${CONTENT_TAG}" \
+            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
+            --git-source-revision "${GITHUB_SHA}" \
+            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
+            --image "${IMAGE}" \
+            --metadata-output "${RUNNER_TEMP}/stable-audio-build.json"
+
+      - name: Publish Stable Audio image evidence
+        uses: ./.github/actions/publish-image-evidence
+        with:
+          image-name: stable-audio
+          image-ref: ${{ steps.build.outputs.image_ref }}
+          registry: ${{ needs.publish-plan.outputs.registry }}
+          build-metadata: ${{ steps.build.outputs.evidence_path }}
+          evidence-dir: ${{ runner.temp }}/image-evidence/stable-audio
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-deployable-images.yml@${{ github.ref }}
+          source-sha: ${{ needs.publish-plan.outputs.release_sha }}
+
+  publish-deploy-images:
+    name: Publish Deploy Manifest
+    runs-on: ubuntu-latest
+    needs: [publish-plan, publish-backend-image, publish-frontend-image, publish-demucs-image, publish-stable-audio-image]
+    if: always() && needs.publish-plan.result == 'success'
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish-plan.outputs.release_sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Verify selected image publications
+        env:
+          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
+          BACKEND_RESULT: ${{ needs.publish-backend-image.result }}
+          FRONTEND_RESULT: ${{ needs.publish-frontend-image.result }}
+          DEMUCS_RESULT: ${{ needs.publish-demucs-image.result }}
+          STABLE_AUDIO_RESULT: ${{ needs.publish-stable-audio-image.result }}
+        run: |
+          set -euo pipefail
+          selected=",${SERVICES},"
+          if [[ "${selected}" == *",backend,"* && "${BACKEND_RESULT}" != "success" ]]; then
+            echo "Backend image publication did not succeed." >&2
+            exit 1
+          fi
+          if [[ "${selected}" == *",frontend,"* && "${FRONTEND_RESULT}" != "success" ]]; then
+            echo "Frontend image publication did not succeed." >&2
+            exit 1
+          fi
+          if [[ "${selected}" == *",demucs,"* && "${DEMUCS_RESULT}" != "success" ]]; then
+            echo "Demucs image publication did not succeed." >&2
+            exit 1
+          fi
+          if [[ "${selected}" == *",stable-audio,"* && "${STABLE_AUDIO_RESULT}" != "success" ]]; then
+            echo "Stable Audio image publication did not succeed." >&2
+            exit 1
+          fi
+
+      - name: Write digest-bound deploy manifest
+        env:
+          SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
+          ENVIRONMENT: ${{ needs.publish-plan.outputs.environment }}
+          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
+          SOURCE_SHA: ${{ needs.publish-plan.outputs.release_sha }}
+          TRIGGER_BRANCH: ${{ needs.publish-plan.outputs.trigger_branch }}
+          RELEASE_ID: ${{ needs.publish-plan.outputs.release_id }}
+          ALL_BACKEND_IMAGE: ${{ needs.publish-plan.outputs.backend_image }}
+          ALL_FRONTEND_IMAGE: ${{ needs.publish-plan.outputs.frontend_image }}
+          ALL_DEMUCS_IMAGE: ${{ needs.publish-plan.outputs.demucs_image }}
+          ALL_STABLE_AUDIO_IMAGE: ${{ needs.publish-plan.outputs.stable_audio_image }}
+          BACKEND_DIGEST: ${{ needs.publish-backend-image.outputs.image_digest }}
+          FRONTEND_DIGEST: ${{ needs.publish-frontend-image.outputs.image_digest }}
+          DEMUCS_DIGEST: ${{ needs.publish-demucs-image.outputs.image_digest }}
+          STABLE_AUDIO_DIGEST: ${{ needs.publish-stable-audio-image.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          args=(
+            create
+            --output "${RUNNER_TEMP}/deploy-manifest.json"
+            --should-dispatch "${SHOULD_DISPATCH}"
+            --environment "${ENVIRONMENT}"
+            --source-repository "${GITHUB_REPOSITORY}"
+            --source-ref "${SOURCE_SHA}"
+            --services "${SERVICES}"
+            --trigger-branch "${TRIGGER_BRANCH}"
+            --release-sha "${SOURCE_SHA}"
+            --release-id "${RELEASE_ID}"
+          )
+          selected=",${SERVICES},"
+          if [[ "${selected}" == *",backend,"* ]]; then
+            args+=(--image-tag "backend=${ALL_BACKEND_IMAGE}" --image-digest "backend=${BACKEND_DIGEST}")
+          fi
+          if [[ "${selected}" == *",frontend,"* ]]; then
+            args+=(--image-tag "frontend=${ALL_FRONTEND_IMAGE}" --image-digest "frontend=${FRONTEND_DIGEST}")
+          fi
+          if [[ "${selected}" == *",demucs,"* ]]; then
+            args+=(--image-tag "demucs=${ALL_DEMUCS_IMAGE}" --image-digest "demucs=${DEMUCS_DIGEST}")
+          fi
+          if [[ "${selected}" == *",stable-audio,"* ]]; then
+            args+=(--image-tag "stable-audio=${ALL_STABLE_AUDIO_IMAGE}" --image-digest "stable-audio=${STABLE_AUDIO_DIGEST}")
+          fi
+          python3 .github/scripts/image_evidence.py "${args[@]}"
+
+      - name: Upload deploy manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: deploy-manifest
+          path: ${{ runner.temp }}/deploy-manifest.json
+          retention-days: 90

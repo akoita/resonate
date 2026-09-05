@@ -3,10 +3,12 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Vm} from "forge-std/Vm.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
+import {EscrowProxyDeployer} from "../utils/EscrowProxyDeployer.sol";
 
 contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     ShowCampaignEscrow public escrow;
@@ -19,16 +21,18 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     address public bob = makeAddr("bob");
     address public carol = makeAddr("carol");
     address public feeRecipient = makeAddr("feeRecipient");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
     uint256 public constant GOAL = 1_000e6;
     uint256 public constant MIN_BACKERS = 2;
     uint256 public constant DISPUTE_WINDOW = 7 days;
+    uint256 public constant FULFILLMENT_WINDOW = 30 days;
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
@@ -324,31 +328,48 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     }
 
     function test_FeeConfigValidation() public {
-        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFeeBps.selector, 1001, uint256(1000)));
-        new ShowCampaignEscrow(owner, 1001, feeRecipient);
+        // The fee/recipient validation now runs inside initialize, so a bad config
+        // reverts the ERC1967 proxy construction (the proxy calls initialize).
+        ShowCampaignEscrow impl = new ShowCampaignEscrow();
 
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
-        new ShowCampaignEscrow(owner, 600, address(0));
+        vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFeeBps.selector, 1001, uint256(1000)));
+        new ERC1967Proxy(
+            address(impl),
+            abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 1001, feeRecipient, upgradeAuthority))
+        );
+
+        vm.expectRevert(ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 600, address(0), upgradeAuthority))
+        );
 
         // The recipient is required even at 0 bps: releases read it at charge time and
         // in-flight campaigns may carry a non-zero snapshotted rate.
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
-        new ShowCampaignEscrow(owner, 0, address(0));
+        vm.expectRevert(ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, address(0), upgradeAuthority))
+        );
+
+        // The upgrade authority is likewise required at initialization.
+        vm.expectRevert(ZeroAddress.selector);
+        new ERC1967Proxy(
+            address(impl), abi.encodeCall(ShowCampaignEscrow.initialize, (owner, 0, feeRecipient, address(0)))
+        );
 
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IShowCampaignEscrow.InvalidFeeBps.selector, 1001, uint256(1000)));
         escrow.setFeeConfig(1001, feeRecipient);
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(600, address(0));
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(0, address(0));
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.setFeeConfig(600, address(escrow));
 
         vm.prank(alice);
@@ -436,7 +457,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.setPaused(true);
 
         vm.prank(alice);
-        vm.expectRevert(IShowCampaignEscrow.Paused.selector);
+        vm.expectRevert(Paused.selector);
         escrow.pledge(campaignId, 100e6);
     }
 
@@ -722,7 +743,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         uint256 amount = 600e6;
         uint256 received = amount - (amount * 100) / 10_000;
         vm.expectRevert(
-            abi.encodeWithSelector(IShowCampaignEscrow.FeeOnTransferNotSupported.selector, amount, received)
+            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, amount, received)
         );
         escrow.pledge(campaignId, amount);
         vm.stopPrank();
@@ -822,13 +843,13 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         uint256 bdl = block.timestamp + 30 days;
 
         vm.prank(owner); // zero beneficiary
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.createCampaign(
             ARTIST_ID_HASH, AUTHORITY_HASH, address(0), address(usdc), GOAL, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW
         );
 
         vm.prank(owner); // zero goal
-        vm.expectRevert(IShowCampaignEscrow.ZeroAmount.selector);
+        vm.expectRevert(ZeroAmount.selector);
         escrow.createCampaign(
             ARTIST_ID_HASH, AUTHORITY_HASH, artist, address(usdc), 0, MIN_BACKERS, dl, bdl, 0, DISPUTE_WINDOW
         );
@@ -882,7 +903,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         escrow.updateAuthority(id, bytes32(0), bob);
 
         vm.prank(owner);
-        vm.expectRevert(IShowCampaignEscrow.ZeroAddress.selector);
+        vm.expectRevert(ZeroAddress.selector);
         escrow.updateAuthority(id, newAuth, address(0));
 
         vm.prank(owner);
@@ -987,6 +1008,207 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
         assertEq(id2, 2);
     }
 
+    // ── #1271 (SCE-1): permissionless fulfillment escape ────────────────────
+
+    function test_SetFulfillmentWindowBoundsAndOnlyOwner() public {
+        uint256 minW = escrow.MIN_FULFILLMENT_WINDOW();
+        uint256 maxW = escrow.MAX_FULFILLMENT_WINDOW();
+
+        // Non-owner cannot set it.
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSignature("OwnableUnauthorizedAccount(address)", alice));
+        escrow.setFulfillmentWindow(FULFILLMENT_WINDOW);
+
+        // Below the floor and above the ceiling are rejected.
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidFulfillmentWindow.selector, minW - 1, minW, maxW)
+        );
+        escrow.setFulfillmentWindow(minW - 1);
+
+        vm.prank(owner);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidFulfillmentWindow.selector, maxW + 1, minW, maxW)
+        );
+        escrow.setFulfillmentWindow(maxW + 1);
+
+        // A valid value sets the global window and emits.
+        assertEq(escrow.fulfillmentWindow(), 0);
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, true);
+        emit FulfillmentWindowUpdated(0, FULFILLMENT_WINDOW);
+        escrow.setFulfillmentWindow(FULFILLMENT_WINDOW);
+        assertEq(escrow.fulfillmentWindow(), FULFILLMENT_WINDOW);
+    }
+
+    /// @notice confirmBooking snapshots `fulfillmentDeadline = now + window`; the deadline
+    /// second itself belongs to the operator (escape still closed at `==`), and one second
+    /// later anyone can open refunds — proving the exact deadline value.
+    function test_ConfirmBookingSetsFulfillmentDeadlineWithOperatorBoundary() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+        uint256 campaignId = _fundCampaign(0);
+
+        uint256 confirmTime = block.timestamp;
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        uint256 deadline = confirmTime + FULFILLMENT_WINDOW;
+
+        vm.warp(deadline);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.FulfillmentDeadlineNotPassed.selector, campaignId, deadline, deadline
+            )
+        );
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+
+        vm.warp(deadline + 1);
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+    }
+
+    function test_OpenRefundsAfterMissedFulfillmentRevertsBeforeDeadline() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+        uint256 campaignId = _fundCampaign(0);
+        uint256 confirmTime = block.timestamp;
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        uint256 deadline = confirmTime + FULFILLMENT_WINDOW;
+
+        uint256 nowTs = deadline - 1 days; // still well before the deadline
+        vm.warp(nowTs);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.FulfillmentDeadlineNotPassed.selector, campaignId, deadline, nowTs
+            )
+        );
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+    }
+
+    function test_OpenRefundsAfterMissedFulfillmentRevertsFromWrongStates() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+
+        // Funded — booking not yet confirmed, so the escape has no jurisdiction.
+        uint256 funded = _fundCampaign(0);
+        vm.warp(block.timestamp + 60 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, funded, CampaignStatus.Funded)
+        );
+        escrow.openRefundsAfterMissedFulfillment(funded);
+
+        // Fulfilled — already advanced past the states the escape guards.
+        uint256 fulfilled = _fundCampaign(0);
+        vm.startPrank(confirmer);
+        escrow.confirmBooking(fulfilled);
+        escrow.confirmFulfillment(fulfilled);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 60 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(IShowCampaignEscrow.InvalidStatus.selector, fulfilled, CampaignStatus.Fulfilled)
+        );
+        escrow.openRefundsAfterMissedFulfillment(fulfilled);
+    }
+
+    /// @notice From BookingConfirmed with nothing released, a RANDOM caller (not owner,
+    /// confirmer, or backer) opens refunds after the deadline; backers reclaim full pledges.
+    function test_OpenRefundsAfterMissedFulfillmentFromBookingConfirmedByRandomCaller() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+        uint256 campaignId = _fundCampaign(0);
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        vm.warp(block.timestamp + FULFILLMENT_WINDOW + 1);
+
+        vm.prank(carol); // permissionless
+        vm.expectEmit(true, false, false, false);
+        emit RefundAvailable(campaignId);
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+        assertEq(usdc.balanceOf(alice) - aliceBefore, 600e6);
+
+        uint256 bobBefore = usdc.balanceOf(bob);
+        vm.prank(bob);
+        escrow.claimRefund(campaignId);
+        assertEq(usdc.balanceOf(bob) - bobBefore, 500e6);
+
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Refunded));
+    }
+
+    /// @notice From DepositReleased, the escape opens refunds and {claimRefund} shares only
+    /// the UN-released remainder pro-rata — the already-released deposit stays with the artist.
+    function test_OpenRefundsAfterMissedFulfillmentFromDepositReleasedRefundsRemainder() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+        uint256 campaignId = _fundCampaign(2_000); // 20% deposit, 1_100e6 pledged
+
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        vm.prank(confirmer);
+        escrow.releaseDeposit(campaignId); // 220e6 → artist; status DepositReleased
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.DepositReleased));
+        assertEq(usdc.balanceOf(artist), 220e6);
+
+        vm.warp(block.timestamp + FULFILLMENT_WINDOW + 1);
+
+        vm.prank(carol); // permissionless, from DepositReleased
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.RefundAvailable));
+
+        // Outstanding 880e6 (1_100 − 220 deposit): alice 600/1_100 → 480e6, bob 500/1_100 → 400e6.
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        escrow.claimRefund(campaignId);
+        assertEq(usdc.balanceOf(alice) - aliceBefore, 480e6);
+
+        uint256 bobBefore = usdc.balanceOf(bob);
+        vm.prank(bob);
+        escrow.claimRefund(campaignId);
+        assertEq(usdc.balanceOf(bob) - bobBefore, 400e6);
+
+        // Conservation: 220 deposit + 480 + 400 == 1_100 pledged; escrow fully drained.
+        assertEq(usdc.balanceOf(artist), 220e6);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+        assertEq(uint8(escrow.campaignStatus(campaignId)), uint8(CampaignStatus.Refunded));
+    }
+
+    /// @notice With the global window unset, a booked campaign's deadline stays 0, so the
+    /// escape stays inert (reverts) even arbitrarily far in the future — no regression.
+    function test_OpenRefundsAfterMissedFulfillmentInertWhenWindowUnset() public {
+        uint256 campaignId = _fundCampaign(0); // fulfillmentWindow never set
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+
+        vm.warp(block.timestamp + 365 days);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IShowCampaignEscrow.FulfillmentDeadlineNotPassed.selector, campaignId, 0, block.timestamp
+            )
+        );
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+    }
+
+    function test_PauseBlocksOpenRefundsAfterMissedFulfillment() public {
+        _enableFulfillmentWindow(FULFILLMENT_WINDOW);
+        uint256 campaignId = _fundCampaign(0);
+        vm.prank(confirmer);
+        escrow.confirmBooking(campaignId);
+        vm.warp(block.timestamp + FULFILLMENT_WINDOW + 1);
+
+        vm.prank(owner);
+        escrow.setPaused(true);
+
+        vm.expectRevert(Paused.selector);
+        escrow.openRefundsAfterMissedFulfillment(campaignId);
+    }
+
+    function _enableFulfillmentWindow(uint256 window) internal {
+        vm.prank(owner);
+        escrow.setFulfillmentWindow(window);
+    }
+
     function _createAndActivate(uint256 depositReleaseBps) internal returns (uint256 campaignId) {
         vm.startPrank(owner);
         campaignId = escrow.createCampaign(
@@ -1020,7 +1242,7 @@ contract ShowCampaignEscrowTest is Test, IShowCampaignEscrow {
     }
 
     function _useFeeEscrow(uint256 feeBps) internal {
-        escrow = new ShowCampaignEscrow(owner, feeBps, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, feeBps, feeRecipient, upgradeAuthority);
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
 

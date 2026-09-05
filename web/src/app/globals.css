@@ -5,6 +5,7 @@
 @import "../styles/home-nextgen.css";
 @import "../styles/playlists.css";
 @import "../styles/help.css";
+@import "../styles/drops.css";
 
 /*
  * Tailwind v4 utilities (#566) — several components authored with
@@ -31,6 +32,38 @@ body {
    * doesn't break `position: sticky` on descendants. */
   overflow-x: clip;
   max-width: 100%;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.skip-link {
+  position: fixed;
+  top: var(--space-3);
+  left: var(--space-3);
+  z-index: 12000;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: white;
+  font-weight: 700;
+  transform: translateY(-200%);
+  transition: transform 0.15s ease;
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid white;
+  outline-offset: 2px;
 }
 
 *,
@@ -1733,6 +1766,11 @@ a {
 }
 
 .volume-icon {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 4px;
+  border-radius: 999px;
   font-size: 14px;
   color: var(--color-muted);
   cursor: pointer;
@@ -1742,6 +1780,9 @@ a {
 .volume-icon:hover {
   color: var(--color-text);
 }
+
+/* Immersive stage, console icon buttons and the volume control's focus and
+ * muted states live in styles/player-console.css, which owns this surface. */
 
 .volume-slider {
   -webkit-appearance: none;
@@ -1970,6 +2011,22 @@ a {
   background: rgba(255, 255, 255, 0.05);
   cursor: pointer;
   z-index: 10;
+}
+
+.player-progress-input {
+  position: absolute;
+  inset: -18px 0;
+  z-index: 2;
+  width: 100%;
+  height: 40px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.player-progress-container:focus-within {
+  outline: 2px solid var(--r-primary, var(--color-accent));
+  outline-offset: 4px;
 }
 
 .queue-indicator {
@@ -2315,7 +2372,7 @@ a {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  animation: fadeIn 0.3s ease;
+  animation: upload-settings-fade-in 0.3s ease;
 }
 
 .track-selection-mini {
@@ -2344,7 +2401,7 @@ a {
   color: white;
 }
 
-@keyframes fadeIn {
+@keyframes upload-settings-fade-in {
   from {
     opacity: 0;
     transform: translateY(5px);
@@ -3815,6 +3872,47 @@ a {
     grid-template-columns: 1fr;
     gap: var(--space-2);
   }
+
+  .vault-card {
+    padding: var(--space-4);
+    min-width: 0;
+  }
+
+  .vault-card-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .vault-detail-label {
+    min-width: 0;
+  }
+
+  .vault-detail-value,
+  .vault-addr-container {
+    justify-content: flex-start;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vault-addr-toggle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .vault-actions .vault-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }
 
 .vault-meta-grid {
@@ -5041,11 +5139,11 @@ a {
   border-radius: 16px;
   padding: var(--space-4);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-  animation: fadeIn 0.15s ease-out;
+  animation: artwork-preview-fade-in 0.15s ease-out;
   pointer-events: none;
 }
 
-@keyframes fadeIn {
+@keyframes artwork-preview-fade-in {
   from {
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.95);
@@ -6357,6 +6455,12 @@ a.listener-cohort-detail__action:focus-visible {
   margin-top: var(--space-3);
 }
 
+/* The moments showcase reuses the punchline collect grid inside this panel;
+   give it the same breathing room under the section kicker as the grid above. */
+.community-profile-support .punchline-collect-grid {
+  margin-top: var(--space-3);
+}
+
 .community-profile-support-card {
   min-height: 124px;
   padding: var(--space-4);
@@ -6444,6 +6548,195 @@ a.listener-cohort-detail__action:focus-visible {
 
 .taste-memory-danger p {
   margin: 4px 0 0;
+}
+
+/* Usage & Billing panel (#1422) --------------------------------------------- */
+.usage-billing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.usage-billing-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.usage-billing-block-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-billing-block .settings-copy {
+  margin: 0;
+}
+
+.usage-plan-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.usage-plan-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.usage-muted-note {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+.usage-autoreload {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  opacity: 0.85;
+}
+
+.usage-autoreload strong {
+  display: block;
+  color: var(--color-text);
+  font-size: 14px;
+}
+
+.usage-autoreload small {
+  color: var(--color-text-muted);
+}
+
+.usage-limit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.usage-limit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.usage-limit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.usage-limit-label {
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.usage-limit-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.usage-limit-count[data-depleted="true"] {
+  color: #fca5a5;
+}
+
+.usage-limit-bar {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-raised);
+  overflow: hidden;
+}
+
+.usage-limit-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 200ms ease;
+}
+
+.usage-limit-reset {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.usage-history-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.usage-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.usage-history-table th,
+.usage-history-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.usage-history-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.usage-history-table td {
+  color: var(--color-text);
+}
+
+.usage-history-table .usage-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-empty {
+  padding: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
+.usage-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.usage-error p {
+  margin: 0;
+  color: var(--color-text-muted);
 }
 
 @media (max-width: 720px) {
@@ -7795,6 +8088,43 @@ a.listener-cohort-detail__action:focus-visible {
   gap: var(--space-3);
   margin-top: var(--space-4);
   flex-wrap: wrap;
+}
+
+/* Playlist/album detail hero — mobile. The base hero is a fixed 240px-artwork +
+   flex-content ROW with a 48px title and no wrapping, so on a phone the title,
+   "Play All", and share controls overflowed off the right edge (the tabs and
+   track rows already have mobile rules; this hero did not). Stack it vertically,
+   shrink + center the artwork, scale the title, and let the content take the
+   full width so nothing is clipped. Verified against the live page: no
+   horizontal overflow at 390px. */
+@media (max-width: 767px) {
+  .detail-hero {
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    text-align: center;
+  }
+
+  .detail-hero-artwork {
+    width: 180px;
+    height: 180px;
+  }
+
+  .detail-hero-content {
+    flex: initial;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .detail-hero-title {
+    font-size: 32px;
+    word-break: break-word;
+  }
+
+  .detail-hero-actions {
+    justify-content: center;
+  }
 }
 
 /* Projects section in Artist view */
@@ -14223,7 +14553,19 @@ tr[draggable="true"]:hover {
 .analytics-container {
   display: grid;
   gap: var(--space-6);
-  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: analytics-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes analytics-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .cohort-operations-container {

@@ -29,28 +29,13 @@ import { usePaymentAssets } from "../../../hooks/usePaymentAssets";
 import { findPaymentAssetForToken, ZERO_PAYMENT_TOKEN } from "../../../lib/payments";
 import { formatListingPrice } from "../../../lib/listingPricing";
 import { shortAddress, stemTypeTheme } from "../../../lib/stemPageTheme";
+import { getChainExplorerAddressUrl } from "../../../lib/explorer";
 import {
     buildTierRows,
     LicenseTiersPanel,
     StemHero,
 } from "../../../components/stem/StemDetailSections";
 import { type Address } from "viem";
-
-// Chain-aware block explorer URLs
-function getExplorerUrl(chainId: number, address: string): string | null {
-    switch (chainId) {
-        case 1:
-            return `https://etherscan.io/address/${address}`;
-        case 11155111:
-            return `https://sepolia.etherscan.io/address/${address}`;
-        case 84532:
-            return `https://sepolia.basescan.org/address/${address}`;
-        case 8453:
-            return `https://basescan.org/address/${address}`;
-        default:
-            return null; // Local/Anvil — no explorer
-    }
-}
 
 type CatalogMeta = {
     name?: string;
@@ -408,7 +393,7 @@ export default function StemDetailPage() {
     }
 
     const canList = balance > 0n;
-    const creatorExplorerUrl = getExplorerUrl(chainId, stemData.creator);
+    const creatorExplorerUrl = getChainExplorerAddressUrl(chainId, stemData.creator);
 
     return (
         <div className="min-h-screen bg-black">

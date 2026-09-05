@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
-import { createPublicClient, createWalletClient, http, keccak256, stringToHex } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, http, keccak256, stringToHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { prisma } from "../db/prisma";
@@ -24,6 +24,42 @@ const SHOW_ESCROW_ARTIFACT =
     abi: any[];
     bytecode: { object: `0x${string}` };
   };
+const ERC1967_PROXY_ARTIFACT =
+  require("../../../contracts/out/ERC1967Proxy.sol/ERC1967Proxy.json") as {
+    abi: any[];
+    bytecode: { object: `0x${string}` };
+  };
+
+/**
+ * #1497: ShowCampaignEscrow is UUPS — the implementation's constructor takes no
+ * args and disables initializers, so on-chain tests deploy impl + ERC1967 proxy
+ * and initialize(owner, feeBps, feeRecipient, upgradeAuthority) through it.
+ * Interactions use the escrow ABI at the PROXY address.
+ */
+async function deployEscrowProxy(
+  walletClient: any,
+  publicClient: any,
+  owner: `0x${string}`,
+): Promise<`0x${string}`> {
+  const implHash = await walletClient.deployContract({
+    abi: SHOW_ESCROW_ARTIFACT.abi,
+    bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
+    args: [],
+  });
+  const implReceipt = await publicClient.waitForTransactionReceipt({ hash: implHash });
+  const initData = encodeFunctionData({
+    abi: SHOW_ESCROW_ARTIFACT.abi,
+    functionName: "initialize",
+    args: [owner, 600n, owner, owner],
+  });
+  const proxyHash = await walletClient.deployContract({
+    abi: ERC1967_PROXY_ARTIFACT.abi,
+    bytecode: ERC1967_PROXY_ARTIFACT.bytecode.object,
+    args: [implReceipt.contractAddress!, initData],
+  });
+  const proxyReceipt = await publicClient.waitForTransactionReceipt({ hash: proxyHash });
+  return proxyReceipt.contractAddress!;
+}
 
 const futureIso = (days: number) => {
   const date = new Date();
@@ -37,13 +73,41 @@ const anvilUrl = () => process.env.ANVIL_RPC_URL;
 // carry an in-range dispute window (isolating the invalid deadline under test).
 const DEFAULT_DISPUTE_WINDOW_SECONDS_TEST = 604800;
 
+const oneByOnePng = (suffix = "") => Buffer.concat([
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  ),
+  Buffer.from(suffix),
+]);
+
+const oneByOneJpeg = (suffix = "") => Buffer.concat([
+  Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xc0, 0x00, 0x11, 0x08, 0x00, 0x01, 0x00, 0x01,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+    0xff, 0xd9,
+  ]),
+  Buffer.from(suffix),
+]);
+
+const oneByOneWebp = (suffix = "") => {
+  const header = Buffer.alloc(30);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(22, 4);
+  header.write("WEBP", 8, "ascii");
+  header.write("VP8X", 12, "ascii");
+  header.writeUInt32LE(10, 16);
+  return Buffer.concat([header, Buffer.from(suffix)]);
+};
+
 const visualFile = (name: string, body: string): Express.Multer.File => ({
   fieldname: "gallery",
   originalname: `${name}.webp`,
   encoding: "7bit",
   mimetype: "image/webp",
-  size: Buffer.byteLength(body),
-  buffer: Buffer.from(body),
+  size: oneByOneWebp(body).length,
+  buffer: oneByOneWebp(body),
   destination: "",
   filename: `${name}.webp`,
   path: "",
@@ -176,6 +240,18 @@ describe("ShowsService integration", () => {
         claimStatus: "unclaimed",
       },
     });
+    // #1498: self-serve campaign creation now runs the payout-eligibility gate
+    // when binding the artist's own payout wallet as beneficiary. Human-verify
+    // the acting artist and give their release a payout-eligible rights route so
+    // these Shows lifecycle tests exercise the flow they intend, not the gate.
+    await prisma.curatorReputation.create({
+      data: {
+        walletAddress: userId.toLowerCase(),
+        humanVerificationStatus: "human_verified",
+        verifiedHuman: true,
+        humanVerifiedAt: new Date(),
+      },
+    });
     await prisma.release.create({
       data: {
         id: releaseId,
@@ -183,6 +259,7 @@ describe("ShowsService integration", () => {
         title: `${TEST_PREFIX}Ready Release`,
         status: "ready",
         primaryArtist: `${TEST_PREFIX}Artist`,
+        rightsRoute: "STANDARD_ESCROW",
       },
     });
     await prisma.release.create({
@@ -225,6 +302,7 @@ describe("ShowsService integration", () => {
     }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [releaseId, creditedReleaseId] } } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: { in: [artistId, otherArtistId, creditedArtistId] } } }).catch(() => {});
+    await prisma.curatorReputation.deleteMany({ where: { walletAddress: userId.toLowerCase() } }).catch(() => {});
     await prisma.wallet.deleteMany({ where: { userId: { in: [listenerId] } } }).catch(() => {});
     await prisma.user.deleteMany({
       where: { id: { in: [userId, listenerId, operatorUserId, otherArtistUserId] } },
@@ -348,20 +426,20 @@ describe("ShowsService integration", () => {
       updated.id,
       {
         hero: {
-          buffer: Buffer.from("hero-image"),
+          buffer: oneByOneWebp("hero-image"),
           mimetype: "image/webp",
-          size: 10,
+          size: oneByOneWebp("hero-image").length,
         } as Express.Multer.File,
         card: {
-          buffer: Buffer.from("card-image"),
+          buffer: oneByOnePng("card-image"),
           mimetype: "image/png",
-          size: 10,
+          size: oneByOnePng("card-image").length,
         } as Express.Multer.File,
         gallery: [
           {
-            buffer: Buffer.from("gallery-image"),
+            buffer: oneByOneJpeg("gallery-image"),
             mimetype: "image/jpeg",
-            size: 13,
+            size: oneByOneJpeg("gallery-image").length,
           } as Express.Multer.File,
         ],
       },
@@ -369,14 +447,35 @@ describe("ShowsService integration", () => {
     expect(visualized.heroImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/hero`);
     expect(visualized.cardImageUrl).toBe(`/shows/campaigns/${updated.id}/visuals/card`);
     expect(visualized.visuals.some((visual) => visual.role === "gallery")).toBe(true);
+    expect(visualized.visuals.find((visual) => visual.role === "hero")?.artworkRevision).toBe(1);
+    expect(visualized.visuals.find((visual) => visual.role === "card")?.artworkRevision).toBe(1);
     const heroVisual = await service.getCampaignVisual(updated.id, "hero");
     expect(heroVisual?.mimeType).toBe("image/webp");
-    expect(heroVisual?.data.toString()).toBe("hero-image");
+    expect(heroVisual?.data.equals(oneByOneWebp("hero-image"))).toBe(true);
     const galleryVisualRef = visualized.visuals.find((visual) => visual.role === "gallery")?.id;
     expect(galleryVisualRef).toBeTruthy();
     const galleryVisual = await service.getCampaignVisual(updated.id, galleryVisualRef!);
     expect(galleryVisual?.mimeType).toBe("image/jpeg");
-    expect(galleryVisual?.data.toString()).toBe("gallery-image");
+    expect(galleryVisual?.data.equals(oneByOneJpeg("gallery-image"))).toBe(true);
+
+    const replacedSlots = await service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      updated.id,
+      {
+        hero: {
+          buffer: oneByOneWebp("hero-replacement"),
+          mimetype: "image/webp",
+          size: oneByOneWebp("hero-replacement").length,
+        } as Express.Multer.File,
+        card: {
+          buffer: oneByOnePng("card-replacement"),
+          mimetype: "image/png",
+          size: oneByOnePng("card-replacement").length,
+        } as Express.Multer.File,
+      },
+    );
+    expect(replacedSlots.visuals.find((visual) => visual.role === "hero")?.artworkRevision).toBe(2);
+    expect(replacedSlots.visuals.find((visual) => visual.role === "card")?.artworkRevision).toBe(2);
 
     await expect(service.createDraftCampaign(
       { userId, role: "artist" },
@@ -501,6 +600,74 @@ describe("ShowsService integration", () => {
     expect(declaredCreditDraft.title).toBe(`${TEST_PREFIX}Declared Credit in Paris`);
   });
 
+  it("resolves the configured platform-default payment token when the field is empty (#1391)", async () => {
+    // The create form shows "Platform default" as a placeholder; leaving it
+    // empty must persist the CONFIGURED default, never null (null blocks
+    // wallet pledge execution downstream).
+    const DEFAULT_TOKEN = "0x036cbd53842c5426634e7929541ec2318f3dcf7e";
+    const prev = process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS;
+    process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS = DEFAULT_TOKEN;
+    try {
+      const campaign = await service.createDraftCampaign(
+        { userId, role: "artist" },
+        {
+          artistId,
+          artistDisplayName: `${TEST_PREFIX}Default Token Artist`,
+          title: "Default token draft",
+          city: "Lyon",
+          country: "FR",
+          deadline: futureIso(30),
+          goalAmountUnits: "1000000",
+          // paymentTokenAddress deliberately omitted — the UI's empty field.
+        },
+      );
+      expect(campaign.paymentTokenAddress).toBeTruthy();
+      expect(campaign.paymentTokenAddress!.toLowerCase()).toBe(DEFAULT_TOKEN);
+    } finally {
+      if (prev === undefined) {
+        delete process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS;
+      } else {
+        process.env.SHOWS_DEFAULT_PAYMENT_TOKEN_ADDRESS = prev;
+      }
+    }
+  });
+
+  it("prevalidates every visual before storing any campaign asset", async () => {
+    const draft = await service.createDraftCampaign(
+      { userId, role: "artist" },
+      {
+        artistId,
+        artistDisplayName: `${TEST_PREFIX}Artist`,
+        city: "Paris",
+        country: "FR",
+        deadline: futureIso(30),
+        goalAmountUnits: "3000000",
+        bookingDeadline: futureIso(45),
+      },
+    );
+    const storedBefore = visualUploads.size;
+
+    await expect(service.uploadCampaignVisuals(
+      { userId, role: "artist" },
+      draft.id,
+      {
+        hero: visualFile("valid-hero", "valid"),
+        card: {
+          buffer: Buffer.from("not-an-image"),
+          mimetype: "image/png",
+          size: Buffer.byteLength("not-an-image"),
+        } as Express.Multer.File,
+      },
+    )).rejects.toThrow("card visual must be a JPEG, PNG, or WebP image with readable dimensions");
+
+    expect(visualUploads.size).toBe(storedBefore);
+    const persisted = await prisma.showCampaign.findUnique({
+      where: { id: draft.id },
+      select: { heroImageStorageUri: true, cardImageStorageUri: true },
+    });
+    expect(persisted).toMatchObject({ heroImageStorageUri: null, cardImageStorageUri: null });
+  });
+
   it("lets campaign owners replace, reorder, and delete draft gallery visuals", async () => {
     const draft = await service.createDraftCampaign(
       { userId, role: "artist" },
@@ -537,10 +704,21 @@ describe("ShowsService integration", () => {
     );
     const replacedVisual = replaced.visuals.find((visual) => visual.id === gallery[1].id);
     expect(replacedVisual?.mimeType).toBe("image/webp");
+    expect(replacedVisual?.artworkRevision).toBe(2);
     await expect(service.getCampaignVisual(draft.id, gallery[1].id)).resolves.toMatchObject({
-      data: Buffer.from("second-replaced"),
+      data: oneByOneWebp("second-replaced"),
       mimeType: "image/webp",
     });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "1")).resolves.toMatchObject({
+      data: oneByOneWebp("second-replaced"),
+      mimeType: "image/webp",
+    });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "2")).resolves.toMatchObject({
+      data: oneByOneWebp("second-replaced"),
+      mimeType: "image/webp",
+    });
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "3")).resolves.toBeNull();
+    await expect(service.getCampaignVisual(draft.id, gallery[1].id, "bogus")).resolves.toBeNull();
 
     const reordered = await service.reorderCampaignVisuals(
       { userId, role: "artist" },
@@ -552,6 +730,7 @@ describe("ShowsService integration", () => {
       gallery[0].id,
       gallery[1].id,
     ]);
+    expect(reordered.visuals.find((visual) => visual.id === gallery[1].id)?.artworkRevision).toBe(2);
 
     const afterDelete = await service.deleteCampaignVisual(
       { userId, role: "artist" },
@@ -681,13 +860,7 @@ describe("ShowsService integration", () => {
       chain,
       transport: http(anvilUrl()),
     });
-    const deployHash = await walletClient.deployContract({
-      abi: SHOW_ESCROW_ARTIFACT.abi,
-      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
-      args: [account.address, 600n, account.address],
-    });
-    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
-    const escrowAddress = deployReceipt.contractAddress;
+    const escrowAddress = await deployEscrowProxy(walletClient, publicClient, account.address);
     expect(escrowAddress).toBeTruthy();
 
     const block = await publicClient.getBlock({ blockTag: "latest" });
@@ -823,13 +996,7 @@ describe("ShowsService integration", () => {
     const publicClient = createPublicClient({ chain, transport: http(anvilUrl()) });
     const walletClient = createWalletClient({ account, chain, transport: http(anvilUrl()) });
 
-    const deployHash = await walletClient.deployContract({
-      abi: SHOW_ESCROW_ARTIFACT.abi,
-      bytecode: SHOW_ESCROW_ARTIFACT.bytecode.object,
-      args: [account.address, 600n, account.address],
-    });
-    const deployReceipt = await publicClient.waitForTransactionReceipt({ hash: deployHash });
-    const escrowAddress = deployReceipt.contractAddress!;
+    const escrowAddress = await deployEscrowProxy(walletClient, publicClient, account.address);
     expect(escrowAddress).toBeTruthy();
 
     const block = await publicClient.getBlock({ blockTag: "latest" });
@@ -1546,6 +1713,27 @@ describe("ShowsService integration", () => {
     )).rejects.toThrow(BadRequestException);
 
     const { campaign, tier } = await createActiveCampaignWithTier("Bordeaux");
+
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { contractAddress: null, contractCampaignId: null },
+    });
+    await expect(service.createPledgeIntent(
+      { userId: listenerId, role: "listener" },
+      campaign.id,
+      {
+        tierId: tier.id,
+        walletAddress: listenerWallet,
+      },
+    )).rejects.toThrow(/escrow must be linked/);
+
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: {
+        contractAddress: campaign.contractAddress,
+        contractCampaignId: campaign.contractCampaignId,
+      },
+    });
 
     await expect(service.createPledgeIntent(
       { userId: listenerId, role: "listener" },

@@ -13,10 +13,14 @@ import {
   UseInterceptors,
   UploadedFiles,
 } from "@nestjs/common";
-import { FilesInterceptor, FileFieldsInterceptor } from "@nestjs/platform-express";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { IngestionService } from "./ingestion.service";
+import { IngestionMultipartInterceptor } from "./ingestion-multipart.interceptor";
+import {
+  cleanupIngestionMultipartRequest,
+  IngestionMultipartStorage,
+} from "./ingestion-multipart.storage";
 
 @Controller("ingestion")
 export class IngestionController {
@@ -24,12 +28,15 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("upload")
-  @UseInterceptors(FileFieldsInterceptor([
+  @UseInterceptors(new IngestionMultipartInterceptor([
     { name: 'files', maxCount: 20 },
     { name: 'artwork', maxCount: 1 },
-  ]))
+  ], {
+    storage: new IngestionMultipartStorage(),
+    limits: { files: 21, parts: 25 },
+  }))
   @Throttle({ default: { limit: 20, ttl: 60 } })
-  upload(
+  async upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
     @Body()
     body: {
@@ -39,24 +46,28 @@ export class IngestionController {
       metadata?: any; // Can be string (from FormData) or object (from JSON body)
     },
     @Request() req: any,
-  ) {
-    let metadata = body.metadata;
-    if (typeof metadata === "string") {
-      try {
-        metadata = JSON.parse(metadata);
-      } catch (err) {
-        throw new BadRequestException("Invalid metadata JSON string");
+  ): Promise<unknown> {
+    try {
+      let metadata = body.metadata;
+      if (typeof metadata === "string") {
+        try {
+          metadata = JSON.parse(metadata);
+        } catch (err) {
+          throw new BadRequestException("Invalid metadata JSON string");
+        }
       }
+      return await this.ingestionService.handleFileUpload({
+        artistId: body.artistId,
+        userId: req.user?.userId,
+        files: files?.files || [],
+        artwork: files?.artwork?.[0],
+        metadata,
+        catalogTrackId: body.trackId,
+        sourceType: body.source,
+      });
+    } finally {
+      await cleanupIngestionMultipartRequest(req);
     }
-    return this.ingestionService.handleFileUpload({
-      artistId: body.artistId,
-      userId: req.user?.userId,
-      files: files?.files || [],
-      artwork: files?.artwork?.[0],
-      metadata,
-      catalogTrackId: body.trackId,
-      sourceType: body.source,
-    });
   }
 
   @Post("progress/:releaseId/:trackId")

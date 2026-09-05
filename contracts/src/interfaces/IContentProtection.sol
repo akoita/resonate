@@ -43,12 +43,27 @@ interface IContentProtection is IContentProtectionEvents {
         uint256 releaseId,
         bytes32 contentHash,
         bytes32 fingerprintHash,
-        string calldata metadataURI
+        string calldata metadataURI,
+        uint256 deadline,
+        bytes calldata signature
     ) external;
 
     function getReleaseTracks(uint256 releaseId) external view returns (uint256[] memory);
 
     function getTrackStems(uint256 trackId) external view returns (uint256[] memory);
+
+    function getTrackStemCount(uint256 trackId) external view returns (uint256);
+
+    function getTrackStemsSlice(uint256 trackId, uint256 start, uint256 count)
+        external
+        view
+        returns (uint256[] memory);
+
+    function owner() external view returns (address);
+
+    function pendingOwner() external view returns (address);
+
+    function acceptOwnership() external;
 
     function isAttested(uint256 tokenId) external view returns (bool);
 

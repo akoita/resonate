@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useFocusContainment } from "./useFocusContainment";
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -94,6 +95,11 @@ export function ConfirmDialog({
     const [mounted, setMounted] = useState(false);
     const [animating, setAnimating] = useState(false);
     const [loading, setLoading] = useState(false);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const cancelButtonRef = useRef<HTMLButtonElement>(null);
+    const ids = useId().replace(/:/g, "");
+    const titleId = `confirm-dialog-title-${ids}`;
+    const messageId = `confirm-dialog-message-${ids}`;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
     useEffect(() => setMounted(true), []);
@@ -104,19 +110,19 @@ export function ConfirmDialog({
     }, [isOpen]);
 
     useEffect(() => {
-        if (!isOpen) {
-            return;
+        if (isOpen) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading when dialog opens
+            setLoading(false);
         }
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- reset loading when dialog opens
-        setLoading(false);
-        const handleKey = (e: KeyboardEvent) => {
-            if (e.key === "Escape" && !loading) onCancel();
-        };
-        window.addEventListener("keydown", handleKey);
-        return () => {
-            window.removeEventListener("keydown", handleKey);
-        };
-    }, [isOpen, onCancel, loading]);
+    }, [isOpen]);
+
+    useFocusContainment({
+        active: isOpen && mounted,
+        containerRef: dialogRef,
+        initialFocusRef: cancelButtonRef,
+        onEscape: onCancel,
+        escapeDisabled: loading,
+    });
 
     if (!isOpen || !mounted) return null;
 
@@ -209,6 +215,12 @@ export function ConfirmDialog({
             `}</style>
 
             <div
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                aria-describedby={messageId}
+                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                     // design.md §Elevation → Floating layer:
@@ -249,7 +261,7 @@ export function ConfirmDialog({
                     textAlign: "center",
                 }}>
                     {/* Icon */}
-                    <div style={{
+                    <div aria-hidden="true" style={{
                         width: "64px",
                         height: "64px",
                         borderRadius: "18px",
@@ -266,7 +278,7 @@ export function ConfirmDialog({
                     </div>
 
                     {/* Title */}
-                    <h3 style={{
+                    <h3 id={titleId} style={{
                         fontSize: "18px",
                         fontWeight: 600,
                         color: "#fff",
@@ -278,7 +290,7 @@ export function ConfirmDialog({
                     </h3>
 
                     {/* Message */}
-                    <p style={{
+                    <p id={messageId} style={{
                         fontSize: "13.5px",
                         lineHeight: 1.65,
                         color: "rgba(255, 255, 255, 0.5)",
@@ -307,6 +319,8 @@ export function ConfirmDialog({
                 }}>
                     <button
                         className="confirm-dialog-cancel-btn"
+                        ref={cancelButtonRef}
+                        type="button"
                         onClick={onCancel}
                         disabled={loading}
                     >
@@ -314,6 +328,7 @@ export function ConfirmDialog({
                     </button>
                     <button
                         className="confirm-dialog-confirm-btn"
+                        type="button"
                         onClick={async () => {
                             setLoading(true);
                             try {
@@ -333,7 +348,7 @@ export function ConfirmDialog({
                         }}
                     >
                         {loading && (
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
                                 style={{ animation: "confirm-spinner 0.8s linear infinite" }}>
                                 <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)"
                                     strokeWidth="3" />

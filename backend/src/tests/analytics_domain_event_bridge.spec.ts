@@ -141,6 +141,41 @@ describe("AnalyticsDomainEventBridgeService", () => {
     ]);
   });
 
+  it("bridges only privacy-safe AI disclosure fields", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    eventBus.publish({
+      eventName: "catalog.ai_disclosure_recorded",
+      eventVersion: 1,
+      occurredAt: "2026-08-09T12:00:00.000Z",
+      releaseId: "release-ai-1",
+      trackId: "track-ai-1",
+      level: "PARTLY",
+      source: "artist",
+      facets: ["vocals", "production"],
+    });
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    expect((await ingest.listEvents())[0]).toEqual(
+      expect.objectContaining({
+        eventName: "catalog.ai_disclosure_recorded",
+        producer: "catalog-service",
+        subjectType: "track",
+        subjectId: "track-ai-1",
+        payload: {
+          releaseId: "release-ai-1",
+          trackId: "track-ai-1",
+          level: "PARTLY",
+          source: "artist",
+          facets: ["vocals", "production"],
+        },
+      }),
+    );
+  });
+
   it("bridges high-value domain events with compact analytics payloads", async () => {
     const ingest = new AnalyticsIngestService();
     eventBus = new EventBus();
@@ -1187,6 +1222,66 @@ describe("AnalyticsDomainEventBridgeService", () => {
         feeBps: 600,
         totalFeePaidUnits: "60",
       }),
+    }));
+  });
+
+  // #1271: the reconciliation-mismatch bridge entry is the durable record the
+  // operator endpoint (GET /shows/operator/reconciliation-mismatches) and the
+  // staging drift drill read back. This publishes EXACTLY what the indexer's
+  // emitMismatch() publishes (contractCampaignId is the STRING coercion of the
+  // on-chain uint — `String(args.campaignId)`; blockNumber is a string) and
+  // asserts the ingested envelope: eventName, subjectType, and — load-bearing —
+  // subjectId equal to that contractCampaignId string, because the operator
+  // endpoint filters on subjectId. A config typo or subjectIdKeys mistake fails
+  // here instead of only live on staging.
+  it("bridges reconciliation mismatches with contractCampaignId as the subject", async () => {
+    const ingest = new AnalyticsIngestService();
+    eventBus = new EventBus();
+    bridge = new AnalyticsDomainEventBridgeService(eventBus, ingest);
+    bridge.onModuleInit();
+
+    const transactionHash = "0x" + "44".repeat(32);
+    eventBus.publish({
+      eventName: "shows.campaign_reconciliation_mismatch",
+      eventVersion: 1,
+      occurredAt: "2026-07-13T10:00:00.000Z",
+      chainId: 84532,
+      contractAddress: "0x" + "11".repeat(20),
+      // emitMismatch publishes String(args.campaignId) — the string coercion of
+      // the numeric on-chain campaign id.
+      contractCampaignId: String(42),
+      escrowEventName: "Pledged",
+      transactionHash,
+      blockNumber: "4567",
+      reason:
+        "on-chain pledge from 0x70997970c51812dc3a010c7d01b50e0d17dc79c8 (1000000) has no matching backend intent",
+    });
+
+    await waitForExpect(async () => expect(await ingest.listEvents()).toHaveLength(1));
+    const [event] = await ingest.listEvents();
+    expect(event).toEqual(expect.objectContaining({
+      eventName: "shows.campaign_reconciliation_mismatch",
+      producer: "shows-escrow-indexer",
+      subjectType: "show_campaign",
+      // Load-bearing: the operator endpoint filters analyticsEvent rows on
+      // subjectId === contractCampaignId (string).
+      subjectId: "42",
+      payload: expect.objectContaining({
+        chainId: 84532,
+        contractAddress: "0x" + "11".repeat(20),
+        contractCampaignId: "42",
+        escrowEventName: "Pledged",
+        transactionHash,
+        blockNumber: "4567",
+        reason: expect.stringContaining("no matching backend intent"),
+      }),
+    }));
+    expect(event.sourceRefs).toEqual(expect.objectContaining({
+      chainId: "84532",
+      contractAddress: "0x" + "11".repeat(20),
+      contractCampaignId: "42",
+      transactionHash,
+      blockNumber: "4567",
     }));
   });
 });

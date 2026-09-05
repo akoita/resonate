@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ShowCampaignEscrow} from "../../src/core/ShowCampaignEscrow.sol";
 import {IShowCampaignEscrow} from "../../src/interfaces/IShowCampaignEscrow.sol";
 import {MockUSDC} from "../../src/payments/MockUSDC.sol";
+import {EscrowProxyDeployer} from "../utils/EscrowProxyDeployer.sol";
 
 /**
  * @title ShowCampaignEscrow Fuzz Tests
@@ -20,6 +21,7 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
     address public alice = makeAddr("alice");
     address public bob = makeAddr("bob");
     address public feeRecipient = makeAddr("feeRecipient");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
 
     bytes32 public constant ARTIST_ID_HASH = keccak256("artist:sennarin");
     bytes32 public constant AUTHORITY_HASH = keccak256("authority:sennarin:wallet");
@@ -27,7 +29,7 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new ShowCampaignEscrow(owner, 0, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, 0, feeRecipient, upgradeAuthority);
 
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
@@ -245,7 +247,7 @@ contract ShowCampaignEscrowFuzzTest is Test, IShowCampaignEscrow {
     }
 
     function _useFeeEscrow(uint256 feeBps) internal {
-        escrow = new ShowCampaignEscrow(owner, feeBps, feeRecipient);
+        escrow = EscrowProxyDeployer.deploy(owner, feeBps, feeRecipient, upgradeAuthority);
         vm.prank(owner);
         escrow.setConfirmer(confirmer, true);
 

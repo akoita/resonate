@@ -42,7 +42,25 @@ if [[ ! -f "$artifact_file" ]]; then
   exit 1
 fi
 
+# The app-facing address is the ERC1967 PROXY, not the UUPS implementation. The
+# DeployShowCampaignEscrow script emits three CREATEs: the implementation
+# (contractName "ShowCampaignEscrow"), the "TimelockController" upgrade authority,
+# and the "ERC1967Proxy". Record all three; SHOW_CAMPAIGN_ESCROW_ADDRESS is the proxy.
 contract_address="$(
+  jq -r '
+    .transactions[]
+    | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy")
+    | .contractAddress
+  ' "$broadcast_file" | head -n 1
+)"
+
+if [[ -z "$contract_address" || "$contract_address" == "null" ]]; then
+  echo "Error: could not find ERC1967Proxy CREATE transaction in $broadcast_file" >&2
+  echo "The escrow is deployed behind a proxy; expected an ERC1967Proxy CREATE." >&2
+  exit 1
+fi
+
+implementation_address="$(
   jq -r '
     .transactions[]
     | select(.transactionType == "CREATE" and .contractName == "ShowCampaignEscrow")
@@ -50,23 +68,41 @@ contract_address="$(
   ' "$broadcast_file" | head -n 1
 )"
 
-if [[ -z "$contract_address" || "$contract_address" == "null" ]]; then
-  echo "Error: could not find ShowCampaignEscrow CREATE transaction in $broadcast_file" >&2
+timelock_address="$(
+  jq -r '
+    .transactions[]
+    | select(.transactionType == "CREATE" and .contractName == "TimelockController")
+    | .contractAddress
+  ' "$broadcast_file" | head -n 1
+)"
+
+if [[ -z "$implementation_address" || "$implementation_address" == "null" ]]; then
+  echo "Error: could not find ShowCampaignEscrow implementation CREATE in $broadcast_file" >&2
+  exit 1
+fi
+
+if [[ -z "$timelock_address" || "$timelock_address" == "null" ]]; then
+  echo "Error: could not find TimelockController CREATE in $broadcast_file" >&2
   exit 1
 fi
 
 deploy_tx="$(
   jq -r '
     .transactions[]
-    | select(.transactionType == "CREATE" and .contractName == "ShowCampaignEscrow")
+    | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy")
     | .hash // .transactionHash // empty
   ' "$broadcast_file" | head -n 1
 )"
 
+if [[ -z "$deploy_tx" || "$deploy_tx" == "null" ]]; then
+  echo "Error: proxy deployment transaction hash is missing from $broadcast_file" >&2
+  exit 1
+fi
+
 deployer="$(
   jq -r '
     .transactions[]
-    | select(.transactionType == "CREATE" and .contractName == "ShowCampaignEscrow")
+    | select(.transactionType == "CREATE" and .contractName == "ERC1967Proxy")
     | .transaction.from // .from // empty
   ' "$broadcast_file" | head -n 1
 )"
@@ -102,13 +138,57 @@ fee_recipient="$(
 )"
 fee_recipient="${fee_recipient:-${SHOW_CAMPAIGN_FEE_RECIPIENT:-$owner}}"
 
-block_number="$(
+guardian="${SHOW_CAMPAIGN_GUARDIAN:-}"
+timelock_min_delay="${SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY:-172800}"
+fulfillment_window="${SHOW_CAMPAIGN_FULFILLMENT_WINDOW:-2592000}"
+
+if [[ "$network" != "local" && -z "$guardian" ]]; then
+  echo "Error: SHOW_CAMPAIGN_GUARDIAN is required for shared-network handoffs." >&2
+  exit 1
+fi
+guardian="${guardian:-$owner}"
+
+for named_address in \
+  "deployer:$deployer" \
+  "owner:$owner" \
+  "fee recipient:$fee_recipient" \
+  "guardian:$guardian" \
+  "proxy:$contract_address" \
+  "implementation:$implementation_address" \
+  "timelock:$timelock_address"; do
+  name="${named_address%%:*}"
+  value="${named_address#*:}"
+  if [[ ! "$value" =~ ^0x[0-9a-fA-F]{40}$ ]]; then
+    echo "Error: $name address is missing or malformed in the deployment handoff." >&2
+    exit 1
+  fi
+done
+
+for named_uint in \
+  "fee BPS:$fee_bps" \
+  "timelock delay:$timelock_min_delay" \
+  "fulfillment window:$fulfillment_window"; do
+  name="${named_uint%%:*}"
+  value="${named_uint#*:}"
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    echo "Error: $name is missing or malformed in the deployment handoff." >&2
+    exit 1
+  fi
+done
+
+block_number_raw="$(
   jq -r --arg tx "$deploy_tx" '
     .receipts[]?
     | select((.transactionHash // .hash // "") == $tx)
     | .blockNumber // empty
   ' "$broadcast_file" | head -n 1
 )"
+
+if [[ ! "$block_number_raw" =~ ^(0x[0-9a-fA-F]+|[0-9]+)$ ]]; then
+  echo "Error: proxy deployment block is missing or malformed in $broadcast_file" >&2
+  exit 1
+fi
+block_number="$((block_number_raw))"
 
 mkdir -p "$DEPLOYMENTS_DIR"
 
@@ -126,10 +206,15 @@ jq -n \
   --arg owner "$owner" \
   --argjson feeBps "$fee_bps" \
   --arg feeRecipient "$fee_recipient" \
+  --arg guardian "$guardian" \
+  --argjson timelockMinDelay "$timelock_min_delay" \
+  --argjson fulfillmentWindow "$fulfillment_window" \
   --arg deployedAt "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
   --arg address "$contract_address" \
+  --arg implementation "$implementation_address" \
+  --arg timelock "$timelock_address" \
   --arg deployTx "$deploy_tx" \
-  --arg blockNumber "$block_number" \
+  --argjson blockNumber "$block_number" \
   --arg broadcastFile "${broadcast_file#$PROJECT_ROOT/}" \
   --arg artifactFile "${artifact_file#$PROJECT_ROOT/}" \
   --arg abiFile "${abi_file#$PROJECT_ROOT/}" \
@@ -145,10 +230,33 @@ jq -n \
     },
     deployedAt: $deployedAt,
     contracts: {
-      ShowCampaignEscrow: $address
+      ShowCampaignEscrow: $address,
+      ShowCampaignEscrowImplementation: $implementation,
+      ShowCampaignEscrowTimelock: $timelock
+    },
+    upgradeability: {
+      pattern: "UUPS-ERC1967",
+      proxy: $address,
+      implementation: $implementation,
+      upgradeAuthority: $timelock
+    },
+    governance: {
+      owner: $owner,
+      guardian: $guardian,
+      timelock: $timelock,
+      timelockMinDelaySeconds: $timelockMinDelay,
+      deployerAdminRenounced: true
+    },
+    lifecycle: {
+      fulfillmentWindowSeconds: $fulfillmentWindow
     },
     verification: {
-      basescan: (if $chainId == 84532 then "https://sepolia.basescan.org/address/" + $address else "" end)
+      blockscout: (if $chainId == 84532 then "https://base-sepolia.blockscout.com/address/" + $address + "?tab=contract" else "" end),
+      sourcify: {
+        proxy: (if $chainId == 84532 then "https://repo.sourcify.dev/84532/" + $address else "" end),
+        implementation: (if $chainId == 84532 then "https://repo.sourcify.dev/84532/" + $implementation else "" end),
+        timelock: (if $chainId == 84532 then "https://repo.sourcify.dev/84532/" + $timelock else "" end)
+      }
     },
     deployment: {
       transaction: $deployTx,
@@ -169,8 +277,21 @@ cat > "$remote_env_file" <<EOF
 # app deployment; do not paste private keys or RPC credentials into this file.
 
 NEXT_PUBLIC_CHAIN_ID=$chain_id
+# App-facing address is the ERC1967 proxy (stable across upgrades).
 SHOW_CAMPAIGN_ESCROW_ADDRESS=$contract_address
 NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS=$contract_address
+# Exact replay origin for this proxy. During a replacement cutover, merge this
+# entry with every legacy address that still has unsettled campaigns.
+SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK=$block_number
+SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS=$contract_address:$block_number
+SHOW_CAMPAIGN_ESCROW_OWNER=$owner
+SHOW_CAMPAIGN_ESCROW_DEPLOYER=$deployer
+# Upgrade authority (TimelockController) — input for UpgradeShowCampaignEscrow.
+SHOW_CAMPAIGN_TIMELOCK_ADDRESS=$timelock_address
+SHOW_CAMPAIGN_ESCROW_IMPLEMENTATION=$implementation_address
+SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY=$timelock_min_delay
+SHOW_CAMPAIGN_GUARDIAN=$guardian
+SHOW_CAMPAIGN_FULFILLMENT_WINDOW=$fulfillment_window
 SHOW_CAMPAIGN_FEE_BPS=$fee_bps
 SHOW_CAMPAIGN_FEE_RECIPIENT=$fee_recipient
 EOF

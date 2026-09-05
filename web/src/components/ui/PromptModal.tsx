@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useId, useRef, type KeyboardEvent } from "react";
 import { Button } from "./Button";
+import { useFocusContainment } from "./useFocusContainment";
 
 interface PromptModalProps {
     isOpen: boolean;
@@ -28,21 +29,30 @@ export function PromptModal({
 }: PromptModalProps) {
     const [value, setValue] = useState(initialValue);
     const inputRef = useRef<HTMLInputElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const ids = useId().replace(/:/g, "");
+    const titleId = `prompt-modal-title-${ids}`;
+    const descriptionId = `prompt-modal-description-${ids}`;
+    const inputId = `prompt-modal-input-${ids}`;
 
     useEffect(() => {
         if (isOpen) {
             // eslint-disable-next-line react-hooks/set-state-in-effect
             setValue(initialValue);
-            // Autofocus after animation
-            setTimeout(() => inputRef.current?.focus(), 100);
         }
     }, [isOpen, initialValue]);
 
-    const handleKeyDown = (e: React.KeyboardEvent) => {
+    useFocusContainment({
+        active: isOpen,
+        containerRef: dialogRef,
+        initialFocusRef: inputRef,
+        onEscape: onCancel,
+    });
+
+    const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
+            e.preventDefault();
             onConfirm(value);
-        } else if (e.key === "Escape") {
-            onCancel();
         }
     };
 
@@ -52,24 +62,32 @@ export function PromptModal({
         <div className="playlist-modal-overlay" style={{ zIndex: 2000 }}>
             <div
                 className="playlist-modal redesigned"
+                ref={dialogRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                aria-describedby={description ? descriptionId : undefined}
+                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
                 style={{ maxWidth: "400px" }}
             >
                 <div className="playlist-modal-header" style={{ paddingBottom: "16px" }}>
-                    <h3 style={{ fontSize: "20px" }}>{title}</h3>
+                    <h3 id={titleId} style={{ fontSize: "20px" }}>{title}</h3>
                     {description && (
-                        <p className="text-sm text-white/50 mt-1">{description}</p>
+                        <p id={descriptionId} className="text-sm text-white/50 mt-1">{description}</p>
                     )}
                 </div>
 
                 <div style={{ padding: "24px 32px" }}>
                     <input
                         ref={inputRef}
+                        id={inputId}
                         type="text"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder={placeholder}
+                        aria-label={title}
                         className="playlist-search-input"
                         style={{ paddingLeft: "16px" }}
                     />

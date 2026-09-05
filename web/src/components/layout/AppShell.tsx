@@ -29,10 +29,13 @@ export default function AppShell({
   return (
     <PlayerProvider>
       <div className={`app-shell ${isPlaylistPanelOpen ? 'has-sidebar' : ''}`}>
+        <a className="skip-link" href="#main-content">
+          Skip to main content
+        </a>
         <Sidebar />
         <div className="app-main">
           <Topbar />
-          <main className="app-content">
+          <main id="main-content" className="app-content" tabIndex={-1}>
             <Suspense fallback={null}>
               {children}
             </Suspense>

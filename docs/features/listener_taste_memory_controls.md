@@ -67,6 +67,12 @@ emails, URLs, exact private counts, or model internals. Social/cohort matching
 is disabled by default and must be explicitly enabled by the listener before
 future matching features can consume private taste data.
 
+Taste-signal values and optional sources have an 80-character raw limit. The
+backend rejects an over-limit required value before tag, control-character, or
+whitespace normalization begins. Valid values at the limit remain accepted,
+and the same bounded normalizer governs agent-learning metadata and taste-memory
+labels.
+
 Reset is implemented as a timestamp marker. Older `AgentSignal` and analytics
 records remain available for audit and governed retention, but recommendation
 and agent-learning inputs ignore signals before the reset marker.

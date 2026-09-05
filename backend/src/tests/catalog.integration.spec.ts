@@ -7,6 +7,7 @@
  * Run: npm run test:integration
  */
 
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { EventBus } from '../modules/shared/event_bus';
@@ -17,6 +18,7 @@ import { ConfigService } from '@nestjs/config';
 import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
+const NO_AI_DISCLOSURE = { level: 'none' as const, facets: [] as string[] };
 
 let catalog: CatalogService;
 let eventBus: EventBus;
@@ -78,20 +80,111 @@ describe('CatalogService (integration)', () => {
       title: 'TC Test Album',
       type: 'album',
       tracks: [
-        { title: 'Track One', position: 1 },
-        { title: 'Track Two', position: 2 },
+        { title: 'Track One', position: 1, aiDisclosure: NO_AI_DISCLOSURE },
+        { title: 'Track Two', position: 2, aiDisclosure: NO_AI_DISCLOSURE },
       ],
     });
     expect(result.id).toBeDefined();
     expect(result.title).toBe('TC Test Album');
     expect(result.tracks).toHaveLength(2);
+    expect(result.aiDisclosure).toMatchObject({
+      level: 'none',
+      containsAI: 'None',
+      facets: [],
+    });
+    expect(result.tracks[0].aiDisclosure).toMatchObject({
+      level: 'none',
+      source: 'artist',
+    });
+    expect(result.artworkRevision).toBe(1);
+  });
+
+  it('increments release artworkRevision atomically and returns the versioned URL', async () => {
+    const release = await prisma.release.create({
+      data: {
+        id: `${TEST_PREFIX}artwork_revision_release`,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Artwork Revision Release',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+        artworkData: Buffer.from('initial-artwork'),
+        artworkMimeType: 'image/png',
+      },
+    });
+    const image = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+      'base64',
+    );
+
+    try {
+      expect(release.artworkRevision).toBe(1);
+
+      const updated = await catalog.updateReleaseArtwork(
+        release.id,
+        `${TEST_PREFIX}user`,
+        { buffer: image, mimetype: 'image/png' },
+      );
+
+      expect(updated).toMatchObject({
+        artworkRevision: 2,
+        artworkUrl: `/catalog/releases/${release.id}/artwork/v2`,
+      });
+      await expect(
+        prisma.release.findUnique({ where: { id: release.id }, select: { artworkRevision: true } }),
+      ).resolves.toMatchObject({ artworkRevision: 2 });
+
+      const publicRelease = await catalog.getRelease(release.id);
+      expect(publicRelease?.artworkRevision).toBe(2);
+      await expect(catalog.getReleaseArtwork(release.id, '1')).resolves.toMatchObject({
+        mimeType: 'image/png',
+      });
+      await expect(catalog.getReleaseArtwork(release.id, '2')).resolves.toMatchObject({
+        mimeType: 'image/png',
+      });
+      await expect(catalog.getReleaseArtwork(release.id, '3')).resolves.toBeNull();
+      await expect(catalog.getReleaseArtwork(release.id, 'not-a-revision')).resolves.toBeNull();
+    } finally {
+      await prisma.release.delete({ where: { id: release.id } });
+    }
+  });
+
+  it('rejects a new track without an explicit AI disclosure', async () => {
+    await expect(catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Missing Disclosure',
+      tracks: [{ title: 'Undeclared Track', position: 1 }],
+    } as any)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('keeps fully AI-generated tracks available through direct catalog reads', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Direct AI Catalog Release',
+      tracks: [{
+        title: 'Declared AI Track',
+        position: 1,
+        aiDisclosure: { level: 'all', facets: ['production'] },
+      }],
+    });
+    await prisma.release.update({
+      where: { id: created.id },
+      data: { status: 'ready' },
+    });
+
+    const release = await catalog.getRelease(created.id);
+    expect(release?.aiDisclosure).toMatchObject({ level: 'all', containsAI: 'All' });
+    expect(release?.tracks[0].aiDisclosure).toMatchObject({
+      level: 'all',
+      facets: ['production'],
+      source: 'artist',
+    });
   });
 
   it('retrieves a release with full relations', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Retrieval Test',
-      tracks: [{ title: 'Solo Track', position: 1 }],
+      tracks: [{ title: 'Solo Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const release = await catalog.getRelease(created.id);
     expect(release).not.toBeNull();
@@ -313,11 +406,85 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Before Update',
-      tracks: [{ title: 'T', position: 1 }],
+      tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
-    const updated = await catalog.updateRelease(created.id, { title: 'After Update', status: 'published' });
+    const updated = await catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+      title: 'After Update',
+      status: 'published',
+    });
     expect(updated.title).toBe('After Update');
     expect(updated.status).toBe('published');
+  });
+
+  it('does not let an owner reopen a published release to bypass disclosure locking', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Locked Disclosure',
+      tracks: [{ title: 'Locked Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    await catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+      status: 'published',
+    });
+
+    await expect(
+      catalog.updateRelease(created.id, `${TEST_PREFIX}user`, { status: 'draft' }),
+    ).rejects.toThrow('cannot return to an editable lifecycle state');
+    await expect(
+      catalog.updateRelease(created.id, `${TEST_PREFIX}user`, {
+        tracks: [{
+          id: created.tracks[0].id,
+          aiDisclosure: { level: 'all', facets: [] },
+        }],
+      }),
+    ).rejects.toThrow('cannot be silently replaced');
+  });
+
+  // #1492: owner-scoped post-hoc correction of the credited artist.
+  describe('updateRelease primaryArtist correction (#1492)', () => {
+    let releaseId: string;
+
+    beforeAll(async () => {
+      // A second user with no claim on the release — the non-owner caller.
+      await prisma.user.create({
+        data: { id: `${TEST_PREFIX}user2`, email: `${TEST_PREFIX}user2@test.resonate` },
+      });
+      const created = await catalog.createRelease({
+        userId: `${TEST_PREFIX}user`,
+        title: 'Miscredited Release',
+        tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+      });
+      releaseId = created.id;
+    });
+
+    it('lets the owner correct the credited artist', async () => {
+      const updated = await catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, {
+        primaryArtist: '  The   Game ',
+      });
+      // Trimmed + whitespace-collapsed on write.
+      expect(updated.primaryArtist).toBe('The Game');
+    });
+
+    it('rejects a non-owner with Forbidden', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user2`, {
+          primaryArtist: 'Hijacked Credit',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects an empty credited artist with BadRequest', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, { primaryArtist: '   ' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rejects an over-long credited artist with BadRequest', async () => {
+      await expect(
+        catalog.updateRelease(releaseId, `${TEST_PREFIX}user`, {
+          primaryArtist: 'x'.repeat(201),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   it('preserves bucket-relative URIs when decrypting marketplace previews', async () => {
@@ -388,12 +555,12 @@ describe('CatalogService (integration)', () => {
     }
   });
 
-  it('uses the storage provider for unencrypted marketplace previews before localhost fetch', async () => {
+  it('uses the contained source loader for unencrypted marketplace previews', async () => {
     const releaseId = `${TEST_PREFIX}preview_release_unencrypted`;
     const trackId = `${TEST_PREFIX}preview_track_unencrypted`;
     const stemId = `${TEST_PREFIX}preview_stem_unencrypted`;
     const stemUri = 'resonate-stems-staging/originals/preview-raw.mp3';
-    const download = jest.fn().mockResolvedValue(Buffer.from('raw-preview'));
+    const loadSourceBuffer = jest.fn().mockResolvedValue(Buffer.from('raw-preview'));
     const fetchSpy = jest.spyOn(global, 'fetch').mockRejectedValue(new Error('should not fetch'));
 
     await prisma.release.create({
@@ -428,8 +595,8 @@ describe('CatalogService (integration)', () => {
 
     const previewCatalog = new CatalogService(
       eventBus,
-      { decrypt: jest.fn() } as unknown as EncryptionService,
-      { download, upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
+      { decrypt: jest.fn(), loadSourceBuffer } as unknown as EncryptionService,
+      { download: jest.fn(), upload: jest.fn(), delete: jest.fn() } as unknown as LocalStorageProvider,
       new UploadRightsRoutingService(),
     );
 
@@ -437,7 +604,7 @@ describe('CatalogService (integration)', () => {
       const preview = await previewCatalog.getStemPreview(stemId);
 
       expect(preview.data.toString()).toBe('raw-preview');
-      expect(download).toHaveBeenCalledWith(stemUri);
+      expect(loadSourceBuffer).toHaveBeenCalledWith(stemUri);
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -447,11 +614,109 @@ describe('CatalogService (integration)', () => {
     }
   });
 
+  it('does not raw-fetch a hostile stem URI after source policy rejection', async () => {
+    const releaseId = `${TEST_PREFIX}hostile_release`;
+    const trackId = `${TEST_PREFIX}hostile_track`;
+    const stemId = `${TEST_PREFIX}hostile_stem`;
+    const hostileUri = 'http://evil.example/catalog/stems/existing.wav/blob';
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Hostile Source',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Hostile Source Track',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: hostileUri,
+        storageProvider: 'local',
+      },
+    });
+
+    try {
+      await expect(
+        catalog.getStemBlob(stemId, { includeRestricted: true }),
+      ).resolves.toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
+  it('stops after a missing local-disk source instead of fetching its own blob route', async () => {
+    const releaseId = `${TEST_PREFIX}missing_local_release`;
+    const trackId = `${TEST_PREFIX}missing_local_track`;
+    const stemId = `${TEST_PREFIX}missing_local_stem`;
+    const loadSourceBuffer = jest.fn();
+    const localCatalog = new CatalogService(
+      eventBus,
+      { loadSourceBuffer } as unknown as EncryptionService,
+      new LocalStorageProvider(),
+      new UploadRightsRoutingService(),
+    );
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Missing Local Source',
+        status: 'ready',
+        rightsRoute: 'STANDARD_ESCROW',
+      },
+    });
+    await prisma.track.create({
+      data: { id: trackId, releaseId, title: 'Missing Local Source Track' },
+    });
+    await prisma.stem.create({
+      data: {
+        id: stemId,
+        trackId,
+        type: 'vocals',
+        uri: `/catalog/stems/${stemId}.mp3/blob`,
+        storageProvider: 'local',
+      },
+    });
+
+    try {
+      await expect(
+        localCatalog.getStemBlob(stemId, { includeRestricted: true }),
+      ).resolves.toBeNull();
+      expect(loadSourceBuffer).not.toHaveBeenCalled();
+    } finally {
+      await prisma.stem.delete({ where: { id: stemId } });
+      await prisma.track.delete({ where: { id: trackId } });
+      await prisma.release.delete({ where: { id: releaseId } });
+    }
+  });
+
+  it('retains contained disk lookup compatibility for legacy bare local filenames', () => {
+    expect(
+      (catalog as any).getLocalStemFilename({ id: 'fallback-id', uri: 'legacy-stem.mp3' }),
+    ).toBe('legacy-stem.mp3');
+  });
+
   it('persists processing errors on failed releases and tracks', async () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Failure Capture',
-      tracks: [{ title: 'Broken Track', position: 1 }],
+      tracks: [{ title: 'Broken Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     eventBus.publish({
@@ -477,7 +742,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Delete Race Target',
-      tracks: [{ title: 'Transient Track', position: 1 }],
+      tracks: [{ title: 'Transient Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
@@ -508,7 +773,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Delete Target',
-      tracks: [{ title: 'Doomed', position: 1 }],
+      tracks: [{ title: 'Doomed', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/test.mp3' },
@@ -522,7 +787,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Library Delete Target',
-      tracks: [{ title: 'Saved Track', position: 1 }],
+      tracks: [{ title: 'Saved Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const trackId = created.tracks[0].id;
     const libraryTrackId = `${TEST_PREFIX}library_${trackId}`;
@@ -559,7 +824,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Legacy Rating Delete Target',
-      tracks: [{ title: 'Rated Stem', position: 1 }],
+      tracks: [{ title: 'Rated Stem', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const stem = await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/rated.mp3' },
@@ -595,7 +860,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Purchased Stem Delete Target',
-      tracks: [{ title: 'Sold Stem', position: 1 }],
+      tracks: [{ title: 'Sold Stem', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     const stem = await prisma.stem.create({
       data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/sold.mp3' },
@@ -644,7 +909,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Failed Fingerprinted Release',
-      tracks: [{ title: 'Broken Upload', position: 1 }],
+      tracks: [{ title: 'Broken Upload', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
 
     await prisma.audioFingerprint.create({
@@ -711,7 +976,7 @@ describe('CatalogService (integration)', () => {
     const created = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Protected',
-      tracks: [{ title: 'T', position: 1 }],
+      tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
     await expect(catalog.deleteRelease(created.id, 'wrong')).rejects.toThrow('Not authorized');
   });
@@ -890,6 +1155,7 @@ describe('CatalogService (integration)', () => {
     });
 
     expect(result).not.toBeNull();
+    expect(result!.library).toBeNull();
     expect(result!.recommendation?.reasons).toEqual(['Matches your jazz preference']);
 
     const buyAction = result!.actions.find((action) => action.key === 'buy_license');
@@ -909,6 +1175,42 @@ describe('CatalogService (integration)', () => {
     expect(serialized).not.toContain(sellerAddress);
     expect(serialized).not.toContain('listing_expired');
     expect(serialized).not.toContain('raw private text');
+
+    const otherUserId = `${TEST_PREFIX}player_actions_other_user`;
+    await prisma.user.create({
+      data: { id: otherUserId, email: `${otherUserId}@test.resonate` },
+    });
+    try {
+      const otherSave = await prisma.libraryTrack.create({
+        data: {
+          userId: otherUserId,
+          source: 'remote',
+          title: 'Actionable Track',
+          catalogTrackId: trackId,
+        },
+      });
+      const callerUnsaved = await catalog.getPlayerTrackActions(trackId, {
+        userId: `${TEST_PREFIX}user`,
+      });
+      expect(callerUnsaved!.library).toEqual({ saved: false, libraryTrackId: null });
+
+      const callerSave = await prisma.libraryTrack.create({
+        data: {
+          userId: `${TEST_PREFIX}user`,
+          source: 'remote',
+          title: 'Actionable Track',
+          catalogTrackId: trackId,
+        },
+      });
+      const callerSaved = await catalog.getPlayerTrackActions(trackId, {
+        userId: `${TEST_PREFIX}user`,
+      });
+      expect(callerSaved!.library).toEqual({ saved: true, libraryTrackId: callerSave.id });
+      expect(JSON.stringify(callerSaved)).not.toContain(otherSave.id);
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { catalogTrackId: trackId } });
+      await prisma.user.delete({ where: { id: otherUserId } });
+    }
   });
 
   it('keeps marketplace player actions disabled when listings are not publicly purchasable', async () => {

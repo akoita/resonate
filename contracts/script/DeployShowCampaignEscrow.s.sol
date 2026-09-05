@@ -3,48 +3,134 @@ pragma solidity ^0.8.28;
 
 import {console} from "forge-std/Script.sol";
 import {ShowCampaignEscrow} from "../src/core/ShowCampaignEscrow.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {DeploymentKey} from "./DeploymentKey.s.sol";
 
 /**
  * @title DeployShowCampaignEscrow
- * @notice Deploys the standalone Shows campaign escrow coordinator.
+ * @notice Deploys the Shows campaign escrow as a UUPS implementation behind an
+ *         ERC1967 proxy, with a TimelockController as the upgrade authority. Both
+ *         the ops owner and an independent guardian hold PROPOSER + EXECUTOR +
+ *         CANCELLER roles on the timelock (issue #1497 + SCE-2/#1271,
+ *         RFC contract-upgradeability-and-recovery).
  *
- * The contract does not reference the existing marketplace/content-protection
- * graph. Campaign creation binds artist authority, beneficiary, payment token,
- * thresholds, and deadlines per campaign.
+ * Authority model:
+ *   - `owner` (ops multisig): day-to-day operations + the instant emergency pause.
+ *     It CANNOT upgrade the implementation directly. On the timelock it is a
+ *     proposer + executor + canceller.
+ *   - `guardian` (independent recovery key): a SECOND, fully independent
+ *     proposer + executor + canceller on the timelock. It has no operational
+ *     authority over the escrow itself, but it can schedule + execute a recovery
+ *     upgrade through the timelock without the owner, and can cancel an
+ *     owner-scheduled upgrade.
+ *   - `TimelockController`: the escrow's `upgradeAuthority`. Only a scheduled,
+ *     delay-elapsed operation through the timelock can upgrade the proxy.
+ *
+ * Recovery rationale (SCE-2, #1271):
+ *   The escrow freezes ALL backer refund paths while paused, and `setPaused` is
+ *   `onlyOwner`. If the owner key is lost or compromised while paused, the only
+ *   recovery is a UUPS upgrade through the timelock. Recovery must therefore NOT
+ *   depend on a single key: the guardian is a fully independent proposer +
+ *   executor so it can drive a recovery upgrade on its own. Safety is preserved
+ *   because that recovery upgrade is still gated by the same `minDelay` (48h)
+ *   timelock, and the owner — also a canceller — can cancel a malicious
+ *   guardian-initiated upgrade during the delay (and vice-versa). The two
+ *   authorities thus check each other without weakening the 48h protection
+ *   against a malicious upgrade.
+ *
+ * The deployer takes DEFAULT_ADMIN_ROLE on the timelock only transiently — long
+ * enough to grant the guardian its roles — then renounces it, leaving the timelock
+ * self-administered (no EOA admin). This is the canonical OZ TimelockController
+ * bootstrap; the alternative (admin=address(0)) makes the guardian grant impossible.
  *
  * Required env:
- *   PRIVATE_KEY - deployer private key
+ *   PRIVATE_KEY - deployer private key (see DeploymentKey for local override rules)
  *
  * Optional env:
- *   SHOW_CAMPAIGN_ESCROW_OWNER - owner/ops multisig; defaults to deployer
- *   SHOW_CAMPAIGN_FEE_BPS - success-only campaign fee in basis points; defaults to 600
- *   SHOW_CAMPAIGN_FEE_RECIPIENT - fee recipient; required on remote envs, local defaults to owner
+ *   SHOW_CAMPAIGN_ESCROW_OWNER    - ops owner/multisig; required on remote,
+ *                                   local defaults to deployer
+ *   SHOW_CAMPAIGN_FEE_BPS         - success-only campaign fee in bps; defaults to 600
+ *   SHOW_CAMPAIGN_FEE_RECIPIENT   - fee recipient; required on remote, local defaults to owner
+ *   SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY - upgrade delay in seconds; defaults to 172800 (48h)
+ *   SHOW_CAMPAIGN_GUARDIAN        - independent recovery key (proposer+executor+canceller);
+ *                                   required on remote, local defaults to owner
+ *   SHOW_CAMPAIGN_FULFILLMENT_WINDOW - seconds after booking confirmation before the
+ *                                   permissionless refund escape opens (issue #1271);
+ *                                   defaults to 2592000 (30 days); bounded on-chain to
+ *                                   [1 day, 180 days]
  */
 contract DeployShowCampaignEscrow is DeploymentKey {
+    uint256 internal constant DEFAULT_TIMELOCK_MIN_DELAY = 172_800; // 48 hours
+    uint256 internal constant DEFAULT_FULFILLMENT_WINDOW = 30 days;
+
     function run() external {
         uint256 deployerKey = _deploymentPrivateKey();
         address deployer = vm.addr(deployerKey);
-        address owner = vm.envOr("SHOW_CAMPAIGN_ESCROW_OWNER", deployer);
+        bool isLocal = block.chainid == 31337 || block.chainid == 1337;
+        address owner =
+            isLocal ? vm.envOr("SHOW_CAMPAIGN_ESCROW_OWNER", deployer) : vm.envAddress("SHOW_CAMPAIGN_ESCROW_OWNER");
         uint256 feeBps = vm.envOr("SHOW_CAMPAIGN_FEE_BPS", uint256(600));
-        address feeRecipient;
-        if (block.chainid == 31337 || block.chainid == 1337) {
-            feeRecipient = vm.envOr("SHOW_CAMPAIGN_FEE_RECIPIENT", owner);
-        } else {
-            feeRecipient = vm.envAddress("SHOW_CAMPAIGN_FEE_RECIPIENT");
-        }
+        uint256 minDelay = vm.envOr("SHOW_CAMPAIGN_TIMELOCK_MIN_DELAY", DEFAULT_TIMELOCK_MIN_DELAY);
+        uint256 fulfillmentWindow = vm.envOr("SHOW_CAMPAIGN_FULFILLMENT_WINDOW", DEFAULT_FULFILLMENT_WINDOW);
+
+        address feeRecipient =
+            isLocal ? vm.envOr("SHOW_CAMPAIGN_FEE_RECIPIENT", owner) : vm.envAddress("SHOW_CAMPAIGN_FEE_RECIPIENT");
+        address guardian = isLocal ? vm.envOr("SHOW_CAMPAIGN_GUARDIAN", owner) : vm.envAddress("SHOW_CAMPAIGN_GUARDIAN");
+
+        require(owner != address(0), "SHOW_CAMPAIGN_ESCROW_OWNER cannot be zero");
+        require(feeRecipient != address(0), "SHOW_CAMPAIGN_FEE_RECIPIENT cannot be zero");
+        require(guardian != address(0), "SHOW_CAMPAIGN_GUARDIAN cannot be zero");
+        require(isLocal || guardian != owner, "remote guardian must be independent from owner");
+        require(isLocal || guardian != deployer, "remote guardian must be independent from deployer");
+        require(isLocal || minDelay >= DEFAULT_TIMELOCK_MIN_DELAY, "remote timelock delay must be at least 48h");
 
         vm.startBroadcast(deployerKey);
 
-        ShowCampaignEscrow escrow = new ShowCampaignEscrow(owner, feeBps, feeRecipient);
+        // 1. Implementation (initializer-disabled in its constructor).
+        ShowCampaignEscrow impl = new ShowCampaignEscrow();
+
+        // 2. Upgrade-authority timelock. Ops owner is proposer + executor (and, per the
+        //    OZ 5.x constructor, a canceller — it grants CANCELLER_ROLE to every proposer).
+        //    Deployer is a transient admin so it can also make the guardian an independent
+        //    proposer + executor + canceller, then renounces.
+        address[] memory proposers = new address[](1);
+        proposers[0] = owner;
+        address[] memory executors = new address[](1);
+        executors[0] = owner;
+        TimelockController timelock = new TimelockController(minDelay, proposers, executors, deployer);
+        // SCE-2 (#1271): recovery must not depend on a single key. Grant the guardian a
+        // fully independent recovery path — PROPOSER + EXECUTOR + CANCELLER — so it can
+        // schedule and execute a recovery upgrade on its own if the owner key is lost or
+        // compromised while the escrow is paused. Safety is unchanged: the recovery upgrade
+        // is still gated by `minDelay` (48h), and the owner (also a canceller) can cancel a
+        // malicious guardian-initiated upgrade during the delay, and vice-versa.
+        timelock.grantRole(timelock.PROPOSER_ROLE(), guardian);
+        timelock.grantRole(timelock.EXECUTOR_ROLE(), guardian);
+        timelock.grantRole(timelock.CANCELLER_ROLE(), guardian);
+        timelock.renounceRole(timelock.DEFAULT_ADMIN_ROLE(), deployer);
+
+        // 3. Proxy — atomically bind ops owner, fee config, timelock authority, and
+        //    the v2 fulfillment window in the constructor delegatecall. A separate
+        //    initializeV2 transaction would leave a public reinitializer front-runnable.
+        bytes memory initData = abi.encodeCall(
+            ShowCampaignEscrow.initializeFresh, (owner, feeBps, feeRecipient, address(timelock), fulfillmentWindow)
+        );
+        ERC1967Proxy proxy = new ERC1967Proxy(address(impl), initData);
+        ShowCampaignEscrow escrow = ShowCampaignEscrow(address(proxy));
 
         vm.stopBroadcast();
 
-        console.log("=== ShowCampaignEscrow Deployment Complete ===");
+        console.log("=== ShowCampaignEscrow (UUPS) Deployment Complete ===");
         console.log("Deployer:", deployer);
-        console.log("Owner:", owner);
+        console.log("Ops owner:", owner);
         console.log("Fee BPS:", feeBps);
         console.log("Fee Recipient:", feeRecipient);
-        console.log("ShowCampaignEscrow:", address(escrow));
+        console.log("Implementation:", address(impl));
+        console.log("ShowCampaignEscrow (proxy):", address(escrow));
+        console.log("Upgrade authority (timelock):", address(timelock));
+        console.log("Timelock min delay (s):", minDelay);
+        console.log("Guardian (PROPOSER + EXECUTOR + CANCELLER):", guardian);
+        console.log("Fulfillment window (s):", fulfillmentWindow);
     }
 }

@@ -1,13 +1,20 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
+import { randomUUID } from 'crypto';
 import { EventBus } from '../shared/event_bus';
 import { RealtimeAudioEvent, RealtimeDisconnectedEvent } from '../../events/event_types';
+
+/** Verified identity and connection that own a realtime session. */
+export interface RealtimeSessionOwner {
+  userId: string;
+  socketId: string;
+}
 
 /** Parameters for starting a realtime session */
 export interface RealtimeSessionParams {
   trackId: string;
-  userId: string;
+  owner: RealtimeSessionOwner;
   bpm?: number;
   key?: string;
   density?: number;
@@ -26,6 +33,7 @@ export interface RealtimeControlUpdate {
 interface RealtimeSession {
   id: string;
   userId: string;
+  socketId: string;
   trackId: string;
   sdkSession: any | null; // @google/genai music session
   controls: Required<RealtimeControlUpdate>;
@@ -34,6 +42,14 @@ interface RealtimeSession {
   isActive: boolean;
   lastActivity: number;
   cleanupTimer?: ReturnType<typeof setTimeout>;
+  disconnectPublished: boolean;
+}
+
+class RealtimeSessionCancelledError extends Error {
+  constructor() {
+    super('Realtime session was cancelled');
+    this.name = 'RealtimeSessionCancelledError';
+  }
 }
 
 /**
@@ -56,6 +72,7 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   private readonly client: GoogleGenAI;
   private readonly apiKey: string;
   private readonly idleTimeoutMs = 60_000; // 60s idle timeout
+  private shuttingDown = false;
 
   constructor(
     private readonly configService: ConfigService,
@@ -66,9 +83,12 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   }
 
   onModuleDestroy() {
-    // Clean up all active sessions on shutdown
-    for (const [id] of this.sessions) {
-      this.stopSession(id);
+    this.shuttingDown = true;
+
+    // Use the internal cleanup path so shutdown never needs a caller-owned
+    // context and pending provider connections cannot revive a session.
+    for (const session of Array.from(this.sessions.values())) {
+      this.cleanupSession(session, { publishDisconnect: false });
     }
   }
 
@@ -86,7 +106,15 @@ export class LyriaRealtimeService implements OnModuleDestroy {
    * begins streaming audio chunks. Emits `realtime.audio` events via EventBus.
    */
   async startSession(params: RealtimeSessionParams): Promise<string> {
-    const sessionId = `rt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    if (
+      this.shuttingDown ||
+      !this.isValidOwner(params?.owner) ||
+      !this.isValidString(params?.trackId)
+    ) {
+      throw new Error('Invalid realtime session request');
+    }
+
+    const sessionId = `rt_${randomUUID()}`;
 
     if (!this.isAvailable()) {
       this.logger.warn('Lyria RealTime API not configured (no API key), creating mock session');
@@ -94,7 +122,8 @@ export class LyriaRealtimeService implements OnModuleDestroy {
 
     const session: RealtimeSession = {
       id: sessionId,
-      userId: params.userId,
+      userId: params.owner.userId,
+      socketId: params.owner.socketId,
       trackId: params.trackId,
       sdkSession: null,
       controls: {
@@ -107,6 +136,7 @@ export class LyriaRealtimeService implements OnModuleDestroy {
       isRecording: false,
       isActive: true,
       lastActivity: Date.now(),
+      disconnectPublished: false,
     };
 
     this.sessions.set(sessionId, session);
@@ -114,12 +144,19 @@ export class LyriaRealtimeService implements OnModuleDestroy {
     // Attempt to connect via SDK
     try {
       await this.connectSession(session);
-      this.logger.log(`Started realtime session ${sessionId} for user ${params.userId}`);
+      this.assertCurrentActiveSession(session);
+      this.logger.log(`Started realtime session ${sessionId} for user ${params.owner.userId}`);
     } catch (error) {
+      if (error instanceof RealtimeSessionCancelledError || !this.isCurrentActiveSession(session)) {
+        throw new RealtimeSessionCancelledError();
+      }
+
       this.logger.warn(`Failed to connect to Lyria RealTime API: ${error}. Session ${sessionId} in degraded mode.`);
       // Session stays active but in degraded mode (no SDK session)
       // Frontend can still use existing stems
     }
+
+    this.assertCurrentActiveSession(session);
 
     // Start idle timeout
     this.resetIdleTimeout(session);
@@ -130,11 +167,8 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   /**
    * Update generation controls for an active session.
    */
-  async updateControls(sessionId: string, update: RealtimeControlUpdate): Promise<void> {
-    const session = this.sessions.get(sessionId);
-    if (!session || !session.isActive) {
-      throw new Error(`Session ${sessionId} not found or inactive`);
-    }
+  async updateControls(sessionId: string, owner: RealtimeSessionOwner, update: RealtimeControlUpdate): Promise<void> {
+    const session = this.requireOwnedActiveSession(sessionId, owner);
 
     // Merge updates
     const bpmChanged = update.bpm !== undefined && update.bpm !== session.controls.bpm;
@@ -175,11 +209,8 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   /**
    * Start recording the session output.
    */
-  startRecording(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session || !session.isActive) {
-      throw new Error(`Session ${sessionId} not found or inactive`);
-    }
+  startRecording(sessionId: string, owner: RealtimeSessionOwner): void {
+    const session = this.requireOwnedActiveSession(sessionId, owner);
 
     session.isRecording = true;
     session.chunks = []; // Clear previous recording
@@ -189,11 +220,8 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   /**
    * Stop recording and return the recorded audio as a WAV buffer.
    */
-  stopRecording(sessionId: string): Buffer {
-    const session = this.sessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session ${sessionId} not found`);
-    }
+  stopRecording(sessionId: string, owner: RealtimeSessionOwner): Buffer {
+    const session = this.requireOwnedActiveSession(sessionId, owner);
 
     session.isRecording = false;
     const pcmData = Buffer.concat(session.chunks);
@@ -209,36 +237,33 @@ export class LyriaRealtimeService implements OnModuleDestroy {
   /**
    * Stop and clean up a session.
    */
-  stopSession(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (!session) return;
-
-    session.isActive = false;
-
-    // Stop SDK session
-    if (session.sdkSession) {
-      try {
-        session.sdkSession.stop();
-      } catch (e) {
-        // Ignore stop errors
-      }
-      session.sdkSession = null;
-    }
-
-    // Clear timeout
-    if (session.cleanupTimer) {
-      clearTimeout(session.cleanupTimer);
-    }
-
-    this.sessions.delete(sessionId);
+  stopSession(sessionId: string, owner: RealtimeSessionOwner): void {
+    const session = this.requireOwnedActiveSession(sessionId, owner);
+    this.cleanupSession(session, { publishDisconnect: false });
     this.logger.log(`Stopped realtime session ${sessionId}`);
+  }
+
+  /**
+   * Internal lifecycle cleanup for a disconnected socket. Sessions are added
+   * to the map before provider setup begins, so this also cancels pending
+   * starts.
+   */
+  stopSessionsForSocket(socketId: string): void {
+    if (!this.isValidString(socketId)) return;
+
+    for (const session of Array.from(this.sessions.values())) {
+      if (session.socketId === socketId) {
+        this.cleanupSession(session, { publishDisconnect: false });
+        this.logger.log(`Cleaned up realtime session ${session.id} for disconnected client ${socketId}`);
+      }
+    }
   }
 
   /**
    * Get current session state (for frontend sync).
    */
-  getSessionState(sessionId: string): { controls: Required<RealtimeControlUpdate>; isRecording: boolean; isActive: boolean } | null {
-    const session = this.sessions.get(sessionId);
+  getSessionState(sessionId: string, owner: RealtimeSessionOwner): { controls: Required<RealtimeControlUpdate>; isRecording: boolean; isActive: boolean } | null {
+    const session = this.getOwnedActiveSession(sessionId, owner);
     if (!session) return null;
     return {
       controls: { ...session.controls },
@@ -249,6 +274,115 @@ export class LyriaRealtimeService implements OnModuleDestroy {
 
   // ============ Private Helpers ============
 
+  private isValidString(value: unknown): value is string {
+    return typeof value === 'string' && value.trim().length > 0 && value.length <= 256;
+  }
+
+  private isValidOwner(value: unknown): value is RealtimeSessionOwner {
+    if (!value || typeof value !== 'object') return false;
+    const owner = value as Partial<RealtimeSessionOwner>;
+    return this.isValidString(owner.userId) && this.isValidString(owner.socketId);
+  }
+
+  private isCurrentActiveSession(session: RealtimeSession): boolean {
+    return this.sessions.get(session.id) === session && session.isActive;
+  }
+
+  private assertCurrentActiveSession(session: RealtimeSession): void {
+    if (!this.isCurrentActiveSession(session)) {
+      throw new RealtimeSessionCancelledError();
+    }
+  }
+
+  private getOwnedActiveSession(
+    sessionId: unknown,
+    owner: unknown,
+  ): RealtimeSession | null {
+    if (!this.isValidString(sessionId) || !this.isValidOwner(owner)) {
+      return null;
+    }
+
+    const session = this.sessions.get(sessionId);
+    if (
+      !session ||
+      !session.isActive ||
+      session.userId !== owner.userId ||
+      session.socketId !== owner.socketId
+    ) {
+      return null;
+    }
+
+    return session;
+  }
+
+  private requireOwnedActiveSession(
+    sessionId: unknown,
+    owner: unknown,
+  ): RealtimeSession {
+    const session = this.getOwnedActiveSession(sessionId, owner);
+    if (!session) {
+      // Keep unknown, inactive, and non-owned sessions indistinguishable.
+      throw new Error('Realtime session unavailable');
+    }
+    return session;
+  }
+
+  private stopSdkSession(sdkSession: any): void {
+    if (!sdkSession || typeof sdkSession.stop !== 'function') return;
+
+    try {
+      const result = sdkSession.stop();
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => undefined);
+      }
+    } catch {
+      // Provider shutdown is best effort during lifecycle cleanup.
+    }
+  }
+
+  private publishDisconnected(session: RealtimeSession, reason: string): void {
+    if (session.disconnectPublished) return;
+    session.disconnectPublished = true;
+    this.eventBus.publish({
+      eventName: 'realtime.disconnected',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      sessionId: session.id,
+      userId: session.userId,
+      reason,
+    } satisfies RealtimeDisconnectedEvent);
+  }
+
+  private cleanupSession(
+    session: RealtimeSession,
+    options: { publishDisconnect: boolean; reason?: string; stopProvider?: boolean },
+  ): void {
+    if (this.sessions.get(session.id) !== session) return;
+
+    // Remove first so provider callbacks and pending setup cannot publish or
+    // store data after this session has been cancelled.
+    this.sessions.delete(session.id);
+    session.isActive = false;
+    session.isRecording = false;
+
+    if (session.cleanupTimer) {
+      clearTimeout(session.cleanupTimer);
+      session.cleanupTimer = undefined;
+    }
+
+    const sdkSession = session.sdkSession;
+    session.sdkSession = null;
+    session.chunks = [];
+
+    if (options.stopProvider !== false) {
+      this.stopSdkSession(sdkSession);
+    }
+
+    if (options.publishDisconnect) {
+      this.publishDisconnected(session, options.reason ?? 'Connection lost');
+    }
+  }
+
   /**
    * Connect to the Lyria RealTime API via @google/genai SDK.
    */
@@ -258,12 +392,18 @@ export class LyriaRealtimeService implements OnModuleDestroy {
       return;
     }
 
+    this.assertCurrentActiveSession(session);
+
     const sdkSession = await this.client.live.music.connect({
       model: 'models/lyria-realtime-exp',
       callbacks: {
         onmessage: (message: any) => {
           if (message.serverContent?.audioChunks) {
             for (const chunk of message.serverContent.audioChunks) {
+              if (!this.isCurrentActiveSession(session) || typeof chunk?.data !== 'string') {
+                return;
+              }
+
               const audioBuffer = Buffer.from(chunk.data, 'base64');
 
               // Store for recording
@@ -282,7 +422,9 @@ export class LyriaRealtimeService implements OnModuleDestroy {
                 timestamp: Date.now(),
               } satisfies RealtimeAudioEvent);
 
-              session.lastActivity = Date.now();
+              if (this.isCurrentActiveSession(session)) {
+                session.lastActivity = Date.now();
+              }
             }
           }
         },
@@ -291,45 +433,62 @@ export class LyriaRealtimeService implements OnModuleDestroy {
         },
         onclose: () => {
           this.logger.log(`Lyria RealTime closed for session ${session.id}`);
-          session.sdkSession = null;
-
-          // Auto-cleanup on unexpected close
-          if (session.isActive) {
-            this.logger.warn(`Unexpected close for session ${session.id}, marking inactive`);
-            session.isActive = false;
-            this.eventBus.publish({
-              eventName: 'realtime.disconnected',
-              eventVersion: 1,
-              occurredAt: new Date().toISOString(),
-              sessionId: session.id,
-              userId: session.userId,
+          if (this.isCurrentActiveSession(session)) {
+            this.logger.warn(`Unexpected close for session ${session.id}, cleaning up`);
+            this.cleanupSession(session, {
+              publishDisconnect: true,
               reason: 'Connection lost',
-            } satisfies RealtimeDisconnectedEvent);
+              stopProvider: false,
+            });
           }
         },
       },
     });
 
+    if (!this.isCurrentActiveSession(session)) {
+      this.stopSdkSession(sdkSession);
+      throw new RealtimeSessionCancelledError();
+    }
+
     session.sdkSession = sdkSession;
 
-    // Set initial prompt based on track context
-    await sdkSession.setWeightedPrompts({
-      weightedPrompts: [
-        { text: `${session.controls.key} music`, weight: 1.0 },
-      ],
-    });
+    try {
+      this.assertCurrentActiveSession(session);
 
-    // Set initial configuration
-    await sdkSession.setMusicGenerationConfig({
-      musicGenerationConfig: {
-        bpm: session.controls.bpm,
-        density: session.controls.density / 100,
-        brightness: session.controls.brightness / 100,
-      },
-    });
+      // Set initial prompt based on track context
+      await sdkSession.setWeightedPrompts({
+        weightedPrompts: [
+          { text: `${session.controls.key} music`, weight: 1.0 },
+        ],
+      });
 
-    // Start playback
-    await sdkSession.play();
+      this.assertCurrentActiveSession(session);
+
+      // Set initial configuration
+      await sdkSession.setMusicGenerationConfig({
+        musicGenerationConfig: {
+          bpm: session.controls.bpm,
+          density: session.controls.density / 100,
+          brightness: session.controls.brightness / 100,
+        },
+      });
+
+      this.assertCurrentActiveSession(session);
+
+      // Start playback
+      await sdkSession.play();
+      this.assertCurrentActiveSession(session);
+    } catch (error) {
+      if (session.sdkSession === sdkSession) {
+        session.sdkSession = null;
+      }
+      this.stopSdkSession(sdkSession);
+
+      if (error instanceof RealtimeSessionCancelledError || !this.isCurrentActiveSession(session)) {
+        throw new RealtimeSessionCancelledError();
+      }
+      throw error;
+    }
   }
 
   /**
@@ -340,17 +499,12 @@ export class LyriaRealtimeService implements OnModuleDestroy {
       clearTimeout(session.cleanupTimer);
     }
     session.cleanupTimer = setTimeout(() => {
-      if (session.isActive) {
+      if (this.isCurrentActiveSession(session)) {
         this.logger.warn(`Session ${session.id} idle timeout, stopping`);
-        this.stopSession(session.id);
-        this.eventBus.publish({
-          eventName: 'realtime.disconnected',
-          eventVersion: 1,
-          occurredAt: new Date().toISOString(),
-          sessionId: session.id,
-          userId: session.userId,
+        this.cleanupSession(session, {
+          publishDisconnect: true,
           reason: 'Idle timeout',
-        } satisfies RealtimeDisconnectedEvent);
+        });
       }
     }, this.idleTimeoutMs);
   }

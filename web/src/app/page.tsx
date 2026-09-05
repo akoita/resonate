@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../components/auth/AuthProvider";
 import {
   createAgentConfig,
+  fetchHomeFeed,
+  fetchTopArtists,
+  fetchTrendingTracks,
   getAgentConfig,
   getRelease,
   getReleaseTrackStreamUrl,
   getStemPreviewUrl,
-  getSongRecommendations,
   listMyReleases,
   listPublicPlaylists,
   listPublishedReleases,
@@ -18,9 +21,12 @@ import {
   Release,
   startAgentSession,
   updateAgentConfig,
+  type HomeFeedItem,
+  type HomeFeedResponse,
   type PublicPlaylistSummary,
-  type SongRecommendationItem,
+  type TopArtistItem,
   type Track,
+  type TrendingTrackItem,
 } from "../lib/api";
 import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
 import {
@@ -35,6 +41,10 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
+import { HomeFeedRails } from "../components/home/HomeFeedRails";
+import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
+import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -51,7 +61,6 @@ import {
   progressRatio,
   type Campaign,
 } from "../lib/shows";
-import AgentSessionPresets from "../components/agent/AgentSessionPresets";
 import { recordProductAnalytics } from "../lib/productAnalytics";
 
 /*
@@ -108,6 +117,202 @@ const FILTERS: FilterOption[] = [
   { id: "late-night", label: "Late Night", kind: "mood", value: "Late Night", energy: "medium" },
 ];
 
+/* ---------------------------------------------------------------------------
+ * Below-the-fold sections are code-split (#1491).
+ *
+ * Above the fold — the `ng-hero` block and <HomeFeedRails> — stays statically
+ * imported so first paint never waits on an extra chunk. Everything below the
+ * fold (Trending Now, Drops, AI DJ presets, Top Artists) loads lazily, and each
+ * one ships a `loading` skeleton built from the *same* layout primitives as the
+ * real section so deferring the chunk does not collapse the box (no CLS).
+ * ------------------------------------------------------------------------- */
+
+/** Header skeleton — same DOM/typography as the real `ng-section-header`. */
+function SectionHeaderSkeleton({
+  kickerClass,
+  kicker,
+  title,
+}: {
+  kickerClass: string;
+  kicker: string;
+  title: string;
+}) {
+  return (
+    <header className="ng-section-header">
+      <div>
+        <span className={`ng-kicker ${kickerClass}`}>{kicker}</span>
+        <h3 className="ng-section-title">{title}</h3>
+      </div>
+    </header>
+  );
+}
+
+/**
+ * Trending Now placeholder: header + one `ng-grid-4` row of play cards. The
+ * card art is `aspect-ratio: 1`, so the reserved height tracks the real rail
+ * exactly at every breakpoint. The rail requests `limit: 8` (up to two desktop
+ * rows); one row is the reserve because the rail is only mounted once its data
+ * has resolved (see the call site), and short catalogs return fewer than four.
+ */
+function TrendingNowRailSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--tertiary"
+        kicker="What listeners play"
+        title="Trending Now"
+      />
+      <div className="ng-grid-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="ng-play-card ng-glass" style={{ borderRadius: 20 }}>
+            <div className="ng-play-card__art" />
+            <h4 className="ng-play-card__title">&nbsp;</h4>
+            <p className="ng-play-card__artist">&nbsp;</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Top Artists placeholder: header + a row of pill blanks. A real
+ * `.ng-artist-pill` is 50px tall (40px avatar + 4px padding + 1px border), so
+ * the blanks reserve the exact row height; six of them approximate the
+ * `limit: 8` pill row before it wraps.
+ */
+function TopArtistsRailSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--violet"
+        kicker="Most listened, last 7 days"
+        title="Top Artists"
+      />
+      <div className="ng-artist-pills">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <span
+            key={i}
+            style={{
+              width: 150,
+              height: 50,
+              borderRadius: 999,
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+            }}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Drops placeholder: header + one `ng-grid-3` row of collectible-card blanks.
+ * A shelf card is a 14px-padded `ng-glass` tile wrapping the square collectible
+ * art plus a body/footer strip, which is what the blank mirrors.
+ */
+function DropsShelfSkeleton() {
+  return (
+    <section className="ng-section" aria-hidden>
+      <SectionHeaderSkeleton
+        kickerClass="ng-kicker--violet"
+        kicker="Own a piece of the hook"
+        title="Drops"
+      />
+      <div className="ng-grid-3" style={{ alignItems: "stretch" }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="ng-glass" style={{ borderRadius: 20, padding: 14 }}>
+            <div
+              style={{
+                aspectRatio: "1 / 1",
+                borderRadius: 14,
+                background: "rgba(255, 255, 255, 0.04)",
+              }}
+            />
+            <div style={{ height: 96, marginTop: 8 }} />
+            <p className="ng-play-card__artist" style={{ marginTop: 10 }}>
+              &nbsp;
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * AI DJ presets placeholder: the panel chrome plus the 5-up preset grid whose
+ * cards are `min-height: 214px` in the real component, so the reserved box
+ * matches the desktop layout (the narrow-viewport 3-up / swipe variants are
+ * approximated, since the real breakpoints live in the component's styled-jsx).
+ */
+function AgentSessionPresetsSkeleton() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        borderRadius: 20,
+        padding: 22,
+        background:
+          "linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018))",
+      }}
+    >
+      <div style={{ height: 130, marginBottom: 22 }} />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            style={{
+              minHeight: 214,
+              borderRadius: 16,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "rgba(8, 8, 15, 0.74)",
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Both rails are named exports of the same module; each dynamic import selects
+// its own export. `ssr: false` costs no crawlable content: the rails render
+// `null` until the client-side /catalog/trending + /catalog/top-artists fetches
+// resolve, so their server output is empty today either way.
+const TrendingNowRail = dynamic(
+  () => import("../components/home/PopularityRails").then((m) => m.TrendingNowRail),
+  { ssr: false, loading: () => <TrendingNowRailSkeleton /> },
+);
+
+const TopArtistsRail = dynamic(
+  () => import("../components/home/PopularityRails").then((m) => m.TopArtistsRail),
+  { ssr: false, loading: () => <TopArtistsRailSkeleton /> },
+);
+
+// Client-only by construction: it fetches featured drops on mount and emits
+// `punchline.drop_viewed` analytics with the viewer's token, so it never
+// contributes server-rendered content.
+const DropsShelf = dynamic(
+  () => import("../components/home/DropsShelf").then((m) => m.DropsShelf),
+  { ssr: false, loading: () => <DropsShelfSkeleton /> },
+);
+
+// Kept server-rendered (default `ssr: true`): the presets are static, crawlable
+// product copy (intent, tempo, licensing posture) with no client data
+// dependency — only the chunk is deferred, not the content.
+const AgentSessionPresets = dynamic(
+  () => import("../components/agent/AgentSessionPresets"),
+  { loading: () => <AgentSessionPresetsSkeleton /> },
+);
+
 export default function Home() {
   const router = useRouter();
   const [releases, setReleases] = useState<Release[]>([]);
@@ -116,7 +321,8 @@ export default function Home() {
   const [activeFilter, setActiveFilter] = useState<FilterId>("all");
   const [catalogView, setCatalogView] = useState<CatalogView>("releases");
   const [catalogSearch, setCatalogSearch] = useState("");
-  const [songRecommendations, setSongRecommendations] = useState<SongRecommendationItem[]>([]);
+  // #1454 WS-7: multi-rail personalized feed. null = loading, [] rails = honest empty.
+  const [homeFeed, setHomeFeed] = useState<HomeFeedResponse | null>(null);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
@@ -219,7 +425,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
-      setSongRecommendations([]);
+      setMyReleases([]);
       return;
     }
 
@@ -239,23 +445,66 @@ export default function Home() {
 
   useEffect(() => {
     if (status !== "authenticated" || !token || !userId) {
-      setSongRecommendations([]);
+      setHomeFeed(null);
       return;
     }
 
     let cancelled = false;
-    getSongRecommendations(userId, token, 6, recommendationPreferencesForFilter(activeFilterConfig))
-      .then((result) => {
-        if (!cancelled) setSongRecommendations(result.items ?? []);
+    fetchHomeFeed(userId, token)
+      .then((feed) => {
+        if (cancelled) return;
+        setHomeFeed(feed);
+        // #1449 WS-2: Home ranking impressions — one served event per rail.
+        for (const rail of feed.rails) {
+          if (!rail.items.length) continue;
+          void recordProductAnalytics(token, "recommendation.served", {
+            payload: {
+              requestId: feed.requestId,
+              railId: rail.id,
+              trackIds: rail.items.map((item) => item.id),
+              count: rail.items.length,
+              source: "home",
+            },
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled) setSongRecommendations([]);
+        if (!cancelled) setHomeFeed(null);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [activeFilterConfig, status, token, userId]);
+  }, [status, token, userId]);
+
+  // #1451 WS-4: true engagement-ranked rails from the popularity serving
+  // tables. Genre chips re-rank server-side; when the data is below the
+  // minimum-audience threshold the rails say so honestly instead of quietly
+  // falling back to recency.
+  const popularityGenre =
+    activeFilterConfig.kind === "genre" ? activeFilterConfig.value : undefined;
+  const [trendingTracks, setTrendingTracks] = useState<TrendingTrackItem[] | null>(null);
+  const [rankedTopArtists, setRankedTopArtists] = useState<TopArtistItem[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetchTrendingTracks({ window: "7d", genre: popularityGenre, limit: 8 }),
+      fetchTopArtists({ window: "7d", genre: popularityGenre, limit: 8 }),
+    ])
+      .then(([trending, artists]) => {
+        if (cancelled) return;
+        setTrendingTracks(trending.items ?? []);
+        setRankedTopArtists(artists.items ?? []);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setTrendingTracks([]);
+        setRankedTopArtists([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [popularityGenre]);
 
   const displayReleases = releases;
 
@@ -342,24 +591,38 @@ export default function Home() {
         : catalogView === "stems"
           ? catalogFilteredStems.length
           : catalogFilteredPlaylists.length;
-  const recommendedForYou = useMemo(
-    () => buildHomeRecommendations(songRecommendations, displayReleases).slice(0, 4),
-    [songRecommendations, displayReleases],
-  );
-  // Distinct cohort labels actually influencing the picks on screen (honest signal —
-  // reflects matched tracks, not just consented cohorts available in the response).
-  const cohortLabels = useMemo(() => {
-    const labels = new Set<string>();
-    for (const item of recommendedForYou) {
-      for (const reason of item.reasons) {
-        if (reason.startsWith("cohort:")) {
-          const label = reason.slice("cohort:".length).trim();
-          if (label) labels.add(label);
-        }
-      }
-    }
-    return [...labels];
-  }, [recommendedForYou]);
+  // #1454 WS-7: feed items adapted to the legacy HomeRecommendation shape so
+  // the AI DJ session seeding and vibe-queue building keep working unchanged.
+  const feedRecommendations = useMemo<HomeRecommendation[]>(() => {
+    if (!homeFeed) return [];
+    const releaseById = new Map(displayReleases.map((release) => [release.id, release]));
+    return homeFeed.rails.flatMap((rail) =>
+      rail.items.map((item) => ({
+        key: item.id,
+        trackId: item.id,
+        title: item.title,
+        artist: item.artist ?? "Unknown Artist",
+        releaseId: item.releaseId,
+        genre: item.genre,
+        moods: item.moods,
+        reasons: item.reasons,
+        release: releaseById.get(item.releaseId),
+      })),
+    );
+  }, [homeFeed, displayReleases]);
+  // #1449 WS-2: a served recommendation was acted on (open or play).
+  const emitRecommendationClick = useCallback((trackId: string | undefined, railId: string, position: number) => {
+    if (!trackId) return;
+    void recordProductAnalytics(token, "recommendation.clicked", {
+      payload: {
+        requestId: homeFeed?.requestId ?? null,
+        railId,
+        trackId,
+        position,
+        source: "home",
+      },
+    });
+  }, [token, homeFeed]);
   const managedArtists = summarizeManagedArtists(status === "authenticated" ? myReleases : []).slice(0, 5);
   const recentUploads = (status === "authenticated" ? myReleases : [])
     .slice()
@@ -414,13 +677,10 @@ export default function Home() {
     });
   };
 
-  // Derive top artists from the catalog (de-dup by primary artist name).
-  const topArtists = useMemo(() => {
-    return catalogArtists.slice(0, 8).map((a) => ({
-      name: a.name,
-      artistId: a.artistId,
-    }));
-  }, [catalogArtists]);
+  // #1451 WS-4: Top Artists come from the engagement serving table only —
+  // no recency fallback. `null` = still loading (hide the rail), `[]` = the
+  // catalog is below the minimum-audience threshold (honest empty state).
+  const topArtists = rankedTopArtists;
 
   const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
     const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood|cohort):/, "") || "Discovery";
@@ -489,7 +749,7 @@ export default function Home() {
 
     setStartingVibe(filter.id);
     try {
-      const queue = buildVibeQueue(recommendedForYou, filteredReleases);
+      const queue = buildVibeQueue(feedRecommendations, filteredReleases);
       if (queue.length > 0) {
         await saveTracksMetadata(queue, "remote");
         await playQueue(queue, 0);
@@ -594,12 +854,19 @@ export default function Home() {
         <section className="ng-section ng-section--tight">
           <div
             className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
-            style={activeHeroCampaignImage ? { "--ng-hero-image": `url(${activeHeroCampaignImage})` } as CSSProperties : undefined}
             onMouseEnter={() => setHeroPaused(true)}
             onMouseLeave={() => setHeroPaused(false)}
             onFocusCapture={() => setHeroPaused(true)}
             onBlurCapture={() => setHeroPaused(false)}
           >
+            {activeHeroCampaignImage ? (
+              <HomeCampaignVisual
+                src={activeHeroCampaignImage}
+                sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(100vw - 48px), calc(100vw - 320px)"
+                className="ng-hero__campaign-image"
+                preload={activeHeroCampaignId === ""}
+              />
+            ) : null}
             <svg
               className="ng-hero__motif"
               viewBox="0 0 600 600"
@@ -657,10 +924,16 @@ export default function Home() {
                       key={campaign.id}
                       type="button"
                       className={`ng-hero__campaign-tab ${selected ? "ng-hero__campaign-tab--active" : ""}`}
-                      style={image ? { "--ng-hero-thumb": `url(${image})` } as CSSProperties : undefined}
                       onClick={() => setActiveHeroCampaignId(campaign.id)}
                       aria-pressed={selected}
                     >
+                      {image ? (
+                        <HomeCampaignVisual
+                          src={image}
+                          sizes="(max-width: 767px) calc(100vw - 72px), (max-width: 1023px) calc(50vw - 48px), 380px"
+                          className="ng-hero__campaign-tab-image"
+                        />
+                      ) : null}
                       <span className="ng-hero__campaign-index">{String(index + 1).padStart(2, "0")}</span>
                       <span className="ng-hero__campaign-copy">
                         <strong>{campaignDisplayTitle(campaign)}</strong>
@@ -711,77 +984,16 @@ export default function Home() {
           </div>
         )}
 
-        {/* 3. RECOMMENDED FOR YOU ——————————————————————————————— */}
-        {recommendedForYou.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
-                <h3 className="ng-section-title">Recommended for You</h3>
-                {cohortLabels.length > 0 && (
-                  <span
-                    className="ng-section-flag"
-                    title={`Influenced by your community: ${cohortLabels.join(", ")}`}
-                  >
-                    <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>groups</span>
-                    {cohortLabels.length === 1
-                      ? `Tuned by your ${cohortLabels[0]} cohort`
-                      : `Tuned by ${cohortLabels.length} of your cohorts`}
-                  </span>
-                )}
-              </div>
-              <Link href="/agent" className="ng-section-link">
-                Open AI DJ
-                <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-              </Link>
-            </header>
-            <div className="ng-recommendation-grid">
-              {recommendedForYou.map((item) => {
-                const seedKey = item.trackId || item.releaseId || item.key;
-                return (
-                  <article key={item.key} className="ng-recommendation-card ng-glass">
-                    <Link
-                      href={item.releaseId ? `/release/${item.releaseId}` : "/agent"}
-                      className="ng-recommendation-card__art"
-                      aria-label={`Open ${item.title}`}
-                    >
-                      {item.release?.artworkUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.release.artworkUrl} alt="" />
-                      ) : (
-                        <span className="ng-monogram" aria-hidden>
-                          {(item.title[0] ?? "?").toUpperCase()}
-                        </span>
-                      )}
-                      <span className="ng-recommendation-card__score">
-                        {Math.round(item.score ?? 0)}
-                      </span>
-                    </Link>
-                    <div className="ng-recommendation-card__body">
-                      <h4>{item.title}</h4>
-                      <p>{item.artist}</p>
-                      <div className="ng-recommendation-card__meta">
-                        <span>{item.genre || "Discovery"}</span>
-                        <span>{formatRecommendationReason(item.reasons)}</span>
-                      </div>
-                      <button
-                        type="button"
-                        className="ng-recommendation-card__action"
-                        onClick={() => void handleStartRecommendedSession(item)}
-                        disabled={startingSeed === seedKey}
-                      >
-                        <span className="ms-icon" data-fill="1" aria-hidden>
-                          {startingSeed === seedKey ? "hourglass_top" : "play_arrow"}
-                        </span>
-                        {startingSeed === seedKey ? "Starting" : "Start session"}
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        {/* 3. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
+        <HomeFeedRails
+          feed={homeFeed}
+          startingSeed={startingSeed}
+          onOpen={(item, railId, position) => emitRecommendationClick(item.id, railId, position)}
+          onStartSession={(item, railId, position) => {
+            emitRecommendationClick(item.id, railId, position);
+            void handleStartRecommendedSession(feedItemToRecommendation(item, displayReleases));
+          }}
+        />
 
         {/* 3. CATALOG BROWSER ——————————————————————————————————— */}
         <section className="ng-section">
@@ -876,6 +1088,7 @@ export default function Home() {
                         <ReleaseThumb release={release} />
                         <div className="ng-resource-card__body">
                           <h4>{release.title}</h4>
+                          <AiDisclosureBadge disclosure={release.aiDisclosure} />
                           <p>{getArtistName(release)}</p>
                           <div className="ng-resource-card__meta">
                             <span>{release.type || "Release"}</span>
@@ -1099,6 +1312,7 @@ export default function Home() {
                         <ReleaseThumb release={release} small />
                         <span className="ng-upload-row__main">
                           <strong>{release.title}</strong>
+                          <AiDisclosureBadge disclosure={release.aiDisclosure} />
                           <small>{getReleaseResourceCount(release)} resources · {formatRelativeTime(getCatalogSortTime(release))}</small>
                         </span>
                         <span className={`ng-status-pill ${getStatusClass(release.status)}`}>
@@ -1149,8 +1363,13 @@ export default function Home() {
                 >
                   <div className="ng-play-card__art">
                     {r.artworkUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.artworkUrl} alt={r.title} />
+                      <HomeReleaseArtwork
+                        releaseId={r.id}
+                        mimeType={r.artworkMimeType ?? ""}
+                        artworkRevision={r.artworkRevision}
+                        alt={r.title}
+                        sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
+                      />
                     ) : (
                       <span className="ng-monogram" aria-hidden>
                         {(r.title?.[0] ?? "?").toUpperCase()}
@@ -1161,6 +1380,7 @@ export default function Home() {
                     </div>
                   </div>
                   <h4 className="ng-play-card__title">{r.title}</h4>
+                  <AiDisclosureBadge disclosure={r.aiDisclosure} />
                   <p className="ng-play-card__artist">
                     Artist: {r.primaryArtist || r.artist?.displayName || "Unknown"}
                   </p>
@@ -1168,6 +1388,15 @@ export default function Home() {
               ))}
             </div>
           </section>
+        )}
+
+        {/* 5b. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
+        {/* The rail itself renders null while `items === null`, so gating the
+            lazy mount on resolved data is behaviour-identical — it just keeps
+            the loading skeleton from reserving a box the rail would not fill
+            yet (#1491). */}
+        {trendingTracks !== null && (
+          <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
         )}
 
         {/* 6. TRENDING STEMS ———————————————————————————————————— */}
@@ -1186,6 +1415,9 @@ export default function Home() {
             </div>
           </section>
         )}
+
+        {/* 6b. DROPS — collectible moments shelf (#1479) ——————————— */}
+        <DropsShelf token={token} />
 
         {/* 7. UPCOMING LIVE EVENTS ————————————————————————————— */}
         {eventRow.length > 0 && (
@@ -1219,38 +1451,9 @@ export default function Home() {
           <AgentSessionPresets compact />
         </section>
 
-        {/* 9. TOP ARTISTS —————————————————————————————————————— */}
-        {topArtists.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--violet">Pioneer network</span>
-                <h3 className="ng-section-title">Top Artists</h3>
-              </div>
-            </header>
-            <div className="ng-artist-pills">
-              {topArtists.map((a) => {
-                const pillContent = (
-                  <>
-                    <span className="ng-artist-pill__avatar" aria-hidden>
-                      {a.name[0]?.toUpperCase() ?? "?"}
-                    </span>
-                    <span>{a.name}</span>
-                  </>
-                );
-
-                return (
-                  <Link
-                    key={a.name}
-                    href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
-                    className="ng-artist-pill"
-                  >
-                    {pillContent}
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
+        {/* 9. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
+        {topArtists !== null && (
+          <TopArtistsRail items={topArtists} genreLabel={popularityGenre} />
         )}
       </main>
       <AddToPlaylistModal
@@ -1265,8 +1468,13 @@ function ReleaseThumb({ release, small = false }: { release: Release; small?: bo
   return (
     <span className={small ? "ng-release-thumb ng-release-thumb--small" : "ng-release-thumb"}>
       {release.artworkUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={release.artworkUrl} alt="" />
+        <HomeReleaseArtwork
+          releaseId={release.id}
+          mimeType={release.artworkMimeType ?? ""}
+          artworkRevision={release.artworkRevision}
+          alt=""
+          sizes={small ? "(max-width: 767px) 46px, 48px" : "(max-width: 767px) 56px, 72px"}
+        />
       ) : (
         <span aria-hidden>{(release.title?.[0] ?? "?").toUpperCase()}</span>
       )}
@@ -1328,6 +1536,7 @@ function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
     catalogTrackId: track.id,
     artistId: release.artist?.id || release.artistId,
     releaseId: release.id,
+    aiDisclosure: track.aiDisclosure,
     remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
     remoteArtworkUrl: release.artworkUrl || undefined,
     source: "remote",
@@ -1378,16 +1587,6 @@ function filterStems(stems: CatalogStemSummary[], query: string) {
   );
 }
 
-function recommendationPreferencesForFilter(filter: FilterOption) {
-  if (filter.kind === "genre" && filter.value) {
-    return { genres: [filter.value], energy: filter.energy };
-  }
-  if (filter.kind === "mood" && filter.value) {
-    return { mood: filter.value, energy: filter.energy };
-  }
-  return undefined;
-}
-
 function releaseMatchesFilter(release: Release, filter: FilterOption) {
   const value = filter.value?.toLowerCase();
   if (!value) return true;
@@ -1424,67 +1623,24 @@ function buildVibeQueue(recommendations: HomeRecommendation[], releases: Release
   return Array.from(byId.values()).slice(0, 12);
 }
 
-function buildHomeRecommendations(
-  items: SongRecommendationItem[],
-  releases: Release[],
-): HomeRecommendation[] {
-  const releaseById = new Map(releases.map((release) => [release.id, release]));
-  const releaseByTrackId = new Map<string, Release>();
-  for (const release of releases) {
-    for (const track of release.tracks ?? []) {
-      releaseByTrackId.set(track.id, release);
-    }
-  }
-
-  const mapped = items.map((item) => {
-    const release = (item.releaseId ? releaseById.get(item.releaseId) : undefined)
-      ?? releaseByTrackId.get(item.id);
-    return {
-      key: item.id,
-      trackId: item.id,
-      title: item.title,
-      artist: item.artist || (release ? getArtistName(release) : "Unknown Artist"),
-      releaseId: item.releaseId || release?.id,
-      genre: item.genre ?? release?.genre,
-      moods: item.moods ?? release?.moods ?? [],
-      score: item.score,
-      reasons: item.reasons ?? [],
-      release,
-    };
-  });
-
-  if (mapped.length > 0) {
-    return mapped;
-  }
-
-  return releases.slice(0, 4).map((release) => ({
-    key: release.id,
-    title: release.title,
-    artist: getArtistName(release),
-    releaseId: release.id,
-    genre: release.genre,
-    moods: release.moods ?? [],
-    score: release.genre ? 35 : 20,
-    reasons: release.genre ? [`genre:${release.genre}`] : ["catalog_seed"],
+/**
+ * #1454 WS-7: adapt a Home feed item to the legacy HomeRecommendation shape
+ * consumed by AI DJ session seeding. No catalog fallback — the multi-rail
+ * feed's honest empty state replaced the old "first 4 releases" filler.
+ */
+function feedItemToRecommendation(item: HomeFeedItem, releases: Release[]): HomeRecommendation {
+  const release = releases.find((candidate) => candidate.id === item.releaseId);
+  return {
+    key: item.id,
+    trackId: item.id,
+    title: item.title,
+    artist: item.artist ?? (release ? getArtistName(release) : "Unknown Artist"),
+    releaseId: item.releaseId,
+    genre: item.genre ?? release?.genre,
+    moods: item.moods,
+    reasons: item.reasons,
     release,
-  }));
-}
-
-function formatRecommendationReason(reasons: string[]) {
-  // Drop internal/diagnostic markers (e.g. `downranked:genre:*`) so they never reach the UI.
-  const meaningful = reasons.filter((reason) => reason && !reason.startsWith("downranked:"));
-  // Cohort context is the most specific, human-meaningful signal — surface it ahead of
-  // generic taste/mood matches even when it was scored after them.
-  const cohort = meaningful.find((reason) => reason.startsWith("cohort:"));
-  if (cohort) {
-    const label = cohort.slice("cohort:".length).trim();
-    return label ? `From your ${label} cohort` : "Cohort signal";
-  }
-  const first = meaningful[0];
-  if (!first) return "Catalog signal";
-  if (first.startsWith("genre:")) return "Taste match";
-  if (first.startsWith("mood:")) return "Mood match";
-  return first.replace(/_/g, " ");
+  };
 }
 
 function formatStatus(status?: string | null) {
@@ -1635,10 +1791,13 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
         aria-label={`Open ${release.title} in the mixer`}
       >
         {release.artworkUrl ? (
-          <span
+          <HomeReleaseArtwork
+            releaseId={release.id}
+            mimeType={release.artworkMimeType ?? ""}
+            artworkRevision={release.artworkRevision}
+            alt=""
             className="ng-stem-card__image"
-            style={{ backgroundImage: `url(${JSON.stringify(release.artworkUrl)})` }}
-            aria-hidden
+            sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 64px), (max-width: 1279px) calc(33vw - 64px), calc((100vw - 460px) / 3)"
           />
         ) : (
           <span className="ng-monogram" aria-hidden>
@@ -1673,6 +1832,7 @@ function StemCard({ release, variantIndex }: { release: Release; variantIndex: n
       </Link>
       <div className="ng-stem-card__body">
         <h5 className="ng-stem-card__title">{release.title}</h5>
+        <AiDisclosureBadge disclosure={release.aiDisclosure} />
         <p className="ng-stem-card__from">From: {artistName}</p>
         <div className="ng-stem-card__meta">
           <span>Stem layer</span>
@@ -1733,14 +1893,19 @@ function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" 
     <Link href={`/shows/${campaign.id}`} className="ng-event-card">
       <div
         className={`ng-event-card__art ${hasImage ? "ng-event-card__art--image" : ""}`}
-        style={hasImage ? { "--ng-event-image": `url(${visualImage})` } as CSSProperties : undefined}
         aria-hidden
       >
-        {!hasImage ? (
+        {hasImage ? (
+          <HomeCampaignVisual
+            src={visualImage}
+            sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(50vw - 36px), calc((100vw - 368px) / 2)"
+            className="ng-event-card__image"
+          />
+        ) : (
           <span className="ng-monogram" style={{ fontSize: 72 }}>
             {initial}
           </span>
-        ) : null}
+        )}
       </div>
       <span
         className={`ng-event-card__badge ${

@@ -19,6 +19,7 @@ import {
   type Release,
 } from "../../lib/api";
 import { CatalogPlaylistCard } from "../../components/catalog/CatalogPlaylistCard";
+import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
 
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
@@ -220,6 +221,7 @@ export default function GlobalCatalogPage() {
                           <ReleaseThumb release={release} />
                           <div className="ng-resource-card__body">
                             <h4>{release.title}</h4>
+                            <AiDisclosureBadge disclosure={release.aiDisclosure} />
                             <p>{getArtistName(release)}</p>
                             <div className="ng-resource-card__meta">
                               <span>{release.type || "Release"}</span>

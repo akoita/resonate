@@ -17,7 +17,9 @@ Each run:
 
 1. **preflight** — asserts the RPC chain id (84532), that the smoke wallet holds
    enough test USDC + gas (else `SMOKE_WALLET_LOW_BALANCE`), and that the API
-   `/health` responds.
+   `/health` responds. Chain-id and balance reads use a short, bounded retry for
+   classified provider/transport outages; the API health call remains a single
+   HTTP request.
 2. **auth** — logs the smoke EOA in through `POST /auth/nonce` →
    `POST /auth/verify` requesting role `operator`, and asserts the JWT decodes
    with `role: operator` (needs the wallet in `OPERATOR_ADDRESSES`).
@@ -28,6 +30,11 @@ Each run:
    on-chain campaign, and asserts the hydration response: `paymentTokenAddress`
    equals the configured token, `onChainStatus` is `Active`, `feeBps` equals the
    on-chain fee (600). Every API response is parsed as JSON (covers #1386).
+   Because the backend hydrates from its own RPC replica (which can lag behind
+   the replica that confirmed our tx — observed 2026-07-11, #1399), stale
+   hydration triggers up to 5 `POST …/resync-chain` polls (4s apart) before
+   failing — which also gives the #1364 resync correction path nightly
+   coverage.
 6. **pledge** — creates a pledge intent as the smoke user (its wallet row was
    bound at `/auth/verify`, satisfying the #1221 rule), then on-chain `approve` +
    `pledge` from the smoke EOA.
@@ -66,7 +73,25 @@ Finally:
 
 Every step logs `[smoke] <step> OK (<ms>)`; any failure exits non-zero with a
 one-line `SMOKE_FAIL <step>: <reason>`, and the workflow opens/updates a
-`smoke-failure` issue.
+`smoke-failure` issue. The on-chain write helper retries simulation reverts
+caused by replica lag and stale/low-nonce submissions for up to 5 attempts
+(3 seconds apart), preparing each retry through `wallet.writeContract` again.
+Preflight RPC reads use up to 3 attempts (1 second apart). Persistent provider failures,
+non-transient transaction errors, and contract reverts remain fail-loud. Raw
+viem errors are attributed to the current smoke step so they do not appear as
+`SMOKE_FAIL unknown`.
+
+The retry policy covers the two diagnosed transient signatures:
+
+- `nonce too low: next nonce <current>, tx nonce <submitted>` during a write
+  after `indexer-confirm` — the wallet prepares a fresh submission for the
+  retry bound.
+- `no backend is currently healthy to serve traffic` during preflight
+  `balanceOf` — the read is retried within the short provider bound.
+
+When the bound is exhausted, or when an error is not classified as a transient
+simulation/provider failure, the run exits immediately with the original error
+message and its canonical step.
 
 ### The two modes (and why)
 
@@ -107,7 +132,7 @@ cd scripts/staging-smoke
 npm ci
 API_BASE=https://api-staging.resonate.pydes.xyz \
 RPC_URL=<base-sepolia-rpc> \
-SHOW_CAMPAIGN_ESCROW_ADDRESS=0xd7035cf620c09653542b75a9b95bbec1514d8b23 \
+SHOW_CAMPAIGN_ESCROW_ADDRESS=0x87edc5e781cfb2052f64a142a9e8b77f58edc3eb \
 PAYMENT_TOKEN=<usdc-address> \
 CONTRACT_DEPLOYER_PRIVATE_KEY=<owner-key> \
 SMOKE_WALLET_PRIVATE_KEY=<smoke-key> \
@@ -126,6 +151,9 @@ node lifecycle-smoke.mjs            # add --dry-run to stop after auth
     `OPERATOR_ADDRESSES` in the staging backend config.
   - `SMOKE_FAIL api-authority: paymentTokenAddress is …` → a #1364/#1391-class
     chain-truth regression.
+  - `SMOKE_FAIL api-authority: onChainStatus is "Draft" … (after 5 resync
+    attempts — not replica lag)` → hydration is persistently wrong, not lagging:
+    check the backend RPC endpoint health and the escrow read path.
   - `SMOKE_FAIL indexer-confirm: campaign not funded within …` → the escrow
     indexer is not confirming pledges.
   - `SMOKE_FAIL claim-refund: smoke wallet USDC … != pre-run balance …` → the
@@ -188,6 +216,9 @@ and the faucet URL.
 
 - Implementation plan: `docs/issue-1392-implementation-plan.md`
 - Script: `scripts/staging-smoke/lifecycle-smoke.mjs`
+- Shared helpers: `scripts/staging-smoke/lib.mjs` (also used by the drill)
+- Companion drill: [Staging Reconciliation Drill](staging_reconciliation_drill.md)
+  (`workflow_dispatch`-only proof that the reconciliation-mismatch alert fires)
 - Workflow: `.github/workflows/staging-lifecycle-smoke.yml`
 - Escrow contract: `contracts/src/core/ShowCampaignEscrow.sol`,
   interface `contracts/src/interfaces/IShowCampaignEscrow.sol`

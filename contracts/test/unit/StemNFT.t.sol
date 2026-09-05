@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {IStemNFT} from "../../src/interfaces/IStemNFT.sol";
 import {TransferValidator} from "../../src/modules/TransferValidator.sol";
@@ -336,7 +336,7 @@ contract StemNFTTest is Test, IStemNFT {
         uint256[] memory parentIds,
         uint256 deadline,
         bytes32 nonce
-    ) internal returns (bytes memory) {
+    ) internal view returns (bytes memory) {
         bytes32 digest = stemNFT.hashMintAuthorization(
             authMinter,
             to,

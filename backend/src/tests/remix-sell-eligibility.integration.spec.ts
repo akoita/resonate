@@ -199,6 +199,21 @@ describe("Remix sell-eligibility (integration)", () => {
       ],
     });
 
+    // #1498: minting now runs the payout-eligibility gate before the remix
+    // sell-rights gate. Human-verify every seller so the payout gate passes and
+    // this suite exercises the sell-rights logic it is actually testing. The
+    // releases above already sit on STANDARD_ESCROW (payout-eligible route).
+    await prisma.curatorReputation.createMany({
+      data: [CREATOR_ID, COMMERCIAL_USER_ID, ARTIST_OWNER_ID, NONREMIX_OWNER_ID].map(
+        (userId) => ({
+          walletAddress: userId.toLowerCase(),
+          humanVerificationStatus: "human_verified",
+          verifiedHuman: true,
+          humanVerifiedAt: new Date(),
+        }),
+      ),
+    });
+
     // Source chain: one track with one stem, licensed to two different
     // buyers at two different tiers.
     await prisma.release.create({
@@ -473,6 +488,18 @@ describe("Remix sell-eligibility (integration)", () => {
     });
     await prisma.artist.deleteMany({
       where: { id: { startsWith: TEST_PREFIX } },
+    });
+    await prisma.curatorReputation.deleteMany({
+      where: {
+        walletAddress: {
+          in: [
+            CREATOR_ID,
+            COMMERCIAL_USER_ID,
+            ARTIST_OWNER_ID,
+            NONREMIX_OWNER_ID,
+          ].map((userId) => userId.toLowerCase()),
+        },
+      },
     });
     await prisma.wallet.deleteMany({
       where: { userId: { in: [CREATOR_ID, COMMERCIAL_USER_ID] } },

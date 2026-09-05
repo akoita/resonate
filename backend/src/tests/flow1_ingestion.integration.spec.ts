@@ -83,6 +83,11 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
         tracks: [{
           title: 'Flow Track',
           position: 1,
+          aiDisclosure: {
+            level: 'NONE',
+            facets: [],
+            source: 'artist',
+          },
           stems: [{ id: stemId1, uri: '/catalog/stems/master.mp3', type: 'master' }],
         }],
       },

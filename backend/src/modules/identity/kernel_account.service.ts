@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import {
   createPublicClient,
   createWalletClient,
+  getAddress,
   http,
   type Address,
   type Hex,
@@ -22,6 +23,70 @@ async function getZeroDevSdk() {
 // Anvil account 0 — default funder for local dev auto-funding
 const DEFAULT_ANVIL_FUNDER_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+export const RESONATE_KERNEL_VERSION = "0.3.1" as const;
+const LOCAL_ENTRY_POINT = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+const CANONICAL_ENTRY_POINT_V07 = "0x0000000071727De22E5E9d8BAf0edAc6f37da032";
+
+export function assertAaKernelVersion(configured?: string): typeof RESONATE_KERNEL_VERSION {
+  const version = configured || RESONATE_KERNEL_VERSION;
+  if (version !== RESONATE_KERNEL_VERSION) {
+    throw new Error(
+      `AA_KERNEL_VERSION must be ${RESONATE_KERNEL_VERSION}; received ${version}`,
+    );
+  }
+  return RESONATE_KERNEL_VERSION;
+}
+
+export function resolveAaChain(chainId: number, rpcUrl: string): Chain {
+  if (!Number.isSafeInteger(chainId) || chainId <= 0) {
+    throw new Error(`AA_CHAIN_ID must be a positive safe integer; received ${chainId}`);
+  }
+  if (chainId === 31337) {
+    return {
+      ...foundry,
+      rpcUrls: { default: { http: [rpcUrl] } },
+    };
+  }
+  if (chainId === 11155111) {
+    return {
+      ...sepolia,
+      rpcUrls: { default: { http: [rpcUrl] } },
+    };
+  }
+  return {
+    id: chainId,
+    name: `AA custom chain ${chainId}`,
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [rpcUrl] } },
+  };
+}
+
+export function resolveAaEntryPoint(chainId: number, configured?: string) {
+  const knownDefault = chainId === 31337
+    ? LOCAL_ENTRY_POINT
+    : [11155111, 8453, 84532].includes(chainId)
+      ? CANONICAL_ENTRY_POINT_V07
+      : undefined;
+  const address = configured || knownDefault;
+  if (!address) {
+    throw new Error(`AA_ENTRY_POINT is required for custom chain ${chainId}`);
+  }
+  return {
+    address: getAddress(address),
+    version: "0.7" as const,
+  };
+}
+
+export function resolveAaFunderKey(chainId: number, configured?: string): Hex | null {
+  if (configured) {
+    const normalized = `0x${configured.replace(/^0x/, "")}`;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(normalized)) {
+      throw new Error("AA_FUNDER_KEY must be a 32-byte hexadecimal private key");
+    }
+    return normalized as Hex;
+  }
+  return chainId === 31337 ? (DEFAULT_ANVIL_FUNDER_KEY as Hex) : null;
+}
 
 /**
  * KernelAccountService — Sends agent transactions through the ERC-4337 bundler
@@ -38,8 +103,10 @@ export class KernelAccountService {
   private readonly rpcUrl: string;
   private readonly bundlerUrl: string;
   private readonly chainId: number;
+  private readonly entryPoint: ReturnType<typeof resolveAaEntryPoint>;
+  private readonly kernelVersion: typeof RESONATE_KERNEL_VERSION;
   private readonly strictMode: boolean;
-  private readonly funderKey: Hex;
+  private readonly funderKey: Hex | null;
   private readonly paymasterUrl: string | null;
 
   constructor(private readonly config: ConfigService) {
@@ -47,6 +114,14 @@ export class KernelAccountService {
     this.bundlerUrl =
       this.config.get<string>("AA_BUNDLER") || "http://localhost:4337";
     this.chainId = Number(this.config.get<string>("AA_CHAIN_ID") || "11155111");
+    resolveAaChain(this.chainId, this.rpcUrl);
+    this.entryPoint = resolveAaEntryPoint(
+      this.chainId,
+      this.config.get<string>("AA_ENTRY_POINT"),
+    );
+    this.kernelVersion = assertAaKernelVersion(
+      this.config.get<string>("AA_KERNEL_VERSION"),
+    );
     this.strictMode = this.config.get<string>("AA_STRICT_MODE") === "true";
 
     // Pimlico paymaster URL for gas sponsorship (production/testnet).
@@ -58,25 +133,14 @@ export class KernelAccountService {
 
     // Funder key for local Anvil auto-funding (not used in production).
     const funder = this.config.get<string>("AA_FUNDER_KEY");
-    this.funderKey = funder
-      ? (`0x${funder.replace(/^0x/, '')}` as Hex)
-      : (DEFAULT_ANVIL_FUNDER_KEY as Hex);
+    this.funderKey = resolveAaFunderKey(this.chainId, funder);
   }
 
   /**
    * Get the chain definition for viem clients.
    */
   private getChain(): Chain {
-    if (this.chainId === 31337) return foundry;
-    if (this.chainId === 11155111) {
-      return {
-        ...sepolia,
-        rpcUrls: {
-          default: { http: [this.rpcUrl] },
-        },
-      };
-    }
-    return sepolia;
+    return resolveAaChain(this.chainId, this.rpcUrl);
   }
 
   /**
@@ -92,6 +156,12 @@ export class KernelAccountService {
     if (this.strictMode) {
       this.logger.warn(
         `Skipping auto-fund for ${label} ${address} (AA_STRICT_MODE=true — manage gas manually)`,
+      );
+      return;
+    }
+    if (!this.funderKey) {
+      this.logger.warn(
+        `Skipping auto-fund for ${label} ${address}; AA_FUNDER_KEY is required outside plain Anvil chain 31337`,
       );
       return;
     }
@@ -153,9 +223,6 @@ export class KernelAccountService {
       transport: http(this.rpcUrl),
     });
 
-    const entryPoint = sdk.constants.getEntryPoint("0.7");
-    const kernelVersion = sdk.constants.KERNEL_V3_1;
-
     this.logger.log(`Building session key client from agent-owned key`);
 
     // Deserialize the permission account using the approval data
@@ -163,8 +230,8 @@ export class KernelAccountService {
     // with the agent's private key embedded during serialization
     const permissionAccount = await deserializePermissionAccount(
       publicClient,
-      entryPoint,
-      kernelVersion,
+      this.entryPoint,
+      this.kernelVersion,
       approvalData,
     );
 

@@ -1,11 +1,32 @@
-import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
+import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 
 export const MCP_SERVER_INFO = {
   name: "resonate-mcp",
   version: "0.1.0",
 };
 
-export const MCP_PROTOCOL_VERSION = LATEST_PROTOCOL_VERSION;
+/**
+ * MCP revision advertised on `GET /mcp`, `/.well-known/mcp.json`, and in the
+ * ERC-8004 agent registration file.
+ *
+ * Deliberately pinned to an explicit literal instead of the SDK's
+ * `LATEST_PROTOCOL_VERSION`: bumping the advertised revision is a protocol
+ * change (published to agents and on-chain identity records), not a dependency
+ * bump. Raising it requires `@modelcontextprotocol/sdk` to actually support the
+ * target revision plus the accompanying transport/behaviour work.
+ *
+ * See https://github.com/akoita/resonate/issues/1536.
+ */
+export const MCP_PROTOCOL_VERSION = "2025-11-25";
+
+// Guard against pinning a revision the installed SDK cannot speak. Both values
+// are module constants, so this either always passes or always fails — it can
+// never surprise us at runtime in production without failing in CI first.
+if (!SUPPORTED_PROTOCOL_VERSIONS.includes(MCP_PROTOCOL_VERSION)) {
+  throw new Error(
+    `MCP_PROTOCOL_VERSION ${MCP_PROTOCOL_VERSION} is not in the installed SDK's SUPPORTED_PROTOCOL_VERSIONS (${SUPPORTED_PROTOCOL_VERSIONS.join(", ")}). See issue #1536 before changing the pinned revision.`,
+  );
+}
 
 export const MCP_TOOL_NAMES = [
   "catalog.search",
@@ -111,6 +132,23 @@ export const MCP_ERROR_DETAILS = [
       "Retry with backoff and include request or receipt identifiers in operator reports.",
   },
 ] as const;
+
+/**
+ * Recommended agent flow, published identically on `GET /mcp` and
+ * `/.well-known/mcp.json`. Keep the two surfaces consuming this constant so
+ * they cannot drift.
+ */
+export const MCP_RECOMMENDED_AGENT_FLOW = [
+  "catalog.search",
+  "GET /api/storefront/stems or GET /api/storefront/stems/{stemId}",
+  "stem.quote or GET /api/stems/{stemId}/x402/info",
+  "satisfy x402 challenge",
+  "stem.download or GET /api/stems/{stemId}/x402 with proof",
+  "store receipt and retry idempotently on transient failures",
+] as const;
+
+export const MCP_AGENT_UX_NOTE =
+  "PaymentRouterService is a trusted backend boundary; external agents use storefront, MCP, x402, and OpenAPI surfaces.";
 
 export type McpErrorCode = (typeof MCP_ERROR_DETAILS)[number]["code"];
 

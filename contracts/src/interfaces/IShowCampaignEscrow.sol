@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IShowCampaignEscrow {
+import {IAddressGuard} from "../common/IAddressGuard.sol";
+import {IAmountGuard} from "../common/IAmountGuard.sol";
+import {IFeeOnTransferGuard} from "../common/IFeeOnTransferGuard.sol";
+import {IPausableGuard} from "../common/IPausableGuard.sol";
+import {IUpgradeAuthority} from "../common/IUpgradeAuthority.sol";
+
+interface IShowCampaignEscrow is IAddressGuard, IAmountGuard, IFeeOnTransferGuard, IPausableGuard, IUpgradeAuthority {
     enum CampaignStatus {
         Draft,
         Active,
@@ -34,6 +40,12 @@ interface IShowCampaignEscrow {
         CampaignStatus status;
         uint256 feeBps;
         uint256 totalFeePaid;
+        /// @notice Timestamp after which anyone can force `BookingConfirmed`/`DepositReleased`
+        /// into `RefundAvailable` via {openRefundsAfterMissedFulfillment}. Set at booking
+        /// confirmation to `block.timestamp + fulfillmentWindow`. Stays 0 (feature inert)
+        /// when the global `fulfillmentWindow` is unset, or for legacy campaigns already
+        /// booked at the 2.1.0 upgrade — see the contract docstring.
+        uint256 fulfillmentDeadline;
     }
 
     event CampaignCreated(
@@ -63,11 +75,16 @@ interface IShowCampaignEscrow {
     event CampaignPaused(bool paused);
     event ConfirmerUpdated(address indexed confirmer, bool allowed);
     event FeeConfigUpdated(uint256 feeBps, address feeRecipient);
+    /// @notice Emitted when the upgrade authority (the TimelockController that governs
+    /// implementation upgrades) is set at initialization or handed to a new authority.
+    /// @notice Emitted when the global fulfillment window is set at the 2.1.0 reinitializer
+    /// or updated by the owner. The window is captured into each campaign's
+    /// `fulfillmentDeadline` at booking confirmation.
+    event FulfillmentWindowUpdated(uint256 previous, uint256 next);
 
     error NotConfirmer(address caller);
-    error Paused();
-    error ZeroAddress();
-    error ZeroAmount();
+    /// @notice Raised when an account other than the current {upgradeAuthority} attempts
+    /// to upgrade the implementation or reassign the upgrade authority.
     error InvalidCampaign(uint256 campaignId);
     error InvalidAuthority(bytes32 artistIdHash, bytes32 authorityHash);
     error InvalidDeadline(uint256 deadline, uint256 bookingDeadline, uint256 currentTime);
@@ -86,8 +103,13 @@ interface IShowCampaignEscrow {
     error DisputeWindowActive(uint256 campaignId, uint256 unlockTime, uint256 currentTime);
     error DisputeWindowClosed(uint256 campaignId, uint256 closedTime, uint256 currentTime);
     error NothingToRelease(uint256 campaignId);
-    error FeeOnTransferNotSupported(uint256 expected, uint256 received);
     error BookingDeadlinePassed(uint256 campaignId, uint256 bookingDeadline, uint256 currentTime);
     error InvalidDisputeWindow(uint256 provided, uint256 min, uint256 max);
     error InvalidMinimumBackers();
+    /// @notice Raised by {openRefundsAfterMissedFulfillment} when the campaign's
+    /// fulfillment deadline has not elapsed (or was never set — deadline 0).
+    error FulfillmentDeadlineNotPassed(uint256 campaignId, uint256 fulfillmentDeadline, uint256 currentTime);
+    /// @notice Raised when a proposed fulfillment window is outside
+    /// `[MIN_FULFILLMENT_WINDOW, MAX_FULFILLMENT_WINDOW]`.
+    error InvalidFulfillmentWindow(uint256 provided, uint256 min, uint256 max);
 }

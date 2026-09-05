@@ -5,6 +5,7 @@ BROADCAST_FILE ?= contracts/broadcast/DeployProtocol.s.sol/84532/run-latest.json
 RESONATE_IAC_REPO ?= https://github.com/akoita/resonate-iac
 LOCAL_INFRA_COMPOSE_FILE ?= docker/docker-compose.local.yml
 AA_INFRA_COMPOSE_FILE ?= docker/docker-compose.aa.yml
+AA_BUNDLER_PORT ?= 4337
 DEMUCS_IMAGE_NAME ?= resonate-demucs:cpu
 DEMUCS_GPU_IMAGE_NAME ?= resonate-demucs:gpu
 DEMUCS_CONTAINER_NAME ?= resonate-demucs-local
@@ -141,17 +142,112 @@ deploy-show-campaign-escrow:
 		exit 1; \
 	fi
 	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
-	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
-	RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
-
-deploy-stem-marketplace:
-	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
-		echo "PRIVATE_KEY is required"; \
+	if [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "EXPECTED_CHAIN_ID is required for a shared-network ShowCampaignEscrow deployment"; \
 		exit 1; \
+	fi; \
+	actual_chain_id="$$(cast chain-id --rpc-url "$$rpc_url")"; \
+	if [ "$$actual_chain_id" != "$$EXPECTED_CHAIN_ID" ]; then \
+		echo "RPC resolved chain $$actual_chain_id; expected $$EXPECTED_CHAIN_ID"; \
+		exit 1; \
+	fi; \
+	(cd contracts && forge script script/DeployShowCampaignEscrow.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
+	CHAIN_ID="$$actual_chain_id" RPC_URL="$$rpc_url" ./contracts/scripts/write-show-campaign-escrow-handoff.sh
+
+preflight-revenue-escrow:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "PRIVATE_KEY, RPC_URL, and EXPECTED_CHAIN_ID are required"; exit 1; \
 	fi
-	@rpc_url="$${RPC_URL:-$(BASE_SEPOLIA_RPC_URL)}"; \
-	(cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$$rpc_url" --broadcast --evm-version cancun --via-ir --slow); \
-	RPC_URL="$$rpc_url" ./contracts/scripts/write-stem-marketplace-handoff.sh
+	@deployer="$$(cast wallet address "$${PRIVATE_KEY}")"; \
+	actual_chain_id="$$(cast chain-id --rpc-url "$${RPC_URL}")"; \
+	if [ "$$actual_chain_id" != "$${EXPECTED_CHAIN_ID}" ]; then echo "RPC resolved chain $$actual_chain_id; expected $${EXPECTED_CHAIN_ID}"; exit 1; fi; \
+	if [ -z "$${REVENUE_ESCROW_OWNER:-}" ] || [ -z "$${REVENUE_ESCROW_GUARDIAN:-}" ]; then \
+		echo "REVENUE_ESCROW_OWNER and REVENUE_ESCROW_GUARDIAN are required"; exit 1; \
+	fi; \
+	if [ "$$(printf '%s' "$${REVENUE_ESCROW_OWNER}" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${REVENUE_ESCROW_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ] || \
+	   [ "$$(printf '%s' "$$deployer" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${REVENUE_ESCROW_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ]; then \
+		echo "REVENUE_ESCROW_GUARDIAN must be independent from owner and deployer"; exit 1; \
+	fi; \
+	delay="$${REVENUE_ESCROW_TIMELOCK_MIN_DELAY:-172800}"; \
+	if ! printf '%s' "$$delay" | grep -Eq '^[0-9]+$$' || [ "$$delay" -lt 172800 ]; then \
+		echo "REVENUE_ESCROW_TIMELOCK_MIN_DELAY must be at least 172800 seconds"; exit 1; \
+	fi; \
+	echo "RevenueEscrow preflight passed for deployer $$deployer on chain $$actual_chain_id"
+
+deploy-revenue-escrow: preflight-revenue-escrow
+	@cd contracts && forge script script/DeployRevenueEscrow.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+	@CHAIN_ID="$${EXPECTED_CHAIN_ID}" RPC_URL="$${RPC_URL}" ./contracts/scripts/write-revenue-escrow-handoff.sh
+
+pause-revenue-escrow:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && forge script script/SetRevenueEscrowPaused.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+schedule-revenue-escrow-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=schedule forge script script/UpgradeRevenueEscrow.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-revenue-escrow-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${NEW_IMPLEMENTATION:-}" ]; then echo "PRIVATE_KEY, RPC_URL, and NEW_IMPLEMENTATION are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=execute forge script script/UpgradeRevenueEscrow.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+smoke-revenue-escrow:
+	@if [ -z "$${RPC_URL:-}" ]; then echo "RPC_URL is required"; exit 1; fi
+	@cd contracts && forge script script/SmokeRevenueEscrow.s.sol --rpc-url "$${RPC_URL}"
+
+verify-revenue-escrow-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployRevenueEscrow.s.sol/84532/run-latest.json}" ./contracts/scripts/verify-base-sepolia-sourcify.sh
+
+verify-content-protection-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployContentProtection.s.sol/84532/run-latest.json}" VERIFY_ONLY= ./contracts/scripts/verify-base-sepolia-sourcify.sh
+
+summary-revenue-escrow-artifacts:
+	@record="contracts/deployments/revenue-escrow.$${DEPLOYMENT_NETWORK:-base-sepolia}.json"; \
+	if [ ! -f "$$record" ]; then echo "RevenueEscrow deployment record not found: $$record"; exit 1; fi; \
+	jq '{network,chainId,contracts,governance,deployment,abi}' "$$record"
+
+preflight-stem-marketplace:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${EXPECTED_CHAIN_ID:-}" ]; then \
+		echo "PRIVATE_KEY, RPC_URL, and EXPECTED_CHAIN_ID are required"; exit 1; \
+	fi
+	@deployer="$$(cast wallet address "$${PRIVATE_KEY}")"; \
+	actual_chain_id="$$(cast chain-id --rpc-url "$${RPC_URL}")"; \
+	if [ "$$actual_chain_id" != "$${EXPECTED_CHAIN_ID}" ]; then echo "RPC resolved chain $$actual_chain_id; expected $${EXPECTED_CHAIN_ID}"; exit 1; fi; \
+	for name in MARKETPLACE_OWNER MARKETPLACE_GUARDIAN STEM_NFT_ADDRESS PAYMENT_ASSET_REGISTRY_ADDRESS FEE_RECIPIENT; do \
+		eval "value=\$${$$name:-}"; if [ -z "$$value" ]; then echo "$$name is required"; exit 1; fi; \
+	done; \
+	if [ -z "$${CONTENT_PROTECTION_ADDRESS:-$${CONTENT_PROTECTION_PROXY:-}}" ]; then echo "CONTENT_PROTECTION_ADDRESS or CONTENT_PROTECTION_PROXY is required"; exit 1; fi; \
+	if [ "$$(printf '%s' "$${MARKETPLACE_OWNER}" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${MARKETPLACE_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ] || \
+	   [ "$$(printf '%s' "$$deployer" | tr '[:upper:]' '[:lower:]')" = "$$(printf '%s' "$${MARKETPLACE_GUARDIAN}" | tr '[:upper:]' '[:lower:]')" ]; then \
+		echo "MARKETPLACE_GUARDIAN must be independent from owner and deployer"; exit 1; \
+	fi; \
+	delay="$${MARKETPLACE_TIMELOCK_MIN_DELAY:-172800}"; \
+	if ! printf '%s' "$$delay" | grep -Eq '^[0-9]+$$' || [ "$$delay" -lt 172800 ]; then \
+		echo "MARKETPLACE_TIMELOCK_MIN_DELAY must be at least 172800 seconds"; exit 1; \
+	fi; \
+	echo "StemMarketplaceV2 preflight passed for deployer $$deployer on chain $$actual_chain_id"
+
+deploy-stem-marketplace: preflight-stem-marketplace
+	@cd contracts && forge script script/DeployStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+	@CHAIN_ID="$${EXPECTED_CHAIN_ID}" RPC_URL="$${RPC_URL}" ./contracts/scripts/write-stem-marketplace-handoff.sh
+
+pause-stem-marketplace:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && forge script script/SetStemMarketplacePaused.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+schedule-stem-marketplace-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ]; then echo "PRIVATE_KEY and RPC_URL are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=schedule forge script script/UpgradeStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-stem-marketplace-upgrade:
+	@if [ -z "$${PRIVATE_KEY:-}" ] || [ -z "$${RPC_URL:-}" ] || [ -z "$${NEW_IMPLEMENTATION:-}" ]; then echo "PRIVATE_KEY, RPC_URL, and NEW_IMPLEMENTATION are required"; exit 1; fi
+	@cd contracts && UPGRADE_ACTION=execute forge script script/UpgradeStemMarketplace.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+smoke-stem-marketplace:
+	@if [ -z "$${RPC_URL:-}" ]; then echo "RPC_URL is required"; exit 1; fi
+	@cd contracts && forge script script/SmokeStemMarketplace.s.sol --rpc-url "$${RPC_URL}"
+
+verify-stem-marketplace-sourcify:
+	@BROADCAST_FILE="$${BROADCAST_FILE:-contracts/broadcast/DeployStemMarketplace.s.sol/84532/run-latest.json}" ./contracts/scripts/verify-base-sepolia-sourcify.sh
 
 set-marketplace-protocol-fee:
 	@if [ -z "$${PRIVATE_KEY:-}" ]; then \
@@ -292,23 +388,92 @@ dev-clean:
 # Local Account Abstraction Development
 # ============================================
 
+# Isolated Kernel v4 compatibility harness. This never changes the default
+# contracts profile or deploys an account to a network.
+kernel-v4-build:
+	cd contracts/kernel-v4 && forge build
+
+kernel-v4-test:
+	cd contracts/kernel-v4 && forge test --match-path test/KernelFactoryCompatibility.t.sol
+
 local-aa-up:
 	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa up -d
 	@echo "Waiting for local Anvil on localhost:8545..."
-	@until nc -z localhost 8545 >/dev/null 2>&1; do sleep 1; done
+	@for attempt in $$(seq 1 60); do \
+		nc -z localhost 8545 >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Anvil did not become reachable within 60 seconds." >&2; exit 1
 	@echo "Waiting for local Alto bundler on localhost:4337..."
-	@until nc -z localhost 4337 >/dev/null 2>&1; do sleep 1; done
-	@echo "✅ Local AA infra is ready: Anvil (31337), Alto bundler"
+	@for attempt in $$(seq 1 60); do \
+		nc -z localhost 4337 >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Alto did not open port 4337 within 60 seconds." >&2; exit 1
+	@echo "✅ Local AA ports are reachable; deploy the EntryPoint next"
 
 local-aa-down:
-	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa down
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa --profile custom-aa down
 
 # Deploy AA contracts to local Anvil
 local-aa-deploy:
 	cd contracts && ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=$${ALLOW_DEFAULT_ANVIL_PRIVATE_KEY:-true} forge script script/DeployLocalAA.s.sol --rpc-url http://localhost:8545 --broadcast
+	@echo "Waiting for Alto to advertise the deployed EntryPoint..."
+	@for attempt in $$(seq 1 60); do \
+		curl -fsS -H 'content-type: application/json' \
+			--data '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
+			http://localhost:4337 2>/dev/null | jq -e '.result | length > 0' >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: Alto did not advertise an EntryPoint within 60 seconds." >&2; exit 1
 	@echo ""
 	@echo "Updating configuration files..."
 	./contracts/scripts/update-aa-config.sh
+
+# Deploy the AA stack to an externally managed local devnet. The caller must
+# explicitly authorize the signer through PRIVATE_KEY or the isolated-devnet
+# ALLOW_DEFAULT_ANVIL_PRIVATE_KEY escape hatch from DeploymentKey.s.sol.
+local-aa-deploy-custom:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_RPC_URL:?AA_RPC_URL is required}"
+	cd contracts && forge script script/DeployLocalAA.s.sol --rpc-url "$${AA_RPC_URL}" --broadcast $${AA_FORGE_FLAGS:-}
+
+# Start repository-owned Alto against a custom execution RPC. AA_ALTO_RPC_URL
+# must be reachable from Docker (for a host-published Kurtosis port, use
+# http://host.docker.internal:<port> on Linux/macOS).
+local-aa-custom-up:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_ALTO_RPC_URL:?AA_ALTO_RPC_URL is required}"
+	@: "$${AA_EXECUTOR_PRIVATE_KEY:?AA_EXECUTOR_PRIVATE_KEY is required}"
+	@: "$${AA_UTILITY_PRIVATE_KEY:?AA_UTILITY_PRIVATE_KEY is required}"
+	@entry_point="$${AA_ENTRY_POINT:-$$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "EntryPoint") | .contractAddress' contracts/broadcast/DeployLocalAA.s.sol/$${AA_CHAIN_ID}/run-latest.json | tail -1)}"; \
+	if ! printf '%s' "$$entry_point" | grep -Eq '^0x[0-9a-fA-F]{40}$$'; then \
+		echo "Error: deploy EntryPoint first or set AA_ENTRY_POINT." >&2; \
+		exit 1; \
+	fi; \
+	AA_ENTRY_POINT="$$entry_point" AA_BUNDLER_PORT="$(AA_BUNDLER_PORT)" \
+		docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile custom-aa up -d alto-bundler-custom
+	@echo "Waiting for custom Alto to advertise the deployed EntryPoint..."
+	@entry_point="$${AA_ENTRY_POINT:-$$(jq -r '.transactions[] | select(.transactionType == "CREATE" and .contractName == "EntryPoint") | .contractAddress' contracts/broadcast/DeployLocalAA.s.sol/$${AA_CHAIN_ID}/run-latest.json | tail -1)}"; \
+	for attempt in $$(seq 1 90); do \
+		curl -fsS -H 'content-type: application/json' \
+			--data '{"jsonrpc":"2.0","id":1,"method":"eth_supportedEntryPoints","params":[]}' \
+			http://localhost:$(AA_BUNDLER_PORT) 2>/dev/null | \
+			jq -e --arg entry_point "$$entry_point" '.result | map(ascii_downcase) | index($$entry_point | ascii_downcase) != null' >/dev/null 2>&1 && exit 0; \
+		sleep 1; \
+	done; echo "Error: custom Alto did not advertise the deployed EntryPoint within 90 seconds." >&2; exit 1
+	@echo "✅ Custom-chain Alto bundler is ready"
+
+local-aa-config-custom:
+	@: "$${AA_CHAIN_ID:?AA_CHAIN_ID is required}"
+	@: "$${AA_RPC_URL:?AA_RPC_URL is required}"
+	./contracts/scripts/update-aa-config.sh --mode custom \
+		--chain-id "$${AA_CHAIN_ID}" \
+		--rpc-url "$${AA_RPC_URL}" \
+		--bundler-url "$${AA_BUNDLER_URL:-http://localhost:$(AA_BUNDLER_PORT)}"
+
+local-aa-custom: local-aa-deploy-custom local-aa-custom-up local-aa-config-custom
+	@echo "✅ Custom-chain AA deployment, Alto, and app configuration are ready"
+
+local-aa-config-test:
+	./contracts/scripts/test-update-aa-config.sh
 
 # Deploy protocol contracts (StemNFT, Marketplace, TransferValidator, ContentProtection, RevenueEscrow)
 # On a Sepolia fork, the on-chain StemNFT predates Phase 2 (missing setContentProtection),
@@ -343,6 +508,24 @@ deploy-local-payments:
 sync-content-protection-stablecoin-stake:
 	cd contracts && forge script script/SetContentProtectionStablecoinStake.s.sol --rpc-url $${RPC_URL:-http://localhost:8545} --broadcast
 	@echo "✓ Content Protection stablecoin stake amount synced"
+
+pause-content-protection:
+	cd contracts && forge script script/SetContentProtectionPaused.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+prepare-content-protection-v6-migration:
+	cd contracts && MIGRATION_ACTION=prepare forge script script/MigrateContentProtectionV6.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-content-protection-v6-migration:
+	cd contracts && MIGRATION_ACTION=execute forge script script/MigrateContentProtectionV6.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+schedule-content-protection-upgrade:
+	cd contracts && UPGRADE_ACTION=schedule forge script script/UpgradeContentProtection.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+execute-content-protection-upgrade:
+	cd contracts && UPGRADE_ACTION=execute forge script script/UpgradeContentProtection.s.sol --rpc-url "$${RPC_URL}" --broadcast --evm-version cancun --via-ir --slow
+
+smoke-content-protection:
+	cd contracts && forge script script/SmokeContentProtection.s.sol --rpc-url "$${RPC_URL}" --evm-version cancun --via-ir
 
 payments-dev-up: dev-up local-aa-up
 	$(MAKE) local-aa-deploy
@@ -385,7 +568,7 @@ web-dev-local:
 
 # View local AA logs
 local-aa-logs:
-	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa logs -f
+	docker compose -f $(AA_INFRA_COMPOSE_FILE) --profile local-aa --profile fork-aa --profile custom-aa logs -f
 
 # ============================================
 # Forked Sepolia AA Development (ZeroDev)

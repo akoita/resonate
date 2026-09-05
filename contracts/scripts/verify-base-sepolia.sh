@@ -99,6 +99,12 @@ contract_id_for() {
         StemMarketplaceV2)
             echo "src/core/StemMarketplaceV2.sol:StemMarketplaceV2"
             ;;
+        ShowCampaignEscrow)
+            echo "src/core/ShowCampaignEscrow.sol:ShowCampaignEscrow"
+            ;;
+        TimelockController)
+            echo "lib/openzeppelin-contracts/contracts/governance/TimelockController.sol:TimelockController"
+            ;;
         *)
             return 1
             ;;
@@ -106,13 +112,10 @@ contract_id_for() {
 }
 
 read_create_field() {
-    local contract_name="$1"
+    local transaction_index="$1"
     local field="$2"
-    jq -r \
-        --arg name "$contract_name" \
-        --arg field "$field" \
-        'first(.transactions[] | select(.transactionType == "CREATE" and .contractName == $name)) | .[$field] // empty' \
-        "$BROADCAST_FILE"
+    jq -r --argjson index "$transaction_index" --arg field "$field" \
+        '.transactions[$index][$field] // empty' "$BROADCAST_FILE"
 }
 
 artifact_path_for() {
@@ -178,13 +181,14 @@ runtime_bytecode_matches() {
 
 verify_one() {
     local contract_name="$1"
+    local transaction_index="$2"
     local contract_id
     contract_id="$(contract_id_for "$contract_name")"
 
     local address
     local creation_tx
-    address="$(read_create_field "$contract_name" "contractAddress")"
-    creation_tx="$(read_create_field "$contract_name" "hash")"
+    address="$(read_create_field "$transaction_index" "contractAddress")"
+    creation_tx="$(read_create_field "$transaction_index" "hash")"
 
     if [[ -z "$address" || -z "$creation_tx" ]]; then
         echo -e "${RED}✗ $contract_name missing from broadcast CREATE transactions${NC}"
@@ -215,7 +219,7 @@ verify_one() {
     fi
 
     local constructor_args
-    constructor_args="$(constructor_args_for "$contract_name")"
+    constructor_args="$(constructor_args_for "$contract_name" "$transaction_index")"
 
     local submit_response
     submit_response="$(curl -fsS \
@@ -272,15 +276,14 @@ verify_one() {
 
 constructor_args_for() {
     local contract_name="$1"
+    local transaction_index="$2"
     mapfile -t args < <(
-        jq -r \
-            --arg name "$contract_name" \
-            'first(.transactions[] | select(.transactionType == "CREATE" and .contractName == $name)) | .arguments // [] | .[]' \
-            "$BROADCAST_FILE"
+        jq -r --argjson index "$transaction_index" \
+            '.transactions[$index].arguments // [] | .[]' "$BROADCAST_FILE"
     )
 
     case "$contract_name" in
-        TransferValidator|ContentProtection)
+        TransferValidator|ContentProtection|RevenueEscrow|ShowCampaignEscrow|StemMarketplaceV2)
             echo ""
             ;;
         ERC1967Proxy)
@@ -292,17 +295,14 @@ constructor_args_for() {
         CurationRewards)
             cast abi-encode "constructor(address,address,address,address)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'
             ;;
-        RevenueEscrow)
-            cast abi-encode "constructor(address,uint256)" "${args[0]}" "${args[1]}" | sed 's/^0x//'
-            ;;
         StemNFT)
             cast abi-encode "constructor(string)" "${args[0]}" | sed 's/^0x//'
             ;;
         PaymentAssetRegistry)
             cast abi-encode "constructor(address)" "${args[0]}" | sed 's/^0x//'
             ;;
-        StemMarketplaceV2)
-            cast abi-encode "constructor(address,address,address,address,uint256)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" "${args[4]}" | sed 's/^0x//'
+        TimelockController)
+            cast abi-encode "constructor(uint256,address[],address[],address)" "${args[0]}" "${args[1]}" "${args[2]}" "${args[3]}" | sed 's/^0x//'
             ;;
         *)
             echo ""
@@ -355,25 +355,28 @@ poll_verification() {
 cd "$CONTRACTS_DIR"
 
 FAILED=()
-CONTRACTS=(
-    TransferValidator
-    ContentProtection
-    ERC1967Proxy
-    DisputeResolution
-    CurationRewards
-    RevenueEscrow
-    StemNFT
-    PaymentAssetRegistry
-    StemMarketplaceV2
-)
+# Derive the contract list from the selected broadcast so protocol, Shows, and
+# surgical marketplace deployments all retry the exact graph they created.
+mapfile -t CONTRACTS < <(jq -r \
+    '.transactions | to_entries[] | select(.value.transactionType == "CREATE") | [.key, .value.contractName] | @tsv' \
+    "$BROADCAST_FILE")
 
-if [[ -n "${VERIFY_ONLY:-}" ]]; then
-    CONTRACTS=("$VERIFY_ONLY")
+if [[ "${#CONTRACTS[@]}" -eq 0 ]]; then
+    echo -e "${RED}No CREATE transactions found in broadcast.${NC}"
+    exit 1
 fi
 
-for contract_name in "${CONTRACTS[@]}"; do
-    if ! verify_one "$contract_name"; then
-        FAILED+=("$contract_name")
+for contract_entry in "${CONTRACTS[@]}"; do
+    IFS=$'\t' read -r transaction_index contract_name <<< "$contract_entry"
+    if [[ -n "${VERIFY_ONLY:-}" && "$contract_name" != "$VERIFY_ONLY" ]]; then
+        continue
+    fi
+    if ! contract_id_for "$contract_name" >/dev/null; then
+        echo -e "${YELLOW}Skipping unmapped CREATE contract: $contract_name${NC}"
+        continue
+    fi
+    if ! verify_one "$contract_name" "$transaction_index"; then
+        FAILED+=("$contract_name (transaction $transaction_index)")
     fi
 done
 

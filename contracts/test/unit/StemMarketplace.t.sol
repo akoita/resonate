@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {StemNFT} from "../../src/core/StemNFT.sol";
 import {StemMarketplaceV2} from "../../src/core/StemMarketplaceV2.sol";
 import {IStemMarketplaceV2} from "../../src/interfaces/IStemMarketplaceV2.sol";
@@ -13,6 +13,7 @@ import {ERC20Mock} from "../mocks/ERC20Mock.sol";
 import {MockFeeOnTransferToken} from "../mocks/MockFeeOnTransferToken.sol";
 import {RevertingReceiver} from "../mocks/RevertingReceiver.sol";
 import {MockContentProtectionMarketplace} from "../mocks/MockContentProtectionMarketplace.sol";
+import {StemMarketplaceProxyDeployer} from "../utils/StemMarketplaceProxyDeployer.sol";
 
 /**
  * @title StemMarketplaceV2 Unit Tests
@@ -30,6 +31,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     uint256 public authorizerKey = 0xA11CE;
 
     address public admin = makeAddr("admin");
+    address public upgradeAuthority = makeAddr("upgradeAuthority");
     address public feeRecipient = makeAddr("feeRecipient");
     address public royaltyReceiver = makeAddr("royaltyReceiver");
     address public seller = makeAddr("seller");
@@ -38,7 +40,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
     address public authorizer;
 
     uint256 constant PROTOCOL_FEE_BPS = 250; // 2.5%
-    uint256 constant ROYALTY_BPS = 500; // 5%
+    uint96 constant ROYALTY_BPS = 500; // 5%
     uint256 constant LISTING_DURATION = 7 days;
     bytes32 constant LOCAL_ETH = keccak256("local:eth");
     bytes32 constant LOCAL_TEST = keccak256("local:test");
@@ -61,8 +63,14 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         paymentAssetRegistry.configureAsset(LOCAL_TEST, address(paymentToken), "TEST", 18, true, false);
         paymentAssetRegistry.configureAsset(LOCAL_USDC, address(usdc), "USDC", 6, true, true);
         paymentAssetRegistry.configureAsset(LOCAL_WETH, address(weth), "WETH", 18, true, false);
-        marketplace = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, PROTOCOL_FEE_BPS
+        marketplace = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            PROTOCOL_FEE_BPS,
+            admin,
+            upgradeAuthority
         );
 
         // Setup validator
@@ -79,7 +87,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Mint NFTs for seller
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        stemNFT.mint(seller, 100, "ipfs://test", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
+        stemNFT.mint(seller, 100, "ipfs://test", royaltyReceiver, ROYALTY_BPS, true, parentIds);
 
         // Approve marketplace
         vm.prank(seller);
@@ -99,9 +107,9 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         weth.approve(address(marketplace), type(uint256).max);
     }
 
-    // ============ Constructor Tests ============
+    // ============ Initialization Tests ============
 
-    function test_Constructor_SetsImmutables() public view {
+    function test_Initialize_SetsConfiguration() public view {
         assertEq(address(marketplace.stemNFT()), address(stemNFT));
         assertEq(address(marketplace.contentProtection()), address(contentProtection));
         assertEq(address(marketplace.paymentAssetRegistry()), address(paymentAssetRegistry));
@@ -128,7 +136,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         uint256 received = totalPrice - (totalPrice * 100) / 10_000;
         vm.prank(buyer);
         vm.expectRevert(
-            abi.encodeWithSelector(IStemMarketplaceV2.FeeOnTransferNotSupported.selector, totalPrice, received)
+            abi.encodeWithSelector(FeeOnTransferNotSupported.selector, totalPrice, received)
         );
         marketplace.buy(listingId, 1);
     }
@@ -141,7 +149,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         // Seller mints a stem whose royalty receiver rejects ETH.
         uint256[] memory parentIds = new uint256[](0);
         vm.prank(seller);
-        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://r", address(receiver), uint96(ROYALTY_BPS), true, parentIds);
+        uint256 tokenId = stemNFT.mint(seller, 100, "ipfs://r", address(receiver), ROYALTY_BPS, true, parentIds);
         vm.prank(seller);
         uint256 listingId = marketplace.list(tokenId, 10, 1 ether, address(0), LISTING_DURATION);
 
@@ -161,55 +169,154 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         assertEq(address(receiver).balance - before, royalty, "claimed");
     }
 
-    function test_Constructor_RevertZeroContentProtection() public {
-        vm.prank(admin);
-        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
-        new StemMarketplaceV2(
-            address(stemNFT), address(0), address(paymentAssetRegistry), feeRecipient, PROTOCOL_FEE_BPS
+    function test_Initialize_RevertZeroContentProtection() public {
+        StemMarketplaceV2 implementation = new StemMarketplaceV2();
+        vm.expectRevert(ZeroAddress.selector);
+        StemMarketplaceProxyDeployer.deployProxy(
+            implementation,
+            address(stemNFT),
+            address(0),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            PROTOCOL_FEE_BPS,
+            admin,
+            upgradeAuthority
         );
     }
 
-    function test_Constructor_RevertZeroPaymentAssetRegistry() public {
-        vm.prank(admin);
-        vm.expectRevert(IStemMarketplaceV2.ZeroAddress.selector);
-        new StemMarketplaceV2(address(stemNFT), address(contentProtection), address(0), feeRecipient, PROTOCOL_FEE_BPS);
+    function test_Initialize_RevertZeroPaymentAssetRegistry() public {
+        StemMarketplaceV2 implementation = new StemMarketplaceV2();
+        vm.expectRevert(ZeroAddress.selector);
+        StemMarketplaceProxyDeployer.deployProxy(
+            implementation,
+            address(stemNFT),
+            address(contentProtection),
+            address(0),
+            feeRecipient,
+            PROTOCOL_FEE_BPS,
+            admin,
+            upgradeAuthority
+        );
     }
 
-    function test_Constructor_RevertInvalidFee() public {
-        vm.prank(admin);
+    function test_Initialize_RevertInvalidFee() public {
+        StemMarketplaceV2 implementation = new StemMarketplaceV2();
         vm.expectRevert(IStemMarketplaceV2.InvalidFee.selector);
-        new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), feeRecipient, 1501
-        ); // > 5%
+        StemMarketplaceProxyDeployer.deployProxy(
+            implementation,
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            feeRecipient,
+            1501,
+            admin,
+            upgradeAuthority
+        ); // > 15%
     }
 
     // V-003: Zero fee recipient with non-zero fee must revert
-    function test_Constructor_RevertZeroFeeRecipientWithFee() public {
-        vm.prank(admin);
+    function test_Initialize_RevertZeroFeeRecipientWithFee() public {
+        StemMarketplaceV2 implementation = new StemMarketplaceV2();
         vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
-        new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 250
+        StemMarketplaceProxyDeployer.deployProxy(
+            implementation,
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            address(0),
+            250,
+            admin,
+            upgradeAuthority
         );
     }
 
     // V-003: Zero fee recipient with zero fee is allowed (no fees charged)
-    function test_Constructor_AllowsZeroRecipientWithZeroFee() public {
-        vm.prank(admin);
-        StemMarketplaceV2 m = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 0
+    function test_Initialize_AllowsZeroRecipientWithZeroFee() public {
+        StemMarketplaceV2 m = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            address(0),
+            0,
+            admin,
+            upgradeAuthority
         );
         assertEq(m.protocolFeeBps(), 0);
     }
 
     // V-003: setProtocolFee rejects non-zero fee when recipient is address(0)
     function test_SetProtocolFee_RevertWhenRecipientZero() public {
-        vm.prank(admin);
-        StemMarketplaceV2 m = new StemMarketplaceV2(
-            address(stemNFT), address(contentProtection), address(paymentAssetRegistry), address(0), 0
+        StemMarketplaceV2 m = StemMarketplaceProxyDeployer.deploy(
+            address(stemNFT),
+            address(contentProtection),
+            address(paymentAssetRegistry),
+            address(0),
+            0,
+            admin,
+            upgradeAuthority
         );
         vm.prank(admin);
         vm.expectRevert(IStemMarketplaceV2.InvalidRecipient.selector);
         m.setProtocolFee(250);
+    }
+
+    function test_PauseBlocksListingsAndPurchasesButKeepsRecoveryLive() public {
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 10, 1 ether, address(0), LISTING_DURATION);
+
+        vm.prank(admin);
+        marketplace.setPaused(true);
+
+        vm.prank(seller);
+        vm.expectRevert(Paused.selector);
+        marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        vm.prank(seller);
+        vm.expectRevert(Paused.selector);
+        marketplace.listLastMint(1, 1 ether, address(0), LISTING_DURATION, 0);
+
+        vm.prank(buyer);
+        vm.expectRevert(Paused.selector);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+
+        vm.prank(buyer);
+        vm.expectRevert(Paused.selector);
+        marketplace.buyFor{value: 1 ether}(listingId, 1, recipient);
+
+        // Sellers can unwind and recipients can still reach the failed-payment
+        // recovery path while the marketplace is stopped.
+        vm.prank(seller);
+        marketplace.cancel(listingId);
+        vm.prank(royaltyReceiver);
+        vm.expectRevert(NothingToClaim.selector);
+        marketplace.claimFailedPayment(address(0));
+
+        marketplace.getListing(listingId);
+        marketplace.quoteBuy(listingId, 1);
+        vm.startPrank(admin);
+        marketplace.setProtocolFee(PROTOCOL_FEE_BPS);
+        marketplace.setFeeRecipient(feeRecipient);
+        marketplace.setPaymentAssetRegistry(address(paymentAssetRegistry));
+        marketplace.setPaused(false);
+        vm.stopPrank();
+        assertFalse(marketplace.paused());
+    }
+
+    function test_SetPaymentAssetRegistryChangesListingAllowlist() public {
+        PaymentAssetRegistry nextRegistry = new PaymentAssetRegistry(admin);
+        vm.prank(admin);
+        nextRegistry.configureAsset(keccak256("local:replacement"), address(paymentToken), "TEST", 18, true, false);
+
+        vm.prank(admin);
+        marketplace.setPaymentAssetRegistry(address(nextRegistry));
+
+        vm.prank(seller);
+        vm.expectRevert(IStemMarketplaceV2.UnsupportedPaymentAsset.selector);
+        marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(paymentToken), LISTING_DURATION);
+        assertEq(marketplace.getListing(listingId).paymentToken, address(paymentToken));
     }
 
     // ============ Listing Tests ============
@@ -274,7 +381,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         contentProtection.setMaxListingPrice(releaseId, 1 ether);
 
         vm.startPrank(seller);
-        stemNFT.mint(seller, 1, "ipfs://latest", royaltyReceiver, uint96(ROYALTY_BPS), true, parentIds);
+        stemNFT.mint(seller, 1, "ipfs://latest", royaltyReceiver, ROYALTY_BPS, true, parentIds);
 
         uint256 listingId = marketplace.listLastMint(1, 0.25 ether, address(0), LISTING_DURATION, releaseId);
         vm.stopPrank();
@@ -315,6 +422,60 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
         assertEq(listing.pricePerUnit, 1 ether);
     }
 
+    // ── CP-4 (#1271): stake-backed price cap re-enforced at purchase ────────
+
+    function test_Buy_RevertWhenCapLoweredAfterListing() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        // The cap moves below the listed price after listing (e.g. the owner lowers
+        // maxPriceMultiplier). The listing-time check alone would let this transact.
+        contentProtection.setMaxListingPrice(1, 0.5 ether);
+
+        vm.prank(buyer);
+        vm.expectRevert(IStemMarketplaceV2.PriceExceedsStakeCap.selector);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+    }
+
+    function test_Buy_RelistWithinLoweredCapSucceeds() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 oldListingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        contentProtection.setMaxListingPrice(1, 0.5 ether);
+
+        // The seller can cancel and relist within the new cap; the purchase succeeds.
+        vm.startPrank(seller);
+        marketplace.cancel(oldListingId);
+        uint256 listingId = marketplace.list(1, 1, 0.5 ether, address(0), LISTING_DURATION);
+        vm.stopPrank();
+
+        vm.prank(buyer);
+        marketplace.buy{value: 0.5 ether}(listingId, 1);
+        assertEq(stemNFT.balanceOf(buyer, 1), 1);
+    }
+
+    function test_Buy_AllowedWhenStakeNoLongerActive() public {
+        contentProtection.registerStemProtectionRoot(1, 1);
+        contentProtection.setMaxListingPrice(1, 1 ether);
+
+        vm.prank(seller);
+        uint256 listingId = marketplace.list(1, 1, 1 ether, address(0), LISTING_DURATION);
+
+        // Stake refunded => getMaxListingPrice returns type(uint256).max (the mock
+        // treats 0 as unset), so the existing listing stays purchasable by design.
+        contentProtection.setMaxListingPrice(1, 0);
+
+        vm.prank(buyer);
+        marketplace.buy{value: 1 ether}(listingId, 1);
+        assertEq(stemNFT.balanceOf(buyer, 1), 1);
+    }
+
     function test_List_ProtectedMint_RevertPriceExceedsStakeCapWithoutManualRootRegistration() public {
         uint256[] memory parentIds = new uint256[](0);
         uint256 releaseId = 77;
@@ -331,7 +492,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
             "ipfs://protected-stem",
             releaseId,
             royaltyReceiver,
-            uint96(ROYALTY_BPS),
+            ROYALTY_BPS,
             true,
             parentIds,
             deadline,
@@ -347,7 +508,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
             "ipfs://protected-stem",
             releaseId,
             royaltyReceiver,
-            uint96(ROYALTY_BPS),
+            ROYALTY_BPS,
             true,
             parentIds,
             deadline,
@@ -809,7 +970,7 @@ contract StemMarketplaceTest is Test, IStemMarketplaceV2 {
 
         // Attempt to send ETH alongside an ERC20 purchase — must revert
         vm.prank(buyer);
-        vm.expectRevert(IStemMarketplaceV2.UnexpectedETH.selector);
+        vm.expectRevert(UnexpectedETH.selector);
         marketplace.buy{value: 1 ether}(listingId, 10);
 
         // Verify no ETH was trapped

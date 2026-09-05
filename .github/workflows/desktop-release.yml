@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-      - "desktop-v*"
   workflow_dispatch:
     inputs:
       platform:
@@ -71,18 +70,29 @@ jobs:
       RESONATE_DESKTOP_START_WEB: "false"
       RESONATE_DESKTOP_WEB_URL: ${{ inputs.desktop_web_url || vars.DESKTOP_WEB_URL || '' }}
       SHOULD_BUILD: ${{ github.event_name == 'push' || inputs.platform == 'all' || inputs.platform == matrix.platform }}
+      SOURCE_REF: ${{ github.event_name == 'push' && github.ref || (inputs.publish_release && inputs.release_tag) || github.sha }}
     steps:
       - name: Checkout
         if: env.SHOULD_BUILD == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Validate release tag and source version
+        if: env.SHOULD_BUILD == 'true' && (github.event_name == 'push' || inputs.publish_release == true)
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          npm run release:check -- --tag "${RELEASE_TAG}"
 
       - name: Setup hardened npm
         if: env.SHOULD_BUILD == 'true'
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Resolve desktop runtime target
@@ -112,7 +122,7 @@ jobs:
 
       - name: Install desktop dependencies
         if: env.SHOULD_BUILD == 'true'
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project desktop
         working-directory: desktop
 
       - name: Validate desktop package config
@@ -134,7 +144,7 @@ jobs:
 
       - name: Upload desktop artifacts
         if: env.SHOULD_BUILD == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: resonate-desktop-${{ matrix.platform }}
           path: ${{ matrix.artifact_paths }}
@@ -146,20 +156,28 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push' || inputs.publish_release == true
+    environment: software-release
     permissions:
       contents: write
+    outputs:
+      release_tag: ${{ steps.publish_assets.outputs.release_tag }}
+      source_sha: ${{ steps.publish_assets.outputs.source_sha }}
+      image_run_id: ${{ steps.publish_assets.outputs.image_run_id }}
+      automatic_handoff_eligible: ${{ steps.publish_assets.outputs.automatic_handoff_eligible }}
     steps:
       - name: Download desktop artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: desktop-artifacts
           merge-multiple: true
 
       - name: Publish release assets
+        id: publish_assets
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          REQUESTED_PLATFORM: ${{ inputs.platform || 'all' }}
         run: |
           set -euo pipefail
 
@@ -167,6 +185,46 @@ jobs:
             echo "::error::Manual release publishing requires the release_tag input."
             exit 1
           fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${REQUESTED_PLATFORM}" != "all" ]]; then
+            echo "::error::Publishing a software release requires platform=all. Platform-specific runs are build-only."
+            exit 1
+          fi
+
+          release_json=""
+          for attempt in $(seq 1 20); do
+            if release_json=$(gh release view "${RELEASE_TAG}" --json isDraft 2>/dev/null); then
+              break
+            fi
+            if [[ "${attempt}" == "20" ]]; then
+              echo "::error::No draft software release exists for ${RELEASE_TAG}. Run the protected Software Release workflow first."
+              exit 1
+            fi
+            sleep 15
+          done
+
+          if [[ "$(jq -r '.isDraft' <<<"${release_json}")" != "true" ]]; then
+            echo "::error::Release ${RELEASE_TAG} is already published; desktop assets are immutable."
+            exit 1
+          fi
+
+          tag_ref=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}")
+          expected_sha=$(jq -r '.object.sha' <<<"${tag_ref}")
+          mkdir -p "${RUNNER_TEMP}/release-evidence"
+          gh release download "${RELEASE_TAG}" \
+            --pattern release-evidence.json \
+            --dir "${RUNNER_TEMP}/release-evidence"
+          evidence_sha=$(jq -r '.source_sha' "${RUNNER_TEMP}/release-evidence/release-evidence.json")
+          if [[ "${evidence_sha}" != "${expected_sha}" ]]; then
+            echo "::error::Release evidence source ${evidence_sha} does not match tag ${RELEASE_TAG} at ${expected_sha}."
+            exit 1
+          fi
+
+          for required_asset in release-evidence.json release-evidence.tar.gz SHA256SUMS; do
+            if ! gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name' | grep -Fxq "${required_asset}"; then
+              echo "::error::Draft release is missing required evidence asset ${required_asset}."
+              exit 1
+            fi
+          done
 
           mkdir -p release-assets
           find desktop-artifacts -type f \
@@ -177,12 +235,106 @@ jobs:
             echo "::error::No desktop release artifacts were downloaded."
             exit 1
           fi
+          for required_pattern in '*.exe' '*.dmg' '*.AppImage'; do
+            if ! compgen -G "release-assets/${required_pattern}" >/dev/null; then
+              echo "::error::Desktop release is incomplete; no ${required_pattern} artifact was produced."
+              exit 1
+            fi
+          done
 
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
-          else
-            gh release create "${RELEASE_TAG}" release-assets/* \
-              --target "${GITHUB_SHA}" \
-              --title "Resonate Desktop ${RELEASE_TAG}" \
-              --generate-notes
+          (cd release-assets && sha256sum * | sort -k2 > desktop-SHA256SUMS)
+
+          existing_assets=$(gh release view "${RELEASE_TAG}" --json assets --jq '.assets[].name')
+          while IFS= read -r asset; do
+            asset_name=$(basename "${asset}")
+            if grep -Fxq "${asset_name}" <<<"${existing_assets}"; then
+              echo "::error::Release asset ${asset_name} already exists; refusing to overwrite it."
+              exit 1
+            fi
+          done < <(find release-assets -maxdepth 1 -type f -print | sort)
+
+          image_run_id="$(jq -r '.image_run.id // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          source_sha="$(jq -r '.source_sha // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_tag="$(jq -r '.tag // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_schema="$(jq -r '.schema_version // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_environment="$(jq -r '.deployment.environment // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          evidence_branch="$(jq -r '.deployment.trigger_branch // empty' "${RUNNER_TEMP}/release-evidence/release-evidence.json")"
+          automatic_handoff_eligible="false"
+          eligibility_reason="release is not a strict stable tag push with a main-to-staging publish-only manifest"
+
+          # This is the pre-publication half of the gate.  Deploy Handoff
+          # repeats the release API/evidence checks after the draft becomes
+          # public; this step only records safe outputs from evidence already
+          # validated while the release was still a draft.
+          if [[ "${GITHUB_EVENT_NAME}" == "push" \
+            && "${GITHUB_REF}" == "refs/tags/${RELEASE_TAG}" \
+            && "${GITHUB_REF_NAME}" == "${RELEASE_TAG}" \
+            && "${RELEASE_TAG}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ \
+            && "${source_sha}" == "${expected_sha}" \
+            && "${source_sha}" =~ ^[0-9a-f]{40}$ \
+            && "${evidence_tag}" == "${RELEASE_TAG}" \
+            && "${evidence_schema}" == "resonate-release-evidence/v2" \
+            && "${image_run_id}" =~ ^[1-9][0-9]*$ \
+            && "${evidence_environment}" == "staging" \
+            && "${evidence_branch}" == "main" ]]; then
+            automatic_handoff_eligible="true"
+            eligibility_reason="stable tag-push evidence is eligible for authoritative published-release revalidation"
           fi
+
+          output_source_sha=""
+          output_image_run_id=""
+          if [[ "${source_sha}" =~ ^[0-9a-f]{40}$ ]]; then
+            output_source_sha="${source_sha}"
+          fi
+          if [[ "${image_run_id}" =~ ^[1-9][0-9]*$ ]]; then
+            output_image_run_id="${image_run_id}"
+          fi
+
+          {
+            echo "release_tag=${RELEASE_TAG}"
+            echo "source_sha=${output_source_sha}"
+            echo "image_run_id=${output_image_run_id}"
+            echo "automatic_handoff_eligible=${automatic_handoff_eligible}"
+            echo "eligibility_reason=${eligibility_reason}"
+          } >> "${GITHUB_OUTPUT}"
+
+          gh release upload "${RELEASE_TAG}" release-assets/*
+          gh release edit "${RELEASE_TAG}" --draft=false
+
+          {
+            echo "## Published desktop release"
+            echo
+            echo "- tag: \`${RELEASE_TAG}\`"
+            echo "- automatic handoff gate: pre-publication evidence eligibility recorded"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize published release gate
+        if: always()
+        env:
+          RELEASE_TAG: ${{ steps.publish_assets.outputs.release_tag }}
+          IMAGE_RUN_ID: ${{ steps.publish_assets.outputs.image_run_id }}
+          ELIGIBLE: ${{ steps.publish_assets.outputs.automatic_handoff_eligible }}
+          REASON: ${{ steps.publish_assets.outputs.eligibility_reason }}
+        run: |
+          {
+            echo "- tag: \`${RELEASE_TAG}\`"
+            echo "- image release run: \`${IMAGE_RUN_ID}\`"
+            echo "- automatic handoff eligible: \`${ELIGIBLE}\`"
+            echo "- eligibility reason: ${REASON}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  automatic-deploy-handoff:
+    name: Automatically Handoff Published Stable Release
+    needs: release
+    if: needs.release.result == 'success' && needs.release.outputs.automatic_handoff_eligible == 'true'
+    uses: ./.github/workflows/deploy-handoff.yml
+    permissions:
+      actions: read
+      contents: read
+    with:
+      release_run_id: ${{ needs.release.outputs.image_run_id }}
+      release_tag: ${{ needs.release.outputs.release_tag }}
+      release_source_sha: ${{ needs.release.outputs.source_sha }}
+      automatic_published_release: true
+    secrets:
+      RESONATE_IAC_DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}

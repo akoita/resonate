@@ -1,0 +1,11 @@
+{
+  "name": "resonate-glamsterdam-impact",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test lib.test.mjs",
+    "check": "node --check lib.mjs && node --check validate-evidence.mjs && node --check collect-evidence.mjs && node --check lib.test.mjs",
+    "validate": "node validate-evidence.mjs evidence.template.json",
+    "collect": "node collect-evidence.mjs"
+  }
+}

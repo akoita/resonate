@@ -11,7 +11,6 @@ import { API_BASE } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
   defaultBuyPaymentMethod,
-  formatStableAssetAmount,
   formatUsdPrice,
   getCheckoutRailLabel,
   getCheckoutRailSubLabel,
@@ -29,6 +28,11 @@ import { formatBpsPercent } from "../../lib/marketplaceProceeds";
 import { getX402ChainName } from "../../lib/x402BrowserWallet";
 import { payStemWithX402SmartAccount } from "../../lib/x402SmartAccountPay";
 import type { X402PaymentResult } from "../../lib/x402Pay";
+import {
+  getX402TransferParams,
+  parseX402StemQuote,
+  type X402StemQuote,
+} from "../../lib/x402StemQuote";
 import { LicenseTermsPreview } from "./LicenseTermsPreview";
 import { LicenseTypeSelector, type LicenseType } from "./LicenseTypeSelector";
 import type { Listing } from "../../lib/contracts";
@@ -51,11 +55,6 @@ function getX402WalletNote(
   const x402Chain = getX402ChainName(x402ChainId);
   return `x402 checkout uses your Resonate passkey wallet with ${assetSymbol} on ${x402Chain}.`;
 }
-
-type X402QuoteInfo = {
-  amountUsd: number | null;
-  payTo: string | null;
-};
 
 type TierListings = Partial<Record<LicenseType, string>>;
 
@@ -143,8 +142,9 @@ export function BuyModal({
   const [amount, setAmount] = useState(1n);
   const [selectedLicense, setSelectedLicense] = useState<LicenseType>(licenseType);
   const [paymentMethod, setPaymentMethod] = useState<BuyPaymentMethod>("onchain");
-  const [x402Quote, setX402Quote] = useState<X402QuoteInfo | null>(null);
+  const [x402Quote, setX402Quote] = useState<X402StemQuote | null>(null);
   const [x402QuoteLoading, setX402QuoteLoading] = useState(false);
+  const [x402QuoteError, setX402QuoteError] = useState<string | null>(null);
   const [x402Status, setX402Status] = useState<X402StatusPhase | null>(null);
   const [x402Error, setX402Error] = useState<string | null>(null);
   const [x402Result, setX402Result] = useState<X402PaymentResult | null>(null);
@@ -264,19 +264,28 @@ export function BuyModal({
     }
     let cancelled = false;
     setX402Quote(null);
+    setX402QuoteError(null);
     setX402QuoteLoading(true);
     fetch(`${API_BASE}/api/stems/${encodeURIComponent(stemId)}/x402/info`)
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) throw new Error(`Quote request failed (${res.status}).`);
+        return res.json() as Promise<unknown>;
+      })
       .then((data) => {
-        if (cancelled || !data?.x402) return;
-        setX402Quote({
-          amountUsd: typeof data.price?.usd === "number" ? data.price.usd : null,
-          payTo: data.x402?.payTo ?? null,
-        });
+        if (cancelled || !x402Config?.enabled || !x402Asset) return;
+        setX402Quote(parseX402StemQuote(data, {
+          expectedSymbol: x402Asset.symbol,
+          decimals: x402Asset.decimals,
+          payoutAddress: x402Config.payoutAddress,
+        }));
       })
       .catch((err) => {
         if (cancelled) return;
         console.error("x402 quote fetch error:", err);
+        setX402Quote(null);
+        setX402QuoteError(
+          "Quote details unavailable. Refresh the quote or use direct wallet checkout.",
+        );
       })
       .finally(() => {
         if (cancelled) return;
@@ -285,7 +294,14 @@ export function BuyModal({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, activePaymentMethod, stemId, x402AvailableForSelectedLicense]);
+  }, [
+    isOpen,
+    activePaymentMethod,
+    stemId,
+    x402AvailableForSelectedLicense,
+    x402Asset,
+    x402Config,
+  ]);
 
   // Reset x402 transient state whenever the modal is closed/reopened
   useEffect(() => {
@@ -295,6 +311,7 @@ export function BuyModal({
     setX402Result(null);
     setX402Payer(null);
     setX402QuoteLoading(false);
+    setX402QuoteError(null);
   }, [isOpen]);
 
   const maxAmount = listing?.amount || 1n;
@@ -351,7 +368,8 @@ export function BuyModal({
 
   const handleX402Pay = async () => {
     if (!stemId || !x402Config?.enabled || selectedLicense !== "personal") return;
-    if (!x402Quote?.payTo || !x402Asset?.address) return;
+    if (!x402Quote || !x402Asset?.address) return;
+    const transfer = getX402TransferParams(x402Quote);
     void recordProductAnalytics(token, "marketplace.purchase_intent", {
       source: "buy_modal",
       subjectType: "marketplace_listing",
@@ -365,7 +383,7 @@ export function BuyModal({
         paymentMethod: "x402",
         chainId: x402Config.chainId,
         paymentAssetSymbol: x402Asset.symbol,
-        amountUsd: x402Quote.amountUsd ?? undefined,
+        amountUsd: x402Quote.amountUsd,
       },
     });
     setX402Error(null);
@@ -386,8 +404,8 @@ export function BuyModal({
         webAuthnKey: key,
         chainId: x402Config.chainId,
         assetAddress: x402Asset.address as `0x${string}`,
-        payTo: x402Quote.payTo as `0x${string}`,
-        amountUnits: toTokenAmount(x402Quote.amountUsd ?? 0, x402Asset.decimals),
+        payTo: transfer.payTo,
+        amountUnits: transfer.amountUnits,
         onStatus: setX402Status,
         onPayer: setX402Payer,
       });
@@ -624,10 +642,7 @@ export function BuyModal({
             {/* x402 Quote */}
             {activePaymentMethod === "x402" && (
               <div className="buy-modal__x402-quote" data-testid="buy-modal-x402-quote">
-                <div className="buy-modal__x402-row">
-                  <span>Price (USD)</span>
-                  <span>{x402QuoteLoading ? "Loading..." : formatUsdPrice(x402Quote?.amountUsd)}</span>
-                </div>
+                <X402QuoteBreakdown quote={x402Quote} loading={x402QuoteLoading} />
                 <div className="buy-modal__x402-row">
                   <span>License</span>
                   <span>{selectedLicense}</span>
@@ -637,7 +652,9 @@ export function BuyModal({
                   <span>
                     {x402QuoteLoading
                       ? "Loading..."
-                      : formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}
+                      : x402Quote
+                        ? `${x402Quote.totalAmount} ${x402Quote.totalCurrency}`
+                        : "Unavailable"}
                   </span>
                 </div>
                 <div className="buy-modal__x402-row">
@@ -658,14 +675,6 @@ export function BuyModal({
                     <span>{x402Payer.slice(0, 6)}…{x402Payer.slice(-4)}</span>
                   </div>
                 )}
-                <div className="buy-modal__x402-row buy-modal__x402-row--total">
-                  <span>Total</span>
-                  <span>
-                    {x402QuoteLoading
-                      ? "Loading..."
-                      : formatStableAssetAmount(x402Quote?.amountUsd, x402Symbol)}
-                  </span>
-                </div>
                 <div className="buy-modal__breakdown-note">
                   {x402WalletNote}
                 </div>
@@ -701,6 +710,11 @@ export function BuyModal({
             {activePaymentMethod === "x402" && x402Error && (
               <div className="buy-modal__alert buy-modal__alert--error">
                 {x402Error}
+              </div>
+            )}
+            {activePaymentMethod === "x402" && x402QuoteError && (
+              <div className="buy-modal__alert buy-modal__alert--error" role="alert">
+                {x402QuoteError}
               </div>
             )}
 
@@ -783,8 +797,8 @@ export function BuyModal({
                     ? X402_STATUS_LABEL[x402Status]
                     : x402QuoteLoading
                       ? "Loading quote..."
-                      : x402Quote?.amountUsd != null
-                        ? `Pay ${formatStableAssetAmount(x402Quote.amountUsd, x402Symbol)}`
+                      : x402Quote
+                        ? `Pay ${x402Quote.totalAmount} ${x402Quote.totalCurrency}`
                         : `Pay with ${x402Symbol}`}
                 </button>
               )}
@@ -798,8 +812,45 @@ export function BuyModal({
   );
 }
 
-function toTokenAmount(amount: number, decimals: number): string {
-  const [intPart, decPart = ""] = String(amount).split(".");
-  const paddedDec = decPart.padEnd(decimals, "0").slice(0, decimals);
-  return (intPart + paddedDec).replace(/^0+/, "") || "0";
+export function X402QuoteBreakdown({
+  quote,
+  loading,
+}: {
+  quote: X402StemQuote | null;
+  loading: boolean;
+}) {
+  const unavailable = !loading && !quote;
+  return (
+    <>
+      <div className="buy-modal__x402-row">
+        <span>Price (USD)</span>
+        <span>{loading ? "Loading..." : formatUsdPrice(quote?.amountUsd)}</span>
+      </div>
+      <div className="buy-modal__x402-row">
+        <span>Platform fee (included)</span>
+        <span>
+          {loading
+            ? "Loading..."
+            : quote
+              ? `${quote.platformFee.amount} ${quote.platformFee.currency}`
+              : "Unavailable"}
+        </span>
+      </div>
+      <div className="buy-modal__x402-row buy-modal__x402-row--total">
+        <span>Total</span>
+        <span>
+          {loading
+            ? "Loading..."
+            : quote
+              ? `${quote.totalAmount} ${quote.totalCurrency}`
+              : "Unavailable"}
+        </span>
+      </div>
+      {unavailable && (
+        <div className="buy-modal__x402-unavailable" role="status">
+          Quote details unavailable
+        </div>
+      )}
+    </>
+  );
 }

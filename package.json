@@ -1,22 +1,28 @@
 {
   "name": "resonate",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "npm@11.14.1",
   "engines": {
-    "node": ">=20.17.0",
+    "node": ">=20.19.0",
     "npm": ">=11.10.0"
   },
   "scripts": {
     "prepare": "husky",
     "lint:staged": "lint-staged",
     "security:lock-sources": "node scripts/check-npm-lock-sources.mjs",
+    "security:npm-lifecycles": "node scripts/check-npm-lifecycle-policy.mjs",
+    "test:security:npm-lifecycles": "node --test scripts/tests/npm-lifecycle-policy.test.mjs",
+    "release:check": "node scripts/release-policy.mjs check",
+    "test:release-policy": "node --test scripts/tests/release-policy.test.mjs",
+    "install:hardened": "node scripts/hardened-npm-install.mjs --project . --run-project-lifecycle prepare",
     "desktop:dev": "npm --prefix desktop run dev",
     "desktop:package": "npm --prefix desktop run package:dir",
     "test:web": "npm --prefix web run test:unit --"
   },
   "devDependencies": {
     "husky": "^9.1.7",
-    "lint-staged": "^15.2.11"
+    "lint-staged": "^17.3.0"
   },
   "lint-staged": {
     "backend/**/*.{ts,tsx}": [
@@ -30,6 +36,6 @@
     ]
   },
   "dependencies": {
-    "pg": "^8.18.0"
+    "pg": "^8.23.0"
   }
 }

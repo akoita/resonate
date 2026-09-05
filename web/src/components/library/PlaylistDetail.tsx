@@ -12,6 +12,8 @@ import {
 } from "../../lib/playlistStore";
 import { LocalTrack, getTrack, getArtworkUrl } from "../../lib/localLibrary";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import { QueueActionsButton } from "../player/QueueActionsButton";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { ContextMenu, ContextMenuItem } from "../ui/ContextMenu";
 import { useToast } from "../ui/Toast";
@@ -38,7 +40,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-    const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
+    const { playQueue, currentTrack } = usePlayer();
+    const queueActions = useQueueActions();
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
     const { addToast } = useToast();
     const [trackProgress, setTrackProgress] = useState<Map<string, number>>(new Map());
@@ -117,8 +120,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     };
 
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => [
-        { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-        { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+        ...queueActions.contextMenuItems(track),
         { separator: true, label: "", onClick: () => { } },
         { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(track.id) },
     ];
@@ -237,6 +239,12 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                         <Button variant="primary" onClick={handlePlayAll} disabled={tracks.length === 0}>
                             Play All
                         </Button>
+                        <QueueActionsButton
+                            tracks={tracks}
+                            label="Add to queue"
+                            nextLabel="Play playlist next"
+                            disabled={tracks.length === 0}
+                        />
                         <PlaylistShareControl
                             playlistId={playlist.id}
                             visibility={playlist.visibility}

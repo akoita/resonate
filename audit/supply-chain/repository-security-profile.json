@@ -1,0 +1,950 @@
+{
+  "document_type": "agent-toolkit.repository-security-profile",
+  "schema_version": "1.0",
+  "repository": {
+    "id": "github.com/akoita/resonate",
+    "tier": "T4",
+    "scope": "Public akoita/resonate application, workflow, package, image, agent/MCP, payment/session-key, and smart-contract release surfaces at the reviewed revision; the private akoita/resonate-iac repository, GitHub/GCP IAM and environment settings, Artifact Registry, and live Cloud Run or Dataflow state are explicit unverified private boundaries rather than claimed evidence.",
+    "extensions": {
+      "profile_owner": "Resonate repository maintainer",
+      "baseline_source": "agent-toolkit security-supply-chain at immutable commit e077296a7e46a40132006de581190f244649c8cc",
+      "vision_classification": "vision:keep; supply-chain controls must not change product behavior, fees, splits, custody semantics, or user-visible flows",
+      "reviewed_public_revision": "The authoritative reviewed revision is the source_revision in the validated action-bom-${github.sha} workflow artifact generated with this profile.",
+      "review_policy": "Quarterly and immediately after a workflow privilege change, new registry or deployment target, authority/value-flow change, maintainer transfer, credential incident, package takeover, or trust-boundary expansion.",
+      "inventory": {
+        "repositories": [
+          {
+            "id": "github.com/akoita/resonate",
+            "visibility": "public",
+            "role": "Application source, GitHub Actions, Docker build contexts, desktop release, agent and MCP runtime, x402 and session-key code, Solidity sources, and contract deployment workflow.",
+            "owner": "Resonate repository maintainer",
+            "evidence": [
+              "README.md:53",
+              "README.md:99",
+              "AGENTS.md:215"
+            ]
+          },
+          {
+            "id": "github.com/akoita/resonate-iac",
+            "visibility": "private boundary",
+            "role": "Terraform, GCP edge and runtime deployment, IAM/WIF, Artifact Registry and live-state reconciliation receiver.",
+            "owner": "Resonate infrastructure maintainer",
+            "evidence": [
+              "README.md:99",
+              "docs/architecture/deployment_architecture.md:184",
+              ".github/workflows/deploy-handoff.yml:16"
+            ],
+            "verification_state": "unverified private boundary: this public repository cannot prove resonate-iac source, IAM bindings, registry contents, Terraform state, or live runtime state"
+          }
+        ],
+        "services": [
+          {
+            "name": "frontend",
+            "kind": "Next.js Cloud Run service and browser application",
+            "owner": "Resonate application maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:38", "web/package.json:2"]
+          },
+          {
+            "name": "backend",
+            "kind": "NestJS Cloud Run API containing auth, catalog, MCP, x402, payment, session-key, agent-runtime, storage and worker-dispatch modules",
+            "owner": "Resonate application maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:107", "backend/package.json:2"]
+          },
+          {
+            "name": "agent-worker",
+            "kind": "Backend-built agent worker entry point",
+            "owner": "Resonate agent-runtime maintainer",
+            "evidence": ["backend/package.json:13", "backend/src/agent-worker.ts:1"]
+          },
+          {
+            "name": "demucs",
+            "kind": "CPU or GPU stem-separation Cloud Run Job",
+            "owner": "Resonate audio-pipeline maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:113", "workers/demucs/Dockerfile:1", "workers/demucs/Dockerfile.gpu:4"]
+          },
+          {
+            "name": "stable-audio",
+            "kind": "GPU Cloud Run remix service",
+            "owner": "Resonate audio-generation maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:119", "workers/stable-audio/Dockerfile:1"]
+          },
+          {
+            "name": "analytics-dataflow",
+            "kind": "Apache Beam Dataflow Flex Template with a batch materialization alternative",
+            "owner": "Resonate analytics maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:141", "workers/analytics-dataflow/Dockerfile:1"]
+          },
+          {
+            "name": "desktop",
+            "kind": "Electron desktop artifacts published through GitHub Releases",
+            "owner": "Resonate desktop maintainer",
+            "evidence": ["desktop/package.json:2", ".github/workflows/desktop-release.yml:1"]
+          },
+          {
+            "name": "protocol-contracts",
+            "kind": "Solidity payment, escrow, marketplace, NFT, curation, dispute, account-abstraction and upgrade surfaces",
+            "owner": "Resonate protocol maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:169", "contracts/foundry.toml:1"]
+          }
+        ],
+        "images": [
+          {
+            "name": "backend",
+            "build_context": "backend/",
+            "base_inputs": ["node:20-slim"],
+            "owner": "Resonate application maintainer",
+            "evidence": ["backend/Dockerfile:2", "backend/Dockerfile:32", ".github/workflows/ci.yml:1011"]
+          },
+          {
+            "name": "frontend",
+            "build_context": "web/ with a prebuilt standalone artifact and web/Dockerfile.runtime",
+            "base_inputs": ["node:20-alpine"],
+            "owner": "Resonate application maintainer",
+            "evidence": ["web/Dockerfile.runtime:1", ".github/workflows/ci.yml:683", ".github/workflows/ci.yml:1047"]
+          },
+          {
+            "name": "demucs-worker-cpu",
+            "build_context": "workers/demucs/",
+            "base_inputs": ["python:3.10-slim"],
+            "owner": "Resonate audio-pipeline maintainer",
+            "evidence": ["workers/demucs/Dockerfile:1", ".github/workflows/ci.yml:1095"]
+          },
+          {
+            "name": "demucs-worker-gpu",
+            "build_context": "workers/demucs/",
+            "base_inputs": ["pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime"],
+            "owner": "Resonate audio-pipeline maintainer",
+            "evidence": ["workers/demucs/Dockerfile.gpu:4", ".github/workflows/ci.yml:878"]
+          },
+          {
+            "name": "stable-audio-worker",
+            "build_context": "workers/stable-audio/",
+            "base_inputs": ["pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel"],
+            "owner": "Resonate audio-generation maintainer",
+            "evidence": ["workers/stable-audio/Dockerfile:5", ".github/workflows/ci.yml:1134"]
+          },
+          {
+            "name": "analytics-dataflow-template",
+            "build_context": "workers/analytics-dataflow/",
+            "base_inputs": ["gcr.io/dataflow-templates-base/python312-template-launcher-base"],
+            "owner": "Resonate analytics maintainer",
+            "evidence": ["workers/analytics-dataflow/Dockerfile:1", ".github/workflows/publish-analytics-dataflow-flex-template.yml:1"]
+          },
+          {
+            "name": "stable-audio-3-spike",
+            "build_context": "experiments/stable-audio-3-spike/",
+            "base_inputs": ["pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel"],
+            "owner": "Resonate audio-generation maintainer",
+            "production_status": "throwaway experiment; not part of the declared CI deploy handoff",
+            "evidence": ["experiments/stable-audio-3-spike/Dockerfile:1"]
+          }
+        ],
+        "packages_and_locked_graphs": [
+          {
+            "ecosystem": "npm",
+            "manifests": ["package.json", "backend/package.json", "web/package.json", "desktop/package.json", "examples/mcp-client/package.json", "scripts/staging-smoke/package.json"],
+            "lockfiles": ["package-lock.json", "backend/package-lock.json", "web/package-lock.json", "desktop/package-lock.json", "scripts/staging-smoke/package-lock.json", "examples/mcp-client/package-lock.json"],
+            "owner": "Resonate repository maintainer",
+            "evidence": ["package.json:2", "backend/package.json:2", "web/package.json:2", "desktop/package.json:2", "examples/mcp-client/package.json:2", "scripts/staging-smoke/package.json:2"]
+          },
+          {
+            "ecosystem": "Python/pip",
+            "manifests": ["workers/demucs/requirements-build.in", "workers/demucs/requirements-cpu.in", "workers/demucs/requirements-gpu.in", "workers/demucs/requirements-test.in", "workers/stable-audio/requirements-build.in", "workers/stable-audio/requirements.in", "workers/analytics-dataflow/requirements.in"],
+            "lockfiles": ["workers/demucs/requirements-build.lock", "workers/demucs/requirements-cpu.lock", "workers/demucs/requirements-gpu.lock", "workers/demucs/requirements-test.lock", "workers/stable-audio/requirements-build.lock", "workers/stable-audio/requirements.lock", "workers/stable-audio/flash-attn.lock", "workers/analytics-dataflow/requirements.lock"],
+            "lock_state": "platform-specific exact, hash-enforced production and test graphs; GPU base-provided Torch ABIs are constrained separately; the archived stable-audio-3 experiment is explicitly excluded from production policy",
+            "owner": "Resonate worker maintainers",
+            "evidence": ["scripts/check-python-worker-locks.py:1", "workers/demucs/requirements-cpu.lock:1", "workers/stable-audio/requirements.lock:1", "workers/analytics-dataflow/requirements.lock:1"]
+          },
+          {
+            "ecosystem": "Solidity/Foundry git submodules",
+            "manifests": ["contracts/foundry.toml", ".gitmodules"],
+            "lock_state": "gitlink revisions in the repository index",
+            "owner": "Resonate protocol maintainer",
+            "evidence": [".gitmodules:1", ".gitmodules:22", "contracts/foundry.toml:1"]
+          }
+        ],
+        "external_vendors_and_managed_dependencies": [
+          {
+            "name": "GitHub",
+            "role": "Source hosting, pull requests, Actions, hosted runners, environments, repository dispatch and desktop Releases",
+            "owner": "Resonate repository maintainer",
+            "evidence": ["AGENTS.md:215", ".github/workflows/ci.yml:1", ".github/workflows/desktop-release.yml:144"],
+            "private_boundary": "native repository controls and the main ruleset are evidenced in SC-VCS-01, SC-DEP-02 and SC-MON-01; environment reviewers and audit-log routing remain private setting evidence"
+          },
+          {
+            "name": "Google Cloud",
+            "role": "WIF/IAM, Artifact Registry, Cloud Run, Dataflow, Cloud SQL, Memorystore, GCS, Pub/Sub, Secret Manager, KMS, BigQuery and Monitoring",
+            "owner": "Resonate infrastructure maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:15", "backend/package.json:32", ".github/workflows/ci.yml:1025"],
+            "private_boundary": "private resonate-iac and live GCP state are unverified"
+          },
+          {
+            "name": "ZeroDev and ERC-4337 providers",
+            "role": "Passkey validator, Kernel smart accounts, bundler/paymaster and permissioned session-key integrations",
+            "owner": "Resonate identity maintainer",
+            "evidence": ["web/package.json:26", "backend/package.json:59", "docs/architecture/deployment_architecture.md:163"],
+            "private_boundary": "hosted provider account settings and live bundler/paymaster policy are unverified"
+          },
+          {
+            "name": "x402 facilitator and stablecoin network",
+            "role": "Machine-payment challenge verification and settlement using configured USDC assets",
+            "owner": "Resonate payments maintainer",
+            "evidence": ["docs/architecture/x402_payments.md:13", "docs/architecture/x402_payments.md:68", "backend/package.json:56"],
+            "private_boundary": "facilitator account, payout wallet, settlement key and live balance policy are unverified"
+          },
+          {
+            "name": "AI/model and media providers",
+            "role": "Google ADK/Vertex/Gemini, Stable Audio, Demucs, Lit Protocol and Lighthouse integrations used by agent, generation, encryption and storage paths",
+            "owner": "Resonate agent and audio maintainers",
+            "evidence": ["backend/package.json:34", "backend/package.json:37", "backend/package.json:38", "workers/stable-audio/Dockerfile:16", "workers/demucs/requirements-cpu.in:1"],
+            "private_boundary": "hosted provider accounts, model revisions and service policy are not proven by source manifests alone"
+          }
+        ],
+        "deployment_targets": [
+          {
+            "name": "dev and staging GCP application environments",
+            "kind": "Artifact Registry to private resonate-iac Terraform to Cloud Run",
+            "owner": "Resonate infrastructure maintainer",
+            "evidence": [".github/workflows/ci.yml:844", ".github/workflows/deploy-handoff.yml:16", "docs/architecture/deployment_architecture.md:77"],
+            "verification_state": "public producer and handoff are reviewable; private receiver, IAM, registry and live revisions are unverified private boundaries"
+          },
+          {
+            "name": "analytics Dataflow environments",
+            "kind": "GCP Dataflow Flex Template and GCS template object",
+            "owner": "Resonate analytics and infrastructure maintainers",
+            "evidence": [".github/workflows/publish-analytics-dataflow-flex-template.yml:3", "docs/architecture/deployment_architecture.md:141"],
+            "verification_state": "live Dataflow job and private IAM state are unverified private boundaries"
+          },
+          {
+            "name": "contracts-dev and contracts-staging",
+            "kind": "GitHub environments deploying to Sepolia or Base Sepolia",
+            "owner": "Resonate protocol maintainer",
+            "evidence": [".github/workflows/contracts-deploy.yml:4", ".github/workflows/contracts-deploy.yml:14", ".github/workflows/contracts-deploy.yml:72"],
+            "verification_state": "environment reviewers and secret custody are GitHub setting evidence and remain unverified"
+          },
+          {
+            "name": "GitHub desktop releases",
+            "kind": "Windows, macOS and Linux Electron artifacts",
+            "owner": "Resonate desktop maintainer",
+            "evidence": [".github/workflows/desktop-release.yml:42", ".github/workflows/desktop-release.yml:144"]
+          }
+        ],
+        "workflows": [
+          {"path": ".github/workflows/ci.yml", "purpose": "PR/merge validation, application image publication and deploy manifest", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/ci.yml:1"},
+          {"path": ".github/workflows/security.yml", "purpose": "advisory PR and nightly deterministic security scans from #1537", "owner": "Resonate security maintainer", "evidence": ".github/workflows/security.yml:1"},
+          {"path": ".github/workflows/dependency-train.yml", "purpose": "scheduled and manual review-only consolidation of eligible Dependabot pull requests", "owner": "Resonate repository maintainer", "evidence": ".github/workflows/dependency-train.yml:1"},
+          {"path": ".github/workflows/deploy-handoff.yml", "purpose": "validated cross-repository dispatch to private resonate-iac", "owner": "Resonate release maintainer", "evidence": ".github/workflows/deploy-handoff.yml:1"},
+          {"path": ".github/workflows/contracts-deploy.yml", "purpose": "manual contract preflight, deployment, upgrade, authority and lifecycle operations", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/contracts-deploy.yml:1"},
+          {"path": ".github/workflows/desktop-release.yml", "purpose": "desktop package and GitHub Release publication", "owner": "Resonate desktop maintainer", "evidence": ".github/workflows/desktop-release.yml:1"},
+          {"path": ".github/workflows/release-please.yml", "purpose": "version and changelog pull-request automation plus read-only release previews", "owner": "Resonate release maintainer", "evidence": ".github/workflows/release-please.yml:1"},
+          {"path": ".github/workflows/software-release.yml", "purpose": "protected exact-SHA release evidence validation, immutable tag creation and draft release publication", "owner": "Resonate release maintainer", "evidence": ".github/workflows/software-release.yml:1"},
+          {"path": ".github/workflows/publish-analytics-dataflow-flex-template.yml", "purpose": "OIDC-authenticated Dataflow template publication", "owner": "Resonate analytics maintainer", "evidence": ".github/workflows/publish-analytics-dataflow-flex-template.yml:1"},
+          {"path": ".github/workflows/certora.yml", "purpose": "scheduled/manual Certora verification", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/certora.yml:1"},
+          {"path": ".github/workflows/formal.yml", "purpose": "Halmos formal properties", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/formal.yml:1"},
+          {"path": ".github/workflows/mutation.yml", "purpose": "scheduled/manual Gambit mutation testing", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/mutation.yml:1"},
+          {"path": ".github/workflows/staging-lifecycle-smoke.yml", "purpose": "scheduled/manual funded staging lifecycle smoke", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/staging-lifecycle-smoke.yml:1"},
+          {"path": ".github/workflows/staging-reconciliation-drill.yml", "purpose": "manual funded staging reconciliation drill", "owner": "Resonate protocol maintainer", "evidence": ".github/workflows/staging-reconciliation-drill.yml:1"}
+        ],
+        "actions_and_reuse": {
+          "external_actions": ["actions/checkout", "actions/setup-node", "actions/setup-python", "actions/upload-artifact", "actions/download-artifact", "actions/cache", "googleapis/release-please-action", "foundry-rs/foundry-toolchain", "google-github-actions/auth", "google-github-actions/setup-gcloud", "anthropics/claude-code-action", "anchore/sbom-action", "sigstore/cosign-installer"],
+          "local_composite_actions": [
+            {
+              "path": ".github/actions/setup-npm-hardened/action.yml",
+              "purpose": "Install Node, enable npm cache and pin npm 11.14.1",
+              "owner": "Resonate repository maintainer",
+              "evidence": [".github/actions/setup-npm-hardened/action.yml:1", ".github/actions/setup-npm-hardened/action.yml:11"]
+            },
+            {
+              "path": ".github/actions/publish-image-evidence/action.yml",
+              "purpose": "Generate CycloneDX evidence, keylessly sign and attest immutable image digests, verify the exact workflow identity, and retain the result",
+              "owner": "Resonate release maintainer",
+              "evidence": [".github/actions/publish-image-evidence/action.yml:1", ".github/actions/publish-image-evidence/action.yml:88"]
+            }
+          ],
+          "reusable_workflows": [],
+          "reusable_workflow_absence_evidence": "repository-wide command `rg -n '^\\s*workflow_call\\s*:' .github/workflows` returned no matches on 2026-08-03; all thirteen workflow files are listed above",
+          "immutable_reference_evidence": [".github/actions/setup-npm-hardened/action.yml:15", ".github/workflows/ci.yml:51", ".github/workflows/ci.yml:1026"],
+          "owner": "Resonate repository maintainer"
+        },
+        "build_utilities": [
+          {"name": "npm", "version_policy": "11.14.1 pinned by packageManager and local composite action", "owner": "Resonate repository maintainer", "evidence": ["package.json:4", ".github/actions/setup-npm-hardened/action.yml:21"]},
+          {"name": "Release Please", "version_policy": "v5.0.0 selected through a commit-pinned Action; configured to prepare version/changelog PRs without creating tags or releases", "owner": "Resonate release maintainer", "evidence": [".github/workflows/release-please.yml:1", "release-please-config.json:1"]},
+          {"name": "Foundry", "version_policy": "v1.4.3 selected through a commit-pinned foundry-toolchain Action", "owner": "Resonate protocol maintainer", "evidence": [".github/workflows/ci.yml:350", ".github/workflows/ci.yml:354"]},
+          {"name": "Syft", "version_policy": "v1.50.0 selected through a commit-pinned sbom-action and declared in the ABOM with the reviewed Linux archive digest", "owner": "Resonate release maintainer", "evidence": [".github/actions/publish-image-evidence/action.yml:75", ".github/workflows/security.yml:111"]},
+          {"name": "cosign", "version_policy": "v3.1.2 selected through a commit-pinned installer and declared in the ABOM with the reviewed Linux binary digest", "owner": "Resonate release maintainer", "evidence": [".github/actions/publish-image-evidence/action.yml:87", ".github/workflows/security.yml:112"]},
+          {"name": "GCP gcloud", "version_policy": "setup action pinned; installed SDK version is not declared in public workflow", "owner": "Resonate release maintainer", "evidence": [".github/workflows/ci.yml:1031", ".github/workflows/publish-analytics-dataflow-flex-template.yml:77"]},
+          {"name": "Docker CLI and BuildKit", "version_policy": "GitHub-hosted runner utility; version is not pinned in public workflow", "owner": "Resonate release maintainer", "evidence": [".github/workflows/ci.yml:1034", "backend/Dockerfile:1"]},
+          {"name": "security scanner bundle", "version_policy": "gitleaks, osv-scanner, Trivy, actionlint, Opengrep, TruffleHog, zizmor and sarif-tools versions declared in workflow", "owner": "Resonate security maintainer", "evidence": [".github/workflows/security.yml:48", ".github/workflows/security.yml:114"]},
+          {"name": "contract deployment scripts", "version_policy": "repository scripts run from the reviewed source revision", "owner": "Resonate protocol maintainer", "evidence": [".github/workflows/contracts-deploy.yml:245", "contracts/scripts/test-all.sh:1"]},
+          {"name": "deploy manifest helpers", "version_policy": "repository Python helpers run from the checked-out source revision", "owner": "Resonate release maintainer", "evidence": [".github/workflows/deploy-handoff.yml:98", ".github/workflows/deploy-handoff.yml:117"]}
+        ],
+        "agent_and_mcp_boundaries": [
+          {
+            "surface": "MCP Streamable HTTP server",
+            "inputs": "Unauthenticated external MCP JSON-RPC and tool parameters",
+            "destinations": "Public catalog search, x402 quote/facilitator, paid stem resource response and observability",
+            "capability_boundary": "Three declared tools; catalog search is capped at 25; paid download validates an x402 proof; sessions are capped at 100 with five-minute idle expiry.",
+            "owner": "Resonate agent-runtime maintainer",
+            "evidence": ["backend/src/modules/mcp/mcp.service.ts:54", "backend/src/modules/mcp/mcp.service.ts:200", "backend/src/modules/mcp/mcp.service.ts:264", "backend/src/modules/mcp/mcp.service.ts:355", "backend/src/modules/mcp/mcp.service.ts:564"]
+          },
+          {
+            "surface": "AI DJ and agent runtime",
+            "inputs": "User/session context and model or deterministic adapter inputs",
+            "destinations": "ADK, Vertex AI, LangGraph or deterministic orchestrator; payment router only through policy guardrails",
+            "capability_boundary": "Runtime adapter allowlist with deterministic fallback; track limit defaults to five and is capped at fifty; payment policy checks rail, license and remaining budget.",
+            "owner": "Resonate agent-runtime maintainer",
+            "evidence": ["backend/src/modules/agents/agent_runtime.executor.service.ts:20", "backend/src/modules/agents/agent_runtime.config.ts:1", "backend/src/modules/agents/policy_guard.service.ts:23"]
+          },
+          {
+            "surface": "repository agent skills",
+            "inputs": "Repository and issue content treated as instructions by coding agents",
+            "destinations": "Shared agent-toolkit security skills and local start/finish workflows",
+            "capability_boundary": "Thin project router preserves local threat context while shared security methodology stays upstream.",
+            "owner": "Resonate repository maintainer",
+            "evidence": [".agents/skills/auditing-resonate-security/SKILL.md:23", ".agents/skills/auditing-resonate-security/SKILL.md:43", ".agents/skills/auditing-resonate-security/SKILL.md:120"]
+          }
+        ],
+        "payment_custody_and_session_authority": [
+          {
+            "surface": "x402 machine and browser payments",
+            "authority": "External facilitator verification and settlement; optional backend settlement wallet when contract settlement is enabled; passkey-controlled smart account for browser checkout.",
+            "owner": "Resonate payments maintainer",
+            "evidence": ["docs/architecture/x402_payments.md:42", "docs/architecture/x402_payments.md:68", "docs/architecture/x402_payments.md:102", "backend/src/modules/x402/x402.middleware.ts:82"],
+            "private_boundary": "X402 payout and settlement key custody, facilitator account policy and live balances are not proven by public code"
+          },
+          {
+            "surface": "funded agent sessions and session keys",
+            "authority": "User-approved target, function, per-transaction cap, total cap, hourly rate and expiry; encrypted agent key with activation, audit, rotation and revocation paths.",
+            "owner": "Resonate identity maintainer",
+            "evidence": ["backend/src/modules/identity/zerodev_session_key.service.ts:8", "backend/src/modules/identity/zerodev_session_key.service.ts:41", "backend/src/modules/identity/zerodev_session_key.service.ts:188", "backend/src/modules/identity/zerodev_session_key.service.ts:285"]
+          },
+          {
+            "surface": "passkey smart accounts",
+            "authority": "User WebAuthn/passkey controls Kernel ERC-4337 account; agents act through permissioned session keys.",
+            "owner": "Resonate identity maintainer",
+            "evidence": ["docs/architecture/deployment_architecture.md:163", "web/src/components/auth/AuthProvider.tsx:247"]
+          },
+          {
+            "surface": "on-chain custody and value movement",
+            "authority": "Marketplace payment routing, escrows, payout and protocol contracts; ShowCampaignEscrow separates operational owner from timelocked upgrade authority and exposes pause/recovery behavior.",
+            "owner": "Resonate protocol maintainer",
+            "evidence": ["contracts/src/core/StemMarketplaceV2.sol:185", "contracts/src/core/ShowCampaignEscrow.sol:21", "contracts/src/core/ShowCampaignEscrow.sol:30"]
+          }
+        ],
+        "contract_release_paths": [
+          {
+            "path": "pull request and merge validation",
+            "owner": "Resonate protocol maintainer",
+            "evidence": [".github/workflows/ci.yml:330", ".github/workflows/ci.yml:362", ".github/workflows/ci.yml:366"]
+          },
+          {
+            "path": "scheduled/manual formal and mutation verification",
+            "owner": "Resonate protocol maintainer",
+            "evidence": [".github/workflows/certora.yml:8", ".github/workflows/formal.yml:14", ".github/workflows/mutation.yml:8"]
+          },
+          {
+            "path": "manual GitHub environment deployment and upgrade workflow",
+            "owner": "Resonate protocol release maintainer",
+            "evidence": [".github/workflows/contracts-deploy.yml:4", ".github/workflows/contracts-deploy.yml:22", ".github/workflows/contracts-deploy.yml:72", ".github/workflows/contracts-deploy.yml:258"],
+            "private_boundary": "environment reviewer rules, deployer-key custody and live chain authority membership are GitHub/on-chain setting evidence and remain unverified"
+          },
+          {
+            "path": "deployment record and broadcast artifact handoff",
+            "owner": "Resonate protocol release maintainer",
+            "evidence": [".github/workflows/contracts-deploy.yml:653"]
+          },
+          {
+            "path": "funded staging lifecycle and reconciliation exercises",
+            "owner": "Resonate protocol maintainer",
+            "evidence": [".github/workflows/staging-lifecycle-smoke.yml:13", ".github/workflows/staging-reconciliation-drill.yml:14"]
+          }
+        ]
+      }
+    }
+  },
+  "controls": [
+    {
+      "control_id": "SC-INV-01",
+      "applicability": "required",
+      "decision": "adopt",
+      "trigger_evidence": [
+        "README.md:53 identifies a deployed AI, payment and blockchain product",
+        "docs/architecture/deployment_architecture.md:15 inventories cloud, delivery, chain and payment layers",
+        "contracts/src/core/ShowCampaignEscrow.sol:21 documents custody and upgrade authority"
+      ],
+      "decision_rationale": "Adopt a T4 repository profile because even a small payment, funded-session, signing-key or smart-contract surface sets the highest additive tier. The repository extension inventories the public producer and explicitly stops at the private resonate-iac, IAM, registry and live-runtime boundary.",
+      "evidence": [
+        "audit/supply-chain/repository-security-profile.json:repository.extensions.inventory",
+        "README.md:99",
+        ".agents/skills/auditing-resonate-security/SKILL.md:68"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "low",
+      "prerequisites": [
+        "Resonate repository maintainer reviews public inventory entries and owners",
+        "Resonate infrastructure maintainer reconciles private resonate-iac, IAM, registry and live targets without copying secrets into this public profile"
+      ],
+      "failure_mode": "The profile can remain syntactically valid while a new workflow, image, service, agent capability, contract authority or private deployment target is omitted.",
+      "compensating_controls": [],
+      "owner": "Resonate repository maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {
+        "priority": "P0",
+        "status_note": "This profile establishes the public inventory; private boundary reconciliation remains required."
+      }
+    },
+    {
+      "control_id": "SC-VCS-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        "AGENTS.md:215 requires branch-and-PR changes",
+        ".github/workflows/ci.yml:3 runs validation for pushes, pull requests and merge groups",
+        "GitHub settings audit dated 2026-08-25: active main ruleset ID 12327414 requires a pull request and nine status checks, has no bypass actors and requires zero approving reviews; the default GITHUB_TOKEN is read-only and cannot approve pull requests"
+      ],
+      "decision_rationale": "Retain the PR and merge-queue topology credited by #1537 and adapt the baseline to a solo-maintainer repository where CI is the merge gate. The live settings audit confirms the active main ruleset, nine required checks and no bypass actors. Zero approving reviews is a deliberate solo-maintainer exception: raising the count to one would deadlock pull requests. Release controls remain a separate review surface.",
+      "evidence": [
+        "AGENTS.md:215",
+        ".github/workflows/ci.yml:9",
+        "GitHub settings audit 2026-08-25: main ruleset ID 12327414 requires pull requests and nine checks, has no bypass actors and requires zero approving reviews",
+        "GitHub settings audit 2026-08-25: default GITHUB_TOKEN is read-only and cannot approve pull requests"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Keep the active main ruleset's required checks aligned with actual job names after workflow changes",
+        "Revisit the zero-approval solo-maintainer exception if another maintainer becomes available; do not set one approval while solo because pull requests would deadlock",
+        "Review release controls separately from the repository merge gate"
+      ],
+      "failure_mode": "Written PR policy and CI jobs can look strong while a settings change adds a bypass actor, drops required checks, permits direct pushes or leaves zero independent review for T4 release changes.",
+      "compensating_controls": [
+        "The active main ruleset was audited on 2026-08-25 as requiring pull requests and nine checks with no bypass actors",
+        "CI and formal verification provide attributable automated review",
+        "The default GITHUB_TOKEN is read-only and cannot approve pull requests"
+      ],
+      "owner": "Resonate repository maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"tracked_by": ["#1539"], "priority": "P0"}
+    },
+    {
+      "control_id": "SC-CI-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:3 defines push, pull-request, merge-group and manual triggers",
+        ".github/workflows/contracts-deploy.yml:4 defines a privileged manual contract workflow",
+        ".github/workflows/dependency-train.yml:6 defines a default-branch-only scheduled and manual write workflow",
+        ".github/workflows/security.yml:32 defines PR, nightly and manual scanning"
+      ],
+      "decision_rationale": "Credit #1537's read-only security workflow and the existing least-privilege OIDC publisher jobs. Require every workflow and job to retain explicit minimum permissions, safe triggers and disabled checkout credential persistence; actionlint and zizmor remain advisory evidence rather than proof by declaration alone.",
+      "evidence": [
+        ".github/workflows/security.yml:44",
+        ".github/workflows/security.yml:77",
+        ".github/workflows/ci.yml:25",
+        ".github/workflows/ci.yml:1017",
+        ".github/workflows/contracts-deploy.yml:73",
+        ".github/workflows/contracts-deploy.yml:100"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "low",
+      "prerequisites": [
+        "A revision-scoped actionlint and zizmor result confirms all workflows after the pinning and persist-credentials changes",
+        "Any job that keeps write or id-token permission documents the exact later step that consumes it"
+      ],
+      "failure_mode": "Top-level read permissions can mask a job-level write grant, a new trigger can execute privileged code, or a checkout can retain credentials that a later build or artifact step exposes.",
+      "compensating_controls": [
+        "#1537 security scanning runs actionlint and zizmor on pull requests and nightly",
+        "Privileged image publishers use separate jobs and GitHub environments"
+      ],
+      "owner": "Resonate repository maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"credited_from": ["#1537"], "priority": "P0"}
+    },
+    {
+      "control_id": "SC-CI-02",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:1017 grants id-token only to an image publisher",
+        ".github/workflows/ci.yml:1025 exchanges GitHub OIDC through google-github-actions/auth",
+        ".github/workflows/publish-analytics-dataflow-flex-template.yml:49 grants OIDC for Dataflow publication"
+      ],
+      "decision_rationale": "Credit the short-lived OIDC/WIF publishers already present, but treat issuer, audience, subject, repository, workflow, ref, environment bindings and absence of a fallback long-lived key as private IAM facts that public workflow YAML cannot prove.",
+      "evidence": [
+        ".github/workflows/ci.yml:1016",
+        ".github/workflows/ci.yml:1025",
+        ".github/workflows/publish-analytics-dataflow-flex-template.yml:57",
+        "unverified private boundary: GCP workload identity provider and service-account IAM policy are not present in this repository"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Resonate infrastructure maintainer verifies issuer, audience, subject, repository, workflow, ref and environment attribute conditions in private resonate-iac/GCP IAM",
+        "Run and retain a negative token-exchange test from an unauthorized repository, workflow, ref or environment",
+        "Confirm no service-account JSON or other long-lived fallback deploy credential exists in GitHub environments or private deployment code"
+      ],
+      "failure_mode": "A workflow can request a short-lived token while an over-broad WIF attribute condition accepts another repository/ref, or a hidden long-lived key silently bypasses federation.",
+      "compensating_controls": [
+        "OIDC write is scoped to publisher jobs",
+        "GitHub environments separate dev and staging publication"
+      ],
+      "owner": "Resonate infrastructure maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"private_boundary": true, "priority": "P0"}
+    },
+    {
+      "control_id": "SC-CI-03",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:1013 runs privileged publication on ubuntu-latest",
+        ".github/workflows/contracts-deploy.yml:71 runs a private-key-bearing deployment on ubuntu-latest",
+        ".github/workflows/publish-analytics-dataflow-flex-template.yml:56 runs OIDC publication on ubuntu-latest"
+      ],
+      "decision_rationale": "Use provider-hosted single-use jobs rather than requiring a dedicated self-hosted runner, and preserve fresh checkout/workspace boundaries. Add evidence for restricted egress or an explicitly reviewed equivalent for jobs that hold OIDC or contract signing authority.",
+      "evidence": [
+        ".github/workflows/ci.yml:1013",
+        ".github/workflows/ci.yml:1021",
+        ".github/workflows/contracts-deploy.yml:71",
+        ".github/workflows/contracts-deploy.yml:100",
+        "unverified private boundary: runner network controls and privileged-job egress policy are not declared in public repository settings"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "high",
+      "prerequisites": [
+        "Document the accepted GitHub-hosted runner isolation model for OIDC publishers and contract deployment",
+        "Restrict or monitor privileged-job egress to required registries, GitHub, GCP identity/API endpoints and target RPC/explorer endpoints, with a negative test",
+        "Ensure no privileged job consumes artifacts from an untrusted run without source and digest validation"
+      ],
+      "failure_mode": "An ephemeral runner can still execute compromised build code with unrestricted network access and exfiltrate a short-lived token or signing key before teardown.",
+      "compensating_controls": [
+        "Provider-hosted jobs are single-use",
+        "Privileged publisher jobs are separated from pull-request jobs",
+        "Deploy handoff validates source metadata before private dispatch"
+      ],
+      "owner": "Resonate release maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P2"}
+    },
+    {
+      "control_id": "SC-BUILD-01",
+      "applicability": "required",
+      "decision": "adopt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:51 consumes a third-party Action",
+        ".github/actions/setup-npm-hardened/action.yml:11 defines a local composite Action",
+        "backend/Dockerfile:2 and workers/stable-audio/Dockerfile:5 consume external base images"
+      ],
+      "decision_rationale": "Adopt immutable references for every external Action and reusable workflow, local composite source revision, production/build base image and privileged build utility. External Actions use reviewed 40-character commits with readable versions, and Docker inputs retain readable tags while binding reviewed manifest digests.",
+      "evidence": [
+        ".github/workflows/ci.yml:51",
+        ".github/workflows/ci.yml:1026",
+        ".github/actions/setup-npm-hardened/action.yml:15",
+        "backend/Dockerfile:2",
+        "workers/demucs/Dockerfile.gpu:4",
+        "workers/analytics-dataflow/Dockerfile:1"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Validate the revision-bound Action BOM for complete workflow/action/build-input coverage",
+        "Pin production and build base images by reviewed digest while retaining readable tag/version annotations",
+        "Record an update-review path and minimum-age decision for Actions, base images and privileged utilities"
+      ],
+      "failure_mode": "Actions may be SHA-pinned while a mutable base image, downloaded scanner archive, unpinned Docker/gcloud utility or omitted local composite still changes the resulting artifact.",
+      "compensating_controls": [
+        "External workflow Actions use reviewed 40-character commits with version comments",
+        "Security scanner versions and rule commits are declared in .github/workflows/security.yml:48"
+      ],
+      "owner": "Resonate release maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P0"}
+    },
+    {
+      "control_id": "SC-DEP-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        "package.json:10 defines a prepare lifecycle script required for Husky",
+        "scripts/npm-lifecycle-policy.json inventories dependency and first-party lifecycle execution",
+        "workers/demucs/Dockerfile:18 installs a platform-specific hashed dependency graph"
+      ],
+      "decision_rationale": "Credit #1537's immutable npm installs, npm 11 pin, seven-day release-age gate and lockfile-source check. Adapt with script-disabled npm installs plus exact path/version lifecycle decisions around the explicit Husky prepare path, and platform-specific exact, hashed Python worker graphs.",
+      "evidence": [
+        "package.json:4",
+        ".npmrc:2",
+        ".github/actions/setup-npm-hardened/action.yml:21",
+        ".github/workflows/ci.yml:308",
+        "scripts/npm-lifecycle-policy.json:1",
+        "scripts/hardened-npm-install.mjs:1",
+        "scripts/check-python-worker-locks.py:1",
+        "workers/demucs/requirements-cpu.lock:1"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Review every new or changed npm lifecycle tuple before changing its execute or deny disposition",
+        "Regenerate Python locks inside the documented base/platform context and verify image builds consume them",
+        "Retain focused platform coverage for approved native and first-party lifecycle exceptions"
+      ],
+      "failure_mode": "npm ci can reproduce a lockfile while still executing a malicious transitive lifecycle script; a version-constrained Python requirements file can resolve different artifacts on a later build.",
+      "compensating_controls": [
+        "Seven-day npm minimum release age",
+        "Lockfile source validation",
+        "All generic npm installs disable scripts; only exact reviewed tuples are rebuilt",
+        "Hash-enforced worker locks and digest-pinned bases limit but do not eliminate install-time exposure"
+      ],
+      "owner": "Resonate repository maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"credited_from": ["#1537"], "priority": "P0"}
+    },
+    {
+      "control_id": "SC-DEP-02",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        "backend/package.json:31 declares runtime dependencies including payment, MCP, cloud and account-abstraction packages",
+        ".github/workflows/security.yml:51 declares SCA and container scanner versions",
+        ".github/workflows/security.yml:10 states the initial advisory ratchet",
+        ".github/dependabot.yml:1 defines monthly low-noise version updates for npm, pip, Docker, GitHub Actions and Foundry submodules",
+        "GitHub settings audit dated 2026-08-25: Dependabot vulnerability alerts and security updates are enabled; completed dependency-graph processing reported an initial 270 open npm advisory leads",
+        "audit/dependabot-baseline-2026-08-30.md records the current four-lock reachability baseline, removal and compatible remediation batches, and time-bounded Moderate dispositions",
+        "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398 using default JavaScript/TypeScript setup",
+        "audit/codeql-baseline-2026-08-26.md dispositions all 19 initial leads and records the advisory-gate decision"
+      ],
+      "decision_rationale": "Credit #1537's PR/nightly OSV, Trivy and related advisory scans, and add a written disposition policy for vulnerable, confirmed-malicious, abandoned, newly published, provenance-missing and maintainer-transferred inputs. Native Dependabot alerts and security updates are enabled, with routine version updates grouped monthly in .github/dependabot.yml. The initial 270-alert Dependabot snapshot is superseded by audit/dependabot-baseline-2026-08-30.md: local package-level analysis covers all four first-party npm locks, removes unused dependency paths, applies compatible remediations, and retains 32 Moderate leads in two runtime families with owners and a 2026-09-30 review date; no Critical, High, or Low local npm lead remains. CodeQL default setup is enabled for JavaScript/TypeScript with the default query suite and remote threat model. The #1625 baseline triage reviewed all 19 leads: seven alerts mapped to four privately tracked findings, eleven were false positives and one informational alert was accepted risk. All seven retained alerts are fixed on main as of 2026-08-30. The measured 57.9 percent false-positive rate keeps CodeQL advisory/non-required; a narrower blocking ratchet requires a separate post-remediation decision. Custom scanner SARIF remains artifact-only to avoid duplicating CodeQL ingestion and noise.",
+      "evidence": [
+        ".github/workflows/security.yml:10",
+        ".github/workflows/security.yml:51",
+        ".github/workflows/security.yml:290",
+        ".github/workflows/security.yml:303",
+        ".github/dependabot.yml:1",
+        ".github/workflows/security.yml:21",
+        "GitHub settings audit 2026-08-25: Dependabot alerts and security updates enabled; completed dependency-graph processing reported the initial 270-alert snapshot",
+        "audit/dependabot-baseline-2026-08-30.md: all four first-party npm locks rebaselined; zero local Critical/High/Low package-level leads and 32 time-bounded Moderate leads remain",
+        "GitHub settings audit 2026-08-25: CodeQL default setup configured for javascript-typescript, query_suite=default, threat_model=remote and standard runner; initial run 32799678109 succeeded",
+        "audit/codeql-baseline-2026-08-26.md: all 19 leads reviewed; 7 alerts map to 4 private findings, 11 were false positives, 1 informational alert was accepted risk, and 7 remain open"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Adopt the agent-toolkit dependency-intake disposition policy with explicit owners and time bounds",
+        "Triage #1537 advisory baselines before promoting deterministic high-confidence classes",
+        "Review native Dependabot and CodeQL findings alongside retained custom scanner artifacts, and keep routine version updates grouped and event-driven security updates enabled",
+        "Confirm post-merge default-branch Dependabot processing matches the #1626 local baseline before closing the issue",
+        "Re-review the retained Google and ZeroDev Moderate dependency families by 2026-09-30 or earlier when compatible fixed releases or new exploitation evidence appear"
+      ],
+      "failure_mode": "Scanners can upload reports while all failures are ignored, no owner dispositions them, or soft signals such as package age are mistaken for deterministic compromise evidence.",
+      "compensating_controls": [
+        "Nightly full-history/full-tree scans retain reports for thirty days",
+        "PR scans produce reviewable report artifacts",
+        "npm release-age filtering delays newly published inputs",
+        "Dependabot native alerts/security updates and monthly grouped version updates cover declared dependency paths",
+        "The completed CodeQL remediation records all seven retained alerts fixed while the 57.9 percent baseline false-positive rate keeps CodeQL advisory rather than a required merge gate",
+        "The #1626 baseline records explicit owner, compensating boundary and review date for unfixable or major-migration Moderate dependency paths"
+      ],
+      "owner": "Resonate security maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"credited_from": ["#1537"], "tracked_by": ["#1539"], "priority": "P0"}
+    },
+    {
+      "control_id": "SC-ABOM-01",
+      "applicability": "required",
+      "decision": "adopt",
+      "trigger_evidence": [
+        ".github/workflows contains thirteen workflow files inventoried in repository.extensions.inventory.workflows",
+        ".github/actions/setup-npm-hardened/action.yml and .github/actions/publish-image-evidence/action.yml define two local composite Actions",
+        "repository-wide workflow_call scan recorded no reusable workflows"
+      ],
+      "decision_rationale": "Generate a revision-bound Action BOM for all external Actions, the local composite, zero reusable workflows, base images and privileged build utilities. Absence of reusable workflows is an inventory fact, not permission to omit that class from coverage checks.",
+      "evidence": [
+        ".github/workflows/ci.yml:1",
+        ".github/workflows/staging-reconciliation-drill.yml:1",
+        ".github/actions/setup-npm-hardened/action.yml:1",
+        ".github/actions/publish-image-evidence/action.yml:1",
+        "command evidence 2026-08-03: rg for workflow_call under .github/workflows returned no matches"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "low",
+      "prerequisites": [
+        "Generate the action-bom-${github.sha} workflow artifact from the final source revision",
+        "Validate the ABOM with the canonical agent-toolkit commit e077296a7e46a40132006de581190f244649c8cc",
+        "Fail immutable-input review on mutable Actions, reusable workflows, base images or privileged utilities rather than silently omitting them"
+      ],
+      "failure_mode": "A generated BOM can validate structurally while its scanner misses a workflow syntax variant, local composite, Docker stage, downloaded binary or newly introduced reusable workflow.",
+      "compensating_controls": [
+        "Manual repository inventory enumerates all workflow files and both local composites",
+        "zizmor/actionlint provide independent workflow parsing leads"
+      ],
+      "owner": "Resonate release maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P1"}
+    },
+    {
+      "control_id": "SC-SBOM-01",
+      "applicability": "required",
+      "decision": "adopt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:1011 publishes the backend image",
+        ".github/workflows/ci.yml:1047 publishes the frontend image",
+        ".github/workflows/ci.yml:1095 and .github/workflows/ci.yml:1134 publish worker images",
+        ".github/workflows/desktop-release.yml:42 builds executable desktop artifacts"
+      ],
+      "decision_rationale": "Generate a CycloneDX SBOM from every final published image digest, associate it with build and source evidence, and retain verification output. Desktop release SBOM coverage remains a separately identified extension; repository lockfiles alone are not release-generated SBOM evidence.",
+      "evidence": [
+        ".github/actions/publish-image-evidence/action.yml:70",
+        ".github/workflows/ci.yml:1017",
+        ".github/workflows/publish-analytics-dataflow-flex-template.yml:160",
+        ".github/scripts/submit-cloud-build.sh:1"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Keep the pinned Syft version and sbom-action commit under reviewed update control",
+        "Retain SBOM, build metadata, source revision and immutable digest association",
+        "Add equivalent release-generated SBOM coverage before treating desktop artifacts as covered"
+      ],
+      "failure_mode": "An SBOM generated from the source tree before the final multi-stage build can omit pruned runtime dependencies or include components absent from the shipped artifact.",
+      "compensating_controls": [
+        "npm and hash-locked Python graphs expose declared dependency inputs",
+        "SBOMs are generated from final registry digests rather than source directories"
+      ],
+      "owner": "Resonate release maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P1"}
+    },
+    {
+      "control_id": "SC-PROV-01",
+      "applicability": "required",
+      "decision": "adopt",
+      "trigger_evidence": [
+        ".github/workflows/ci.yml:1011 publishes executable service images",
+        ".github/workflows/desktop-release.yml:144 publishes executable desktop release artifacts",
+        ".github/workflows/contracts-deploy.yml:22 can execute contract deployment or upgrade operations"
+      ],
+      "decision_rationale": "Sign each published image digest and attach both CycloneDX and source/build metadata attestations with GitHub OIDC, then verify the exact issuer and workflow/ref identity before handoff and deployment. Desktop and contract release provenance remain explicit follow-on surfaces.",
+      "evidence": [
+        ".github/actions/publish-image-evidence/action.yml:83",
+        ".github/actions/publish-image-evidence/action.yml:108",
+        ".github/scripts/submit-cloud-build.sh:1",
+        "docs/architecture/deployment_architecture.md:18"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Keep image signature and both attestation predicate types bound to the final digest",
+        "Verify issuer and exact repository/workflow/ref identity before deployment and exercise a wrong-identity negative test",
+        "Add equivalent provenance controls before treating desktop and contract release artifacts as covered"
+      ],
+      "failure_mode": "An attestation can exist but remain meaningless if the deployer checks only that some signature is valid rather than constraining the expected workflow identity and artifact digest.",
+      "compensating_controls": [
+        "OIDC-authenticated image publication uses exact workflow identity checks",
+        "Attested Cloud Build metadata binds source SHA, tag, digest, immutable reference and build ID"
+      ],
+      "owner": "Resonate release maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P1"}
+    },
+    {
+      "control_id": "SC-DEPLOY-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        "README.md:99 states application CI publishes images and private resonate-iac applies infrastructure releases",
+        ".github/workflows/ci.yml:844 creates the public deploy plan",
+        ".github/workflows/deploy-handoff.yml:16 dispatches to private resonate-iac"
+      ],
+      "decision_rationale": "Credit source SHA and selected-service validation, carry immutable digests for all four services through a versioned manifest, and require private resonate-iac to reconcile attested source, declared digest, Artifact Registry digest and live Cloud Run revision. Public code and the companion private change still cannot prove deployed IAM or live state until credentialed evidence is captured.",
+      "evidence": [
+        ".github/scripts/image_evidence.py:1",
+        ".github/workflows/ci.yml:1299",
+        ".github/workflows/deploy-handoff.yml:105",
+        ".github/workflows/deploy-handoff.yml:198",
+        "docs/architecture/deployment_architecture.md:184",
+        "unverified live boundary: private IAM bindings, Artifact Registry contents and Cloud Run/Dataflow revisions require credentialed reconciliation evidence"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "high",
+      "prerequisites": [
+        "Keep every selected service's tag, digest and immutable reference coherent in the v2 contract",
+        "Private resonate-iac verifies signature/build-attestation identity and reconciles source SHA, declared digest, registry digest and live revision after deployment and on a schedule",
+        "Capture one credentialed positive/negative verification and live reconciliation record without exposing private identifiers or secrets"
+      ],
+      "failure_mode": "A commit-derived image tag and validated dispatch can still resolve to a moved registry object, be ignored by the private receiver, or differ from the digest running in Cloud Run.",
+      "compensating_controls": [
+        "Deploy handoff checks the triggering CI run and source metadata",
+        "Selected service names and release SHA are validated before dispatch"
+      ],
+      "owner": "Resonate infrastructure maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"private_boundary": true, "priority": "P1"}
+    },
+    {
+      "control_id": "SC-MON-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        ".github/workflows/security.yml:34 schedules nightly security scans",
+        ".github/workflows/security.yml:21 keeps custom scanner SARIF artifact-only to avoid duplicate CodeQL ingestion/noise",
+        ".github/dependabot.yml:1 defines monthly version-update coverage",
+        "GitHub settings audit dated 2026-08-25 records enabled private vulnerability reporting, secret scanning, push protection, Dependabot alerts/security updates and CodeQL default setup",
+        "docs/architecture/deployment_architecture.md:191 documents private Cloud Monitoring ownership",
+        "backend/src/modules/x402/x402.middleware.ts:75 emits payment challenge and settlement audit events"
+      ],
+      "decision_rationale": "Credit #1537's retained PR/nightly scanner artifacts and existing payment/key audit events, and add retained and routed evidence for workflow changes, unexpected triggers, WIF/credential use and privileged-job egress. Native private vulnerability reporting, secret scanning, push protection, Dependabot alerts/security updates and CodeQL are enabled. The completed #1625 CodeQL baseline routes four accepted findings through private draft advisories and records evidence-backed dismissals for the remaining leads. CodeQL stays advisory/non-required because the measured false-positive rate is 57.9 percent; custom scanner SARIF remains artifact-only to avoid duplicate ingestion/noise. The retained historical scan leads were triaged as metadata-only with no Resonate-owned credential requiring rotation.",
+      "evidence": [
+        ".github/workflows/security.yml:294",
+        ".github/workflows/security.yml:442",
+        ".github/workflows/security.yml:21",
+        ".github/dependabot.yml:1",
+        "GitHub settings audit 2026-08-25: zero open and zero resolved native secret-scanning alerts after enablement",
+        "GitHub settings audit 2026-08-25: completed dependency-graph processing reported the initial 270-alert Dependabot snapshot; audit/dependabot-baseline-2026-08-30.md records the current reachability and remediation state",
+        "GitHub CodeQL run 32799678109 completed successfully against ccce700688187c459ffad3f6b58d8395f0441398",
+        "audit/codeql-baseline-2026-08-26.md: all 19 initial CodeQL leads dispositioned, 7 alerts retained across 4 private findings, and CodeQL kept advisory",
+        "Retained nightly scan run 32686785885: 19 provider-verified TruffleHog leads triaged metadata-only; no Resonate-owned credential required rotation",
+        "backend/src/modules/x402/x402.middleware.ts:75",
+        "backend/src/modules/identity/zerodev_session_key.service.ts:167",
+        "unverified private boundary: GitHub audit-log retention/routing, GCP IAM audit alerts and privileged-job egress alerts are not public code evidence"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Define retained GitHub audit events and alerts for workflow/ref/environment/ruleset changes and unusual triggers",
+        "Define GCP WIF/service-account use and privileged-job egress alerts with owner and escalation route",
+        "Review native secret-scanning, Dependabot and CodeQL outcomes with retained custom scanner artifacts; #1625 records the CodeQL baseline and #1626 tracks Dependabot triage",
+        "Exercise alert routing and retain one response record"
+      ],
+      "failure_mode": "Logs and scanner artifacts can exist without retention, an alert, a human route or enough correlation to connect a workflow change to credential use and a deployed digest.",
+      "compensating_controls": [
+        "Nightly scanner artifacts are retained for thirty days",
+        "x402 and session-key operations emit application audit events",
+        "Private Terraform documentation declares Cloud Monitoring ownership",
+        "Native GitHub settings and the dispositioned CodeQL baseline provide repository-control evidence while private audit-log routing remains unverified"
+      ],
+      "owner": "Resonate security maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"credited_from": ["#1537"], "tracked_by": ["#1539"], "private_boundary": true, "priority": "P1"}
+    },
+    {
+      "control_id": "SC-IR-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        ".github/workflows/staging-reconciliation-drill.yml:1 defines a funded reconciliation drill",
+        ".github/workflows/contracts-deploy.yml:22 exposes pause, upgrade and fund-release operations",
+        ".agents/skills/auditing-resonate-security/SKILL.md:68 enumerates payment, MCP, agent, key and contract threat surfaces"
+      ],
+      "decision_rationale": "Credit the product-level funded staging drill, but create supply-chain incident playbooks for package takeover/dependency confusion, pipeline credential harvesting, malicious skill/plugin or MCP content, developer workstation compromise, artifact substitution and contract/deployer authority compromise. T4 requires quarterly exercises and one before a major authority migration.",
+      "evidence": [
+        ".github/workflows/staging-reconciliation-drill.yml:9",
+        ".github/workflows/staging-lifecycle-smoke.yml:13",
+        ".github/workflows/contracts-deploy.yml:38",
+        "public repository scan found no completed supply-chain tabletop record with date, participants, gaps, owners and due dates"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Write scenario-specific playbooks with containment, evidence preservation, credential/key revocation, artifact rollback and authority pause steps",
+        "Run a quarterly tabletop and before any major signing, upgrade-authority or custody migration",
+        "Record date, participants, gaps, owners and due dates under audit/ without secrets"
+      ],
+      "failure_mode": "A workflow named drill can test business reconciliation while never exercising package compromise, stolen CI identity, malicious agent instructions, artifact rollback or signer revocation.",
+      "compensating_controls": [
+        "Manual funded staging reconciliation exists",
+        "Contract workflow exposes explicit preflight and pause operations",
+        "Session-key service supports rotation and revocation"
+      ],
+      "owner": "Resonate security maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"priority": "P1"}
+    },
+    {
+      "control_id": "SC-AI-01",
+      "applicability": "required",
+      "decision": "already-covered",
+      "trigger_evidence": [
+        "README.md:67 exposes MCP tools",
+        "README.md:69 identifies the AI DJ runtime",
+        ".agents/skills/auditing-resonate-security/SKILL.md:81 treats MCP as an agent-facing tool surface"
+      ],
+      "decision_rationale": "Credit #1537's standardized project security router and the existing bounded runtime, explicit MCP tool contract, paid-download proof boundary and funded-session constraints. The inventory declares executable instruction destinations and dependencies; release-integrity improvements remain governed by SC-BUILD-01, SC-ABOM-01 and SC-PROV-01 rather than falsely weakening this runtime boundary.",
+      "evidence": [
+        ".agents/skills/auditing-resonate-security/SKILL.md:23",
+        ".agents/skills/auditing-resonate-security/SKILL.md:53",
+        "backend/src/modules/mcp/mcp.service.ts:193",
+        "backend/src/modules/mcp/mcp.service.ts:355",
+        "backend/src/modules/agents/agent_runtime.executor.service.ts:20",
+        "backend/src/modules/agents/policy_guard.service.ts:23",
+        "backend/src/modules/identity/zerodev_session_key.service.ts:8"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "medium",
+      "prerequisites": [
+        "Quarterly security-ai review revalidates tool destinations, dependencies, authorization and exfiltration boundaries",
+        "Any new MCP tool, runtime adapter, repository skill/plugin or model-driven write/payment capability triggers immediate inventory and threat review",
+        "ABOM/provenance controls cover the executable build and skill inputs independently"
+      ],
+      "failure_mode": "A declared tool list can look bounded while model-controlled content reaches a new destination, sensitive tool output is exfiltrated, a runtime fallback bypasses policy, or a repository skill injects broader instructions.",
+      "compensating_controls": [
+        "MCP exposes only catalog.search, stem.quote and proof-gated stem.download",
+        "Agent commerce policy checks rails, license types and budget",
+        "Session keys constrain target, function, caps, rate and expiry",
+        "Shared security-ai methodology is routed by the project skill"
+      ],
+      "owner": "Resonate agent-runtime maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"credited_from": ["#1537"], "priority": "P2"}
+    },
+    {
+      "control_id": "SC-T4-01",
+      "applicability": "required",
+      "decision": "adapt",
+      "trigger_evidence": [
+        "docs/architecture/x402_payments.md:13 exposes USDC payment without an account",
+        "backend/src/modules/identity/zerodev_session_key.service.ts:8 defines funded-session authority",
+        "contracts/src/core/ShowCampaignEscrow.sol:16 holds and releases pledged funds",
+        ".github/workflows/contracts-deploy.yml:22 permits deployment, upgrade, pause and fund-release operations"
+      ],
+      "decision_rationale": "Credit application and contract recovery controls: x402 proof/replay handling, capped/expiring/revocable session keys, contract test/storage checks, ShowCampaignEscrow pause and separate timelocked upgrade authority. Adapt release governance because independent GitHub environment approval, deployer/settlement key custody, live on-chain authority membership and exercised recovery are unverified settings or private state.",
+      "evidence": [
+        "backend/src/modules/x402/x402.middleware.ts:82",
+        "backend/src/modules/identity/zerodev_session_key.service.ts:188",
+        "backend/src/modules/identity/zerodev_session_key.service.ts:285",
+        "contracts/src/core/ShowCampaignEscrow.sol:21",
+        "contracts/src/core/ShowCampaignEscrow.sol:30",
+        ".github/workflows/contracts-deploy.yml:258",
+        "unverified private boundary: contracts-* environment reviewers, deployer and settlement key custody, timelock/guardian membership and live pause/revocation capability are not proven by public source"
+      ],
+      "risk_reduction": "high",
+      "operating_cost": "high",
+      "prerequisites": [
+        "Require an independent reviewer for production contract deployment/upgrade and irreversible authority changes; if solo-maintainer constraints prevent this, record a time-bounded exception and compensating timelock/guardian process",
+        "Verify deployer, x402 settlement, agent session, owner, confirmer, timelock and guardian authority boundaries against GitHub/GCP settings and live chain state",
+        "Document and exercise pause, key/session revocation, upgrade cancellation, artifact rollback and authority recovery quarterly and before a major migration",
+        "Retain approval and exercise evidence without publishing secrets or sensitive recovery material"
+      ],
+      "failure_mode": "Contracts can contain a pause and timelock while the same person/key controls owner, proposer, executor, canceller, deployer and CI environment, or recovery can fail because live authority differs from source assumptions.",
+      "compensating_controls": [
+        "ShowCampaignEscrow separates operational owner and upgrade authority in code",
+        "Fund-moving paths are pausable",
+        "Session keys are capped, expiring, audited and revocable",
+        "Contract deployment runs build and safety tests before operations"
+      ],
+      "owner": "Resonate protocol security maintainer",
+      "review_cadence": "quarterly",
+      "extensions": {"private_boundary": true, "priority": "P2"}
+    }
+  ],
+  "exceptions": [],
+  "extensions": {
+    "issue": "#1551",
+    "related_issues": ["#1537", "#1539", "#1625"],
+    "schema_limitations": [
+      "Schema 1.0 validates the fixed control records and enums but treats repository.extensions as an opaque object; inventory completeness, owner validity, evidence path existence and private-boundary truth require human review.",
+      "The schema has no implementation-status or due-date field. Decisions describe adoption posture; prerequisites and status_note extensions carry incomplete/private verification work.",
+      "The schema does not require source revision or generation timestamp for repository profiles, so reviewed_public_revision is an extension and must be refreshed deliberately.",
+      "The schema cannot verify GitHub settings, GCP IAM, Artifact Registry, private resonate-iac or live runtime/on-chain state; those are explicitly marked unverified private boundaries.",
+      "The schema permits evidence strings and does not resolve file:line references or command claims."
+    ]
+  }
+}

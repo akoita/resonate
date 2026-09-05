@@ -1,88 +1,98 @@
-# Resonate agent instructions
+# Resonate — AI Agent Coding Standards
 
-This is the canonical project policy. `CLAUDE.md` links to this file; do not
-maintain a second copy. Paths below are relative to the repository root.
+Keep this root file limited to project-wide invariants. Load detailed procedures
+from the named skills and directory-specific standards only when they apply.
+Read the scoped standards before editing a directory or changing its behavior
+from elsewhere in the repository.
 
-## Working process
+## Configuration and secrets
 
-- Follow [start-issue](.agents/workflows/start-issue.md) for every task and
-  [finish-issue](.agents/workflows/finish-issue.md) when finalizing it.
-- Work on a feature branch, never commit or push directly to `main`, and never
-  force-push to `main`. Reuse the branch for related follow-ups.
-- Use `feat/<issue>-<description>`, `fix/<issue>-<description>`, or
-  `docs/<issue>-<description>`; omit the issue segment when there is no issue.
-- Complete local implementation and validation before requesting publication
-  approval. Honor approval already given in the conversation; do not ask again.
-- Merge only on an explicit user request. Finishing prepares the PR; it does
-  not authorize merging, deployment, or branch cleanup. Clean up merged branches
-  and align local `main` only after merge.
-- Preserve unrelated work. Use an isolated worktree if switching branches would
-  disturb it; do not automatically stash or commit someone else's changes.
-- Use Linux/macOS shells, or WSL on Windows. Machine-specific hooks and personal
-  tool configuration belong in ignored local settings.
+- Never commit credentials, API keys, tokens, private keys, or service-account
+  material. Secrets must come from environment variables or a secret manager and
+  must not have source-code defaults.
+- Deployment-specific URLs, ports, project IDs, bucket names, and similar values
+  must come from centralized configuration. Documented localhost defaults are
+  allowed for local development.
+- Reuse canonical configuration constants; do not redeclare values such as
+  `API_BASE` in individual files.
+- Browser variables use `NEXT_PUBLIC_`; server and backend variables do not.
+- Local defaults: backend `3000`, frontend `3001`, Demucs `8000`, Anvil `8545`,
+  AA bundler `4337`.
+- Document new application variables in `docs/deployment/environment.md` and the
+  corresponding deploy configuration in `resonate-iac`. Keep
+  `docs/smart-contracts/deployment.md` contract-focused.
 
-## Read the applicable rules before editing
+## Business Model v2
 
-These linked rules are mandatory when their scope applies, including changes
-outside a directory that affect its behavior. Read only the relevant material.
+Use these canonical sources:
 
-| Scope | Required guidance |
-| --- | --- |
-| Backend tests, persistence, infrastructure test fixtures | [Backend testing](.agents/rules/backend-testing.md), [backend/TESTING.md](backend/TESTING.md) |
-| Solidity, contract tests, deploy/upgrade scripts, ABI handoffs | [Smart contract standards](.agents/rules/contracts.md) |
-| Money, fees, payouts, upload trust, generation billing, collectibles, licensing | [Business model](.agents/rules/business-model.md) |
-| Durable features, user-visible behavior, partial delivery, documentation | [Documentation and feature completion](.agents/rules/documentation.md) |
-| Durable product, API, backend, frontend, analytics, protocol, deployment work | [Change impact checklist](docs/engineering/change_impact_checklist.md) |
+- Strategy and sequencing: `docs/strategy/business-model-review-2026-07.md`
+- Decisions ADR-BM-1…6: `docs/strategy/business-model-phase0-decisions.md`
+- Fees, splits, and prices: `docs/rfc/business-model.md`
 
-Never ship a silent partial feature: record remaining work in an issue or plan,
-mark the capability partial, and distinguish shipped behavior from deferred work.
-Do not close a parent feature until it is usable end to end.
+Never violate ADR-BM-4: no fan royalty-yield/income-share products; no
+platform-subsidized payouts for free listening; listener payouts are pre-funded
+and user-centric; artists receive at least 85% of each transaction, without
+recoupment or minimum thresholds.
 
-## Configuration and architecture
+Any issue, RFC, PR, or implementation touching money, payouts, ingestion trust,
+AI billing, collectibles, or licensing must state its ADR-BM-6 revenue line and
+phase, or state that it is vision-neutral infrastructure/quality. Reconcile all
+fee changes with the canonical RFC. New issues require `vision:core` or
+`vision:keep`; challenge work that fits neither.
 
-Never embed environment-dependent URLs, ports, project IDs, buckets, or secrets
-in source. Use environment variables and safe local defaults, with centralized
-constants rather than per-file declarations.
+## Change completeness and documentation
 
-- Frontend API calls import `API_BASE` from `@/lib/api`. Its environment variable
-  is `NEXT_PUBLIC_API_URL`, with local fallback `http://localhost:3000`.
-- Browser variables use `NEXT_PUBLIC_`; server variables do not. Never expose
-  secrets through browser variables. Server API URLs use `BACKEND_URL`.
-- Local ports: backend `3000`, frontend `3001`, Demucs `8000`, Anvil `8545`,
-  AA bundler `4337`. These are local defaults, not production configuration.
-- WebSockets use the backend API URL. Chain configuration uses
-  `NEXT_PUBLIC_CHAIN_ID` and `NEXT_PUBLIC_RPC_URL`.
-- Storage uses `STORAGE_PROVIDER` (`gcs`, `ipfs`, `local`); Redis uses
-  `REDIS_HOST` / `REDIS_PORT`. BullMQ workers run in the backend process.
-- Document new app variables in [environment.md](docs/deployment/environment.md)
-  and update the relevant configuration in `resonate-iac`. Contract deployment
-  guidance belongs in [smart-contract deployment](docs/smart-contracts/deployment.md).
-- Follow [deployment architecture](docs/architecture/deployment_architecture.md)
-  for infrastructure ownership and Cloud Run configuration; verify the target
-  environment before deployment.
-- Never commit credentials, private data, local overrides, generated build
-  output, or dependency directories. Ignoring an already tracked secret does
-  not remove it from Git history.
+- Before finishing a durable change, review
+  `docs/engineering/change_impact_checklist.md` and report relevant effects or
+  intentional deferrals in the PR.
+- Durable feature changes must update `docs/features/README.md` and the relevant
+  page under `docs/features/` in the same branch.
+- User-visible changes must update the in-app User Guide when applicable. The
+  frontend-specific instructions live in `web/AGENTS.md`.
+- Partial delivery must leave durable tracking in an open parent issue, linked
+  follow-up issues, a plan/roadmap, or a feature page marked `partial` or
+  `in-progress`. Do not close a parent feature until it works end to end or all
+  remaining slices are explicitly tracked.
+- PR summaries for partial work must distinguish what shipped from what remains
+  and explain the reason for deferral.
 
-## Implementation and validation
+The `finish-issue` skill contains the complete documentation, validation, and
+partial-delivery checklist; do not duplicate that procedure here.
 
-- Use focused tests and lint/type checks for the changed behavior; choose gates
-  using [finish-issue](.agents/workflows/finish-issue.md). Documentation-only
-  changes need link/command checks and `git diff --check`, not application suites.
-- Never mock Prisma. Database-dependent tests use real Testcontainers and the
-  shared Prisma singleton; external services remain mocked.
-- Prisma schema changes require a migration and `npx prisma generate`.
-- Treat every contract change as security-sensitive and apply the contract test
-  ladder. General validation budgets do not waive required security coverage.
-- Prefer the shared `ConfirmDialog` component over `window.confirm()`.
-- Update current feature docs and architecture alongside behavior. User-visible
-  changes also update the `/help` guide and its content-integrity test.
-- Write documentation for human readers: useful sections, one coherent point
-  per paragraph, current information, and links instead of duplicated detail.
-  Restructure paragraphs or list items longer than about 120 words.
+## Git authorization and workflows
 
-## Skills and workflows
+- Never commit or push directly to `main`; use a branch and PR targeting `main`.
+- Never force-push to or delete `main`.
+- Merge only after the developer explicitly says `merge` or equivalent.
+- Honor publication approval already given in the conversation. Complete local
+  implementation and validation before asking for missing commit/push approval.
+- Preserve unrelated edits; use an isolated worktree if switching would disturb
+  them. Do not automatically stash or commit someone else's changes.
+- Use Linux/macOS shells or WSL on Windows. Machine-specific hooks belong in
+  ignored local settings, not shared runtime configuration.
+- Keep related refinements on the current feature branch and PR until the user
+  asks to finish or merge.
 
-See [.agents/README.md](.agents/README.md) for workflow discovery, skill ownership,
-and maintenance. Installed skills supplement these rules; do not copy their
-implementation or machine-specific installation paths into this repository.
+Use these project skills:
+
+- New issue or durable task: `.agents/skills/start-issue/SKILL.md`
+- Finish, verify, commit, push, PR, merge, and cleanup:
+  `.agents/skills/finish-issue/SKILL.md`
+- Milestone or sprint planning: use the `plan-milestone` skill from
+  `codex-utilities@agent-toolkit`; never create or reassign milestone scope
+  before explicit approval.
+- Any security request: `.agents/skills/auditing-resonate-security/SKILL.md`
+
+Skill architecture and runtime setup are documented in
+`docs/engineering/agent-skills.md`.
+
+## Validation and scoped standards
+
+- Run focused tests and lint for touched packages. Use the risk-based validation
+  policy in `finish-issue` before committing or publishing; do not run unrelated
+  full suites by default.
+- Backend testing and Prisma rules: `backend/AGENTS.md`
+- Frontend UI, help content, and screenshot rules: `web/AGENTS.md`
+- Smart-contract testing, verification, and deployment handoff:
+  `contracts/AGENTS.md`

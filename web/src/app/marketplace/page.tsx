@@ -8,7 +8,8 @@ import { usePaymentAssets } from "../../hooks/usePaymentAssets";
 import { useToast } from "../../components/ui/Toast";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { useZeroDev } from "../../components/auth/ZeroDevProviderClient";
-import { API_BASE, getReleaseArtworkUrl } from "../../lib/api";
+import { API_BASE, getReleaseArtworkUrl, type AiDisclosure } from "../../lib/api";
+import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 import {
     findPaymentAssetForToken,
@@ -54,6 +55,7 @@ interface ListingData {
         artistId?: string;
         releaseId?: string;
         isAiGenerated?: boolean;
+        aiDisclosure?: AiDisclosure | null;
         generationProvider?: string;
         synthIdVerified?: boolean;
         synthIdConfidence?: number;
@@ -536,6 +538,7 @@ export default function MarketplacePage() {
                     <input
                         type="text"
                         className="marketplace-search__input"
+                        aria-label="Search marketplace listings"
                         placeholder="Search stems, tracks, or artists..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
@@ -566,6 +569,7 @@ export default function MarketplacePage() {
                     {/* Sort */}
                     <select
                         className="marketplace-select"
+                        aria-label="Sort marketplace listings"
                         value={sortBy}
                         onChange={e => setSortBy(e.target.value)}
                         data-testid="marketplace-sort"
@@ -579,6 +583,7 @@ export default function MarketplacePage() {
                     {artists.length > 0 && (
                         <select
                             className="marketplace-select"
+                            aria-label="Filter by artist"
                             value={selectedArtist}
                             onChange={e => setSelectedArtist(e.target.value)}
                         >
@@ -591,6 +596,7 @@ export default function MarketplacePage() {
                     {genres.length > 0 && (
                         <select
                             className="marketplace-select"
+                            aria-label="Filter by genre"
                             value={selectedGenre}
                             onChange={e => setSelectedGenre(e.target.value)}
                         >
@@ -715,7 +721,9 @@ export default function MarketplacePage() {
 
                                     {/* Badges */}
                                     <div className="stem-card__badges">
-                                        {listing.stem?.isAiGenerated && (
+                                        {listing.stem?.aiDisclosure ? (
+                                            <AiDisclosureBadge disclosure={listing.stem.aiDisclosure} />
+                                        ) : listing.stem?.isAiGenerated && (
                                             <span className="stem-type-badge stem-type-badge--ai" title={listing.stem.generationProvider || 'AI Generated'}>
                                                 🤖 AI
                                             </span>

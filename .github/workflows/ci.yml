@@ -2,23 +2,45 @@ name: CI
 
 on:
   push:
-    branches: [main, develop, "mergify/merge-queue/**"]
+    # NOTE: no "mergify/merge-queue/**" here — Mergify opens a draft PR for its
+    # queue branch, so the pull_request trigger already runs CI on the exact
+    # queue SHA; a push trigger too ran the SAME commit twice (operator-reported).
+    branches: [main, develop]
   pull_request:
     branches: [main, develop, "feat/*", "fix/*", "docs/*"]
   merge_group:
     branches: [main]
   workflow_dispatch:
+  # Release Deployment invokes this workflow after its exact-SHA gate. A
+  # reusable invocation runs the same validation graph and produces the
+  # deployable frontend artifact for the release-scoped image publisher.
+  workflow_call:
+    inputs:
+      release_validation:
+        description: Run the complete release-scoped validation graph.
+        required: true
+        type: boolean
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # PR pushes AND superseded main pushes cancel: Mergify batch merges land
+  # back-to-back squashes on main and the merge queue already validated the
+  # combined result — only the FINAL main SHA needs a full post-merge run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect Changes
+    # Dependabot source PRs are inputs to the dependency train and are never
+    # merged directly. The consolidated train PR runs this complete workflow
+    # once, after all selected updates have been combined.
+    if: github.event_name != 'pull_request' || github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
@@ -35,11 +57,12 @@ jobs:
       web: ${{ steps.detect.outputs.web }}
       contracts: ${{ steps.detect.outputs.contracts }}
       shared: ${{ steps.detect.outputs.shared }}
+      shared_image: ${{ steps.detect.outputs.shared_image }}
       docs_only: ${{ steps.detect.outputs.docs_only }}
       run_all: ${{ steps.detect.outputs.run_all }}
-      main_deploy_only: ${{ steps.detect.outputs.main_deploy_only }}
+      main_post_merge: ${{ steps.detect.outputs.main_post_merge }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -47,6 +70,10 @@ jobs:
       - name: Classify changed paths
         id: detect
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_VALIDATION: ${{ inputs.release_validation || false }}
         run: |
           set -euo pipefail
 
@@ -64,23 +91,30 @@ jobs:
           web=false
           contracts=false
           shared=false
+          shared_image=false
           docs=false
           infra=false
           run_all=false
-          main_deploy_only=false
+          main_post_merge=false
 
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == "main" ]]; then
-            main_deploy_only=true
-            echo "Main push detected; this run will publish/deploy from a merge-queue-certified commit and skip duplicate validation jobs."
+          if [[ "${EVENT_NAME}" == "push" && "${REF_NAME}" == "main" ]]; then
+            main_post_merge=true
+            echo "Main post-merge validation receipt detected; the merge-queue-certified commit skips duplicate validation jobs."
+          elif [[ "${RELEASE_VALIDATION}" == "true" ]]; then
+            # A release-scoped caller has already selected and verified the
+            # exact source SHA. Re-run the complete validation graph so the
+            # image publisher consumes an artifact from this caller run.
+            run_all=true
+            echo "Release-scoped reusable invocation detected; running the complete validation graph."
           fi
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             base_sha="${{ github.event.pull_request.base.sha }}"
-          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+          elif [[ "${EVENT_NAME}" == "merge_group" ]]; then
             base_sha="${{ github.event.merge_group.base_sha }}"
             run_all=true
             echo "GitHub merge queue candidate detected; running the full validation safety net once for the queued batch."
-          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref_name }}" == mergify/merge-queue/* ]]; then
+          elif [[ "${EVENT_NAME}" == "push" && "${REF_NAME}" == mergify/merge-queue/* ]]; then
             base_sha="${{ github.event.before }}"
             run_all=true
             echo "Mergify queue branch detected; running the full validation safety net once for the queued batch."
@@ -107,6 +141,10 @@ jobs:
 
               # Keep this mapping conservative: ambiguous changes should land in
               # "shared" so the full cross-module safety net still runs.
+              # "shared_image" is the narrower subset of "shared" that can
+              # actually change what ends up inside a container image; it gates
+              # the release image-publish fan-out only (see the reusable image
+              # publisher workflow).
               for file in "${changed_files[@]}"; do
                 case "${file}" in
                   backend/src/modules/auth/*|backend/src/modules/identity/*|backend/src/modules/sessions/*|backend/src/modules/webauthn/*|backend/src/tests/auth.*|backend/src/tests/sessions.*|backend/src/tests/wallet.*|backend/src/tests/session_key.spec.ts|backend/src/tests/erc4337_client.integration.spec.ts|backend/src/tests/erc6492.spec.ts|backend/src/tests/roles.guard.spec.ts|backend/src/tests/social_recovery.spec.ts)
@@ -123,6 +161,14 @@ jobs:
                     ;;
                   backend/src/evals/*|backend/src/modules/agents/*|backend/src/modules/embeddings/*|backend/src/modules/generation/*|backend/src/modules/openapi/*|backend/src/tests/agent_*|backend/src/tests/agents.spec.ts|backend/src/tests/embeddings.spec.ts|backend/src/tests/flow4_generation.integration.spec.ts|backend/src/tests/generation.*|backend/src/tests/lyria_client.spec.ts|backend/src/tests/openapi.controller.spec.ts|backend/src/tests/tool_declarations.integration.spec.ts)
                     backend=true
+                    backend_generation=true
+                    ;;
+                  backend/src/modules/mcp/*|backend/src/tests/mcp.*)
+                    backend=true
+                    backend_marketplace=true
+                    # MCP constants are also consumed by the OpenAPI
+                    # well-known document and the ERC-8004 agent registration
+                    # file, both covered by the generation group.
                     backend_generation=true
                     ;;
                   backend/src/modules/analytics/*|backend/src/modules/artist/*|backend/src/modules/curation/*|backend/src/modules/dmca/*|backend/src/modules/notifications/*|backend/src/modules/payments/*|backend/src/modules/playlist/*|backend/src/modules/pricing/*|backend/src/modules/recommendations/*|backend/src/modules/remix/*|backend/src/modules/rights/*|backend/src/modules/storefront/*|backend/src/modules/trust/*|backend/src/modules/x402/*|backend/src/tests/analytics.spec.ts|backend/src/tests/artist.*|backend/src/tests/curation.spec.ts|backend/src/tests/curator-reputation.integration.spec.ts|backend/src/tests/dmca.service.integration.spec.ts|backend/src/tests/payments.spec.ts|backend/src/tests/playlist.*|backend/src/tests/pricing.spec.ts|backend/src/tests/recommendations.*|backend/src/tests/remix.spec.ts|backend/src/tests/rights-evidence.spec.ts|backend/src/tests/storefront.service.spec.ts|backend/src/tests/trust-*|backend/src/tests/trust.controller.spec.ts|backend/src/tests/verification-semantics.spec.ts|backend/src/tests/x402.*)
@@ -153,7 +199,11 @@ jobs:
                     web=true
                     ;;
                   .npmrc|.github/actions/*|scripts/*)
+                    # Composite actions and scripts/.npmrc are inputs to the
+                    # release-scoped image build, so classify them as shared
+                    # image inputs for downstream release planning.
                     shared=true
+                    shared_image=true
                     ;;
                   contracts/*)
                     contracts=true
@@ -164,11 +214,31 @@ jobs:
                   infra/*|terraform/*)
                     infra=true
                     ;;
-                  .github/workflows/*|.github/actions/*|scripts/*|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|tsconfig*.json|eslint.config.*|.eslintrc*|turbo.json|Makefile|docker-compose*.yml|docker-compose*.yaml)
+                  .github/workflows/ci.yml)
+                    # This workflow owns the image build contexts, Dockerfile
+                    # paths and build args, so editing it can change what is
+                    # baked into an image.
+                    shared=true
+                    shared_image=true
+                    ;;
+                  .github/workflows/*)
+                    # Every other workflow (deploy dispatch, security, formal,
+                    # mutation, desktop release, staging drills, …) only changes
+                    # how CI/CD runs, never the contents of a container image.
+                    # They keep the conservative "shared" test fan-out but must
+                    # NOT force an image rebuild: the stable-audio ML worker
+                    # image alone takes ~29 minutes to build, and a one-line edit
+                    # to e.g. deploy-handoff.yml used to rebuild all four images.
                     shared=true
                     ;;
-                  *)
+                  .github/actions/*|scripts/*|package.json|package-lock.json|pnpm-lock.yaml|yarn.lock|tsconfig*.json|eslint.config.*|.eslintrc*|turbo.json|Makefile|docker-compose*.yml|docker-compose*.yaml)
                     shared=true
+                    shared_image=true
+                    ;;
+                  *)
+                    # Unknown files stay conservative on both flags.
+                    shared=true
+                    shared_image=true
                     ;;
                 esac
               done
@@ -201,9 +271,10 @@ jobs:
           echo "web=${web}" >> "${GITHUB_OUTPUT}"
           echo "contracts=${contracts}" >> "${GITHUB_OUTPUT}"
           echo "shared=${shared}" >> "${GITHUB_OUTPUT}"
+          echo "shared_image=${shared_image}" >> "${GITHUB_OUTPUT}"
           echo "docs_only=${docs_only}" >> "${GITHUB_OUTPUT}"
           echo "run_all=${run_all}" >> "${GITHUB_OUTPUT}"
-          echo "main_deploy_only=${main_deploy_only}" >> "${GITHUB_OUTPUT}"
+          echo "main_post_merge=${main_post_merge}" >> "${GITHUB_OUTPUT}"
 
           {
             echo "### Change detection"
@@ -222,18 +293,19 @@ jobs:
             echo "- web: ${web}"
             echo "- contracts: ${contracts}"
             echo "- shared: ${shared}"
+            echo "- shared_image: ${shared_image}"
             echo "- docs_only: ${docs_only}"
             echo "- run_all: ${run_all}"
-            echo "- main_deploy_only: ${main_deploy_only}"
+            echo "- main_post_merge: ${main_post_merge}"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.main_deploy_only != 'true'
+    if: needs.changes.outputs.main_post_merge != 'true'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -245,12 +317,12 @@ jobs:
         if: needs.changes.outputs.docs_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install desktop dependencies
         if: needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project desktop
         working-directory: desktop
 
       - name: Run desktop lint
@@ -268,7 +340,7 @@ jobs:
 
       - name: Install web dependencies
         if: needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
-        run: npm ci --legacy-peer-deps
+        run: node ../scripts/hardened-npm-install.mjs --project web -- --legacy-peer-deps
         working-directory: web
 
       - name: Run web lint
@@ -278,7 +350,7 @@ jobs:
 
       - name: Install backend dependencies
         if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true'
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project backend
         working-directory: backend
 
       - name: Generate Prisma Client
@@ -295,9 +367,9 @@ jobs:
     name: npm Lockfile Source Scan
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -309,22 +381,38 @@ jobs:
             desktop/package-lock.json
             web/package-lock.json
             backend/package-lock.json
+            scripts/staging-smoke/package-lock.json
+            examples/mcp-client/package-lock.json
 
       - name: Verify npm lockfile sources
         run: npm run security:lock-sources
+
+      - name: Verify npm lifecycle policy
+        run: |
+          npm run security:npm-lifecycles
+          npm run test:security:npm-lifecycles
+
+      - name: Verify release contract
+        run: |
+          npm run release:check
+          npm run test:release-policy
+          python3 -m unittest discover -s .github/scripts/tests -p 'test_release_*.py'
 
   contracts:
     name: Smart Contract Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      - name: Init contract submodules
+        run: git submodule update --init --checkout
+
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: v1.4.3
 
@@ -340,6 +428,10 @@ jobs:
         run: forge test -vvv --no-match-path "test/formal/*"
         working-directory: contracts
 
+      - name: Run isolated Kernel v4 compatibility tests
+        run: forge test --match-path test/KernelFactoryCompatibility.t.sol
+        working-directory: contracts/kernel-v4
+
       - name: Check UUPS storage layout
         # Fails if an upgradeable contract's storage layout drifts from its committed
         # baseline (catches layout-breaking changes before they reach a proxy). After
@@ -352,9 +444,9 @@ jobs:
     name: Backend Unit Tests
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -364,7 +456,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project backend
         working-directory: backend
 
       - name: Generate Prisma Client
@@ -401,7 +493,7 @@ jobs:
 
       - name: Upload agent golden eval results
         if: always() && hashFiles('backend/eval-results/agent-golden-results.json') != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: agent-golden-eval-results
           path: |
@@ -416,13 +508,16 @@ jobs:
     name: Backend Integration Tests
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     # No service containers needed — Testcontainers handles all infrastructure
     # (Postgres, Redis, Anvil, Pub/Sub) with isolated containers on random ports
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Init contract submodules
+        run: git submodule update --init --checkout
 
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened
@@ -430,7 +525,7 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project backend
         working-directory: backend
 
       - name: Generate Prisma Client
@@ -441,7 +536,7 @@ jobs:
       # (e.g. shows.service.integration.spec.ts) require Foundry build artifacts
       # under contracts/out/.
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: v1.4.3
 
@@ -452,6 +547,12 @@ jobs:
       - name: Build contract artifacts for integration tests
         run: forge build
         working-directory: contracts
+
+      # Punchline Drops clip extraction (#481) and the publish path (#482) shell
+      # out to ffmpeg; without it those integration specs skip their render
+      # cases. Install it so the media path is actually exercised in CI.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # No 'prisma db push' needed — Testcontainers globalSetup handles schema sync
       - name: Run selected backend integration tests
@@ -488,7 +589,7 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     needs: [changes, backend-unit-tests, backend-integration-tests]
-    if: always() && needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: always() && needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
       - name: Verify backend test jobs
         run: |
@@ -514,19 +615,19 @@ jobs:
     name: Demucs Worker Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.demucs == 'true' || needs.changes.outputs.backend_ingestion == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.demucs == 'true' || needs.changes.outputs.backend_ingestion == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Install test dependencies
-        run: python -m pip install --upgrade fastapi httpx
+        run: python -m pip install --require-hashes -r requirements-test.lock
         working-directory: workers/demucs
 
       - name: Run Demucs worker unit tests
@@ -537,14 +638,14 @@ jobs:
     name: Analytics Dataflow Tests
     runs-on: ubuntu-latest
     needs: [changes]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.analytics_dataflow == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.analytics_dataflow == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
 
@@ -556,7 +657,7 @@ jobs:
     name: Desktop Package Smoke
     runs-on: ${{ matrix.os }}
     needs: [changes, lint]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.desktop == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -570,18 +671,18 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened
         with:
-          node-version: "22.12.0"
+          node-version: "24"
           cache-dependency-path: desktop/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project desktop
         working-directory: desktop
 
       - name: Validate shell config
@@ -593,7 +694,7 @@ jobs:
         working-directory: desktop
 
       - name: Upload desktop package smoke artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact-name }}
           path: desktop/dist/
@@ -603,9 +704,9 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -615,7 +716,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: node ../scripts/hardened-npm-install.mjs --project web -- --legacy-peer-deps
         working-directory: web
 
       - name: Build
@@ -628,7 +729,7 @@ jobs:
           ls -R web/.next | head -n 20
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-build
           path: |
@@ -643,10 +744,10 @@ jobs:
     name: Build Deployable Frontend Artifact
     runs-on: ubuntu-latest
     needs: [changes, lint]
-    if: always() && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop') && (github.ref_name == 'main' || needs.lint.result == 'success') && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: always() && (inputs.release_validation == true || (github.event_name == 'push' && github.ref_name == 'develop')) && needs.lint.result == 'success' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     environment: ${{ github.ref_name == 'main' && 'staging' || github.ref_name == 'develop' && 'dev' || '' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -656,7 +757,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: node ../scripts/hardened-npm-install.mjs --project web -- --legacy-peer-deps
         working-directory: web
 
       - name: Export frontend build args
@@ -664,6 +765,7 @@ jobs:
           NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_ZERODEV_PROJECT_ID: ${{ vars.NEXT_PUBLIC_ZERODEV_PROJECT_ID }}
           NEXT_PUBLIC_CHAIN_ID: ${{ vars.NEXT_PUBLIC_CHAIN_ID }}
+          NEXT_PUBLIC_EXPLORER_URL: ${{ vars.NEXT_PUBLIC_EXPLORER_URL }}
           NEXT_PUBLIC_STEM_NFT_ADDRESS: ${{ vars.NEXT_PUBLIC_STEM_NFT_ADDRESS }}
           NEXT_PUBLIC_MARKETPLACE_ADDRESS: ${{ vars.NEXT_PUBLIC_MARKETPLACE_ADDRESS }}
           NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS: ${{ vars.NEXT_PUBLIC_TRANSFER_VALIDATOR_ADDRESS }}
@@ -672,6 +774,8 @@ jobs:
           NEXT_PUBLIC_CURATION_REWARDS_ADDRESS: ${{ vars.NEXT_PUBLIC_CURATION_REWARDS_ADDRESS }}
           NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS: ${{ vars.NEXT_PUBLIC_SHOW_CAMPAIGN_ESCROW_ADDRESS }}
           NEXT_PUBLIC_ENV: ${{ vars.NEXT_PUBLIC_ENV }}
+          IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL: ${{ vars.IMAGE_OPTIMIZER_MINIMUM_CACHE_TTL }}
+          IMAGE_OPTIMIZER_SHARP_CONCURRENCY: ${{ vars.IMAGE_OPTIMIZER_SHARP_CONCURRENCY }}
           FRONTEND_CONTRACT_DEPLOYMENT_ENV_FILE: ${{ github.ref_name == 'main' && 'contracts/deployments/base-sepolia.remote.env' || '' }}
         run: bash .github/scripts/export-frontend-build-args.sh > "${RUNNER_TEMP}/frontend-build.env"
 
@@ -690,8 +794,73 @@ jobs:
           test -d web/.next/static
           test -d web/public
 
+      - name: Prepare frontend runtime context
+        env:
+          FRONTEND_RUNTIME_CONTEXT: ${{ runner.temp }}/frontend-runtime-context
+        run: |
+          set -euo pipefail
+          bash .github/scripts/prepare-frontend-runtime-context.sh \
+            --artifact-dir "web" \
+            --dockerfile-source "web/Dockerfile.runtime" \
+            --output-dir "${FRONTEND_RUNTIME_CONTEXT}"
+
+      - name: Build frontend runtime smoke image
+        env:
+          FRONTEND_RUNTIME_CONTEXT: ${{ runner.temp }}/frontend-runtime-context
+          FRONTEND_RUNTIME_IMAGE: frontend-runtime-smoke:${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --file "${FRONTEND_RUNTIME_CONTEXT}/Dockerfile" \
+            --tag "${FRONTEND_RUNTIME_IMAGE}" \
+            "${FRONTEND_RUNTIME_CONTEXT}"
+
+      - name: Verify Sharp image transform
+        env:
+          FRONTEND_RUNTIME_IMAGE: frontend-runtime-smoke:${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          docker run --rm --interactive --entrypoint node "${FRONTEND_RUNTIME_IMAGE}" - <<'NODE'
+          "use strict";
+
+          const sharp = require("sharp");
+
+          const source = Buffer.from([
+            0xff, 0x00, 0x00, 0xff,
+            0x00, 0xff, 0x00, 0xff,
+            0x00, 0x00, 0xff, 0xff,
+            0xff, 0xff, 0x00, 0xff,
+          ]);
+
+          (async () => {
+            const { data, info } = await sharp(source, {
+              raw: { width: 2, height: 2, channels: 4 },
+            })
+              .resize({ width: 1, height: 1, fit: "fill" })
+              .webp()
+              .toBuffer({ resolveWithObject: true });
+
+            if (info.format !== "webp") {
+              throw new Error(`Sharp smoke transform returned ${info.format}, expected webp`);
+            }
+            if (info.width !== 1 || info.height !== 1) {
+              throw new Error(
+                `Sharp smoke transform returned ${info.width}x${info.height}, expected 1x1`,
+              );
+            }
+            if (!Number.isInteger(info.size) || info.size <= 0 || info.size !== data.length) {
+              throw new Error(`Sharp smoke transform returned invalid output size: ${info.size}`);
+            }
+
+            console.log(`Sharp smoke transform passed: ${info.width}x${info.height} ${info.format}, ${info.size} bytes`);
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          NODE
+
       - name: Upload deployable frontend artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-build-deployable
           path: |
@@ -705,10 +874,10 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
     needs: [changes, build]
-    if: needs.changes.outputs.main_deploy_only != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
         env:
           POSTGRES_USER: resonate
           POSTGRES_PASSWORD: resonate
@@ -721,7 +890,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       redis:
-        image: redis:7
+        image: redis:7@sha256:595cc6f2bb3af6e03347b90deb6123c6aa2c81dea05ce08128de8a174b6ac67b
         ports:
           - 6379:6379
         options: >-
@@ -730,7 +899,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -742,13 +911,13 @@ jobs:
             backend/package-lock.json
 
       - name: Download build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: web-build
           path: web
 
       - name: Install backend dependencies
-        run: npm ci
+        run: node ../scripts/hardened-npm-install.mjs --project backend
         working-directory: backend
 
       - name: Generate Prisma Client
@@ -762,12 +931,12 @@ jobs:
           DATABASE_URL: postgresql://resonate:resonate@localhost:5432/resonate
 
       - name: Install web dependencies
-        run: npm ci --legacy-peer-deps
+        run: node ../scripts/hardened-npm-install.mjs --project web -- --legacy-peer-deps
         working-directory: web
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('web/package-lock.json') }}
@@ -793,428 +962,9 @@ jobs:
           STEM_PROCESSING_MODE: sync
 
       - name: Upload test results
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:
           name: playwright-report
           path: web/playwright-report/
           retention-days: 7
-
-  publish-plan:
-    name: Resolve Deploy Image Plan
-    runs-on: ubuntu-latest
-    needs: [changes, lint, npm-lock-sources, contracts, backend-tests, demucs-worker-tests, build, build-deployable-frontend, e2e-tests]
-    if: always() && github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'develop')
-    environment: ${{ github.ref_name == 'main' && 'staging' || 'dev' }}
-    outputs:
-      environment: ${{ steps.plan.outputs.environment }}
-      registry: ${{ steps.plan.outputs.registry }}
-      services_csv: ${{ steps.plan.outputs.services_csv }}
-      should_dispatch: ${{ steps.plan.outputs.should_dispatch }}
-      release_sha: ${{ steps.plan.outputs.release_sha }}
-      release_id: ${{ steps.plan.outputs.release_id }}
-      demucs_dockerfile: ${{ steps.plan.outputs.demucs_dockerfile }}
-      stable_audio_dockerfile: ${{ steps.plan.outputs.stable_audio_dockerfile }}
-      backend_image: ${{ steps.plan.outputs.backend_image }}
-      frontend_image: ${{ steps.plan.outputs.frontend_image }}
-      demucs_image: ${{ steps.plan.outputs.demucs_image }}
-      stable_audio_image: ${{ steps.plan.outputs.stable_audio_image }}
-    permissions:
-      contents: read
-    steps:
-      - name: Resolve publish plan
-        id: plan
-        env:
-          BRANCH_NAME: ${{ github.ref_name }}
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_REGION: ${{ vars.GCP_REGION }}
-        run: |
-          set -euo pipefail
-
-          case "${BRANCH_NAME}" in
-            main)
-              environment="staging"
-              demucs_dockerfile="Dockerfile.gpu"
-              ;;
-            develop)
-              environment="dev"
-              demucs_dockerfile="Dockerfile"
-              ;;
-            *)
-              echo "Unsupported deploy branch: ${BRANCH_NAME}" >&2
-              exit 1
-              ;;
-          esac
-
-          if [[ -z "${GCP_PROJECT_ID}" || -z "${GCP_REGION}" ]]; then
-            echo "Missing required environment variables: GCP_PROJECT_ID and/or GCP_REGION" >&2
-            exit 1
-          fi
-
-          services=()
-          # Keep the backend ingestion path and Demucs worker deployed together.
-          # Upload regressions can otherwise persist in staging when only backend
-          # ingestion code changes on later commits and the worker image stays stale.
-          if [[ "${{ needs.changes.outputs.run_all }}" == "true" || "${{ needs.changes.outputs.shared }}" == "true" ]]; then
-            services+=(backend frontend demucs stable-audio)
-          else
-            [[ "${{ needs.changes.outputs.backend }}" == "true" ]] && services+=(backend)
-            [[ "${{ needs.changes.outputs.web }}" == "true" ]] && services+=(frontend)
-            [[ "${{ needs.changes.outputs.demucs }}" == "true" ]] && services+=(demucs)
-            [[ "${{ needs.changes.outputs.stable_audio }}" == "true" ]] && services+=(stable-audio)
-            if [[ "${{ needs.changes.outputs.backend_ingestion }}" == "true" && " ${services[*]} " != *" demucs "* ]]; then
-              services+=(demucs)
-            fi
-          fi
-
-          services_csv=""
-          if [[ ${#services[@]} -gt 0 ]]; then
-            printf -v services_csv '%s,' "${services[@]}"
-            services_csv="${services_csv%,}"
-          fi
-
-          should_dispatch="false"
-          if [[ -n "${services_csv}" ]]; then
-            should_dispatch="true"
-          fi
-
-          registry="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/resonate-${environment}"
-
-          {
-            echo "environment=${environment}"
-            echo "registry=${registry}"
-            echo "services_csv=${services_csv}"
-            echo "should_dispatch=${should_dispatch}"
-            echo "release_sha=${GITHUB_SHA}"
-            echo "release_id=ci-${GITHUB_RUN_ID}-${GITHUB_RUN_NUMBER}"
-            echo "demucs_dockerfile=${demucs_dockerfile}"
-            echo "stable_audio_dockerfile=Dockerfile"
-            echo "backend_image=${registry}/backend:${GITHUB_SHA}"
-            echo "frontend_image=${registry}/frontend:${GITHUB_SHA}"
-            echo "demucs_image=${registry}/demucs-worker:${GITHUB_SHA}"
-            echo "stable_audio_image=${registry}/stable-audio-worker:${GITHUB_SHA}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Verify prerequisite jobs
-        run: |
-          set -euo pipefail
-
-          main_deploy_only="${{ needs.changes.outputs.main_deploy_only }}"
-          if [[ "${main_deploy_only}" == "true" ]]; then
-            echo "Main deploy-only run: validation is expected to have passed on the merge queue candidate before main moved."
-          fi
-
-          if [[ "${{ needs.contracts.result }}" == "failure" ]]; then
-            echo "Smart Contract Tests failed; refusing to publish deployable images." >&2
-            exit 1
-          fi
-
-          if [[ "${{ steps.plan.outputs.should_dispatch }}" != "true" ]]; then
-            echo "No deployable services changed on this push; skipping image publication."
-            exit 0
-          fi
-
-          services=",${{ steps.plan.outputs.services_csv }},"
-
-          if [[ "${services}" == *",backend,"* || "${services}" == *",frontend,"* ]]; then
-            if [[ "${main_deploy_only}" != "true" && "${{ needs.lint.result }}" != "success" ]]; then
-              echo "Lint did not succeed for deployable application changes." >&2
-              exit 1
-            fi
-            if [[ "${main_deploy_only}" != "true" && "${{ needs.npm-lock-sources.result }}" != "success" ]]; then
-              echo "npm lockfile source scan did not succeed for deployable application changes." >&2
-              exit 1
-            fi
-          fi
-
-          if [[ "${main_deploy_only}" != "true" && "${services}" == *",backend,"* && "${{ needs.backend-tests.result }}" != "success" ]]; then
-            echo "Backend Tests did not succeed for backend image publication." >&2
-            exit 1
-          fi
-
-          if [[ "${main_deploy_only}" != "true" && "${services}" == *",demucs,"* && "${{ needs.demucs-worker-tests.result }}" != "success" ]]; then
-            echo "Demucs Worker Tests did not succeed for Demucs image publication." >&2
-            exit 1
-          fi
-
-          if [[ "${main_deploy_only}" != "true" && "${services}" == *",frontend,"* && "${{ needs.build.result }}" != "success" ]]; then
-            echo "Build did not succeed for frontend image publication." >&2
-            exit 1
-          fi
-
-          if [[ "${main_deploy_only}" != "true" && "${services}" == *",frontend,"* && "${{ needs.e2e-tests.result }}" != "success" ]]; then
-            echo "E2E Tests did not succeed for frontend image publication." >&2
-            exit 1
-          fi
-
-          if [[ "${services}" == *",frontend,"* && "${{ needs.build-deployable-frontend.result }}" != "success" ]]; then
-            echo "Build Deployable Frontend Artifact did not succeed for frontend image publication." >&2
-            exit 1
-          fi
-
-      - name: Validate artifact publishing auth
-        if: steps.plan.outputs.should_dispatch == 'true'
-        env:
-          GCP_WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
-          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-        run: |
-          if [[ -z "${GCP_WIF_PROVIDER}" ]]; then
-            echo "Missing required secret: GCP_WIF_PROVIDER" >&2
-            exit 1
-          fi
-          if [[ -z "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" ]]; then
-            echo "Missing required secret: GCP_ARTIFACT_REGISTRY_SA_EMAIL" >&2
-            exit 1
-          fi
-
-  publish-backend-image:
-    name: Publish Backend Image
-    runs-on: ubuntu-latest
-    needs: [publish-plan]
-    if: always() && needs.publish-plan.result == 'success' && needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',backend,')
-    environment: ${{ needs.publish-plan.outputs.environment }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Build and push backend image
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          bash .github/scripts/submit-cloud-build.sh \
-            --project "${GCP_PROJECT_ID}" \
-            --context backend \
-            --dockerfile Dockerfile \
-            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --git-source-revision "${GITHUB_SHA}" \
-            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ needs.publish-plan.outputs.backend_image }}"
-
-  publish-frontend-image:
-    name: Publish Frontend Image
-    runs-on: ubuntu-latest
-    needs: [publish-plan]
-    if: always() && needs.publish-plan.result == 'success' && needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',frontend,')
-    environment: ${{ needs.publish-plan.outputs.environment }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Download deployable frontend artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: web-build-deployable
-          path: ${{ runner.temp }}/web-build-deployable
-
-      - name: Prepare frontend runtime image context
-        run: |
-          bash .github/scripts/prepare-frontend-runtime-context.sh \
-            --artifact-dir "${RUNNER_TEMP}/web-build-deployable" \
-            --dockerfile-source "web/Dockerfile.runtime" \
-            --output-dir "${RUNNER_TEMP}/frontend-runtime-context"
-
-      - name: Build and push frontend image
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-        run: |
-          bash .github/scripts/submit-cloud-build.sh \
-            --project "${GCP_PROJECT_ID}" \
-            --context "${RUNNER_TEMP}/frontend-runtime-context" \
-            --dockerfile Dockerfile \
-            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ needs.publish-plan.outputs.frontend_image }}"
-
-  publish-demucs-image:
-    name: Publish Demucs Image
-    runs-on: ubuntu-latest
-    needs: [publish-plan]
-    if: always() && needs.publish-plan.result == 'success' && needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',demucs,')
-    environment: ${{ needs.publish-plan.outputs.environment }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Build and push Demucs image
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          bash .github/scripts/submit-cloud-build.sh \
-            --project "${GCP_PROJECT_ID}" \
-            --context workers/demucs \
-            --dockerfile "${{ needs.publish-plan.outputs.demucs_dockerfile }}" \
-            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --git-source-revision "${GITHUB_SHA}" \
-            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ needs.publish-plan.outputs.demucs_image }}"
-
-  publish-stable-audio-image:
-    name: Publish Stable Audio Image
-    runs-on: ubuntu-latest
-    needs: [publish-plan]
-    if: always() && needs.publish-plan.result == 'success' && needs.publish-plan.outputs.should_dispatch == 'true' && contains(format(',{0},', needs.publish-plan.outputs.services_csv), ',stable-audio,')
-    environment: ${{ needs.publish-plan.outputs.environment }}
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Build and push Stable Audio image
-        env:
-          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCP_ARTIFACT_REGISTRY_SA_EMAIL: ${{ secrets.GCP_ARTIFACT_REGISTRY_SA_EMAIL }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          bash .github/scripts/submit-cloud-build.sh \
-            --project "${GCP_PROJECT_ID}" \
-            --context workers/stable-audio \
-            --dockerfile "${{ needs.publish-plan.outputs.stable_audio_dockerfile }}" \
-            --git-source-url "https://github.com/${GITHUB_REPOSITORY}" \
-            --git-source-revision "${GITHUB_SHA}" \
-            --service-account "${GCP_ARTIFACT_REGISTRY_SA_EMAIL}" \
-            --image "${{ needs.publish-plan.outputs.stable_audio_image }}"
-
-  publish-deploy-images:
-    name: Publish Deployable Images
-    runs-on: ubuntu-latest
-    needs: [publish-plan, publish-backend-image, publish-frontend-image, publish-demucs-image, publish-stable-audio-image]
-    if: always() && needs.publish-plan.result == 'success'
-    permissions:
-      contents: read
-    steps:
-      - name: Verify publish jobs
-        env:
-          SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
-          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
-          BACKEND_RESULT: ${{ needs.publish-backend-image.result }}
-          FRONTEND_RESULT: ${{ needs.publish-frontend-image.result }}
-          DEMUCS_RESULT: ${{ needs.publish-demucs-image.result }}
-          STABLE_AUDIO_RESULT: ${{ needs.publish-stable-audio-image.result }}
-        run: |
-          set -euo pipefail
-
-          if [[ "${SHOULD_DISPATCH}" != "true" ]]; then
-            echo "No deployable services changed on this push; writing skip manifest."
-            exit 0
-          fi
-
-          services=",${SERVICES},"
-
-          if [[ "${services}" == *",backend,"* && "${BACKEND_RESULT}" != "success" ]]; then
-            echo "Backend image publication did not succeed." >&2
-            exit 1
-          fi
-
-          if [[ "${services}" == *",frontend,"* && "${FRONTEND_RESULT}" != "success" ]]; then
-            echo "Frontend image publication did not succeed." >&2
-            exit 1
-          fi
-
-          if [[ "${services}" == *",demucs,"* && "${DEMUCS_RESULT}" != "success" ]]; then
-            echo "Demucs image publication did not succeed." >&2
-            exit 1
-          fi
-
-          if [[ "${services}" == *",stable-audio,"* && "${STABLE_AUDIO_RESULT}" != "success" ]]; then
-            echo "Stable Audio image publication did not succeed." >&2
-            exit 1
-          fi
-
-      - name: Write deploy manifest
-        env:
-          SHOULD_DISPATCH: ${{ needs.publish-plan.outputs.should_dispatch }}
-          ENVIRONMENT: ${{ needs.publish-plan.outputs.environment }}
-          SERVICES: ${{ needs.publish-plan.outputs.services_csv }}
-          RELEASE_SHA: ${{ needs.publish-plan.outputs.release_sha }}
-          RELEASE_ID: ${{ needs.publish-plan.outputs.release_id }}
-          ALL_BACKEND_IMAGE: ${{ needs.publish-plan.outputs.backend_image }}
-          ALL_FRONTEND_IMAGE: ${{ needs.publish-plan.outputs.frontend_image }}
-          ALL_DEMUCS_IMAGE: ${{ needs.publish-plan.outputs.demucs_image }}
-          ALL_STABLE_AUDIO_IMAGE: ${{ needs.publish-plan.outputs.stable_audio_image }}
-        run: |
-          python3 - <<'PY' > "${RUNNER_TEMP}/deploy-manifest.json"
-          import json
-          import os
-
-          services = [item for item in os.environ["SERVICES"].split(",") if item]
-          payload = {
-              "should_dispatch": os.environ["SHOULD_DISPATCH"] == "true",
-              "environment": os.environ["ENVIRONMENT"],
-              "source_repository": os.environ["GITHUB_REPOSITORY"],
-              "source_ref": os.environ["GITHUB_SHA"],
-              "services": os.environ["SERVICES"],
-              "trigger_branch": os.environ["GITHUB_REF_NAME"],
-              "release_sha": os.environ["RELEASE_SHA"],
-              "release_id": os.environ["RELEASE_ID"],
-              "backend_image": os.environ["ALL_BACKEND_IMAGE"] if "backend" in services else "",
-              "frontend_image": os.environ["ALL_FRONTEND_IMAGE"] if "frontend" in services else "",
-              "demucs_image": os.environ["ALL_DEMUCS_IMAGE"] if "demucs" in services else "",
-              "stable_audio_image": os.environ["ALL_STABLE_AUDIO_IMAGE"] if "stable-audio" in services else "",
-          }
-          print(json.dumps(payload, indent=2, sort_keys=True))
-          PY
-
-      - name: Upload deploy manifest
-        uses: actions/upload-artifact@v6
-        with:
-          name: deploy-manifest
-          path: ${{ runner.temp }}/deploy-manifest.json
-          retention-days: 1

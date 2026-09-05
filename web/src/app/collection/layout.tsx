@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
+import { privateMetadata } from "../../lib/seo";
 
-export const metadata: Metadata = {
-  title: "Collection",
-};
+export const metadata = privateMetadata({ title: "Collection" });
 
 export default function RouteLayout({ children }: { children: React.ReactNode }) {
   return children;

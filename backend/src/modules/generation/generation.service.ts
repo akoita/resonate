@@ -8,12 +8,14 @@ import { CatalogService } from '../catalog/catalog.service';
 import { LyriaClient } from './lyria.client';
 import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_STEM_TYPES, StemAnalysisResult, PublishGenerationDto, SupportedGenerationDuration } from './generation.dto';
 import { prisma } from '../../db/prisma';
+import { validateArtworkUpload } from '../shared/artwork-validation';
 import { GenerationCreditsService } from '../credits/generation-credits.service';
+import { estimateGenerationCostUsd, inferColdStart } from './generation-cost-model';
 import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
+import { AI_DISCLOSURE_VERSION } from '../catalog/ai-disclosure.policy';
 
-const COST_PER_30_SECONDS = 0.06; // Estimated cost baseline for 30 seconds of generated audio
 const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const AI_GENERATION_RIGHTS_SOURCE = 'ai_generation';
@@ -274,6 +276,14 @@ export class GenerationService {
       artistId = artist.id;
     }
 
+    // #1421 realized-cost telemetry: measure the provider wall-clock so a
+    // settled generation (success or a failure after the provider was called)
+    // can record its realized cost. Declared outside the try so the catch can
+    // report a provider-call failure's wall-clock too.
+    let providerCallStarted = false;
+    let providerStartedAt = 0;
+    let providerWallClockMs: number | null = null;
+
     try {
       // Phase 1: Generate audio
       this.eventBus.publish({
@@ -284,7 +294,10 @@ export class GenerationService {
         phase: 'generating',
       });
 
+      providerStartedAt = Date.now();
+      providerCallStarted = true;
       const result = await this.lyriaClient.generate({ prompt, negativePrompt, seed, durationSeconds });
+      providerWallClockMs = Date.now() - providerStartedAt;
 
       // Phase 2: Store audio
       this.eventBus.publish({
@@ -332,7 +345,7 @@ export class GenerationService {
         synthIdPresent: result.synthIdPresent,
         durationSeconds: result.durationSeconds,
         sampleRate: result.sampleRate,
-        cost: this.calculateGenerationCost(result.durationSeconds),
+        cost: this.calculateGenerationCost(result.durationSeconds, result.provider),
       };
 
       // Create Release + Track via Prisma
@@ -348,6 +361,11 @@ export class GenerationService {
                 title: prompt.substring(0, 120),
                 processingStatus: 'complete',
                 generationMetadata: generationMetadata as any,
+                aiDisclosureLevel: 'ALL',
+                aiContributionFacets: [],
+                aiDisclosureSource: 'resonate_native',
+                aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+                aiDeclaredAt: new Date(generationMetadata.generatedAt),
                 rightsRoute: 'STANDARD_ESCROW',
                 rightsFlags: [],
                 rightsReason: AI_GENERATION_RIGHTS_REASON,
@@ -404,6 +422,27 @@ export class GenerationService {
         trackId,
         releaseId: release.id,
       });
+      this.eventBus.publish({
+        eventName: 'catalog.ai_disclosure_recorded',
+        eventVersion: 1,
+        occurredAt: generationMetadata.generatedAt,
+        releaseId: release.id,
+        trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+        facets: [],
+      });
+
+      // #1421: realized-cost telemetry for the completed generation.
+      await this.recordGenerationCost({
+        jobId,
+        userId,
+        path: result.provider,
+        durationSeconds: result.durationSeconds,
+        wallClockMs: providerWallClockMs ?? Date.now() - providerStartedAt,
+        estimatedCostUsd: generationMetadata.cost,
+        sellPriceCents: this.credits.costForDurationCents(durationSeconds),
+      });
 
       this.logger.log(`Generation job ${jobId} completed: track=${trackId}, release=${release.id}`);
       return { trackId, releaseId: release.id };
@@ -418,6 +457,25 @@ export class GenerationService {
         userId,
         error: normalizeGenerationErrorMessage(error),
       });
+
+      // #1421: record realized cost for a failure that happened after the
+      // provider call was entered — cold-start/provider failures still incur
+      // GPU/API cost worth reconciling. The exact Lyria variant is unknown on
+      // failure, so the baseline path key is used (both variants default to the
+      // same rate). Best-effort and isolated: never masks the original error.
+      if (providerCallStarted) {
+        const wallClockMs = providerWallClockMs ?? Date.now() - providerStartedAt;
+        const failurePath = 'lyria-002';
+        await this.recordGenerationCost({
+          jobId,
+          userId,
+          path: failurePath,
+          durationSeconds,
+          wallClockMs,
+          estimatedCostUsd: estimateGenerationCostUsd(failurePath, durationSeconds),
+          sellPriceCents: this.credits.costForDurationCents(durationSeconds),
+        });
+      }
 
       throw error; // Let BullMQ handle retries
     }
@@ -537,7 +595,7 @@ export class GenerationService {
           provider: meta.provider || 'lyria-002',
           generatedAt: meta.generatedAt || release.createdAt.toISOString(),
           durationSeconds: meta.durationSeconds || 30,
-          cost: meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30),
+          cost: meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30, meta.provider),
           audioUri: `/catalog/releases/${release.id}/tracks/${track.id}/stream`,
         };
       }),
@@ -570,7 +628,7 @@ export class GenerationService {
         .flatMap((release) => release.tracks)
         .reduce((sum, track) => {
           const meta = (track.generationMetadata as any) || {};
-          return sum + (meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30));
+          return sum + (meta.cost || this.calculateGenerationCost(meta.durationSeconds || 30, meta.provider));
         }, 0)
         .toFixed(2);
     }
@@ -601,6 +659,44 @@ export class GenerationService {
         limit: this.maxPerHour,
         resetsAt,
       },
+    };
+  }
+
+  /**
+   * Peek at the per-user rate-limit window WITHOUT recording a hit (#1422).
+   *
+   * Reads the same in-memory sliding-window state `enforceRateLimit` mutates,
+   * but only prunes/reads locally — it never writes back, so calling it is
+   * side-effect free and safe to expose to the Usage & Billing aggregation.
+   * Mirrors the shape produced inline by `getAnalytics`, but returns `resetsAt`
+   * as a Date (the aggregator serialises to ISO).
+   */
+  getGenerationRateLimitStatus(userId: string): {
+    remaining: number;
+    limit: number;
+    windowMs: number;
+    resetsAt: Date | null;
+  } {
+    const now = Date.now();
+    const entry = this.rateLimits.get(userId);
+    let used = 0;
+    let resetsAt: Date | null = null;
+
+    if (entry) {
+      const activeTimestamps = entry.timestamps.filter(
+        (ts) => now - ts < RATE_LIMIT_WINDOW_MS,
+      );
+      used = activeTimestamps.length;
+      if (activeTimestamps.length > 0) {
+        resetsAt = new Date(Math.min(...activeTimestamps) + RATE_LIMIT_WINDOW_MS);
+      }
+    }
+
+    return {
+      remaining: Math.max(0, this.maxPerHour - used),
+      limit: this.maxPerHour,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+      resetsAt,
     };
   }
 
@@ -720,8 +816,62 @@ export class GenerationService {
     );
   }
 
-  private calculateGenerationCost(durationSeconds: number): number {
-    return +((durationSeconds / 30) * COST_PER_30_SECONDS).toFixed(2);
+  /**
+   * #1421: best-effort realized-cost telemetry for a settled generation. Writes
+   * a GenerationCostRecord and emits generation.cost_recorded. Fully isolated
+   * from the generation outcome — every failure is logged and swallowed so a
+   * telemetry error can never fail or refund a generation.
+   */
+  private async recordGenerationCost(input: {
+    jobId: string;
+    userId: string;
+    path: string;
+    durationSeconds: number;
+    wallClockMs: number;
+    estimatedCostUsd: number;
+    sellPriceCents: number;
+  }): Promise<void> {
+    try {
+      const wallClockMs = Math.max(0, Math.round(input.wallClockMs));
+      const durationSeconds = Math.max(0, Math.round(input.durationSeconds));
+      const coldStart = inferColdStart(input.path, wallClockMs);
+      await prisma.generationCostRecord.create({
+        data: {
+          jobId: input.jobId,
+          userId: input.userId,
+          path: input.path,
+          durationSeconds,
+          wallClockMs,
+          estimatedCostUsd: input.estimatedCostUsd,
+          sellPriceCents: input.sellPriceCents,
+          coldStart,
+        },
+      });
+      this.eventBus.publish({
+        eventName: 'generation.cost_recorded',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        jobId: input.jobId,
+        userId: input.userId,
+        path: input.path,
+        durationSeconds,
+        wallClockMs,
+        estimatedCostUsd: input.estimatedCostUsd,
+        sellPriceCents: input.sellPriceCents,
+        coldStart,
+      });
+    } catch (error: any) {
+      this.logger.warn(
+        `Failed to record generation cost telemetry for job ${input.jobId}: ${error?.message ?? error}`,
+      );
+    }
+  }
+
+  private calculateGenerationCost(durationSeconds: number, provider?: string): number {
+    // Behavior-preserving: the per-path cost model defaults to the historical
+    // flat $0.06/30s (#1421), so with default config this returns the same
+    // value as the previous inline arithmetic for every provider.
+    return estimateGenerationCostUsd(provider ?? 'lyria-002', durationSeconds);
   }
 
   private audioExtensionForMimeType(mimeType: string): string {
@@ -755,7 +905,11 @@ export class GenerationService {
       throw new UnauthorizedException('Not authorized to publish this track');
     }
 
-    await prisma.release.update({
+    const validatedArtwork = artworkFile
+      ? validateArtworkUpload(artworkFile, { field: 'Artwork' })
+      : undefined;
+
+    const updatedRelease = await prisma.release.update({
       where: { id: track.releaseId },
       data: {
         title: dto.title,
@@ -767,22 +921,57 @@ export class GenerationService {
         status: 'published',
         ...(artworkFile && {
           artworkData: artworkFile.buffer,
-          artworkMimeType: artworkFile.mimetype,
+          artworkMimeType: validatedArtwork!.mimeType,
+          artworkRevision: { increment: 1 },
         }),
+      },
+      select: {
+        id: true,
+        artworkMimeType: true,
+        artworkRevision: true,
       },
     });
 
+    const disclosureChanged =
+      track.aiDisclosureLevel !== 'ALL' ||
+      track.aiDisclosureSource !== 'resonate_native';
+    const disclosedAt = new Date();
     await prisma.track.update({
       where: { id: trackId },
       data: {
         title: dto.title,
         artist: dto.artist,
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: [],
+        aiDisclosureSource: 'resonate_native',
+        aiDisclosureVersion: AI_DISCLOSURE_VERSION,
+        aiDeclaredAt: disclosedAt,
       },
     });
 
     await this.ensureAiGenerationRightsProvenance(track.releaseId);
 
-    return { success: true, releaseId: track.releaseId };
+    if (disclosureChanged) {
+      this.eventBus.publish({
+        eventName: 'catalog.ai_disclosure_recorded',
+        eventVersion: 1,
+        occurredAt: disclosedAt.toISOString(),
+        releaseId: track.releaseId,
+        trackId,
+        level: 'ALL',
+        source: 'resonate_native',
+        facets: [],
+      });
+    }
+
+    return {
+      success: true,
+      releaseId: track.releaseId,
+      artworkRevision: updatedRelease.artworkRevision,
+      artworkUrl: updatedRelease.artworkMimeType
+        ? `/catalog/releases/${track.releaseId}/artwork/v${updatedRelease.artworkRevision}`
+        : null,
+    };
   }
 
   private async ensureAiGenerationRightsProvenance(releaseId: string) {

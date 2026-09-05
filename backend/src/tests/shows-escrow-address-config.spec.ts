@@ -7,12 +7,17 @@
  */
 
 import { configuredShowCampaignEscrowAddress } from "../modules/shows/shows.service";
+import { configuredShowEscrowIndexerTargets } from "../modules/shows/shows-escrow-indexer.service";
 
 const ENV_KEYS = [
   "SHOW_CAMPAIGN_ESCROW_ADDRESS",
   "SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS",
   "BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS",
   "ARBITRUM_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS",
+  "SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK",
+  "BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK",
+  "SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS",
+  "BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS",
 ];
 
 const ADDR_A = "0x1111111111111111111111111111111111111111";
@@ -70,5 +75,45 @@ describe("configuredShowCampaignEscrowAddress (#947)", () => {
   it("uses the chain-agnostic fallback for an unknown chain id", () => {
     process.env.SHOW_CAMPAIGN_ESCROW_ADDRESS = ADDR_A;
     expect(configuredShowCampaignEscrowAddress(999999)).toBe(ADDR_A);
+  });
+
+  it("uses the current escrow and deployment block as the default index target", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS = ADDR_B;
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK = "12345";
+    expect(configuredShowEscrowIndexerTargets(84532)).toEqual([
+      { address: ADDR_B.toLowerCase(), deploymentBlock: 12345n },
+    ]);
+  });
+
+  it("rejects a malformed deployment block instead of silently scanning near the tip", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS = ADDR_B;
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_DEPLOYMENT_BLOCK = "not-a-block";
+    expect(() => configuredShowEscrowIndexerTargets(84532)).toThrow(
+      "expected an unsigned integer",
+    );
+  });
+
+  it("supports per-chain multi-address index targets during cutover", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ADDR_A}:100,${ADDR_B}:200`;
+    expect(configuredShowEscrowIndexerTargets(84532)).toEqual([
+      { address: ADDR_A.toLowerCase(), deploymentBlock: 100n },
+      { address: ADDR_B.toLowerCase(), deploymentBlock: 200n },
+    ]);
+  });
+
+  it("rejects malformed multi-address index targets instead of skipping them", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ADDR_A},nope:200`;
+    expect(() => configuredShowEscrowIndexerTargets(84532)).toThrow("expected 0xaddress:deploymentBlock");
+  });
+
+  it("requires the current escrow to be included in explicit index targets", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_ADDRESS = ADDR_B;
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ADDR_A}:100`;
+    expect(() => configuredShowEscrowIndexerTargets(84532)).toThrow("is missing from the configured indexer targets");
+  });
+
+  it("rejects duplicate targets with conflicting deployment blocks", () => {
+    process.env.BASE_SEPOLIA_SHOW_CAMPAIGN_ESCROW_INDEXER_TARGETS = `${ADDR_A}:100,${ADDR_A}:101`;
+    expect(() => configuredShowEscrowIndexerTargets(84532)).toThrow("Conflicting deployment blocks");
   });
 });

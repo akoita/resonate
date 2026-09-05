@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {ContentProtection} from "../../src/core/ContentProtection.sol";
 import {IContentProtectionEvents} from "../../src/interfaces/IContentProtectionEvents.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import {AttestationVoucher} from "../utils/AttestationVoucher.sol";
 
 /**
  * @title ContentProtection Fuzz Tests
@@ -20,28 +21,38 @@ import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.s
  *   - slash invalidates the attestation and blacklists the attester;
  *   - only the owner can slash or refund.
  */
-contract ContentProtectionFuzzTest is Test {
+contract ContentProtectionFuzzTest is Test, IContentProtectionEvents {
     ContentProtection internal cp;
 
     address internal owner = makeAddr("owner");
     address internal treasury = makeAddr("treasury");
     address internal attester = makeAddr("attester");
     address internal reporter = makeAddr("reporter");
+    address internal upgradeAuthority = makeAddr("upgradeAuthority");
 
     uint256 internal constant STAKE_AMOUNT = 0.01 ether;
     uint256 internal constant REPORTER_BPS = 6000;
     uint256 internal constant TREASURY_BPS = 3000;
     uint256 internal constant BPS = 10000;
 
+    // Registrar signing attestation authorization vouchers (CP-1, #1271).
+    uint256 internal constant REGISTRAR_PK = 0xA11CE;
+    uint256 internal constant AUTH_DEADLINE = type(uint256).max;
+
     function setUp() public {
         ContentProtection impl = new ContentProtection();
-        bytes memory initData = abi.encodeCall(ContentProtection.initialize, (owner, treasury, STAKE_AMOUNT));
+        bytes memory initData =
+            abi.encodeCall(ContentProtection.initializeFresh, (owner, treasury, STAKE_AMOUNT, upgradeAuthority));
         cp = ContentProtection(address(new ERC1967Proxy(address(impl), initData)));
+
+        vm.prank(owner);
+        cp.setRegistrar(vm.addr(REGISTRAR_PK), true);
     }
 
     function _attest(uint256 tokenId) internal {
+        bytes memory sig = AttestationVoucher.sign(address(cp), REGISTRAR_PK, attester, tokenId, AUTH_DEADLINE);
         vm.prank(attester);
-        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta");
+        cp.attest(tokenId, keccak256("content"), keccak256("fingerprint"), "ipfs://meta", AUTH_DEADLINE, sig);
     }
 
     function _attestAndStake(uint256 tokenId, uint256 amount) internal {
@@ -199,7 +210,35 @@ contract ContentProtectionFuzzTest is Test {
     function testFuzz_SlashRequiresActiveStake(uint256 tokenId) public {
         _attest(tokenId); // attested but never staked
         vm.prank(owner);
-        vm.expectRevert(IContentProtectionEvents.NotStaked.selector);
+        vm.expectRevert(NotStaked.selector);
         cp.slash(tokenId, reporter);
+    }
+
+    function testFuzz_PausePreservesActiveStake(uint256 tokenId, uint256 amount, bool slashInstead) public {
+        amount = bound(amount, STAKE_AMOUNT, 1000 ether);
+        _attestAndStake(tokenId, amount);
+        vm.prank(owner);
+        cp.setPaused(true);
+
+        vm.prank(owner);
+        vm.expectRevert(Paused.selector);
+        if (slashInstead) {
+            cp.slash(tokenId, reporter);
+        } else {
+            cp.refundStake(tokenId);
+        }
+
+        (uint256 recorded,, bool active) = cp.stakes(tokenId);
+        assertTrue(active);
+        assertEq(recorded, STAKE_AMOUNT);
+        assertEq(address(cp).balance, STAKE_AMOUNT);
+    }
+
+    function testFuzz_OnlyUpgradeAuthorityCanRotate(address caller, address candidate) public {
+        vm.assume(caller != upgradeAuthority);
+        vm.prank(caller);
+        vm.expectRevert(abi.encodeWithSelector(UnauthorizedUpgrade.selector, caller));
+        cp.setUpgradeAuthority(candidate);
+        assertEq(cp.upgradeAuthority(), upgradeAuthority);
     }
 }

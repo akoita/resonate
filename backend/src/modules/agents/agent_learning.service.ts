@@ -2,6 +2,7 @@ import { Injectable, Optional } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { scoreMultiplierForSignal, TasteMemoryService } from "../recommendations/taste_memory.service";
+import { sanitizeSignalMetadataString } from "../shared/signal_metadata_sanitizer";
 
 export const AGENT_SIGNAL_WEIGHTS = {
   accept: 1,
@@ -185,6 +186,9 @@ function sanitizeSignalOutcome(outcome?: Record<string, unknown>) {
   copyBoolean(sanitized, "firstPick", outcome.firstPick);
   copyNumber(sanitized, "completionRatio", outcome.completionRatio);
   copyNumber(sanitized, "durationMs", outcome.durationMs);
+  // #1449: where in the track a deliberate skip happened — a useful,
+  // non-identifying learning feature for the skip signal.
+  copyNumber(sanitized, "positionMs", outcome.positionMs);
   copyNumber(sanitized, "sessionDurationMs", outcome.sessionDurationMs);
   copyNumber(sanitized, "priceUsd", outcome.priceUsd);
   copyString(sanitized, "status", outcome.status, 40);
@@ -205,7 +209,7 @@ function copySafeRecommendation(target: Record<string, unknown>, value: unknown)
 }
 
 function copyString(target: Record<string, unknown>, key: string, value: unknown, maxLength: number) {
-  const sanitized = sanitizeSignalString(value, maxLength);
+  const sanitized = sanitizeSignalMetadataString(value, maxLength);
   if (sanitized) {
     target[key] = sanitized;
   }
@@ -222,9 +226,9 @@ function copyStringArray(
     return;
   }
   const items = value
-    .map((entry) => sanitizeSignalString(entry, maxLength))
-    .filter((entry): entry is string => Boolean(entry))
-    .slice(0, maxItems);
+    .slice(0, maxItems)
+    .map((entry) => sanitizeSignalMetadataString(entry, maxLength))
+    .filter((entry): entry is string => Boolean(entry));
   if (items.length > 0) {
     target[key] = items;
   }
@@ -240,24 +244,6 @@ function copyBoolean(target: Record<string, unknown>, key: string, value: unknow
   if (typeof value === "boolean") {
     target[key] = value;
   }
-}
-
-function sanitizeSignalString(value: unknown, maxLength: number) {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const cleaned = value
-    .replace(/<[^>]*>/g, " ")
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!cleaned || /https?:\/\//i.test(cleaned) || /[^\s@]+@[^\s@]+\.[^\s@]+/.test(cleaned)) {
-    return undefined;
-  }
-  if (/\b(?:0x[a-fA-F0-9]{16,}|user[_:-]?[A-Za-z0-9_-]{6,}|session[_:-]?[A-Za-z0-9_-]{6,})\b/.test(cleaned)) {
-    return undefined;
-  }
-  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength - 3).trimEnd()}...` : cleaned;
 }
 
 @Injectable()

@@ -44,9 +44,9 @@ Available now:
 - `npm run eval:recommendations` writes replayable JSON and Markdown eval artifacts for exact matches, semantic-near matches, recent-track rejection, sparse/strict no-match behavior, precision thresholds, listing coverage, novelty, and explanation coverage. The generated `eval-results/` directory stays ignored unless an artifact is intentionally promoted into docs.
 - `PolicyGuardService` centralizes pre-execution checks for budget and license policy.
 - `PaymentRouterService` centralizes ERC-4337 marketplace and x402 rail execution behind one result envelope.
-- The x402 rail builds a canonical challenge from `StemPricing` or a matching active stablecoin listing, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status. When contract settlement is enabled, listed-stem x402 redemptions execute marketplace `buyFor` to the requested buyer wallet before download.
+- The x402 rail builds one canonical exact-payment total from `StemPricing` or a matching active stablecoin listing, blocks policy failures before verification, verifies/settles payment proofs, records `X402Settlement` plus `x402.purchase` provenance, and returns a structured receipt with explicit settlement status. Quote, smart-account verification, receipt, and marketplace settlement use that same server-derived amount; client-supplied price, fee, asset, and destination fields are ignored. When contract settlement is enabled, listed-stem x402 redemptions execute marketplace `buyFor` to the requested buyer wallet before download.
 - Creator listing flows default to the configured marketplace stablecoin asset when available and convert listing prices with the selected token decimals before calling the marketplace contract.
-- The listener purchase modal defaults to the stablecoin x402 rail only when it can execute contract-backed marketplace settlement for the selected listing, presents the quote in USD first, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
+- The listener purchase modal defaults to the stablecoin x402 rail only when it can execute contract-backed marketplace settlement for the selected listing. It shows the backend-authored platform fee as included in the unchanged total, validates the exact decimal amount, asset, and payout destination before enabling payment, and settles the download in USDC. The direct on-chain option remains available as a separate wallet transaction rail, displays the listing payment asset, and uses a tested approval-plus-buy transaction plan for ERC-20 stablecoin listings.
 - Marketplace listings carry an enforced `licenseType`. The listener buy modal switches to the selected tier's active listing ID before quoting or buying, disables tiers without an active listing, and persists the enforced tier onto `StemPurchase` records. The browser x402 checkout remains limited to the personal tier until the x402 stem endpoint accepts tier-specific resources.
 - Listing notifications persist the selected payment token and reconcile already-indexed listing rows. Listing reads also backfill native-token fallback rows from stored listing intents, so marketplace cards display the configured stablecoin asset instead of falling back to native ETH when the indexer wins the race.
 - The AI DJ marketplace buy path routes through `PaymentRouterService` before calling the ERC-4337 purchase rail.
@@ -226,6 +226,14 @@ Expected flow:
 If you use an x402-capable client such as AgentCash, it can automate the proof
 exchange for you. The raw `curl` path above is here so reviewers can inspect
 the underlying commerce surface directly.
+
+For the personal license, treat `price.amount` as the exact total. Its
+`licenseOptions[].breakdown.platformFee` is already included and must never be
+added again. Contract-backed listing quotes use the active listing's exact
+stablecoin units and the marketplace contract's current `protocolFeeBps`;
+facilitator-only quotes use the configured personal x402 fee. Clients should
+fail closed if the personal price, currency, payout destination, or fee
+breakdown is missing or inconsistent.
 
 ## Developer Payment-Router Flow
 

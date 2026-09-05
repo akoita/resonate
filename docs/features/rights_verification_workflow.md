@@ -27,6 +27,17 @@ review. Resonate can let low-risk uploads publish with appropriate controls,
 hold risky uploads for review, and promote artists into lower-friction routes
 only when proof and operator decisions support that route.
 
+## Terminology And Guarantees
+
+See the [Verification Language Inventory](verification_language.md) for the
+complete surface-by-surface map. Account trust (including `Independent Account
+Trust`), `Human Verified`, self-attested provenance, and economic trust describe
+different account, personhood, provenance, or stake signals. None of them
+clears rights for a release. Rights review is release-scoped: `Rights Verified`
+is reserved for reviewer-approved evidence that supports likely recording
+ownership or publishing authority; `Approved With Limits`, `Under Review`,
+`Denied`, and `Disputed` remain distinct outcomes.
+
 ## Verification Classes
 
 Upload-rights decisions now expose four product-facing uploader classes:
@@ -34,7 +45,7 @@ Upload-rights decisions now expose four product-facing uploader classes:
 | Class | Meaning | Default route behavior |
 | --- | --- | --- |
 | `unverified_uploader` | No platform trust or approved source link yet. | `LIMITED_MONITORING`, with marketplace and payout restrictions. |
-| `verified_independent` | Artist has verified account trust, but release rights are still release-scoped. | `STANDARD_ESCROW` when no conflicts exist. |
+| `verified_independent` | Independent account trust supports standard escrow, but release rights remain release-scoped. | `STANDARD_ESCROW` when no conflicts exist. |
 | `trusted_creator` | Artist has stronger platform trust. | `STANDARD_ESCROW` unless a trusted-source link or review upgrades the release. |
 | `trusted_source_account` | Artist is linked to an active approved distributor, label, official artist team, or catalog operator. | `TRUSTED_FAST_PATH` when no conflicts exist. |
 

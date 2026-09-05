@@ -1,14 +1,33 @@
 name: Deploy Handoff
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [main, develop]
+  workflow_call:
+    inputs:
+      release_run_id:
+        description: Current successful Release Deployment run ID.
+        required: true
+        type: string
+      release_tag:
+        description: Published stable release tag for automatic handoff.
+        required: false
+        type: string
+      release_source_sha:
+        description: Exact source SHA recorded by the published release evidence.
+        required: false
+        type: string
+      automatic_published_release:
+        description: Revalidate a published stable tag and promote its retained publish-only manifest.
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      RESONATE_IAC_DISPATCH_TOKEN:
+        description: Repository-dispatch credential for akoita/resonate-iac.
+        required: true
   workflow_dispatch:
     inputs:
-      ci_run_id:
-        description: "Paste the numeric CI run ID from /actions/runs/<id> for a successful push on main or develop (example: 24707254354)"
+      release_run_id:
+        description: Successful Release Deployment run ID to retry or roll back without rebuilding images.
         required: true
         type: string
 
@@ -28,33 +47,72 @@ jobs:
       - name: Normalize trigger context
         id: trigger
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_CI_RUN_ID: ${{ inputs.ci_run_id || '' }}
+          INPUT_RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+          AUTOMATIC_PUBLISHED_RELEASE: ${{ inputs.automatic_published_release }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+          CURRENT_RUN_NUMBER: ${{ github.run_number }}
+          CURRENT_WORKFLOW: ${{ github.workflow }}
+          CURRENT_HEAD_BRANCH: ${{ github.ref_name }}
+          CURRENT_HEAD_SHA: ${{ github.sha }}
+          CURRENT_EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           run_id=""
           run_number=""
+          run_name=""
           head_branch=""
           head_sha=""
           run_event=""
           run_conclusion=""
+          automatic="${AUTOMATIC_PUBLISHED_RELEASE:-false}"
 
-          if [[ "${EVENT_NAME}" == "workflow_run" ]]; then
-            run_id="${{ github.event.workflow_run.id }}"
-            run_number="${{ github.event.workflow_run.run_number }}"
-            head_branch="${{ github.event.workflow_run.head_branch }}"
-            head_sha="${{ github.event.workflow_run.head_sha }}"
-            run_event="${{ github.event.workflow_run.event }}"
-            run_conclusion="${{ github.event.workflow_run.conclusion }}"
-          else
-            response="$(curl --fail-with-body \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_CI_RUN_ID}")"
+          if [[ "${automatic}" != "true" && "${automatic}" != "false" ]]; then
+            echo "::error::automatic_published_release must be true or false."
+            exit 1
+          fi
+
+          if [[ ! "${INPUT_RELEASE_RUN_ID}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release_run_id must be a positive numeric Actions run ID."
+            exit 1
+          fi
+          if [[ "${automatic}" == "true" ]]; then
+            if [[ -z "${INPUT_RELEASE_TAG}" || -z "${INPUT_RELEASE_SOURCE_SHA}" ]]; then
+              echo "::error::automatic published-release handoff requires release_tag and release_source_sha."
+              exit 1
+            fi
+            if [[ ! "${INPUT_RELEASE_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::release_source_sha must be a full lowercase commit SHA."
+              exit 1
+            fi
+            # The automatic path always reads the prior image run through the
+            # Actions API.  It must never mistake this reusable invocation's
+            # own run ID for the retained Release Deployment run.
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_RELEASE_RUN_ID}")"
 
             export GH_RUN_RESPONSE="${response}"
-            python3 -c 'import json, os, shlex; payload = json.loads(os.environ["GH_RUN_RESPONSE"]); pairs = (("run_id", payload["id"]), ("run_number", payload["run_number"]), ("head_branch", payload["head_branch"]), ("head_sha", payload["head_sha"]), ("run_event", payload["event"]), ("run_conclusion", payload["conclusion"] or "")); [print(f"{key}={shlex.quote(str(value))}") for key, value in pairs]' > "${RUNNER_TEMP}/trigger-context.env"
+            python3 -c 'import json, os, shlex; payload = json.loads(os.environ["GH_RUN_RESPONSE"]); pairs = (("run_id", payload["id"]), ("run_number", payload["run_number"]), ("run_name", payload["name"]), ("head_branch", payload["head_branch"]), ("head_sha", payload["head_sha"]), ("run_event", payload["event"]), ("run_conclusion", payload["conclusion"] or "")); [print(f"{key}={shlex.quote(str(value))}") for key, value in pairs]' > "${RUNNER_TEMP}/trigger-context.env"
+
+            source "${RUNNER_TEMP}/trigger-context.env"
+          elif [[ "${INPUT_RELEASE_RUN_ID}" == "${CURRENT_RUN_ID}" ]]; then
+            # A workflow_call runs inside the Release Deployment run, whose
+            # overall conclusion is unavailable until this job finishes. Its
+            # successful publisher dependency is the completion gate.
+            run_id="${CURRENT_RUN_ID}"
+            run_number="${CURRENT_RUN_NUMBER}"
+            run_name="${CURRENT_WORKFLOW}"
+            head_branch="${CURRENT_HEAD_BRANCH}"
+            head_sha="${CURRENT_HEAD_SHA}"
+            run_event="${CURRENT_EVENT}"
+            run_conclusion="success"
+          else
+            response="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${INPUT_RELEASE_RUN_ID}")"
+
+            export GH_RUN_RESPONSE="${response}"
+            python3 -c 'import json, os, shlex; payload = json.loads(os.environ["GH_RUN_RESPONSE"]); pairs = (("run_id", payload["id"]), ("run_number", payload["run_number"]), ("run_name", payload["name"]), ("head_branch", payload["head_branch"]), ("head_sha", payload["head_sha"]), ("run_event", payload["event"]), ("run_conclusion", payload["conclusion"] or "")); [print(f"{key}={shlex.quote(str(value))}") for key, value in pairs]' > "${RUNNER_TEMP}/trigger-context.env"
 
             source "${RUNNER_TEMP}/trigger-context.env"
           fi
@@ -62,40 +120,122 @@ jobs:
           should_continue="true"
           skip_reason=""
 
-          if [[ "${run_conclusion}" != "success" ]]; then
+          if [[ "${automatic}" == "true" ]]; then
+            if [[ "${run_id}" != "${INPUT_RELEASE_RUN_ID}" ]]; then
+              echo "::error::Actions API returned a different run ID than release_run_id."
+              exit 1
+            fi
+            if [[ "${run_name}" != "Release Deployment" ]]; then
+              echo "::error::automatic handoff requires the referenced Release Deployment workflow."
+              exit 1
+            fi
+            if [[ "${run_conclusion}" != "success" ]]; then
+              echo "::error::automatic handoff requires a successful Release Deployment run."
+              exit 1
+            fi
+            if [[ "${run_event}" != "workflow_dispatch" ]]; then
+              echo "::error::automatic handoff requires an explicitly dispatched Release Deployment run."
+              exit 1
+            fi
+            if [[ "${head_branch}" != "main" ]]; then
+              echo "::error::automatic handoff requires the Release Deployment run on main."
+              exit 1
+            fi
+            if [[ "${head_sha}" != "${INPUT_RELEASE_SOURCE_SHA}" ]]; then
+              echo "::error::automatic handoff source SHA does not match the published release evidence."
+              exit 1
+            fi
+          elif [[ "${run_name}" != "Release Deployment" ]]; then
             should_continue="false"
-            skip_reason="Referenced CI run was not successful."
-          elif [[ "${run_event}" != "push" ]]; then
+            skip_reason="Referenced run is not the Release Deployment workflow."
+          elif [[ "${run_conclusion}" != "success" ]]; then
             should_continue="false"
-            skip_reason="Deploy handoff only supports CI runs triggered by push."
+            skip_reason="Referenced Release Deployment run was not successful."
+          elif [[ "${run_event}" != "workflow_dispatch" ]]; then
+            should_continue="false"
+            skip_reason="Deploy handoff only supports explicitly dispatched release runs."
           elif [[ "${head_branch}" != "main" && "${head_branch}" != "develop" ]]; then
             should_continue="false"
-            skip_reason="Deploy handoff only supports main/develop CI runs."
+            skip_reason="Deploy handoff only supports release runs on main/develop."
+          fi
+
+          if [[ "${should_continue}" == "true" ]]; then
+            artifact_count="$(gh api \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts?name=deploy-manifest" \
+              --jq '.total_count')"
+            if [[ "${artifact_count}" != "1" ]]; then
+              if [[ "${automatic}" == "true" ]]; then
+                echo "::error::automatic handoff requires one retained deploy manifest artifact."
+                exit 1
+              fi
+              should_continue="false"
+              skip_reason="Release run has no unique deploy manifest (preview runs intentionally have none)."
+            fi
           fi
 
           {
             echo "run_id=${run_id}"
             echo "run_number=${run_number}"
+            echo "run_name=${run_name}"
             echo "head_branch=${head_branch}"
             echo "head_sha=${head_sha}"
             echo "run_event=${run_event}"
             echo "run_conclusion=${run_conclusion}"
+            echo "automatic_published_release=${automatic}"
             echo "should_continue=${should_continue}"
             echo "skip_reason=${skip_reason}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Check out exact Release Deployment source
+        if: steps.trigger.outputs.should_continue == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.trigger.outputs.head_sha }}
+          persist-credentials: false
+
+      - name: Revalidate published stable release
+        id: published-release
+        if: steps.trigger.outputs.automatic_published_release == 'true' && steps.trigger.outputs.should_continue == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+          RELEASE_RUN_ID: ${{ steps.trigger.outputs.run_id }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release view "${RELEASE_TAG}" \
+            --json tagName,isDraft,isPrerelease,targetCommitish \
+            > "${RUNNER_TEMP}/published-release.json"
+          gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" \
+            > "${RUNNER_TEMP}/published-tag-ref.json"
+          mkdir -p "${RUNNER_TEMP}/published-release-evidence"
+          gh release download "${RELEASE_TAG}" \
+            --pattern release-evidence.json \
+            --dir "${RUNNER_TEMP}/published-release-evidence"
+
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/scripts/release_deploy_gate.py \
+            --release-json "${RUNNER_TEMP}/published-release.json" \
+            --tag-ref-json "${RUNNER_TEMP}/published-tag-ref.json" \
+            --release-evidence "${RUNNER_TEMP}/published-release-evidence/release-evidence.json" \
+            --release-tag "${RELEASE_TAG}" \
+            --event-name "${EVENT_NAME}" \
+            --event-ref "${EVENT_REF}" \
+            --event-ref-name "${EVENT_REF_NAME}" \
+            --expected-source-sha "${RELEASE_SOURCE_SHA}" \
+            --expected-image-run-id "${RELEASE_RUN_ID}" \
+            --require-eligible
+
       - name: Download deploy manifest
         if: steps.trigger.outputs.should_continue == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: deploy-manifest
           run-id: ${{ steps.trigger.outputs.run_id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/deploy-manifest
-
-      - name: Check out repository
-        if: steps.trigger.outputs.should_continue == 'true'
-        uses: actions/checkout@v5
 
       - name: Resolve deploy intent
         id: intent
@@ -105,6 +245,8 @@ jobs:
           HEAD_SHA: ${{ steps.trigger.outputs.head_sha }}
           RUN_ID: ${{ steps.trigger.outputs.run_id }}
           RUN_NUMBER: ${{ steps.trigger.outputs.run_number }}
+          AUTOMATIC_PUBLISHED_RELEASE: ${{ steps.trigger.outputs.automatic_published_release }}
+          PUBLISHED_EVIDENCE_PATH: ${{ runner.temp }}/published-release-evidence/release-evidence.json
           MANIFEST_PATH: ${{ runner.temp }}/deploy-manifest/deploy-manifest.json
         run: |
           if [[ ! -f "${MANIFEST_PATH}" ]]; then
@@ -139,9 +281,37 @@ jobs:
             exit 1
           fi
 
+          if [[ "${release_sha}" != "${HEAD_SHA}" ]]; then
+            echo "Deploy manifest release_sha '${release_sha}' did not match workflow SHA '${HEAD_SHA}'" >&2
+            exit 1
+          fi
+
+          if [[ "${source_repository}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "Deploy manifest source repository '${source_repository}' did not match '${GITHUB_REPOSITORY}'" >&2
+            exit 1
+          fi
+
           if [[ "${environment}" != "${expected_environment}" ]]; then
             echo "Deploy manifest environment '${environment}' did not match expected '${expected_environment}' for branch '${HEAD_BRANCH}'" >&2
             exit 1
+          fi
+
+          if [[ "${AUTOMATIC_PUBLISHED_RELEASE}" == "true" && ( "${HEAD_BRANCH}" != "main" || "${trigger_branch}" != "main" || "${environment}" != "staging" ) ]]; then
+            echo "Automatic published-release handoff is restricted to the main -> staging identity." >&2
+            exit 1
+          fi
+
+          if [[ "${AUTOMATIC_PUBLISHED_RELEASE}" == "true" ]]; then
+            if [[ ! -f "${PUBLISHED_EVIDENCE_PATH}" ]]; then
+              echo "Published release evidence was not retained for manifest binding." >&2
+              exit 1
+            fi
+            expected_manifest_sha="$(jq -r '.deployment.deploy_manifest_sha256 // empty' "${PUBLISHED_EVIDENCE_PATH}")"
+            actual_manifest_sha="$(sha256sum "${MANIFEST_PATH}" | awk '{print $1}')"
+            if [[ ! "${expected_manifest_sha}" =~ ^[0-9a-f]{64}$ || "${actual_manifest_sha}" != "${expected_manifest_sha}" ]]; then
+              echo "Retained deploy manifest does not match the immutable release-evidence manifest hash." >&2
+              exit 1
+            fi
           fi
 
           if [[ "${should_dispatch}" == "true" && -z "${services}" ]]; then
@@ -150,20 +320,35 @@ jobs:
           fi
 
           {
+            echo "schema_version=${schema_version}"
             echo "should_dispatch=${should_dispatch}"
             echo "environment=${environment}"
+            echo "source_repository=${source_repository}"
             echo "services=${services}"
             echo "source_ref=${source_ref}"
             echo "trigger_branch=${trigger_branch}"
             echo "release_sha=${release_sha:-${HEAD_SHA}}"
-            echo "release_id=${release_id:-ci-${RUN_ID}-${RUN_NUMBER}}"
+            echo "release_id=${release_id:-release-${RUN_ID}-${RUN_NUMBER}}"
             echo "backend_image=${backend_image}"
+            echo "backend_image_tag=${backend_image_tag}"
+            echo "backend_image_digest=${backend_image_digest}"
+            echo "backend_image_ref=${backend_image_ref}"
             echo "frontend_image=${frontend_image}"
+            echo "frontend_image_tag=${frontend_image_tag}"
+            echo "frontend_image_digest=${frontend_image_digest}"
+            echo "frontend_image_ref=${frontend_image_ref}"
             echo "demucs_image=${demucs_image}"
+            echo "demucs_image_tag=${demucs_image_tag}"
+            echo "demucs_image_digest=${demucs_image_digest}"
+            echo "demucs_image_ref=${demucs_image_ref}"
+            echo "stable_audio_image=${stable_audio_image}"
+            echo "stable_audio_image_tag=${stable_audio_image_tag}"
+            echo "stable_audio_image_digest=${stable_audio_image_digest}"
+            echo "stable_audio_image_ref=${stable_audio_image_ref}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Validate dispatch token
-        if: steps.trigger.outputs.should_continue == 'true' && steps.intent.outputs.should_dispatch == 'true'
+        if: steps.trigger.outputs.should_continue == 'true' && ((steps.trigger.outputs.automatic_published_release == 'true' && steps.intent.outputs.should_dispatch == 'false') || (steps.trigger.outputs.automatic_published_release != 'true' && steps.intent.outputs.should_dispatch == 'true'))
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
         run: |
@@ -173,37 +358,84 @@ jobs:
           fi
 
       - name: Dispatch deploy intent to resonate-iac
-        if: steps.trigger.outputs.should_continue == 'true' && steps.intent.outputs.should_dispatch == 'true'
+        if: steps.trigger.outputs.should_continue == 'true' && ((steps.trigger.outputs.automatic_published_release == 'true' && steps.intent.outputs.should_dispatch == 'false') || (steps.trigger.outputs.automatic_published_release != 'true' && steps.intent.outputs.should_dispatch == 'true'))
         env:
           DISPATCH_TOKEN: ${{ secrets.RESONATE_IAC_DISPATCH_TOKEN }}
+          SCHEMA_VERSION: ${{ steps.intent.outputs.schema_version }}
           ENVIRONMENT: ${{ steps.intent.outputs.environment }}
+          SOURCE_REPOSITORY: ${{ steps.intent.outputs.source_repository }}
           SERVICES: ${{ steps.intent.outputs.services }}
           SOURCE_REF: ${{ steps.intent.outputs.source_ref }}
           TRIGGER_BRANCH: ${{ steps.intent.outputs.trigger_branch }}
           RELEASE_SHA: ${{ steps.intent.outputs.release_sha }}
           RELEASE_ID: ${{ steps.intent.outputs.release_id }}
           BACKEND_IMAGE: ${{ steps.intent.outputs.backend_image }}
+          BACKEND_IMAGE_TAG: ${{ steps.intent.outputs.backend_image_tag }}
+          BACKEND_IMAGE_DIGEST: ${{ steps.intent.outputs.backend_image_digest }}
+          BACKEND_IMAGE_REF: ${{ steps.intent.outputs.backend_image_ref }}
           FRONTEND_IMAGE: ${{ steps.intent.outputs.frontend_image }}
+          FRONTEND_IMAGE_TAG: ${{ steps.intent.outputs.frontend_image_tag }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.intent.outputs.frontend_image_digest }}
+          FRONTEND_IMAGE_REF: ${{ steps.intent.outputs.frontend_image_ref }}
           DEMUCS_IMAGE: ${{ steps.intent.outputs.demucs_image }}
+          DEMUCS_IMAGE_TAG: ${{ steps.intent.outputs.demucs_image_tag }}
+          DEMUCS_IMAGE_DIGEST: ${{ steps.intent.outputs.demucs_image_digest }}
+          DEMUCS_IMAGE_REF: ${{ steps.intent.outputs.demucs_image_ref }}
+          STABLE_AUDIO_IMAGE: ${{ steps.intent.outputs.stable_audio_image }}
+          STABLE_AUDIO_IMAGE_TAG: ${{ steps.intent.outputs.stable_audio_image_tag }}
+          STABLE_AUDIO_IMAGE_DIGEST: ${{ steps.intent.outputs.stable_audio_image_digest }}
+          STABLE_AUDIO_IMAGE_REF: ${{ steps.intent.outputs.stable_audio_image_ref }}
         run: |
-          payload="$(cat <<EOF
-          {
-            "event_type": "${RESONATE_DEPLOY_EVENT}",
-            "client_payload": {
-              "environment": "${ENVIRONMENT}",
-              "source_ref": "${SOURCE_REF}",
-              "services": "${SERVICES}",
-              "action": "apply",
-              "release_sha": "${RELEASE_SHA}",
-              "release_id": "${RELEASE_ID}",
-              "trigger_branch": "${TRIGGER_BRANCH}",
-              "backend_image": "${BACKEND_IMAGE}",
-              "frontend_image": "${FRONTEND_IMAGE}",
-              "demucs_image": "${DEMUCS_IMAGE}"
-            }
+          set -euo pipefail
+          payload="${RUNNER_TEMP}/repository-dispatch.json"
+          python3 - "${payload}" <<'PY'
+          import json
+          import os
+          import sys
+
+          fields = (
+              "schema_version",
+              "environment",
+              "source_repository",
+              "source_ref",
+              "services",
+              "release_sha",
+              "release_id",
+              "trigger_branch",
+              "backend_image",
+              "backend_image_tag",
+              "backend_image_digest",
+              "backend_image_ref",
+              "frontend_image",
+              "frontend_image_tag",
+              "frontend_image_digest",
+              "frontend_image_ref",
+              "demucs_image",
+              "demucs_image_tag",
+              "demucs_image_digest",
+              "demucs_image_ref",
+              "stable_audio_image",
+              "stable_audio_image_tag",
+              "stable_audio_image_digest",
+              "stable_audio_image_ref",
+          )
+          manifest = {field: os.environ[field.upper()] for field in fields}
+          manifest["action"] = "apply"
+          # repository_dispatch allows at most 10 top-level client_payload
+          # properties; the v2 manifest has 25, which returned a hard 422 and
+          # silently blocked every staging deploy. Send it as one JSON string
+          # instead. resonate-iac unwraps "manifest" and still accepts the flat
+          # shape, so this side can change without a lockstep deploy.
+          document = {
+              "event_type": os.environ["RESONATE_DEPLOY_EVENT"],
+              "client_payload": {
+                  "manifest": json.dumps(manifest, separators=(",", ":"), sort_keys=True),
+              },
           }
-          EOF
-          )"
+          with open(sys.argv[1], "w", encoding="utf-8") as handle:
+              json.dump(document, handle, separators=(",", ":"), sort_keys=True)
+              handle.write("\n")
+          PY
 
           curl --fail-with-body \
             -X POST \
@@ -211,15 +443,21 @@ jobs:
             -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/${RESONATE_IAC_REPOSITORY}/dispatches" \
-            -d "${payload}"
+            --data-binary "@${payload}"
 
       - name: Skip deploy handoff
-        if: steps.trigger.outputs.should_continue != 'true' || steps.intent.outputs.should_dispatch != 'true'
+        if: steps.trigger.outputs.should_continue != 'true' || steps.intent.outputs.should_dispatch != 'true' || steps.trigger.outputs.automatic_published_release == 'true'
         env:
           SKIP_REASON: ${{ steps.trigger.outputs.skip_reason }}
+          AUTOMATIC_PUBLISHED_RELEASE: ${{ steps.trigger.outputs.automatic_published_release }}
+          SHOULD_DISPATCH: ${{ steps.intent.outputs.should_dispatch }}
         run: |
-          if [[ -n "${SKIP_REASON}" ]]; then
+          if [[ "${AUTOMATIC_PUBLISHED_RELEASE}" == "true" && "${SHOULD_DISPATCH}" == "true" ]]; then
+            echo "Automatic published-release handoff skipped: the successful Release Deployment already completed its requested handoff; duplicate dispatch avoided."
+          elif [[ -n "${SKIP_REASON}" ]]; then
             echo "${SKIP_REASON}"
+          elif [[ "${AUTOMATIC_PUBLISHED_RELEASE}" == "true" ]]; then
+            echo "Automatic published-release handoff completed from the retained publish-only manifest."
           else
-            echo "No deployable services changed for this successful CI run; skipping deploy handoff."
+            echo "The explicit release published images without requesting a deploy handoff."
           fi

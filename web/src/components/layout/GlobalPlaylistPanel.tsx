@@ -25,6 +25,8 @@ import { useToast } from "../ui/Toast";
 import { PromptModal } from "../ui/PromptModal";
 import { ContextMenu } from "../ui/ContextMenu";
 import { usePlayer } from "../../lib/playerContext";
+import { useQueueActions } from "../../lib/useQueueActions";
+import type { QueueFeedbackMode } from "../../lib/queueFeedback";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
 
 interface GlobalPlaylistPanelProps {
@@ -43,7 +45,8 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
     const { addToast } = useToast();
     const { togglePlaylistPanel } = useUIStore();
-    const { playQueue, currentTrack, playNext, addToQueue } = usePlayer();
+    const { playQueue, currentTrack } = usePlayer();
+    const queueActions = useQueueActions();
     const [isSyncing, setIsSyncing] = useState(false);
 
     // Keyboard shortcut: Ctrl+J / Cmd+J to toggle
@@ -167,6 +170,21 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
 
     // -- Context Menus --
 
+    /** Queue a whole playlist from the sidebar, loading its tracks if they aren't cached. */
+    const queuePlaylist = async (p: Playlist, mode: QueueFeedbackMode) => {
+        let tracks = playlistTracks.get(p.id);
+        if (!tracks?.length) {
+            const playlist = await getPlaylist(p.id);
+            const resolved = await Promise.all((playlist?.trackIds ?? []).map(id => getTrack(id)));
+            tracks = resolved.filter((t): t is LocalTrack => t !== null);
+        }
+        if (!tracks.length) {
+            addToast({ type: "warning", title: "Empty Playlist", message: "This playlist has no tracks." });
+            return;
+        }
+        queueActions.queue(tracks, mode);
+    };
+
     const showPlaylistMenu = (e: React.MouseEvent, p: Playlist) => {
         e.preventDefault();
         e.stopPropagation();
@@ -174,6 +192,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
+                { label: "Play Next", icon: "⏭️", onClick: () => { void queuePlaylist(p, "next"); } },
+                { label: "Add to Queue", icon: "➕", onClick: () => { void queuePlaylist(p, "queue"); } },
+                { separator: true, label: "", onClick: () => { } },
                 { label: "Rename", icon: "✏️", onClick: () => setModalState({ type: 'rename-playlist', isOpen: true, targetId: p.id, initialValue: p.name }) },
                 { label: "Delete", icon: "🗑️", variant: "destructive", onClick: () => handleDeletePlaylist(p.id, p.name) },
             ]
@@ -200,8 +221,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             x: e.clientX,
             y: e.clientY,
             items: [
-                { label: "Play Next", icon: "⏭️", onClick: () => { playNext(track); addToast({ type: "success", title: "Queued", message: `"${track.title}" will play next` }); } },
-                { label: "Add to Queue", icon: "➕", onClick: () => { addToQueue(track); addToast({ type: "success", title: "Queued", message: `Added "${track.title}" to queue` }); } },
+                ...queueActions.contextMenuItems(track),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Remove from Playlist", icon: "❌", variant: "destructive", onClick: () => handleRemoveTrack(p.id, track.id) },
             ]
@@ -549,13 +569,21 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     };
 
     return (
-        <div className={`global-playlist-panel ${isOpen ? 'open' : ''}`}>
+        <aside
+            id="global-playlist-panel"
+            className={`global-playlist-panel ${isOpen ? 'open' : ''}`}
+            aria-label="Playlist panel"
+            aria-hidden={!isOpen}
+            inert={!isOpen}
+        >
             <div className="gpp-header">
                 <h3>Your Playlists</h3>
                 <div className="gpp-actions">
                     <button
+                        type="button"
                         className="gpp-action-btn"
                         onClick={() => setModalState({ type: 'create-playlist', isOpen: true })}
+                        aria-label="New playlist"
                         title="New Playlist"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -564,9 +592,11 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                         </svg>
                     </button>
                     <button
+                        type="button"
                         className={`gpp-action-btn ${isSyncing ? "animate-spin" : ""}`}
                         onClick={handleSync}
                         disabled={isSyncing}
+                        aria-label="Sync playlists with cloud"
                         title="Sync with cloud"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -576,8 +606,10 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                         </svg>
                     </button>
                     <button
+                        type="button"
                         className="gpp-action-btn"
                         onClick={() => setModalState({ type: 'create-folder', isOpen: true })}
+                        aria-label="New folder"
                         title="New Folder"
                     >
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -586,7 +618,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                             <line x1="9" y1="14" x2="15" y2="14"></line>
                         </svg>
                     </button>
-                    <button className="gpp-close" onClick={onClose}>&times;</button>
+                    <button type="button" className="gpp-close" onClick={onClose} aria-label="Close playlist panel">&times;</button>
                 </div>
             </div>
 
@@ -670,6 +702,6 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                 }}
                 onCancel={() => setModalState(prev => ({ ...prev, isOpen: false }))}
             />
-        </div>
+        </aside>
     );
 }

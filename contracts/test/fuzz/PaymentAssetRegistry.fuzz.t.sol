@@ -92,6 +92,8 @@ contract PaymentAssetRegistryFuzzTest is Test {
         uint256 answer = bound(rawAnswer, 1, 1e30);
         uint8 dec = uint8(bound(uint256(decimals), 0, 30));
 
+        // The fuzz bound is far below int256.max, so this conversion cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         MockPriceOracle feed = new MockPriceOracle("X / USD", dec, int256(answer));
         ChainlinkPriceOracleAdapter adapter = new ChainlinkPriceOracleAdapter(address(feed), 1 hours);
 
@@ -113,6 +115,8 @@ contract PaymentAssetRegistryFuzzTest is Test {
         uint256 maxStaleness = bound(staleness, 1, 365 days);
         uint256 over = bound(jump, 1, 365 days);
 
+        // The fuzz bound is far below int256.max, so this conversion cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         MockPriceOracle feed = new MockPriceOracle("X / USD", 8, int256(answer));
         ChainlinkPriceOracleAdapter adapter = new ChainlinkPriceOracleAdapter(address(feed), maxStaleness);
 
@@ -125,6 +129,8 @@ contract PaymentAssetRegistryFuzzTest is Test {
 
     function testFuzz_IncompleteRoundReverts(uint256 rawAnswer) public {
         uint256 answer = bound(rawAnswer, 1, 1e30);
+        // The fuzz bound is far below int256.max, so this conversion cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         MockPriceOracle feed = new MockPriceOracle("X / USD", 8, int256(answer));
         ChainlinkPriceOracleAdapter adapter = new ChainlinkPriceOracleAdapter(address(feed), 1 hours);
 

@@ -269,7 +269,16 @@ collecting that 15% on the on-chain contract-settlement path would need a
 per-tier fee (a custody-contract change, marginal on $0.05 purchases) and is
 **deferred to the contract-upgrade path
 [#1300](https://github.com/akoita/resonate/issues/1300)**. The earlier "0.5%
-default / 5% cap / pending upgrade" framing is superseded. Decision record:
+default / 5% cap / pending upgrade" framing is superseded.
+
+**Moment collects — Drops pricing (canonical — operator decision 2026-07-12,
+[#1462](https://github.com/akoita/resonate/issues/1462)):** paid moment
+collects are **artist-set within a platform band of $0.50–$9.99** per edition
+(free remains allowed; the drop builder's existing price field maps to this
+band), settled on the **x402 personal rail at the 15% personal take** above —
+one rate for all x402 personal micro-purchases, no new fee class. Artist
+receives ≥85% per ADR-BM-4; collectibles stay utility-not-yield. Band changes
+are operator decisions recorded here first. Decision record:
 `docs/strategy/business-model-phase0-decisions.md` §ADR-BM-2; accepted decision:
 [#1333](https://github.com/akoita/resonate/issues/1333).
 
@@ -483,7 +492,7 @@ remix finish #1206, license gate #1193 all shipped):
 
 | Priority | Item | Revenue line / purpose |
 | -------- | --- | --- |
-| **P0**   | Shows production go-live ([#1271](https://github.com/akoita/resonate/issues/1271), gated go-decision) + real campaign cohort | Line 1 live — first collected revenue |
+| **P0**   | Shows production go-live ([#1583](https://github.com/akoita/resonate/issues/1583), gated owner decision) + real campaign cohort | Line 1 live — first collected revenue |
 | **P0**   | Generation-credit billing ([#1334](https://github.com/akoita/resonate/issues/1334); Stability registration first) | Line 2 opener — GPU becomes a margin line |
 | ~~**P1**~~ ✅ | Marketplace take-rate — on-chain **10% shipped** (deployed 2026-07-05); on-chain 15%-personal deferred to [#1300](https://github.com/akoita/resonate/issues/1300) ([#1333](https://github.com/akoita/resonate/issues/1333)) | Line 3 — 10% collected on-chain today |
 | **P1**   | Artist Pro subscription (Stripe v1) bundling credits + tools | Line 2 |
