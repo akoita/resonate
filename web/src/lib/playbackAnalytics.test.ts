@@ -46,6 +46,40 @@ describe("playback analytics helpers", () => {
     vi.unstubAllGlobals();
   });
 
+  it("uses secure random bytes when randomUUID is unavailable", () => {
+    const getRandomValues = vi.fn((bytes: Uint8Array) => {
+      bytes.set(Array.from({ length: bytes.length }, (_, index) => index));
+      return bytes;
+    });
+    vi.stubGlobal("window", { sessionStorage, crypto: { getRandomValues } });
+    const weakRandom = vi.spyOn(Math, "random").mockImplementation(() => {
+      throw new Error("Weak randomness must not generate playback IDs");
+    });
+
+    const sessionId = getPlaybackAnalyticsSessionId();
+    expect(sessionId).toBe("playback_000102030405060708090a0b0c0d0e0f");
+    expect(getPlaybackAnalyticsSessionId()).toBe(sessionId);
+    expect(sessionStorage.setItem).toHaveBeenCalledTimes(1);
+    expect(createPlaybackAnalyticsInstanceId()).toBe(
+      "playback_instance_000102030405060708090a0b0c0d0e0f",
+    );
+    expect(getRandomValues).toHaveBeenCalled();
+    expect(weakRandom).not.toHaveBeenCalled();
+  });
+
+  it.each(["getItem", "setItem"] as const)("generates a secure session ID when storage %s throws", (method) => {
+    vi.spyOn(sessionStorage, method).mockImplementation(() => {
+      throw new Error("Storage denied");
+    });
+    expect(getPlaybackAnalyticsSessionId()).toBe("session-uuid");
+  });
+
+  it("preserves the SSR session sentinel and uses runtime crypto for instance IDs", () => {
+    vi.stubGlobal("window", undefined);
+    expect(getPlaybackAnalyticsSessionId()).toBe("playback_ssr");
+    expect(createPlaybackAnalyticsInstanceId()).toBe("session-uuid");
+  });
+
   it("qualifies long tracks after 30 seconds once per track load", () => {
     expect(
       shouldReportPlaybackCompleted({

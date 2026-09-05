@@ -268,6 +268,11 @@ provenance (`grounding`) and AI disclosure (`aiGenerated`) so analytics can
 separate stem renders, stem-plus-AI layered drafts, audio-conditioned AI
 drafts, feature-conditioned AI drafts, and prompt-only AI drafts.
 
+The warehouse export and Dataflow transform accept `player.segment_loop_*` and
+`player.repeat_count_*` control events. Facts retain segment boundaries and repeat
+settings; these events do not increment play counts or payouts. The shared event
+fixture covers all six control events in both transforms.
+
 ## Verification
 
 Current verification:

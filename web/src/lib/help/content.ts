@@ -300,7 +300,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
+    keywords: ["A–B", "passage", "finite repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "playing",
@@ -328,10 +328,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
         heading: "Build and control your listening session",
         blocks: [
           {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/player-listening-controls.png`,
+              alt: "The player with queue saving, a five-to-ten-second passage loop, and one additional track repeat configured.",
+              caption: "Loop and repeat controls with a sample listening queue.",
+              width: 1440,
+              height: 1100,
+              source: LOCAL,
+            },
+          },
+          {
             kind: "list",
             items: [
               "Use Play next or Add to queue on a track, selected tracks, an album, or a playlist. Multi-track additions keep their displayed order and already-queued tracks are skipped.",
               "Shuffle plays every eligible queued track once before Repeat All begins another cycle. Tracks added during shuffle join the current cycle.",
+              "Choose Save queue as playlist beside Queue Manifest to keep the whole queue in its displayed order, including tracks already played. Give it a name and folder. An unchanged playlist offers View playlist instead; changing its queue lets you save a new playlist without overwriting the original. Review any tracks that cannot be saved before confirming.",
+              "Open Loop and repeat in the player bar or full player. Set A and B in seconds, or mark your current position with Set A here and Set B here, then choose Loop passage. Seeking stays within that passage until you clear it; changing tracks clears the loop.",
+              "Choose Current track or Entire queue and a number of additional repeats. One additional repeat means one replay after the current pass. The remaining count changes only at a natural track end or complete queue cycle. Passage loops pause that count. You can update or cancel repeats, and selecting an infinite repeat mode replaces the finite plan.",
+              "Skipping to another track cancels a track repeat plan. Replacing or clearing the queue cancels a queue repeat plan. Repeat plans stay active while navigating the app, but do not carry into a new browser session.",
               "Select the sound icon to mute; select it again to restore your previous volume. The slider stays synchronized.",
               "With a keyboard, use Tab to reach named playback controls and the position or volume sliders, then use the arrow keys to adjust a slider. A Skip to main content link appears when it receives focus, and the current navigation page and open playlist panel are announced to assistive technology.",
               "Open immersive mode from the Player for artwork, track details, controls, volume, and queue access. Use the visible control or Escape to leave it without losing your place.",

@@ -685,6 +685,11 @@ export interface IdentityAuthenticatedEvent extends BaseEvent {
 }
 
 export interface PlaylistCreatedEvent extends BaseEvent {
+  origin?: "player_queue";
+  sourceKind?: "ad_hoc" | "modified_playlist";
+  queueCount?: number;
+  savedTrackCount?: number;
+  omittedCount?: number;
   eventName: "playlist.created";
   userId: string;
   playlistId: string;

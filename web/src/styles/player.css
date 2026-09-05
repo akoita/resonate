@@ -1,0 +1,387 @@
+/* ---- Listening controls ------------------------------------------------
+ * Shared by the floating mini-player menu and the player console. Everything
+ * here reads Obsidian Frequency (--r-*) tokens so the panel belongs to the
+ * console rather than looking like a raw browser form.
+ * ----------------------------------------------------------------------- */
+
+.listening-controls {
+  margin-block: var(--r-sm);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--r-on-surface);
+}
+
+/* Only the collapsible control panel is a surface; the save-queue wrapper and
+ * the dialog keep their own chrome. */
+details.listening-controls {
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-md);
+  background: var(--r-chrome-glass);
+}
+
+.lc-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--r-xs);
+  min-height: var(--touch-target);
+  padding: var(--r-xs) var(--r-sm);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--r-radius-md);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.lc-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Own caret so the disclosure reads at console weight in every browser. */
+.lc-summary::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--r-on-surface-variant);
+  border-bottom: 1.5px solid var(--r-on-surface-variant);
+  transform: rotate(-45deg);
+  transition: transform 0.18s var(--r-ease-out);
+}
+
+details.listening-controls[open] .lc-summary::before {
+  transform: rotate(45deg);
+}
+
+.lc-summary:hover {
+  background: var(--r-chrome-hover);
+}
+
+.lc-summary-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-variant);
+}
+
+.lc-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-radius-full);
+  border: 1px solid rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.14);
+  color: var(--r-primary-soft);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lc-body {
+  padding: 0 var(--r-sm) var(--r-sm);
+}
+
+.lc-group {
+  border: 1px solid var(--r-outline-variant);
+  border-radius: var(--r-radius-sm);
+  padding: var(--r-sm);
+  margin: 0 0 var(--r-xs);
+  min-width: 0;
+}
+
+.lc-group:last-child {
+  margin-bottom: 0;
+}
+
+.lc-group legend {
+  padding-inline: 6px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-muted);
+}
+
+/* A value and the control that fills it stay on one line; the pair never
+ * splits across a wrap the way a flat flex row did. */
+.lc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--r-sm);
+}
+
+.lc-field {
+  display: flex;
+  align-items: end;
+  gap: var(--r-xs);
+  min-width: 0;
+}
+
+.listening-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.lc-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--r-xs);
+  font-size: 0.8125rem;
+  color: var(--r-on-surface);
+}
+
+.lc-hint {
+  align-self: end;
+  padding-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--r-on-surface-muted);
+  white-space: nowrap;
+}
+
+.listening-controls input,
+.listening-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--touch-target);
+  padding: 8px 10px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-low);
+  color: var(--r-on-surface);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.listening-controls input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--r-primary);
+}
+
+.listening-controls input:hover,
+.listening-controls select:hover {
+  border-color: rgba(124, 92, 255, 0.4);
+}
+
+.listening-controls input:focus,
+.listening-controls select:focus {
+  border-color: var(--r-primary);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
+  outline: none;
+}
+
+.lc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--r-xs);
+  margin-top: var(--r-sm);
+}
+
+.lc-actions--dialog {
+  justify-content: flex-end;
+  margin-top: var(--r-md);
+}
+
+.lc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--touch-target);
+  padding: 8px 14px;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  color: var(--r-on-surface);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.16s var(--r-ease-out), border-color 0.16s ease,
+    background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.lc-btn--primary {
+  border-color: transparent;
+  background: var(--r-grad-brand);
+  color: var(--r-on-primary);
+  box-shadow: 0 8px 20px -10px rgba(124, 92, 255, 0.7);
+}
+
+.lc-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.14);
+}
+
+.lc-btn--primary:hover:not(:disabled) {
+  background: var(--r-grad-brand-bright);
+  border-color: transparent;
+}
+
+.lc-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.lc-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.listening-controls :focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+.listening-controls p {
+  width: 100%;
+  margin: var(--r-xs) 0 0;
+}
+
+.lc-note,
+.lc-status {
+  color: var(--r-on-surface-muted);
+  font-size: 12px;
+}
+
+.lc-status {
+  color: var(--r-on-surface-variant);
+}
+
+.lc-error {
+  color: var(--r-error);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lc-omitted ul {
+  margin: var(--r-unit) 0 0;
+  padding-left: var(--r-md);
+  color: var(--r-on-surface-variant);
+}
+
+/* ---- Save-queue trigger ------------------------------------------------ */
+
+.queue-save {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--r-xs);
+}
+
+.listening-dialog label {
+  font-size: 12px;
+}
+
+.listening-dialog {
+  padding: var(--r-lg);
+  max-width: min(520px, 95vw);
+  max-height: 85dvh;
+  overflow: auto;
+}
+
+/* ---- Mini-player menu -------------------------------------------------- */
+
+.player-listening-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 12px;
+  z-index: 30;
+  max-width: min(420px, calc(100vw - 24px));
+  border-radius: var(--r-radius-md);
+  background: rgba(11, 11, 19, 0.92);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
+}
+
+.player-listening-menu .listening-controls {
+  margin: 0;
+}
+
+.player-listening-menu details[open] {
+  max-height: 65dvh;
+  overflow: auto;
+}
+
+/* ---- A–B marker on the timeline ---------------------------------------- */
+
+.player-range-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.player-range-wrap .player-range {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+/* The scrub track is repainted underneath so the A–B band can sit on it. */
+.player-range-wrap::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.player-range-wrap .segment-timeline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.segment-timeline {
+  height: 4px;
+  width: 100%;
+  background: transparent;
+  pointer-events: none;
+}
+
+.segment-timeline span {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: var(--r-radius-full);
+  background: var(--r-play);
+  box-shadow: 0 0 8px var(--r-play-glow);
+}
+
+/* ---- Console fit -------------------------------------------------------
+ * The console scrolls as one column; the queue keeps a workable minimum so
+ * the added controls cannot squeeze the manifest out of view. */
+
+aside.player-floating-console {
+  overflow-y: auto;
+}
+
+aside.player-floating-console > * {
+  flex-shrink: 0;
+}
+
+aside.player-floating-console .queue-list {
+  max-height: 35vh;
+  min-height: 96px;
+}

@@ -184,3 +184,80 @@ Manual:
 - [Resonate Shows](resonate_shows.md)
 - [Remix Studio](remix_studio.md)
 - [Listener Community Network](listener_community_network.md)
+
+
+## Save and control a listening session
+
+Implemented for #1724, #1721 and #1723. These
+controls serve listeners and curators; they are vision-neutral product quality.
+
+**Save queue as playlist** appears beside Queue Manifest for ad-hoc or modified
+queues. It snapshots past, current and upcoming tracks in manifest order, never
+shuffle traversal order. An unchanged playlist links to its source. Provenance
+survives player-state restoration; a coincidental content match does not create
+source identity. Saving uses existing folder selection and private defaults and
+does not change playback or overwrite the source playlist.
+
+Unsupported local entries are listed and require confirmation before omission.
+Deleted or unavailable catalog entries cause the server to reject the entire
+save, with no partially created playlist. The dialog identifies those entries
+and requires confirmation before retrying without them. Authenticated snapshots create the
+playlist and resolve catalog entries into the owner's library in one database
+transaction. An API failure is surfaced rather than silently creating a local
+replacement. Signed-out saves use local storage; public sharing still requires
+account synchronization.
+
+**Loop and repeat** is available in the compact bar and full player. On the
+player page the console owns the panel and the compact bar does not repeat it.
+A–B markers
+are seconds within a known track duration. The timeline highlights the range;
+seeking is clamped within it, and B returns to A. Editing applies on Update
+passage; Clear passage restores normal playback. Track changes clear markers.
+
+Finite repeats count **additional** replays. A track plan advances after its last
+replay; a queue plan finishes after its last complete cycle. Manual seeking does
+not consume counts; selecting/skipping another track cancels a track plan.
+Queue replacement/clear cancels a queue plan; additions/removals follow existing
+queue and fair-shuffle rules. Finite and infinite repeats replace each other.
+A–B loops take priority without consuming counts. Finite plans survive in-app
+navigation, but are not persisted across browser sessions.
+
+### Analytics and API
+
+`POST /playlists` accepts optional `queueContext` with `origin: player_queue`,
+`sourceKind: ad_hoc | modified_playlist`, `queueCount`, and `omittedCount`.
+Authenticated queue saves emit one server `playlist.created` event containing
+that context and `savedTrackCount`; the browser emits no duplicate creation.
+Names and track titles are excluded from that event. Folder ownership and track
+availability are checked before committing a snapshot.
+
+The authenticated product-event ingestion path accepts
+`player.segment_loop_enabled`, `player.segment_loop_updated`,
+`player.segment_loop_disabled`, `player.repeat_count_set`,
+`player.repeat_count_updated`, and `player.repeat_count_cleared`. Payloads carry
+canonical track/artist/release and playback context when available, plus range
+milliseconds or target/configured/remaining counts. The server validates ranges
+and counts and discards unrelated payload fields. Signed-out interactions do
+not upload events. Automatic loop/repeat iterations emit no control-action
+events; segment loops never reset qualifying-play state.
+
+### Verification
+
+- `web/src/lib/listeningSession.test.ts`: provenance, snapshots, boundaries,
+  repeat counts and repeated shuffle cycles.
+- `web/src/lib/queuePlaylist.test.ts`: atomic client request, failure/cache
+  behavior, and no duplicate analytics.
+- `web/tests/listening-session.spec.ts`: real player context with controlled
+  audio events, queue snapshots, provenance and loop/repeat interaction.
+- Backend playlist Testcontainers and analytics HTTP/envelope/bridge suites
+  cover persistence, owner checks and event acceptance.
+- Refresh the player overview with `CAPTURE_ONLY=player.png` using
+  `web/scripts/capture-help-screenshots.mjs`. Set `CAPTURE_LISTENING_HELP=true`
+  when running the passage-loop browser scenario to refresh the populated
+  controls illustration.
+- Verify desktop and mobile controls with keyboard focus, then perform a
+  combined staging walkthrough before closing the milestone.
+
+No new environment variables, schema migration, pricing, payout, or contract
+changes are required. Named saved passages and cross-device repeat plans remain
+out of scope.

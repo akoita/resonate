@@ -275,7 +275,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
     const handlePlayPlaylist = async (p: Playlist) => {
         const tracks = playlistTracks.get(p.id);
         if (tracks && tracks.length > 0) {
-            await playQueue(tracks, 0);
+            await playQueue(tracks, 0, { playlistId: p.id, sourceTrackIds: p.trackIds });
             reportPlaylistPlayed(p.id, p.trackIds.length, tracks.length, "global_playlist_panel");
             addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${p.name}"` });
         } else {
@@ -284,7 +284,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
             if (playlist && playlist.trackIds.length > 0) {
                 const tracksToPlay = await Promise.all(playlist.trackIds.map(id => getTrack(id)));
                 const valid = tracksToPlay.filter((t): t is LocalTrack => t !== null);
-                await playQueue(valid, 0);
+                await playQueue(valid, 0, { playlistId: playlist.id, sourceTrackIds: playlist.trackIds });
                 reportPlaylistPlayed(playlist.id, playlist.trackIds.length, valid.length, "global_playlist_panel");
                 addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${p.name}"` });
             } else {
@@ -316,7 +316,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
         if (tracks) {
             const idx = tracks.findIndex(t => t.id === trackId);
             if (idx !== -1) {
-                await playQueue(tracks, idx);
+                await playQueue(tracks, idx, { playlistId, sourceTrackIds: playlists.find(p => p.id === playlistId)?.trackIds });
             }
         }
     };

@@ -3,6 +3,7 @@
  * Uses localforage for cross-browser IndexedDB abstraction
  */
 import localforage from "localforage";
+import type { LocalTrack } from "./localLibrary";
 import {
     createPlaylistAPI,
     listPlaylistsAPI,
@@ -618,4 +619,31 @@ function reportPlaylistEvent(
             ...extra,
         },
     });
+}
+
+/** Queue snapshots are one write; an authenticated failure never falls back to a different playlist. */
+export async function createQueuePlaylist(name: string, folderId: string | null, trackIds: string[],
+    context: { sourceKind: "ad_hoc" | "modified_playlist"; queueCount: number; omittedCount: number }, tracks: LocalTrack[] = []): Promise<Playlist> {
+    if (!name.trim() || !trackIds.length) throw new Error("Enter a name and select valid tracks.");
+    const token = getToken();
+    if (token) {
+        const playlist = mapApiPlaylist(await createPlaylistAPI(token, {
+            name: name.trim(), folderId: folderId ?? undefined, trackIds,
+            queueContext: { origin: "player_queue", ...context },
+        }));
+        // The server already committed and emitted the canonical event. A cache
+        // failure must not invite a duplicate retry of that successful operation.
+        await playlistStore.setItem(playlist.id, playlist).catch(() => undefined);
+        return playlist;
+    }
+    const metadataStore = localforage.createInstance({ name: "resonate", storeName: "tracks" });
+    for (const track of tracks) {
+        const id = track.catalogTrackId || track.id;
+        if (trackIds.includes(id)) await metadataStore.setItem(id, { ...track, id });
+    }
+    const now = new Date().toISOString();
+    const playlist: Playlist = { id: `playlist_${crypto.randomUUID()}`, name: name.trim(), folderId,
+        trackIds, visibility: "private", createdAt: now, updatedAt: now };
+    await playlistStore.setItem(playlist.id, playlist);
+    return playlist; // Signed-out analytics follow the existing no-upload policy.
 }

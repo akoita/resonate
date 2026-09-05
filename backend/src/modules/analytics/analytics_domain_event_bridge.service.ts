@@ -59,7 +59,7 @@ const HIGH_VALUE_DOMAIN_EVENT_BRIDGES: readonly DomainBridgeConfig[] = [
     subjectType: "playlist",
     subjectIdKeys: ["playlistId"],
     actorIdKeys: ["userId"],
-    payloadKeys: ["playlistId", "userId", "folderId", "trackCount"],
+    payloadKeys: ["playlistId", "userId", "folderId", "trackCount", "origin", "sourceKind", "queueCount", "savedTrackCount", "omittedCount"],
     sourceRefKeys: ["playlistId", "userId", "folderId"],
   },
   {

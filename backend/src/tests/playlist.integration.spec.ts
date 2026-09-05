@@ -37,12 +37,46 @@ describe('PlaylistService (integration)', () => {
   afterAll(async () => {
     await prisma.playlist.deleteMany({ where: { userId } }).catch(() => {});
     await prisma.folder.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.libraryTrack.deleteMany({ where: { userId } });
+    await prisma.track.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.user.delete({ where: { id: userId } }).catch(() => {});
     eventBus.destroy();
   });
 
   beforeEach(() => {
     events.length = 0;
+  });
+
+  it('saves a queue atomically in manifest order with one canonical creation event', async () => {
+    const artist = await prisma.artist.create({ data: { id: `${TEST_PREFIX}artist`, displayName: 'Queue Artist' } });
+    const release = await prisma.release.create({ data: { id: `${TEST_PREFIX}release`, artistId: artist.id, title: 'Queue', status: 'ready' } });
+    const a = await prisma.track.create({ data: { id: `${TEST_PREFIX}a`, title: 'A', releaseId: release.id } });
+    const b = await prisma.track.create({ data: { id: `${TEST_PREFIX}b`, title: 'B', releaseId: release.id } });
+    const queueContext = { origin: 'player_queue' as const, sourceKind: 'ad_hoc' as const, queueCount: 3, omittedCount: 1 };
+    const playlist = await service.createPlaylist(userId, { name: 'Snapshot', trackIds: [b.id, a.id], queueContext });
+    expect(playlist.trackIds).toEqual([b.id, a.id]);
+    expect(playlist.visibility).toBe('private');
+    expect(await prisma.libraryTrack.count({ where: { userId, catalogTrackId: { in: [a.id, b.id] } } })).toBe(2);
+    const savedTrack = await prisma.libraryTrack.findFirstOrThrow({ where: { userId, catalogTrackId: a.id } });
+    expect(savedTrack.remoteUrl).toBe(`/catalog/releases/${release.id}/tracks/${a.id}/stream`);
+    const created = events.filter(e => e.eventName === 'playlist.created');
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ origin: 'player_queue', sourceKind: 'ad_hoc', queueCount: 3, savedTrackCount: 2, omittedCount: 1 });
+    const before = await prisma.playlist.count({ where: { userId } });
+    await expect(service.createPlaylist(userId, { name: 'Invalid', trackIds: [a.id, 'deleted'], queueContext })).rejects.toThrow('no longer available');
+    expect(await prisma.playlist.count({ where: { userId } })).toBe(before);
+    await prisma.release.update({ where: { id: release.id }, data: { rightsRoute: 'PRIVATE' } });
+    await expect(service.createPlaylist(userId, { name: 'Restricted', trackIds: [a.id], queueContext: { ...queueContext, queueCount: 1, omittedCount: 0 } })).rejects.toThrow('no longer available');
+    expect(await prisma.playlist.count({ where: { userId } })).toBe(before);
+  });
+
+  it('rejects empty snapshots, malformed counts and folders belonging to someone else', async () => {
+    const queueContext = { origin: 'player_queue' as const, sourceKind: 'ad_hoc' as const, queueCount: 1, omittedCount: 0 };
+    await expect(service.createPlaylist(userId, { name: 'Empty', trackIds: [], queueContext })).rejects.toThrow('Invalid queue');
+    await expect(service.createPlaylist(userId, { name: 'Wrong counts', trackIds: ['a'], queueContext: { ...queueContext, queueCount: -1 } })).rejects.toThrow('Invalid queue');
+    await expect(service.createPlaylist(userId, { name: 'Wrong folder', folderId: 'not-owned', trackIds: ['a'], queueContext })).rejects.toThrow('Folder not found');
   });
 
   // ===== Folders =====

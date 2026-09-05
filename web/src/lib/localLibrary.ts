@@ -56,6 +56,7 @@ function getToken(): string | null {
 }
 
 export interface PlayerState {
+    queueSource?: import("./listeningSession").QueueSource;
     queue: LocalTrack[];
     currentIndex: number;
     volume: number;
@@ -436,7 +437,8 @@ const artworkUrlCache = new Map<string, string>();
  * Uses in-memory cache to avoid recreating URLs on each call
  */
 export async function getArtworkUrl(track: LocalTrack): Promise<string | null> {
-    if (track.remoteArtworkUrl) return track.remoteArtworkUrl;
+    if (track.remoteArtworkUrl) return track.remoteArtworkUrl.startsWith("/")
+        ? sanitizeStemUrl(track.remoteArtworkUrl) ?? null : track.remoteArtworkUrl;
     if (!track.artworkKey) return null;
 
     // Check cache first

@@ -197,7 +197,7 @@ export function PlaylistTab({
         const validTracks = playlistTracks.filter((t): t is LocalTrack => t !== null);
 
         if (validTracks.length > 0) {
-            await playQueue(validTracks, 0);
+            await playQueue(validTracks, 0, { playlistId: playlist.id, sourceTrackIds: playlist.trackIds });
             recordProductAnalyticsFromBrowser("playlist.played", {
                 source: "library_playlist_tab",
                 subjectType: "playlist",

@@ -235,6 +235,22 @@ class AnalyticsTransformTest(unittest.TestCase):
         self.assertEqual(dimensions["evidenceTypes"], ["rights_metadata"])
         self.assertEqual(dimensions["decisionReason"], "verified uploader")
 
+    def test_player_controls_preserve_dimensions_without_listening_or_revenue(self):
+        for case in load_expected_events():
+            if not case["eventName"].startswith("player."):
+                continue
+            with self.subTest(event_name=case["eventName"]):
+                layers = process_payload(event("evt_player_control", case["eventName"], payload=case["payload"]))
+                self.assertEqual(layers.analytics_quarantine, [])
+                self.assertEqual(layers.analytics_facts[0]["factType"], "player_event")
+                dimensions = json.loads(layers.analytics_facts[0]["dimensions"])
+                for key in ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining"]:
+                    if key in case["payload"]:
+                        self.assertEqual(dimensions[key], case["payload"][key])
+                self.assertEqual(layers.analytics_views[0]["eventCount"], 1)
+                self.assertEqual(layers.analytics_views[0]["playCount"], 0)
+                self.assertEqual(layers.analytics_views[0]["payoutUsd"], 0)
+
     def test_idempotency_key_prefers_event_id(self):
         payload = json.dumps(event("evt_key", "playback.completed"))
 

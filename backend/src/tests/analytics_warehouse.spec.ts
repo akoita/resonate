@@ -321,6 +321,25 @@ describe("analytics warehouse export", () => {
     expect(result.analyticsViews).toHaveLength(eventNames.length);
   });
 
+  it.each(expectedEventCases.filter(({ eventName }) => eventName.startsWith("player.")))(
+    "preserves control dimensions without counting $eventName as listening or revenue",
+    (eventCase) => {
+      const result = buildAnalyticsWarehouseExport([event({
+        eventId: "evt_player_control",
+        eventName: eventCase.eventName,
+        payload: eventCase.payload,
+      })], { generatedAt });
+      expect(result.analyticsQuarantine).toEqual([]);
+      expect(result.analyticsFacts[0].factType).toBe("player_event");
+      for (const key of ["startMs", "endMs", "segmentDurationMs", "target", "configured", "remaining"]) {
+        if (key in eventCase.payload) {
+          expect(result.analyticsFacts[0].dimensions[key]).toEqual(eventCase.payload[key]);
+        }
+      }
+      expect(result.analyticsViews[0]).toEqual(expect.objectContaining({ eventCount: 1, playCount: 0, payoutUsd: 0 }));
+    },
+  );
+
   it("keeps schema examples covered by the expected event processing matrix", () => {
     const eventNames = new Set(expectedEventCases.map((eventCase) => eventCase.eventName));
 

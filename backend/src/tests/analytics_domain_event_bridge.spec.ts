@@ -204,6 +204,7 @@ describe("AnalyticsDomainEventBridgeService", () => {
         folderId: "folder_919",
         trackCount: 0,
         name: "do not persist playlist name",
+        origin: "player_queue", sourceKind: "ad_hoc", queueCount: 3, savedTrackCount: 2, omittedCount: 1,
       },
       {
         eventName: "playlist.track_added",
@@ -729,6 +730,13 @@ describe("AnalyticsDomainEventBridgeService", () => {
           authMode: "register",
           signupFaucetSent: true,
         }),
+      }),
+    );
+    expect(analyticsEvents).toContainEqual(
+      expect.objectContaining({
+        eventName: "playlist.created",
+        producer: "playlist-service",
+        payload: expect.objectContaining({ origin: "player_queue", sourceKind: "ad_hoc", queueCount: 3, savedTrackCount: 2, omittedCount: 1 }),
       }),
     );
     expect(analyticsEvents).toContainEqual(

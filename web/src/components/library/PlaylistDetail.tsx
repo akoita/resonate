@@ -93,7 +93,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
     const handlePlayTrack = useCallback((track: LocalTrack) => {
         const index = tracks.findIndex((t) => t.id === track.id);
-        void playQueue(tracks, index >= 0 ? index : 0);
+        void playQueue(tracks, index >= 0 ? index : 0, { playlistId, sourceTrackIds: playlist?.trackIds });
         recordProductAnalyticsFromBrowser("playlist.played", {
             source: "playlist_detail_track",
             subjectType: "playlist",
@@ -105,7 +105,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 trackCount: tracks.length,
             },
         });
-    }, [playQueue, playlistId, tracks]);
+    }, [playQueue, playlistId, tracks, playlist]);
 
     const handleRemoveTrack = async (trackId: string) => {
         if (!confirm("Remove this track from the playlist?")) return;
@@ -127,7 +127,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
     const handlePlayAll = () => {
         if (tracks.length > 0) {
-            void playQueue(tracks, 0);
+            void playQueue(tracks, 0, { playlistId, sourceTrackIds: playlist?.trackIds });
             recordProductAnalyticsFromBrowser("playlist.played", {
                 source: "playlist_detail",
                 subjectType: "playlist",

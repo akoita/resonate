@@ -22,6 +22,9 @@
  *   # Both passes against a local instance:
  *   BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
  *
+ *   # Refresh one screenshot only:
+ *   CAPTURE_ONLY=player.png BASE_URL=http://localhost:3001 node scripts/capture-help-screenshots.mjs
+ *
  *   # Skip the signed-in pass:
  *   CAPTURE_AUTH=false node scripts/capture-help-screenshots.mjs
  *
@@ -130,6 +133,7 @@ async function waitForRouteReady(page, route, ready) {
 
 async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
+    if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
     if (ready?.viewportHeight) {
       await page.setViewportSize({ width: 1440, height: ready.viewportHeight });
     }

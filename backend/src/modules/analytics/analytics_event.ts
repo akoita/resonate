@@ -81,6 +81,13 @@ export class AnalyticsEventValidationError extends Error {
 }
 
 export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
+  { eventName: "player.segment_loop_enabled", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },
+  { eventName: "player.segment_loop_updated", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },
+  { eventName: "player.segment_loop_disabled", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "startMs", "endMs", "segmentDurationMs"] },
+  { eventName: "player.repeat_count_set", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "target", "configured", "remaining"] },
+  { eventName: "player.repeat_count_updated", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "target", "configured", "remaining"] },
+  { eventName: "player.repeat_count_cleared", eventVersion: 1, producer: "web_app", privacyTier: "pseudonymous", payloadFields: ["trackId", "artistId", "releaseId", "playbackInstanceId", "queueLength", "shuffle", "target", "configured", "remaining"] },
+
   {
     eventName: "playback.completed",
     eventVersion: 1,
