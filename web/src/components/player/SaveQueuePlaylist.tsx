@@ -9,6 +9,14 @@ import { queueSnapshot } from "../../lib/listeningSession";
 import { createQueuePlaylist, listFolders, type PlaylistFolder } from "../../lib/playlistStore";
 import { useFocusContainment } from "../ui/useFocusContainment";
 
+/** Matches the stroke weight and 17px box of the Now Playing action icons. */
+function QueueSaveIcon() {
+  return <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <line x1="3" y1="6" x2="14" y2="6" /><line x1="3" y1="12" x2="14" y2="12" /><line x1="3" y1="18" x2="10" y2="18" />
+    <line x1="18" y1="9" x2="18" y2="19" /><polyline points="15 16 18 19 21 16" />
+  </svg>;
+}
+
 export function SaveQueuePlaylist() {
   const { queue, queueSource, queueSourceKind } = usePlayer();
   const [snapshot, setSnapshot] = useState<ReturnType<typeof queueSnapshot> & { tracks: LocalTrack[]; queueCount: number; sourceKind: "ad_hoc" | "modified_playlist" } | null>(null);
@@ -44,13 +52,14 @@ export function SaveQueuePlaylist() {
     finally { inFlight.current = false; setBusy(false); }
   }
   return <div className="listening-controls queue-save">
+    {/* Same chip grammar as the Now Playing action row directly above it. */}
     {queue.length > 0 && (queueSourceKind === "unchanged_playlist" && queueSource
-      ? <Link className="lc-btn lc-btn--ghost" href={queueSource.publicPlaylist ? `/playlist/${encodeURIComponent(queueSource.playlistId)}` : `/library?tab=playlists&playlist=${encodeURIComponent(queueSource.playlistId)}`}>View playlist</Link>
-      : <button type="button" className="lc-btn lc-btn--primary" onClick={() => {
+      ? <Link className="player-action-chip player-action-chip--available" href={queueSource.publicPlaylist ? `/playlist/${encodeURIComponent(queueSource.playlistId)}` : `/library?tab=playlists&playlist=${encodeURIComponent(queueSource.playlistId)}`}><QueueSaveIcon />View playlist</Link>
+      : <button type="button" className="player-action-chip player-action-chip--available" onClick={() => {
         setSnapshot({ ...queueSnapshot(queue), tracks: [...queue], queueCount: queue.length, sourceKind: queueSourceKind === "modified_playlist" ? "modified_playlist" : "ad_hoc" });
         setName(""); setFolder(""); setConfirmed(false); setError(""); setSaved(null);
         void listFolders().then(setFolders).catch(() => setError("Could not load folders. You can still save in the root folder."));
-      }}>Save queue as playlist</button>)}
+      }}><QueueSaveIcon />Save queue as playlist</button>)}
     {saved && <p className="lc-status" role="status">Playlist saved. <Link href={`/library?tab=playlists&playlist=${encodeURIComponent(saved)}`}>Open playlist</Link></p>}
     {snapshot && createPortal(<div className="playlist-modal-overlay">
       <div className="playlist-modal redesigned listening-dialog listening-controls" ref={dialog} role="dialog" aria-modal="true" aria-label="Save queue as playlist">
