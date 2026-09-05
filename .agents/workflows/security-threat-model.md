@@ -79,7 +79,8 @@ Use qualitative likelihood and impact (low/medium/high) with short justification
   - Auth/authz expectations
   - Data sensitivity classification
   - Multi-tenancy model
-- **Pause and wait for user feedback before producing the final report**
+- Use context already supplied before asking. Continue evidence gathering while
+  clarifications are pending; pause only conclusions that depend on missing facts.
 - If the user can't answer, state which assumptions remain and how they influence priority
 
 ### 7. Recommend mitigations

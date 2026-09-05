@@ -40,33 +40,38 @@ Determine which parts of the codebase to review:
 
 ```
 # Hardcoded secrets
-rg 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
+rg -l -i 'password|secret|api_key|private_key' backend/src/ --iglob '!*.test.*' --iglob '!*.spec.*'
 
 # SQL injection / raw queries
-rg 'rawQuery\|executeRaw\|\$queryRaw' backend/src/
+rg '\$(queryRaw|executeRaw)(Unsafe)?' backend/src/
 
-# Missing auth guards
-rg '@Controller\|@Get\|@Post\|@Put\|@Delete\|@Patch' backend/src/ | grep -v 'Guard\|Auth'
+# Controller entry points: inspect method, controller, and global guards
+rg '@Controller|@Get|@Post|@Put|@Delete|@Patch' backend/src/
 
 # Unsafe deserialization
-rg 'JSON\.parse\|eval\(' backend/src/
+rg 'JSON\.parse|eval\(' backend/src/
 
-# Missing input validation
-rg '@Body\(\)\|@Query\(\)\|@Param\(\)' backend/src/ | grep -v 'Pipe\|Dto\|Validation'
+# Input entry points: trace DTOs and local/global validation pipes
+rg '@Body\(\)|@Query\(\)|@Param\(\)' backend/src/
 ```
 
 #### Frontend (Next.js / React)
 
 ```
 # XSS vectors
-rg 'dangerouslySetInnerHTML\|innerHTML' web/src/
+rg 'dangerouslySetInnerHTML|innerHTML' web/src/
 
 # Exposed secrets in client code
-rg 'NEXT_PUBLIC_.*SECRET\|NEXT_PUBLIC_.*KEY\|NEXT_PUBLIC_.*PASSWORD' web/src/
+rg 'NEXT_PUBLIC_.*SECRET|NEXT_PUBLIC_.*KEY|NEXT_PUBLIC_.*PASSWORD' web/src/
 
 # Insecure cookie handling
-rg 'document\.cookie\|setCookie\|httpOnly.*false' web/src/
+rg 'document\.cookie|setCookie|httpOnly.*false' web/src/
 ```
+
+Search matches are review candidates, not proof of missing guards or validation.
+Inspect inherited/global controls and reachable call paths. An empty pattern scan
+is not evidence that the code is secure. Avoid copying credential values into
+reports or tool output; use filenames/redacted evidence for secret candidates.
 
 ### 3. Evaluate findings
 
@@ -116,7 +121,7 @@ After presenting the report:
 - Add concise comments explaining security rationale
 - Check that fixes don't break existing functionality
 - Follow the project's commit conventions from `AGENTS.md`
-- Run `npm run lint` in both `backend/` and `web/` after fixes
+- Run focused tests and relevant lint checks from [finish-issue](finish-issue.md).
 
 ## General security advice
 

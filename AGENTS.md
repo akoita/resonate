@@ -1,508 +1,88 @@
-# Resonate — AI Agent Coding Standards
-
-> This file is read by AI coding assistants (GitHub Copilot, Gemini Code Assist, Claude, etc.)
-> to enforce project-wide conventions. Keep it up to date.
-
-## 🚨 No Hardcoded Configuration Values
-
-**NEVER hardcode** URLs, ports, secrets, API keys, project IDs, bucket names, or any
-environment-dependent values directly in source code.
-
-### Rules
-
-1. **Always use environment variables** with a sensible local-dev fallback:
-
-   ```typescript
-   // ✅ CORRECT
-   const url = process.env.BACKEND_URL || "http://localhost:3000";
-
-   // ❌ WRONG — hardcoded production/staging URL
-   const url = "https://my-service-XXXXX.region.run.app";
-
-   // ❌ WRONG — no env var at all
-   const url = "http://localhost:3001/encryption/decrypt";
-   ```
-
-2. **Use centralized constants** — don't redeclare `API_BASE` in every file:
-
-   ```typescript
-   // ✅ Import from the canonical source
-   import { API_BASE } from "@/lib/api";
-
-   // ❌ Don't redeclare per-file
-   const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-   ```
-
-3. **Port conventions** — local dev defaults must use the correct port:
-   - Backend (NestJS): `3000`
-   - Frontend (Next.js): `3001`
-   - Demucs Worker: `8000`
-   - Anvil (local chain): `8545`
-   - AA Bundler: `4337`
-
-4. **Never commit secrets** — API keys, JWT secrets, private keys, and service account
-   credentials must come from environment variables or secret managers, never from source.
-
-### Environment Variable Naming
-
-| Layer              | Prefix         | Example                                |
-| ------------------ | -------------- | -------------------------------------- |
-| Frontend (browser) | `NEXT_PUBLIC_` | `NEXT_PUBLIC_API_URL`                  |
-| Frontend (server)  | none           | `BACKEND_URL`                          |
-| Backend            | none           | `STORAGE_PROVIDER`, `GCS_STEMS_BUCKET` |
-
-### Required Environment Variables
-
-Document any new app env var in `docs/deployment/environment.md` and the
-relevant deploy configuration in `resonate-iac`. Keep
-`docs/smart-contracts/deployment.md` focused on contract deployment and
-contract-adjacent local workflows.
-
----
-
-## 🧭 Change Impact Checklist
-
-Before finishing durable product, API, backend, frontend, analytics, protocol,
-or deployment work, review `docs/engineering/change_impact_checklist.md`.
-
-This guide captures the senior-maintainer review that prevents narrow fixes
-from forgetting related product consequences: analytics/events, API contracts,
-privacy and permission boundaries, moderation, lifecycle state, notifications,
-feature docs, architecture docs, deploy configuration, and validation scope.
-
-If a change adds or modifies meaningful user behavior, backend domain events,
-social/community state, marketplace lifecycle state, agent-facing contracts, or
-artist/listener controls, the PR summary should explicitly mention the relevant
-checklist sections and any intentionally deferred follow-up.
-
----
-
-## 💰 Business Model Conformance
-
-Resonate's monetization direction is governed by **Business Model v2**:
-
-- Vision, sequencing & roadmap: `docs/strategy/business-model-review-2026-07.md`
-- Decisions ADR-BM-1…6: `docs/strategy/business-model-phase0-decisions.md`
-  (tracked by epic [#1332](https://github.com/akoita/resonate/issues/1332))
-- Canonical fee/split numbers: `docs/rfc/business-model.md`
-
-### Rules
-
-1. **Red lines (ADR-BM-4) — never violate in any issue, RFC, or PR:**
-   - no royalty-yield or income-share products for fans (securities/Howey);
-   - no platform-subsidized payouts on free listening (there is no pro-rata
-     pool to drain, so stream fraud is unprofitable — keep it that way);
-   - listener-side payouts are pre-funded and user-centric only;
-   - artist receives 85%+ of every transaction; no recoupment, no minimum
-     thresholds.
-
-2. **State the revenue line and phase.** Any new issue, RFC, or PR touching
-   money, fees, payouts, upload/ingestion trust, AI-generation billing,
-   collectibles, or licensing must state which revenue line it serves —
-   (1) Shows campaign fees, (2) Artist Pro + generation credits,
-   (3) marketplace take-rate, (4) Listener Pro, (5) B2B/agent licensing — and
-   its phase per ADR-BM-6, or explicitly state that it is vision-neutral
-   (infra/quality).
-
-3. **Fee numbers live in one place.** Once an ADR is accepted,
-   `docs/rfc/business-model.md` is the single canonical source for fees,
-   splits, and prices. Never introduce a new fee, split, or price in code or
-   docs without reconciling it there.
-
-4. **Vision labels.** Open issues carry `vision:core` (directly serves a
-   revenue line) or `vision:keep` (conformant / vision-neutral) from the
-   2026-07 triage (`docs/strategy/issue-triage-2026-07.md`). Label new issues
-   on creation; an issue that fits neither label should be challenged before
-   work starts.
-
----
-
-## 📚 Feature Catalog & Documentation Updates
-
-`docs/features/README.md` is the canonical human-readable catalog of Resonate
-features. Developers and agents should be able to discover what exists, what is
-partial/planned/retired, who it is for, and how to use or test it without
-reading the whole codebase.
-
-### Rules
-
-1. **Update the feature catalog for durable feature work.** When adding,
-   materially changing, exposing, hiding, or removing a user-facing,
-   developer-facing, API-facing, agent-facing, or protocol-facing feature:
-   - Update `docs/features/README.md`
-   - Add or update the feature's dedicated page under `docs/features/`
-
-2. **Feature pages must be practical.** A feature page should include:
-   - current status (`implemented`, `partial`, `in-progress`, `planned`, or `retired`)
-   - who the feature is for
-   - what value it provides
-   - how to use it as an end user, developer, or agent/API consumer
-   - relevant UI routes, API endpoints, env vars, events, services, and tests
-   - links to deeper RFCs, architecture docs, issues, PRs, and code references
-
-3. **Keep RFCs and feature docs distinct.**
-   - RFCs explain design intent, alternatives, and future architecture.
-   - Feature pages explain the current product/platform capability and how to
-     use or verify it today.
-
-4. **Update docs in the same branch as code.** Do not leave feature catalog
-   updates for a later cleanup PR unless the user explicitly scopes the work to
-   code only.
-
-5. **Update the in-app User Guide for user-facing changes.** The User Guide at
-   `/help` ([feature page](docs/features/user_manual.md); content in
-   `web/src/lib/help/content.ts`) is the end-user manual. When a change adds,
-   materially changes, exposes, hides, or removes something a **listener,
-   artist, producer, curator, or operator can see or do**, update or add the
-   matching article **in the same branch**:
-   - Write in plain language — no contract names, API routes, or DB details.
-   - Keep `keywords`, `appLinks` (in-app deep links), `related`, and `status`
-     accurate; mark `partial`/`coming-soon` honestly.
-   - Illustrate with a screenshot when a public or signed-in screen exists, and
-     refresh images via `web/scripts/capture-help-screenshots.mjs` (it captures
-     public surfaces from staging and signed-in shells via mock auth — see the
-     [feature page](docs/features/user_manual.md)).
-   - The content-integrity test `web/src/lib/help/help.test.ts` must stay green:
-     it guards unique slugs, valid related links, known categories/audiences,
-     and that **every referenced screenshot file exists**.
-   - Not every change needs a guide edit — pure internal, backend, infra, or
-     refactor work with no user-visible effect usually does not.
-
-6. **Use `/finish-issue` to enforce this.** The finish workflow includes the
-   feature catalog **and User Guide** check alongside security scans, tests,
-   commits, and PR work.
-
----
-
-## 🧩 No Silent Partial Features
-
-Resonate can ship large features in slices, but unfinished work must never live
-only in memory, chat history, or vague PR prose.
-
-### Rules
-
-1. **A partial implementation must leave durable tracking.** Before finishing a
-   PR that implements only part of a feature, make sure the remaining work is
-   captured in at least one durable place:
-   - the parent GitHub issue remains open with an explicit remaining-work
-     checklist;
-   - separate follow-up issues are created and linked from the parent issue/PR;
-   - a feature plan or roadmap doc lists remaining slices with statuses;
-   - the feature catalog marks the capability as `partial` or `in-progress` and
-     links to the tracking source.
-
-2. **Do not close or claim completion for a parent feature unless it is actually
-   usable end to end.** If the PR only ships a backend contract, data model,
-   UI shell, analytics foundation, or operator-only slice, describe it as a
-   slice and keep the full feature tracked.
-
-3. **PR summaries must distinguish shipped behavior from remaining work.** Use
-   clear language such as "Implemented in this PR" and "Remaining / deferred",
-   with issue links when follow-ups exist.
-
-4. **Deferred work needs an owner-visible reason.** Acceptable reasons include
-   risk reduction, dependency ordering, CI/runtime cost, product sequencing, or
-   explicit developer scope. Avoid vague deferrals like "later" without a
-   linked checklist or issue.
-
-5. **Apply this especially to complex systems.** Community/social features,
-   analytics, recommendations, marketplace lifecycle, protocol/contracts,
-   deployment, moderation, permissions, and artist/listener controls should all
-   have visible completion boundaries and follow-up tracking.
-
----
-
-## 🚨 Git Workflow — Branch & PR Only
-
-**NEVER push directly to `main`.** All changes must go through a feature branch and Pull Request.
-
-### Rules
-
-1. **Always work on a branch** — use the naming conventions:
-   - `feat/<issue-number>-<short-description>` for features
-   - `fix/<issue-number>-<short-description>` for bug fixes
-   - `docs/<issue-number>-<short-description>` for documentation
-
-2. **Submit a Pull Request** targeting `main` — include a clear description and reference the issue (`Closes #N`).
-
-3. **Merge only on explicit developer request** — never merge a PR autonomously. Wait for the developer to say "merge", "you can merge", or equivalent.
-
-4. **Never force-push to `main`** — only force-push on feature branches if absolutely necessary.
-
-5. **Clean up after merge** — delete the feature branch (local + remote) and align local `main`.
-
-6. **Use the `/start-issue` workflow** when beginning work on any issue or task (features, fixes, improvements, etc.). Run the steps in `.agents/workflows/start-issue.md` to create the branch, track work, and open the PR scaffold.
-
-7. **Use the `/finish-issue` workflow** when completing work on an issue. Run the steps in `.agents/workflows/finish-issue.md` to verify, test, commit, push, create PR, merge, and clean up. This ensures security scans are executed and no steps are skipped.
-
----
-
-## Architecture Conventions
-
-### Backend (NestJS)
-
-- Storage provider is selected by `STORAGE_PROVIDER` env var (`gcs`, `ipfs`, `local`)
-- BullMQ workers run in the same process (Cloud Run `minScale=1, cpu-throttling=false`)
-- Redis connection via `REDIS_HOST` / `REDIS_PORT` (Memorystore in prod)
-
-### Frontend (Next.js)
-
-- API base URL: `NEXT_PUBLIC_API_URL` → defaults to `http://localhost:3001`
-- WebSocket URL: same as API URL (Socket.IO on same backend)
-- Chain config: `NEXT_PUBLIC_CHAIN_ID`, `NEXT_PUBLIC_RPC_URL`
-
-### Deployment
-
-- Cloud Run in `europe-west1`
-- Terraform manages infrastructure (`infra/terraform/`)
-- `make deploy-backend ENV=dev` / `make deploy-frontend ENV=dev` for deployments
-
----
-
-## 🧪 Testing Standards — Testcontainers First
-
-Backend tests use **Testcontainers** to spin up real infrastructure in Docker. No manual `make dev-up` required — only a Docker daemon.
-
-### File Naming
-
-| Pattern                     | Purpose                                                         | Runner                       |
-| --------------------------- | --------------------------------------------------------------- | ---------------------------- |
-| `*.spec.ts`                 | Pure unit tests — no DB, no containers, no Prisma               | `npm run test`               |
-| `*.controller.spec.ts`      | Controller unit tests — mock service, test logic/shaping        | `npm run test`               |
-| `*.controller.http.spec.ts` | Controller HTTP contract — routing, guards, status codes        | `npm run test`               |
-| `*.integration.spec.ts`     | Tests against real containers (Postgres, Redis, Anvil, Pub/Sub) | `npm run test:integration`   |
-| `*.external.spec.ts`        | External service tests — only with cloud credentials            | manual / staging CI          |
-| `*.flow.spec.ts`            | Multi-module event-driven flow tests                            | `npm run test:flow` (future) |
-| `*.test.ts`                 | Frontend tests (Vitest)                                         | `npx vitest run`             |
-
-All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` for the full strategy.
-
-### Rules
-
-1. **Never mock Prisma.** If a service uses `prisma`, write an `.integration.spec.ts` that runs against the real Testcontainer Postgres. Use the global `prisma` singleton from `../db/prisma` — the Testcontainer setup handles the `DATABASE_URL`.
-
-   ```typescript
-   // ✅ CORRECT — import real prisma
-   import { prisma } from "../db/prisma";
-
-   // ❌ WRONG — never do this
-   jest.mock("../db/prisma", () => ({
-     prisma: { track: { findMany: jest.fn() } },
-   }));
-   ```
-
-2. **Seed with unique prefixes.** Every integration test must use a unique `TEST_PREFIX` to avoid collisions with parallel tests:
-
-   ```typescript
-   const TEST_PREFIX = `mytest_${Date.now()}_`;
-   // Seed: User → Artist → Release → Track (respect FK chain)
-   beforeAll(async () => {
-     await prisma.user.create({
-       data: {
-         id: `${TEST_PREFIX}user`,
-         email: `${TEST_PREFIX}@test.resonate`,
-       },
-     });
-     // ... seed rest of FK chain
-   });
-   // Clean up in reverse FK order
-   afterAll(async () => {
-     /* delete in reverse order */
-   });
-   ```
-
-3. **External services stay mocked.** Services that require external infrastructure not available as a Testcontainer (Google AI, Lyria, bundlers like Pimlico/Alto) should be mocked. Common allowed mocks:
-   - `@google/genai`, `@google/adk` — AI SDK (ESM packages)
-   - `google-auth-library` — Google Cloud auth
-   - `fetch` for external APIs (Vertex AI, bundlers) — but NOT for Anvil-reachable endpoints
-   - BullMQ queue — job scheduling internals
-   - Storage provider — when not testing storage itself
-
-4. **Use dockerized Anvil for blockchain.** The Testcontainer Anvil is available at `process.env.ANVIL_RPC_URL`. Use it for:
-   - ERC-4337 client tests (real JSON-RPC transport)
-   - Indexer tests (real block reading)
-   - Any contract interaction test
-
-5. **Use Pub/Sub emulator for messaging.** Available at `process.env.PUBSUB_EMULATOR_HOST` with project ID `resonate-local`.
-
-### Available Containers (via `globalSetup.js`)
-
-| Container        | Module                       | Env Var                    |
-| ---------------- | ---------------------------- | -------------------------- |
-| Postgres 16      | `@testcontainers/postgresql` | `DATABASE_URL`             |
-| Redis 7          | `@testcontainers/redis`      | `REDIS_HOST`, `REDIS_PORT` |
-| Anvil (Foundry)  | `GenericContainer`           | `ANVIL_RPC_URL`            |
-| Pub/Sub emulator | `GenericContainer`           | `PUBSUB_EMULATOR_HOST`     |
-
-### Running Tests
-
-```bash
-# Integration tests (starts 4 containers, ~30s startup)
-cd backend && npm run test:integration
-
-# Unit tests only (instant, no Docker)
-cd backend && npm run test
-
-# Single integration file
-npx jest --runInBand --config jest.integration.config.js --testPathPattern='catalog.integration'
-```
-
----
-
-## 🔐 Smart Contract Testing & Verification Standards
-
-Smart contracts are asset-custody and protocol-truth code. Treat every contract
-change as security-sensitive, even when the change looks small.
-
-### Deployment Key Safety
-
-Forge scripts that broadcast transactions must never silently use the default
-Anvil private key on a remote/non-local RPC. Use the shared deployment-key
-helper in `contracts/script/DeploymentKey.s.sol` for every deploy, upgrade, or
-admin-update script.
-
-- Remote environments (`dev`, `staging`, `test`, `prod`, or any shared RPC)
-  must provide an explicit `PRIVATE_KEY` / `CONTRACT_DEPLOYER_PRIVATE_KEY`.
-- The default Anvil key is acceptable only for local chains or when a local/fork
-  command explicitly sets `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY=true`.
-- Do not set `ALLOW_DEFAULT_ANVIL_PRIVATE_KEY` in GitHub deployment
-  environments.
-- If a script needs a different signer model, document it in
-  `docs/smart-contracts/deployment.md` before wiring it into CI.
-
-### Deployment Output Handoffs
-
-Every deploy script that creates or changes an address-bearing contract must
-produce machine-readable handoff files under `contracts/deployments/` before it
-is considered CI/deploy ready:
-
-- a JSON deployment record with network, chain ID, deployer, owner/admin when
-  relevant, contract addresses, transaction hash, broadcast path, artifact path,
-  ABI path, and ABI hash;
-- a `.remote.env` handoff containing only non-secret app/runtime variables that
-  `resonate-iac`, GitHub environments, GCP Secret Manager, or Cloud Run config
-  need to consume;
-- an ABI handoff, or a documented generated ABI module, for any app-side code
-  that submits calls, decodes events, or validates contract data.
-
-Never make app deployment depend on copied console output. If an existing
-contract deploy path only uploads raw Foundry broadcasts, improve it to follow
-this pattern before adding more downstream automation.
-
-### Required Test Ladder
-
-Use the strongest practical layer for the risk of the change. Do not rely on
-happy-path unit tests alone for contracts that hold funds, gate authority, route
-payments, enforce royalties, or control upgrades.
-
-| Layer | Required When | Runner / Tool |
-| --- | --- | --- |
-| Unit tests | Every Solidity behavior change | `cd contracts && forge test --match-path test/unit/...` |
-| Fuzz/property tests | Any function with numeric bounds, authorization branching, accounting, transfers, mint/list/buy flows, or non-trivial input space | Foundry fuzz tests in `contracts/test/fuzz/` |
-| Invariant tests | Any stateful protocol, escrow, marketplace, token supply, role/permission, or multi-step lifecycle | Foundry invariant tests in `contracts/test/invariant/` |
-| Symbolic/formal tests | Asset custody, release/refund logic, upgrade authorization, royalty/payment conservation, or subtle state-machine rules | Halmos/Kontrol/Certora Prover, or a documented deferral |
-| Mutation testing | High-value contracts, new formal specs, or contract suites where test strength is uncertain | Certora Gambit, or a documented deferral |
-| Static/security scan | Before PR completion for material contract changes | Existing `/finish-issue` smart-contract scan workflow |
-
-For a new contract that holds or routes funds, the default expectation is:
-
-- unit tests for all lifecycle transitions and access-control failures;
-- fuzz/property tests for amount, deadline, basis-point, and boundary behavior;
-- invariant tests for conservation of funds and impossible state transitions;
-- symbolic/formal tests for at least the core safety property, or an explicit
-  note explaining why formal coverage is deferred.
-- mutation testing for high-value escrow/marketplace/payment contracts before
-  production launch, or an explicit note explaining why it is deferred.
-
-### Preferred Maintained Tools
-
-Prefer tools with active maintenance and real adoption:
-
-- **Foundry** for unit, fuzz, invariant, fork, and gas testing:
-  <https://book.getfoundry.sh/>
-- **Halmos** for symbolic testing from Foundry-style Solidity tests:
-  <https://github.com/a16z/halmos>
-- **Kontrol** for Foundry-compatible formal verification on KEVM:
-  <https://docs.runtimeverification.com/kontrol>
-- **Certora Prover** for high-assurance CVL specifications on critical
-  economic/security properties:
-  <https://docs.certora.com/en/latest/docs/prover/index.html>
-- **Certora Gambit** for Solidity mutation testing, especially to evaluate
-  whether tests or CVL specs catch intentionally injected logic faults:
-  <https://docs.certora.com/en/latest/docs/gambit/index.html>
-- **Echidna** and **Medusa** from Crytic/Trail of Bits for long-running
-  property fuzzing campaigns when Foundry fuzzing is not enough:
-  <https://github.com/crytic/echidna> and <https://github.com/crytic/medusa>
-
-Avoid adopting unmaintained or research-only tools as required project gates.
-They can be useful for experiments, but not as the main standard.
-
-### Shared Contract Surfaces
-
-When errors, events, enums, structs, or core function signatures are consumed by
-tests, indexers, backend code, or frontend code, put the shared surface in an
-interface under `contracts/src/interfaces/` and import it from both production
-contracts and tests.
-
-Examples:
-
-- `IShowCampaignEscrow` owns `CampaignStatus`, `Campaign`, custom errors, and
-  events.
-- `ShowCampaignEscrow` implements/imports that interface.
-- Tests import the same interface for `expectRevert` selectors and
-  `expectEmit` declarations.
-
-This prevents tests from silently duplicating event/error declarations that later
-drift from production.
-
-### Test Directory Conventions
-
-Keep Solidity tests organized by verification layer:
-
-- `contracts/test/unit/` for deterministic examples and access-control cases;
-- `contracts/test/fuzz/` for Foundry property tests over dynamic inputs;
-- `contracts/test/invariant/` for stateful handler-based invariant suites;
-- `contracts/test/formal/` for Halmos/Kontrol-compatible symbolic tests;
-- `contracts/certora/conf/` and `contracts/certora/specs/` for Certora Prover
-  configuration and CVL specs.
-
-Name files by contract or protocol surface, for example
-`ShowCampaignEscrow.fuzz.t.sol`, `ShowCampaignEscrow.invariant.t.sol`, and
-`ShowCampaignEscrow.formal.t.sol`. Keep handlers and mocks close to the layer
-that uses them unless they are reused across several suites.
-
-### Custom Error Context
-
-Prefer Solidity custom errors over revert strings. Add parameters when they help
-identify the failing object, actor, bound, expected value, or actual value.
-
-Good examples:
-
-```solidity
-error InvalidCampaignStatus(uint256 campaignId, CampaignStatus current, CampaignStatus expected);
-error DepositReleaseTooHigh(uint256 requestedBps, uint256 maxBps);
-error UnauthorizedConfirmer(address caller);
-error InsufficientPledge(uint256 campaignId, address backer, uint256 amount);
-```
-
-Do not add parameters mechanically. Keep parameterless errors for obvious local
-preconditions where context adds noise, such as `ZeroAmount()` or
-`ZeroAddress()`. Avoid large dynamic data in errors.
-
-### Required Documentation
-
-When a contract introduces or changes durable protocol behavior:
-
-- update `contracts/README.md` and relevant `docs/smart-contracts/*` pages;
-- update feature docs if the contract changes a product-facing capability;
-- document any omitted fuzz, invariant, or formal layer in the PR summary or
-  feature plan.
-
----
-
-## Code Quality
-
-- Run `npm run lint` in both `backend/` and `web/` before committing
-- Prisma schema changes require `npx prisma generate` and migration
-- Use `window.confirm()` sparingly — prefer `ConfirmDialog` React component for UX consistency
-- Test files go in `backend/src/tests/` — use `.integration.spec.ts` for DB-dependent tests, `.controller.http.spec.ts` for HTTP contract tests, `.spec.ts` for pure unit tests
+# Resonate agent instructions
+
+This is the canonical project policy. `CLAUDE.md` links to this file; do not
+maintain a second copy. Paths below are relative to the repository root.
+
+## Working process
+
+- Follow [start-issue](.agents/workflows/start-issue.md) for every task and
+  [finish-issue](.agents/workflows/finish-issue.md) when finalizing it.
+- Work on a feature branch, never commit or push directly to `main`, and never
+  force-push to `main`. Reuse the branch for related follow-ups.
+- Use `feat/<issue>-<description>`, `fix/<issue>-<description>`, or
+  `docs/<issue>-<description>`; omit the issue segment when there is no issue.
+- Complete local implementation and validation before requesting publication
+  approval. Honor approval already given in the conversation; do not ask again.
+- Merge only on an explicit user request. Finishing prepares the PR; it does
+  not authorize merging, deployment, or branch cleanup. Clean up merged branches
+  and align local `main` only after merge.
+- Preserve unrelated work. Use an isolated worktree if switching branches would
+  disturb it; do not automatically stash or commit someone else's changes.
+- Use Linux/macOS shells, or WSL on Windows. Machine-specific hooks and personal
+  tool configuration belong in ignored local settings.
+
+## Read the applicable rules before editing
+
+These linked rules are mandatory when their scope applies, including changes
+outside a directory that affect its behavior. Read only the relevant material.
+
+| Scope | Required guidance |
+| --- | --- |
+| Backend tests, persistence, infrastructure test fixtures | [Backend testing](.agents/rules/backend-testing.md), [backend/TESTING.md](backend/TESTING.md) |
+| Solidity, contract tests, deploy/upgrade scripts, ABI handoffs | [Smart contract standards](.agents/rules/contracts.md) |
+| Money, fees, payouts, upload trust, generation billing, collectibles, licensing | [Business model](.agents/rules/business-model.md) |
+| Durable features, user-visible behavior, partial delivery, documentation | [Documentation and feature completion](.agents/rules/documentation.md) |
+| Durable product, API, backend, frontend, analytics, protocol, deployment work | [Change impact checklist](docs/engineering/change_impact_checklist.md) |
+
+Never ship a silent partial feature: record remaining work in an issue or plan,
+mark the capability partial, and distinguish shipped behavior from deferred work.
+Do not close a parent feature until it is usable end to end.
+
+## Configuration and architecture
+
+Never embed environment-dependent URLs, ports, project IDs, buckets, or secrets
+in source. Use environment variables and safe local defaults, with centralized
+constants rather than per-file declarations.
+
+- Frontend API calls import `API_BASE` from `@/lib/api`. Its environment variable
+  is `NEXT_PUBLIC_API_URL`, with local fallback `http://localhost:3000`.
+- Browser variables use `NEXT_PUBLIC_`; server variables do not. Never expose
+  secrets through browser variables. Server API URLs use `BACKEND_URL`.
+- Local ports: backend `3000`, frontend `3001`, Demucs `8000`, Anvil `8545`,
+  AA bundler `4337`. These are local defaults, not production configuration.
+- WebSockets use the backend API URL. Chain configuration uses
+  `NEXT_PUBLIC_CHAIN_ID` and `NEXT_PUBLIC_RPC_URL`.
+- Storage uses `STORAGE_PROVIDER` (`gcs`, `ipfs`, `local`); Redis uses
+  `REDIS_HOST` / `REDIS_PORT`. BullMQ workers run in the backend process.
+- Document new app variables in [environment.md](docs/deployment/environment.md)
+  and update the relevant configuration in `resonate-iac`. Contract deployment
+  guidance belongs in [smart-contract deployment](docs/smart-contracts/deployment.md).
+- Follow [deployment architecture](docs/architecture/deployment_architecture.md)
+  for infrastructure ownership and Cloud Run configuration; verify the target
+  environment before deployment.
+- Never commit credentials, private data, local overrides, generated build
+  output, or dependency directories. Ignoring an already tracked secret does
+  not remove it from Git history.
+
+## Implementation and validation
+
+- Use focused tests and lint/type checks for the changed behavior; choose gates
+  using [finish-issue](.agents/workflows/finish-issue.md). Documentation-only
+  changes need link/command checks and `git diff --check`, not application suites.
+- Never mock Prisma. Database-dependent tests use real Testcontainers and the
+  shared Prisma singleton; external services remain mocked.
+- Prisma schema changes require a migration and `npx prisma generate`.
+- Treat every contract change as security-sensitive and apply the contract test
+  ladder. General validation budgets do not waive required security coverage.
+- Prefer the shared `ConfirmDialog` component over `window.confirm()`.
+- Update current feature docs and architecture alongside behavior. User-visible
+  changes also update the `/help` guide and its content-integrity test.
+- Write documentation for human readers: useful sections, one coherent point
+  per paragraph, current information, and links instead of duplicated detail.
+  Restructure paragraphs or list items longer than about 120 words.
+
+## Skills and workflows
+
+See [.agents/README.md](.agents/README.md) for workflow discovery, skill ownership,
+and maintenance. Installed skills supplement these rules; do not copy their
+implementation or machine-specific installation paths into this repository.

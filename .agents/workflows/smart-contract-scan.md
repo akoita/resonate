@@ -18,7 +18,7 @@ Systematically audit the Solidity codebase in `contracts/` for vulnerabilities u
 
 1. List all `.sol` files in `contracts/src/`:
    ```
-   find contracts/src -name '*.sol' -type f
+   rg --files contracts/src -g '*.sol'
    ```
 2. Note the Solidity pragma version in each — many vulnerabilities are version-dependent (e.g. overflow is checked by default ≥0.8.0)
 3. Identify external dependencies (OpenZeppelin, custom libraries)
@@ -34,13 +34,13 @@ Search for known trigger patterns using `grep` or `ripgrep`:
 ```
 # Reentrancy triggers
 rg '\.call\{' contracts/src/
-rg '_safeMint\|_safeTransfer\|safeTransferFrom' contracts/src/
+rg '_safeMint|_safeTransfer|safeTransferFrom' contracts/src/
 
 # Access control
-rg 'onlyOwner\|onlyRole\|_checkRole\|require.*msg\.sender' contracts/src/
+rg 'onlyOwner|onlyRole|_checkRole|require.*msg\.sender' contracts/src/
 
 # Dangerous patterns
-rg 'selfdestruct\|delegatecall\|tx\.origin' contracts/src/
+rg 'selfdestruct|delegatecall|tx\.origin' contracts/src/
 
 # Unchecked blocks
 rg 'unchecked' contracts/src/

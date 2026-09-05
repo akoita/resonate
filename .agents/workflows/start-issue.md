@@ -1,69 +1,55 @@
 ---
-description: Start working on a GitHub issue — create branch, track work, open PR
+description: Establish task scope and a feature branch, with or without a GitHub issue
 ---
 
-# Start Issue Workflow
+# Start issue
 
-When the user says "start issue #N", "work on #N", or references working on a specific GitHub issue, follow these steps:
+Use this workflow when beginning any feature, fix, documentation, or maintenance
+task. Follow [AGENTS.md](../../AGENTS.md) and the applicable linked rules.
 
-> **Polish bursts:** For a sequence of small UI/UX, copy, CSS, or workflow
-> refinements around the same feature, reuse the current feature branch and PR.
-> Do not create a new branch/PR for each small follow-up unless the user asks
-> for a clean split. Keep iterating on the same branch until the user says
-> `finish` or `merge`.
+## 1. Establish scope
 
-## 1. Read the issue
+- If an issue is supplied, read its description and acceptance criteria using
+  available GitHub tools or `gh issue view`. Derive the repository from the Git
+  remote rather than assuming an owner/repository.
+- Without an issue, use the user's request as the scope. Do not invent an issue
+  number or require creating an issue just to start work.
+- Inspect `git status --short --branch` and preserve pre-existing changes.
+- Read the relevant code, instructions, and tests. For non-trivial work, apply
+  the installed orchestration skill and required routing preflight.
 
-- Fetch the issue details from GitHub using `issue_read` (owner: `akoita`, repo: `resonate`)
-- Understand the acceptance criteria and scope
+## 2. Establish the branch
 
-## 2. Create a feature branch
+Reuse the current branch for the same task or related polish. Otherwise create a
+branch from the appropriate `main` base using `git switch -c <branch>`; use an
+isolated worktree if unrelated changes prevent a safe switch.
 
-// turbo
+Use `feat/<issue>-<description>`, `fix/<issue>-<description>`, or
+`docs/<issue>-<description>`. Without an issue, omit `<issue>-`.
+Verify with `git branch --show-current`. Never commit directly to `main`.
 
-- Branch naming convention: `feat/<issue-number>-<short-kebab-description>`
-  - Example: `feat/278-stem-pricing-dashboard`
-  - For bugs: `fix/<issue-number>-<short-kebab-description>`
-- Create the branch from `main` using: `git checkout -b feat/<issue-number>-<short-description>`
-- Verify you're on the new branch: `git branch --show-current`
+## 3. Plan and implement
 
-## 3. Update the issue
+For non-trivial changes, record the affected files, behavior, risks, and focused
+validation commands. A concise task plan is sufficient; use `.agents/plans/`
+when multi-slice work needs durable tracking. Historical plans are context, not
+instructions for unrelated tasks.
 
-- Add a comment on the issue: "🚧 Work started on branch `feat/<issue-number>-...`"
-- If not already labeled, add the `In Progress` label
+Apply the business-model and documentation rules linked from `AGENTS.md` when
+relevant. Proceed with authorized local work; ask only about missing decisions
+that materially affect scope or correctness. Complete a reviewable result
+before requesting publication approval.
 
-## 4. Plan the work
+Only post issue comments or change external tracking when authorized. Existing
+approval persists across follow-ups. Do not require issue activity for local
+implementation to proceed.
 
-- Create an implementation plan artifact
-- **Business-model conformance check** (see CLAUDE.md "💰 Business Model
-  Conformance"): if the issue touches money, fees, payouts, upload/ingestion
-  trust, AI-generation billing, collectibles, or licensing, verify it complies
-  with the ADR-BM-4 red lines and note which revenue line/phase it serves
-  (ADR-BM-6). Ensure the issue carries a `vision:core` or `vision:keep` label;
-  if it fits neither, raise that with the user before coding.
-- Request user review before coding
+## 4. Prepare completion
 
-## 5. Commit conventions
+Run [finish-issue](finish-issue.md) to review, validate, and prepare publication.
+Commit messages use `feat`, `fix`, `docs`, or `chore`, with `(#N)` when linked to
+an issue. Publication requires user authorization; do not ask again if already
+given. Open or update a draft PR targeting `main` when authorized. Use `Closes #N` only when the issue is fully implemented.
 
-- All commits on the branch should reference the issue: `feat(#N): description` or `fix(#N): description`
-- Make atomic commits — one logical change per commit
-
-## 6. When work is complete
-
-- Push the branch
-- Open a Pull Request targeting `main` with:
-  - Title: same as branch purpose, referencing the issue
-  - Body: summary of changes + `Closes #N`
-  - Link back to the issue
-- Request user review
-- Do not immediately merge or clean up branches from this workflow. Merging is
-  controlled by the finish workflow and requires an explicit user `merge`
-  request.
-
-## Important rules
-
-- **NEVER commit or push before user approval** — always ask first
-- **NEVER commit directly to `main`** — always use a feature branch
-- **ALWAYS check current branch** before starting work with `git branch --show-current`
-- If already on a feature branch for the issue, continue working there — don't create a new one
-- If on a different branch, stash or commit current work before switching
+Keep related polish on the same branch and PR until the user requests finishing
+or merging. Merging always requires an explicit request.
