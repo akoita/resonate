@@ -199,7 +199,7 @@ jobs:
           registry: ${{ steps.coordinates.outputs.image_uri }}
           build-metadata: ${{ steps.build.outputs.evidence_path }}
           evidence-dir: ${{ runner.temp }}/image-evidence/analytics-dataflow
-          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-analytics-dataflow-flex-template.yml@${{ inputs.source_sha }}
+          workflow-identity: https://github.com/${{ github.repository }}/.github/workflows/publish-analytics-dataflow-flex-template.yml@${{ github.ref }}
           source-sha: ${{ inputs.source_sha }}
 
       - name: Publish Dataflow Flex Template spec
