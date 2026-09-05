@@ -1,5 +1,21 @@
 [
   {
+    "eventName": "player.action_impression",
+    "payload": {
+      "actionKeys": ["save", "buy_license", "artist_room"],
+      "actionStatuses": ["available", "disabled", "planned"],
+      "source": "player"
+    }
+  },
+  {
+    "eventName": "player.action_selected",
+    "payload": {
+      "actionKey": "save",
+      "actionStatus": "available",
+      "source": "player"
+    }
+  },
+  {
     "eventName": "player.segment_loop_enabled",
     "payload": {
       "artistId": "artist-1",

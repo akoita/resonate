@@ -133,7 +133,7 @@ aggregates, not from retaining raw personal data forever.
 - Use the consent and retention policy:
   [Analytics Consent And Retention Policy](analytics_consent_retention_policy.md).
 - For the current artist dashboard/reporting surface, see:
-  [Analytics Dashboard v0](analytics_dashboard_v0.md).
+  [Analytics Dashboard](analytics_dashboard.md).
 - For pipeline health and loss detection, see:
   [Analytics Pipeline Observability](analytics_pipeline_observability.md).
 - Backend producers should use the shared event contract:
@@ -330,6 +330,15 @@ Current verification:
   `backend/src/tests/analytics_governance.integration.spec.ts`.
 - Future implementation PRs should include tests for durable ingestion,
   idempotency enforcement, and additional downstream report/fact behavior.
+
+## Player Action Telemetry
+
+Player action telemetry (#1732) is accepted by the authenticated product
+endpoint with bounded action-key/status payloads and actor-scoped retry
+deduplication. Backend warehouse exports and Dataflow facts retain the paired
+impression arrays or selected action without adding listening or revenue
+counts. See the [event taxonomy](../architecture/analytics_event_taxonomy_v1.md#player-action-events).
+Real authenticated staging verification remains pending deployment of the fix.
 
 ## Follow-Up Work
 

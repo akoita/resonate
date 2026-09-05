@@ -51,6 +51,22 @@ available right now?
   - `player.action_impression`
   - `player.action_selected`
 
+The authenticated `POST /analytics/product/event` endpoint accepts both action
+events with a `track` subject. Impressions carry aligned, unique `actionKeys`
+and `actionStatuses` arrays; selections carry one known `actionKey` with
+`actionStatus: available`. The backend fixes the source to `player`, derives
+the pseudonymous actor from the session, and drops extra payload fields,
+including titles, links, wallet details, and availability reasons. Unavailable
+actions are observed in impressions but do not produce selection events.
+
+The player suppresses unchanged action-panel impressions during a mounted page
+visit. Retrying either event with the same client event ID, actor, session, and
+track retains one ledger event; a new deliberate action receives a fresh ID.
+Warehouse export and Dataflow preserve the action fields without counting them
+as listening or revenue. Authenticated staging acceptance and duplicate-count
+verification remain tracked in [#1732](https://github.com/akoita/resonate/issues/1732)
+until the fix is deployed.
+
 The player UI keeps album art, title, artist, and stem mixer access in the hero.
 Immediately usable actions render in the right console near progress, volume,
 and queue context. Disabled or future actions render as a compact

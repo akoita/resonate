@@ -25,6 +25,8 @@ type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
 const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat"]);
 const REPEAT_MODES = new Set(["none", "one", "all"]);
 const PRODUCT_EVENT_NAMES = new Set([
+  "player.action_impression",
+  "player.action_selected",
   "player.segment_loop_enabled",
   "player.segment_loop_updated",
   "player.segment_loop_disabled",
@@ -336,6 +338,10 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     logProductAnalyticsRejection("invalid_subject_pair", eventName);
     throw new BadRequestException("subjectType and subjectId must be provided together");
   }
+  const playerAction = eventName === "player.action_impression" || eventName === "player.action_selected";
+  if (playerAction && (subjectType !== "track" || !subjectId)) {
+    throw new BadRequestException("Player action events require a track subject");
+  }
 
   return {
     eventName,
@@ -343,9 +349,11 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     traceId: traceId || undefined,
     subjectType: subjectType || undefined,
     subjectId: subjectId || undefined,
-    source: source || "web_app",
+    source: playerAction ? "player" : source || "web_app",
     geo: normalizeAnalyticsGeoDimension(body.geo),
-    payload: normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
+    payload: playerAction
+      ? normalizePlayerActionPayload(eventName, body.payload)
+      : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -421,6 +429,31 @@ function sanitizeProductPayloadValue(value: unknown): string | number | boolean 
     return values.slice(0, 20);
   }
   return undefined;
+}
+
+function normalizePlayerActionPayload(eventName: string, value: unknown): Record<string, unknown> {
+  const keys = new Set(["save", "add_to_playlist", "inspect_stems", "buy_license", "remix", "artist_room", "shows_campaign", "collect_drop"]);
+  const statuses = new Set(["available", "disabled", "planned"]);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("Player action payload is required");
+  }
+  const payload = value as Record<string, unknown>;
+  if (eventName === "player.action_selected") {
+    if (typeof payload.actionKey !== "string" || !keys.has(payload.actionKey) || payload.actionStatus !== "available") {
+      throw new BadRequestException("Invalid selected player action");
+    }
+    return { actionKey: payload.actionKey, actionStatus: payload.actionStatus, source: "player" };
+  }
+  const { actionKeys, actionStatuses } = payload;
+  if (!Array.isArray(actionKeys) || !Array.isArray(actionStatuses)
+      || actionKeys.length === 0 || actionKeys.length > keys.size
+      || actionKeys.length !== actionStatuses.length
+      || new Set(actionKeys).size !== actionKeys.length
+      || !actionKeys.every((key) => typeof key === "string" && keys.has(key))
+      || !actionStatuses.every((status) => typeof status === "string" && statuses.has(status))) {
+    throw new BadRequestException("Invalid player action impression");
+  }
+  return { actionKeys, actionStatuses, source: "player" };
 }
 
 function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {

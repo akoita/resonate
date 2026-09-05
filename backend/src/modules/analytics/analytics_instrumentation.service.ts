@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
+import { createHash } from "crypto";
 import { AnalyticsEventInput, AnalyticsGeoDimension } from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
@@ -252,7 +253,18 @@ export class AnalyticsInstrumentationService {
   }
 
   async recordProductEvent(input: ProductAnalyticsInput) {
+    // A retry has a new server timestamp, but remains the same client action.
+    // Scope the key to the authenticated actor so callers cannot suppress each other's events.
+    const playerAction = input.eventName === "player.action_impression" || input.eventName === "player.action_selected";
+    const clientEventId = input.sourceRefs?.clientEventId;
+    const eventId = playerAction && input.actorId && clientEventId
+      ? `evt_${createHash("sha256").update(JSON.stringify([
+        "player-action:v1", input.eventName, input.producer ?? "web-app", input.actorId,
+        input.sessionId, input.subjectType, input.subjectId, clientEventId,
+      ])).digest("hex").slice(0, 32)}`
+      : undefined;
     const result = await this.emit({
+      ...(eventId ? { eventId } : {}),
       eventName: input.eventName,
       producer: input.producer ?? "web-app",
       privacyTier: "pseudonymous",

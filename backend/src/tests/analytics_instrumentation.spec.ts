@@ -3,6 +3,31 @@ import { AnalyticsInstrumentationService } from "../modules/analytics/analytics_
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 
 describe("AnalyticsInstrumentationService", () => {
+  it("deduplicates player action retries without merging different actors, tracks, events, or deliberate actions", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+    const input = {
+      eventName: "player.action_impression", actorId: "listener_hash", sessionId: "session-1",
+      subjectType: "track", subjectId: "track-1", source: "player",
+      payload: { actionKeys: ["save"], actionStatuses: ["available"] },
+      sourceRefs: { clientEventId: "client-event-1" },
+    };
+    const first = await instrumentation.recordProductEvent(input);
+    const retry = await instrumentation.recordProductEvent(input);
+    expect(retry.eventId).toBe(first.eventId);
+    for (const variant of [
+      { actorId: "another_listener_hash" },
+      { subjectId: "track-2" },
+      { sessionId: "session-2" },
+      { eventName: "player.action_selected", payload: { actionKey: "save", actionStatus: "available" } },
+      { sourceRefs: { clientEventId: "client-event-2" } },
+    ]) {
+      const result = await instrumentation.recordProductEvent({ ...input, ...variant });
+      expect(result.eventId).not.toBe(first.eventId);
+    }
+    expect(await ingest.listEvents()).toHaveLength(6);
+  });
+
   it("emits generation events with the required personal-data consent basis", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);
