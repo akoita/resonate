@@ -341,7 +341,8 @@ export default function LibraryPage() {
         if (tab === "playlists") {
             setActiveTab("playlists");
             const playlistId = searchParams.get("playlist");
-            if (playlistId) void getPlaylist(playlistId).then(setSelectedPlaylist);
+            // A stale or unreachable deep link falls back to the playlist list rather than a blank tab.
+            if (playlistId) void getPlaylist(playlistId).then(setSelectedPlaylist).catch(() => setSelectedPlaylist(null));
         } else if (tab === "ai_creations") {
             setActiveTab("ai_creations");
         } else if (tab === "moments") {

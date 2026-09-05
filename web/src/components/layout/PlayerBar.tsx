@@ -58,7 +58,8 @@ export default function PlayerBar() {
       style={{ cursor: "pointer" }}
       title="Double-click to open player"
     >
-      <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>
+      {/* The full player console owns these controls; a second copy there would float over it. */}
+      {!isPlayerPage && <div className="player-listening-menu" onDoubleClick={e => e.stopPropagation()}><ListeningControls key={currentTrack?.id} /></div>}
       {/* Progress Line */}
       <div
         className="player-progress-container"

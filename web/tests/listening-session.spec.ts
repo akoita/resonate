@@ -87,8 +87,10 @@ test('passage loop holds finite counts, then natural ends consume exact addition
   expect(await page.evaluate(() => (window as unknown as { sessionAudio: HTMLAudioElement }).sessionAudio.currentTime)).toBe(5);
   await expect(controls.getByText(/1 remaining/)).toBeVisible();
   if (process.env.CAPTURE_LISTENING_HELP === 'true') {
-    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.setViewportSize({ width: 1440, height: 1320 });
     await controls.scrollIntoViewIfNeeded();
+    // Show the console from its own top so the help image keeps the queue heading and save action.
+    await page.getByRole('main').locator('aside.player-floating-console').evaluate(el => { el.scrollTop = 0; });
     await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
     await page.screenshot({ path: 'public/help/screenshots/player-listening-controls.png', animations: 'disabled' });
   }

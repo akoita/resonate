@@ -478,6 +478,8 @@ function PlayerContent() {
             <span>Signal Progress</span>
             <span>{formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} / {formatTime(duration)}</span>
           </div>
+          {/* The A–B marker sits on the scrub track itself, so the highlight reads against the playhead. */}
+          <div className="player-range-wrap">
           {segmentLoop && duration > 0 && <div className="segment-timeline" aria-label={`Loop from ${segmentLoop.start.toFixed(1)} to ${segmentLoop.end.toFixed(1)} seconds`}><span style={{ marginLeft: `${segmentLoop.start / duration * 100}%`, width: `${(segmentLoop.end - segmentLoop.start) / duration * 100}%` }} /></div>}
           <input
             className="player-range"
@@ -492,6 +494,7 @@ function PlayerContent() {
             aria-label="Playback position"
             aria-valuetext={`${formatTime(isDragging ? (dragValue / 100) * duration : currentTime)} of ${formatTime(duration)}`}
           />
+          </div>
         </div>
 
         <div className={`console-gain ${muted ? "is-muted" : ""}`}>

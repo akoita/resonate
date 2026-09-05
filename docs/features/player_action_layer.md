@@ -207,7 +207,9 @@ transaction. An API failure is surfaced rather than silently creating a local
 replacement. Signed-out saves use local storage; public sharing still requires
 account synchronization.
 
-**Loop and repeat** is available in the compact bar and full player. A–B markers
+**Loop and repeat** is available in the compact bar and full player. On the
+player page the console owns the panel and the compact bar does not repeat it.
+A–B markers
 are seconds within a known track duration. The timeline highlights the range;
 seeking is clamped within it, and B returns to A. Editing applies on Update
 passage; Clear passage restores normal playback. Track changes clear markers.

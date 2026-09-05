@@ -43,15 +43,15 @@ export function SaveQueuePlaylist() {
     }
     finally { inFlight.current = false; setBusy(false); }
   }
-  return <div className="listening-controls">
+  return <div className="listening-controls queue-save">
     {queue.length > 0 && (queueSourceKind === "unchanged_playlist" && queueSource
-      ? <Link href={queueSource.publicPlaylist ? `/playlist/${encodeURIComponent(queueSource.playlistId)}` : `/library?tab=playlists&playlist=${encodeURIComponent(queueSource.playlistId)}`}>View playlist</Link>
-      : <button type="button" onClick={() => {
+      ? <Link className="lc-btn lc-btn--ghost" href={queueSource.publicPlaylist ? `/playlist/${encodeURIComponent(queueSource.playlistId)}` : `/library?tab=playlists&playlist=${encodeURIComponent(queueSource.playlistId)}`}>View playlist</Link>
+      : <button type="button" className="lc-btn lc-btn--primary" onClick={() => {
         setSnapshot({ ...queueSnapshot(queue), tracks: [...queue], queueCount: queue.length, sourceKind: queueSourceKind === "modified_playlist" ? "modified_playlist" : "ad_hoc" });
         setName(""); setFolder(""); setConfirmed(false); setError(""); setSaved(null);
         void listFolders().then(setFolders).catch(() => setError("Could not load folders. You can still save in the root folder."));
       }}>Save queue as playlist</button>)}
-    {saved && <p role="status">Playlist saved. <Link href={`/library?tab=playlists&playlist=${encodeURIComponent(saved)}`}>Open playlist</Link></p>}
+    {saved && <p className="lc-status" role="status">Playlist saved. <Link href={`/library?tab=playlists&playlist=${encodeURIComponent(saved)}`}>Open playlist</Link></p>}
     {snapshot && createPortal(<div className="playlist-modal-overlay">
       <div className="playlist-modal redesigned listening-dialog listening-controls" ref={dialog} role="dialog" aria-modal="true" aria-label="Save queue as playlist">
         <h2>Save queue as playlist</h2>
@@ -61,13 +61,15 @@ export function SaveQueuePlaylist() {
         <label>Folder<select value={folder} onChange={e => setFolder(e.target.value)} disabled={busy}>
           <option value="">Root folder</option>{folders.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select></label>
-        {snapshot.invalid.length > 0 && <div>
+        {snapshot.invalid.length > 0 && <div className="lc-omitted">
           <p>These tracks cannot be saved:</p><ul>{snapshot.invalid.map(t => <li key={t.id}>{t.title}</li>)}</ul>
-          {!!snapshot.trackIds.length && <label><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Save without these tracks</label>}
+          {!!snapshot.trackIds.length && <label className="lc-checkbox"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Save without these tracks</label>}
         </div>}
-        {error && <p role="alert">{error}</p>}
-        <button type="button" disabled={busy} onClick={close}>Cancel</button>
-        <button type="button" disabled={busy || !name.trim() || !snapshot.trackIds.length || (snapshot.invalid.length > 0 && !confirmed)} onClick={() => void save()}>{busy ? "Saving…" : "Create playlist"}</button>
+        {error && <p className="lc-error" role="alert">{error}</p>}
+        <div className="lc-actions lc-actions--dialog">
+          <button type="button" className="lc-btn lc-btn--ghost" disabled={busy} onClick={close}>Cancel</button>
+          <button type="button" className="lc-btn lc-btn--primary" disabled={busy || !name.trim() || !snapshot.trackIds.length || (snapshot.invalid.length > 0 && !confirmed)} onClick={() => void save()}>{busy ? "Saving…" : "Create playlist"}</button>
+        </div>
       </div>
     </div>, document.body)}
   </div>;
