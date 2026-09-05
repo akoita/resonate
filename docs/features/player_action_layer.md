@@ -209,6 +209,10 @@ account synchronization.
 
 **Loop and repeat** is available in the compact bar and full player. On the
 player page the console owns the panel and the compact bar does not repeat it.
+The panel is a console module rather than a form: a `.studio-label` kicker,
+status LEDs for an armed passage or repeat plan, hairline rules instead of
+nested boxes, inset rack wells with mono readouts, and the same chip family as
+the Now Playing action row.
 A–B markers
 are seconds within a known track duration. The timeline highlights the range;
 seeking is clamped within it, and B returns to A. Editing applies on Update

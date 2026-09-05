@@ -1,92 +1,110 @@
 /* ---- Listening controls ------------------------------------------------
- * Shared by the floating mini-player menu and the player console. Everything
- * here reads Obsidian Frequency (--r-*) tokens so the panel belongs to the
- * console rather than looking like a raw browser form.
+ * The panel is a console module, not a form on a dark background. It follows
+ * the same grammar as the Now Playing action panel: hairline rules instead of
+ * a box, a mono `.studio-label` kicker, status LEDs, and chip-shaped actions.
+ * Values live in inset rack wells with mono tabular numerals.
  * ----------------------------------------------------------------------- */
 
 .listening-controls {
-  margin-block: var(--r-sm);
   font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  line-height: 1.5;
   color: var(--r-on-surface);
 }
 
-/* Only the collapsible control panel is a surface; the save-queue wrapper and
- * the dialog keep their own chrome. */
 details.listening-controls {
-  border: 1px solid var(--r-chrome-border);
-  border-radius: var(--r-radius-md);
-  background: var(--r-chrome-glass);
+  margin: 12px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--r-chrome-border);
+  border-bottom: 1px solid var(--r-chrome-border);
 }
 
-.lc-summary {
+/* ---- Kicker row (the disclosure) --------------------------------------- */
+
+.lc-kicker-row {
   display: flex;
   align-items: center;
-  gap: var(--r-xs);
-  min-height: var(--touch-target);
-  padding: var(--r-xs) var(--r-sm);
+  gap: 10px;
+  min-height: 24px;
   cursor: pointer;
   list-style: none;
-  border-radius: var(--r-radius-md);
-  transition: background 0.18s ease, color 0.18s ease;
 }
 
-.lc-summary::-webkit-details-marker {
+.lc-kicker-row::-webkit-details-marker {
   display: none;
 }
 
-/* Own caret so the disclosure reads at console weight in every browser. */
-.lc-summary::before {
-  content: "";
-  flex: 0 0 auto;
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid var(--r-on-surface-variant);
-  border-bottom: 1.5px solid var(--r-on-surface-variant);
-  transform: rotate(-45deg);
-  transition: transform 0.18s var(--r-ease-out);
+.lc-kicker-row:hover .studio-label {
+  opacity: 1;
 }
 
-details.listening-controls[open] .lc-summary::before {
-  transform: rotate(45deg);
+.lc-leds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
 }
 
-.lc-summary:hover {
-  background: var(--r-chrome-hover);
-}
-
-.lc-summary-title {
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--r-on-surface-variant);
-}
-
-.lc-badge {
+/* Same pill as the locked action chips, carrying a live indicator. */
+.lc-led-chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--r-radius-full);
-  border: 1px solid rgba(124, 92, 255, 0.45);
-  background: rgba(124, 92, 255, 0.14);
-  color: var(--r-primary-soft);
+  gap: 6px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(124, 92, 255, 0.28);
+  background: rgba(124, 92, 255, 0.1);
+  color: var(--r-on-surface-variant);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
 
-.lc-body {
-  padding: 0 var(--r-sm) var(--r-sm);
+/* Reads like LIVE SYNC ACTIVE, in the console's own violet. */
+.lc-led {
+  position: relative;
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--r-primary-soft);
+  box-shadow: 0 0 10px var(--r-primary), 0 0 2px rgba(255, 255, 255, 0.8);
 }
 
+.lc-led::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  animation: led-pulse 2s ease-in-out infinite;
+}
+
+.lc-caret {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--r-on-surface-muted);
+  border-bottom: 1.5px solid var(--r-on-surface-muted);
+  transform: rotate(-45deg);
+  transition: transform 0.18s var(--r-ease-out);
+}
+
+details.listening-controls[open] .lc-caret {
+  transform: rotate(45deg);
+}
+
+/* ---- Groups ------------------------------------------------------------ */
+
+.lc-body {
+  padding-top: 12px;
+}
+
+/* Borderless: the kicker separates the groups, the way the console does it. */
 .lc-group {
-  border: 1px solid var(--r-outline-variant);
-  border-radius: var(--r-radius-sm);
-  padding: var(--r-sm);
-  margin: 0 0 var(--r-xs);
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
   min-width: 0;
 }
 
@@ -94,64 +112,309 @@ details.listening-controls[open] .lc-summary::before {
   margin-bottom: 0;
 }
 
-.lc-group legend {
-  padding-inline: 6px;
-  font-family: var(--font-display);
+/* Three tiers: the module kicker stays violet, its groups step down to
+ * lavender, and field names below them are grey. */
+.lc-group > legend {
+  padding: 0;
+  margin-bottom: 8px;
+  color: var(--r-on-surface-variant);
+  opacity: 0.75;
+}
+
+/* ---- Rack rows --------------------------------------------------------- */
+
+.lc-rack {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.lc-designator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-radius-xs);
+  border: 1px solid var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  color: var(--r-on-surface-variant);
+  font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 800;
   letter-spacing: 0.06em;
+}
+
+/* Longer names sit on their own line as a micro-kicker above the control. */
+.lc-designator--wide {
+  flex: 0 0 100%;
+  width: auto;
+  height: auto;
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  margin-bottom: -3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--r-on-surface-muted);
 }
 
-/* A value and the control that fills it stay on one line; the pair never
- * splits across a wrap the way a flat flex row did. */
-.lc-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: var(--r-sm);
-}
-
-.lc-field {
-  display: flex;
-  align-items: end;
-  gap: var(--r-xs);
-  min-width: 0;
-}
-
-.listening-controls label {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  min-width: 0;
-  flex: 1 1 auto;
-  color: var(--r-on-surface-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.lc-checkbox {
-  flex-direction: row;
+/* An inset well, not a form field. */
+.lc-well {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  gap: var(--r-xs);
-  font-size: 0.8125rem;
+  flex: 1 1 96px;
+  min-width: 78px;
+  max-width: 136px;
+  border-radius: var(--r-radius-xs);
+  border: 1px solid var(--r-outline-variant);
+  background: rgba(0, 0, 0, 0.32);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.lc-well--select {
+  flex: 1 1 170px;
+  max-width: none;
+}
+
+.lc-well input,
+.lc-well select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 2px 6px 10px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--r-on-surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.lc-well select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  cursor: pointer;
+}
+
+.lc-well select option {
+  background: var(--r-surface-mid);
   color: var(--r-on-surface);
 }
 
-.lc-hint {
-  align-self: end;
-  padding-bottom: 12px;
-  font-variant-numeric: tabular-nums;
-  font-size: 11px;
-  color: var(--r-on-surface-muted);
-  white-space: nowrap;
+/* Spinners and the native select arrow are the loudest "web form" tells. */
+.lc-well input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
-.listening-controls input,
-.listening-controls select {
+.lc-well input[type="number"]::-webkit-outer-spin-button,
+.lc-well input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.lc-chevron {
+  position: absolute;
+  right: 11px;
+  width: 6px;
+  height: 6px;
+  pointer-events: none;
+  border-right: 1.5px solid var(--r-on-surface-muted);
+  border-bottom: 1.5px solid var(--r-on-surface-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.lc-well:focus-within {
+  border-color: rgba(124, 92, 255, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55),
+    0 0 0 2px rgba(124, 92, 255, 0.22);
+}
+
+.lc-unit {
+  padding-right: 10px;
+  color: var(--r-on-surface-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.lc-readout {
+  flex: 0 0 auto;
+  min-width: 42px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-on-surface-muted);
+}
+
+/* ---- Chips ------------------------------------------------------------- */
+
+.lc-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Same pill as .player-action-chip so both rows read as one control family. */
+.lc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 7px 14px;
+  border-radius: 11px;
+  border: 1px solid var(--r-chrome-border);
+  background: var(--r-chrome-glass);
+  color: #fff;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.16s var(--r-ease-out), border-color 0.16s ease,
+    background 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
+}
+
+/* Inline rack buttons stay compact next to their well. */
+.lc-rack .lc-chip {
+  min-height: 34px;
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+.lc-chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(124, 92, 255, 0.5);
+  background: rgba(124, 92, 255, 0.15);
+  box-shadow: 0 8px 20px -8px rgba(124, 92, 255, 0.5);
+}
+
+.lc-chip:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Arms a mode — present, but still console chrome rather than a solid CTA. */
+.lc-chip--arm {
+  border-color: rgba(124, 92, 255, 0.4);
+  background: rgba(124, 92, 255, 0.12);
+  color: var(--r-secondary-soft);
+}
+
+/* On, matching the pressed state of the console icon buttons. */
+.lc-chip--armed {
+  color: var(--r-primary-soft);
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.18),
+    0 8px 20px -10px rgba(124, 92, 255, 0.6);
+}
+
+.lc-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.listening-controls :focus-visible {
+  outline: 2px solid var(--r-primary);
+  outline-offset: 2px;
+}
+
+/* ---- Notes and errors -------------------------------------------------- */
+
+.lc-note,
+.lc-error {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.lc-note {
+  color: var(--r-on-surface-muted);
+}
+
+.lc-error {
+  color: var(--r-error);
+  font-weight: 600;
+}
+
+/* ---- Save-queue trigger ------------------------------------------------ */
+
+.queue-save {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.queue-save .player-action-chip {
+  text-decoration: none;
+}
+
+.lc-status {
+  margin: 0;
+  font-size: 11px;
+  color: var(--r-on-surface-variant);
+}
+
+/* ---- Save dialog -------------------------------------------------------
+ * A modal over the app rather than console chrome, so it keeps ordinary
+ * dialog affordances — just on the same tokens. */
+
+/* .playlist-modal.redesigned assumes a .playlist-modal-header child and so
+ * sets padding:0 with overflow:hidden — which clipped this dialog's heading
+ * against the panel edge. Matching its specificity restores the inset, and
+ * --studio-surface is 3% white, too sheer to sit over page content. */
+.playlist-modal.redesigned.listening-dialog {
+  padding: var(--r-lg);
+  max-width: min(520px, 95vw);
+  max-height: 85dvh;
+  overflow: auto;
+  background: var(--r-surface-low);
+  font-size: 0.875rem;
+  /* .playlist-modal's 1.5rem gap is sized for a list, not a short form. */
+  gap: 12px;
+}
+
+/* .playlist-modal only styles h3, so this heading fell back to UA margins. */
+.listening-dialog h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--r-on-surface);
+}
+
+.listening-dialog > p {
+  margin: 0;
+  color: var(--r-on-surface-variant);
+}
+
+.listening-dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--r-on-surface-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.listening-dialog input,
+.listening-dialog select {
   width: 100%;
-  min-width: 0;
   min-height: var(--touch-target);
   padding: 8px 10px;
   border: 1px solid var(--r-outline);
@@ -159,41 +422,48 @@ details.listening-controls[open] .lc-summary::before {
   background: var(--r-surface-low);
   color: var(--r-on-surface);
   font-family: var(--font-sans);
-  font-size: 0.8125rem;
-  font-variant-numeric: tabular-nums;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  font-size: 0.875rem;
 }
 
-.listening-controls input[type="checkbox"] {
-  width: 18px;
-  min-height: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  accent-color: var(--r-primary);
-}
-
-.listening-controls input:hover,
-.listening-controls select:hover {
-  border-color: rgba(124, 92, 255, 0.4);
-}
-
-.listening-controls input:focus,
-.listening-controls select:focus {
+.listening-dialog input:focus,
+.listening-dialog select:focus {
   border-color: var(--r-primary);
   box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.18);
   outline: none;
 }
 
+.lc-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--r-on-surface);
+  font-weight: 500;
+}
+
+.lc-checkbox input[type="checkbox"] {
+  width: 18px;
+  min-height: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  padding: 0;
+  accent-color: var(--r-primary);
+}
+
+.lc-omitted ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--r-on-surface-variant);
+}
+
 .lc-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--r-xs);
-  margin-top: var(--r-sm);
+  gap: 8px;
+  margin-top: var(--r-md);
 }
 
 .lc-actions--dialog {
   justify-content: flex-end;
-  margin-top: var(--r-md);
 }
 
 .lc-btn {
@@ -201,15 +471,14 @@ details.listening-controls[open] .lc-summary::before {
   align-items: center;
   justify-content: center;
   min-height: var(--touch-target);
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: var(--r-radius-sm);
   border: 1px solid var(--r-chrome-border);
   background: var(--r-chrome-glass);
   color: var(--r-on-surface);
   font-family: var(--font-display);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
-  text-decoration: none;
   cursor: pointer;
   transition: transform 0.16s var(--r-ease-out), border-color 0.16s ease,
     background 0.16s ease, box-shadow 0.16s ease;
@@ -225,16 +494,11 @@ details.listening-controls[open] .lc-summary::before {
 .lc-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(124, 92, 255, 0.45);
-  background: rgba(124, 92, 255, 0.14);
 }
 
 .lc-btn--primary:hover:not(:disabled) {
   background: var(--r-grad-brand-bright);
   border-color: transparent;
-}
-
-.lc-btn:active:not(:disabled) {
-  transform: translateY(0);
 }
 
 .lc-btn:disabled {
@@ -243,59 +507,9 @@ details.listening-controls[open] .lc-summary::before {
   transform: none;
 }
 
-.listening-controls :focus-visible {
-  outline: 2px solid var(--r-primary);
-  outline-offset: 2px;
-}
-
-.listening-controls p {
-  width: 100%;
-  margin: var(--r-xs) 0 0;
-}
-
-.lc-note,
-.lc-status {
-  color: var(--r-on-surface-muted);
-  font-size: 12px;
-}
-
-.lc-status {
-  color: var(--r-on-surface-variant);
-}
-
-.lc-error {
-  color: var(--r-error);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.lc-omitted ul {
-  margin: var(--r-unit) 0 0;
-  padding-left: var(--r-md);
-  color: var(--r-on-surface-variant);
-}
-
-/* ---- Save-queue trigger ------------------------------------------------ */
-
-.queue-save {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--r-xs);
-}
-
-.listening-dialog label {
-  font-size: 12px;
-}
-
-.listening-dialog {
-  padding: var(--r-lg);
-  max-width: min(520px, 95vw);
-  max-height: 85dvh;
-  overflow: auto;
-}
-
-/* ---- Mini-player menu -------------------------------------------------- */
+/* ---- Mini-player menu --------------------------------------------------
+ * Off the player page the module has no console around it, so the menu
+ * supplies the surface and the module drops its hairlines. */
 
 .player-listening-menu {
   position: absolute;
@@ -304,13 +518,17 @@ details.listening-controls[open] .lc-summary::before {
   z-index: 30;
   max-width: min(420px, calc(100vw - 24px));
   border-radius: var(--r-radius-md);
-  background: rgba(11, 11, 19, 0.92);
+  border: 1px solid var(--r-chrome-border);
+  /* Near-opaque: page text behind the menu was legible through it at 0.92. */
+  background: rgba(11, 11, 19, 0.98);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 44px -18px rgba(0, 0, 0, 0.85);
 }
 
 .player-listening-menu .listening-controls {
   margin: 0;
+  padding: 12px 14px;
+  border: 0;
 }
 
 .player-listening-menu details[open] {
@@ -384,4 +602,17 @@ aside.player-floating-console > * {
 aside.player-floating-console .queue-list {
   max-height: 35vh;
   min-height: 96px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lc-led::after {
+    animation: none;
+  }
+
+  .lc-caret,
+  .lc-chip,
+  .lc-btn,
+  .lc-well {
+    transition: none;
+  }
 }
