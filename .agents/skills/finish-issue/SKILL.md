@@ -35,13 +35,13 @@ finalize work on the current branch, follow these steps.
 
 ## 1. Verify the branch
 
-// turbo
-
 - Run `git branch --show-current` to check the current branch
 - If on `main`, identify the feature branch for the issue and switch to it
-- If no feature branch exists, create one following the convention: `feat/<issue-number>-<short-kebab-description>` (or `fix/` for bugs)
-  // turbo
-- Run `git status` to see uncommitted changes
+- If no feature branch exists, follow [start-issue](../start-issue/SKILL.md),
+  including its no-issue naming and fresh-base checks.
+- Run `git status` to see uncommitted changes. Fetch `origin/main` and review the
+  current PR base/head before publication; reconcile upstream changes without
+  overwriting unrelated work.
 
 ## 2. Verify implementation coverage
 
@@ -70,7 +70,7 @@ finalize work on the current branch, follow these steps.
   validation scope. Implement any missing required updates before proceeding.
   Mention the relevant checklist sections or intentional deferrals in the PR
   summary.
-- **Business-model conformance** (CLAUDE.md "💰 Business Model Conformance"):
+- **Business-model conformance** (root `AGENTS.md` "Business Model v2"):
   if the change touches money, fees, payouts, upload/ingestion trust,
   AI-generation billing, collectibles, or licensing — confirm the ADR-BM-4 red
   lines are respected, state the revenue line/phase (ADR-BM-6) in the PR body,
@@ -80,9 +80,12 @@ finalize work on the current branch, follow these steps.
 
 ## 3. Ensure test coverage
 
-- Identify all changed and new files: `git diff --name-only main`
+- Identify tracked changes against the PR merge base and inspect
+  `git status --short` for new untracked files; include both in review.
+  For a clean committed branch, use `git diff --name-only origin/main...HEAD`.
 - For each changed component/module, check if automated tests exist
-- If tests are missing or outdated, create or update them
+- Add or update meaningful tests for changed behavior. Documentation-only edits
+  do not need tests that merely mirror the wording.
 - Test files should follow the project's existing test conventions and location patterns
 
 ## 4. Run tests
@@ -92,7 +95,12 @@ default; expensive local checks belong in CI/CD unless the branch is high risk
 or the developer explicitly asks for them. Local validation should prove the
 changed slice quickly, while CI/CD uses stronger runners for broad confidence.
 
-Minimum local gate:
+For documentation/instruction-only changes, validate local links and any changed
+commands or hooks, then run `git diff --check`. Application suites are unnecessary
+when application behavior and build inputs are unchanged. Skill changes still
+require the security routing in step 5.
+
+Minimum local gate for code changes:
 
 - Run the focused tests for files and behavior changed in the branch.
 - Run the relevant lightweight lint/type checks for touched packages.
@@ -139,8 +147,10 @@ the PR body.
 
 ## 5. Run security review (if applicable)
 
-Check the changed files (`git diff --name-only main`) and route to the right security
-skill. The project skill `.agents/skills/auditing-resonate-security/SKILL.md` carries the
+Check changed files against the PR merge base, including uncommitted work, and
+route to the right security skill. Apply the [contract verification ladder](../../../contracts/AGENTS.md)
+for contract behavior changes; the general time budget does not waive it.
+The project skill `.agents/skills/auditing-resonate-security/SKILL.md` carries the
 Resonate stack, threat surface, and house rules; the methodology lives in the shared
 `agent-toolkit` security skills (`security@agent-toolkit`).
 
@@ -193,6 +203,9 @@ Resonate stack, threat surface, and house rules; the methodology lives in the sh
 
 ## 8. Clean commit(s)
 
+Complete local implementation and validation before requesting missing publication
+approval. Honor approval already given in the conversation; do not ask again.
+
 - Review staged/unstaged changes: `git diff --cached` and `git diff`
 - **Security check** — make sure NONE of these are committed:
   - `.env` files, API keys, secrets, tokens, private keys
@@ -200,15 +213,15 @@ Resonate stack, threat surface, and house rules; the methodology lives in the sh
   - Large binary files, `node_modules/`, build artifacts
   - Database dumps, logs, local config overrides
 - Check `.gitignore` covers suspicious files: `git status --ignored`
-- If any sensitive files are tracked, add them to `.gitignore` first
+- If sensitive files are tracked, stop publication and remove them from the
+  proposed change. `.gitignore` does not untrack files or erase history. Report
+  exposure for rotation/remediation without printing secret values.
 - Make atomic, well-scoped commits:
-  - **With issue:** `feat(#N): description` or `fix(#N): description`
-  - **Without issue:** `feat: description` or `fix: description`
+  - Use `feat`, `fix`, `docs`, or `chore`, with `(#N)` for a linked issue.
+  - Examples: `docs(#N): clarify setup` or `chore: simplify agent config`.
   - One logical change per commit — split if needed
 
 ## 9. Push the branch
-
-// turbo
 
 - Push to remote: `git push -u origin <branch-name>`
 - Verify the push succeeded
@@ -219,7 +232,8 @@ Resonate stack, threat surface, and house rules; the methodology lives in the sh
   editing the PR body only when the summary or validation materially changed.
 - If no PR exists, create a Pull Request targeting `main` with:
   - Title: concise description (referencing the issue number if one exists)
-  - Body: summary of changes (+ `Closes #N` only if an issue exists)
+  - Body: summary, validation, and relevant impact/deferral notes. Use `Closes #N`
+    only when the linked issue is fully implemented; otherwise use `Refs #N`.
 - Leave the PR in draft unless the user asks for ready-for-review or merge.
 - Do not wait synchronously for all PR CI checks unless the user explicitly asks
   to wait. Report current CI status and let CI/CD continue asynchronously.
@@ -243,24 +257,23 @@ Run this step only when the user says `merge`, `you can merge`, or equivalent.
 ## 12. Clean up branches after merge
 
 - Delete the feature branch remotely: `git push origin --delete <branch-name>`
-- Delete the feature branch locally: `git branch -d <branch-name>`
-- Delete any fix branches (remote + local) the same way
+- With a clean worktree, switch to `main` and fast-forward it from `origin/main`
+  before deleting the local feature branch with `git branch -d <branch-name>`.
+  If Git refuses after a squash merge, verify the content was merged before
+  applying any authorized forced deletion.
+- Delete only branches belonging to the merged task; preserve unrelated work.
 - **NEVER delete `main`**
 
 ## 13. Align local main after merge
 
-// turbo
-
 - Switch to main: `git checkout main`
-  // turbo
-- Pull latest: `git pull origin main`
-  // turbo
+- Pull latest: `git pull --ff-only origin main`
 - Verify alignment: `git log --oneline -5`
 
 ## Important rules
 
 - **NEVER push a file that contains clear private data** — no hardcoded credentials, API keys, passwords, private keys, or tokens in ANY file, regardless of file type. Scan every file before staging. This has happened before and must never happen again.
-- **NEVER commit or push before user approval** — always ask first
+- Commit/push requires user authorization; honor approval already given.
 - **NEVER force-push to `main`**
 - **NEVER delete `main`** — only delete feature and fix branches
 - **ALWAYS verify required PR CI before merging**, but do not turn every PR into

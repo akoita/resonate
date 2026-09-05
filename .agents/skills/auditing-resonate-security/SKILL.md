@@ -114,8 +114,9 @@ These override generic scanner defaults and prevent recurring false positives:
 - Severity, evidence, and triage doctrine come from `security-audit`
   (`references/severity-and-reporting.md`, `references/triage-and-false-positives.md`) —
   use those definitions verbatim rather than inventing a local scale.
-- After any fix, run `npm run lint` in both `backend/` and `web/`, and the focused tests
-  for the touched area (see `.agents/skills/finish-issue/SKILL.md` §4).
+- After fixes, run focused tests and relevant lint checks for the touched area
+  using [finish-issue](../finish-issue/SKILL.md) §4. Instruction-only changes
+  require instruction validation, not unrelated application suites.
 
 ## Anti-patterns
 

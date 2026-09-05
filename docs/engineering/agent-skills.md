@@ -12,12 +12,23 @@ skill, workflow, or security gate.
 
 | Path | Role | Committed |
 | --- | --- | --- |
-| `AGENTS.md` | Single source of truth for project coding standards. | Yes |
+| `AGENTS.md` | Project-wide invariants and links to scoped standards and skills. | Yes |
+| `backend/AGENTS.md`, `contracts/AGENTS.md`, `web/AGENTS.md` | Canonical directory-specific standards; also read for cross-directory changes affecting their behavior. | Yes |
 | `CLAUDE.md`, `GEMINI.md` | Symlinks to `AGENTS.md` so each runtime finds it under the name it expects. | Yes |
 | `.agents/skills/<name>/SKILL.md` | Resonate-specific capabilities, including the `start-issue`, `finish-issue`, and security-routing procedures. | Yes |
 | `.claude/skills` | Symlink to `.agents/skills` so Claude Code discovers them. | Yes — the symlink is tracked; `.claude/worktrees/` and `settings.local.json` stay ignored |
 | `.gemini/commands/*.toml` | Command shims that point Gemini CLI at the canonical files above. | Yes |
 | `.codex/`, `.codex-tmp/` | Per-developer Codex state. Nothing project-shared lives here. | No — gitignored |
+
+Keep backend testing, contract verification, and frontend UI rules in those
+scoped files. Do not copy them into another rules tree or restore the retired
+`.agents/workflows/` procedures. Fetch the current base before new task work so
+instruction cleanup does not accidentally undo a newer layout.
+
+Use Linux/macOS shells or WSL on Windows. Machine-specific hooks belong in
+ignored `.claude/settings.local.json`; the former shared hook invoked
+`powershell.exe` for every shell command, including on Linux. The tracked
+`.claude/skills` discovery symlink remains shared.
 
 `.agents/` is not a Claude convention we bolted a shim onto; it is the
 **runtime-neutral root**, and specifically the one Codex already understands.

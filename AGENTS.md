@@ -2,6 +2,8 @@
 
 Keep this root file limited to project-wide invariants. Load detailed procedures
 from the named skills and directory-specific standards only when they apply.
+Read the scoped standards before editing a directory or changing its behavior
+from elsewhere in the repository.
 
 ## Configuration and secrets
 
@@ -63,6 +65,12 @@ partial-delivery checklist; do not duplicate that procedure here.
 - Never commit or push directly to `main`; use a branch and PR targeting `main`.
 - Never force-push to or delete `main`.
 - Merge only after the developer explicitly says `merge` or equivalent.
+- Honor publication approval already given in the conversation. Complete local
+  implementation and validation before asking for missing commit/push approval.
+- Preserve unrelated edits; use an isolated worktree if switching would disturb
+  them. Do not automatically stash or commit someone else's changes.
+- Use Linux/macOS shells or WSL on Windows. Machine-specific hooks belong in
+  ignored local settings, not shared runtime configuration.
 - Keep related refinements on the current feature branch and PR until the user
   asks to finish or merge.
 
