@@ -40,10 +40,7 @@ export function getPlaybackAnalyticsSessionId() {
     return "playback_ssr";
   }
 
-  const generated =
-    "crypto" in window && "randomUUID" in window.crypto
-      ? window.crypto.randomUUID()
-      : `playback_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const generated = createPlaybackAnalyticsId("playback");
 
   try {
     const existing = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -59,10 +56,18 @@ export function getPlaybackAnalyticsSessionId() {
 }
 
 export function createPlaybackAnalyticsInstanceId() {
-  if (typeof window !== "undefined" && "crypto" in window && "randomUUID" in window.crypto) {
-    return window.crypto.randomUUID();
+  return createPlaybackAnalyticsId("playback_instance");
+}
+
+function createPlaybackAnalyticsId(prefix: string) {
+  const crypto = typeof window !== "undefined" ? window.crypto : globalThis.crypto;
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
   }
-  return `playback_instance_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  // getRandomValues also works in browser contexts without randomUUID.
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const randomId = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${prefix}_${randomId}`;
 }
 
 export function shouldReportPlaybackCompleted(input: {
