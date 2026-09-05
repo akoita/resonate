@@ -1,5 +1,89 @@
 [
   {
+    "eventName": "player.segment_loop_enabled",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "startMs": 10000,
+      "endMs": 20000,
+      "segmentDurationMs": 10000
+    }
+  },
+  {
+    "eventName": "player.segment_loop_updated",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "startMs": 12000,
+      "endMs": 24000,
+      "segmentDurationMs": 12000
+    }
+  },
+  {
+    "eventName": "player.segment_loop_disabled",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "startMs": 12000,
+      "endMs": 24000,
+      "segmentDurationMs": 12000
+    }
+  },
+  {
+    "eventName": "player.repeat_count_set",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "target": "track",
+      "configured": 3,
+      "remaining": 3
+    }
+  },
+  {
+    "eventName": "player.repeat_count_updated",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "target": "queue",
+      "configured": 5,
+      "remaining": 5
+    }
+  },
+  {
+    "eventName": "player.repeat_count_cleared",
+    "payload": {
+      "artistId": "artist-1",
+      "releaseId": "release-1",
+      "trackId": "track-1",
+      "playbackInstanceId": "playback-instance-1",
+      "queueLength": 3,
+      "shuffle": false,
+      "target": "queue",
+      "configured": 5,
+      "remaining": 2
+    }
+  },
+  {
     "eventName": "playback.completed",
     "payload": {
       "artistId": "artist-1",
