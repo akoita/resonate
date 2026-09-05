@@ -5,6 +5,7 @@ version: 2
 # and are grouped into one PR per affected ecosystem.
 multi-ecosystem-groups:
   monthly-routine-updates:
+    open-pull-requests-limit: 5
     schedule:
       interval: monthly
       time: "04:00"
@@ -27,7 +28,6 @@ updates:
       npm-security:
         applies-to: security-updates
         patterns: ["*"]
-    open-pull-requests-limit: 5
 
   # The archived experiments/stable-audio-3-spike tree is intentionally not
   # configured: it is outside the production policy and maintained graph.
@@ -42,7 +42,6 @@ updates:
       pip-security:
         applies-to: security-updates
         patterns: ["*"]
-    open-pull-requests-limit: 5
 
   - package-ecosystem: docker
     directories:
@@ -57,16 +56,13 @@ updates:
       docker-security:
         applies-to: security-updates
         patterns: ["*"]
-    open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: monthly-routine-updates
-    open-pull-requests-limit: 5
 
   - package-ecosystem: gitsubmodule
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: monthly-routine-updates
-    open-pull-requests-limit: 5

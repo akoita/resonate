@@ -48,7 +48,8 @@ a visible release blocker.
   tag and GitHub Release.
 - Ordinary PR, merge-queue, `main`, and `develop` CI is validation-only. The
   `main` post-merge run is a lightweight receipt; it does not publish images or
-  deploy.
+  deploy. See [selective CI validation](ci_validation.md) for path selection,
+  parallel validation jobs, and the full queue/release safety net.
 - The manual-only Release Deployment workflow accepts preview/publish,
   planned/on-demand, full source SHA, exact successful CI run ID, `dev` or
   `staging`, canonical service selection defaulting to all four services, and a deploy
