@@ -27,6 +27,23 @@ GCP_IMAGE_PUBLICATION_JOBS = {
 
 
 class ReleaseImageEnvironmentTests(unittest.TestCase):
+    def test_dataflow_identity_matches_direct_dispatch_certificate_ref(self) -> None:
+        workflow = WORKFLOWS / "publish-analytics-dataflow-flex-template.yml"
+        text = workflow.read_text(encoding="utf-8")
+        identity = next(line.split("workflow-identity:", 1)[1].strip()
+                        for line in text.splitlines() if "workflow-identity:" in line)
+        for branch in ("main", "develop"):
+            with self.subTest(branch=branch):
+                rendered = identity.replace("${{ github.repository }}", "akoita/resonate")
+                rendered = rendered.replace("${{ github.ref }}", f"refs/heads/{branch}")
+                rendered = rendered.replace("${{ inputs.source_sha }}", "a" * 40)
+                # Direct workflow_dispatch certificates identify the workflow ref,
+                # not the immutable commit used separately to validate image metadata.
+                self.assertEqual(rendered, f"https://github.com/akoita/resonate/.github/workflows/{workflow.name}@refs/heads/{branch}")
+        self.assertIn('if [[ "${SOURCE_SHA}" != "${DISPATCH_SHA}" ]]', text)
+        self.assertIn('if [[ "${DISPATCH_BRANCH}" != "${expected_branch}" ]]', text)
+        self.assertIn("source-sha: ${{ inputs.source_sha }}", text)
+
     def test_release_publish_images_forwards_environment_scoped_secrets(self) -> None:
         workflow_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
         jobs = dict(
