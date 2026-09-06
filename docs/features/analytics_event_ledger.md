@@ -338,7 +338,11 @@ endpoint with bounded action-key/status payloads and actor-scoped retry
 deduplication. Backend warehouse exports and Dataflow facts retain the paired
 impression arrays or selected action without adding listening or revenue
 counts. See the [event taxonomy](../architecture/analytics_event_taxonomy_v1.md#player-action-events).
-Real authenticated staging verification remains pending deployment of the fix.
+Real authenticated staging verification passed on 2026-09-06: impressions and
+selections returned 201, and retries retained the event ID without growing the
+ledger. See the [Sprint 20 evidence](../sprints/2026-09-06-vision-sprint-20-player-action-telemetry.md#staging-outcome).
+No active Dataflow job existed in that staging project; the live check proves
+browser-to-ledger behavior, not streaming warehouse activation.
 
 ## Follow-Up Work
 
