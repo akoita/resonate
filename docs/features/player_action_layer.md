@@ -63,9 +63,10 @@ The player suppresses unchanged action-panel impressions during a mounted page
 visit. Retrying either event with the same client event ID, actor, session, and
 track retains one ledger event; a new deliberate action receives a fresh ID.
 Warehouse export and Dataflow preserve the action fields without counting them
-as listening or revenue. Authenticated staging acceptance and duplicate-count
-verification remain tracked in [#1732](https://github.com/akoita/resonate/issues/1732)
-until the fix is deployed.
+as listening or revenue. Authenticated staging acceptance, browser impression suppression, retry
+deduplication, and selection ingestion were verified on 2026-09-06; see
+[#1732](https://github.com/akoita/resonate/issues/1732) and the
+[Sprint 20 evidence](../sprints/2026-09-06-vision-sprint-20-player-action-telemetry.md#staging-outcome).
 
 The player UI keeps album art, title, artist, and stem mixer access in the hero.
 Immediately usable actions render in the right console near progress, volume,
