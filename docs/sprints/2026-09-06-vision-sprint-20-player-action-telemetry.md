@@ -1,6 +1,6 @@
 # Vision Sprint 20: Trustworthy player action telemetry
 
-**Status:** in progress; local implementation complete, staging verification pending.
+**Status:** closed; authenticated staging exit verified on 2026-09-06.
 **Milestone:** [22](https://github.com/akoita/resonate/milestone/22).
 **Scope:** [#1732](https://github.com/akoita/resonate/issues/1732) only.
 **Window:** no due date; capacity has not been agreed.
@@ -62,5 +62,33 @@ steps; no live verification or milestone completion is claimed by local tests.
   and `git diff --check` passed.
 - Diff security review covered authentication, payload filtering, actor-scoped
   event identity, and downstream fact handling; no actionable finding.
-- Broad integration and frontend suites are deferred to CI; the browser
-  producer and database schema are unchanged.
+- Broad integration and frontend validation ran in PR/release CI and passed;
+  the browser producer and database schema are unchanged.
+
+## Staging outcome
+
+PR [#1734](https://github.com/akoita/resonate/pull/1734) merged as
+`864e26fdd51f6a4264a2112b5e8509c907197d07`. The milestone was initially closed
+with verification outstanding; the real staging checks subsequently passed.
+
+- [Release publication](https://github.com/akoita/resonate/actions/runs/33999597442)
+  published immutable backend/frontend images for that exact source after
+  all release CI gates passed.
+- [Staging deployment](https://github.com/akoita/resonate-iac/actions/runs/34000263221)
+  rolled out backend revision `resonate-staging-backend-00007-9mf` and frontend
+  revision `resonate-staging-frontend-00005-v5h`. Their image digests matched
+  the retained release manifest; `/api/version` reported `864e26fdd51f`.
+- A listener authenticated through the normal nonce/signature flow. The live
+  browser emitted one `player.action_impression` with HTTP 201 across unchanged
+  action state and a viewport resize. Replaying its client event retained
+  `evt_08d81c603b3e051530c2c2c79dace167` without increasing the live ledger count.
+- Clicking **Add to playlist** emitted `player.action_selected` with HTTP 201
+  (`evt_3401855e645e61fdf44541d8bcce4eba`). No playlist was created or changed.
+  Unauthenticated and malformed-action probes returned 401 and 400 respectively.
+
+The staging project had no active Dataflow job to update. Publishing its
+updated template exposed an independent certificate-identity mismatch in
+[run 33999598703](https://github.com/akoita/resonate/actions/runs/33999598703),
+addressed by [PR #1735](https://github.com/akoita/resonate/pull/1735). This does
+not change the verified browser-to-ledger result or imply streaming-pipeline
+activation. The next milestone has not been selected.
