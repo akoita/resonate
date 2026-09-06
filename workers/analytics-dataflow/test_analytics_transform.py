@@ -4,6 +4,8 @@ import unittest
 
 from analytics_transform import (
     idempotency_key,
+    tagged_rows,
+    bigquery_insert_row,
     parse_supported_versions,
     process_batch,
     process_payload,
@@ -11,6 +13,17 @@ from analytics_transform import (
 
 
 class AnalyticsTransformTest(unittest.TestCase):
+    def test_streaming_view_insert_ids_do_not_collapse_distinct_events(self):
+        def view_insert(event_id):
+            rows = dict(tagged_rows(event(event_id, "playback.completed"), [1]))
+            return bigquery_insert_row("analytics_views", rows["analytics_views"])
+        first = view_insert("first")
+        second = view_insert("second")
+        self.assertEqual(first["json"], second["json"])
+        self.assertNotEqual(first["insertId"], second["insertId"])
+        self.assertEqual(first, view_insert("first"))
+        self.assertNotIn("_eventId", first["json"])
+
     def test_valid_event_promotes_to_all_layers(self):
         playback_event = event("evt_play", "playback.completed")
         playback_event["actorId"] = "listener_hash"

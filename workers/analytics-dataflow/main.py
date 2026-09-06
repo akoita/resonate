@@ -13,7 +13,7 @@ from apache_beam.transforms import userstate
 from apache_beam.transforms.timeutil import TimeDomain
 from apache_beam.utils.timestamp import Duration, Timestamp
 
-from analytics_transform import idempotency_key, parse_supported_versions, tagged_rows
+from analytics_transform import bigquery_insert_row, idempotency_key, parse_supported_versions, tagged_rows
 
 
 LAYER_TO_PARAMETER = {
@@ -148,12 +148,7 @@ class BigQueryInsertAllDoFn(beam.DoFn):
                 "kind": "bigquery#tableDataInsertAllRequest",
                 "skipInvalidRows": False,
                 "ignoreUnknownValues": False,
-                "rows": [
-                    {
-                        "insertId": row_insert_id(self.layer_name, row),
-                        "json": row,
-                    }
-                ],
+                "rows": [bigquery_insert_row(self.layer_name, row)],
             },
         )
         response.raise_for_status()
@@ -168,21 +163,6 @@ def parse_table_ref(table: str) -> tuple[str, str, str]:
     if len(parts) != 3 or any(not part for part in parts):
         raise ValueError(f"Invalid BigQuery table reference: {table}")
     return parts[0], parts[1], parts[2]
-
-
-def row_insert_id(layer_name: str, row: dict) -> str:
-    if layer_name in {"events_raw", "events_clean"}:
-        return str(row.get("eventId", "unknown"))
-    if layer_name == "analytics_facts":
-        return str(row.get("factId", "unknown"))
-    if layer_name == "analytics_views":
-        return "|".join(
-            str(row.get(key, "unknown"))
-            for key in ("viewName", "grain", "date", "eventName", "artistId", "trackId")
-        )
-    if layer_name == "analytics_quarantine":
-        return "|".join(str(row.get(key, "unknown")) for key in ("eventId", "eventName", "reason"))
-    return str(row.get("eventId") or row.get("factId") or "unknown")
 
 
 if __name__ == "__main__":
