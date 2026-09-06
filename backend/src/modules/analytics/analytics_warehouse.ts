@@ -190,12 +190,15 @@ export function buildAnalyticsWarehouseExport(
   const viewMap = new Map<string, AnalyticsViewRow>();
   const analyticsQuarantine: AnalyticsQuarantineRow[] = [];
 
+  const seenEventIds = new Set<string>();
   for (const record of records) {
     const event = parseForExport(record, generatedAt, analyticsQuarantine);
     if (!event) {
       continue;
     }
 
+    if (seenEventIds.has(event.eventId)) continue;
+    seenEventIds.add(event.eventId);
     eventsRaw.push(toRawRow(event));
 
     if (!supportedEventVersions.has(event.eventVersion)) {
@@ -431,6 +434,27 @@ function toFactRow(clean: EventsCleanRow): AnalyticsFactRow {
       stemIds: arrayPayload(clean.payload, "stemIds"),
     },
   };
+}
+
+/** Rebuild additive daily totals from durable unique facts, including later windows. */
+export function analyticsViewsFromFacts(facts: AnalyticsFactRow[]): AnalyticsViewRow[] {
+  const rows = new Map<string, AnalyticsViewRow>();
+  const seen = new Set<string>();
+  for (const fact of facts) {
+    if (seen.has(fact.factId)) continue;
+    seen.add(fact.factId);
+    const eventName = String(fact.dimensions.eventName);
+    const artistId = fact.artistId ?? "unknown";
+    const trackId = fact.trackId ?? "unknown";
+    const key = JSON.stringify([fact.occurredDate, eventName, artistId, trackId]);
+    const row = rows.get(key) ?? { viewName: "daily_event_artist_track", grain: "day_event_artist_track",
+      date: fact.occurredDate, eventName, artistId, trackId, eventCount: 0, playCount: 0, payoutUsd: 0 };
+    row.eventCount += fact.count;
+    if (eventName === "license.granted" || eventName === "playback.completed") row.playCount += fact.count;
+    if (eventName === "payment.settled" || eventName === "commerce.settled") row.payoutUsd += fact.canonicalAmountUsd ?? 0;
+    rows.set(key, row);
+  }
+  return [...rows.values()];
 }
 
 function mergeViewRow(viewMap: Map<string, AnalyticsViewRow>, clean: EventsCleanRow) {

@@ -278,6 +278,9 @@ def to_clean_row(event: dict[str, Any]) -> dict[str, Any]:
             "actorId": event.get("actorId"),
             "sessionId": event.get("sessionId") or string_payload(payload, "sessionId"),
             "artistId": string_payload(payload, "artistId"),
+            "managerArtistId": string_payload(payload, "managerArtistId"),
+            "creditedArtistId": string_payload(payload, "creditedArtistId"),
+            "creditedArtistName": string_payload(payload, "creditedArtistName"),
             "trackId": string_payload(payload, "trackId"),
             "releaseId": string_payload(payload, "releaseId"),
             "canonicalAmountUsd": first_present(
@@ -305,6 +308,9 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
             "occurredAt": clean["occurredAt"],
             "occurredDate": clean["occurredDate"],
             "artistId": clean.get("artistId"),
+            "managerArtistId": clean.get("managerArtistId"),
+            "creditedArtistId": clean.get("creditedArtistId"),
+            "creditedArtistName": clean.get("creditedArtistName"),
             "trackId": clean.get("trackId"),
             "releaseId": clean.get("releaseId"),
             "subjectType": clean.get("subjectType"),
@@ -314,10 +320,19 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
             "dimensions": json_field(
                 compact(
                     {
-                        "eventName": clean["eventName"],
-                        "producer": clean["producer"],
-                        "privacyTier": clean["privacyTier"],
+                        "eventName": clean.get("eventName"),
+                        "producer": clean.get("producer"),
+                        "privacyTier": clean.get("privacyTier"),
                         "actorId": clean.get("actorId"),
+                        "artistId": clean.get("artistId"),
+            "managerArtistId": clean.get("managerArtistId"),
+            "creditedArtistId": clean.get("creditedArtistId"),
+            "creditedArtistName": clean.get("creditedArtistName"),
+                        "managerArtistId": clean.get("managerArtistId"),
+                        "creditedArtistId": clean.get("creditedArtistId"),
+                        "creditedArtistName": clean.get("creditedArtistName"),
+                        "creditedArtistIds": list_payload(payload, "creditedArtistIds"),
+                        "creditedArtistNames": list_payload(payload, "creditedArtistNames"),
                         "source": clean.get("source"),
                         "sessionId": clean.get("sessionId"),
                         "releaseId": clean.get("releaseId"),
@@ -332,12 +347,28 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "status": string_payload(payload, "status"),
                         "licenseType": string_payload(payload, "licenseType"),
                         "strategy": string_payload(payload, "strategy"),
-                        "playbackInstanceId": string_payload(payload, "playbackInstanceId"),
-                        "action": string_payload(payload, "action"),
+                        "runtimeStatus": string_payload(payload, "runtimeStatus"),
+                        "tasteSignalSource": string_payload(payload, "tasteSignalSource"),
+                        "modelVersion": string_payload(payload, "modelVersion"),
+                        "materializationVersion": string_payload(payload, "materializationVersion"),
+                        "intent": string_payload(payload, "intent"),
+                        "intentName": string_payload(payload, "intentName"),
                         "actionKey": string_payload(payload, "actionKey"),
                         "actionStatus": string_payload(payload, "actionStatus"),
                         "actionKeys": list_payload(payload, "actionKeys"),
                         "actionStatuses": list_payload(payload, "actionStatuses"),
+                        "mood": string_payload(payload, "mood"),
+                        "vibe": string_payload(payload, "vibe"),
+                        "energy": string_payload(payload, "energy"),
+                        "queueStyle": string_payload(payload, "queueStyle"),
+                        "commercePosture": string_payload(payload, "commercePosture"),
+                        "trackId": string_payload(payload, "trackId"),
+                        "firstPick": bool_payload(payload, "firstPick"),
+                        "creatorOwner": bool_payload(payload, "creatorOwner"),
+                        "sessionDurationMs": number_payload(payload, "sessionDurationMs"),
+                        "score": number_payload(payload, "score"),
+                        "playbackInstanceId": string_payload(payload, "playbackInstanceId"),
+                        "action": string_payload(payload, "action"),
                         "positionMs": number_payload(payload, "positionMs"),
                         "durationMs": number_payload(payload, "durationMs"),
                         "heartbeatIntervalMs": number_payload(payload, "heartbeatIntervalMs"),
@@ -363,9 +394,31 @@ def to_fact_row(clean: dict[str, Any]) -> dict[str, Any]:
                         "amountUnits": string_payload(payload, "amountUnits"),
                         "currency": string_payload(payload, "currency"),
                         "amountUsd": number_payload(payload, "amountUsd"),
+                        "listingId": string_payload(payload, "listingId"),
+                        "stemId": string_payload(payload, "stemId"),
+                        "lifecycleStatus": string_payload(payload, "lifecycleStatus"),
+                        "relistableCount": number_payload(payload, "relistableCount"),
+                        "expiredCount": number_payload(payload, "expiredCount"),
+                        "expiringSoonCount": number_payload(payload, "expiringSoonCount"),
+                        "activeCount": number_payload(payload, "activeCount"),
+                        "totalListings": number_payload(payload, "totalListings"),
                         "route": string_payload(payload, "route"),
                         "evidenceTypes": list_payload(payload, "evidenceTypes"),
                         "decisionReason": string_payload(payload, "decisionReason"),
+                        "campaignId": string_payload(payload, "campaignId"),
+                        "campaignSlug": string_payload(payload, "campaignSlug"),
+                        "campaignStatus": string_payload(payload, "campaignStatus"),
+                        "city": string_payload(payload, "city"),
+                        "country": string_payload(payload, "country"),
+                        "roomId": string_payload(payload, "roomId"),
+                        "roomType": string_payload(payload, "roomType"),
+                        "messageType": string_payload(payload, "messageType"),
+                        "roleType": string_payload(payload, "roleType"),
+                        "benefitRuleId": string_payload(payload, "benefitRuleId"),
+                        "benefitType": string_payload(payload, "benefitType"),
+                        "remixId": string_payload(payload, "remixId"),
+                        "sourceTrackId": string_payload(payload, "sourceTrackId"),
+                        "stemIds": list_payload(payload, "stemIds"),
                     }
                 )
             ),
@@ -404,9 +457,26 @@ def tagged_rows(payload: bytes | str | dict[str, Any], supported_versions: Itera
     for row in layers.analytics_facts:
         yield "analytics_facts", row
     for row in layers.analytics_views:
-        yield "analytics_views", row
+        yield "analytics_views", {**row, "_eventId": layers.events_clean[0]["eventId"]}
     for row in layers.analytics_quarantine:
         yield "analytics_quarantine", row
+
+
+def bigquery_insert_row(layer_name: str, row: dict[str, Any]) -> dict[str, Any]:
+    """Transport key is event-scoped; internal metadata never enters the table."""
+    data = dict(row)
+    event_id = data.pop("_eventId", None)
+    if layer_name == "analytics_views":
+        if not event_id:
+            raise ValueError("streaming view row requires its source event identity")
+        key = "view_" + hashlib.sha256(event_id.encode("utf-8")).hexdigest()
+    elif layer_name == "analytics_facts":
+        key = str(data["factId"])
+    elif layer_name == "analytics_quarantine":
+        key = hashlib.sha256(json.dumps([data.get("eventId"), data.get("eventName"), data.get("reason"), data.get("raw")], sort_keys=True).encode("utf-8")).hexdigest()
+    else:
+        key = str(data["eventId"])
+    return {"insertId": key, "json": data}
 
 
 def idempotency_key(payload: bytes | str | dict[str, Any]) -> str:

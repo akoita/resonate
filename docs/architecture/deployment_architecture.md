@@ -181,7 +181,10 @@ environment selects an analytics execution mode:
 - **Batch**: a Pub/Sub BigQuery subscription lands envelopes into
   `events_landing`, while bounded Cloud Run Job, Dataform, or scheduled
   BigQuery materialization builds the same warehouse layers from the backend
-  event ledger and/or landing table. This is the cost-sensitive testing path
+  event ledger. The landing table is retained for transport inspection, not
+  loaded again as a second source. The opt-in transactional batch target
+  replaces durable keys and rebuilds daily totals from unique facts; see the
+  [batch runbook](../operations/analytics-batch.md). This is the cost-sensitive testing path
   and must stay functionally equivalent to streaming.
 
 Both modes are first-class. New event families, schema changes, privacy and

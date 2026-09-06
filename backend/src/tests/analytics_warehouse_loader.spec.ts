@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
+import { buildAnalyticsWarehouseExport } from "../modules/analytics/analytics_warehouse";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 import { InMemoryAnalyticsEventStore } from "../modules/analytics/analytics_event_store";
 import {
@@ -49,6 +50,41 @@ describe("analytics warehouse loader", () => {
         eventName: "playback.completed",
       }),
     ]);
+  });
+
+  it("rebuilds daily views when disjoint loads add events to an existing day", async () => {
+    const store = new InMemoryAnalyticsEventStore();
+    const ingest = new AnalyticsIngestService(store);
+    const loader = new AnalyticsWarehouseLoaderService(store, new LocalJsonAnalyticsWarehouseTarget(tempDir));
+    for (const [id, hour] of [["first", "09"], ["later", "10"]]) {
+      await ingest.ingest({ eventId: id, eventName: "playback.completed", occurredAt: `2026-05-20T${hour}:00:00.000Z`,
+        payload: { artistId: "artist-1", trackId: "track-1" } });
+    }
+    await loader.load({ from: "2026-05-20T09:00:00Z", to: "2026-05-20T10:00:00Z" });
+    await loader.load({ from: "2026-05-20T10:00:00Z", to: "2026-05-20T11:00:00Z" });
+    await loader.load({ from: "2026-05-20T09:00:00Z", to: "2026-05-20T11:00:00Z" });
+    const views = await readJsonl(join(tempDir, "analytics_local_analytics_views.jsonl"));
+    expect(views).toEqual([expect.objectContaining({ eventCount: 2, playCount: 2, payoutUsd: 0 })]);
+  });
+
+  it("removes stale local view groups when a stored fact is redacted and reloaded", async () => {
+    const target = new LocalJsonAnalyticsWarehouseTarget(tempDir);
+    const row = { eventId: "redaction", eventName: "payment.settled", eventVersion: 1,
+      occurredAt: "2026-05-20T09:00:00.000Z", receivedAt: "2026-05-20T09:00:01.000Z",
+      producer: "test", environment: "local", privacyTier: "pseudonymous",
+      payload: { artistId: "original", trackId: "track", amountUsd: 2 } };
+    await target.load(buildAnalyticsWarehouseExport([row]));
+    await target.load(buildAnalyticsWarehouseExport([{ ...row, payload: { ...row.payload, artistId: "[redacted]" } }]));
+    const views = await readJsonl(join(tempDir, "analytics_local_analytics_views.jsonl"));
+    expect(views).toEqual([expect.objectContaining({ artistId: "[redacted]", eventCount: 1, payoutUsd: 2 })]);
+  });
+
+  it("rejects unbounded batch requests before reading the ledger", async () => {
+    const store = new InMemoryAnalyticsEventStore();
+    const list = jest.spyOn(store, "listEvents");
+    const loader = new AnalyticsWarehouseLoaderService(store, analyticsWarehouseTargetFromEnv({ ANALYTICS_WAREHOUSE_TARGET: "bigquery_batch" }));
+    await expect(loader.load()).rejects.toThrow("from/to window");
+    expect(list).not.toHaveBeenCalled();
   });
 
   it("quarantines unsupported families and schema-incompatible versions before writing facts", async () => {

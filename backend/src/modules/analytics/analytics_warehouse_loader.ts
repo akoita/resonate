@@ -2,9 +2,13 @@ import { Inject, Injectable } from "@nestjs/common";
 import { mkdir, readFile, rename, writeFile } from "fs/promises";
 import { GoogleAuth } from "google-auth-library";
 import { dirname, join, resolve } from "path";
+import { BigQueryBatchAnalyticsWarehouseTarget } from "./analytics_bigquery_batch";
+import { analyticsBigQueryReportConfigFromEnv } from "./analytics_bigquery_report";
 import { AnalyticsEventListFilters, AnalyticsEventStore, ANALYTICS_EVENT_STORE } from "./analytics_event_store";
 import {
   AnalyticsWarehouseExport,
+  AnalyticsFactRow,
+  analyticsViewsFromFacts,
   analyticsWarehouseConfigFromEnv,
   buildAnalyticsWarehouseExport,
 } from "./analytics_warehouse";
@@ -37,6 +41,7 @@ export interface AnalyticsWarehouseLayerLoadResult {
   rows: number;
   inserted: number;
   skipped: number;
+  updated?: number;
 }
 
 export interface AnalyticsWarehouseTarget {
@@ -71,6 +76,7 @@ export interface AnalyticsWarehouseLoadResult {
   writes: AnalyticsWarehouseLayerLoadResult[];
   metrics: {
     insertedRows: number;
+    updatedRows: number;
     skippedRows: number;
     quarantinedRows: number;
     schemaIncompatibleRows: number;
@@ -89,10 +95,28 @@ export class AnalyticsWarehouseLoaderService {
   ) {}
 
   async load(request: AnalyticsWarehouseLoadRequest = {}): Promise<AnalyticsWarehouseLoadResult> {
+    const target = this.warehouseTarget.describe();
+    if (target.provider === "bigquery_batch" && !request.dryRun) {
+      if (!this.eventStore.withExclusiveWarehouseLoad) throw new Error("Batch target requires an exclusive warehouse load lock");
+      const key = `analytics-batch:${target.location}:${analyticsWarehouseConfigFromEnv().datasetPrefix}`;
+      return this.eventStore.withExclusiveWarehouseLoad(key, () => this.loadOnce(request));
+    }
+    return this.loadOnce(request);
+  }
+
+  private async loadOnce(request: AnalyticsWarehouseLoadRequest): Promise<AnalyticsWarehouseLoadResult> {
     const filters = requestToFilters(request);
     const generatedAt = new Date();
     const runId = request.runId ?? `analytics_load_${generatedAt.toISOString().replace(/[:.]/g, "-")}`;
+    if (this.warehouseTarget.describe().provider === "bigquery_batch") {
+      if (!filters.occurredFrom || !filters.occurredTo || filters.occurredTo <= filters.occurredFrom ||
+          filters.occurredTo.getTime() - filters.occurredFrom.getTime() > 31 * 86400000) {
+        throw new Error("BigQuery batch requires a positive from/to window of at most 31 days");
+      }
+      filters.limit = 10001;
+    }
     const events = await this.eventStore.listEvents(filters);
+    if (filters.limit && events.length >= filters.limit) throw new Error("Batch exceeds 10000 events; split the requested window");
     const exportPayload = buildAnalyticsWarehouseExport(events, {
       generatedAt,
       config: analyticsWarehouseConfigFromEnv(),
@@ -121,6 +145,7 @@ export class AnalyticsWarehouseLoaderService {
       layers: layerCounts(exportPayload),
       writes,
       metrics: {
+        updatedRows: writes.reduce((total, write) => total + (write.updated ?? 0), 0),
         insertedRows: writes.reduce((total, write) => total + write.inserted, 0),
         skippedRows: writes.reduce((total, write) => total + write.skipped, 0),
         quarantinedRows: exportPayload.analyticsQuarantine.length,
@@ -153,7 +178,13 @@ export class LocalJsonAnalyticsWarehouseTarget implements AnalyticsWarehouseTarg
     for (const layer of layers) {
       const table = exportPayload.config.tables[layer.layer];
       const filePath = join(this.baseDir, `${table.replace(/[./]/g, "_")}.jsonl`);
-      const result = await upsertJsonlRows(filePath, layer.rows, rowKey(layer.layer));
+      let rows = layer.rows;
+      if (layer.layer === "analyticsViews") {
+        const factsPath = join(this.baseDir, `${exportPayload.config.tables.analyticsFacts.replace(/[./]/g, "_")}.jsonl`);
+        const facts = await readJsonlMap(factsPath, rowKey("analyticsFacts"));
+        rows = analyticsViewsFromFacts([...facts.values()] as unknown as AnalyticsFactRow[]);
+      }
+      const result = await upsertJsonlRows(filePath, rows, rowKey(layer.layer), layer.layer === "analyticsViews");
       results.push({
         layer: layer.layer,
         table,
@@ -238,12 +269,16 @@ export function analyticsWarehouseTargetFromEnv(env: NodeJS.ProcessEnv = process
   if (provider === "local_json") {
     return new LocalJsonAnalyticsWarehouseTarget(analyticsWarehouseLocalDirFromEnv(env));
   }
+  if (provider === "bigquery_batch") {
+    return new BigQueryBatchAnalyticsWarehouseTarget(env.ANALYTICS_WAREHOUSE_PROJECT_ID || env.GCP_PROJECT_ID || "local",
+      analyticsBigQueryReportConfigFromEnv(env).maximumBytesBilled);
+  }
   if (provider === "bigquery_insert_all") {
     return new BigQueryInsertAllAnalyticsWarehouseTarget(
       env.ANALYTICS_WAREHOUSE_PROJECT_ID || env.GCP_PROJECT_ID || "local",
     );
   }
-  throw new Error(`Unsupported ANALYTICS_WAREHOUSE_TARGET "${provider}". Supported: local_json, bigquery_insert_all`);
+  throw new Error(`Unsupported ANALYTICS_WAREHOUSE_TARGET "${provider}". Supported: local_json, bigquery_insert_all, bigquery_batch`);
 }
 
 export function analyticsWarehouseLocalDirFromEnv(env: NodeJS.ProcessEnv = process.env) {
@@ -374,6 +409,7 @@ async function upsertJsonlRows(
   filePath: string,
   rows: LayerRows,
   keyForRow: (row: Record<string, unknown>) => string,
+  replaceAll = false,
 ) {
   await mkdir(dirname(filePath), { recursive: true });
   const existing = await readJsonlMap(filePath, keyForRow);
@@ -382,7 +418,7 @@ async function upsertJsonlRows(
 
   for (const row of rows as unknown as Array<Record<string, unknown>>) {
     const key = keyForRow(row);
-    if (existing.has(key)) {
+    if (JSON.stringify(existing.get(key)) === JSON.stringify(row)) {
       skipped += 1;
       continue;
     }
@@ -390,6 +426,10 @@ async function upsertJsonlRows(
     inserted += 1;
   }
 
+  if (replaceAll) {
+    const retainedKeys = new Set((rows as unknown as Array<Record<string, unknown>>).map(keyForRow));
+    for (const key of existing.keys()) if (!retainedKeys.has(key)) existing.delete(key);
+  }
   const body = [...existing.values()].map((row) => JSON.stringify(row)).join("\n");
   const tmpPath = `${filePath}.tmp`;
   await writeFile(tmpPath, body ? `${body}\n` : "", "utf8");

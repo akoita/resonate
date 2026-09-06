@@ -47,9 +47,9 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest: [Vision Sprint 20 — Trustworthy player action telemetry](2026-09-06-vision-sprint-20-player-action-telemetry.md)
-is closed with authenticated staging verification complete. The next milestone
-has not been selected.
+Latest: [Vision Sprint 21 — Trustworthy batch analytics](2026-09-06-vision-sprint-21-batch-analytics.md)
+is in progress: #1062 batch correctness and parity, followed by #932 live
+artist-dashboard verification.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |

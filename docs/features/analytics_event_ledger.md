@@ -7,6 +7,17 @@ issue: 867
 
 # Analytics Event Ledger
 
+## Batch execution
+
+The opt-in `bigquery_batch` target replaces event/fact keys transactionally and
+rebuilds affected daily views from unique durable facts. Local JSON loads also
+refresh existing daily totals when later windows arrive. Shared cross-runtime
+tests guard batch/streaming projections, including credited identity and coarse
+geography preserved through Postgres. See [batch operations](../operations/analytics-batch.md)
+for bounds, serialized loading, safe mode switching, and the historical deletion
+reconciliation limitation. Sprint 21 tracks implementation in #1062 and live
+acceptance in #932; deployment verification remains pending.
+
 ## Status
 
 `partial`

@@ -28,9 +28,20 @@ describe("Analytics warehouse loader integration", () => {
     await prisma.$disconnect();
   });
 
+  it("serializes batch loads across store instances and releases the lock after failure", async () => {
+    const key = `${TEST_PREFIX}target`;
+    const otherStore = new PrismaAnalyticsEventStore();
+    await expect(store.withExclusiveWarehouseLoad(key, async () => {
+      await expect(otherStore.withExclusiveWarehouseLoad(key, async () => "unexpected")).rejects.toThrow("already running");
+      throw new Error("simulated load failure");
+    })).rejects.toThrow("simulated load failure");
+    await expect(otherStore.withExclusiveWarehouseLoad(key, async () => "recovered")).resolves.toBe("recovered");
+  });
+
   it("backfills stored events by date and event family into a durable target", async () => {
     await ingest.ingest({
       eventId: `${TEST_PREFIX}play_in_scope`,
+      geo: { countryCode: "FR", precision: "country", source: "user_declared" },
       eventName: "playback.completed",
       occurredAt: "2026-05-20T09:00:00.000Z",
       producer: "analytics-loader-integration-test",
@@ -76,8 +87,13 @@ describe("Analytics warehouse loader integration", () => {
       eventFamily: "playback",
     });
 
+    const bounded = await store.listEvents({ occurredFrom: new Date("2026-05-20T00:00:00Z"),
+      occurredTo: new Date("2026-05-21T00:00:00Z"), limit: 1 });
+    expect(bounded).toHaveLength(1);
     expect(result.eventsRead).toBe(1);
     expect(result.layers.eventsRaw).toBe(1);
+    const cleanRows = await readJsonl(join(tempDir, "analytics_local_events_clean.jsonl"));
+    expect(cleanRows[0].geoCountryCode).toBe("FR");
     expect(result.layers.analyticsFacts).toBe(1);
     expect(result.metrics.quarantinedRows).toBe(0);
 
