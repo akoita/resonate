@@ -147,6 +147,12 @@ Dataflow Flex Template** is `workflow_dispatch` only and requires a full
 `develop` for `dev` and `main` for `staging`. It publishes the SHA-tagged image,
 evidence, and template only after that exact-source check.
 
+The direct-dispatch Sigstore certificate identifies the workflow at
+`refs/heads/main` or `refs/heads/develop`. Verify that exact workflow/ref
+identity; the source SHA is checked separately against the dispatch revision
+and immutable image build metadata. A commit SHA in place of the certificate
+ref rejects valid signatures before template publication.
+
 ## Protected Controls And Credential Boundaries
 
 Release Deployment and Analytics publication use the target GitHub environment
