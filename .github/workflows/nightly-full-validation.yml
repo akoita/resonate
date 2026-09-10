@@ -1,0 +1,73 @@
+name: Nightly Full Validation
+
+# Runs the complete CI validation graph against `main` once a night (#1748).
+# The post-merge `main` receipt deliberately skips application validation, and
+# path filters skip E2E for non-web changes, so without this workflow the
+# release plane is the first full run after a merge: an E2E flake or a
+# regression only surfaces while an operator is dispatching Release Deployment.
+# This is validation-only — it never publishes an image, deploys, or mints
+# cloud credentials.
+
+on:
+  schedule:
+    - cron: "0 1 * * *" # nightly 01:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Own group so a nightly run is never cancelled by the CI workflow's own
+# concurrency handling; the group differs from the called workflow's group, so
+# the reusable invocation cannot queue behind its own caller.
+concurrency:
+  group: nightly-full-validation-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Mirrors how release-deployment.yml invokes CI: the same reusable workflow
+  # with release_validation, which makes classify-ci-changes.sh run the complete
+  # graph instead of the path-filtered subset.
+  validate:
+    name: Full Validation Graph
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+    with:
+      release_validation: true
+
+  report-failure:
+    name: Report Nightly Failure
+    needs: [validate]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open or update failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Nightly full validation failed on main"
+          LABEL="nightly-validation-failure"
+
+          # Ensure the label exists (ignore "already exists").
+          gh label create "$LABEL" --color "d73a4a" \
+            --description "Nightly full validation (#1748) failure" 2>/dev/null || true
+
+          BODY=$(printf '## Nightly full validation failed\n\nThe nightly complete validation graph on `main` (#1748) failed.\n\n- Run: %s\n- Attempt: %s\n- Trigger: %s\n\nOpen the failing job to identify the failure, then decide whether it blocks the next **Release Deployment** dispatch: that workflow re-validates the exact release source with the same complete graph, so a red nightly usually fails the release the same way. Fix or triage the failure before dispatching, and record flaky-versus-real triage on this issue.' \
+            "$RUN_URL" "${{ github.run_attempt }}" "${{ github.event_name }}")
+
+          # Reuse the most recent open failure issue when present.
+          EXISTING=$(gh issue list --state open --label "$LABEL" \
+            --search "$TITLE in:title" --json number --jq '.[0].number' || echo "")
+
+          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+            echo "Commenting on existing issue #$EXISTING"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "Opening new failure issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi
