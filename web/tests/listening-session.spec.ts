@@ -1,6 +1,30 @@
 import { test, expect, type Page } from '@playwright/test';
 import { injectMockAuth } from './auth.setup';
 
+// The player hydrates its queue from IndexedDB after load, so anything asserted
+// straight after a reload races that hydration. On a loaded CI runner the
+// default 5s expect timeout is not enough, which blocked two release runs
+// before the assertions below were made explicit (#1745).
+const HYDRATION_TIMEOUT = 15000;
+
+// localforage is injected per page load; a reload drops the script tag, so
+// re-inject before reading persisted state again.
+async function injectQueueStorage(page: Page) {
+  await page.addScriptTag({ path: require.resolve('localforage/dist/localforage.js') });
+}
+
+// Queue mutations are persisted asynchronously. Reloading before the write
+// lands silently resurrects the pre-mutation queue, so wait for the stored
+// state to catch up rather than for a wall-clock delay.
+async function waitForPersistedQueueLength(page: Page, length: number) {
+  await injectQueueStorage(page);
+  await expect.poll(() => page.evaluate(async () => {
+    const storage = (window as unknown as { localforage: { createInstance(options: object): { getItem(key: string): Promise<unknown> } } }).localforage.createInstance({ name: 'resonate', storeName: 'player' });
+    const state = await storage.getItem('current_state') as { queue?: unknown[] } | null;
+    return state?.queue?.length ?? 0;
+  }), { timeout: 10000 }).toBe(length);
+}
+
 async function seedPlayer(page: Page, source = false, local = false) {
   await injectMockAuth(page);
   await page.addInitScript(() => {
@@ -24,7 +48,7 @@ async function seedPlayer(page: Page, source = false, local = false) {
   await page.route('**/playlists/folders', route => route.fulfill({ json: [] }));
   await page.goto('/player');
   await expect(page.getByText('Queue Manifest', { exact: true })).toBeVisible();
-  await page.addScriptTag({ path: require.resolve('localforage/dist/localforage.js') });
+  await injectQueueStorage(page);
   await page.evaluate(async options => {
     const queue = ['a', 'b', 'c'].map(id => ({ id, catalogTrackId: id, title: `Test ${id}`, artist: 'Test Artist', album: null, albumArtist: null, genre: null, year: null, duration: 30, createdAt: '', source: 'remote', remoteUrl: `${location.origin}/test-${id}.wav` }));
     if (options.local) Object.assign(queue[2], { catalogTrackId: null, source: 'local', blobKey: 'local-file' });
@@ -32,7 +56,7 @@ async function seedPlayer(page: Page, source = false, local = false) {
     await storage.setItem('current_state', { queue, currentIndex: 0, volume: .5, shuffle: false, repeatMode: 'none', queueSource: options.source ? { playlistId: 'source-playlist', trackIds: ['a','b','c'] } : null });
   }, { source, local });
   await page.reload();
-  await expect(page.getByRole('main').getByText('Test a', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('main').getByText('Test a', { exact: true }).first()).toBeVisible({ timeout: HYDRATION_TIMEOUT });
   await page.getByRole('main').getByRole('button', { name: 'Play', exact: true }).click();
 }
 async function endTrack(page: Page) {
@@ -64,8 +88,9 @@ test('source provenance survives reload and queue removal makes a new snapshot e
   await expect(page.getByRole('button', { name: 'Save queue as playlist' })).toHaveCount(0);
   await page.getByRole('button', { name: /Remove Test c/ }).click();
   await expect(page.getByRole('button', { name: 'Save queue as playlist' })).toBeVisible();
+  await waitForPersistedQueueLength(page, 2);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Save queue as playlist' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save queue as playlist' })).toBeVisible({ timeout: HYDRATION_TIMEOUT });
 });
 
 test('passage loop holds finite counts, then natural ends consume exact additional repeats', async ({ page }) => {
