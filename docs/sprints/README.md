@@ -47,9 +47,10 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest: [Vision Sprint 21 — Trustworthy batch analytics](2026-09-06-vision-sprint-21-batch-analytics.md)
-is in progress: #1062 batch correctness and parity, followed by #932 live
-artist-dashboard verification.
+Latest: [Vision Sprint 22 — Dependable releases and complete artist
+analytics](2026-09-11-vision-sprint-22-dependable-releases.md) is planned:
+release-plane fixes (#1747, #1748), build identity (#1739), artist attribution
+(#1743), and duplicate-row repair (#1749).
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -73,3 +74,6 @@ artist-dashboard verification.
 | [2026-08-30](2026-08-30-vision-sprint-16-deferred-dependency-majors.md) | Vision Sprint 16 — deferred dependency majors | ✅ Closed 2026-08-30 — Kernel v4 compatibility isolated while the legacy app/runtime boundary remained unchanged |
 | [2026-08-30](2026-08-30-vision-sprint-17-platform-compatibility.md) | Vision Sprint 17 — platform compatibility and delivery confidence | ✅ Closed 2026-09-02 — merged into Milestone 20; Glamsterdam repricing (#1660), Next.js 16.3 (#1557), and Mergify queue (#1525) validated and landed |
 | [2026-08-31](2026-08-31-vision-sprint-18-accessible-mobile-web.md) | Vision Sprint 18 — accessible, mobile-ready web experience | ✅ Closed 2026-09-02 — all 10 milestone outcomes complete (#1440, #837, #1101, #428, #1660, #1694, #1557, #1525, #1666, #1670); mobile, accessibility, metadata, User Guide, and staging confidence delivered |
+| [2026-09-06](2026-09-06-vision-sprint-20-player-action-telemetry.md) | Vision Sprint 20 — trustworthy player action telemetry | ✅ Closed 2026-09-06 — authenticated action impressions and selections verified in staging |
+| [2026-09-06](2026-09-06-vision-sprint-21-batch-analytics.md) | Vision Sprint 21 — trustworthy batch analytics | ✅ Closed 2026-09-10 — 2/2; batch/streaming parity and idempotency proved live, and the artist dashboard verified BigQuery-backed (#1062, #932) |
+| [2026-09-11](2026-09-11-vision-sprint-22-dependable-releases.md) | Vision Sprint 22 — dependable releases and complete artist analytics | 🟡 Planned — release-plane fixes, build identity, artist attribution, duplicate-row repair |
