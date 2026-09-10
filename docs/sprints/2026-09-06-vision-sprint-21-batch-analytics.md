@@ -68,9 +68,25 @@ forward rather than silently absorbed: pre-cutover duplicate rows from the
 attribution is missing on the punchline, shows, remix, and recommendation
 families ([#1743](https://github.com/akoita/resonate/issues/1743)).
 
-Milestone closure still depends on
-[#932](https://github.com/akoita/resonate/issues/932): authenticated dashboard
-acceptance against these warehouse totals.
+## Staging acceptance (2026-09-10)
+
+The deployed dashboard was verified while signed in as a real user. During that
+page load the backend runtime service account executed both artist-dashboard
+reads — the parameterized `analytics_facts` and `analytics_views` queries —
+against the warehouse and both completed. The local-ledger fallback issues no
+BigQuery job, so those reads are positive proof the page was served from
+BigQuery rather than a label read off the screen.
+
+Displayed values matched the warehouse for the checked artist: 58 plays over the
+30-day window, 12 plays on the top track, zero payout with no settlement facts
+present, and real catalog titles with no `Unknown Track` rows. The events came
+from normal staging activity through Pub/Sub and the `bigquery_batch` loader,
+not from seed rows.
+
+[#932](https://github.com/akoita/resonate/issues/932) is satisfied. Two tracked
+items remain outside the exit criteria: pre-cutover duplicate rows still inflate
+historical daily views, and artist attribution for the punchline, shows, remix,
+and recommendation families is [#1743](https://github.com/akoita/resonate/issues/1743).
 
 ## Implementation verification
 
