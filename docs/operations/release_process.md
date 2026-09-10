@@ -101,12 +101,18 @@ or repository settings.
 | `source_sha` | Required full 40-character source SHA. Moving or ambiguous refs are rejected. |
 | `ci_run_id` | Required successful CI run ID for exactly `source_sha`. |
 | `environment` | `dev` or `staging`; `dev` maps to `develop`, and `staging` maps to `main`. |
-| `services` | Canonical comma-separated selection from `backend`, `frontend`, `demucs`, and `stable-audio`; the default selects all four. |
+| `services` | `auto` (the default) selects every service the chosen environment enables; otherwise a canonical selection from `backend`, `frontend`, `demucs`, `stable-audio`. `auto` takes no companions. |
 | `deploy` | Boolean handoff intent. `false` intentionally publishes images without dispatching a deployment. |
 
 The workflow serializes publication and handoff per target environment. It
 validates the source SHA, CI run identity, branch mapping, service allowlist,
-and environment configuration before any publisher credentials are used.
+and environment configuration before any publisher credentials are used. A
+selection that includes a service the target environment disables is rejected
+during that validation, before any publisher credential is used, so a release
+can never publish images the downstream deployment refuses to reconcile. The
+per-environment capability matrix lives in `.github/release-environments.json`
+and must be updated together with the matching `resonate-iac`
+`environments/<env>/terraform.tfvars` service flags.
 
 In `preview` mode, the workflow is read-only and retains a release plan with
 the exact SHA, CI run, environment, selected services, and deploy intent. A

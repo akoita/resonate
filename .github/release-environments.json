@@ -1,0 +1,20 @@
+{
+  "comment": "Declared per-environment service capability matrix for Release Deployment. It mirrors stable_audio_enabled and the equivalent service flags in resonate-iac environments/<env>/terraform.tfvars. Enabling a service there requires updating this file in the same change, otherwise Release Deployment publishes images that runtime reconciliation cannot deploy.",
+  "environments": {
+    "dev": {
+      "services": [
+        "backend",
+        "frontend",
+        "demucs"
+      ]
+    },
+    "staging": {
+      "services": [
+        "backend",
+        "frontend",
+        "demucs"
+      ]
+    }
+  },
+  "schema_version": "resonate-release-environments/v1"
+}

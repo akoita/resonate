@@ -35,9 +35,11 @@ on:
           - dev
           - staging
       services:
-        description: Comma-separated deployable services to publish.
+        description: >-
+          Comma-separated deployable services to publish. The default `auto`
+          selects every service enabled for the chosen environment.
         required: true
-        default: backend,frontend,demucs,stable-audio
+        default: auto
         type: string
       deploy:
         description: Mark the published manifest eligible for deployment handoff.
@@ -162,9 +164,16 @@ jobs:
                       return candidate
               return fallback
 
-          services = value("services_csv", "services", fallback=os.environ["SERVICES"])
+          # The raw input is no longer a safe fallback: `auto` is resolved
+          # against the environment matrix during validation, so an
+          # unresolved selection must fail rather than reach the publisher.
+          services = value("services_csv", "services", fallback="")
           if isinstance(services, list):
               services = ",".join(str(item) for item in services)
+          if not services or services.strip().lower() == "auto":
+              raise SystemExit(
+                  "release plan did not resolve a concrete service selection"
+              )
           should_dispatch = value(
               "should_dispatch",
               "deploy",
