@@ -1,6 +1,6 @@
 # Vision Sprint 21: Trustworthy batch analytics
 
-**Status:** in progress.
+**Status:** closed 2026-09-10 (2/2).
 **Milestone:** [23](https://github.com/akoita/resonate/milestone/23).
 **Goal:** Normal staging activity reaches BigQuery once and appears accurately
 in the artist dashboard, without an always-on Dataflow job.
