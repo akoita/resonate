@@ -53,11 +53,15 @@ build on staging. All four named event families carry `artistId` in
 `analytics_facts`, verified against live staging. `analytics_facts` and
 `analytics_views` contain no duplicate keys.
 
-Staging deploys from a `main` commit rather than a tag, so #1739's expected
-staging behaviour is the honest commit fallback; the tagged path is exercised
-against the existing `milestone-*` releases. Changing that assumption would
-pull in [#1667](https://github.com/akoita/resonate/issues/1667) and is out of
-scope here.
+#1739 resolves per commit, not per environment: staging can be running either
+a tagged or an untagged commit, and today it runs a tagged one — the release
+flow deploys a source SHA and then tags that same SHA. The deployed artifact
+cannot carry its own tag, because the tag is created after the image is built,
+so the tag has to be resolved when the dialog is viewed rather than injected at
+build time. This does not pull in
+[#1667](https://github.com/akoita/resonate/issues/1667): the existing
+`milestone-*` releases are real pages to link to. The reasoning is recorded on
+the issue.
 
 Excluded: the `v*` software release plane (#1667), production go-live,
 always-on Dataflow activation, discovery marts, the credited-artist identity
