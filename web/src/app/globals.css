@@ -1905,10 +1905,16 @@ a {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* The left pane is height-locked with the rest of `.upload-grid`, so the stem
+ * list scrolls inside it instead of being clipped away (#1741). */
 .upload-list {
   display: grid;
   gap: var(--space-3);
   margin-top: var(--space-4);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: start;
 }
 
 .upload-item {
@@ -3400,13 +3406,15 @@ a {
    VAULT: Premium AA Wallet Interface
    ======================================== */
 
+/* The stage flows with its content and lets `.app-content` scroll. It used to
+ * be locked to `height: calc(100vh - 60px)` with `overflow: hidden`, which
+ * clipped the My Stakes panel out of existence at 100% zoom on a laptop
+ * viewport — it only reappeared when the browser was zoomed out (#1741). */
 .vault-stage {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5) var(--space-6);
-  height: calc(100vh - 60px); /* fill viewport minus top nav */
-  overflow: hidden;
 }
 
 /* ---- Hero Section ---- */
@@ -3420,9 +3428,10 @@ a {
   );
   border-radius: var(--radius-xl);
   padding: var(--space-6) var(--space-8);
-  min-height: 30%;
-  max-height: 30%;
-  flex: 0 0 30%;
+  /* Sized from its own content, not a percentage of a viewport-locked stage
+   * (#1741) — percentages resolved against a now-indefinite height. */
+  min-height: 220px;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -3820,7 +3829,9 @@ a {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: var(--space-5);
-  flex: 1;
+  /* Take leftover space on a tall viewport, but never squeeze the panels
+   * below their content height on a short one (#1741). */
+  flex: 0 1 auto;
   align-items: stretch;
 }
 
@@ -3840,13 +3851,9 @@ a {
   }
 }
 
-/* Phone: release the fixed-viewport-height lock so the page scrolls
- * naturally when the Smart Account / Security / Stakes cards stack
- * below the hero (#603). */
+/* Phone: tighter padding for the stacked hero / cards layout (#603). */
 @media (max-width: 767px) {
   .vault-stage {
-    height: auto;
-    overflow: visible;
     padding: var(--space-3);
     padding-bottom: 120px;
     gap: var(--space-4);
