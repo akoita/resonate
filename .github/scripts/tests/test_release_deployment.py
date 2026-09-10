@@ -54,6 +54,13 @@ def build_plan(**overrides: object) -> dict[str, object]:
     return release_deployment.build_plan(**values)
 
 
+def write_matrix(directory: str, document: object) -> Path:
+    """Write a release environment matrix fixture and return its path."""
+    path = Path(directory) / "release-environments.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
 class ReleaseDeploymentTests(unittest.TestCase):
     def test_planned_preview_normalizes_services_and_does_not_dispatch(self) -> None:
         plan = build_plan()
@@ -68,11 +75,11 @@ class ReleaseDeploymentTests(unittest.TestCase):
         plan = build_plan(
             mode="publish",
             release_kind="on-demand",
-            services_csv="stable-audio,demucs",
+            services_csv="demucs,backend",
             deploy=True,
             release_id="operator_retry-1",
         )
-        self.assertEqual(plan["services"], ["demucs", "stable-audio"])
+        self.assertEqual(plan["services"], ["backend", "demucs"])
         self.assertTrue(plan["deploy"])
         self.assertTrue(plan["should_dispatch"])
 
@@ -131,6 +138,121 @@ class ReleaseDeploymentTests(unittest.TestCase):
                     message,
                 ):
                     build_plan(services_csv=services)
+
+    def test_auto_selects_services_enabled_for_the_environment(self) -> None:
+        for environment, branch in (("dev", "develop"), ("staging", "main")):
+            with self.subTest(environment=environment):
+                plan = build_plan(
+                    environment=environment,
+                    services_csv="auto",
+                    ci_run=ci_run(head_branch=branch),
+                )
+                self.assertEqual(
+                    plan["services"],
+                    ["backend", "frontend", "demucs"],
+                )
+                self.assertEqual(plan["services_csv"], "backend,frontend,demucs")
+
+    def test_accepts_enabled_services_in_allowlist_order(self) -> None:
+        plan = build_plan(
+            environment="staging",
+            services_csv="demucs, backend",
+            ci_run=ci_run(head_branch="main"),
+        )
+        self.assertEqual(plan["services"], ["backend", "demucs"])
+        self.assertEqual(plan["services_csv"], "backend,demucs")
+
+    def test_rejects_service_disabled_for_environment(self) -> None:
+        with self.assertRaisesRegex(
+            release_deployment.ReleaseDeploymentError,
+            r"stable-audio is disabled for environment 'staging'",
+        ):
+            build_plan(
+                environment="staging",
+                services_csv="backend,stable-audio",
+                ci_run=ci_run(head_branch="main"),
+            )
+
+        with self.assertRaisesRegex(
+            release_deployment.ReleaseDeploymentError,
+            r"stable-audio is disabled for environment 'dev'",
+        ):
+            build_plan(services_csv="stable-audio")
+
+    def test_rejects_auto_combined_with_named_services(self) -> None:
+        for services in ("auto,backend", " AUTO , frontend "):
+            with self.subTest(services=services):
+                with self.assertRaisesRegex(
+                    release_deployment.ReleaseDeploymentError,
+                    "must not be combined with named services",
+                ):
+                    build_plan(services_csv=services)
+
+    def test_rejects_unusable_environment_matrix(self) -> None:
+        enabled = {"services": ["backend"]}
+        cases = (
+            ("not-json", "unable to read"),
+            (
+                json.dumps({"environments": {"dev": enabled}}),
+                "schema_version",
+            ),
+            (
+                json.dumps(
+                    {
+                        "schema_version": release_deployment.ENVIRONMENTS_SCHEMA_VERSION,
+                        "environments": {"staging": enabled},
+                    }
+                ),
+                "does not declare environment 'dev'",
+            ),
+            (
+                json.dumps(
+                    {
+                        "schema_version": release_deployment.ENVIRONMENTS_SCHEMA_VERSION,
+                        "environments": {"dev": {"services": "backend"}},
+                    }
+                ),
+                "array of service names",
+            ),
+            (
+                json.dumps(
+                    {
+                        "schema_version": release_deployment.ENVIRONMENTS_SCHEMA_VERSION,
+                        "environments": {"dev": {"services": ["unknown"]}},
+                    }
+                ),
+                "declares unsupported services",
+            ),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "release-environments.json"
+            for content, message in cases:
+                with self.subTest(message=message):
+                    path.write_text(content, encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        release_deployment.ReleaseDeploymentError,
+                        message,
+                    ):
+                        build_plan(environments_path=path)
+
+            missing = Path(directory) / "absent.json"
+            with self.assertRaisesRegex(
+                release_deployment.ReleaseDeploymentError,
+                "unable to read release environment matrix",
+            ):
+                build_plan(environments_path=missing)
+
+    def test_matrix_fixture_overrides_the_repository_matrix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = write_matrix(
+                directory,
+                {
+                    "schema_version": release_deployment.ENVIRONMENTS_SCHEMA_VERSION,
+                    "environments": {"dev": {"services": ["backend", "stable-audio"]}},
+                },
+            )
+            plan = build_plan(services_csv="auto", environments_path=path)
+            self.assertEqual(plan["services"], ["backend", "stable-audio"])
 
     def test_rejects_deploy_during_preview(self) -> None:
         with self.assertRaisesRegex(

@@ -5,6 +5,11 @@ The release workflow receives most of its values as strings, while the
 referenced GitHub Actions run is read from the JSON returned by the Actions
 API.  This module keeps the validation and normalization deterministic so that
 preview output and publish input use the same contract.
+
+Service selection is also checked against the declared per-environment
+capability matrix in ``.github/release-environments.json`` so that a request
+naming a service the target environment disables fails validation instead of
+publishing images the downstream deployment can never reconcile.
 """
 
 from __future__ import annotations
@@ -25,6 +30,9 @@ SAFE_RELEASE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
 BRANCH_ENVIRONMENTS = {"develop": "dev", "main": "staging"}
 MODES = ("preview", "publish")
 RELEASE_KINDS = ("planned", "on-demand")
+ENVIRONMENTS_SCHEMA_VERSION = "resonate-release-environments/v1"
+ENVIRONMENTS_PATH = Path(__file__).resolve().parents[1] / "release-environments.json"
+AUTO_SERVICES = "auto"
 
 
 class ReleaseDeploymentError(ValueError):
@@ -72,6 +80,116 @@ def parse_services(value: Any) -> list[str]:
 
     requested_set = set(requested)
     return [service for service in SERVICES if service in requested_set]
+
+
+def load_environment_services(
+    environment: str,
+    *,
+    environments_path: Path | None = None,
+) -> list[str]:
+    """Return the services ``environment`` enables, in allowlist order.
+
+    The matrix is a declared mirror of the runtime service flags owned by
+    ``resonate-iac``.  Every failure to read or understand it is an error: a
+    release must never fall back to assuming a service is enabled.
+    """
+    path = ENVIRONMENTS_PATH if environments_path is None else environments_path
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ReleaseDeploymentError(
+            f"unable to read release environment matrix: {error}"
+        ) from error
+
+    if not isinstance(document, Mapping):
+        raise ReleaseDeploymentError(
+            "release environment matrix must be a JSON object"
+        )
+    if document.get("schema_version") != ENVIRONMENTS_SCHEMA_VERSION:
+        raise ReleaseDeploymentError(
+            "release environment matrix schema_version must be "
+            f"'{ENVIRONMENTS_SCHEMA_VERSION}'"
+        )
+
+    environments = document.get("environments")
+    if not isinstance(environments, Mapping):
+        raise ReleaseDeploymentError(
+            "release environment matrix field 'environments' must be a JSON object"
+        )
+
+    entry = environments.get(environment)
+    if entry is None:
+        raise ReleaseDeploymentError(
+            f"release environment matrix does not declare environment '{environment}'"
+        )
+    if not isinstance(entry, Mapping):
+        raise ReleaseDeploymentError(
+            f"release environment matrix entry for '{environment}' must be a JSON object"
+        )
+
+    declared = entry.get("services")
+    if not isinstance(declared, list) or not all(
+        isinstance(service, str) for service in declared
+    ):
+        raise ReleaseDeploymentError(
+            f"release environment matrix entry for '{environment}' must declare "
+            "'services' as an array of service names"
+        )
+
+    unknown = sorted(set(declared) - set(SERVICES))
+    if unknown:
+        raise ReleaseDeploymentError(
+            f"release environment matrix for '{environment}' declares unsupported "
+            f"services: {', '.join(unknown)}; "
+            f"allowed services are {', '.join(SERVICES)}"
+        )
+
+    declared_set = set(declared)
+    enabled = [service for service in SERVICES if service in declared_set]
+    if not enabled:
+        raise ReleaseDeploymentError(
+            f"release environment matrix for '{environment}' must enable at least "
+            "one service"
+        )
+    return enabled
+
+
+def resolve_services(
+    value: Any,
+    *,
+    environment: str,
+    environments_path: Path | None = None,
+) -> list[str]:
+    """Resolve a service selection against what ``environment`` enables.
+
+    ``auto`` selects every service the environment enables.  An explicit
+    selection must name only enabled services, so that a request for a
+    disabled service fails before any image is published.
+    """
+    enabled = load_environment_services(
+        environment,
+        environments_path=environments_path,
+    )
+
+    if isinstance(value, str):
+        requested = [item.strip().lower() for item in value.split(",")]
+        if AUTO_SERVICES in requested:
+            if len(requested) > 1:
+                raise ReleaseDeploymentError(
+                    f"services '{AUTO_SERVICES}' selects every service enabled for "
+                    "the environment and must not be combined with named services"
+                )
+            return enabled
+
+    services = parse_services(value)
+    disabled = [service for service in services if service not in set(enabled)]
+    if disabled:
+        raise ReleaseDeploymentError(
+            f"{', '.join(disabled)} {'is' if len(disabled) == 1 else 'are'} "
+            f"disabled for environment '{environment}'; "
+            f"enabled services are {', '.join(enabled)}"
+        )
+    return services
 
 
 def validate_release_id(value: Any) -> str:
@@ -197,6 +315,7 @@ def build_plan(
     deploy: bool,
     release_id: str,
     ci_run: Mapping[str, Any],
+    environments_path: Path | None = None,
 ) -> dict[str, Any]:
     """Build a normalized, deterministic release-deployment plan."""
     mode = validate_mode(mode)
@@ -206,7 +325,11 @@ def build_plan(
         raise ReleaseDeploymentError(
             f"environment must be one of: {', '.join(BRANCH_ENVIRONMENTS.values())}"
         )
-    services = parse_services(services_csv)
+    services = resolve_services(
+        services_csv,
+        environment=environment,
+        environments_path=environments_path,
+    )
     deploy = parse_bool(deploy)
     release_id = validate_release_id(release_id)
     if deploy and mode != "publish":
