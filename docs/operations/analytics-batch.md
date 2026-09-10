@@ -57,10 +57,36 @@ replaced keys; neither is a count of newly observed user actions.
    concurrent first inserts. If a submitted job has an unknown outcome, inspect
    its recorded job ID and wait for completion/cancellation before retrying.
 
+Step 6 is part of the cutover, not an optional follow-up. A schedule left
+paused after step 2 is silent: the Pub/Sub landing table keeps filling, the job
+reports no failure because it never runs, and the warehouse simply stops
+advancing. Confirm the scheduler state after the cutover and compare the newest
+warehoused event against the newest landed message before calling the switch
+done.
+
 To roll back, pause all writers, restore `bigquery_insert_all`, and resume the
 existing schedule. Preserve read-side fact deduplication and check freshness.
 Switching modes does not delete warehouse tables. Streaming resumes only after
 batch loading stops and its transaction outcome is known.
+
+## Close a stale window
+
+A paused or failed schedule leaves a gap that resuming alone will not repair:
+each scheduled run only covers `ANALYTICS_WAREHOUSE_LOAD_WINDOW_MINUTES` back
+from its own start. Backfill the gap explicitly with bounded windows, using
+execution-level overrides so the job definition stays untouched:
+
+```bash
+gcloud run jobs execute <load-job> --region <region> --project <project> --wait \
+  --update-env-vars=ANALYTICS_WAREHOUSE_LOAD_FROM=<start>,ANALYTICS_WAREHOUSE_LOAD_TO=<end>
+```
+
+Keep each window inside the 31-day span, the 10,000-event request cap, and the
+10,001-row ledger read cap; split larger gaps. Read the run's
+`analytics.warehouse.load_succeeded` log line for `eventsRead`, `insertedRows`,
+and `quarantinedRows`, then repeat the identical window: a correct rerun reads
+the same events, inserts zero rows, and leaves every layer count unchanged.
+Resume the schedule only after the last window lands.
 
 ## Privacy and retention boundary
 
