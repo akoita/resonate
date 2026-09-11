@@ -84,9 +84,12 @@ export function deriveStakeStatus(
   return now >= escrowEnd ? "releasable" : "active";
 }
 
+// "Escrow ended" rather than "Releasable": the status is derived from elapsed
+// time, not from a right to withdraw. `ContentProtection.refundStake` is
+// owner-only, so no viewer of this label can act on it (#1758).
 export const STAKE_STATUS_LABELS: Record<StakeStatus, string> = {
   active: "Active ✓",
-  releasable: "Releasable",
+  releasable: "Escrow ended",
   refunded: "Refunded",
   slashed: "Slashed ⚠️",
   not_staked: "Not Staked",
@@ -126,7 +129,28 @@ export function deriveEscrowStatus(
 
 export const ESCROW_STATUS_LABELS: Record<EscrowStatus, string> = {
   locked: "Locked",
-  releasable: "Releasable",
+  releasable: "Elapsed",
   released: "Released",
   none: "—",
 };
+
+/**
+ * What the viewer can do about a stake in this state.
+ *
+ * Refunds are issued by Resonate: `ContentProtection.refundStake` is
+ * owner-only, so a creator cannot withdraw their own deposit yet (#1759
+ * tracks the self-service claim). This mapping exists so the wallet never
+ * renders a control the viewer cannot use (#1758).
+ */
+export function stakeActionLabel(status: StakeStatus): string {
+  switch (status) {
+    case "active":
+      return "Locked";
+    case "releasable":
+      return "Refund issued by Resonate";
+    case "refunded":
+    case "slashed":
+    case "not_staked":
+      return "—";
+  }
+}

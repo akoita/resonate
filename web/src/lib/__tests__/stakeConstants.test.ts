@@ -8,6 +8,7 @@ import {
   STAKE_STATUS_LABELS,
   ESCROW_STATUS_LABELS,
   TIER_LABELS,
+  stakeActionLabel,
 } from "../stakeConstants";
 
 // ============ formatEth ============
@@ -131,5 +132,48 @@ describe("label maps", () => {
     expect(TIER_LABELS.established).toBeDefined();
     expect(TIER_LABELS.trusted).toBeDefined();
     expect(TIER_LABELS.verified).toBe("Verified Economic Tier");
+  });
+});
+
+// ============ stakeActionLabel (#1758) ============
+
+describe("stakeActionLabel", () => {
+  it("never promises the viewer an action they cannot perform", () => {
+    // refundStake is owner-only on-chain, so no state may read as an
+    // invitation to withdraw until #1759 ships a creator-callable claim.
+    const labels = [
+      stakeActionLabel("active"),
+      stakeActionLabel("releasable"),
+      stakeActionLabel("refunded"),
+      stakeActionLabel("slashed"),
+      stakeActionLabel("not_staked"),
+    ];
+    for (const label of labels) {
+      expect(label.toLowerCase()).not.toContain("withdraw");
+      expect(label.toLowerCase()).not.toContain("claim");
+      expect(label.toLowerCase()).not.toContain("release your");
+    }
+  });
+
+  it("says who issues the refund once the escrow has elapsed", () => {
+    expect(stakeActionLabel("releasable")).toBe("Refund issued by Resonate");
+  });
+
+  it("keeps an in-escrow stake marked as locked", () => {
+    expect(stakeActionLabel("active")).toBe("Locked");
+  });
+
+  it("has nothing to say about settled stakes", () => {
+    expect(stakeActionLabel("refunded")).toBe("\u2014");
+    expect(stakeActionLabel("slashed")).toBe("\u2014");
+  });
+});
+
+// ============ status labels describe time, not permission (#1758) ============
+
+describe("stake status labels", () => {
+  it("does not label an elapsed escrow as something the viewer can release", () => {
+    expect(STAKE_STATUS_LABELS.releasable).toBe("Escrow ended");
+    expect(ESCROW_STATUS_LABELS.releasable).toBe("Elapsed");
   });
 });

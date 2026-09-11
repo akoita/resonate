@@ -161,7 +161,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "If you are an artist, the Wallet also surfaces stakes tied to content protection — funds you lock to back the authenticity of your releases. See Rights & content protection for how stakes and trust tiers work.",
+            text: "If you are an artist, the Wallet also surfaces stakes tied to content protection — funds you lock to back the authenticity of your releases. Each row shows the deposit, when it was placed, and whether its escrow period is still running. Resonate returns the deposit once that period ends; there is no withdraw button to press. See Rights & content protection for how stakes and trust tiers work.",
           },
         ],
       },

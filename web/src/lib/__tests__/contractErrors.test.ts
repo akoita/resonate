@@ -240,3 +240,25 @@ describe("formatBatchErrorMessage", () => {
     expect(result).not.toContain("Request Arguments");
   });
 });
+
+// ============ NotOwner decode (#1758) ============
+
+describe("normalizeContractWriteError NotOwner", () => {
+  const notOwner = encodeErrorResult({
+    abi: knownContractErrorAbi,
+    errorName: "NotOwner",
+  });
+
+  it("names the owner restriction instead of implying a record-ownership fault", () => {
+    const message = normalizeContractWriteError(
+      new Error(
+        `Execution reverted with reason:\nUserOperation reverted during simulation with reason: ${notOwner}`,
+      ),
+    ).message;
+
+    // The old text sent readers hunting for a wallet or indexing bug.
+    expect(message).not.toContain("does not own this Content Protection record");
+    expect(message).toContain("Content Protection contract owner");
+    expect(message).toContain("Resonate");
+  });
+});
