@@ -1,6 +1,6 @@
 # Vision Sprint 22: Dependable releases and complete artist analytics
 
-**Status:** planned.
+**Status:** closed 2026-09-11 (6/6).
 **Milestone:** [24](https://github.com/akoita/resonate/milestone/24).
 **Goal:** A sprint release reaches staging on the first attempt with an honest
 version surface, and the artist dashboard accounts for every event family the
@@ -30,6 +30,40 @@ variable — is a companion in the infrastructure repository, not admitted here.
 
 Capacity is one focused workstream with no due date and no fixed capacity
 commitment. There is no Sprint 21 carry-over; that milestone closed 2/2.
+
+## Outcome
+
+All six admitted items closed.
+
+- [#1747](https://github.com/akoita/resonate/issues/1747): `Release Deployment`
+  resolves service selection against a declared per-environment matrix during
+  validation, before any publisher credential is used. `auto` is the new
+  default and expands to what the target environment enables.
+- [#1748](https://github.com/akoita/resonate/issues/1748): a nightly workflow
+  runs the same complete graph the release plane runs, and reports failures on
+  a `nightly-validation-failure` issue. The post-merge receipt stays light.
+- [#1739](https://github.com/akoita/resonate/issues/1739): About resolves the
+  tag pointing at the deployed commit when the dialog opens and links its
+  release, falling back silently to the commit link. The meaningless
+  `v0.1.0` from `package.json` is gone.
+- [#1743](https://github.com/akoita/resonate/issues/1743): artist attribution
+  for client-emitted product events is resolved server-side at ingest from
+  `trackId`/`dropId`. The browser never asserts who gets credited.
+  `recommendation.served` stays unattributed by decision; shows needed no
+  change, because its emitter was already correct and staging simply had no
+  artist-linked campaigns.
+- [#1749](https://github.com/akoita/resonate/issues/1749): the pre-cutover
+  duplicate rows are repaired. No day in the dataset carries duplicate facts.
+- [#1758](https://github.com/akoita/resonate/issues/1758): the wallet no
+  longer offers a stake withdrawal that `refundStake`'s owner-only modifier
+  makes impossible, and the `NotOwner` message names the real restriction.
+
+[#1752](https://github.com/akoita/resonate/issues/1752) was added to this
+milestone during the sprint and then moved out of it. Its investigation is
+complete and both slices are tracked — #1758 shipped here, and the contract
+change that would restore a real Withdraw button is
+[#1759](https://github.com/akoita/resonate/issues/1759), which belongs with
+content protection rather than with this milestone's theme.
 
 ## Why this shape
 
