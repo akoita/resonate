@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { useStakeRefund } from "../../hooks/useContracts";
 import {
   formatEth,
   formatOptionalDate,
@@ -12,6 +11,7 @@ import {
   STAKE_STATUS_LABELS,
   STAKE_STATUS_COLORS,
   ESCROW_STATUS_LABELS,
+  stakeActionLabel,
   type StakeStatus,
   type EscrowStatus,
 } from "../../lib/stakeConstants";
@@ -38,11 +38,8 @@ interface DerivedStake extends StakeRecord {
  */
 export default function MyStakesCard() {
   const { address } = useAuth();
-  const { refund, pending: refundPending, error: refundError, txHash: refundTx } = useStakeRefund();
-
   const [stakes, setStakes] = useState<DerivedStake[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refundingTokenId, setRefundingTokenId] = useState<string | null>(null);
 
   // Fetch stakes from backend
   useEffect(() => {
@@ -93,25 +90,6 @@ export default function MyStakesCard() {
       });
   }, [address]);
 
-  const handleWithdraw = useCallback(async (tokenId: string) => {
-    setRefundingTokenId(tokenId);
-    try {
-      await refund(BigInt(tokenId));
-      // Optimistically update the local state
-      setStakes(prev =>
-        prev.map(s =>
-          s.tokenId === tokenId
-            ? { ...s, status: "refunded" as StakeStatus, active: false, escrow: { status: "released" as EscrowStatus, daysRemaining: 0 } }
-            : s
-        )
-      );
-    } catch {
-      // error is already captured in refundError
-    } finally {
-      setRefundingTokenId(null);
-    }
-  }, [refund]);
-
   if (!address) return null;
 
   return (
@@ -121,7 +99,9 @@ export default function MyStakesCard() {
         <span style={{ fontSize: "18px" }}>🛡️</span>
         <div>
           <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>My Stakes</h3>
-          <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>Content Protection deposits</p>
+          <p style={{ margin: 0, fontSize: "12px", opacity: 0.5 }}>
+            Content Protection deposits — returned by Resonate after the escrow period
+          </p>
         </div>
       </div>
 
@@ -129,20 +109,6 @@ export default function MyStakesCard() {
       {loading && (
         <div style={{ padding: "24px 0", textAlign: "center", opacity: 0.5, fontSize: "13px" }}>
           Loading stakes…
-        </div>
-      )}
-
-      {/* Error banner */}
-      {refundError && (
-        <div style={errorBannerStyle}>
-          {refundError.message}
-        </div>
-      )}
-
-      {/* Success banner */}
-      {refundTx && (
-        <div style={successBannerStyle}>
-          ✓ Refund submitted — tx: {refundTx.slice(0, 10)}…
         </div>
       )}
 
@@ -209,24 +175,12 @@ export default function MyStakesCard() {
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: "right" }}>
-                    {stake.status === "releasable" && (
-                      <button
-                        onClick={() => handleWithdraw(stake.tokenId)}
-                        disabled={refundPending && refundingTokenId === stake.tokenId}
-                        style={withdrawButtonStyle}
-                      >
-                        {refundPending && refundingTokenId === stake.tokenId
-                          ? "Withdrawing…"
-                          : "Withdraw"
-                        }
-                      </button>
-                    )}
-                    {stake.status === "active" && (
-                      <span style={{ fontSize: "11px", opacity: 0.4 }}>Locked</span>
-                    )}
-                    {(stake.status === "refunded" || stake.status === "slashed") && (
-                      <span style={{ fontSize: "11px", opacity: 0.4 }}>—</span>
-                    )}
+                    {/* No control here: refundStake is owner-only on-chain, so
+                        a Withdraw button could never succeed for its viewer.
+                        #1759 tracks the self-service claim that would earn one. */}
+                    <span style={{ fontSize: "11px", opacity: 0.4 }}>
+                      {stakeActionLabel(stake.status)}
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -261,25 +215,7 @@ const emptyStyle: React.CSSProperties = {
   opacity: 0.7,
 };
 
-const errorBannerStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  background: "rgba(239, 68, 68, 0.1)",
-  border: "1px solid rgba(239, 68, 68, 0.2)",
-  borderRadius: "8px",
-  fontSize: "12px",
-  color: "#ef4444",
-  marginBottom: "12px",
-};
 
-const successBannerStyle: React.CSSProperties = {
-  padding: "8px 12px",
-  background: "rgba(16, 185, 129, 0.1)",
-  border: "1px solid rgba(16, 185, 129, 0.2)",
-  borderRadius: "8px",
-  fontSize: "12px",
-  color: "#10b981",
-  marginBottom: "12px",
-};
 
 const tableStyle: React.CSSProperties = {
   width: "100%",
@@ -307,14 +243,3 @@ const tdStyle: React.CSSProperties = {
   borderBottom: "1px solid rgba(255,255,255,0.03)",
 };
 
-const withdrawButtonStyle: React.CSSProperties = {
-  padding: "5px 14px",
-  border: "none",
-  borderRadius: "6px",
-  background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-  color: "#fff",
-  fontWeight: 600,
-  fontSize: "12px",
-  cursor: "pointer",
-  transition: "all 0.2s",
-};

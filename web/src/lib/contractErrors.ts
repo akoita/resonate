@@ -227,7 +227,12 @@ export function normalizeContractWriteError(error: unknown): Error {
       }
 
       if (decoded.errorName === "NotOwner") {
-        return new Error("The connected smart account does not own this Content Protection record.");
+        // ContentProtection raises this selector from two places: the
+        // `onlyOwner` modifier (refundStake, slash, policy changes) and
+        // depositStake's attester check. Only the owner-restricted calls are
+        // reachable from this app, so the message describes that case rather
+        // than implying the viewer's record ownership is wrong (#1758).
+        return new Error("This action is restricted to the Content Protection contract owner. Stake refunds are issued by Resonate once the escrow period ends.");
       }
 
       if (decoded.errorName === "IsBlacklisted") {
