@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   APP_NAME,
   APP_TAGLINE,
-  APP_VERSION,
   BUILDER_HANDLE,
   BUILDER_URL,
   COMMIT_SHA,
@@ -16,6 +15,10 @@ import {
   getEnvironment,
   isProduction,
 } from "../../lib/buildInfo";
+import {
+  resolveDeployedRelease,
+  type DeployedRelease,
+} from "../../lib/releaseIdentity";
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -28,6 +31,7 @@ interface AboutModalProps {
 export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   const [mounted, setMounted] = useState(false);
   const [animating, setAnimating] = useState(false);
+  const [release, setRelease] = useState<DeployedRelease | null>(null);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
   useEffect(() => setMounted(true), []);
@@ -35,6 +39,20 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger enter animation
     if (isOpen) setAnimating(true);
+  }, [isOpen]);
+
+  // The release tag is created after the deployed image is built, so it can
+  // only be resolved live. Never blocks the dialog: unresolved simply means
+  // the Build row keeps showing the commit link.
+  useEffect(() => {
+    if (!isOpen || !COMMIT_SHA) return;
+    let active = true;
+    void resolveDeployedRelease(COMMIT_SHA).then((resolved) => {
+      if (active && resolved) setRelease(resolved);
+    });
+    return () => {
+      active = false;
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -191,7 +209,10 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   flexWrap: "wrap",
                 }}
               >
-                {APP_VERSION ? (
+                {/* Tag names render verbatim: v* tags already carry a "v"
+                    and milestone-* tags must not gain one. Nothing is shown
+                    when no tag points at the deployed commit. */}
+                {release ? (
                   <span
                     style={{
                       fontSize: 12,
@@ -200,7 +221,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                         "ui-monospace, SFMono-Regular, Menlo, monospace",
                     }}
                   >
-                    v{APP_VERSION}
+                    {release.name}
                   </span>
                 ) : null}
                 {showEnvBadge ? (
@@ -278,18 +299,42 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
             {COMMIT_SHA ? (
               <div className="about-row">
                 <span className="about-label">Build</span>
-                {commitUrl ? (
-                  <a
-                    className="about-link about-value"
-                    href={commitUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {COMMIT_SHA} ↗
-                  </a>
-                ) : (
-                  <span className="about-value">{COMMIT_SHA}</span>
-                )}
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  {/* The tag name already appears beside the title, so this
+                      link names the destination instead of repeating it. The
+                      short SHA stays beside it: the exact build identity is
+                      never lost, tagged or not. */}
+                  {release ? (
+                    <a
+                      className="about-link"
+                      href={release.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {release.kind === "release" ? "Release notes" : "Tag"} ↗
+                    </a>
+                  ) : null}
+                  {commitUrl ? (
+                    <a
+                      className="about-link about-value"
+                      href={commitUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {COMMIT_SHA} ↗
+                    </a>
+                  ) : (
+                    <span className="about-value">{COMMIT_SHA}</span>
+                  )}
+                </span>
               </div>
             ) : null}
           </div>
