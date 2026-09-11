@@ -1,4 +1,4 @@
 # Packages supplied by pytorch/pytorch:2.7.1-cuda12.6-cudnn9-devel.
 # Keep them exact so dependency installation cannot replace the CUDA ABI.
-torch==2.7.1
-torchaudio==2.7.1
+torch==2.13.0
+torchaudio==2.11.0
