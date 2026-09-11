@@ -89,6 +89,14 @@ when that operational follow-up is performed. A local fixture test is not the
 acceptance dry run because it cannot prove GitHub permissions, artifact lookup,
 or repository settings.
 
+Before dispatching **Release Deployment**, check the most recent **Nightly Full
+Validation** run for `main` (`.github/workflows/nightly-full-validation.yml`,
+01:00 UTC daily, also dispatchable). It runs the same complete validation graph
+that Release Deployment runs against the exact release source, so a red nightly
+usually means the release will fail the same way. Failures are reported on an
+issue labeled `nightly-validation-failure`; triage or fix the failure, or
+confirm it does not apply to the release source, before dispatching.
+
 ## Release Deployment
 
 **Release Deployment** (`.github/workflows/release-deployment.yml`) is

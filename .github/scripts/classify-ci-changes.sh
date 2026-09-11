@@ -29,7 +29,7 @@ if [[ "${RELEASE_VALIDATION:-false}" == "true" ]]; then
   # Reusable callers retain their original event. Release validation must win
   # over the ordinary main-push receipt optimization.
   run_all=true
-  echo "Release-scoped reusable invocation; running the complete validation graph."
+  echo "Reusable caller requested the complete validation graph."
 elif [[ "${EVENT_NAME}" == "push" && "${REF_NAME}" == "main" ]]; then
   main_post_merge=true
   echo "Main post-merge receipt; skipping duplicate application validation."
