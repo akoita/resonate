@@ -1,4 +1,4 @@
-FROM python:3.10-slim@sha256:c1e4e6c01eb489c422288b2de34b0761ca316f7a2d98e2c33f47659a73ed108a
+FROM python:3.14-slim@sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5
 
 # Build argument to control model pre-caching (set to 0 to skip for faster builds)
 ARG CACHE_MODEL=1
