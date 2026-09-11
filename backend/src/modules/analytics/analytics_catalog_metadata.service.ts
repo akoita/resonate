@@ -18,6 +18,25 @@ export interface AnalyticsTrackMetadata {
 
 @Injectable()
 export class AnalyticsCatalogMetadataService {
+  /**
+   * #1743: punchline product events carry a dropId rather than a trackId, so
+   * server-side artist attribution resolves through the drop's own artist
+   * column. Returns dropId -> artistId for the drops that exist.
+   */
+  async findPunchlineDropArtists(dropIds: string[]): Promise<Map<string, string>> {
+    const uniqueDropIds = [...new Set(dropIds.filter((dropId) => dropId && dropId !== "unknown"))];
+    if (uniqueDropIds.length === 0) {
+      return new Map();
+    }
+
+    const drops = await prisma.punchlineDrop.findMany({
+      where: { id: { in: uniqueDropIds } },
+      select: { id: true, artistId: true },
+    });
+
+    return new Map(drops.map((drop) => [drop.id, drop.artistId]));
+  }
+
   async findTracks(trackIds: string[]): Promise<Map<string, AnalyticsTrackMetadata>> {
     const uniqueTrackIds = [...new Set(trackIds.filter((trackId) => trackId && trackId !== "unknown"))];
     if (uniqueTrackIds.length === 0) {

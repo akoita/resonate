@@ -71,6 +71,30 @@ For multi-party events, choose the primary actor that initiated the action and
 keep counterparties in payload/source refs only when they are necessary for
 reporting or audit.
 
+### Artist Attribution For Client-Emitted Product Events
+
+The browser never asserts which artist a product event credits. For events that
+reach the warehouse through the product-event endpoint, the backend resolves
+`artistId` at ingest from identifiers the payload already carries:
+
+- a `trackId` (payload field or `track` subject) resolves through catalog
+  metadata and also fills `creditedArtistId` and `creditedArtistName` when the
+  payload does not already carry them;
+- otherwise a `dropId` resolves through the punchline drop's artist.
+
+A server-resolved value replaces any `artistId` the client sent. When nothing
+resolves, the payload keeps whatever it already had, so server-produced events
+that set `artistId` themselves are unaffected. Resolutions are cached in memory
+for a few minutes, misses included, because these are impression-rate events;
+any lookup failure is swallowed and leaves the event unattributed rather than
+failing or delaying the caller.
+
+`recommendation.served` is deliberately left unattributed: it is a rail-level
+impression carrying several `trackIds`, so no single `artistId` is correct, and
+emitting one fact per track would multiply impression volume without helping the
+artist dashboard. `recommendation.clicked` carries a single `trackId` and is
+attributed normally.
+
 ## Privacy Tiers
 
 | Tier | Examples | Default Handling |

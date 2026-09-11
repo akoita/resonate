@@ -412,3 +412,169 @@ describe("AnalyticsInstrumentationService", () => {
     ]);
   });
 });
+
+// #1743: warehouse facts for client-emitted product events carried no artistId,
+// so punchline, remix, and recommendation activity never reached the artist
+// dashboard. Attribution is resolved server-side at ingest.
+describe("AnalyticsInstrumentationService product artist attribution", () => {
+  const trackMetadata = {
+    trackId: "track-1",
+    title: "Track",
+    releaseId: "release-1",
+    releaseTitle: "Release",
+    artistId: "artist-1",
+    artistName: "Artist",
+    managerArtistId: "artist-1",
+    managerArtistName: "Artist",
+    creditedArtistId: "credited-artist-1",
+    creditedArtistName: "Credited Artist",
+    creditedArtistIds: ["credited-artist-1"],
+    creditedArtistNames: ["Credited Artist"],
+  };
+
+  function buildCatalogMetadata(overrides: {
+    findTracks?: jest.Mock;
+    findPunchlineDropArtists?: jest.Mock;
+  } = {}) {
+    return {
+      findTracks: overrides.findTracks ?? jest.fn().mockResolvedValue(new Map([["track-1", trackMetadata]])),
+      findPunchlineDropArtists:
+        overrides.findPunchlineDropArtists ?? jest.fn().mockResolvedValue(new Map([["drop-1", "artist-1"]])),
+    };
+  }
+
+  it("resolves the artist and credited identity for a track-backed product event", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata();
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    await instrumentation.recordProductEvent({
+      eventName: "recommendation.clicked",
+      subjectType: "track",
+      subjectId: "track-1",
+      payload: { requestId: "request-1", railId: "rail-1", trackId: "track-1", position: 2 },
+    });
+
+    expect(catalogMetadata.findTracks).toHaveBeenCalledWith(["track-1"]);
+    expect(await ingest.listEvents()).toEqual([
+      expect.objectContaining({
+        eventName: "recommendation.clicked",
+        payload: expect.objectContaining({
+          trackId: "track-1",
+          artistId: "artist-1",
+          creditedArtistId: "credited-artist-1",
+          creditedArtistName: "Credited Artist",
+        }),
+      }),
+    ]);
+  });
+
+  it("resolves the artist through the drop when a punchline event carries only a dropId", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata();
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    await instrumentation.recordProductEvent({
+      eventName: "punchline.drop_viewed",
+      payload: { dropId: "drop-1", momentCount: 3 },
+    });
+
+    expect(catalogMetadata.findTracks).not.toHaveBeenCalled();
+    expect(catalogMetadata.findPunchlineDropArtists).toHaveBeenCalledWith(["drop-1"]);
+    expect(await ingest.listEvents()).toEqual([
+      expect.objectContaining({
+        eventName: "punchline.drop_viewed",
+        payload: expect.objectContaining({ dropId: "drop-1", artistId: "artist-1" }),
+      }),
+    ]);
+  });
+
+  it("leaves recommendation.served unattributed because a rail impression spans several artists", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata();
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    await instrumentation.recordProductEvent({
+      eventName: "recommendation.served",
+      payload: { requestId: "request-1", railId: "rail-1", trackIds: ["track-1", "track-2"], count: 2 },
+    });
+
+    expect(catalogMetadata.findTracks).not.toHaveBeenCalled();
+    expect(catalogMetadata.findPunchlineDropArtists).not.toHaveBeenCalled();
+    const [event] = await ingest.listEvents();
+    expect(event.payload).not.toHaveProperty("artistId");
+  });
+
+  it("replaces a client-supplied artistId with the server-resolved one", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata();
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    await instrumentation.recordProductEvent({
+      eventName: "player.segment_loop_enabled",
+      payload: { trackId: "track-1", artistId: "spoofed-artist", startMs: 0, endMs: 5000 },
+    });
+
+    const [event] = await ingest.listEvents();
+    expect((event.payload as Record<string, unknown>).artistId).toBe("artist-1");
+  });
+
+  it("keeps the payload unchanged when resolution fails and never throws at the caller", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata({
+      findTracks: jest.fn().mockRejectedValue(new Error("catalog unavailable")),
+    });
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    await expect(
+      instrumentation.recordProductEvent({
+        eventName: "player.segment_loop_enabled",
+        payload: { trackId: "track-1", artistId: "client-artist", startMs: 0, endMs: 5000 },
+      }),
+    ).resolves.toBeDefined();
+
+    const [event] = await ingest.listEvents();
+    expect((event.payload as Record<string, unknown>).artistId).toBe("client-artist");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("caches a resolution so impression-rate events do not repeat the lookup", async () => {
+    const ingest = new AnalyticsIngestService();
+    const catalogMetadata = buildCatalogMetadata();
+    const instrumentation = new AnalyticsInstrumentationService(
+      ingest,
+      catalogMetadata as unknown as AnalyticsCatalogMetadataService,
+    );
+
+    for (const position of [1, 2, 3]) {
+      await instrumentation.recordProductEvent({
+        eventName: "recommendation.clicked",
+        payload: { requestId: `request-${position}`, railId: "rail-1", trackId: "track-1", position },
+      });
+    }
+
+    expect(catalogMetadata.findTracks).toHaveBeenCalledTimes(1);
+    const events = await ingest.listEvents();
+    expect(events).toHaveLength(3);
+    for (const event of events) {
+      expect((event.payload as Record<string, unknown>).artistId).toBe("artist-1");
+    }
+  });
+});

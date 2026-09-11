@@ -339,42 +339,45 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     // #489 Punchline funnel product events (client-emitted): view → preview →
     // collect_started → collect_completed, joinable with the domain truth
     // above by dropId/momentId + session.
+    // #1743: `artistId` on these entries is resolved server-side at ingest from
+    // the payload's trackId/dropId — the client never sends it.
     eventName: "punchline.drop_viewed",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["dropId", "trackId", "momentCount", "source"],
+    payloadFields: ["dropId", "trackId", "artistId", "momentCount", "source"],
   },
   {
     eventName: "punchline.preview_played",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["dropId", "momentId", "trackId", "source"],
+    payloadFields: ["dropId", "momentId", "trackId", "artistId", "source"],
   },
   {
     eventName: "punchline.collect_started",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["dropId", "momentId", "trackId", "priceCents", "source"],
+    payloadFields: ["dropId", "momentId", "trackId", "artistId", "priceCents", "source"],
   },
   {
     eventName: "punchline.collect_completed",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["dropId", "momentId", "trackId", "editionNumber", "setCompleted", "source"],
+    payloadFields: ["dropId", "momentId", "trackId", "artistId", "editionNumber", "setCompleted", "source"],
   },
   {
     // #1477 slice 2: a fan shared a moment permalink from their inventory or
     // the release collect module, attributable back into the #489 funnel via
     // the share URL's drop_viewed(source:"share").
+    // #1743: `artistId` is resolved server-side at ingest from the dropId.
     eventName: "punchline.moment_shared",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["momentId", "dropId", "context", "method"],
+    payloadFields: ["momentId", "dropId", "artistId", "context", "method"],
   },
   {
     eventName: "recommendation.generated",
@@ -385,6 +388,8 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
   },
   {
     // #1449 WS-2: Home ranking impressions — which ranked items were shown.
+    // #1743: deliberately unattributed — a rail impression spans several
+    // artists, so no single artistId is correct.
     eventName: "recommendation.served",
     eventVersion: 1,
     producer: "web-app",
@@ -393,11 +398,12 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
   },
   {
     // #1449 WS-2: a served recommendation was acted on (click/play).
+    // #1743: `artistId` is resolved server-side at ingest from trackId.
     eventName: "recommendation.clicked",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",
-    payloadFields: ["requestId", "railId", "trackId", "position", "source"],
+    payloadFields: ["requestId", "railId", "trackId", "artistId", "position", "source"],
   },
   {
     eventName: "stems.uploaded",

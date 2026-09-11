@@ -97,6 +97,18 @@ export interface GenerationCreatedAnalyticsInput {
   consentBasis?: string;
 }
 
+interface ResolvedProductArtist {
+  artistId?: string;
+  creditedArtistId?: string;
+  creditedArtistName?: string;
+}
+
+// #1743: product events are impression-rate, so attribution is cached. The TTL
+// is short enough that a re-credited track corrects itself within minutes, and
+// the map is bounded so a long-lived process cannot grow without limit.
+const PRODUCT_ARTIST_CACHE_TTL_MS = 5 * 60 * 1000;
+const PRODUCT_ARTIST_CACHE_MAX_ENTRIES = 2000;
+
 @Injectable()
 export class AnalyticsInstrumentationService {
   constructor(
@@ -105,6 +117,8 @@ export class AnalyticsInstrumentationService {
     @Optional()
     private readonly agentLearningService?: AgentLearningService,
   ) {}
+
+  private readonly productArtistCache = new Map<string, { value: ResolvedProductArtist; expiresAt: number }>();
 
   async recordPlaybackCompleted(input: PlaybackCompletedAnalyticsInput) {
     const catalog = await this.resolvePlaybackCatalog(input);
@@ -263,6 +277,7 @@ export class AnalyticsInstrumentationService {
         input.sessionId, input.subjectType, input.subjectId, clientEventId,
       ])).digest("hex").slice(0, 32)}`
       : undefined;
+    const artist = await this.resolveProductArtist(input);
     const result = await this.emit({
       ...(eventId ? { eventId } : {}),
       eventName: input.eventName,
@@ -277,6 +292,15 @@ export class AnalyticsInstrumentationService {
       payload: {
         ...(input.payload ?? {}),
         source: input.source ?? "web_app",
+        // Server-resolved attribution wins over anything the client sent; when
+        // nothing resolves the payload keeps whatever it already carried.
+        ...(artist.artistId ? { artistId: artist.artistId } : {}),
+        ...(artist.creditedArtistId && !payloadString(input.payload, "creditedArtistId")
+          ? { creditedArtistId: artist.creditedArtistId }
+          : {}),
+        ...(artist.creditedArtistName && !payloadString(input.payload, "creditedArtistName")
+          ? { creditedArtistName: artist.creditedArtistName }
+          : {}),
       },
       sourceRefs: {
         ...(input.actorId ? { actorId: input.actorId } : {}),
@@ -287,6 +311,99 @@ export class AnalyticsInstrumentationService {
     });
     await this.recordProductAgentOutcome(input);
     return result;
+  }
+
+  /**
+   * #1743: client-emitted product events must not assert who gets credited, so
+   * the artist is resolved here from identifiers the payload already carries
+   * (`trackId`, `dropId`). The resolved value flows into the stored envelope and
+   * the published message, and from there into `analytics_facts.artistId`.
+   */
+  private async resolveProductArtist(input: ProductAnalyticsInput): Promise<ResolvedProductArtist> {
+    // `recommendation.served` stays unattributed on purpose: it is a rail-level
+    // impression carrying up to seven trackIds, so a single artistId would be
+    // wrong, and one fact per track would multiply impression volume for no
+    // dashboard gain. `recommendation.clicked` carries a single trackId and is
+    // attributed by the normal path below.
+    if (input.eventName === "recommendation.served") {
+      return {};
+    }
+
+    const trackId = productTrackId(input);
+    // Some player events legitimately send an artistId today. Leave it alone
+    // when there is no track to verify it against, rather than regressing it.
+    if (!trackId && payloadString(input.payload, "artistId")) {
+      return {};
+    }
+
+    const dropId = payloadString(input.payload, "dropId");
+    if (!trackId && !dropId) {
+      return {};
+    }
+
+    const cacheKey = trackId ? `track:${trackId}` : `drop:${dropId}`;
+    const cached = this.readProductArtistCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const resolved = trackId
+        ? await this.lookupTrackArtist(trackId)
+        : await this.lookupDropArtist(dropId as string);
+      // Misses are cached too: an unknown identifier stays unknown, and
+      // re-querying it on every impression is the cost we are avoiding.
+      this.writeProductArtistCache(cacheKey, resolved);
+      return resolved;
+    } catch (error) {
+      // Analytics must never fail or slow the caller's request. Failures stay
+      // uncached so a transient database blip does not pin "unknown" for the TTL.
+      console.warn(
+        `[Analytics] artist attribution skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return {};
+    }
+  }
+
+  private async lookupTrackArtist(trackId: string): Promise<ResolvedProductArtist> {
+    const metadata = await this.catalogMetadataService?.findTracks([trackId]);
+    const track = metadata?.get(trackId);
+    if (!track) {
+      return {};
+    }
+    return {
+      artistId: track.artistId?.trim() || undefined,
+      creditedArtistId: track.creditedArtistId?.trim() || undefined,
+      creditedArtistName: track.creditedArtistName?.trim() || undefined,
+    };
+  }
+
+  private async lookupDropArtist(dropId: string): Promise<ResolvedProductArtist> {
+    const artists = await this.catalogMetadataService?.findPunchlineDropArtists([dropId]);
+    const artistId = artists?.get(dropId)?.trim();
+    return artistId ? { artistId } : {};
+  }
+
+  private readProductArtistCache(key: string) {
+    const entry = this.productArtistCache.get(key);
+    if (!entry) {
+      return undefined;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.productArtistCache.delete(key);
+      return undefined;
+    }
+    return entry.value;
+  }
+
+  private writeProductArtistCache(key: string, value: ResolvedProductArtist) {
+    if (this.productArtistCache.size >= PRODUCT_ARTIST_CACHE_MAX_ENTRIES) {
+      const oldest = this.productArtistCache.keys().next();
+      if (!oldest.done) {
+        this.productArtistCache.delete(oldest.value);
+      }
+    }
+    this.productArtistCache.set(key, { value, expiresAt: Date.now() + PRODUCT_ARTIST_CACHE_TTL_MS });
   }
 
   private async recordProductAgentOutcome(input: ProductAnalyticsInput) {
@@ -480,6 +597,11 @@ export class AnalyticsInstrumentationService {
       ...input,
     });
   }
+}
+
+function payloadString(payload: Record<string, unknown> | undefined, key: string) {
+  const value = payload?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function productTrackId(input: ProductAnalyticsInput) {

@@ -36,9 +36,17 @@ describe("AnalyticsCatalogMetadataService integration", () => {
         },
       },
     });
+    await prisma.punchlineDrop.create({
+      data: {
+        id: `${TEST_PREFIX}drop`,
+        trackId: `${TEST_PREFIX}track`,
+        artistId: `${TEST_PREFIX}artist`,
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.punchlineDrop.deleteMany({ where: { id: `${TEST_PREFIX}drop` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { id: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.deleteMany({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
@@ -64,5 +72,14 @@ describe("AnalyticsCatalogMetadataService integration", () => {
       creditedArtistNames: [],
     });
     expect(metadata.has("missing")).toBe(false);
+  });
+
+  // #1743: punchline product events carry a dropId only, so ingest-time artist
+  // attribution resolves through the drop.
+  it("returns the artist behind a punchline drop", async () => {
+    const artists = await service.findPunchlineDropArtists([`${TEST_PREFIX}drop`, "missing"]);
+
+    expect(artists.get(`${TEST_PREFIX}drop`)).toBe(`${TEST_PREFIX}artist`);
+    expect(artists.has("missing")).toBe(false);
   });
 });
