@@ -22,7 +22,8 @@ everywhere it landed.
 6. [#1768](https://github.com/akoita/resonate/issues/1768): let Dependency
    Train open its review pull request.
 7. [#1778](https://github.com/akoita/resonate/issues/1778): refund generation
-   credits when a generation terminally fails — admitted after planning.
+   credits when a catalog generation terminally fails — admitted after
+   planning.
 
 Two items carry prerequisites the work cannot satisfy on its own. #1769 needs
 the legal entity, its jurisdiction, and a contact address before the imprint
@@ -37,10 +38,12 @@ commitment. There is no Sprint 22 carry-over; that milestone closed 6/6.
 **Re-scoped 2026-09-16, same day as planning.** #1778 was admitted after the
 milestone was created. Drafting the legal surface for #1769 turned up a live
 defect rather than a documentation gap: the refund for a terminally failed
-generation never executes, because the processor tests `attemptsMade` against
-the attempt limit inside its catch block and BullMQ v5 increments that counter
-only after a job has failed. The condition is false on every attempt, so users
-have kept the charge for failed generations since #1334 shipped. It is admitted
+catalog generation never executes, because that processor tests `attemptsMade`
+against the attempt limit inside its catch block and BullMQ v5 increments that
+counter only after a job has failed. The condition is false on every attempt,
+so users have kept the charge for failed catalog generations since #1334
+shipped. Remix generation runs on a different processor and does attempt its
+refund, so the affected path is the catalog/Lyria queue alone. It is admitted
 here rather than held for a later milestone because it is the only thing found
 today that is currently taking money from users.
 
@@ -88,7 +91,10 @@ staging, and a subsequent scheduled load does not reintroduce them. A user who
 refuses consent generates no product events, verified at ingest rather than in
 the browser. A forced scheduled-workflow failure leaves a visible trace. A
 Monday `Dependency Train` run opens a review pull request that carries CI, or
-the remaining operator step is stated.
+the remaining operator step is stated. A catalog generation that exhausts its
+attempts refunds its credits exactly once, proven against the attempt counters
+the runtime actually produces rather than a constructed value, and the
+generation-credit ledger carries no debit left without its matching refund.
 
 The privacy policy states what cannot be erased — on-chain transactions, IPFS
 content, and whatever the retention policy preserves for audit. That limit is
