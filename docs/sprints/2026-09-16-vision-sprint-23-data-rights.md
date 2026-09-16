@@ -93,8 +93,9 @@ the browser. A forced scheduled-workflow failure leaves a visible trace. A
 Monday `Dependency Train` run opens a review pull request that carries CI, or
 the remaining operator step is stated. A catalog generation that exhausts its
 attempts refunds its credits exactly once, proven against the attempt counters
-the runtime actually produces rather than a constructed value, and the
-generation-credit ledger carries no debit left without its matching refund.
+the runtime actually produces rather than a constructed value, and no
+terminally failed catalog job is left holding a debit without its matching
+refund.
 
 The privacy policy states what cannot be erased — on-chain transactions, IPFS
 content, and whatever the retention policy preserves for audit. That limit is
