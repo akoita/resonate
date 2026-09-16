@@ -1,0 +1,83 @@
+name: Report scheduled workflow failure
+description: >-
+  Open or update a deduped issue when an unattended workflow run fails, and
+  close it again once a later run succeeds. The caller decides which triggers
+  report: most callers gate on `schedule` alone, because a manual dispatch has
+  a human watching it and a pull_request failure already blocks the PR. A
+  workflow whose dispatch is itself a gate someone relies on should report on
+  that too.
+
+inputs:
+  workflow-name:
+    description: Human-readable workflow name used in issue prose, e.g. "Mutation Testing (Gambit)".
+    required: true
+  issue-title:
+    description: Exact issue title used for deduping via search.
+    required: true
+  label:
+    description: Label used to scope the dedupe search; created if missing.
+    required: false
+    default: scheduled-workflow-failure
+  body-context:
+    description: Extra prose appended to the issue body explaining what this workflow protects and what to do.
+    required: false
+    default: ""
+  outcome:
+    description: 'Either "failure" or "success".'
+    required: true
+  token:
+    description: GitHub token with issues:write on this repository.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Report scheduled outcome
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        WORKFLOW_NAME: ${{ inputs.workflow-name }}
+        ISSUE_TITLE: ${{ inputs.issue-title }}
+        LABEL: ${{ inputs.label }}
+        BODY_CONTEXT: ${{ inputs.body-context }}
+        OUTCOME: ${{ inputs.outcome }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        set -euo pipefail
+        TITLE="$ISSUE_TITLE"
+
+        # Ensure the label exists (ignore "already exists").
+        gh label create "$LABEL" --color "d73a4a" \
+          --description "Scheduled workflow failure: $WORKFLOW_NAME" 2>/dev/null || true
+
+        EXISTING=$(gh issue list --state open --label "$LABEL" \
+          --search "\"$TITLE\" in:title" --json number --jq '.[0].number' || echo "")
+        if [ "$EXISTING" = "null" ]; then
+          EXISTING=""
+        fi
+
+        if [ "$OUTCOME" = "success" ]; then
+          if [ -n "$EXISTING" ]; then
+            echo "Closing recovered issue #$EXISTING"
+            BODY=$(printf '## %s recovered\n\nA later scheduled run of **%s** succeeded.\n\n- Run: %s\n- Attempt: %s\n\nClosing this issue; reopen or re-triage if the failure recurs.' \
+              "$WORKFLOW_NAME" "$WORKFLOW_NAME" "$RUN_URL" "$RUN_ATTEMPT")
+            gh issue comment "$EXISTING" --body "$BODY"
+            gh issue close "$EXISTING"
+          else
+            echo "No open issue for $WORKFLOW_NAME; nothing to close."
+          fi
+          exit 0
+        fi
+
+        BODY=$(printf '## %s failed\n\nA scheduled run of **%s** failed.\n\n- Run: %s\n- Attempt: %s\n- Trigger: %s\n\n%s' \
+          "$WORKFLOW_NAME" "$WORKFLOW_NAME" "$RUN_URL" "$RUN_ATTEMPT" "$EVENT_NAME" "$BODY_CONTEXT")
+
+        if [ -n "$EXISTING" ]; then
+          echo "Commenting on existing issue #$EXISTING"
+          gh issue comment "$EXISTING" --body "$BODY"
+        else
+          echo "Opening new failure issue"
+          gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+        fi

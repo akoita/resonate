@@ -85,3 +85,28 @@ jobs:
             echo "::endgroup::"
           done
           exit "$status"
+
+  report-failure:
+    name: Report Certora Failure
+    needs: [certora]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report scheduled outcome
+        uses: ./.github/actions/report-scheduled-failure
+        with:
+          workflow-name: Certora Formal Verification
+          issue-title: Certora formal verification failed on main
+          body-context: >-
+            The formal-verification layer of the contract test ladder (#1260) is not
+            running. Open the failing spec run to identify the failure, then triage
+            whether it is a real regression or a flaky cloud run.
+          outcome: ${{ (needs.certora.result == 'success') && 'success' || 'failure' }}
+          token: ${{ github.token }}

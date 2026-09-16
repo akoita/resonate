@@ -71,3 +71,28 @@ jobs:
             --repository "${REPOSITORY}" \
             --base-branch "${BASE_BRANCH}" \
             --train-branch "${TRAIN_BRANCH}"
+
+  report-failure:
+    name: Report Dependency Train Failure
+    needs: [rebuild]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report scheduled outcome
+        uses: ./.github/actions/report-scheduled-failure
+        with:
+          workflow-name: Dependency Train
+          issue-title: Dependency train failed on main
+          body-context: >-
+            The batched dependency review branch is not reaching a pull request
+            (#1768). Open the failing run to identify the cause before the next
+            scheduled rebuild is due.
+          outcome: ${{ (needs.rebuild.result == 'success') && 'success' || 'failure' }}
+          token: ${{ github.token }}

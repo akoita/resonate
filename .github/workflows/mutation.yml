@@ -93,3 +93,28 @@ jobs:
           # exit 2 = baseline suite not green (a real failure); exit 1 = mutants survived
           # (expected, reported as a gap, not a job failure).
           [ "$code" = "2" ] && exit 1 || exit 0
+
+  report-failure:
+    name: Report Mutation Testing Failure
+    needs: [mutation]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report scheduled outcome
+        uses: ./.github/actions/report-scheduled-failure
+        with:
+          workflow-name: Mutation Testing (Gambit)
+          issue-title: Mutation testing failed on main
+          body-context: >-
+            Kill-scoring for the money contracts is not running. This went
+            unnoticed for six weeks (#1764); open the failing matrix leg to
+            identify the failure before it goes silent again.
+          outcome: ${{ (needs.mutation.result == 'success') && 'success' || 'failure' }}
+          token: ${{ github.token }}
