@@ -97,12 +97,14 @@ Generation credits are prepaid and consumed when a generation **succeeds**. A
 generation that fails should not cost you anything: where credits were already
 debited, they are returned to your balance.
 
-> **This does not currently work.** The refund path for a terminally failed
-> generation never executes — its condition can never be true under the job
-> library's current semantics — so a failed generation keeps the charge. See
+> **This does not currently work for catalog generation.** On that path the
+> refund for a terminally failed job never executes — its condition can never be
+> true under the job library's current semantics — so the charge is kept. Remix
+> generation runs on a separate processor and does attempt its refund, though
+> that attempt is best-effort and is dropped if it fails. See
 > [#1778](https://github.com/akoita/resonate/issues/1778), which also covers
-> identifying and correcting the balances already affected. Publishing this
-> paragraph before that lands would state a refund that does not happen.
+> finding the affected balances. Publishing this paragraph before that lands
+> would state a refund that does not happen.
 
 Unused credits are not exchangeable for money. If we discontinue the feature we
 will say what happens to unused balances before the change takes effect —

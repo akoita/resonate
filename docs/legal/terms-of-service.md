@@ -150,8 +150,8 @@ Resonate offers AI-assisted generation and AI-assisted discovery.
   original, and we do not guarantee it is free of resemblance to existing
   works. You are responsible for what you publish.
 - Generation is metered with prepaid credits. Credits are consumed when a
-  generation succeeds; a failed generation should not cost you credits. The
-  refund for a terminally failed generation is currently broken —
+  generation succeeds; a failed generation should not cost you credits. On the
+  catalog generation path that refund is currently broken —
   [#1778](https://github.com/akoita/resonate/issues/1778) — and this clause
   cannot be published until it works.
 - Provenance and declared-AI markers travel with generated material. Removing
