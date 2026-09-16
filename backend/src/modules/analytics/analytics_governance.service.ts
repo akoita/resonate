@@ -1,6 +1,12 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { AnalyticsEvent, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import {
+  ANALYTICS_WAREHOUSE_GOVERNANCE,
+  AnalyticsWarehouseGovernanceTarget,
+  WarehouseErasureResult,
+  analyticsWarehouseGovernanceFromEnv,
+} from "./analytics_warehouse_governance";
 
 type RetentionTier = "personal" | "sensitive" | "pseudonymous";
 
@@ -26,6 +32,14 @@ const REDACTED_VALUE = "[redacted]";
 
 @Injectable()
 export class AnalyticsGovernanceService {
+  private readonly logger = new Logger(AnalyticsGovernanceService.name);
+
+  constructor(
+    @Optional()
+    @Inject(ANALYTICS_WAREHOUSE_GOVERNANCE)
+    private readonly warehouseGovernance: AnalyticsWarehouseGovernanceTarget = analyticsWarehouseGovernanceFromEnv(),
+  ) {}
+
   getRetentionPolicy(env: NodeJS.ProcessEnv = process.env): AnalyticsRetentionPolicy {
     return {
       personalDays: parsePositiveInt(env.ANALYTICS_RETENTION_PERSONAL_DAYS, 395),
@@ -126,6 +140,9 @@ export class AnalyticsGovernanceService {
     reason: string,
     details: Record<string, unknown>,
   ) {
+    const { deleteEventIds, redactEventIds } = partitionEventsForErasure(events);
+    const redacting = new Set(redactEventIds);
+    const affectedDates = [...new Set(events.map((event) => event.occurredAt.toISOString().slice(0, 10)))];
     const result = {
       status: "ok",
       matched: events.length,
@@ -136,7 +153,7 @@ export class AnalyticsGovernanceService {
     };
 
     for (const event of events) {
-      if (shouldPreserveForAudit(event.eventName)) {
+      if (redacting.has(event.eventId)) {
         await this.redactEvent(event, action, reason, details);
         result.redacted += 1;
       } else {
@@ -146,7 +163,84 @@ export class AnalyticsGovernanceService {
       result.lineageRecords += 1;
     }
 
-    return result;
+    // Postgres first, warehouse second: a warehouse load running in between
+    // cannot reintroduce the erased rows, because the source rows are already
+    // deleted or already redacted.
+    const warehouse = await this.eraseFromWarehouse({
+      deleteEventIds,
+      redactEventIds,
+      affectedDates,
+      action,
+      reason,
+      details,
+    });
+
+    return { ...result, warehouse };
+  }
+
+  private async eraseFromWarehouse(input: {
+    deleteEventIds: string[];
+    redactEventIds: string[];
+    affectedDates: string[];
+    action: string;
+    reason: string;
+    details: Record<string, unknown>;
+  }): Promise<WarehouseErasureResult> {
+    let outcome: WarehouseErasureResult;
+    try {
+      outcome = await this.warehouseGovernance.applyErasure({
+        deleteEventIds: input.deleteEventIds,
+        redactEventIds: input.redactEventIds,
+        // Re-read after the Postgres redaction so the warehouse rows are rebuilt
+        // from the redacted record rather than from a second set of rules.
+        redactedEnvelopes: await this.readRedactedEnvelopes(input.redactEventIds),
+        affectedDates: input.affectedDates,
+        reason: input.reason,
+      });
+    } catch (error) {
+      // The Postgres erasure already succeeded; a warehouse failure must not discard it.
+      const message = error instanceof Error ? error.message : String(error);
+      outcome = {
+        status: "failed",
+        provider: describeWarehouseProvider(this.warehouseGovernance),
+        deletedRows: 0,
+        redactedRows: 0,
+        statements: 0,
+        error: message,
+      };
+      this.logger.error(`Analytics warehouse erasure failed for ${input.action}: ${message}`);
+    }
+
+    await prisma.analyticsGovernanceLog.create({
+      data: {
+        action: "warehouse_erasure",
+        subjectType: optionalDetail(input.details, "subjectType"),
+        subjectId: optionalDetail(input.details, "subjectId"),
+        actorId: optionalDetail(input.details, "actorId"),
+        reason: input.reason,
+        details: {
+          ...input.details,
+          sourceAction: input.action,
+          events: { deleted: input.deleteEventIds.length, redacted: input.redactEventIds.length },
+          affectedDates: input.affectedDates,
+          warehouse: outcome,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+
+    return outcome;
+  }
+
+  private async readRedactedEnvelopes(eventIds: string[]) {
+    const envelopes: unknown[] = [];
+    for (let index = 0; index < eventIds.length; index += 500) {
+      const rows = await prisma.analyticsEvent.findMany({
+        where: { eventId: { in: eventIds.slice(index, index + 500) } },
+        select: { envelope: true },
+      });
+      envelopes.push(...rows.map((row) => row.envelope));
+    }
+    return envelopes;
   }
 
   private async deleteEvent(
@@ -208,6 +302,44 @@ export class AnalyticsGovernanceService {
       }),
     ]);
   }
+}
+
+export interface AnalyticsErasurePartition {
+  deleteEventIds: string[];
+  redactEventIds: string[];
+}
+
+/**
+ * Splits erased events the same way the Postgres write path does: audit-preserved
+ * families are redacted, everything else is deleted. Exported so the warehouse
+ * mirror and this rule can be tested without a database.
+ */
+export function partitionEventsForErasure(
+  events: Array<{ eventId: string; eventName: string }>,
+): AnalyticsErasurePartition {
+  const deleteEventIds: string[] = [];
+  const redactEventIds: string[] = [];
+  for (const event of events) {
+    if (shouldPreserveForAudit(event.eventName)) {
+      redactEventIds.push(event.eventId);
+    } else {
+      deleteEventIds.push(event.eventId);
+    }
+  }
+  return { deleteEventIds, redactEventIds };
+}
+
+function describeWarehouseProvider(target: AnalyticsWarehouseGovernanceTarget) {
+  try {
+    return target.describe().provider;
+  } catch {
+    return "unknown";
+  }
+}
+
+function optionalDetail(details: Record<string, unknown>, key: string) {
+  const value = details[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function retentionDays(policy: AnalyticsRetentionPolicy, tier: RetentionTier) {
