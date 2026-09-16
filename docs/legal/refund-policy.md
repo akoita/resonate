@@ -7,7 +7,13 @@ issue: 1769
 
 # Refund policy
 
-**Draft — not yet in force. Requires owner approval and qualified legal review.**
+**Template — not any deployment's published terms.** Resonate is software
+anyone can deploy; whoever runs an instance is its operator and owns the
+documents their users read. Operator-specific values are placeholders resolved
+from that deployment's configuration. Sections marked **⚖ jurisdiction-specific**
+are shaped by European obligations and do not transfer elsewhere unaltered.
+Requires review by someone qualified in the operator's jurisdiction. Not legal
+advice. See [README](README.md).
 
 Effective from {{EFFECTIVE_DATE}}. This policy forms part of the
 [Terms of Service](terms-of-service.md).
@@ -70,6 +76,10 @@ We will help where we can, but we do not guarantee delivery of what an artist
 promised on a campaign page.
 
 ## Marketplace purchases, licences and collectibles
+
+> ⚖ **Jurisdiction-specific.** The consumer withdrawal right for digital
+> content, and the conditions for ending it, are European. An operator
+> elsewhere may owe a different right, or none.
 
 Stems, licences, downloads and collectibles are digital content delivered
 immediately.
