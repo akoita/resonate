@@ -621,3 +621,33 @@ jobs:
           path: ${{ runner.temp }}/security-reports
           retention-days: 30
           if-no-files-found: warn
+
+  report-failure:
+    name: Report Security Scan Failure
+    needs: [supply-chain-baseline, release-plane-evidence, nightly]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Report scheduled outcome
+        uses: ./.github/actions/report-scheduled-failure
+        with:
+          workflow-name: Security Scan
+          issue-title: Nightly security scan failed on main
+          body-context: >-
+            Scheduled security scanning is not producing results — this is the
+            one whose silence matters most. Open the failing job to identify
+            the failure before the next scheduled run.
+          outcome: >-
+            ${{
+              (needs.supply-chain-baseline.result == 'success' &&
+               needs.release-plane-evidence.result == 'success' &&
+               needs.nightly.result == 'success') && 'success' || 'failure'
+            }}
+          token: ${{ github.token }}

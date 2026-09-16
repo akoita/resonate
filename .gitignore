@@ -83,3 +83,7 @@ desktop/generated/
 
 # evmbench contract archive (generated)
 resonate-contracts.zip
+
+# Python bytecode (workflow test helpers, Demucs worker tooling)
+__pycache__/
+*.pyc

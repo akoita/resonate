@@ -38,36 +38,35 @@ jobs:
   report-failure:
     name: Report Nightly Failure
     needs: [validate]
-    if: failure()
+    # Unlike the four newly-wired workflows (schedule-only, because a manual
+    # dispatch of those is someone experimenting), this one also reports on
+    # workflow_dispatch: this workflow's own purpose (see header) is to be the
+    # pre-release gate an operator runs before Release Deployment, it takes no
+    # inputs, and a dispatched run executes the identical graph a scheduled run
+    # does — so it deserves the same durable record and the same close-on-success
+    # behavior. Do not narrow this to schedule-only to match the other four.
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write
     steps:
-      - name: Open or update failure issue
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          TITLE="Nightly full validation failed on main"
-          LABEL="nightly-validation-failure"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-          # Ensure the label exists (ignore "already exists").
-          gh label create "$LABEL" --color "d73a4a" \
-            --description "Nightly full validation (#1748) failure" 2>/dev/null || true
-
-          BODY=$(printf '## Nightly full validation failed\n\nThe nightly complete validation graph on `main` (#1748) failed.\n\n- Run: %s\n- Attempt: %s\n- Trigger: %s\n\nOpen the failing job to identify the failure, then decide whether it blocks the next **Release Deployment** dispatch: that workflow re-validates the exact release source with the same complete graph, so a red nightly usually fails the release the same way. Fix or triage the failure before dispatching, and record flaky-versus-real triage on this issue.' \
-            "$RUN_URL" "${{ github.run_attempt }}" "${{ github.event_name }}")
-
-          # Reuse the most recent open failure issue when present.
-          EXISTING=$(gh issue list --state open --label "$LABEL" \
-            --search "$TITLE in:title" --json number --jq '.[0].number' || echo "")
-
-          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
-            echo "Commenting on existing issue #$EXISTING"
-            gh issue comment "$EXISTING" --body "$BODY"
-          else
-            echo "Opening new failure issue"
-            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
-          fi
+      - name: Report scheduled outcome
+        uses: ./.github/actions/report-scheduled-failure
+        with:
+          workflow-name: Nightly full validation
+          issue-title: Nightly full validation failed on main
+          label: nightly-validation-failure
+          body-context: >-
+            The nightly complete validation graph on `main` (#1748) failed.
+            Decide whether it blocks the next **Release Deployment** dispatch:
+            that workflow re-validates the exact release source with the same
+            complete graph, so a red nightly usually fails the release the
+            same way. Fix or triage the failure before dispatching, and record
+            flaky-versus-real triage on this issue.
+          outcome: ${{ (needs.validate.result == 'success') && 'success' || 'failure' }}
+          token: ${{ github.token }}
