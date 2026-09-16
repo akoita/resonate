@@ -14,8 +14,8 @@ in Vision Sprint 23.
 | Document | File | State |
 | --- | --- | --- |
 | Terms of Service | [terms-of-service.md](terms-of-service.md) | Draft — needs owner and qualified legal review |
-| Privacy Policy | [privacy-policy.md](privacy-policy.md) | Draft — needs owner and qualified legal review |
-| Refund policy | [refund-policy.md](refund-policy.md) | Draft — needs owner and qualified legal review |
+| Privacy Policy | [privacy-policy.md](privacy-policy.md) | Draft — **also blocked on implementation**: #1770, #1771, #1772 |
+| Refund policy | [refund-policy.md](refund-policy.md) | Draft — needs owner and qualified legal review; #1776 changes it when it lands |
 | Mentions légales | not drafted | Blocked: the registered office is not cleared for publication |
 
 ## These are drafts, not advice
@@ -30,6 +30,13 @@ them accurate about the system, which most templates are not.
 It does not make them legally sufficient. They need review by someone
 qualified in the operator's jurisdiction before publication. Each document
 ends with the specific questions that review should answer.
+
+**Accuracy is a moving target.** Two documents contain blocks marked as not
+publishable, because they describe mechanisms the system does not yet have —
+consent for product analytics, and erasure that reaches past the primary event
+store. Those blocks are not drafting placeholders to be tidied away; they are
+publication blockers that clear when the implementation lands. Re-verify every
+factual claim against the code on the day these ship.
 
 ## Placeholders
 

@@ -86,15 +86,23 @@ payouts for free listening.
 ## 5. Show campaigns and escrow
 
 When you pledge to a show campaign, your funds are held in a smart contract
-until the campaign reaches its deadline.
+while the campaign runs.
 
-- If the campaign **funds successfully**, the funds are released to the artist,
-  less the 6% fee.
-- If the campaign **fails or is cancelled**, you are refunded **in full**. We
-  take nothing from a campaign that does not fund.
+Reaching the goal does not pay everything out at once. A funded campaign moves
+through booking confirmation, a deposit released to the artist, fulfilment of
+the show, and a dispute window before the remaining funds are released. **Our
+fee is taken only when money actually moves to the artist**, proportionally at
+each release — never when you pledge.
 
-Refund terms are set out in the [refund policy](refund-policy.md), which forms
-part of these terms.
+If a campaign does not reach its goal, you are refunded in full. If a campaign
+is cancelled, what you get back depends on whether any money had already been
+released to the artist: before any release, your full pledge; after a deposit
+release, your proportional share of what remains in escrow, which is less than
+your pledge.
+
+**The [refund policy](refund-policy.md) governs refund amounts and timing in
+every case.** It forms part of these terms, and where this summary and that
+policy differ, the policy is what applies.
 
 A pledge is support for a show, not a ticket, a share in the show's revenue, or
 a claim on the artist. What a campaign promises you is written on the campaign
@@ -233,10 +241,13 @@ rather than guessing:
    section 14 currently gestures at it rather than naming one.
 4. **Language.** Whether a translation is mandatory for consumers in the
    operator's jurisdiction, or whether English suffices for the first cohort.
-5. **Digital content and the withdrawal right.** Section 7 and the refund
-   policy assume immediate delivery with an express waiver at checkout. The
-   waiver has to be collected correctly at the point of sale or the right
-   survives — see the refund policy's review questions.
+5. **Digital content and the withdrawal right.** Checkout collects none of the
+   three things required to end a consumer's withdrawal right — prior express
+   consent, acknowledgement, durable confirmation — so the refund policy now
+   states that the right survives every digital purchase. Building the waiver
+   flow is [#1776](https://github.com/akoita/resonate/issues/1776). Section 7
+   should be re-read against whatever that flow settles, particularly for
+   on-chain purchases that cannot be reversed once made.
 6. **Artist relationship.** These terms treat artists as users. If the operator
    is acting as an intermediary for the artist's sale rather than a marketplace
    host, the disclosure obligations and the tax treatment both change.

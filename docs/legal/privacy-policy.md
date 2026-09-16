@@ -29,9 +29,11 @@ permanent.
 
 **What you do on Resonate.** Playback, skips, saves, playlists, searches,
 recommendations shown and chosen, purchases, pledges, collects, uploads,
-generations and remix sessions. Every such event carries a privacy tier, the
-legal basis it was collected under, and its lineage, so that we can honour a
-later deletion request precisely rather than approximately.
+generations and remix sessions. Every such event records a **privacy tier**,
+and events in the personal and sensitive tiers must also record the **legal
+basis** they were collected under — the system rejects them otherwise. Events
+in the pseudonymous tier may not carry one, and lineage references are recorded
+where the emitting system supplies them rather than always.
 
 Behaviour events are keyed to a **pseudonymous actor identifier**, derived with
 a secret salt, rather than to your email. Artists see aggregate audience
@@ -64,27 +66,44 @@ easy as giving it. Withdrawing consent does not affect processing that already
 happened, and it does not switch off the operational, security, payment and
 rights events we must keep.
 
+> **This table cannot be published as it stands.** Product analytics are
+> currently recorded for any signed-in session with no prior choice offered and
+> no persistent opt-out: `recordProductAnalytics` fires whenever a stored auth
+> token exists. Consent under GDPR Article 7 requires a clear affirmative act,
+> demonstrable afterwards, and withdrawal as easy as giving it — none of which
+> exists yet, and a request by email after the fact cannot make consent the
+> lawful basis retroactively.
+>
+> Before publication, one of two things must be true: the consent mechanism in
+> [#1772](https://github.com/akoita/resonate/issues/1772) is live and enforced
+> at ingest, or these rows name the basis that actually applies today and the
+> collection is narrowed to match it. Choosing the second is a decision with
+> product consequences, not a drafting choice.
+
 ## Your controls
 
 **Your rights do not depend on a button existing.** Whatever the product offers
 at any moment, you can exercise every right below by writing to
-{{OPERATOR_CONTACT_EMAIL}}, and we will act on it.
+{{OPERATOR_CONTACT_EMAIL}}.
 
-Self-service controls are being built, and this section will say plainly which
-ones are live. As of {{EFFECTIVE_DATE}}:
+Being able to *receive* such a request is not the same as being able to
+*fulfil* it. The table below says which controls exist; the sections that
+follow say where the underlying mechanism is still incomplete. This document
+must not go live while a row it describes cannot actually be honoured.
+
+As of {{EFFECTIVE_DATE}}:
 
 | Control | Status |
 | --- | --- |
-| Turning optional product analytics off | **Not yet available in the product.** Ask us and we will apply it. |
+| Turning optional product analytics off | **Not yet available**, and there is no opt-out gate behind the scenes either — see the note under "Why, and on what basis". |
 | Personalised yearly summaries | Not yet offered. |
 | Resetting or adjusting taste memory | Partially available; social taste matching is off unless you turn it on. |
-| Exporting your data | **Not yet self-service.** Ask us and we will produce it. |
-| Deleting your data | **Not yet self-service.** Ask us and we will carry it out. |
+| Exporting your data | **Not yet available**, self-service or otherwise. |
+| Deleting your data | **Not yet available** beyond the primary event store — see "When you delete". |
 
-Do not publish this document with that table unverified. Each row must be
-checked against the product on the day it ships, and updated whenever a control
-becomes available — a privacy policy that claims a control the product does not
-have is a false statement, not an aspiration.
+Each row must be re-checked against the product on the day this ships and
+whenever a control becomes available. A privacy policy that claims a control
+the product does not have is a false statement, not an aspiration.
 
 ## How long we keep things
 
@@ -105,19 +124,31 @@ below.
 
 ## When you delete
 
-A deletion request resolves you to every identifier we hold — your user id,
-your pseudonymous actor id, wallet subjects, artist profile subjects, sessions,
-and owned releases — writes a record that the deletion was requested, and then
-removes or redacts the rows linked to those identifiers. Aggregates survive
-only where they stay anonymous. Summaries built from deleted facts are revoked
-or rebuilt without them. Later rebuilds read the deletion record first, so
-deleted rows do not come back.
+A deletion request writes a record that the deletion was asked for, and then
+removes or redacts the analytics rows linked to the identifier it is given.
+Financial and audit records are redacted rather than deleted, as described
+below.
 
-**Scope, honestly stated.** Deletion is applied to our primary event store
-today. Propagation into the analytics warehouse and the facts derived from it
-is being built; until it ships, a deletion is completed by us across the
-remaining systems as an operational step rather than automatically. We will
-update this paragraph when that is no longer true.
+> **This section describes an incomplete mechanism and must not be published
+> until it is finished.** What exists today deletes from the primary event
+> store only, and only for one identifier supplied by the caller — it does not
+> resolve a person to their wallet, artist profile, sessions and releases. The
+> analytics warehouse and the facts derived from it are untouched, and the
+> backfill path does not read deletion lineage as a tombstone, so rebuilt rows
+> can reappear. There is no account-close workflow and no runbook for
+> completing a deletion by hand, which means the earlier draft's promise of
+> manual completion was not a real fallback either.
+>
+> [#1770](https://github.com/akoita/resonate/issues/1770) and
+> [#1771](https://github.com/akoita/resonate/issues/1771) build the missing
+> parts. Until they ship, this document cannot honestly describe erasure at
+> all, and the operator cannot honestly answer an erasure request.
+
+Once the mechanism is complete, this section will describe it: resolving a
+person to every identifier held, recording the request, removing or redacting
+across the raw store, the warehouse and derived facts, keeping aggregates only
+where they remain anonymous, revoking or rebuilding summaries, and reading the
+deletion record on every later rebuild so deleted rows do not come back.
 
 **Financial and audit records are redacted rather than deleted.** We keep what
 accounting, rights and tax law require us to keep — the fact, the date, the
