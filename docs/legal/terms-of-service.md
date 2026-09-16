@@ -154,8 +154,8 @@ Resonate offers AI-assisted generation and AI-assisted discovery.
 - Provenance and declared-AI markers travel with generated material. Removing
   or falsifying them is a breach of these terms.
 - Recommendations are automated. They shape what you are shown; they do not
-  produce legal or similarly significant effects for you, and you can adjust or
-  reset the taste memory behind them.
+  produce legal or similarly significant effects for you. Taste memory controls
+  are partly available today; see the privacy policy for what is live.
 
 ## 9. Acceptable use
 
@@ -165,8 +165,8 @@ contracts, scrape beyond what the published interfaces allow, or use Resonate
 to launder value or evade sanctions.
 
 We may remove content, restrict features, or close accounts that breach these
-terms. Where we do, we will tell you why unless we are legally prevented from
-doing so.
+terms. Where we do, we will tell you why in the application unless we are
+legally prevented from doing so.
 
 ## 10. Disputes about content
 
@@ -182,9 +182,15 @@ We do not promise uninterrupted availability. We may suspend the service for
 maintenance, security, or because a third party we depend on has failed.
 
 We may change these terms. If a change materially affects your rights we will
-give you notice before it takes effect, and you may close your account if you
-do not accept it. Changes never apply retroactively to a transaction already
-completed.
+post the change here and notify you in the application before it takes effect,
+and you may ask us to close your account if you do not accept it. Changes never
+apply retroactively to a transaction already completed.
+
+> **Notice has one channel, and it is weak.** Notifications are delivered
+> in-app only — there is no email or other outbound channel in the system. A
+> user who does not sign in during the notice period is not reached at all.
+> Before publication, decide whether in-app notice is sufficient for a material
+> change to a contract governing real money, and build a channel if it is not.
 
 ## 12. Liability
 
@@ -199,9 +205,17 @@ as a consumer.
 
 ## 13. Ending the relationship
 
-You can close your account at any time. Closing it triggers deletion as
-described in the [privacy policy](privacy-policy.md), subject to the records we
-must keep and to what cannot technically be erased.
+You can ask us to close your account at any time by writing to
+{{OPERATOR_CONTACT_EMAIL}}. Closure is followed by deletion as described in the
+[privacy policy](privacy-policy.md), subject to the records we must keep and to
+what cannot technically be erased — your on-chain activity stays where it is.
+
+> **Not publishable as written.** There is no account-closure workflow in the
+> product: no self-service action, and no operator procedure that closes an
+> account and carries the deletion through. This section describes an
+> obligation the operator cannot currently discharge, and it clears when
+> [#1771](https://github.com/akoita/resonate/issues/1771) lands with closure in
+> scope. Until then, do not publish a promise to close accounts.
 
 We may terminate for material breach, or if we stop operating the service, with
 notice where we can give it.

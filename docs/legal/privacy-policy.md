@@ -185,11 +185,22 @@ They do not receive your identity or your raw activity.
 
 ## Your rights
 
-You can ask us for access to your data, correction, erasure, restriction,
-portability, and you can object to processing based on legitimate interests.
-You can withdraw consent at any time. Write to {{OPERATOR_CONTACT_EMAIL}} and
-we will act within the statutory deadline. Where a self-service control exists
-you can also use it — see the table above for which ones are live.
+You have the right to ask us for access to your data, correction, erasure,
+restriction and portability, and to object to processing based on legitimate
+interests. You can withdraw consent at any time. Write to
+{{OPERATOR_CONTACT_EMAIL}}. Where a self-service control exists you can also
+use it — see the table above for which ones are live.
+
+> **Not publishable while the mechanisms are missing.** The rights above exist
+> regardless of what we have built, but the statutory deadline to satisfy them
+> is not met by intending to. Access and portability have no export path;
+> erasure reaches only the primary event store; withdrawal of consent for
+> product analytics has nothing to withdraw from, because consent was never
+> taken. Publishing this section is a commitment to a deadline the system
+> cannot currently keep, which is a worse position than not publishing at all.
+> It clears when [#1770](https://github.com/akoita/resonate/issues/1770),
+> [#1771](https://github.com/akoita/resonate/issues/1771) and
+> [#1772](https://github.com/akoita/resonate/issues/1772) land.
 
 You can also complain to your data protection authority. In the operator's
 jurisdiction that is {{SUPERVISORY_AUTHORITY}}.
@@ -198,8 +209,12 @@ jurisdiction that is {{SUPERVISORY_AUTHORITY}}.
 
 Recommendations, discovery ranking and AI DJ selections are automated. They
 decide what you are offered, not anything with a legal or similarly significant
-effect on you. You can reset the memory behind them, hide individual signals,
-or turn optional analytics off entirely.
+effect on you.
+
+Taste memory controls — resetting it, hiding individual signals — are partly
+available today, and social taste matching stays off unless you turn it on.
+Turning off the product analytics that feed these surfaces is **not** available;
+see the controls table above.
 
 ## Children
 
@@ -208,8 +223,10 @@ about someone below that age we delete it.
 
 ## Changes
 
-We will post changes here and, where they matter, tell you before they take
-effect.
+We will post changes here, and where they matter we will notify you in the
+application before they take effect. There is currently no email or other
+outbound channel, so a change can only reach you when you next sign in — the
+same limitation the terms of service records.
 
 ---
 
