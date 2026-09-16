@@ -47,9 +47,10 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest: [Vision Sprint 22 — Dependable releases and complete artist
-analytics](2026-09-11-vision-sprint-22-dependable-releases.md) closed 6/6. No
-next milestone has been selected.
+Latest: [Vision Sprint 23 — Data rights the app can actually
+honor](2026-09-16-vision-sprint-23-data-rights.md) is planned and open.
+[Vision Sprint 22 — Dependable releases and complete artist
+analytics](2026-09-11-vision-sprint-22-dependable-releases.md) closed 6/6.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -76,3 +77,4 @@ next milestone has been selected.
 | [2026-09-06](2026-09-06-vision-sprint-20-player-action-telemetry.md) | Vision Sprint 20 — trustworthy player action telemetry | ✅ Closed 2026-09-06 — authenticated action impressions and selections verified in staging |
 | [2026-09-06](2026-09-06-vision-sprint-21-batch-analytics.md) | Vision Sprint 21 — trustworthy batch analytics | ✅ Closed 2026-09-10 — 2/2; batch/streaming parity and idempotency proved live, and the artist dashboard verified BigQuery-backed (#1062, #932) |
 | [2026-09-11](2026-09-11-vision-sprint-22-dependable-releases.md) | Vision Sprint 22 — dependable releases and complete artist analytics | ✅ Closed 2026-09-11 — 6/6; release-plane validation and nightly coverage, build identity, server-side artist attribution, duplicate rows repaired, and a dead wallet action removed |
+| [2026-09-16](2026-09-16-vision-sprint-23-data-rights.md) | Vision Sprint 23 — data rights the app can actually honor | 🟡 Planned — legal surface, erasure that reaches the warehouse, user-facing export/erasure, consent at ingest, the two silently failing scheduled workflows, and a live generation-credit refund bug admitted on day one |
