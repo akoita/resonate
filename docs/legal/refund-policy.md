@@ -94,8 +94,15 @@ which can result in a refund where a claim is upheld.
 ## Generation credits
 
 Generation credits are prepaid and consumed when a generation **succeeds**. A
-generation that fails does not consume credits; where credits were already
-debited they are returned to your balance automatically.
+generation that fails should not cost you anything: where credits were already
+debited, they are returned to your balance.
+
+> **This does not currently work.** The refund path for a terminally failed
+> generation never executes — its condition can never be true under the job
+> library's current semantics — so a failed generation keeps the charge. See
+> [#1778](https://github.com/akoita/resonate/issues/1778), which also covers
+> identifying and correcting the balances already affected. Publishing this
+> paragraph before that lands would state a refund that does not happen.
 
 Unused credits are not exchangeable for money. If we discontinue the feature we
 will say what happens to unused balances before the change takes effect —

@@ -219,13 +219,16 @@ see the controls table above.
 ## Children
 
 Resonate is not for people under {{MINIMUM_AGE}}. We are obliged to delete data
-we hold about someone below that age, and we will act on any report.
+we hold about someone below that age. Reports can be sent to
+{{OPERATOR_CONTACT_EMAIL}}.
 
-> **This case depends on the same missing erasure mechanism.** Deleting a
-> child's data completely requires exactly what "When you delete" says does not
-> exist yet — identifier resolution, warehouse and derived-fact deletion, and
-> rebuild tombstones. Stating the obligation is right; claiming it is already
-> fulfilled would not be. It clears with
+> **This case depends on the same missing erasure mechanism, and there is no
+> response process behind the address.** Deleting a child's data completely
+> requires exactly what "When you delete" says does not exist yet — identifier
+> resolution, warehouse and derived-fact deletion, and rebuild tombstones — and
+> no runbook or workflow turns a report into a completed deletion. Stating the
+> obligation is right; implying that a report will be acted on today is not. It
+> clears with
 > [#1770](https://github.com/akoita/resonate/issues/1770) and
 > [#1771](https://github.com/akoita/resonate/issues/1771).
 
@@ -234,9 +237,10 @@ we hold about someone below that age, and we will act on any report.
 We will post changes here, and where they matter we will notify you before they
 take effect.
 
-> **No mechanism sends that notice.** There is no broadcast or operator path in
-> `NotificationService` — it fires only on specific dispute and credit-request
-> events — and no email or other outbound channel. The same gap is recorded in
+> **No mechanism sends that notice.** Notifications are raised only by
+> subscriptions and callers tied to particular domain events; nothing
+> originates a policy-change notice, there is no broadcast or operator path,
+> and there is no email or other outbound channel. The same gap is recorded in
 > section 11 of the terms of service and must be closed in one place for both.
 
 ---

@@ -150,7 +150,10 @@ Resonate offers AI-assisted generation and AI-assisted discovery.
   original, and we do not guarantee it is free of resemblance to existing
   works. You are responsible for what you publish.
 - Generation is metered with prepaid credits. Credits are consumed when a
-  generation succeeds; failed generations are refunded to your credit balance.
+  generation succeeds; a failed generation should not cost you credits. The
+  refund for a terminally failed generation is currently broken —
+  [#1778](https://github.com/akoita/resonate/issues/1778) — and this clause
+  cannot be published until it works.
 - Provenance and declared-AI markers travel with generated material. Removing
   or falsifying them is a breach of these terms.
 - Recommendations are automated. They shape what you are shown; they do not
@@ -170,9 +173,9 @@ We may remove content and restrict features where these terms are breached.
 > platform-level account closure or suspension — the only ban capability is
 > room-scoped inside community, so "close accounts" claims an enforcement power
 > that does not exist. And nothing notifies a user when a moderation action is
-> taken against them: the moderation path records and emits the action, and
-> `NotificationService` subscribes only to dispute and credit-request events, so
-> the promise to explain in the application has no delivery path. Enforcement
+> taken against them: the moderation path records and emits the action, and no
+> subscription or caller in the notification system originates a moderation
+> notice, so the promise to explain in the application has no delivery path. Enforcement
 > powers should be claimed only where they exist, and telling someone why they
 > were actioned is a fairness obligation, not a courtesy. Both need building or
 > the clause needs narrowing before publication; closure is in scope for
@@ -197,11 +200,12 @@ and you may ask us to close your account if you do not accept it. Changes never
 apply retroactively to a transaction already completed.
 
 > **There is no way to send this notice.** Not merely a weak channel — no
-> mechanism at all. `NotificationService` fires on four specific event types
-> (dispute filed, appealed, resolved, and a credit request) and exposes no
-> broadcast or operator path that could reach users with a terms change. There
-> is also no email or other outbound channel, so even a per-user notice would
-> only land for someone who signs in.
+> mechanism at all. Notifications are raised by specific subscriptions and
+> direct callers, each tied to a particular domain event; nothing in the system
+> originates a contractual- or policy-change notice, and there is no broadcast
+> or operator path that could address users generally. There is also no email
+> or other outbound channel, so even a per-user notice would only land for
+> someone who signs in.
 >
 > Publishing this clause promises notice the operator cannot give. Before
 > publication: build a notice workflow, decide whether in-app delivery is
