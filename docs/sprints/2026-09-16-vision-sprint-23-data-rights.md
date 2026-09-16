@@ -21,6 +21,8 @@ everywhere it landed.
    workflows report their failures.
 6. [#1768](https://github.com/akoita/resonate/issues/1768): let Dependency
    Train open its review pull request.
+7. [#1778](https://github.com/akoita/resonate/issues/1778): refund generation
+   credits when a generation terminally fails — admitted after planning.
 
 Two items carry prerequisites the work cannot satisfy on its own. #1769 needs
 the legal entity, its jurisdiction, and a contact address before the imprint
@@ -31,6 +33,16 @@ land ahead of it.
 
 Capacity is one focused workstream with no due date and no fixed capacity
 commitment. There is no Sprint 22 carry-over; that milestone closed 6/6.
+
+**Re-scoped 2026-09-16, same day as planning.** #1778 was admitted after the
+milestone was created. Drafting the legal surface for #1769 turned up a live
+defect rather than a documentation gap: the refund for a terminally failed
+generation never executes, because the processor tests `attemptsMade` against
+the attempt limit inside its catch block and BullMQ v5 increments that counter
+only after a job has failed. The condition is false on every attempt, so users
+have kept the charge for failed generations since #1334 shipped. It is admitted
+here rather than held for a later milestone because it is the only thing found
+today that is currently taking money from users.
 
 ## Why this shape
 
@@ -91,6 +103,17 @@ Excluded: production go-live and the #1583 go decision, the migration
 community exposure decisions, and
 [#1765](https://github.com/akoita/resonate/issues/1765), the recurrence guard
 for the Gambit remappings.
+
+Also excluded, deliberately and with the reasoning recorded on the issue:
+[#1777](https://github.com/akoita/resonate/issues/1777), the capability gaps
+that drafting the legal surface exposed — no account closure or suspension, no
+moderation notice, no way to originate a notice to users at all, no outbound
+channel, and claimable refunds that nothing chases. Four of those are one
+missing capability seen from four directions, and the platform deserves to
+solve "we can tell a person something" once rather than four times at the point
+of each symptom. That is a milestone of its own, not a seventh item bolted onto
+this one. #1778 was admitted instead because it is actively costing users
+money; the rest can wait for a plan.
 
 Drafts of the legal documents are grounded in what the code does. They are not
 legal advice and require owner review before publication.
