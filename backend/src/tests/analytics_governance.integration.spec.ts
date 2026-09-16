@@ -1,6 +1,34 @@
 import { prisma } from "../db/prisma";
 import { Prisma } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import {
+  AnalyticsWarehouseGovernanceTarget,
+  WarehouseErasureRequest,
+  WarehouseErasureResult,
+} from "../modules/analytics/analytics_warehouse_governance";
+
+/** Stands in for the BigQuery warehouse; external services stay mocked. */
+class RecordingWarehouseGovernanceTarget implements AnalyticsWarehouseGovernanceTarget {
+  readonly calls: WarehouseErasureRequest[] = [];
+
+  constructor(private readonly onErasure?: (request: WarehouseErasureRequest) => Promise<void>) {}
+
+  describe() {
+    return { provider: "recording" };
+  }
+
+  async applyErasure(request: WarehouseErasureRequest): Promise<WarehouseErasureResult> {
+    this.calls.push(request);
+    await this.onErasure?.(request);
+    return {
+      status: "ok",
+      provider: "recording",
+      deletedRows: request.deleteEventIds.length,
+      redactedRows: request.redactEventIds.length,
+      statements: 1,
+    };
+  }
+}
 
 const TEST_PREFIX = `analytics_governance_${Date.now()}_`;
 
@@ -152,6 +180,120 @@ describe("Analytics governance integration", () => {
           userId: "[redacted]",
           canonicalAmountUsd: 9,
         }),
+      }),
+    );
+  });
+
+  it("propagates the erasure to the warehouse once, after the Postgres work", async () => {
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}warehouse_generation`,
+      eventName: "generation.created",
+      privacyTier: "personal",
+      actorId: `${TEST_PREFIX}warehouse_user`,
+      subjectType: "generation",
+      subjectId: `${TEST_PREFIX}warehouse_generation`,
+      occurredAt: new Date("2026-05-20T12:00:00.000Z"),
+      payload: { userId: `${TEST_PREFIX}warehouse_user` },
+    });
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}warehouse_commerce`,
+      eventName: "commerce.settled",
+      privacyTier: "personal",
+      actorId: `${TEST_PREFIX}warehouse_user`,
+      subjectType: "track",
+      subjectId: `${TEST_PREFIX}warehouse_track`,
+      occurredAt: new Date("2026-05-21T12:00:00.000Z"),
+      payload: { userId: `${TEST_PREFIX}warehouse_user`, canonicalAmountUsd: 9 },
+    });
+
+    const postgresState: { deleted: unknown; redactedActorId: string | null | undefined }[] = [];
+    const target = new RecordingWarehouseGovernanceTarget(async () => {
+      postgresState.push({
+        deleted: await prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}warehouse_generation` } }),
+        redactedActorId: (
+          await prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}warehouse_commerce` } })
+        )?.actorId,
+      });
+    });
+
+    const result = await new AnalyticsGovernanceService(target).propagateDeletion({
+      actorId: `${TEST_PREFIX}warehouse_user`,
+      reason: "user deletion request",
+    });
+
+    expect(target.calls).toHaveLength(1);
+    expect(target.calls[0]).toEqual(
+      expect.objectContaining({
+        deleteEventIds: [`${TEST_PREFIX}warehouse_generation`],
+        redactEventIds: [`${TEST_PREFIX}warehouse_commerce`],
+        reason: "user deletion request",
+      }),
+    );
+    expect(target.calls[0].affectedDates.sort()).toEqual(["2026-05-20", "2026-05-21"]);
+    // The warehouse runs after Postgres, so a load in between cannot reintroduce rows.
+    expect(postgresState).toEqual([{ deleted: null, redactedActorId: "[redacted]" }]);
+    expect(target.calls[0].redactedEnvelopes).toEqual([
+      expect.objectContaining({ eventId: `${TEST_PREFIX}warehouse_commerce`, actorId: "[redacted]", subjectId: "[redacted]" }),
+    ]);
+    expect(result.warehouse).toEqual({
+      status: "ok",
+      provider: "recording",
+      deletedRows: 1,
+      redactedRows: 1,
+      statements: 1,
+    });
+    await expect(
+      prisma.analyticsGovernanceLog.findFirst({
+        where: { action: "warehouse_erasure", actorId: `${TEST_PREFIX}warehouse_user` },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        reason: "user deletion request",
+        details: expect.objectContaining({ sourceAction: "deletion_propagated" }),
+      }),
+    );
+  });
+
+  it("keeps the Postgres erasure and reports the failure when the warehouse rejects it", async () => {
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}warehouse_failure`,
+      eventName: "generation.created",
+      privacyTier: "personal",
+      actorId: `${TEST_PREFIX}warehouse_failure_user`,
+      subjectType: "generation",
+      subjectId: `${TEST_PREFIX}warehouse_failure`,
+      occurredAt: now,
+      payload: { userId: `${TEST_PREFIX}warehouse_failure_user` },
+    });
+
+    const failing: AnalyticsWarehouseGovernanceTarget = {
+      describe: () => ({ provider: "recording" }),
+      applyErasure: async () => {
+        throw new Error("warehouse unavailable");
+      },
+    };
+
+    const result = await new AnalyticsGovernanceService(failing).propagateDeletion({
+      actorId: `${TEST_PREFIX}warehouse_failure_user`,
+      reason: "user deletion request",
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        deleted: 1,
+        warehouse: expect.objectContaining({ status: "failed", error: "warehouse unavailable" }),
+      }),
+    );
+    await expect(
+      prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}warehouse_failure` } }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.analyticsGovernanceLog.findFirst({
+        where: { action: "warehouse_erasure", actorId: `${TEST_PREFIX}warehouse_failure_user` },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        details: expect.objectContaining({ warehouse: expect.objectContaining({ status: "failed" }) }),
       }),
     );
   });

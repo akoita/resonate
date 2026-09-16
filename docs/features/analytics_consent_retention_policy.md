@@ -17,10 +17,15 @@ event envelope. Backend governance jobs can apply retention cleanup, deletion
 propagation, consent withdrawal, redaction, and audit lineage through
 `backend/src/modules/analytics/analytics_governance.service.ts`.
 
+An erasure now reaches the BigQuery warehouse as well as Postgres: deletion
+propagation and consent withdrawal remove or rebuild the person's rows in
+`events_raw`, `events_clean` and `analytics_facts`, then recompute the affected
+days of `analytics_views` from the facts that survive (#1770).
+
 This page defines the product and operational policy that those jobs must
-follow. User-facing controls, automated warehouse deletion propagation, and
-yearly listener summary controls still need product UI and operator runbook
-work before this is complete.
+follow. User-facing export/deletion controls (#1771), user-facing consent
+capture and withdrawal (#1772), and yearly listener summary controls still need
+product UI and operator runbook work before this is complete.
 
 ## Who It Is For
 
@@ -107,6 +112,41 @@ analytics path:
 
 Backfills must read governance lineage and tombstones before writing derived
 facts. A backfill that ignores deletion lineage is considered unsafe.
+
+### What The Backend Does Today
+
+`AnalyticsGovernanceService.propagateDeletion` and `withdrawConsent` apply the
+Postgres decision per event first (delete, or redact for the audit-preserved
+`commerce`, `payment`, `rights` and `license` families), and only then call the
+warehouse erasure target in
+`backend/src/modules/analytics/analytics_warehouse_governance.ts`:
+
+- **Deleted events** are removed from `events_raw`, `events_clean` and
+  `analytics_facts` in one transaction per chunk of 500 event IDs.
+- **Redacted events** are re-read from Postgres after redaction, and their
+  warehouse rows are rebuilt from the redacted envelope and replaced by key.
+  Warehouse redaction is therefore identical to Postgres redaction by
+  construction, rather than a second set of rules that can drift.
+- **`analytics_views` is recomputed, not patched**: the erasure collects the
+  occurrence dates it touched and re-aggregates those whole days from the
+  surviving `analytics_facts` rows, so the erased person's contribution leaves
+  the daily counts instead of persisting inside them. View rows derived from
+  only the erased events are deliberately discarded before writing, because a
+  row aggregated from a handful of events would overwrite a day's real totals.
+- **`analytics_quarantine` is not written** by the erasure. It holds envelopes
+  that failed validation and never became person rows; it is governed by its own
+  retention window in the table above. A redacted event that cannot be rebuilt
+  (and would therefore be quarantined) fails the erasure loudly instead of
+  leaving un-redacted rows behind.
+- Ordering matters: Postgres first means a warehouse load running in between
+  cannot reintroduce the rows, because the source rows are already gone or
+  already redacted.
+- A warehouse failure never discards the completed Postgres erasure. It is
+  returned as `warehouse.status = "failed"` with the error and written to the
+  governance lineage as a `warehouse_erasure` record, so an operator can retry.
+- Deployments without a BigQuery warehouse (`ANALYTICS_WAREHOUSE_TARGET` unset
+  or `local_json`) get a disabled target that reports `skipped` and performs no
+  work. No new environment variable is involved.
 
 ## Yearly Summary Rules
 

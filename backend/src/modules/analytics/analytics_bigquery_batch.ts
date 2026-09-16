@@ -5,7 +5,7 @@ import type { AnalyticsWarehouseExport } from "./analytics_warehouse";
 import type { AnalyticsWarehouseTarget, AnalyticsWarehouseLoadContext, AnalyticsWarehouseLayerLoadResult,
   AnalyticsWarehouseLayerName } from "./analytics_warehouse_loader";
 
-interface Field { name: string; type: string; mode?: string }
+export interface Field { name: string; type: string; mode?: string }
 export type BatchSchemas = Record<AnalyticsWarehouseLayerName, Field[]>;
 const layers: AnalyticsWarehouseLayerName[] = ["eventsRaw", "eventsClean", "analyticsFacts", "analyticsViews", "analyticsQuarantine"];
 const keys: Record<AnalyticsWarehouseLayerName, string[]> = {
@@ -91,40 +91,79 @@ export function validateBatchBounds(payload: AnalyticsWarehouseExport, context: 
 
 export function buildBatchQuery(project: string, payload: AnalyticsWarehouseExport, schemas: BatchSchemas): string {
   identifier(project);
-  const table = (layer: AnalyticsWarehouseLayerName) => {
-    const [dataset, name] = tableParts(payload.config.tables[layer]);
-    return `\`${project}.${dataset}.${name}\``;
-  };
+  const table = (layer: AnalyticsWarehouseLayerName) => bigQueryTableRef(project, payload.config.tables[layer]);
   const statements = ["BEGIN TRANSACTION;", "CREATE TEMP TABLE load_results (layer STRING, row_count INT64, inserted INT64, updated INT64);"];
   for (const layer of layers.filter(layer => layer !== "analyticsViews")) {
-    const fields = schemas[layer];
-    const names = new Set(fields.map(field => field.name));
-    for (const row of payload[layer]) {
-      for (const [name, value] of Object.entries(row)) {
-        if (value !== undefined && !names.has(name)) throw new Error(`Warehouse schema ${layer} is missing column ${name}`);
-      }
-    }
-    for (const key of keys[layer]) if (!names.has(key)) throw new Error(`Warehouse schema ${layer} is missing key ${key}`);
-    const columns = fields.map(field => `\`${identifier(field.name)}\``).join(", ");
-    const projection = fields.map(field => `${jsonColumn(field)} AS \`${field.name}\``).join(",\n");
-    statements.push(`CREATE TEMP TABLE source_${layer} AS SELECT ${projection}\nFROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@${layer}))) AS row;`);
-    // Defensive de-duplication also covers malformed repeated quarantine records.
-    statements.push(`CREATE TEMP TABLE unique_${layer} AS SELECT * FROM source_${layer}
-QUALIFY ROW_NUMBER() OVER (PARTITION BY ${keys[layer].map(key => `\`${key}\``).join(", ")}) = 1;`);
-    const keyExpression = (alias: string) => `TO_JSON_STRING(STRUCT(${keys[layer].map(key => `${alias}.\`${key}\` AS \`${key}\``).join(", ")}))`;
-    const match = `${keyExpression("T")} = ${keyExpression("S")}`;
-    statements.push(`INSERT INTO load_results SELECT '${layer}', COUNT(*), COUNTIF(NOT EXISTS (SELECT 1 FROM ${table(layer)} T WHERE ${match})), COUNTIF(EXISTS (SELECT 1 FROM ${table(layer)} T WHERE ${match})) FROM unique_${layer} S;`);
-    // Replaces matching keys, repairing historical duplicates and refreshed/redacted rows.
-    statements.push(`DELETE FROM ${table(layer)} T WHERE EXISTS (SELECT 1 FROM unique_${layer} S WHERE ${match});`);
-    statements.push(`INSERT INTO ${table(layer)} (${columns}) SELECT ${columns} FROM unique_${layer};`);
+    statements.push(...buildLayerMergeStatements({ layer, table: table(layer),
+      rows: payload[layer] as unknown as Record<string, unknown>[], fields: schemas[layer], loadResults: true }));
   }
   // Recompute complete affected days from durable facts, not just this load's window.
   const facts = table("analyticsFacts");
   const views = table("analyticsViews");
-  statements.push(`CREATE TEMP TABLE affected_dates AS SELECT DISTINCT occurredDate AS date FROM unique_analyticsFacts;
-CREATE TEMP TABLE daily_views AS
+  statements.push(
+    "CREATE TEMP TABLE affected_dates AS SELECT DISTINCT occurredDate AS date FROM unique_analyticsFacts;",
+    buildDailyViewsStatement(facts),
+    `INSERT INTO load_results SELECT 'analyticsViews', COUNT(*),
+ COUNTIF(NOT EXISTS (SELECT 1 FROM ${views} T WHERE T.date = S.date AND T.eventName = S.eventName AND T.artistId = S.artistId AND T.trackId = S.trackId)),
+ COUNTIF(EXISTS (SELECT 1 FROM ${views} T WHERE T.date = S.date AND T.eventName = S.eventName AND T.artistId = S.artistId AND T.trackId = S.trackId)) FROM daily_views S;`,
+    ...buildViewSwapStatements(views),
+    "COMMIT TRANSACTION;",
+    "SELECT layer, row_count, inserted, updated FROM load_results;",
+  );
+  return statements.join("\n");
+}
+
+/** `\`project.dataset.table\`` for a validated `dataset.table` reference. */
+export function bigQueryTableRef(project: string, datasetTable: string) {
+  identifier(project);
+  const [dataset, name] = tableParts(datasetTable);
+  return `\`${project}.${dataset}.${name}\``;
+}
+
+/**
+ * Idempotent per-layer replace: project the parameter JSON into a temp table,
+ * de-duplicate by the layer key, then replace matching keys in the target table.
+ * Shared with erasure so redaction writes rows through exactly one code path.
+ */
+export function buildLayerMergeStatements(options: {
+  layer: AnalyticsWarehouseLayerName;
+  table: string;
+  rows: Record<string, unknown>[];
+  fields: Field[];
+  loadResults?: boolean;
+}): string[] {
+  const { layer, table, rows, fields } = options;
+  const names = new Set(fields.map(field => field.name));
+  for (const row of rows) {
+    for (const [name, value] of Object.entries(row)) {
+      if (value !== undefined && !names.has(name)) throw new Error(`Warehouse schema ${layer} is missing column ${name}`);
+    }
+  }
+  for (const key of keys[layer]) if (!names.has(key)) throw new Error(`Warehouse schema ${layer} is missing key ${key}`);
+  const columns = fields.map(field => `\`${identifier(field.name)}\``).join(", ");
+  const projection = fields.map(field => `${jsonColumn(field)} AS \`${field.name}\``).join(",\n");
+  const keyExpression = (alias: string) => `TO_JSON_STRING(STRUCT(${keys[layer].map(key => `${alias}.\`${key}\` AS \`${key}\``).join(", ")}))`;
+  const match = `${keyExpression("T")} = ${keyExpression("S")}`;
+  const statements = [
+    `CREATE TEMP TABLE source_${layer} AS SELECT ${projection}\nFROM UNNEST(JSON_QUERY_ARRAY(PARSE_JSON(@${layer}))) AS row;`,
+    // Defensive de-duplication also covers malformed repeated quarantine records.
+    `CREATE TEMP TABLE unique_${layer} AS SELECT * FROM source_${layer}
+QUALIFY ROW_NUMBER() OVER (PARTITION BY ${keys[layer].map(key => `\`${key}\``).join(", ")}) = 1;`,
+  ];
+  if (options.loadResults) {
+    statements.push(`INSERT INTO load_results SELECT '${layer}', COUNT(*), COUNTIF(NOT EXISTS (SELECT 1 FROM ${table} T WHERE ${match})), COUNTIF(EXISTS (SELECT 1 FROM ${table} T WHERE ${match})) FROM unique_${layer} S;`);
+  }
+  // Replaces matching keys, repairing historical duplicates and refreshed/redacted rows.
+  statements.push(`DELETE FROM ${table} T WHERE EXISTS (SELECT 1 FROM unique_${layer} S WHERE ${match});`);
+  statements.push(`INSERT INTO ${table} (${columns}) SELECT ${columns} FROM unique_${layer};`);
+  return statements;
+}
+
+/** Rebuild `daily_views` for the dates held in the `affected_dates` temp table. */
+export function buildDailyViewsStatement(factsTable: string): string {
+  return `CREATE TEMP TABLE daily_views AS
 WITH facts AS (
-  SELECT * FROM ${facts} WHERE occurredDate IN (SELECT date FROM affected_dates)
+  SELECT * FROM ${factsTable} WHERE occurredDate IN (SELECT date FROM affected_dates)
   QUALIFY ROW_NUMBER() OVER (PARTITION BY factId ORDER BY occurredAt) = 1
 )
 SELECT 'daily_event_artist_track' AS viewName, 'day_event_artist_track' AS grain,
@@ -133,16 +172,16 @@ SELECT 'daily_event_artist_track' AS viewName, 'day_event_artist_track' AS grain
  SUM(count) AS eventCount,
  SUM(IF(JSON_VALUE(dimensions, '$.eventName') IN ('license.granted', 'playback.completed'), count, 0)) AS playCount,
  SUM(IF(JSON_VALUE(dimensions, '$.eventName') IN ('payment.settled', 'commerce.settled'), COALESCE(canonicalAmountUsd, 0), 0)) AS payoutUsd
-FROM facts GROUP BY 3, 4, 5, 6;
-INSERT INTO load_results SELECT 'analyticsViews', COUNT(*),
- COUNTIF(NOT EXISTS (SELECT 1 FROM ${views} T WHERE T.date = S.date AND T.eventName = S.eventName AND T.artistId = S.artistId AND T.trackId = S.trackId)),
- COUNTIF(EXISTS (SELECT 1 FROM ${views} T WHERE T.date = S.date AND T.eventName = S.eventName AND T.artistId = S.artistId AND T.trackId = S.trackId)) FROM daily_views S;
-DELETE FROM ${views} WHERE date IN (SELECT date FROM affected_dates);
-INSERT INTO ${views} (viewName, grain, date, eventName, artistId, trackId, eventCount, playCount, payoutUsd)
-SELECT viewName, grain, date, eventName, artistId, trackId, eventCount, playCount, payoutUsd FROM daily_views;
-COMMIT TRANSACTION;
-SELECT layer, row_count, inserted, updated FROM load_results;`);
-  return statements.join("\n");
+FROM facts GROUP BY 3, 4, 5, 6;`;
+}
+
+/** Views are derived, never accumulated: drop the affected days and reinsert the recomputation. */
+export function buildViewSwapStatements(viewsTable: string): string[] {
+  return [
+    `DELETE FROM ${viewsTable} WHERE date IN (SELECT date FROM affected_dates);`,
+    `INSERT INTO ${viewsTable} (viewName, grain, date, eventName, artistId, trackId, eventCount, playCount, payoutUsd)
+SELECT viewName, grain, date, eventName, artistId, trackId, eventCount, playCount, payoutUsd FROM daily_views;`,
+  ];
 }
 
 function identifier(value: string) {
@@ -154,13 +193,17 @@ function tableParts(value: string) {
   if (parts.length !== 2) throw new Error("Expected dataset.table for BigQuery batch");
   return parts.map(identifier);
 }
+/** GoogleSQL cast target for a fetched column type, so staged values match the real column. */
+export function bigQueryCastType(columnType: string) {
+  const types: Record<string, string> = { STRING: "STRING", INTEGER: "INT64", INT64: "INT64", FLOAT: "FLOAT64", FLOAT64: "FLOAT64",
+    BOOLEAN: "BOOL", BOOL: "BOOL", TIMESTAMP: "TIMESTAMP", DATE: "DATE", NUMERIC: "NUMERIC" };
+  const type = types[columnType];
+  if (!type) throw new Error(`Unsupported warehouse column type ${columnType}`);
+  return type;
+}
 function jsonColumn(field: Field) {
   identifier(field.name);
   if (field.mode === "REPEATED") throw new Error("Repeated warehouse columns are not supported by batch projection");
-  const types: Record<string, string> = { STRING: "STRING", INTEGER: "INT64", INT64: "INT64", FLOAT: "FLOAT64", FLOAT64: "FLOAT64",
-    BOOLEAN: "BOOL", BOOL: "BOOL", TIMESTAMP: "TIMESTAMP", DATE: "DATE", NUMERIC: "NUMERIC" };
   if (field.type === "JSON") return `JSON_QUERY(row, '$.${field.name}')`;
-  const type = types[field.type];
-  if (!type) throw new Error(`Unsupported warehouse column type ${field.type}`);
-  return `CAST(JSON_VALUE(row, '$.${field.name}') AS ${type})`;
+  return `CAST(JSON_VALUE(row, '$.${field.name}') AS ${bigQueryCastType(field.type)})`;
 }

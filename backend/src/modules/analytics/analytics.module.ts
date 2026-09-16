@@ -13,6 +13,10 @@ import {
   AnalyticsWarehouseLoaderService,
   analyticsWarehouseTargetFromEnv,
 } from "./analytics_warehouse_loader";
+import {
+  ANALYTICS_WAREHOUSE_GOVERNANCE,
+  analyticsWarehouseGovernanceFromEnv,
+} from "./analytics_warehouse_governance";
 import { ANALYTICS_EVENT_PUBLISHER, analyticsEventPublisherFromEnv } from "./analytics_event_publisher";
 import { AnalyticsDomainEventBridgeService } from "./analytics_domain_event_bridge.service";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
@@ -50,6 +54,10 @@ import { AgentsModule } from "../agents/agents.module";
     {
       provide: ANALYTICS_WAREHOUSE_TARGET,
       useFactory: analyticsWarehouseTargetFromEnv,
+    },
+    {
+      provide: ANALYTICS_WAREHOUSE_GOVERNANCE,
+      useFactory: analyticsWarehouseGovernanceFromEnv,
     },
   ],
   exports: [
