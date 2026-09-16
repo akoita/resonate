@@ -66,17 +66,25 @@ rights events we must keep.
 
 ## Your controls
 
-From your settings you can:
+**Your rights do not depend on a button existing.** Whatever the product offers
+at any moment, you can exercise every right below by writing to
+{{OPERATOR_CONTACT_EMAIL}}, and we will act on it.
 
-- **turn optional product analytics off**, and keep using the service;
-- **opt in or out of personalised yearly summaries**;
-- **reset or adjust taste memory**, including hiding individual signals, and
-  keep social taste matching off — it is off unless you turn it on;
-- **export your data**, including your linked personal and pseudonymous facts,
-  with a plain-language explanation of aggregate data that cannot be attributed
-  back to you;
-- **delete your data**, which removes or redacts rows linked to you across the
-  raw store, the warehouse and derived facts.
+Self-service controls are being built, and this section will say plainly which
+ones are live. As of {{EFFECTIVE_DATE}}:
+
+| Control | Status |
+| --- | --- |
+| Turning optional product analytics off | **Not yet available in the product.** Ask us and we will apply it. |
+| Personalised yearly summaries | Not yet offered. |
+| Resetting or adjusting taste memory | Partially available; social taste matching is off unless you turn it on. |
+| Exporting your data | **Not yet self-service.** Ask us and we will produce it. |
+| Deleting your data | **Not yet self-service.** Ask us and we will carry it out. |
+
+Do not publish this document with that table unverified. Each row must be
+checked against the product on the day it ships, and updated whenever a control
+becomes available — a privacy policy that claims a control the product does not
+have is a false statement, not an aspiration.
 
 ## How long we keep things
 
@@ -100,11 +108,16 @@ below.
 A deletion request resolves you to every identifier we hold — your user id,
 your pseudonymous actor id, wallet subjects, artist profile subjects, sessions,
 and owned releases — writes a record that the deletion was requested, and then
-removes the rows linked to those identifiers across the raw store, the
-warehouse and the derived facts. Aggregates survive only where they stay
-anonymous. Summaries built from deleted facts are revoked or rebuilt without
-them. Later rebuilds read the deletion record first, so deleted rows do not
-come back.
+removes or redacts the rows linked to those identifiers. Aggregates survive
+only where they stay anonymous. Summaries built from deleted facts are revoked
+or rebuilt without them. Later rebuilds read the deletion record first, so
+deleted rows do not come back.
+
+**Scope, honestly stated.** Deletion is applied to our primary event store
+today. Propagation into the analytics warehouse and the facts derived from it
+is being built; until it ships, a deletion is completed by us across the
+remaining systems as an operational step rather than automatically. We will
+update this paragraph when that is no longer true.
 
 **Financial and audit records are redacted rather than deleted.** We keep what
 accounting, rights and tax law require us to keep — the fact, the date, the
@@ -143,8 +156,9 @@ They do not receive your identity or your raw activity.
 
 You can ask us for access to your data, correction, erasure, restriction,
 portability, and you can object to processing based on legitimate interests.
-You can withdraw consent at any time. Most of this you can do yourself from
-settings; for anything else, write to {{OPERATOR_CONTACT_EMAIL}}.
+You can withdraw consent at any time. Write to {{OPERATOR_CONTACT_EMAIL}} and
+we will act within the statutory deadline. Where a self-service control exists
+you can also use it — see the table above for which ones are live.
 
 You can also complain to your data protection authority. In the operator's
 jurisdiction that is {{SUPERVISORY_AUTHORITY}}.

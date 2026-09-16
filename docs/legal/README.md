@@ -48,9 +48,23 @@ documents use placeholders, resolved from configuration at publication time:
 | `{{HOSTING_PROVIDER}}` | Hosting provider's name and address |
 | `{{SERVICE_URL}}` | Canonical public URL of the service |
 | `{{EFFECTIVE_DATE}}` | Date the document takes effect |
+| `{{MINIMUM_AGE}}` | Minimum age to hold an account |
+| `{{GOVERNING_LAW}}` | Law governing the terms |
+| `{{JURISDICTION}}` | Courts with jurisdiction |
+| `{{SUPERVISORY_AUTHORITY}}` | Data protection authority to complain to |
+| `{{RESPONSE_WINDOW}}` | Time we commit to answering a refund request |
+| `{{ACCEPTED_PAYMENT_ASSETS}}` | Payment assets accepted on-chain in production |
+| `{{CHAIN_NAME}}` | Network the payment assets settle on |
+| `{{CREDIT_CURRENCY}}` | Currency generation credits are denominated in |
 
-Keep the placeholder list and the publication-time source in step. A document
-that ships with an unresolved placeholder is a bug.
+`{{HOSTING_PROVIDER}}` and `{{OPERATOR_PUBLICATION_DIRECTOR}}` are reserved for
+the mentions légales document, which is not drafted yet; every other
+placeholder is in use today.
+
+This table is the complete registry. A resolver and an unresolved-placeholder
+test should both be generated from it, so adding a placeholder to a document
+without adding it here fails rather than ships. A document that reaches
+publication with an unresolved placeholder is a bug.
 
 ## Language
 

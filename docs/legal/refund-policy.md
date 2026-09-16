@@ -12,21 +12,39 @@ issue: 1769
 Effective from {{EFFECTIVE_DATE}}. This policy forms part of the
 [Terms of Service](terms-of-service.md).
 
-Resonate's escrow was built refund-first. This document writes down the promise
-the code already keeps.
+Resonate's escrow was built refund-first. This document describes what the
+system actually does today — including where it does less than you might
+expect, and where a right of yours survives because we have not yet built the
+step that would end it.
 
 ## Show campaign pledges
 
-**If a campaign does not fund, you get everything back.**
+**If a campaign does not fund, you get everything back.** A pledge is held in a
+smart contract and is never touched while the campaign is running.
 
-- A pledge is held in a smart contract until the campaign's deadline.
-- If the campaign **fails to reach its goal, or is cancelled**, you are
-  refunded **100%** of your pledge. We deduct nothing. There is no fee on a
-  campaign that does not fund.
-- If the campaign **funds successfully**, the money is released to the artist
-  and our 6% fee is taken **at that moment** — never when you pledge.
+A funded campaign does not pay out all at once. It moves through booking
+confirmation, a deposit release to the artist, fulfilment of the show, and a
+dispute window before the remaining funds are released. **Our fee is taken only
+when money actually moves to the artist**, proportionally at each release —
+never when you pledge, and never at all if nothing is ever released.
 
-Refunds return the same USDC you pledged, to the wallet you pledged from.
+What you get back depends on where the campaign stopped:
+
+| Situation | Your refund |
+| --- | --- |
+| The campaign does not reach its goal | **Your full pledge.** We deduct nothing. |
+| The campaign is cancelled before any money has been released to the artist | **Your full pledge.** |
+| The campaign is cancelled after a deposit has already been released to the artist — for example when a dispute is resolved during the dispute window | **Your proportional share of what is left in escrow.** This is less than your pledge, because part of the money has already been paid out. |
+
+In the last case every backer is treated identically: each receives the same
+proportion of the remaining balance as their pledge bore to the total. We take
+no fee from that refund.
+
+Cancellation is not automatic — it is an operator action, available while a
+campaign can still be unwound, and it becomes unavailable once a fulfilled
+campaign's dispute window has closed and the artist's payout has matured.
+
+Refunds return the asset you pledged, to the wallet you pledged from.
 
 **How you get it.** You claim your refund yourself once the campaign is
 resolved. Claiming is an on-chain action.
@@ -34,12 +52,13 @@ resolved. Claiming is an on-chain action.
 **Network costs.** On-chain actions cost gas. Resonate may sponsor that cost
 through its account-abstraction paymaster, up to a per-user sponsorship limit;
 beyond that limit, or where sponsorship is not configured, the cost is paid
-from your wallet. **We never take anything out of the refund itself** — the
-pledge comes back whole.
+from your wallet. **We never take a fee out of a refund** — what the table
+above says you are owed is what you receive.
 
-**If something goes wrong.** Our reconciliation process detects refunds that
-should have been claimable and were not, and an operator can settle them. You
-can also contact us.
+**If something goes wrong.** Contact us at {{OPERATOR_CONTACT_EMAIL}} and we
+will investigate. We do not currently monitor for refunds that are claimable
+but unclaimed, so a refund you never claim will sit waiting rather than being
+sent to you.
 
 ## What a pledge is not
 
@@ -52,13 +71,17 @@ promised on a campaign page.
 
 ## Marketplace purchases, licences and collectibles
 
-Stems, licences, downloads and collectibles are **digital content delivered
-immediately**. Where you are a consumer with a statutory right to withdraw from
-a distance purchase, you will be asked at checkout to consent to immediate
-delivery and to acknowledge that doing so ends that right. If you do not give
-that consent, delivery waits until the withdrawal period expires.
+Stems, licences, downloads and collectibles are digital content delivered
+immediately.
 
-Once delivered, these purchases are not refundable, with two exceptions:
+**If you are a consumer, you have a statutory right to withdraw from a distance
+purchase, and you still have it here.** That right can only be given up if you
+expressly consent to immediate delivery and acknowledge that you are losing it,
+and Resonate's checkout does not currently ask you to do either. Until it does,
+the withdrawal period applies to your digital purchases, and you may withdraw
+within it by writing to {{OPERATOR_CONTACT_EMAIL}}.
+
+Beyond that period, these purchases are not refundable, with two exceptions:
 
 - **We failed to deliver.** If you paid and did not receive what you bought, we
   refund in full.
@@ -92,13 +115,13 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
 
 ## Questions for legal review
 
-1. **The withdrawal-right waiver has to be collected, not assumed.** This draft
-   describes a checkout that takes express consent to immediate delivery and an
-   acknowledgement that the withdrawal right ends. **That flow does not exist in
-   the product today.** Either it gets built before consumer sales open, or the
-   statutory withdrawal period applies to every digital purchase and the policy
-   above is wrong. This is the single largest gap between this document and the
-   code.
+1. **The withdrawal right currently survives every digital purchase.** Losing
+   it requires prior express consent, an acknowledgement, and durable
+   confirmation of that agreement (Directive 2011/83/EU). Checkout collects
+   none of the three, so this policy now says the right applies. Building the
+   waiver flow is tracked in [#1776](https://github.com/akoita/resonate/issues/1776); until it ships and is
+   tested, consumer sales operate with a live withdrawal period, and the
+   operational cost of honouring it is real.
 2. **Who is the seller?** If artists sell to buyers and the platform is an
    intermediary, the statutory refund obligations may sit with the artist while
    the refund mechanics sit with us. The two need to line up, and the terms of
@@ -108,9 +131,16 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    law in the operator's jurisdiction agrees — particularly where the campaign
    page reads like a promise of a performance — is worth an answer before
    campaigns run at scale.
-4. **Response window.** `{{RESPONSE_WINDOW}}` is unset, and statutory refund
+4. **Partial refunds after a deposit release.** `claimRefund` pays a backer's
+   pro-rata share of `totalPledged - totalReleased`, so a cancellation during
+   the dispute window returns less than the pledge. The table above states that
+   honestly, but two questions follow: whether a consumer can be left short
+   this way when the cancellation was an operator decision, and whether the
+   campaign page discloses the possibility **before** the pledge rather than
+   only in this policy. If not, the disclosure belongs in the pledge flow.
+5. **Response window.** `{{RESPONSE_WINDOW}}` is unset, and statutory refund
    deadlines may impose one regardless of what we choose.
-5. **Gas costs.** Refunds are claimed by the backer (`claimRefund` on
+6. **Gas costs.** Refunds are claimed by the backer (`claimRefund` on
    `ShowCampaignEscrow`), so the backer initiates the transaction. Sponsorship
    is conditional: the paymaster only sponsors when one is configured and only
    up to a per-user limit (`AA_SPONSOR_MAX_USD`, default 5). The draft

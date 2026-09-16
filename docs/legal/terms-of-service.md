@@ -48,10 +48,16 @@ You are responsible for activity under your account.
 
 ## 4. Money
 
-All amounts are denominated in **USDC**, a stablecoin, on the Base network.
-Crypto-assets carry risks that we do not control, including network failures,
-stablecoin depegging, and the irreversibility of confirmed transactions. A
-transaction that has been confirmed on-chain cannot be undone by us.
+On-chain payments — pledges, marketplace purchases and settlements — are made
+in the payment assets Resonate accepts for that transaction, shown to you
+before you commit. In production these are {{ACCEPTED_PAYMENT_ASSETS}} on the
+{{CHAIN_NAME}} network. Generation credits are a separate, off-chain balance
+denominated in {{CREDIT_CURRENCY}}.
+
+Where you pay with a crypto-asset, risks apply that we do not control:
+network failures, a stablecoin losing its peg, and the irreversibility of
+confirmed transactions. **A transaction confirmed on-chain cannot be undone by
+us.**
 
 The fees below are the complete set. They are shown to you before you commit to
 any transaction.
