@@ -7,12 +7,23 @@ issue: 1769
 
 # Terms of Service
 
-**Draft — not yet in force. Requires owner approval and qualified legal review.**
+**Template — not any deployment's published terms.** Resonate is software
+anyone can deploy; whoever runs an instance is its operator and owns the
+documents their users read. Operator-specific values are placeholders resolved
+from that deployment's configuration. Sections marked **⚖ jurisdiction-specific**
+are shaped by European obligations and do not transfer elsewhere unaltered.
+Requires review by someone qualified in the operator's jurisdiction. Not legal
+advice. See [README](README.md).
 
 Effective from {{EFFECTIVE_DATE}}. These terms govern your use of Resonate at
 {{SERVICE_URL}}.
 
 ## 1. Who you are contracting with
+
+> ⚖ **Jurisdiction-specific.** What an operator must publish about itself —
+> registration number, share capital, registered office, publication director,
+> hosting provider — is set by local law. The fields below reflect European
+> identification duties and are not a universal list.
 
 Resonate is operated by {{OPERATOR_LEGAL_NAME}}, {{OPERATOR_LEGAL_FORM}} with
 share capital of {{OPERATOR_SHARE_CAPITAL}}, registered office
@@ -248,6 +259,11 @@ transactions, licences already granted, and the limits in section 12.
 
 ## 14. Law and disputes
 
+> ⚖ **Jurisdiction-specific.** Governing law, competent courts, consumer
+> mediation and online dispute resolution all depend on where the operator is
+> established and where its users live. An operator may be obliged to name a
+> consumer mediator, at its own cost.
+
 These terms are governed by the law of {{GOVERNING_LAW}}, and disputes go to
 the courts of {{JURISDICTION}}.
 
@@ -278,6 +294,11 @@ rather than guessing:
    section 14 currently gestures at it rather than naming one.
 4. **Language.** Whether a translation is mandatory for consumers in the
    operator's jurisdiction, or whether English suffices for the first cohort.
+
+4b. **Operator identity is not in this repository.** Section 1's fields resolve
+   from the deployment's own configuration; for the reference deployment they
+   live in `resonate-iac`. A reviewer needs the resolved document, not this
+   template, to check that the identification duties are actually met.
 5. **Digital content and the withdrawal right.** Checkout collects none of the
    three things required to end a consumer's withdrawal right — prior express
    consent, acknowledgement, durable confirmation — so the refund policy now

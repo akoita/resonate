@@ -7,7 +7,13 @@ issue: 1769
 
 # Privacy Policy
 
-**Draft — not yet in force. Requires owner approval and qualified legal review.**
+**Template — not any deployment's published terms.** Resonate is software
+anyone can deploy; whoever runs an instance is its operator and owns the
+documents their users read. Operator-specific values are placeholders resolved
+from that deployment's configuration. Sections marked **⚖ jurisdiction-specific**
+are shaped by European obligations and do not transfer elsewhere unaltered.
+Requires review by someone qualified in the operator's jurisdiction. Not legal
+advice. See [README](README.md).
 
 Effective from {{EFFECTIVE_DATE}}.
 
@@ -51,6 +57,10 @@ We do not store prompts, notification bodies, payment proofs, private wallet
 material, exact IP addresses, or user-agent strings in analytics.
 
 ## Why, and on what basis
+
+> ⚖ **Jurisdiction-specific.** The lawful-basis framing below is European. The
+> standard for valid consent, and whether any of this processing needs consent
+> at all, is set by the operator's own law.
 
 | Purpose | Basis |
 | --- | --- |
@@ -106,6 +116,11 @@ whenever a control becomes available. A privacy policy that claims a control
 the product does not have is a false statement, not an aspiration.
 
 ## How long we keep things
+
+> ⚖ **Jurisdiction-specific.** The retention of financial, rights and tax
+> records is set by the operator's accounting and tax obligations. The software
+> makes these configurable; the numbers below are the reference deployment's
+> defaults, not a legal floor that transfers.
 
 | Data | Retention |
 | --- | --- |

@@ -1,80 +1,120 @@
 ---
-title: "Legal documents"
+title: "Legal document templates"
 status: draft
 owner: "@akoita"
 issue: 1769
 ---
 
-# Legal documents
+# Legal document templates
 
-Source text for the four documents the application must publish before real
-users reach it. Tracked by [#1769](https://github.com/akoita/resonate/issues/1769)
-in Vision Sprint 23.
+Resonate is open-source software that anyone can deploy. **Whoever runs an
+instance is the operator of that instance**, and the operator — not this
+repository — is responsible for the legal documents their users read.
 
-| Document | File | State |
+These files are a starting point for that operator. They are not any
+deployment's published terms, and no deployment's identity, jurisdiction or
+published text belongs in this repository.
+
+| Document | File | Notes |
 | --- | --- | --- |
-| Terms of Service | [terms-of-service.md](terms-of-service.md) | Draft — needs owner and qualified legal review |
-| Privacy Policy | [privacy-policy.md](privacy-policy.md) | Draft — **also blocked on implementation**: #1770, #1771, #1772 |
-| Refund policy | [refund-policy.md](refund-policy.md) | Draft — needs owner and qualified legal review; #1776 changes it when it lands |
-| Mentions légales | not drafted | Blocked: the registered office is not cleared for publication |
+| Terms of Service | [terms-of-service.md](terms-of-service.md) | Template |
+| Privacy Policy | [privacy-policy.md](privacy-policy.md) | Template; several sections blocked on software capabilities — #1770, #1771, #1772 |
+| Refund policy | [refund-policy.md](refund-policy.md) | Template; #1776 and #1778 change it when they land |
+| Imprint / operator identity | not templated | Requirements are jurisdiction-specific; see below |
 
-## These are drafts, not advice
+## What lives where
 
-Every sentence here was written against what the code actually does — the
-canonical fee and payout rules in [`../rfc/business-model.md`](../rfc/business-model.md),
-the analytics envelope and retention rules in
+| | Public repository (here) | Operator's private configuration |
+| --- | --- | --- |
+| The pages and how they render | ✅ | |
+| These templates | ✅ | |
+| Facts about what the software does and does not do | ✅ | |
+| Operator identity, registration, address, VAT | | ✅ |
+| Governing law, jurisdiction, supervisory authority, mediation body | | ✅ |
+| The published documents a deployment actually serves | | ✅ |
+
+For the reference deployment those values live in `resonate-iac` alongside the
+rest of its deployment configuration, following the same rule as every other
+deployment-specific value in `AGENTS.md`: centralized configuration, never a
+source-code default.
+
+## Why the software's own gaps stay here
+
+Several sections carry blocks saying a claim cannot be published yet — no
+account-closure workflow, product analytics collected without a consent gate,
+erasure that stops at the primary event store, a generation-credit refund that
+never fires.
+
+Those are **facts about this software**, true for every deployment, and they
+belong in the open where a prospective operator can read them before adopting
+it. They are not one operator's compliance record. Each names the issue that
+clears it; when the capability lands, the block goes and the template can state
+the behaviour plainly.
+
+## Jurisdiction
+
+The templates are shaped by European obligations, because that is where the
+reference deployment operates. Sections marked **⚖ jurisdiction-specific** do
+not apply universally:
+
+- imprint and operator-identification duties
+- the consent standard for analytics, and what counts as valid refusal
+- the consumer withdrawal right for digital content
+- supervisory authority, consumer mediation, and online dispute resolution
+- retention periods tied to local accounting and tax law
+
+An operator elsewhere must have these reviewed against their own law rather
+than assume the template transfers. An operator in the EU still needs them
+reviewed — the templates are accurate about the software, which is not the same
+as being legally sufficient.
+
+**Nothing here is legal advice.** Each document ends with the questions its
+review should answer.
+
+## Grounded in the code
+
+What makes these worth starting from is that every factual claim was written
+against the implementation rather than from boilerplate: the canonical fee and
+payout rules in [`../rfc/business-model.md`](../rfc/business-model.md), the
+analytics envelope and retention rules in
 [`../features/analytics_consent_retention_policy.md`](../features/analytics_consent_retention_policy.md),
-and the escrow, marketplace and generation paths as implemented. That makes
-them accurate about the system, which most templates are not.
+and the escrow, marketplace, generation and passkey paths as built.
 
-It does not make them legally sufficient. They need review by someone
-qualified in the operator's jurisdiction before publication. Each document
-ends with the specific questions that review should answer.
-
-**Accuracy is a moving target.** Two documents contain blocks marked as not
-publishable, because they describe mechanisms the system does not yet have —
-consent for product analytics, and erasure that reaches past the primary event
-store. Those blocks are not drafting placeholders to be tidied away; they are
-publication blockers that clear when the implementation lands. Re-verify every
-factual claim against the code on the day these ship.
+That accuracy decays. Re-verify every claim against the code before a
+deployment publishes, and whenever behaviour changes.
 
 ## Placeholders
 
-Operator identity is not recorded in this repository, which is public. The
-documents use placeholders, resolved from configuration at publication time:
+Operator-specific values appear as placeholders, resolved from configuration at
+publication time. This table is the complete registry; a resolver and an
+unresolved-placeholder check should both be generated from it, so adding a
+placeholder without registering it fails rather than ships.
 
 | Placeholder | Meaning |
 | --- | --- |
-| `{{OPERATOR_LEGAL_NAME}}` | Registered company name |
+| `{{OPERATOR_LEGAL_NAME}}` | Registered name of the operating entity |
 | `{{OPERATOR_LEGAL_FORM}}` | Legal form |
-| `{{OPERATOR_SHARE_CAPITAL}}` | Share capital |
+| `{{OPERATOR_SHARE_CAPITAL}}` | Share capital, where the jurisdiction requires it |
 | `{{OPERATOR_REGISTERED_OFFICE}}` | Registered office address |
-| `{{OPERATOR_REGISTRY_ID}}` | Trade register number and registry city |
+| `{{OPERATOR_REGISTRY_ID}}` | Trade register number and registry |
 | `{{OPERATOR_CONTACT_EMAIL}}` | Published contact address |
-| `{{OPERATOR_PUBLICATION_DIRECTOR}}` | Directeur de la publication |
-| `{{HOSTING_PROVIDER}}` | Hosting provider's name and address |
-| `{{SERVICE_URL}}` | Canonical public URL of the service |
+| `{{OPERATOR_PUBLICATION_DIRECTOR}}` | Publication director, where required |
+| `{{HOSTING_PROVIDER}}` | Hosting provider's name and address, where required |
+| `{{SERVICE_URL}}` | Canonical public URL of the deployment |
 | `{{EFFECTIVE_DATE}}` | Date the document takes effect |
 | `{{MINIMUM_AGE}}` | Minimum age to hold an account |
 | `{{GOVERNING_LAW}}` | Law governing the terms |
 | `{{JURISDICTION}}` | Courts with jurisdiction |
-| `{{SUPERVISORY_AUTHORITY}}` | Data protection authority to complain to |
-| `{{RESPONSE_WINDOW}}` | Time we commit to answering a refund request |
-| `{{ACCEPTED_PAYMENT_ASSETS}}` | Payment assets accepted on-chain in production |
+| `{{SUPERVISORY_AUTHORITY}}` | Data protection authority for complaints |
+| `{{RESPONSE_WINDOW}}` | Time the operator commits to answering a refund request |
+| `{{ACCEPTED_PAYMENT_ASSETS}}` | Payment assets accepted on-chain in that deployment |
 | `{{CHAIN_NAME}}` | Network the payment assets settle on |
 | `{{CREDIT_CURRENCY}}` | Currency generation credits are denominated in |
 
-`{{HOSTING_PROVIDER}}` and `{{OPERATOR_PUBLICATION_DIRECTOR}}` are reserved for
-the mentions légales document, which is not drafted yet; every other
-placeholder is in use today.
-
-This table is the complete registry. A resolver and an unresolved-placeholder
-test should both be generated from it, so adding a placeholder to a document
-without adding it here fails rather than ships. A document that reaches
-publication with an unresolved placeholder is a bug.
+A document that reaches publication with an unresolved placeholder is a bug.
 
 ## Language
 
-Drafted in English, matching the application. If the first cohort includes
-consumers in the operator's own jurisdiction, a translation may be legally
-required rather than merely courteous — one of the review questions.
+Drafted in English, matching the application. Where an operator's consumers are
+entitled to their own language, a translation may be legally required rather
+than merely courteous.

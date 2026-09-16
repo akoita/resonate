@@ -595,3 +595,47 @@ If a provider is shown as unavailable:
 
 These providers support **proof-of-humanity / anti-sybil checks for curators**.
 They do **not** prove rights ownership for uploaded recordings.
+
+## Operator Identity and Legal Pages
+
+Resonate is software anyone can deploy, and whoever runs an instance is its
+operator. The legal pages an instance serves are built from the templates in
+[`../legal/`](../legal/README.md) with the operator's own values substituted at
+publication time.
+
+**None of these values belong in this repository.** They are deployment
+configuration like any other, and for the reference deployment they live in
+`resonate-iac`. There are no source-code defaults: an unset value must fail the
+build rather than publish a placeholder or a guess.
+
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_OPERATOR_LEGAL_NAME` | Registered name of the operating entity |
+| `NEXT_PUBLIC_OPERATOR_LEGAL_FORM` | Legal form |
+| `NEXT_PUBLIC_OPERATOR_SHARE_CAPITAL` | Share capital, where the jurisdiction requires it |
+| `NEXT_PUBLIC_OPERATOR_REGISTERED_OFFICE` | Registered office address |
+| `NEXT_PUBLIC_OPERATOR_REGISTRY_ID` | Trade register number and registry |
+| `NEXT_PUBLIC_OPERATOR_CONTACT_EMAIL` | Published contact address |
+| `NEXT_PUBLIC_OPERATOR_PUBLICATION_DIRECTOR` | Publication director, where required |
+| `NEXT_PUBLIC_OPERATOR_HOSTING_PROVIDER` | Hosting provider's name and address, where required |
+| `NEXT_PUBLIC_LEGAL_GOVERNING_LAW` | Law governing the terms |
+| `NEXT_PUBLIC_LEGAL_JURISDICTION` | Courts with jurisdiction |
+| `NEXT_PUBLIC_LEGAL_SUPERVISORY_AUTHORITY` | Data protection authority for complaints |
+| `NEXT_PUBLIC_LEGAL_MINIMUM_AGE` | Minimum age to hold an account |
+| `NEXT_PUBLIC_LEGAL_EFFECTIVE_DATE` | Date the published documents take effect |
+| `NEXT_PUBLIC_LEGAL_RESPONSE_WINDOW` | Committed response time for a refund request |
+
+These are `NEXT_PUBLIC_` because the pages that render them are public and
+unauthenticated; every value is published to users by design. That is a reason
+to keep them out of source control, not a reason to treat them as secrets —
+they are public facts about a company, sourced from configuration so that a
+different deployment publishes different facts.
+
+`{{SERVICE_URL}}`, `{{ACCEPTED_PAYMENT_ASSETS}}`, `{{CHAIN_NAME}}` and
+`{{CREDIT_CURRENCY}}` resolve from configuration that already exists — the site
+URL, the payment asset registry, and the chain and credit settings documented
+above. Do not add duplicates; `AGENTS.md` forbids redeclaring canonical
+configuration.
+
+The full placeholder registry, and which documents use which, is in
+[`../legal/README.md`](../legal/README.md).
