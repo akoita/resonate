@@ -46,12 +46,28 @@ class NightlyValidationWorkflowTests(unittest.TestCase):
                 "nightly validation must not grant id-token: write",
             )
 
-    def test_failure_report_job_is_gated_on_failure(self):
+    def test_failure_report_job_is_gated_and_branches_on_outcome(self):
+        # #1766 moved this job onto the shared composite action, so it now runs
+        # on every scheduled or dispatched run and decides inside the action
+        # whether to open a failure issue or close a recovered one. The gate
+        # that matters is therefore the outcome expression, not `failure()`:
+        # without it a green run would report a failure.
         report = self.jobs["report-failure"]
         self.assertIn("needs: [validate]", report)
-        self.assertIn("if: failure()", report)
+        self.assertIn("uses: ./.github/actions/report-scheduled-failure", report)
+        self.assertIn("needs.validate.result == 'success'", report)
         self.assertIn("issues: write", report)
         self.assertIn("nightly-validation-failure", report)
+
+    def test_failure_report_job_still_covers_manual_dispatch(self):
+        # Deliberately broader than the four schedule-only workflows #1766
+        # wired: this workflow's purpose is to be the pre-release gate an
+        # operator dispatches before Release Deployment, so a dispatched run
+        # deserves the same durable record. Narrowing it to schedule-only would
+        # be a regression, not a tidy-up.
+        report = self.jobs["report-failure"]
+        self.assertIn("github.event_name == 'schedule'", report)
+        self.assertIn("github.event_name == 'workflow_dispatch'", report)
 
 
 if __name__ == "__main__":
