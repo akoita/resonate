@@ -10,6 +10,7 @@ import { CreateGenerationDto, GenerationStatusResponse, GenerationMetadata, ALL_
 import { prisma } from '../../db/prisma';
 import { validateArtworkUpload } from '../shared/artwork-validation';
 import { GenerationCreditsService } from '../credits/generation-credits.service';
+import { writeStructuredLog } from '../shared/structured_logging';
 import { estimateGenerationCostUsd, inferColdStart } from './generation-cost-model';
 import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
@@ -245,6 +246,20 @@ export class GenerationService {
       this.logger.error(
         `Failed to refund ${costCents}¢ for terminally failed job ${data.jobId}: ${error?.message ?? error}`,
       );
+      // #1778: a swallowed refund failure is a user silently keeping a charge
+      // for work that never happened. Stay best-effort — throwing here would
+      // mask the original job error — but leave a structured line an operator
+      // can alert on and reconcile from, rather than a log message nobody
+      // reads. Matches the x402.refund_due_stale pattern; the iac log-based
+      // metric parses jsonPayload.event.
+      writeStructuredLog({
+        level: "error",
+        event: "generation.credit_refund_failed",
+        message: "Generation credit refund failed after terminal job failure",
+        jobId: data.jobId,
+        costCents,
+        reason: error?.message ?? String(error),
+      });
     }
   }
 

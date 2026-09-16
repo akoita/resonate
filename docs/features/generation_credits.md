@@ -73,6 +73,16 @@ internal meter.
   1. Lyria — `GenerationService.createGeneration` debits before enqueue and
      refunds if the enqueue throws. The `GenerationProcessor` refunds on the
      final (terminal) failed attempt only, so a transient retry keeps the charge.
+     The terminal check counts the attempt that is currently failing
+     (`attemptsMade + 1`): BullMQ v5 increments `attemptsMade` only *after* a
+     job completes or fails, so comparing it directly against the limit is
+     never true inside the processor. That was live from #1334 until #1778 —
+     no terminally failed Lyria generation refunded during that window, and
+     `backend/scripts/find-unrefunded-generation-debits.sql` finds the debits
+     it left behind.
+     A refund that itself fails stays best-effort (it must not mask the job
+     error) but now emits `generation.credit_refund_failed` through
+     `writeStructuredLog`, so it is alertable rather than lost in a log line.
   2. Remix — `RemixProjectService.processGenerationJob` debits before the AI
      render (prompted modes only; `stem_mix` is pure DSP and free) and refunds
      in the failure path.

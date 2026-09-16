@@ -24,8 +24,18 @@ export class GenerationProcessor extends WorkerHost {
       // failed (all retries exhausted). Retryable attempts keep the charge so a
       // transient failure that later succeeds is not double-refunded. The refund
       // itself is idempotent per jobId, so a re-delivery is safe too.
+      //
+      // #1778: `attemptsMade` counts attempts that have ALREADY failed. BullMQ
+      // v5 moved the increment to after a job completes or fails (introducing
+      // `attemptsStarted` for the old meaning), so inside this catch the attempt
+      // currently failing is not counted yet: on the last of three attempts
+      // `attemptsMade` is 2, not 3. Comparing it directly against the limit was
+      // therefore false on every attempt and no terminal failure ever refunded.
+      // Count the in-flight attempt explicitly. If this ever needs revisiting,
+      // the spec asserts the whole attempt sequence rather than one value.
       const maxAttempts = job.opts?.attempts ?? 1;
-      if (job.attemptsMade >= maxAttempts) {
+      const attemptsFailedIncludingThisOne = job.attemptsMade + 1;
+      if (attemptsFailedIncludingThisOne >= maxAttempts) {
         await this.generationService.refundFailedGenerationJob(job.data);
       }
       throw error;
