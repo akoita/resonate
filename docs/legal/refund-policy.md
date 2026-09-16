@@ -98,7 +98,9 @@ generation that fails does not consume credits; where credits were already
 debited they are returned to your balance automatically.
 
 Unused credits are not exchangeable for money. If we discontinue the feature we
-will say what happens to unused balances before the change takes effect.
+will say what happens to unused balances before the change takes effect —
+subject to the same missing notice workflow the terms of service records in
+section 11.
 
 ## What we cannot reverse
 
@@ -139,7 +141,11 @@ purchase. We will answer within {{RESPONSE_WINDOW}}.
    campaign page discloses the possibility **before** the pledge rather than
    only in this policy. If not, the disclosure belongs in the pledge flow.
 5. **Response window.** `{{RESPONSE_WINDOW}}` is unset, and statutory refund
-   deadlines may impose one regardless of what we choose.
+   deadlines may impose one regardless of what we choose. Note also that every
+   route in this policy ends at a human reading {{OPERATOR_CONTACT_EMAIL}}, and
+   #1595 still carries "support channel for real users" as an open box. A
+   published response window with nobody staffing the inbox is a commitment
+   that fails quietly.
 6. **Gas costs.** Refunds are claimed by the backer (`claimRefund` on
    `ShowCampaignEscrow`), so the backer initiates the transaction. Sponsorship
    is conditional: the paymaster only sponsors when one is configured and only

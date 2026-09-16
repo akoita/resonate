@@ -164,9 +164,19 @@ manipulate discovery or campaign funding, interfere with the escrow or the
 contracts, scrape beyond what the published interfaces allow, or use Resonate
 to launder value or evade sanctions.
 
-We may remove content, restrict features, or close accounts that breach these
-terms. Where we do, we will tell you why in the application unless we are
-legally prevented from doing so.
+We may remove content and restrict features where these terms are breached.
+
+> **Two parts of this clause are not backed by the product.** There is no
+> platform-level account closure or suspension — the only ban capability is
+> room-scoped inside community, so "close accounts" claims an enforcement power
+> that does not exist. And nothing notifies a user when a moderation action is
+> taken against them: the moderation path records and emits the action, and
+> `NotificationService` subscribes only to dispute and credit-request events, so
+> the promise to explain in the application has no delivery path. Enforcement
+> powers should be claimed only where they exist, and telling someone why they
+> were actioned is a fairness obligation, not a courtesy. Both need building or
+> the clause needs narrowing before publication; closure is in scope for
+> [#1771](https://github.com/akoita/resonate/issues/1771).
 
 ## 10. Disputes about content
 
@@ -186,11 +196,18 @@ post the change here and notify you in the application before it takes effect,
 and you may ask us to close your account if you do not accept it. Changes never
 apply retroactively to a transaction already completed.
 
-> **Notice has one channel, and it is weak.** Notifications are delivered
-> in-app only — there is no email or other outbound channel in the system. A
-> user who does not sign in during the notice period is not reached at all.
-> Before publication, decide whether in-app notice is sufficient for a material
-> change to a contract governing real money, and build a channel if it is not.
+> **There is no way to send this notice.** Not merely a weak channel — no
+> mechanism at all. `NotificationService` fires on four specific event types
+> (dispute filed, appealed, resolved, and a credit request) and exposes no
+> broadcast or operator path that could reach users with a terms change. There
+> is also no email or other outbound channel, so even a per-user notice would
+> only land for someone who signs in.
+>
+> Publishing this clause promises notice the operator cannot give. Before
+> publication: build a notice workflow, decide whether in-app delivery is
+> adequate for a material change to a contract governing real money, and if it
+> is not, build a channel that reaches people who are not currently signed in.
+> The privacy policy carries the same promise and the same gap.
 
 ## 12. Liability
 
@@ -217,8 +234,10 @@ what cannot technically be erased — your on-chain activity stays where it is.
 > [#1771](https://github.com/akoita/resonate/issues/1771) lands with closure in
 > scope. Until then, do not publish a promise to close accounts.
 
-We may terminate for material breach, or if we stop operating the service, with
-notice where we can give it.
+We may stop providing the service to you for material breach, or if we stop
+operating the service, with notice where we can give it. The same two gaps
+apply as in section 9 and section 11: there is no account-closure mechanism,
+and no workflow that delivers such a notice.
 
 Obligations that make sense beyond termination survive it: completed
 transactions, licences already granted, and the limits in section 12.

@@ -218,15 +218,26 @@ see the controls table above.
 
 ## Children
 
-Resonate is not for people under {{MINIMUM_AGE}}. If we learn that we hold data
-about someone below that age we delete it.
+Resonate is not for people under {{MINIMUM_AGE}}. We are obliged to delete data
+we hold about someone below that age, and we will act on any report.
+
+> **This case depends on the same missing erasure mechanism.** Deleting a
+> child's data completely requires exactly what "When you delete" says does not
+> exist yet — identifier resolution, warehouse and derived-fact deletion, and
+> rebuild tombstones. Stating the obligation is right; claiming it is already
+> fulfilled would not be. It clears with
+> [#1770](https://github.com/akoita/resonate/issues/1770) and
+> [#1771](https://github.com/akoita/resonate/issues/1771).
 
 ## Changes
 
-We will post changes here, and where they matter we will notify you in the
-application before they take effect. There is currently no email or other
-outbound channel, so a change can only reach you when you next sign in — the
-same limitation the terms of service records.
+We will post changes here, and where they matter we will notify you before they
+take effect.
+
+> **No mechanism sends that notice.** There is no broadcast or operator path in
+> `NotificationService` — it fires only on specific dispute and credit-request
+> events — and no email or other outbound channel. The same gap is recorded in
+> section 11 of the terms of service and must be closed in one place for both.
 
 ---
 
