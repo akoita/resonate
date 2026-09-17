@@ -1,4 +1,9 @@
-import { recordProductAnalyticsEvent, type ProductAnalyticsInput } from "./api";
+import {
+  isClientTelemetryRefused,
+  recordProductAnalyticsEvent,
+  type ProductAnalyticsInput,
+} from "./api";
+import { isProductAnalyticsAllowed, noteServerRefusal } from "./analyticsConsent";
 import { TOKEN_KEY } from "./authSession";
 
 const SESSION_STORAGE_KEY = "resonate.product.sessionId";
@@ -127,6 +132,12 @@ export async function recordProductAnalytics(
 ) {
   if (!token) return null;
 
+  // #1772: no consent, no event. This also drops events fired before the
+  // decision has loaded — deliberately, since "not known yet" is not a grant,
+  // and queuing them for replay after a grant would collect them beforehand
+  // anyway. The server refuses these too; this stops the browser sending them.
+  if (!isProductAnalyticsAllowed()) return null;
+
   const { subjectType, subjectId, ...eventInput } = input;
   const event: ProductAnalyticsInput = {
     ...eventInput,
@@ -139,7 +150,13 @@ export async function recordProductAnalytics(
   };
 
   try {
-    return await recordProductAnalyticsEvent(token, event);
+    const response = await recordProductAnalyticsEvent(token, event);
+    if (isClientTelemetryRefused(response)) {
+      // The server says this person has not consented. Stop, do not retry.
+      noteServerRefusal();
+      return null;
+    }
+    return response;
   } catch (error) {
     if (process.env.NODE_ENV !== "test") {
       console.warn("[Analytics] Product event dropped", { eventName, error });

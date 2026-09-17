@@ -913,6 +913,32 @@ export async function getAgentQualityDashboard(
   );
 }
 
+/**
+ * #1772: every browser telemetry route can answer either way.
+ *
+ * A 202 with `recorded: false` is not an error and not a retry signal: the
+ * server is saying this person has not consented, so the client must stop
+ * emitting rather than try again.
+ */
+export type ClientTelemetryRecorded = {
+  status: string;
+  eventId: string;
+  ingested: number;
+};
+
+export type ClientTelemetryRefused = {
+  recorded: false;
+  reason: "consent_not_granted";
+};
+
+export type ClientTelemetryResponse = ClientTelemetryRecorded | ClientTelemetryRefused;
+
+export function isClientTelemetryRefused(
+  response: ClientTelemetryResponse | null | undefined,
+): response is ClientTelemetryRefused {
+  return Boolean(response && (response as ClientTelemetryRefused).recorded === false);
+}
+
 export type PlaybackCompletedAnalyticsInput = {
   trackId: string;
   artistId?: string;
@@ -931,7 +957,7 @@ export async function recordPlaybackCompleted(
   token: string,
   input: PlaybackCompletedAnalyticsInput,
 ) {
-  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+  return apiRequest<ClientTelemetryResponse>(
     "/analytics/playback/completed",
     {
       method: "POST",
@@ -967,7 +993,7 @@ export async function recordPlaybackEvent(
   token: string,
   input: PlaybackLifecycleAnalyticsInput,
 ) {
-  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+  return apiRequest<ClientTelemetryResponse>(
     "/analytics/playback/event",
     {
       method: "POST",
@@ -1212,7 +1238,7 @@ export async function recordProductAnalyticsEvent(
   token: string,
   input: ProductAnalyticsInput,
 ) {
-  return apiRequest<{ status: string; eventId: string; ingested: number }>(
+  return apiRequest<ClientTelemetryResponse>(
     "/analytics/product/event",
     {
       method: "POST",
@@ -1220,6 +1246,73 @@ export async function recordProductAnalyticsEvent(
     },
     token,
   );
+}
+
+/**
+ * #1772: the analytics consent decision as the server reports it.
+ *
+ * `needsDecision` is computed by the server across three states (never
+ * recorded / recorded against superseded text / recorded against current
+ * text). Clients must use it as given rather than comparing version strings
+ * themselves, or the surfaces drift apart.
+ */
+export type AnalyticsConsentResponse = {
+  productAnalytics: boolean;
+  decided: boolean;
+  needsDecision: boolean;
+  /** Version the stored decision was given against, absent when undecided. */
+  policyVersion?: string;
+  decidedAt?: string;
+  /** Version of the consent text the server is serving right now. */
+  currentPolicyVersion: string;
+};
+
+export async function getAnalyticsConsent(token: string) {
+  return apiRequest<AnalyticsConsentResponse>(
+    "/analytics/consent",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+/**
+ * A stale `policyVersion` is a distinct outcome, not a generic failure: the
+ * consent text the browser displayed is no longer the text being served, so
+ * the caller has to reload it and ask the person again. Retrying with the
+ * server's version would record agreement to wording nobody read.
+ */
+export type AnalyticsConsentUpdateResult =
+  | { status: "recorded"; decision: AnalyticsConsentResponse }
+  | { status: "policy_version_stale"; currentVersion?: string };
+
+export async function updateAnalyticsConsent(
+  token: string,
+  input: { productAnalytics: boolean; policyVersion: string },
+): Promise<AnalyticsConsentUpdateResult> {
+  try {
+    const decision = await apiRequest<AnalyticsConsentResponse>(
+      "/analytics/consent",
+      {
+        method: "PUT",
+        body: JSON.stringify(input),
+        silentErrorCodes: [409],
+      },
+      token,
+    );
+    return { status: "recorded", decision };
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409) {
+      const details = error.details as
+        | { error?: string; currentVersion?: string }
+        | undefined;
+      return {
+        status: "policy_version_stale",
+        currentVersion:
+          typeof details?.currentVersion === "string" ? details.currentVersion : undefined,
+      };
+    }
+    throw error;
+  }
 }
 
 export type TrustTier = {

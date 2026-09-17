@@ -1659,7 +1659,105 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Open Settings", href: "/settings", description: "Profile, privacy, notifications, and library." },
     ],
-    related: ["ai-dj", "community", "troubleshooting"],
+    related: ["ai-dj", "community", "product-analytics", "troubleshooting"],
+  },
+  {
+    slug: "product-analytics",
+    title: "Usage measurement: your choice",
+    summary:
+      "We only record how you use Resonate if you say yes. Saying no is free of consequences, and you can change your answer at any time.",
+    category: "account",
+    audiences: ["everyone", "listener", "artist"],
+    status: "available",
+    keywords: [
+      "analytics",
+      "usage",
+      "tracking",
+      "telemetry",
+      "consent",
+      "opt in",
+      "opt out",
+      "data collection",
+      "privacy",
+      "measure",
+      "stop collecting",
+    ],
+    sections: [
+      {
+        id: "what-we-ask",
+        heading: "What we ask permission for",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. We use it to see what helps and to fix what does not.",
+          },
+          {
+            kind: "list",
+            items: [
+              "We ask before anything is recorded. Until you answer, nothing about how you use the app is collected.",
+              "This is about how you use Resonate, not about who you are or what you say.",
+              "Your purchases, uploads, and payouts are kept whatever you choose, because they are records of things that actually happened — a sale, a release, a payment.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "saying-no",
+        heading: "Saying no is a real option",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Refusing is exactly as easy as accepting, and it costs you nothing. Every feature works the same, prices are the same, recommendations still work, and your account is unaffected. There is no reduced version of Resonate for people who say no.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "No answer means no",
+            text: "Until you answer, nothing is recorded. The question waits at the bottom of the screen and does not get in your way — you can keep listening and browsing while you think about it — but it stays until you pick one, because permission only starts when you actively give it.",
+          },
+        ],
+      },
+      {
+        id: "change-your-answer",
+        heading: "Changing your answer later",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Your answer is never final. Open Settings and choose Privacy: it shows what you chose and lets you switch it either way, as often as you like. Turning it off stops the collection from that moment.",
+          },
+          {
+            kind: "steps",
+            items: [
+              "Open Settings.",
+              "Choose Privacy in the list of sections.",
+              "Pick 'Measure my use' or 'Do not measure'. The change takes effect straight away.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "asked-again",
+        heading: "Why we might ask you once more",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "We only ask again if what we collect changes in a way that matters. Your earlier answer covered what we described at the time, so a real change means the question has to be put to you again — with the new wording in front of you. We will not re-use an old yes to cover something new, and we will not nag you about wording tweaks.",
+          },
+          {
+            kind: "paragraph",
+            text: "If the wording happens to change while the question is on your screen, we will show it again rather than record your answer against text you did not read.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      {
+        label: "Open Settings",
+        href: "/settings",
+        description: "The Privacy section shows your current answer and lets you change it.",
+      },
+    ],
+    related: ["settings-privacy", "troubleshooting"],
   },
   {
     slug: "troubleshooting",

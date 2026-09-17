@@ -15608,3 +15608,112 @@ tr[draggable="true"]:hover {
   .update-prompt,
   .update-prompt__dot { animation: none; }
 }
+
+/* ─────────────── Analytics consent (#1772) ───────────────
+ * A persistent banner, NOT a modal. No overlay, no backdrop, no focus trap:
+ * the app stays usable and audio keeps playing while the question sits there.
+ * Blocking the product to ask a question whose own copy says refusing is free
+ * would contradict itself, and a consent-text change would otherwise interrupt
+ * every signed-in session at once.
+ *
+ * The two actions are styled identically on purpose. Refusing must be exactly
+ * as easy and as visible as accepting, so do not demote either one to a ghost
+ * button, a link, or a smaller size. */
+.analytics-consent-banner-wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--space-5) + 4.5rem);
+  /* Above `.update-prompt` (9998), which shares this exact anchor. The two can
+     coincide, and when they do the consent question must win: it is a legal
+     obligation with no dismiss control, while the update pill is a transient
+     nicety the person can act on later. Losing the stacking contest would hide
+     a banner the user cannot dismiss and may never see again this session.
+     Coordinating the two into a shared bottom stack is tracked separately. */
+  z-index: 9999;
+  display: flex;
+  justify-content: center;
+  padding: 0 var(--space-4);
+  /* The positioning layer must never swallow a click meant for the app. */
+  pointer-events: none;
+}
+
+.analytics-consent-banner {
+  pointer-events: auto;
+  width: 100%;
+  max-width: min(94vw, 34rem);
+  max-height: min(60vh, 32rem);
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+  border-radius: 20px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-raised, var(--color-surface));
+  backdrop-filter: blur(var(--glass-blur, 12px)) saturate(1.2);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  color: var(--color-text);
+}
+
+.analytics-consent-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-2);
+}
+
+.analytics-consent-notice {
+  margin: 0 0 var(--space-2);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  background: rgba(124, 92, 255, 0.12);
+  font-size: 0.82rem;
+}
+
+.analytics-consent-body p {
+  margin: 0 0 var(--space-2);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.analytics-consent-link {
+  color: var(--r-primary, var(--color-accent));
+  text-decoration: underline;
+}
+
+.analytics-consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.analytics-consent-actions--inline {
+  margin-top: var(--space-3);
+}
+
+.analytics-consent-action {
+  flex: 1 1 180px;
+  min-width: 160px;
+}
+
+.analytics-consent-settings {
+  margin-top: var(--space-3);
+}
+
+.analytics-consent-settings__state {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 520px) {
+  .analytics-consent-actions {
+    flex-direction: column;
+  }
+  .analytics-consent-action {
+    width: 100%;
+  }
+}

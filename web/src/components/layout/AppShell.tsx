@@ -10,6 +10,7 @@ import { useUIStore } from "../../lib/uiStore";
 import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
 import { ResaleModal } from "../marketplace/ResaleModal";
 import AgentOnboardingGate from "../agent/AgentOnboardingGate";
+import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 
 export default function AppShell({
@@ -53,6 +54,10 @@ export default function AppShell({
         />
       </div>
       <AgentOnboardingGate />
+      {/* #1772: asked from the shell, because the answer gates collection on
+        * every screen — and a later policy change must be able to re-ask
+        * everyone rather than wait for them to find a settings panel. */}
+      <AnalyticsConsentPrompt />
       <PlaybackIntentBridge />
     </PlayerProvider>
 

@@ -77,7 +77,8 @@ export type RepeatMode = "none" | "one" | "all";
 import { useAuth } from "../components/auth/AuthProvider";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
-import { recordPlaybackCompleted, recordPlaybackEvent } from "./api";
+import { isClientTelemetryRefused, recordPlaybackCompleted, recordPlaybackEvent } from "./api";
+import { isProductAnalyticsAllowed, noteServerRefusal } from "./analyticsConsent";
 import { LocalTrack, getTrackUrl, getArtworkUrl, savePlayerState, loadPlayerState } from "./localLibrary";
 import {
     buildPlaybackCompletedPayload,
@@ -562,6 +563,11 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         if (!token || !playbackInstanceId || !activeTrack) {
             return;
         }
+        // #1772: playback telemetry is product analytics too, and is refused at
+        // ingest without consent. Unknown consent means do not send.
+        if (!isProductAnalyticsAllowed()) {
+            return;
+        }
 
         const audio = audioRef.current;
         const payload = buildPlaybackLifecyclePayload({
@@ -582,9 +588,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        recordPlaybackEvent(token, payload).catch((error) => {
-            console.warn("Failed to record playback lifecycle analytics:", error);
-        });
+        recordPlaybackEvent(token, payload)
+            .then((response) => {
+                if (isClientTelemetryRefused(response)) {
+                    noteServerRefusal();
+                }
+            })
+            .catch((error) => {
+                console.warn("Failed to record playback lifecycle analytics:", error);
+            });
     }, []);
 
     // Mute main track when mixer mode is active and we have stems to play
@@ -1064,6 +1076,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 if (!token || !activeTrack) {
                     return;
                 }
+                // #1772: see the lifecycle emitter — no consent, no completion event.
+                if (!isProductAnalyticsAllowed()) {
+                    return;
+                }
                 const payload = buildPlaybackCompletedPayload({
                     track: activeTrack,
                     currentTimeSeconds: audio.currentTime,
@@ -1075,9 +1091,15 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
                 }
 
                 playbackCompletedTrackRef.current = payload.trackId;
-                recordPlaybackCompleted(token, payload).catch((error) => {
-                    console.warn("Failed to record playback analytics:", error);
-                });
+                recordPlaybackCompleted(token, payload)
+                    .then((response) => {
+                        if (isClientTelemetryRefused(response)) {
+                            noteServerRefusal();
+                        }
+                    })
+                    .catch((error) => {
+                        console.warn("Failed to record playback analytics:", error);
+                    });
             }
         };
 

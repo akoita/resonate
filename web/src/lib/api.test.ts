@@ -303,7 +303,10 @@ describe('API Client', () => {
         completionRatio: 0.8,
         durationMs: 30000,
       });
-      expect(result.eventId).toBe('evt_playback_1');
+      // The response is a union now (#1772): a 202 refusal is a valid answer,
+      // so assert the recorded shape as a whole rather than reaching for a
+      // field that only exists on one arm.
+      expect(result).toEqual({ status: 'ok', eventId: 'evt_playback_1', ingested: 1 });
     });
   });
 
@@ -391,7 +394,7 @@ describe('API Client', () => {
         repeatMode: 'all',
         shuffle: true,
       });
-      expect(result.eventId).toBe('evt_playback_lifecycle_1');
+      expect(result).toEqual({ status: 'ok', eventId: 'evt_playback_lifecycle_1', ingested: 1 });
     });
   });
 
@@ -511,7 +514,7 @@ describe('API Client', () => {
           fileCount: 8,
         },
       });
-      expect(result.eventId).toBe('evt_product_1');
+      expect(result).toEqual({ status: 'ok', eventId: 'evt_product_1', ingested: 1 });
     });
   });
 
@@ -1958,6 +1961,95 @@ describe('API Client', () => {
       expect(opts.method).toBe('POST');
       expect(opts.headers.get('Authorization')).toBe('Bearer test-token');
       expect(opts.body).toBe(JSON.stringify({ body: 'Hello' }));
+    });
+  });
+
+  describe('analytics consent (#1772)', () => {
+    it('reads the decision with the server-computed needsDecision flag', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            productAnalytics: false,
+            decided: false,
+            needsDecision: true,
+            currentPolicyVersion: 'analytics-consent:2026-09-17',
+          }),
+      });
+
+      const decision = await api.getAnalyticsConsent('listener-token');
+
+      const [url, opts] = mockFetch.mock.calls[0];
+      expect(url).toBe('http://test-api:3000/analytics/consent');
+      expect(opts.headers.get('Authorization')).toBe('Bearer listener-token');
+      expect(decision.needsDecision).toBe(true);
+      expect(decision.currentPolicyVersion).toBe('analytics-consent:2026-09-17');
+    });
+
+    it('sends the policy version the client displayed', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            productAnalytics: true,
+            decided: true,
+            needsDecision: false,
+            policyVersion: 'analytics-consent:2026-09-17',
+            currentPolicyVersion: 'analytics-consent:2026-09-17',
+          }),
+      });
+
+      const result = await api.updateAnalyticsConsent('listener-token', {
+        productAnalytics: true,
+        policyVersion: 'analytics-consent:2026-09-17',
+      });
+
+      const [, opts] = mockFetch.mock.calls[0];
+      expect(opts.method).toBe('PUT');
+      expect(JSON.parse(opts.body)).toEqual({
+        productAnalytics: true,
+        policyVersion: 'analytics-consent:2026-09-17',
+      });
+      expect(result.status).toBe('recorded');
+    });
+
+    it('reports a stale policy version distinguishably instead of throwing', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        statusText: 'Conflict',
+        text: async () =>
+          JSON.stringify({
+            error: 'policy_version_stale',
+            currentVersion: 'analytics-consent:2027-01-01',
+          }),
+      });
+
+      const result = await api.updateAnalyticsConsent('listener-token', {
+        productAnalytics: true,
+        policyVersion: 'analytics-consent:2026-09-17',
+      });
+
+      expect(result).toEqual({
+        status: 'policy_version_stale',
+        currentVersion: 'analytics-consent:2027-01-01',
+      });
+    });
+
+    it('detects a 202 refusal on a telemetry response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify({ recorded: false, reason: 'consent_not_granted' }),
+      });
+
+      const result = await api.recordProductAnalyticsEvent('listener-token', {
+        eventName: 'search.submitted',
+      });
+
+      expect(api.isClientTelemetryRefused(result)).toBe(true);
     });
   });
 });
