@@ -8,6 +8,7 @@ import NotificationPreferences from "../../components/notifications/Notification
 import AnalyticsConsentSettingsPanel from "../../components/settings/AnalyticsConsentSettingsPanel";
 import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
+import DataExportPanel from "../../components/settings/DataExportPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
 import UsageBillingPanel from "../../components/settings/UsageBillingPanel";
 import { useToast } from "../../components/ui/Toast";
@@ -54,7 +55,7 @@ const SETTINGS_SECTIONS: Array<{
         id: "privacy",
         label: "Privacy",
         eyebrow: "Your data",
-        description: "Whether we may measure how you use Resonate.",
+        description: "Whether we may measure how you use Resonate, and getting a copy of your data.",
     },
     {
         id: "artist",
@@ -494,7 +495,10 @@ export default function SettingsPage() {
                         ) : null}
 
                         {activeSection === "privacy" ? (
-                            <AnalyticsConsentSettingsPanel token={token} addToast={addToast} />
+                            <>
+                                <AnalyticsConsentSettingsPanel token={token} addToast={addToast} />
+                                <DataExportPanel token={token} addToast={addToast} />
+                            </>
                         ) : null}
 
                         {activeSection === "artist" ? (

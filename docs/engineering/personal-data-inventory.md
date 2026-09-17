@@ -15,6 +15,52 @@ than implied by whatever a query happens to join.
 Re-derive it whenever the schema changes. A model added without appearing here
 is a model an erasure will silently miss.
 
+## Corrections from building the export (#1771 slice 2)
+
+Implementing the export against this document found three errors in it. They
+are recorded rather than quietly fixed, because the reason each was missed
+matters more than the corrected number.
+
+**This document is no longer the only guard.**
+`backend/src/modules/privacy/personal_data_export_manifest.ts` is now the
+enforced version of it: every Prisma model must appear there as exported or
+not-exported-with-a-reason, and `personal_data_export_manifest.spec.ts` drives
+itself from the generated Prisma DMMF, so a model added to the schema fails the
+build until someone classifies it. The prose here explains; the manifest is what
+cannot drift.
+
+**1. The arithmetic did not reconcile.** The categories below claim 34 + 28 + 58
+models. The schema has **94**, not 120. The current classification is **75
+models holding a person's data, 19 holding none**.
+
+**2. There was a blind spot shaped like its own thesis.** This document names
+five identifiers and then enumerates models reachable by `userId`, wallet
+address and `actorId` — but never enumerates the ones keyed by `artistId`,
+despite listing it as one of the five. Thirteen models were missing as a result,
+`Release` among them. The document warning that a person is not one identifier
+was itself written from fewer than five.
+
+Added by the manifest: `Release`, `ReleaseArtistCredit`, `CreatorTrust`,
+`CommunityBenefitRule`, `CommunityRoom`, `CommunityDiscordBridge`,
+`TrustedSourceArtistLink`, `PunchlineDrop`, `ArtistEngagement` (all
+`artistId`); `License` and `Payment` (`sessionId`); `Dispute`,
+`DisputeEvidence` and `DisputeJurorAssignment` (wallet addresses —
+`reporterAddr`, `creatorAddr`, `submitter`, `jurorAddr`); and
+`AnalyticsConsent`, which #1772 added after this was written.
+
+**3. Three category-2c models cannot be keyed to a person at all.**
+`ContractEvent` and `ShowCampaignEscrowEvent` carry no column naming anybody:
+they are keyed by contract address and block position, and the person's address
+appears only inside an untyped `args` JSON blob whose shape varies per event.
+`ShowEscrowIndexerState` is an indexer cursor whose `feeRecipient` is the
+platform and whose `leaseOwnerId` is a worker process.
+
+The export therefore reaches a person's on-chain activity through the typed
+models that do name them — `StemPurchase`, `RoyaltyPayment`, `StemListing`,
+`X402Settlement`, `ShowPledge` — rather than by scanning JSON. **Slice 3 must
+not treat this as settled for erasure:** "we cannot query it by column" is a
+reason the export skips it, not a reason the data is not there.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -133,7 +179,7 @@ implicit here.
 by `AnalyticsGovernanceService`, which since #1770 also reaches the warehouse.
 Governance lineage is deliberately retained so a deletion stays provable.
 
-## Category 3 — no personal link (58 models)
+## Category 3 — no personal link (19 models)
 
 Catalogue, contract state and configuration. Verify a new model belongs here
 before assuming it does.

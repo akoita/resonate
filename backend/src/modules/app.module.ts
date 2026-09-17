@@ -40,6 +40,7 @@ import { ShowsModule } from "./shows/shows.module";
 import { CreditsModule } from "./credits/credits.module";
 import { UsageModule } from "./usage/usage.module";
 import { PunchlineModule } from "./punchline/punchline.module";
+import { PrivacyModule } from "./privacy/privacy.module";
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { PunchlineModule } from "./punchline/punchline.module";
     CreditsModule,
     UsageModule,
     PunchlineModule,
+    PrivacyModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

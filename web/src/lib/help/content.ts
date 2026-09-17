@@ -1659,7 +1659,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Open Settings", href: "/settings", description: "Profile, privacy, notifications, and library." },
     ],
-    related: ["ai-dj", "community", "product-analytics", "troubleshooting"],
+    related: ["ai-dj", "community", "product-analytics", "download-your-data", "troubleshooting"],
   },
   {
     slug: "product-analytics",
@@ -1757,7 +1757,116 @@ export const HELP_ARTICLES: HelpArticle[] = [
         description: "The Privacy section shows your current answer and lets you change it.",
       },
     ],
-    related: ["settings-privacy", "troubleshooting"],
+    related: ["settings-privacy", "download-your-data", "troubleshooting"],
+  },
+  {
+    slug: "download-your-data",
+    title: "Download a copy of your data",
+    summary:
+      "Get everything Resonate holds about you in one file, from Settings, whenever you want it — and know exactly what the file can and cannot contain.",
+    category: "account",
+    audiences: ["everyone", "listener", "artist", "producer", "curator"],
+    status: "available",
+    keywords: [
+      "download my data",
+      "export",
+      "data export",
+      "copy of my data",
+      "my data",
+      "personal data",
+      "portability",
+      "take my data",
+      "json",
+      "privacy",
+      "gdpr",
+      "subject access request",
+    ],
+    sections: [
+      {
+        id: "how-to",
+        heading: "How to get your file",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Settings and choose Privacy in the list of sections.",
+              "Under 'Download your data', select 'Download my data'.",
+              "Wait while we put the file together. If you have a lot of history this can take a minute — the button says it is working, and the file downloads on its own when it is ready.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "You can do this a few times an hour. If you ask again straight away we will tell you to come back a little later; nothing has gone wrong and nothing is missing, you simply already have a recent copy.",
+          },
+        ],
+      },
+      {
+        id: "whats-inside",
+        heading: "What is in the file",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "One file with everything Resonate keeps about you, gathered in one place instead of scattered across the app.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Your account and profile, including the ways we recognise you when you sign in.",
+              "Your library, playlists, and follows.",
+              "What you have uploaded or released, and what you have bought, sold, or earned.",
+              "Messages, reports, and other things you have sent us.",
+              "If you allowed usage measurement, the record of how you use Resonate. If you did not, there is nothing of that kind to include.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "opening-it",
+        heading: "Opening the file",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The file ends in .json, which is a plain-text format built to be read by both people and other software. Any text editor will open it — Notepad, TextEdit, or whatever you already use. Your web browser will also display it if you drag the file onto an empty tab.",
+          },
+          {
+            kind: "paragraph",
+            text: "It is yours to keep, read, store, or take somewhere else. It is not encrypted, so treat it like any other personal document: it contains your information, and anyone you send it to can read all of it.",
+          },
+        ],
+      },
+      {
+        id: "not-included",
+        heading: "What the file does not contain",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The file holds what Resonate keeps about you in our own systems. Some of what you have done with Resonate lives outside them, and we would be overstating things if we let you believe otherwise.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Files stored on IPFS — such as published audio and artwork — stay where they are. IPFS is a public network that is not ours, and we cannot pull other people's copies of a file back in.",
+              "Entries written to the blockchain — purchases, listings, payouts recorded on-chain — are public records that also live outside Resonate.",
+              "Where we hold our own copy of one of those, or our own record of it, that copy and that record are in your file.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "Something missing?",
+            text: "If you expected something in your file that is not there, tell us. We would rather correct the file, or correct this page, than leave you guessing.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      {
+        label: "Open Settings",
+        href: "/settings",
+        description: "The Privacy section is where you download your data.",
+      },
+    ],
+    related: ["settings-privacy", "product-analytics", "troubleshooting"],
   },
   {
     slug: "troubleshooting",
