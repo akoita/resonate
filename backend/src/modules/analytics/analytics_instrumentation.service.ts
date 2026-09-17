@@ -20,6 +20,9 @@ interface PlaybackCatalogAnalyticsInput {
   actorId?: string;
   actorUserId?: string;
   geo?: AnalyticsGeoDimension;
+  // #1772: set by the authenticated telemetry routes when the person has an
+  // explicit, granted consent decision. Server-side callers leave it unset.
+  consentBasis?: string;
 }
 
 export interface PlaybackCompletedAnalyticsInput extends PlaybackCatalogAnalyticsInput {
@@ -52,6 +55,8 @@ export interface ProductAnalyticsInput {
   payload?: Record<string, unknown>;
   sourceRefs?: Record<string, string>;
   geo?: AnalyticsGeoDimension;
+  // #1772: see PlaybackCatalogAnalyticsInput.consentBasis.
+  consentBasis?: string;
 }
 
 export interface LibrarySavedAnalyticsInput {
@@ -127,6 +132,7 @@ export class AnalyticsInstrumentationService {
       eventName: "playback.completed",
       producer: "playback-service",
       privacyTier: "pseudonymous",
+      ...(input.consentBasis ? { consentBasis: input.consentBasis } : {}),
       subjectType: "track",
       subjectId: input.trackId,
       actorId: input.actorId,
@@ -188,6 +194,7 @@ export class AnalyticsInstrumentationService {
       eventName: `playback.${input.action}`,
       producer: "playback-service",
       privacyTier: "pseudonymous",
+      ...(input.consentBasis ? { consentBasis: input.consentBasis } : {}),
       subjectType: "track",
       subjectId: input.trackId,
       actorId: input.actorId,
@@ -283,6 +290,7 @@ export class AnalyticsInstrumentationService {
       eventName: input.eventName,
       producer: input.producer ?? "web-app",
       privacyTier: "pseudonymous",
+      ...(input.consentBasis ? { consentBasis: input.consentBasis } : {}),
       subjectType: input.subjectType,
       subjectId: input.subjectId,
       actorId: input.actorId,

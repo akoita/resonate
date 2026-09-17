@@ -1,6 +1,25 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Request, UseGuards } from "@nestjs/common";
+import {
+  BadRequestException,
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Request,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Response } from "express";
 import { AnalyticsAuthorizationService } from "./analytics_authorization.service";
+import {
+  ANALYTICS_CONSENT_POLICY_VERSION,
+  AnalyticsConsentService,
+} from "./analytics_consent.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
 import { AnalyticsEventInput, normalizeAnalyticsGeoDimension } from "./analytics_event";
@@ -21,6 +40,13 @@ type ProductEventRequest = Partial<ProductAnalyticsInput> & {
   clientEventId?: unknown;
 };
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
+type ConsentRequest = { productAnalytics?: unknown; policyVersion?: unknown };
+
+// #1772: the basis stamped on client-emitted telemetry that was collected after
+// an explicit grant. Server-emitted domain records keep their own basis.
+const CLIENT_TELEMETRY_CONSENT_BASIS = "consent";
+const CONSENT_REFUSED_RESPONSE = { recorded: false, reason: "consent_not_granted" } as const;
+const MAX_POLICY_VERSION_LENGTH = 100;
 
 const PLAYBACK_LIFECYCLE_ACTIONS = new Set<PlaybackLifecycleAction>(["started", "heartbeat"]);
 const REPEAT_MODES = new Set(["none", "one", "all"]);
@@ -105,6 +131,7 @@ export class AnalyticsController {
     private readonly analyticsIngestService: AnalyticsIngestService,
     private readonly warehouseExportService: AnalyticsWarehouseExportService,
     private readonly analyticsInstrumentationService: AnalyticsInstrumentationService,
+    private readonly analyticsConsentService: AnalyticsConsentService,
   ) {}
 
   @Get("artist/:id")
@@ -141,16 +168,28 @@ export class AnalyticsController {
     return this.analyticsIngestService.ingest(body);
   }
 
+  /**
+   * #1772: these three routes are the browser telemetry surface, so they are
+   * consent-gated at ingest rather than in the client. Refusal is not a client
+   * error — the route answers 202 with `recorded: false` so the client can stop
+   * emitting, and nothing is written.
+   */
   @Post("playback/completed")
   async recordPlaybackCompleted(
     @Body() body: PlaybackCompletedRequest,
     @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
   ) {
+    const normalized = normalizePlaybackCompletedRequest(body);
+    if (!(await this.analyticsConsentService.isProductAnalyticsAllowed(req.user?.userId))) {
+      return refuseClientTelemetry(res);
+    }
     return this.analyticsInstrumentationService.recordPlaybackCompleted(
       {
-        ...normalizePlaybackCompletedRequest(body),
+        ...normalized,
         actorId: pseudonymousAnalyticsActorId(req.user?.userId),
         actorUserId: req.user?.userId,
+        consentBasis: CLIENT_TELEMETRY_CONSENT_BASIS,
       },
     );
   }
@@ -159,12 +198,18 @@ export class AnalyticsController {
   async recordPlaybackEvent(
     @Body() body: PlaybackLifecycleRequest,
     @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
   ) {
+    const normalized = normalizePlaybackLifecycleRequest(body);
+    if (!(await this.analyticsConsentService.isProductAnalyticsAllowed(req.user?.userId))) {
+      return refuseClientTelemetry(res);
+    }
     return this.analyticsInstrumentationService.recordPlaybackLifecycle(
       {
-        ...normalizePlaybackLifecycleRequest(body),
+        ...normalized,
         actorId: pseudonymousAnalyticsActorId(req.user?.userId),
         actorUserId: req.user?.userId,
+        consentBasis: CLIENT_TELEMETRY_CONSENT_BASIS,
       },
     );
   }
@@ -173,17 +218,62 @@ export class AnalyticsController {
   async recordProductEvent(
     @Body() body: ProductEventRequest,
     @Request() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response,
   ) {
     const actorId = pseudonymousAnalyticsActorId(req.user?.userId);
     const normalized = normalizeProductEventRequest(body);
+    if (!(await this.analyticsConsentService.isProductAnalyticsAllowed(req.user?.userId))) {
+      return refuseClientTelemetry(res);
+    }
     return this.analyticsInstrumentationService.recordProductEvent(
       {
         ...normalized,
         ...defaultProductEventSubject(normalized, actorId),
         actorId,
         actorUserId: req.user?.userId,
+        consentBasis: CLIENT_TELEMETRY_CONSENT_BASIS,
       },
     );
+  }
+
+  /**
+   * The consent decision is read and written strictly for `req.user.userId`.
+   * No user id is accepted from the body or the query string: an endpoint that
+   * can be pointed at another account is a way to switch off someone else's
+   * privacy choice.
+   */
+  @Get("consent")
+  async getConsent(@Request() req: AuthenticatedRequest) {
+    const decision = await this.analyticsConsentService.getDecision(requireUserId(req));
+    // `currentPolicyVersion` lets a client notice its consent text is outdated
+    // before it asks the person anything.
+    return { ...decision, currentPolicyVersion: ANALYTICS_CONSENT_POLICY_VERSION };
+  }
+
+  /**
+   * The client must declare which version of the consent text it displayed. A
+   * mismatch is a 409, not a silent write: a browser showing outdated text must
+   * reload and re-ask rather than have the person's answer recorded against
+   * wording they never saw. What gets stored is always the server's constant.
+   */
+  @Put("consent")
+  async updateConsent(@Body() body: ConsentRequest, @Request() req: AuthenticatedRequest) {
+    const userId = requireUserId(req);
+    if (typeof body?.productAnalytics !== "boolean") {
+      throw new BadRequestException("productAnalytics must be a boolean");
+    }
+    const policyVersion = typeof body?.policyVersion === "string" ? body.policyVersion.trim() : "";
+    if (!policyVersion || policyVersion.length > MAX_POLICY_VERSION_LENGTH) {
+      throw new BadRequestException("policyVersion is required");
+    }
+    if (policyVersion !== ANALYTICS_CONSENT_POLICY_VERSION) {
+      throw new ConflictException({
+        error: "policy_version_stale",
+        currentVersion: ANALYTICS_CONSENT_POLICY_VERSION,
+      });
+    }
+    const decision = await this.analyticsConsentService.record(userId, body.productAnalytics);
+    return { ...decision, currentPolicyVersion: ANALYTICS_CONSENT_POLICY_VERSION };
   }
 
   @Get("rollup/daily")
@@ -195,6 +285,19 @@ export class AnalyticsController {
   async exportLayers() {
     return this.warehouseExportService.exportLayers();
   }
+}
+
+function refuseClientTelemetry(res: Response) {
+  res.status(202);
+  return CONSENT_REFUSED_RESPONSE;
+}
+
+function requireUserId(req: AuthenticatedRequest) {
+  const userId = req.user?.userId?.trim();
+  if (!userId) {
+    throw new UnauthorizedException("Missing authenticated user for analytics consent");
+  }
+  return userId;
 }
 
 function normalizePlaybackCompletedRequest(body: PlaybackCompletedRequest): PlaybackCompletedAnalyticsInput {

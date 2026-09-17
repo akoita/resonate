@@ -1,6 +1,7 @@
 import { ForbiddenException, INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { AnalyticsAuthorizationService } from "../modules/analytics/analytics_authorization.service";
+import { AnalyticsConsentService } from "../modules/analytics/analytics_consent.service";
 import { AnalyticsController } from "../modules/analytics/analytics.controller";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 import { AnalyticsInstrumentationService } from "../modules/analytics/analytics_instrumentation.service";
@@ -34,6 +35,15 @@ const instrumentationService = {
   recordProductEvent: jest.fn(),
 };
 
+// #1772: these cases cover request shaping, not the consent gate, so consent is
+// granted throughout. The gate itself is covered by
+// analytics_consent.controller.http.spec.ts.
+const consentService = {
+  isProductAnalyticsAllowed: jest.fn(),
+  getDecision: jest.fn(),
+  record: jest.fn(),
+};
+
 describe("AnalyticsController (HTTP)", () => {
   let app: INestApplication;
   let warnSpy: jest.SpyInstance;
@@ -46,6 +56,7 @@ describe("AnalyticsController (HTTP)", () => {
       { provide: AnalyticsIngestService, useValue: ingestService },
       { provide: AnalyticsWarehouseExportService, useValue: warehouseExportService },
       { provide: AnalyticsInstrumentationService, useValue: instrumentationService },
+      { provide: AnalyticsConsentService, useValue: consentService },
     ]);
   });
 
@@ -56,6 +67,7 @@ describe("AnalyticsController (HTTP)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    consentService.isProductAnalyticsAllowed.mockResolvedValue(true);
     analyticsService.getArtistStats.mockResolvedValue({ summary: { totalPlays: 0 }, tracks: [] });
     analyticsService.getArtistDashboard.mockResolvedValue({
       summary: { totalPlays: 0 },
