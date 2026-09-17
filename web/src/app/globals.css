@@ -15677,7 +15677,11 @@ tr[draggable="true"]:hover {
 }
 
 .analytics-consent-link {
-  color: var(--r-primary, var(--color-accent));
+  /* --r-primary (#7C5CFF) is only 4.33:1 on this surface and this text is
+     13.6px, so it fails WCAG AA's 4.5:1 for normal text — caught by the
+     accessibility E2E suite. --r-primary-soft is 6.15:1 and stays in the
+     platform violet family, so the link reads as a link without a new colour. */
+  color: var(--r-primary-soft, var(--color-accent));
   text-decoration: underline;
 }
 
