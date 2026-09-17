@@ -9,6 +9,7 @@ import {
 } from "../community/community_cohort_generation.service";
 import { CommunityCohortQualityService } from "../community/community_cohort_quality.service";
 import { CommunityRoomsService } from "../community/community_rooms.service";
+import { PersonalDataErasureService } from "../privacy/personal_data_erasure.service";
 
 const prisma = new PrismaClient();
 
@@ -23,6 +24,7 @@ export class MaintenanceService {
     private readonly communityCohortGenerationService: CommunityCohortGenerationService,
     private readonly communityCohortQualityService: CommunityCohortQualityService,
     private readonly communityRoomsService: CommunityRoomsService,
+    private readonly personalDataErasureService: PersonalDataErasureService,
   ) {}
 
   async runRetentionCleanup() {
@@ -42,6 +44,21 @@ export class MaintenanceService {
       },
       ranAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * Erase the accounts whose 30-day closure window has elapsed (#1771 slice 3).
+   *
+   * The external scheduler's entry point. Each request is settled on its own
+   * row — completed, or failed with the reason written to the database — so a
+   * failure is durable and readable rather than logged and lost, and one
+   * person's failure does not strand the queue behind it.
+   */
+  async runDueAccountErasures(input: { limit?: unknown } = {}) {
+    const limit = typeof input.limit === "string" ? Number.parseInt(input.limit, 10) : input.limit;
+    return this.personalDataErasureService.runDueErasures({
+      limit: typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 ? limit : undefined,
+    });
   }
 
   async loadAnalyticsWarehouse(request: AnalyticsWarehouseLoadRequest) {

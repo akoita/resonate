@@ -61,6 +61,47 @@ models that do name them — `StemPurchase`, `RoyaltyPayment`, `StemListing`,
 not treat this as settled for erasure:** "we cannot query it by column" is a
 reason the export skips it, not a reason the data is not there.
 
+## Corrections from building the erasure (#1771 slice 3)
+
+**4. Analytics are not always keyed by the pseudonymous `actorId`.** The table
+below says `actorId` is "derived with a secret salt". That is true only of the
+browser-facing controller path. `analytics_domain_event_bridge.service.ts`
+declares `actorIdKeys: ["userId"]` and `subjectIdKeys: ["userId"]` for around
+twenty server-emitted event types, `recordConfiguredDomainEvent` passes the
+value straight through, and nothing on the ingest path pseudonymizes it — so
+`AnalyticsEvent.actorId` and `AnalyticsEvent.subjectId` hold the raw `User.id`.
+
+That mattered twice. The shipped export matched only the derived hash and so
+omitted a person's server-emitted analytics while reporting a complete file
+(corrected, with a regression test). And an erasure matching only the hash would
+have left those rows behind.
+
+**5. The user id is itself personal data.** For wallet and passkey accounts
+`User.id` **is** the person's lowercased wallet address — `auth.controller.ts`
+passes `userId: issuedAddress`, and `auth.service.ts` then writes
+`email: "${userId}@wallet.resonate"`. So the address is the primary key across
+43 models, a foreign key throughout, and inside the email.
+
+This is why erasure rotates `User.id` to a fresh UUID rather than merely
+scrubbing fields. It is affordable because **every foreign key in this database
+is `ON UPDATE CASCADE`** — 103 of 103 across the migration history — so the
+rotation reaches every relation-linked table on its own. The columns holding a
+user id with *no* declared relation do not cascade, and a missed one keeps the
+address forever without failing; they are enumerated in
+`backend/src/modules/privacy/personal_data_erasure_manifest.ts` and a
+DMMF-driven test fails when the schema gains another.
+
+**6. A dangling column this document missed.**
+`ShowCampaignDispute.resolvedByUserId` sits on a model that *does* declare a
+`User` relation — on `initiatorUserId`. Any per-model "does it have a `User`
+relation?" check clears the model and walks past the column.
+
+**7. Ordering is load-bearing.** The pseudonymous actor id derives from
+`userId`, so analytics must be erased **before** the id rotates. Rotate first
+and every historical actor id becomes underivable — the same failure this
+document already warns about for salt rotation, reachable without anyone
+touching a secret.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:

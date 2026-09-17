@@ -13,6 +13,14 @@ model User {
   id                          String                       @id @default(uuid())
   email                       String                       @unique
   createdAt                   DateTime                     @default(now())
+  // #1771 slice 3. Account closure and erasure anonymize in place rather than
+  // deleting this row: 103 foreign keys point at `id`, and a person's financial
+  // and audit history has to survive under the retention the privacy policy
+  // states. `closedAt` is set when the closure completes; `erasedAt` when the
+  // erasure pass that rotated `id` and scrubbed the free text finished. Both
+  // null on a live account.
+  closedAt                    DateTime?
+  erasedAt                    DateTime?
   artist                      Artist?
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
@@ -48,6 +56,49 @@ model User {
   generationCreditTxns        GenerationCreditTransaction[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
+  accountClosureRequests      AccountClosureRequest[]
+}
+
+// #1771 slice 3. A request to close an account and erase the person from it.
+//
+// Scheduled, never immediate: `dueAt` is `requestedAt` + the 30-day window in
+// `account_closure.service.ts`, and any ordinary sign-in cancels a pending
+// request. There is no email channel in this backend (#1777), so that window is
+// the only thing standing between a stolen token and an irreversible erasure.
+//
+// At most one row per user may be `pending`. That is enforced by a partial
+// unique index in the migration rather than by application code, because a
+// double-submitted request racing itself would otherwise schedule the erasure
+// engine twice against the same person.
+model AccountClosureRequest {
+  id           String                @id @default(uuid())
+  userId       String
+  status       AccountClosureStatus  @default(pending)
+  requestedAt  DateTime              @default(now())
+  // When the erasure engine may run. Set on creation; not moved afterwards.
+  dueAt        DateTime
+  cancelledAt  DateTime?
+  completedAt  DateTime?
+  failedAt     DateTime?
+  // Free text the person optionally gave for why they are leaving. Personal
+  // data written by them, so the erasure engine scrubs it.
+  reason       String?               @db.Text
+  // Operator-facing failure detail from the erasure engine. Never shown to the
+  // person and never carried into a retained row.
+  failureMessage String?             @db.Text
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, dueAt])
+  @@index([userId, requestedAt])
+}
+
+enum AccountClosureStatus {
+  pending
+  cancelled
+  completed
+  failed
 }
 
 // Generation-credit meter (#1334, ADR-BM-3). USD-cent balance a user spends on

@@ -4,6 +4,7 @@ import { ConfigModule } from "@nestjs/config";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { CommunityModule } from "../community/community.module";
 import { IngestionModule } from "../ingestion/ingestion.module";
+import { PrivacyModule } from "../privacy/privacy.module";
 import { MaintenanceController } from "./maintenance.controller";
 import { MaintenanceService } from "./maintenance.service";
 
@@ -19,6 +20,9 @@ import { MaintenanceService } from "./maintenance.service";
     AnalyticsModule,
     CommunityModule,
     IngestionModule,
+    // #1771 slice 3: the due-erasure route's engine. There is no @Cron in this
+    // codebase — scheduled work is driven externally by hitting these routes.
+    PrivacyModule,
   ],
   controllers: [MaintenanceController],
   providers: [MaintenanceService],

@@ -35,6 +35,21 @@ export class MaintenanceController {
     return this.maintenanceService.runRetentionCleanup();
   }
 
+  /**
+   * Run the erasures whose closure window has elapsed (#1771 slice 3).
+   *
+   * Shaped like `retention/cleanup` next to it, and called by the same external
+   * scheduler: nothing in this codebase runs on a `@Cron`. Admin-guarded like
+   * every other route here — an erasure is irreversible, and the person's own
+   * request is what schedules it, not this call.
+   */
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin")
+  @Post("erasure/run-due")
+  async runDueAccountErasures(@Body() body: { limit?: number }) {
+    return this.maintenanceService.runDueAccountErasures(body ?? {});
+  }
+
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @Roles("admin")
   @Post("analytics/warehouse/load")
