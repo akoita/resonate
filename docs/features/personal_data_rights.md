@@ -14,15 +14,18 @@ issue: 1771
 **Export works end to end.** A signed-in person downloads everything Resonate
 holds about them from Settings > Privacy, without an operator doing anything.
 
-**Erasure does not exist yet.** It is slice 3 of #1771 and nothing in the app
-offers it, promises it, or hints at it — deliberately, because a delete control
-that does not propagate is the false promise #1770 was opened to prevent.
+**Erasure works, but nothing in the app offers it yet.** The engine is built and
+operator-drivable; the Settings door, the passkey step-up and cancel-on-sign-in
+are the remaining slice. Until they ship, nothing in the UI offers, promises or
+hints at deletion — deliberately, because a delete control that does not
+propagate is the false promise #1770 was opened to prevent.
 
 | Slice | What it is | State |
 | --- | --- | --- |
 | 1 | Resolve a person to all five identifiers their data is keyed by | merged (#1785) |
 | 2 | Export: endpoint, Settings surface, User Guide article | this page |
-| 3 | Erasure and account closure | not started |
+| 3a | Erasure engine, closure state machine, operator endpoint | this page |
+| 3b | Settings door, passkey step-up, cancel-on-sign-in | not started |
 
 ## Who It Is For
 
@@ -122,6 +125,53 @@ take that path; anything else falls back to a case-sensitive comparison, so a
 stored value containing a wildcard character cannot widen the match across
 people. The durable fix is normalizing at write time and backfilling, which is
 slice 3's first decision.
+
+## What an erasure does
+
+**It anonymizes in place and closes the account. It never deletes the `User`
+row** — and it rotates `User.id` to a fresh UUID, because for a wallet or
+passkey account that id *is* the person's wallet address. Scrubbing the email
+while keeping the id would have left the address as the primary key across 43
+models. Every foreign key is `ON UPDATE CASCADE` (103 of 103), so the rotation
+reaches relation-linked tables by itself; the columns that hold a user id
+without a declared relation are enumerated in the erasure manifest and rewritten
+by hand, because a missed one keeps the address forever and nothing fails.
+
+**Order matters and is not obvious.** Analytics are erased *before* the id
+rotates. The pseudonymous actor id derives from `userId`, so rotating first
+makes every historical actor id underivable and the erasure misses all of it
+while reporting success.
+
+Each model carries a disposition in
+`backend/src/modules/privacy/personal_data_erasure_manifest.ts`, enforced by a
+DMMF-driven test that fails when the schema gains a model:
+
+| Disposition | What it means |
+| --- | --- |
+| `delete` | Nothing of value survives the person — credentials, taste state, preferences. |
+| `anonymize` | The row stays for its non-personal content; the named columns are scrubbed. |
+| `retain` | Financial, rights and audit records under a legal retention obligation. |
+| `detach` | Artist-scoped. The catalogue survives; `Artist.userId` goes null. |
+| `governance` | Analytics, handled by `AnalyticsGovernanceService` from #1770. |
+| `untouched` | No column names the person. |
+
+**The address survives in financial records; the link does not.** Those rows
+keep the wallet address under the retention the privacy policy states, but the
+`Wallet` row, `PasskeyIdentity` and `SignupFaucetAttempt` are deleted — so
+nothing in the database resolves that address back to an account. Doing it the
+other way round would cost operator reconciliation and give the person nothing,
+since the chain publishes the address anyway.
+
+**An artist's erasure is not a private act**, so artists detach rather than
+disappear: their releases are withdrawn through #1793 rather than deleted out
+from under the people who bought them.
+
+**The deletion log does not become a copy of what was deleted.** Lineage rows
+used to carry the erased event's identifiers verbatim, which for bridge-emitted
+events meant the wallet address stayed in the log proving its own removal.
+Address-shaped identifiers are now pseudonymized at the log writer; non-person
+subject ids pass through, because an audit trail nobody can read is not one.
+**Rows written before this need a backfill** — nothing rewrites history.
 
 ## Honest Limits
 

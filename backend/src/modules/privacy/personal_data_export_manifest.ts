@@ -84,6 +84,15 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "id" }],
     note: "The account row: email and signup date.",
   },
+  {
+    model: "AccountClosureRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note:
+      "Added by #1771 slice 3. The person's own request to close the account, the date it "
+      + "becomes due and the reason they gave — their own words about their own account, and "
+      + "the one record that tells them an erasure is scheduled.",
+  },
 
   // ---------------------------------------------------------------------
   // Inventory category 1 — models with a declared User relation
@@ -478,15 +487,42 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
   {
     model: "AnalyticsEvent",
     primaryKey: "id",
-    // Keyed on `actorId` only. `AnalyticsEvent.sessionId` is a browser
+    // `actorId` is NOT always the pseudonymous hash, which this manifest
+    // originally assumed and which the inventory still asserts.
+    // `analytics_domain_event_bridge.service.ts` declares
+    // `actorIdKeys: ["userId"]` (and `subjectIdKeys: ["userId"]`) for around
+    // twenty event types, and `recordConfiguredDomainEvent` passes that value
+    // straight through — nothing on the ingest path pseudonymizes it. So these
+    // columns hold the raw `User.id`, which for a wallet or passkey account is
+    // the person's wallet address. One bridge config keys on `resolverAddress`,
+    // an address outright.
+    //
+    // Matching only the derived actor id therefore missed a person's own
+    // server-emitted analytics entirely while reporting a complete export.
+    // All three forms are matched, and the address form case-insensitively,
+    // because different writers record whichever casing they were handed.
+    //
+    // `AnalyticsEvent.sessionId` is still deliberately absent: it is a browser
     // playback/product session identifier, not a `Session.id`, so matching it
     // against the resolved session ids would be a category error.
-    keys: [{ kind: "actorId", column: "actorId" }],
+    keys: [
+      { kind: "actorId", column: "actorId" },
+      { kind: "userId", column: "actorId" },
+      { kind: "userId", column: "subjectId" },
+      { kind: "address", column: "actorId" },
+    ],
   },
   {
     model: "AnalyticsGovernanceLog",
     primaryKey: "id",
-    keys: [{ kind: "actorId", column: "actorId" }],
+    // Same three forms as `AnalyticsEvent`: the governance log copies the
+    // identifiers of the events it records, so it inherits their shape.
+    keys: [
+      { kind: "actorId", column: "actorId" },
+      { kind: "userId", column: "actorId" },
+      { kind: "userId", column: "subjectId" },
+      { kind: "address", column: "actorId" },
+    ],
   },
 
   // ---------------------------------------------------------------------

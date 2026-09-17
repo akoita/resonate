@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { AnalyticsEvent, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { pseudonymousAnalyticsActorId } from "./analytics_identity";
 import {
   ANALYTICS_WAREHOUSE_GOVERNANCE,
   AnalyticsWarehouseGovernanceTarget,
@@ -357,6 +358,34 @@ function shouldPreserveForAudit(eventName: string) {
   return FINANCIAL_AUDIT_EVENT_FAMILIES.has(eventName.split(".")[0]);
 }
 
+/** An EVM address, in any casing. */
+const ADDRESS_SHAPED = /^0x[0-9a-fA-F]{40}$/;
+
+/**
+ * Keep a wallet address out of the log that exists to prove we removed it.
+ *
+ * `AnalyticsEvent.actorId` and `subjectId` are not always the pseudonymous
+ * `user_<hash>` form: `analytics_domain_event_bridge.service.ts` declares
+ * `actorIdKeys: ["userId"]` / `subjectIdKeys: ["userId"]` for around twenty
+ * event types and passes the value through unhashed, and for a wallet or
+ * passkey account `User.id` *is* the person's address. Copying that verbatim
+ * into the lineage row left the address sitting in the database after an
+ * erasure that reported success — a fresh copy of exactly what was deleted
+ * (#1771 slice 3).
+ *
+ * Only address-shaped values are hashed. A `subjectId` naming a release, a
+ * track or a campaign is not personal data and passes through, because a
+ * lineage row nobody can read is not much of an audit trail. Hashing is stable,
+ * so two erasures of the same person still correlate.
+ *
+ * Rows written before this existed still hold raw addresses and want a
+ * backfill; nothing here rewrites history.
+ */
+function pseudonymizeIfPersonal(value: string | null): string | null {
+  if (!value || !ADDRESS_SHAPED.test(value)) return value;
+  return pseudonymousAnalyticsActorId(value) ?? null;
+}
+
 function governanceLogData(
   event: AnalyticsEvent,
   action: string,
@@ -368,8 +397,8 @@ function governanceLogData(
     eventId: event.eventId,
     eventName: event.eventName,
     subjectType: event.subjectType,
-    subjectId: event.subjectId,
-    actorId: event.actorId,
+    subjectId: pseudonymizeIfPersonal(event.subjectId),
+    actorId: pseudonymizeIfPersonal(event.actorId),
     privacyTier: event.privacyTier,
     reason,
     details: details as Prisma.InputJsonValue,

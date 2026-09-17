@@ -151,6 +151,31 @@ async function seed(person: Seed) {
     },
   });
 
+  // Analytics keyed by the RAW user id, not the pseudonymous hash.
+  // `analytics_domain_event_bridge.service.ts` declares `actorIdKeys: ["userId"]`
+  // for ~20 event types and nothing on the ingest path pseudonymizes it, so a
+  // person's server-emitted analytics are keyed by their `User.id` — which for
+  // a wallet account is their wallet address. An export matching only the
+  // derived actor id missed all of it and still reported success.
+  await prisma.analyticsEvent.create({
+    data: {
+      id: id("analytics_raw"),
+      eventId: id("analytics_raw_event"),
+      eventName: "generation.created",
+      eventVersion: 1,
+      occurredAt: new Date("2026-09-02T00:00:00.000Z"),
+      receivedAt: new Date("2026-09-02T00:00:01.000Z"),
+      producer: "backend",
+      environment: "test",
+      privacyTier: "pseudonymous",
+      actorId: person.userId,
+      subjectType: "user",
+      subjectId: person.userId,
+      payload: { marker: `${TEST_PREFIX}raw_payload_${person.suffix}` },
+      envelope: { marker: `${TEST_PREFIX}raw_envelope_${person.suffix}` },
+    },
+  });
+
   // The record whose contents must never leave the backend.
   await prisma.sessionKey.create({
     data: {
@@ -264,6 +289,10 @@ describe("PersonalDataExportService integration", () => {
     expect(ids("RoyaltyPayment")).toContain(`${TEST_PREFIX}royalty_a`);
     // Pseudonymous analytics actor id.
     expect(ids("AnalyticsEvent")).toContain(`${TEST_PREFIX}analytics_a`);
+    // The bridge-emitted row, keyed by the raw user id rather than the hash.
+    // Without both forms in the manifest this passes for the pseudonymous row
+    // and silently omits every server-emitted event the person generated.
+    expect(ids("AnalyticsEvent")).toContain(`${TEST_PREFIX}analytics_raw_a`);
     // Security material: the record exists so it can be reviewed and revoked.
     expect(ids("SessionKey")).toContain(`${TEST_PREFIX}session_key_a`);
     // The account itself.

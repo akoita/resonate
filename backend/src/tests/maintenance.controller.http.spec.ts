@@ -8,6 +8,7 @@ import { authToken, createControllerTestApp } from "./e2e-helpers";
 
 const maintenanceService = {
   runRetentionCleanup: jest.fn(),
+  runDueAccountErasures: jest.fn(),
   loadAnalyticsWarehouse: jest.fn(),
   backfillAnalyticsWarehouse: jest.fn(),
   getAnalyticsPipelineHealth: jest.fn(),
@@ -108,6 +109,39 @@ describe("MaintenanceController (HTTP)", () => {
       });
 
     expect(maintenanceService.getAnalyticsPipelineHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /admin/erasure/run-due is admin-only and runs the due erasures (#1771)", async () => {
+    maintenanceService.runDueAccountErasures.mockResolvedValue({
+      status: "ok",
+      ranAt: "2026-09-18T00:00:00.000Z",
+      due: 1,
+      erased: 1,
+      failed: 0,
+      results: [{ requestId: "request-1", status: "erased", newUserId: "rotated-uuid" }],
+    });
+
+    // Erasure is irreversible, so an unauthenticated or non-admin caller must
+    // not reach it at all.
+    await request(app.getHttpServer()).post("/admin/erasure/run-due").send({}).expect(401);
+
+    await request(app.getHttpServer())
+      .post("/admin/erasure/run-due")
+      .set("Authorization", `Bearer ${authToken("listener-1", "listener")}`)
+      .send({})
+      .expect(403);
+
+    await request(app.getHttpServer())
+      .post("/admin/erasure/run-due")
+      .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+      .send({ limit: 5 })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body.status).toBe("ok");
+        expect(body.results[0].requestId).toBe("request-1");
+      });
+
+    expect(maintenanceService.runDueAccountErasures).toHaveBeenCalledWith({ limit: 5 });
   });
 
   it("POST /admin/stems/backfill-audio-features requires admin role and delegates (#1184)", async () => {
