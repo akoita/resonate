@@ -6,6 +6,7 @@ import { SessionKeyService } from "./session_key.service";
 import { ZeroDevSessionKeyService } from "./zerodev_session_key.service";
 import { SocialRecoveryService } from "./social_recovery.service";
 import { PaymasterService } from "./paymaster.service";
+import { PersonalDataResolverService } from "./personal_data_resolver.service";
 import { WalletController } from "./wallet.controller";
 import { WalletService } from "./wallet.service";
 import { Erc4337WalletProvider } from "./wallet_providers/erc4337_wallet_provider";
@@ -28,6 +29,7 @@ import { AgentsModule } from "../agents/agents.module";
     WalletProviderRegistry,
     PaymasterService,
     KernelAccountService,
+    PersonalDataResolverService,
     {
       provide: Erc4337Client,
       inject: [ConfigService],
@@ -48,6 +50,7 @@ import { AgentsModule } from "../agents/agents.module";
     PaymasterService,
     Erc4337Client,
     KernelAccountService,
+    PersonalDataResolverService,
   ],
 })
 export class IdentityModule { }
