@@ -403,11 +403,43 @@ export function getAiDisclosureValidationIssue(
   return null;
 }
 
+/**
+ * Why a track entry can or cannot be streamed right now (#1793).
+ *
+ * `withdrawn` is the artist's own decision to stop new streams; it never
+ * reaches something a listener already bought. `unavailable` covers everything
+ * else (a device-only file, a track that left the catalog).
+ */
+export type TrackUnavailableReason =
+  /** The catalog track (or its release) no longer exists. */
+  | "removed"
+  /** Taken down after a rights complaint. */
+  | "rights_removed"
+  /** Held pending review. */
+  | "under_review"
+  /** The release's rights route does not permit public streaming. */
+  | "restricted"
+  /** Not in a publishable state (still processing, failed…). */
+  | "not_published"
+  /** A device-local entry: nothing in the catalog backs it. */
+  | "local_file";
+
+export type TrackAvailability =
+  | { state: "available" }
+  | { state: "withdrawn"; reason: string | null; withdrawnAt: string | null }
+  /** `reason` is a machine code — never show it to a person unmapped. */
+  | { state: "unavailable"; reason: TrackUnavailableReason | (string & {}) };
+
 export type Release = {
   id: string;
   artistId: string;
   title: string;
+  /** Processing/publication state. `withdrawn` is the artist's own pause (#1793). */
   status: string;
+  /** When the artist withdrew the release from streaming (#1793). */
+  withdrawnAt?: string | null;
+  /** Optional note the artist gave when withdrawing (#1793). */
+  withdrawalReason?: string | null;
   processingError?: string | null;
   type: string; // SINGLE, EP, ALBUM
   primaryArtist?: string | null;
@@ -537,6 +569,11 @@ export type PublicPlaylistTrack = {
   catalogTrackId: string | null;
   releaseId: string | null;
   playable: boolean;
+  /**
+   * Why the entry is (not) playable (#1793). Absent on older responses, in
+   * which case `playable` alone decides.
+   */
+  availability?: TrackAvailability;
 };
 
 export type PublicPlaylistView = {
@@ -4220,6 +4257,48 @@ export async function updateRelease(
     `/catalog/releases/${releaseId}`,
     { method: "PATCH", body: JSON.stringify(input) },
     token
+  );
+}
+
+/** What the withdraw/restore routes answer with (#1793). */
+export type ReleaseWithdrawalState = {
+  releaseId: string;
+  title: string;
+  status: string;
+  /** Where restore will put it back; null once restored. */
+  statusBeforeWithdrawal: string | null;
+  withdrawnAt: string | null;
+  withdrawalReason: string | null;
+  /** True when the release was already in the requested state (no-op call). */
+  alreadyInState: boolean;
+};
+
+/**
+ * Take a release out of streaming (#1793).
+ *
+ * Reversible with {@link restoreRelease}. It stops new streams; it does not
+ * touch anything a listener already bought, and the release keeps its place in
+ * the libraries and playlists that hold it, marked unavailable.
+ */
+export async function withdrawRelease(
+  token: string,
+  releaseId: string,
+  reason?: string,
+) {
+  const trimmed = reason?.trim();
+  return apiRequest<ReleaseWithdrawalState>(
+    `/catalog/me/releases/${releaseId}/withdraw`,
+    { method: "POST", body: JSON.stringify(trimmed ? { reason: trimmed } : {}) },
+    token,
+  );
+}
+
+/** Put a withdrawn release back into streaming (#1793). */
+export async function restoreRelease(token: string, releaseId: string) {
+  return apiRequest<ReleaseWithdrawalState>(
+    `/catalog/me/releases/${releaseId}/restore`,
+    { method: "POST", body: JSON.stringify({}) },
+    token,
   );
 }
 

@@ -6,6 +6,18 @@ import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { getArtistMe, listMyReleases, type ArtistProfile, type Release, type Track } from "../../../lib/api";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
+import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
+import { useToast } from "../../../components/ui/Toast";
+import {
+  ReleaseAvailabilityActions,
+  ReleaseWithdrawnMarker,
+  WITHDRAW_CONFIRM_CANCEL_LABEL,
+  WITHDRAW_CONFIRM_CONFIRM_LABEL,
+  createReleaseAvailabilityHandlers,
+  isWithdrawnRelease,
+  withdrawConfirmMessage,
+  withdrawConfirmTitle,
+} from "./releaseAvailability";
 
 type LoadState =
   | { status: "loading" }
@@ -24,9 +36,36 @@ const DAY_OPTIONS = [7, 30, 90] as const;
 
 export default function ArtistCatalogPage() {
   const { token } = useAuth();
+  const { addToast } = useToast();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<CatalogTab>("releases");
+  // The release waiting on the withdrawal confirmation, and the one whose
+  // request is in flight (#1793).
+  const [pendingWithdrawal, setPendingWithdrawal] = useState<Release | null>(null);
+  const [busyReleaseId, setBusyReleaseId] = useState<string | null>(null);
+
+  const availability = useMemo(
+    () =>
+      createReleaseAvailabilityHandlers({
+        token,
+        addToast,
+        setPending: setPendingWithdrawal,
+        setBusyReleaseId,
+        onUpdated: (updated) =>
+          setState((prev) =>
+            prev.status === "ready"
+              ? {
+                  ...prev,
+                  releases: prev.releases.map((release) =>
+                    release.id === updated.id ? { ...release, ...updated } : release,
+                  ),
+                }
+              : prev,
+          ),
+      }),
+    [token, addToast],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -105,8 +144,28 @@ export default function ArtistCatalogPage() {
             onQueryChange={setQuery}
             tab={tab}
             onTabChange={setTab}
+            busyReleaseId={busyReleaseId}
+            onWithdraw={availability.requestWithdraw}
+            onRestore={(release) => void availability.restore(release)}
           />
         ) : null}
+
+        <ConfirmDialog
+          isOpen={pendingWithdrawal !== null}
+          title={pendingWithdrawal ? withdrawConfirmTitle(pendingWithdrawal) : ""}
+          message={pendingWithdrawal ? withdrawConfirmMessage(pendingWithdrawal) : ""}
+          confirmLabel={WITHDRAW_CONFIRM_CONFIRM_LABEL}
+          cancelLabel={WITHDRAW_CONFIRM_CANCEL_LABEL}
+          variant="warning"
+          onConfirm={async () => {
+            if (!pendingWithdrawal) return;
+            const done = await availability.confirmWithdraw(pendingWithdrawal);
+            // Throwing is how the shared dialog learns the attempt is over and
+            // hands the artist their buttons back after a failure.
+            if (!done) throw new Error("withdrawal failed");
+          }}
+          onCancel={availability.cancelWithdraw}
+        />
       </main>
     </AuthGate>
   );
@@ -118,12 +177,18 @@ function ReadyCatalog({
   onQueryChange,
   tab,
   onTabChange,
+  busyReleaseId,
+  onWithdraw,
+  onRestore,
 }: {
   releases: Release[];
   query: string;
   onQueryChange: (query: string) => void;
   tab: CatalogTab;
   onTabChange: (tab: CatalogTab) => void;
+  busyReleaseId: string | null;
+  onWithdraw: (release: Release) => void;
+  onRestore: (release: Release) => void;
 }) {
   const tracks = useMemo(() => flattenTracks(releases), [releases]);
   const filteredReleases = useMemo(() => filterReleases(releases, query), [releases, query]);
@@ -174,7 +239,12 @@ function ReadyCatalog({
             <h2 style={{ margin: 0, fontSize: "18px" }}>Releases</h2>
             <div className="chart-card-header-badge">{filteredReleases.length} shown</div>
           </div>
-          <ReleaseInventory releases={filteredReleases} />
+          <ReleaseInventory
+            releases={filteredReleases}
+            busyReleaseId={busyReleaseId}
+            onWithdraw={onWithdraw}
+            onRestore={onRestore}
+          />
         </div>
       ) : (
         <div className="premium-table-wrapper">
@@ -254,7 +324,17 @@ function ArtworkThumbnail({ src, title, fallbackChar }: { src?: string | null; t
   );
 }
 
-function ReleaseInventory({ releases }: { releases: Release[] }) {
+function ReleaseInventory({
+  releases,
+  busyReleaseId,
+  onWithdraw,
+  onRestore,
+}: {
+  releases: Release[];
+  busyReleaseId: string | null;
+  onWithdraw: (release: Release) => void;
+  onRestore: (release: Release) => void;
+}) {
   if (releases.length === 0) {
     return <p className="analytics-muted" style={{ textAlign: "center", padding: "40px 0", opacity: 0.5 }}>No releases match this search query.</p>;
   }
@@ -270,6 +350,7 @@ function ReleaseInventory({ releases }: { releases: Release[] }) {
           <th style={{ textAlign: "right" }}>Resources</th>
           <th>Rights</th>
           <th>Updated</th>
+          <th>Streaming</th>
         </tr>
       </thead>
       <tbody>
@@ -285,11 +366,25 @@ function ReleaseInventory({ releases }: { releases: Release[] }) {
               </div>
             </td>
             <td>{release.primaryArtist || release.artist?.displayName || "Unknown"}</td>
-            <td><StatusPill status={release.status} /></td>
+            <td>
+              {isWithdrawnRelease(release) ? (
+                <ReleaseWithdrawnMarker release={release} />
+              ) : (
+                <StatusPill status={release.status} />
+              )}
+            </td>
             <td className="premium-table-cell-mono" style={{ textAlign: "right" }}>{formatNumber(release.tracks?.length ?? 0)}</td>
             <td className="premium-table-cell-mono" style={{ textAlign: "right" }}>{formatNumber(releaseResourceCount(release))}</td>
             <td><RightsBadge route={release.rightsRoute} /></td>
             <td className="premium-table-cell-mono">{formatRelativeDate(releaseTime(release))}</td>
+            <td>
+              <ReleaseAvailabilityActions
+                release={release}
+                busy={busyReleaseId === release.id}
+                onWithdraw={onWithdraw}
+                onRestore={onRestore}
+              />
+            </td>
           </tr>
         ))}
       </tbody>

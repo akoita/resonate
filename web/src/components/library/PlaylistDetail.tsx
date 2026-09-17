@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
 import {
@@ -23,22 +23,44 @@ import type { PlaylistVisibility } from "../../lib/playlistStore";
 import { useWebSockets } from "../../hooks/useWebSockets";
 import { libraryArtistHref } from "../../lib/artistRoutes";
 import { recordProductAnalyticsFromBrowser } from "../../lib/productAnalytics";
+import {
+    TrackUnavailableNote,
+    queueableTracks,
+    resolveAvailability,
+} from "./trackAvailability";
 
 interface PlaylistDetailProps {
     playlistId: string;
     onBack: () => void;
 }
 
+/**
+ * One position in the playlist, in the order the playlist stores it.
+ *
+ * `track` is null when the entry no longer resolves to anything we can play.
+ * The row is rendered anyway (#1793): a playlist that silently shrinks tells
+ * the listener nothing, and they can no longer even remove the dead entry.
+ */
+type PlaylistEntry = { id: string; track: LocalTrack | null };
+
 export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     const router = useRouter();
     const [playlist, setPlaylist] = useState<Playlist | null>(null);
-    const [tracks, setTracks] = useState<LocalTrack[]>([]);
+    const [entries, setEntries] = useState<PlaylistEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [artworkUrls, setArtworkUrls] = useState<Map<string, string>>(new Map());
     const [showRenameModal, setShowRenameModal] = useState(false);
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [draggingTrackId, setDraggingTrackId] = useState<string | null>(null);
     const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+    // Everything that resolved, in playlist order — what the hero counts.
+    const tracks = useMemo(
+        () => entries.map((entry) => entry.track).filter((t): t is LocalTrack => t !== null),
+        [entries],
+    );
+    // What may actually go into a queue. Never used for rendering the list.
+    const playableTracks = useMemo(() => queueableTracks(tracks), [tracks]);
 
     const { playQueue, currentTrack } = usePlayer();
     const queueActions = useQueueActions();
@@ -52,16 +74,16 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
         if (p) {
             setPlaylist(p);
 
-            // Load actual track data
-            const trackData = await Promise.all(
-                p.trackIds.map((id) => getTrack(id))
+            // Load actual track data. Entries that no longer resolve stay in
+            // the list as unavailable rows rather than vanishing (#1793).
+            const trackData: PlaylistEntry[] = await Promise.all(
+                p.trackIds.map(async (id) => ({ id, track: await getTrack(id) })),
             );
-            const filteredTracks = trackData.filter((t): t is LocalTrack => t !== null);
-            setTracks(filteredTracks);
+            setEntries(trackData);
 
             // Load artwork
             const urls = new Map<string, string>();
-            for (const track of filteredTracks) {
+            for (const track of trackData.map((e) => e.track).filter((t): t is LocalTrack => t !== null)) {
                 const url = await getArtworkUrl(track);
                 if (url) urls.set(track.id, url);
             }
@@ -92,8 +114,9 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     }, [loadPlaylistData]);
 
     const handlePlayTrack = useCallback((track: LocalTrack) => {
-        const index = tracks.findIndex((t) => t.id === track.id);
-        void playQueue(tracks, index >= 0 ? index : 0, { playlistId, sourceTrackIds: playlist?.trackIds });
+        const index = playableTracks.findIndex((t) => t.id === track.id);
+        if (index < 0) return; // not playable — nothing to start
+        void playQueue(playableTracks, index, { playlistId, sourceTrackIds: playlist?.trackIds });
         recordProductAnalyticsFromBrowser("playlist.played", {
             source: "playlist_detail_track",
             subjectType: "playlist",
@@ -101,11 +124,11 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
             payload: {
                 playlistId,
                 trackId: track.catalogTrackId || track.id,
-                startIndex: index >= 0 ? index : 0,
-                trackCount: tracks.length,
+                startIndex: index,
+                trackCount: playableTracks.length,
             },
         });
-    }, [playQueue, playlistId, tracks, playlist]);
+    }, [playQueue, playlistId, playableTracks, playlist]);
 
     const handleRemoveTrack = async (trackId: string) => {
         if (!confirm("Remove this track from the playlist?")) return;
@@ -126,8 +149,8 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
     ];
 
     const handlePlayAll = () => {
-        if (tracks.length > 0) {
-            void playQueue(tracks, 0, { playlistId, sourceTrackIds: playlist?.trackIds });
+        if (playableTracks.length > 0) {
+            void playQueue(playableTracks, 0, { playlistId, sourceTrackIds: playlist?.trackIds });
             recordProductAnalyticsFromBrowser("playlist.played", {
                 source: "playlist_detail",
                 subjectType: "playlist",
@@ -135,7 +158,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                 payload: {
                     playlistId,
                     startIndex: 0,
-                    trackCount: tracks.length,
+                    trackCount: playableTracks.length,
                 },
             });
         }
@@ -233,17 +256,20 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                         {playlist.name}
                     </h1>
                     <div className="detail-hero-meta">
-                        {tracks.length} track{tracks.length !== 1 ? "s" : ""} • {formatDuration(totalDuration)}
+                        {entries.length} track{entries.length !== 1 ? "s" : ""} • {formatDuration(totalDuration)}
+                        {playableTracks.length < entries.length && (
+                            <> • {entries.length - playableTracks.length} unavailable</>
+                        )}
                     </div>
                     <div className="detail-hero-actions">
-                        <Button variant="primary" onClick={handlePlayAll} disabled={tracks.length === 0}>
+                        <Button variant="primary" onClick={handlePlayAll} disabled={playableTracks.length === 0}>
                             Play All
                         </Button>
                         <QueueActionsButton
-                            tracks={tracks}
+                            tracks={playableTracks}
                             label="Add to queue"
                             nextLabel="Play playlist next"
-                            disabled={tracks.length === 0}
+                            disabled={playableTracks.length === 0}
                         />
                         <PlaylistShareControl
                             playlistId={playlist.id}
@@ -259,11 +285,43 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
 
             <div className="detail-tracks">
                 <h2 className="detail-section-title">Tracks</h2>
-                {tracks.length === 0 ? (
+                {entries.length === 0 ? (
                     <div className="home-subtitle">This playlist is empty. Add some tracks from your library!</div>
                 ) : (
                     <div className="library-list">
-                        {tracks.map((track, index) => {
+                        {entries.map((entry, index) => {
+                            const track = entry.track;
+                            const availability = resolveAvailability(track);
+
+                            // The entry no longer resolves to anything. It keeps
+                            // its place, says so, and can still be removed (#1793).
+                            if (!track) {
+                                return (
+                                    <div
+                                        key={`${entry.id}-${index}`}
+                                        className="library-item playlist-track-item is-unplayable"
+                                        aria-disabled="true"
+                                        title={availability.reason ?? undefined}
+                                        style={{ opacity: 0.55 }}
+                                    >
+                                        <div className="library-item-drag-handle" />
+                                        <div className="library-item-artwork">
+                                            <div className="library-item-artwork-placeholder">🎵</div>
+                                        </div>
+                                        <div className="library-item-info">
+                                            <div className="library-item-title">Unavailable track</div>
+                                            <div className="library-item-meta">
+                                                <TrackUnavailableNote availability={availability} />
+                                            </div>
+                                        </div>
+                                        <div className="library-item-duration">—</div>
+                                        <div className="library-item-actions">
+                                            <Button variant="ghost" onClick={(e) => { e.stopPropagation(); handleRemoveTrack(entry.id); }}>Remove</Button>
+                                        </div>
+                                    </div>
+                                );
+                            }
+
                             const artUrl = artworkUrls.get(track.id);
                             const isCurrent = currentTrack?.id === track.id;
 
@@ -271,9 +329,13 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                 <div
                                     key={`${track.id}-${index}`}
                                     draggable
-                                    className={`library-item playlist-track-item ${selectedTrackId === track.id ? "selected" : ""} ${isCurrent ? "playing" : ""} ${draggingTrackId === track.id ? "dragging" : ""} ${dragOverIndex === index ? "drag-before" : ""} ${dragOverIndex === index + 1 && index === tracks.length - 1 ? "drag-after" : ""}`}
+                                    className={`library-item playlist-track-item ${selectedTrackId === track.id ? "selected" : ""} ${isCurrent ? "playing" : ""} ${draggingTrackId === track.id ? "dragging" : ""} ${dragOverIndex === index ? "drag-before" : ""} ${dragOverIndex === index + 1 && index === entries.length - 1 ? "drag-after" : ""} ${availability.playable ? "" : "is-unplayable"}`}
+                                    aria-disabled={availability.playable ? undefined : true}
+                                    title={availability.playable ? undefined : availability.reason ?? undefined}
+                                    style={availability.playable ? undefined : { opacity: 0.55 }}
                                     onClick={() => {
                                         setSelectedTrackId(track.id);
+                                        if (!availability.playable) return;
                                         handlePlayTrack(track);
                                     }}
                                     onContextMenu={(e) => handleContextMenu(e, track)}
@@ -377,6 +439,7 @@ export function PlaylistDetail({ playlistId, onBack }: PlaylistDetailProps) {
                                                     {track.stemType}
                                                 </span>
                                             )}
+                                            <TrackUnavailableNote availability={availability} />
                                         </div>
                                         {trackProgress.get(track.id) !== undefined && trackProgress.get(track.id)! < 100 && (
                                             <div className="track-progress-container">

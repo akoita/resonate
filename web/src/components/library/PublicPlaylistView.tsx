@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "../ui/Button";
@@ -22,6 +22,12 @@ import {
   type PublicPlaylistTrack,
 } from "../../lib/api";
 import type { LocalTrack } from "../../lib/localLibrary";
+import {
+  TrackUnavailableNote,
+  isPlayableEntry,
+  queueableTracks,
+  resolveAvailability,
+} from "./trackAvailability";
 
 /** Map a resolved public track into the player's LocalTrack shape. */
 function toLocalTrack(t: PublicPlaylistTrack): LocalTrack {
@@ -45,6 +51,69 @@ function toLocalTrack(t: PublicPlaylistTrack): LocalTrack {
 
 interface PublicPlaylistViewProps {
   playlistId: string;
+}
+
+/**
+ * One row of a public playlist (#1793).
+ *
+ * Presentational on purpose: it takes everything it needs, so the rule it
+ * enforces — an entry that cannot be streamed still gets a row, says why in
+ * words, and is genuinely inert rather than merely dimmed — can be asserted
+ * without a browser.
+ */
+export function PublicPlaylistTrackRow({
+  track,
+  index,
+  isCurrent,
+  onPlay,
+  actions,
+}: {
+  track: PublicPlaylistTrack;
+  index: number;
+  isCurrent: boolean;
+  onPlay: () => void;
+  actions?: ReactNode;
+}) {
+  const availability = resolveAvailability(track);
+  const playable = availability.playable;
+  const artUrl = track.artworkPath ? `${API_BASE}${track.artworkPath}` : null;
+
+  return (
+    <div
+      className={`library-item pl-public-track ${playable ? "" : "is-unplayable"} ${isCurrent ? "playing" : ""}`}
+      onClick={playable ? onPlay : undefined}
+      role={playable ? "button" : undefined}
+      aria-disabled={playable ? undefined : true}
+      tabIndex={playable ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (playable && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onPlay();
+        }
+      }}
+      title={playable ? "Play" : availability.reason ?? "Not available to stream"}
+    >
+      <div className="pl-public-track-index">{index + 1}</div>
+      <div className="library-item-artwork">
+        {artUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={artUrl} alt={track.title} />
+        ) : (
+          <div className="library-item-artwork-placeholder">🎵</div>
+        )}
+      </div>
+      <div className="library-item-info">
+        <div className="library-item-title">{track.title}</div>
+        <div className="library-item-meta">
+          {track.artist || "Unknown Artist"}
+          {track.album && ` • ${track.album}`}
+          <TrackUnavailableNote availability={availability} />
+        </div>
+      </div>
+      <div className="library-item-duration">{formatDuration(track.duration)}</div>
+      {playable ? actions : null}
+    </div>
+  );
 }
 
 export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
@@ -85,8 +154,10 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
     void load();
   }, [load]);
 
+  // Only the queue is filtered. The rendered list below keeps every entry —
+  // an unavailable track a listener saved must not quietly disappear (#1793).
   const playableTracks = useMemo(
-    () => (playlist?.tracks ?? []).filter((t) => t.playable).map(toLocalTrack),
+    () => queueableTracks(playlist?.tracks ?? []).map(toLocalTrack),
     [playlist]
   );
 
@@ -103,7 +174,7 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
 
   const handlePlayTrack = useCallback(
     (track: PublicPlaylistTrack) => {
-      if (!track.playable) return;
+      if (!isPlayableEntry(track)) return;
       const index = playableTracks.findIndex((t) => t.id === track.id);
       void playQueue(playableTracks, index >= 0 ? index : 0, { playlistId, publicPlaylist: true, sourceTrackIds: playlist?.tracks.map(t => t.id) });
     },
@@ -272,48 +343,16 @@ export function PublicPlaylistView({ playlistId }: PublicPlaylistViewProps) {
           <div className="pl-public-empty-list">This playlist has no tracks yet.</div>
         ) : (
           <div className="library-list">
-            {playlist.tracks.map((track, index) => {
-              const artUrl = track.artworkPath ? `${API_BASE}${track.artworkPath}` : null;
-              const isCurrent = currentTrack?.id === track.id;
-              return (
-                <div
-                  key={`${track.id}-${index}`}
-                  className={`library-item pl-public-track ${track.playable ? "" : "is-unplayable"} ${isCurrent ? "playing" : ""}`}
-                  onClick={() => handlePlayTrack(track)}
-                  role={track.playable ? "button" : undefined}
-                  tabIndex={track.playable ? 0 : undefined}
-                  onKeyDown={(e) => {
-                    if (track.playable && (e.key === "Enter" || e.key === " ")) {
-                      e.preventDefault();
-                      handlePlayTrack(track);
-                    }
-                  }}
-                  title={track.playable ? "Play" : "Not available to stream"}
-                >
-                  <div className="pl-public-track-index">{index + 1}</div>
-                  <div className="library-item-artwork">
-                    {artUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={artUrl} alt={track.title} />
-                    ) : (
-                      <div className="library-item-artwork-placeholder">🎵</div>
-                    )}
-                  </div>
-                  <div className="library-item-info">
-                    <div className="library-item-title">{track.title}</div>
-                    <div className="library-item-meta">
-                      {track.artist || "Unknown Artist"}
-                      {track.album && ` • ${track.album}`}
-                      {!track.playable && <span className="pl-public-unplayable-tag">Unavailable</span>}
-                    </div>
-                  </div>
-                  <div className="library-item-duration">{formatDuration(track.duration)}</div>
-                  {track.playable && (
-                    <TrackActionMenu actions={queueActions.actionMenuItems(toLocalTrack(track))} />
-                  )}
-                </div>
-              );
-            })}
+            {playlist.tracks.map((track, index) => (
+              <PublicPlaylistTrackRow
+                key={`${track.id}-${index}`}
+                track={track}
+                index={index}
+                isCurrent={currentTrack?.id === track.id}
+                onPlay={() => handlePlayTrack(track)}
+                actions={<TrackActionMenu actions={queueActions.actionMenuItems(toLocalTrack(track))} />}
+              />
+            ))}
           </div>
         )}
       </div>

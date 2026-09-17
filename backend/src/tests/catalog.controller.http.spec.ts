@@ -9,7 +9,7 @@
  */
 
 import request from 'supertest';
-import { INestApplication } from '@nestjs/common';
+import { ForbiddenException, INestApplication } from '@nestjs/common';
 import { CatalogController } from '../modules/catalog/catalog.controller';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { DiscoveryPopularityService } from '../modules/catalog/discovery-popularity.service';
@@ -29,6 +29,8 @@ const mockCatalogService = {
   getTrack: jest.fn(),
   getPlayerTrackActions: jest.fn(),
   updateRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
+  withdrawRelease: jest.fn(),
+  restoreRelease: jest.fn(),
   deleteRelease: jest.fn().mockResolvedValue({ deleted: true }),
   updateReleaseArtwork: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   listByArtist: jest.fn().mockResolvedValue([]),
@@ -278,5 +280,111 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/me/releases/rel-1/artwork/v8')
       .expect(401);
+  });
+
+  // ----- Withdrawal (#1793): owner-scoped routes -----
+
+  it('POST /catalog/me/releases/:id/withdraw → 401 without JWT, and the service is never reached', async () => {
+    await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/withdraw')
+      .send({ reason: 'Pulled' })
+      .expect(401);
+
+    expect(mockCatalogService.withdrawRelease).not.toHaveBeenCalled();
+  });
+
+  it('POST /catalog/me/releases/:id/restore → 401 without JWT, and the service is never reached', async () => {
+    await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/restore')
+      .expect(401);
+
+    expect(mockCatalogService.restoreRelease).not.toHaveBeenCalled();
+  });
+
+  it('POST /catalog/me/releases/:id/withdraw → 200, release id from the path, owner from the token', async () => {
+    mockCatalogService.withdrawRelease.mockResolvedValue({
+      releaseId: 'rel-1',
+      title: 'Test',
+      status: 'withdrawn',
+      statusBeforeWithdrawal: 'published',
+      withdrawnAt: new Date('2026-09-17T10:00:00.000Z'),
+      withdrawalReason: 'Sample not cleared',
+      alreadyInState: false,
+    });
+
+    const res = await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/withdraw')
+      .set('Authorization', `Bearer ${token}`)
+      // An attacker-supplied owner hint in the body must be ignored.
+      .send({ reason: 'Sample not cleared', artistId: 'someone-else', userId: 'someone-else' })
+      .expect(200);
+
+    expect(res.body.status).toBe('withdrawn');
+    expect(res.body.statusBeforeWithdrawal).toBe('published');
+    expect(mockCatalogService.withdrawRelease).toHaveBeenCalledWith('rel-1', 'user-1', {
+      reason: 'Sample not cleared',
+    });
+  });
+
+  it('POST /catalog/me/releases/:id/withdraw → 200 with no body at all', async () => {
+    mockCatalogService.withdrawRelease.mockResolvedValue({ releaseId: 'rel-1', status: 'withdrawn' });
+
+    await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/withdraw')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockCatalogService.withdrawRelease).toHaveBeenCalledWith('rel-1', 'user-1', {
+      reason: undefined,
+    });
+  });
+
+  it('POST /catalog/me/releases/:id/restore → 200, release id from the path, owner from the token', async () => {
+    mockCatalogService.restoreRelease.mockResolvedValue({
+      releaseId: 'rel-1',
+      title: 'Test',
+      status: 'published',
+      statusBeforeWithdrawal: null,
+      withdrawnAt: null,
+      withdrawalReason: null,
+      alreadyInState: false,
+    });
+
+    const res = await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/restore')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'someone-else' })
+      .expect(200);
+
+    expect(res.body.status).toBe('published');
+    expect(mockCatalogService.restoreRelease).toHaveBeenCalledWith('rel-1', 'user-1');
+  });
+
+  it("another artist's withdraw attempt surfaces as 403", async () => {
+    mockCatalogService.withdrawRelease.mockRejectedValue(
+      new ForbiddenException('Not authorized to withdraw this release'),
+    );
+
+    await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/withdraw')
+      .set('Authorization', `Bearer ${authToken('other-artist')}`)
+      .expect(403);
+
+    expect(mockCatalogService.withdrawRelease).toHaveBeenCalledWith('rel-1', 'other-artist', {
+      reason: undefined,
+    });
+  });
+
+  it("another artist's restore attempt surfaces as 403", async () => {
+    mockCatalogService.restoreRelease.mockRejectedValue(
+      new ForbiddenException('Not authorized to restore this release'),
+    );
+
+    await request(app.getHttpServer())
+      .post('/catalog/me/releases/rel-1/restore')
+      .set('Authorization', `Bearer ${authToken('other-artist')}`)
+      .expect(403);
+
+    expect(mockCatalogService.restoreRelease).toHaveBeenCalledWith('rel-1', 'other-artist');
   });
 });

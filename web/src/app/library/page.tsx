@@ -36,6 +36,12 @@ import { formatDuration } from "../../lib/metadataExtractor";
 import { useToast } from "../../components/ui/Toast";
 import { PunchlineInventory } from "../../components/punchline/PunchlineInventory";
 import { listMyPunchlineCollectibles, listMyPunchlineUnlocks, type PunchlineCollectibleItem, type PunchlineUnlockGrantItem } from "../../lib/api";
+import {
+    TrackUnavailableNote,
+    isPlayableEntry,
+    queueableTracks,
+    resolveAvailability,
+} from "../../components/library/trackAvailability";
 import { useAutoScan } from "../../lib/useAutoScan";
 import { groupByArtist, groupByAlbum } from "../../lib/libraryGrouping";
 import { usePlayer } from "../../lib/playerContext";
@@ -384,8 +390,12 @@ export default function LibraryPage() {
     }, [autoScan.result, addToast]);
 
     const handlePlay = useCallback((track: LocalTrack, trackList: LocalTrack[]) => {
-        const index = trackList.findIndex(t => t.id === track.id);
-        void playQueue(trackList, index >= 0 ? index : 0);
+        // An unavailable track keeps its row in the library, but it is not
+        // selectable for playback and never enters the queue (#1793).
+        if (!isPlayableEntry(track)) return;
+        const queue = queueableTracks(trackList);
+        const index = queue.findIndex(t => t.id === track.id);
+        void playQueue(queue, index >= 0 ? index : 0);
     }, [playQueue]);
 
     // Global key listener for playback
@@ -510,7 +520,9 @@ export default function LibraryPage() {
 
     const getTrackContextMenuItems = (track: LocalTrack): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [
-            ...queueActions.contextMenuItems(track),
+            // Queue actions disappear on an unavailable row rather than
+            // sitting there doing nothing (#1793).
+            ...(isPlayableEntry(track) ? queueActions.contextMenuItems(track) : []),
             { separator: true, label: "", onClick: () => { } },
             { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
         ];
@@ -582,10 +594,15 @@ export default function LibraryPage() {
                 // If remote artwork url exists, use it, otherwise check local blob map
                 const artUrl = track.remoteArtworkUrl || artworkUrls.get(track.id);
                 const isMultiSelected = selectedTrackIds.has(track.id);
+                // Owned items resolve as playable whatever the catalog says —
+                // a purchase is not affected by a withdrawal (#1793).
+                const availability = resolveAvailability(track);
                 return (
                     <div
                         key={track.id}
-                        className={`library-item ${isMultiSelected ? "selected" : ""} ${selectedTrackId === track.id ? "focused" : ""} ${currentTrack?.id === track.id ? "playing" : ""}`}
+                        className={`library-item ${isMultiSelected ? "selected" : ""} ${selectedTrackId === track.id ? "focused" : ""} ${currentTrack?.id === track.id ? "playing" : ""} ${availability.playable ? "" : "is-unplayable"}`}
+                        aria-disabled={availability.playable ? undefined : true}
+                        style={availability.playable ? undefined : { opacity: 0.55 }}
                         draggable
                         onClick={(e) => {
                             if (e.shiftKey && lastClickedTrackIdRef.current) {
@@ -706,6 +723,7 @@ export default function LibraryPage() {
                                     {track.stemType}
                                 </span>
                             )}
+                            <TrackUnavailableNote availability={availability} />
                         </div>
                         <div
                             className="library-item-artist clickable hover:underline"
@@ -748,7 +766,7 @@ export default function LibraryPage() {
                             )}
                             <TrackActionMenu
                                 actions={[
-                                    ...queueActions.actionMenuItems(track),
+                                    ...(availability.playable ? queueActions.actionMenuItems(track) : []),
                                     { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist([track]) },
                                     ...(track.stemType && track.tokenId
                                         ? [{

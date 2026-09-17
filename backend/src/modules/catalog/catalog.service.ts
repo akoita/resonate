@@ -26,6 +26,10 @@ import {
   resolveCreditedArtistName,
 } from "../shared/artist_attribution";
 import {
+  RELEASE_STATUS_WITHDRAWN,
+  WITHDRAWABLE_RELEASE_STATUSES,
+} from "./track-availability";
+import {
   AI_DISCLOSURE_VERSION,
   AiDisclosureValidationError,
   deriveReleaseAiDisclosureSummary,
@@ -127,6 +131,68 @@ const AI_DISCLOSURE_SELECT = {
   aiDisclosureVersion: true,
   aiDeclaredAt: true,
 } as const;
+
+/** Fields describing where a release sits in the #1793 withdrawal lifecycle. */
+const RELEASE_WITHDRAWAL_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  statusBeforeWithdrawal: true,
+  withdrawnAt: true,
+  withdrawalReason: true,
+} as const;
+
+/** Response of the withdraw/restore routes. */
+export type ReleaseWithdrawalState = {
+  releaseId: string;
+  title: string;
+  status: string;
+  /** Where restore will put it back; null once restored. */
+  statusBeforeWithdrawal: string | null;
+  withdrawnAt: Date | null;
+  withdrawalReason: string | null;
+  /** True when the release was already in the requested state (no-op call). */
+  alreadyInState: boolean;
+};
+
+function toWithdrawalState(
+  release: {
+    id: string;
+    title: string;
+    status: string;
+    statusBeforeWithdrawal: string | null;
+    withdrawnAt: Date | null;
+    withdrawalReason: string | null;
+  },
+  options: { alreadyInState: boolean },
+): ReleaseWithdrawalState {
+  return {
+    releaseId: release.id,
+    title: release.title,
+    status: release.status,
+    statusBeforeWithdrawal: release.statusBeforeWithdrawal,
+    withdrawnAt: release.withdrawnAt,
+    withdrawalReason: release.withdrawalReason,
+    alreadyInState: options.alreadyInState,
+  };
+}
+
+const WITHDRAWAL_REASON_MAX_LENGTH = 1000;
+
+function normalizeWithdrawalReason(value?: string | null): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") {
+    throw new BadRequestException("reason must be a string.");
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > WITHDRAWAL_REASON_MAX_LENGTH) {
+    throw new BadRequestException(
+      `reason must be at most ${WITHDRAWAL_REASON_MAX_LENGTH} characters.`,
+    );
+  }
+  return trimmed;
+}
 
 function sameUserId(left?: string | null, right?: string | null) {
   return !!left && !!right && left.toLowerCase() === right.toLowerCase();
@@ -1461,6 +1527,10 @@ export class CatalogService implements OnModuleInit {
         artistId: true,
         title: true,
         status: true,
+        // #1793: surfaced so an artist (and a listener-facing read model) sees a
+        // withdrawal rather than an opaque status string.
+        withdrawnAt: true,
+        withdrawalReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -1537,6 +1607,8 @@ export class CatalogService implements OnModuleInit {
             artistId: true,
             title: true,
             status: true,
+            withdrawnAt: true,
+            withdrawalReason: true,
             processingError: true,
             type: true,
             primaryArtist: true,
@@ -1730,6 +1802,10 @@ export class CatalogService implements OnModuleInit {
         artistCredits: RELEASE_ARTIST_CREDITS_SELECT,
         title: true,
         status: true,
+        // #1793: surfaced so an artist (and a listener-facing read model) sees a
+        // withdrawal rather than an opaque status string.
+        withdrawnAt: true,
+        withdrawalReason: true,
         processingError: true,
         type: true,
         primaryArtist: true,
@@ -1919,6 +1995,125 @@ export class CatalogService implements OnModuleInit {
       });
     }
     return withReleaseAiDisclosure(updated);
+  }
+
+  /**
+   * Withdraw a release from streaming (#1793).
+   *
+   * Withdrawal removes a licence to stream, not a purchase. The release row and
+   * every reference to it survive: buyers keep downloading stems they bought
+   * (that path authorizes against StemPurchase and never reads release status),
+   * and libraries and playlists keep their entries, shown as unavailable.
+   *
+   * The pre-withdrawal status is recorded so restore puts the release back where
+   * it was — restoring a published release to "ready" would silently unpublish it.
+   */
+  async withdrawRelease(
+    releaseId: string,
+    userId: string,
+    input?: { reason?: string | null },
+  ): Promise<ReleaseWithdrawalState> {
+    const release = await this.findOwnedReleaseForWithdrawal(
+      releaseId,
+      userId,
+      "withdraw",
+    );
+
+    if (release.status === RELEASE_STATUS_WITHDRAWN) {
+      // Idempotent: withdrawing an already-withdrawn release changes nothing and
+      // is not an error (a retried request must not fail).
+      return toWithdrawalState(release, { alreadyInState: true });
+    }
+
+    if (!(WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(release.status)) {
+      throw new BadRequestException(
+        "Only a ready or published release can be withdrawn from streaming.",
+      );
+    }
+
+    const reason = normalizeWithdrawalReason(input?.reason);
+    this.clearCache();
+    const updated = await prisma.release.update({
+      where: { id: releaseId },
+      data: {
+        status: RELEASE_STATUS_WITHDRAWN,
+        statusBeforeWithdrawal: release.status,
+        withdrawnAt: new Date(),
+        withdrawalReason: reason,
+      },
+      select: RELEASE_WITHDRAWAL_SELECT,
+    });
+    return toWithdrawalState(updated, { alreadyInState: false });
+  }
+
+  /**
+   * Restore a withdrawn release (#1793).
+   *
+   * Every library and playlist reference lights back up automatically because
+   * nothing was ever repointed or deleted — the status flip is the whole
+   * mechanism. The release returns to the status it held before withdrawal.
+   */
+  async restoreRelease(
+    releaseId: string,
+    userId: string,
+  ): Promise<ReleaseWithdrawalState> {
+    const release = await this.findOwnedReleaseForWithdrawal(
+      releaseId,
+      userId,
+      "restore",
+    );
+
+    if (release.status !== RELEASE_STATUS_WITHDRAWN) {
+      throw new BadRequestException(
+        "Only a withdrawn release can be restored to streaming.",
+      );
+    }
+
+    // A row withdrawn before this field existed has no recorded origin; "ready"
+    // is the conservative fallback (visible to its artist, not force-published).
+    const restoredTo = (WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(
+      release.statusBeforeWithdrawal ?? "",
+    )
+      ? (release.statusBeforeWithdrawal as string)
+      : "ready";
+
+    this.clearCache();
+    const updated = await prisma.release.update({
+      where: { id: releaseId },
+      data: {
+        status: restoredTo,
+        statusBeforeWithdrawal: null,
+        withdrawnAt: null,
+        withdrawalReason: null,
+      },
+      select: RELEASE_WITHDRAWAL_SELECT,
+    });
+    return toWithdrawalState(updated, { alreadyInState: false });
+  }
+
+  /**
+   * Resolve a release the caller's artist account owns. Ownership comes from the
+   * authenticated user id through Artist — never from the request body.
+   */
+  private async findOwnedReleaseForWithdrawal(
+    releaseId: string,
+    userId: string,
+    action: "withdraw" | "restore",
+  ) {
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: {
+        ...RELEASE_WITHDRAWAL_SELECT,
+        artist: { select: { userId: true } },
+      },
+    });
+    if (!release) {
+      throw new NotFoundException("Release not found");
+    }
+    if (!sameUserId(release.artist?.userId, userId)) {
+      throw new ForbiddenException(`Not authorized to ${action} this release`);
+    }
+    return release;
   }
 
   async deleteRelease(releaseId: string, userId: string) {
@@ -2415,6 +2610,7 @@ export class CatalogService implements OnModuleInit {
         release: {
           select: {
             rightsRoute: true,
+            status: true,
           },
         },
         stems: {
@@ -2425,6 +2621,18 @@ export class CatalogService implements OnModuleInit {
     });
 
     if (!track || track.stems.length === 0) return null;
+
+    // #1793: a withdrawn release no longer licenses public streaming. The owner
+    // path (getTrackStreamForUser) passes includeRestricted so an artist can
+    // still listen to their own withdrawn release before deciding to restore it.
+    // Purchased stems are NOT served from here — buyers download through
+    // StemPurchase authorization, which withdrawal never touches.
+    if (
+      !options?.includeRestricted &&
+      track.release.status === RELEASE_STATUS_WITHDRAWN
+    ) {
+      return null;
+    }
 
     const effectiveRoute = this.getMostRestrictiveRoute(
       track.rightsRoute,
@@ -2461,6 +2669,7 @@ export class CatalogService implements OnModuleInit {
             release: {
               select: {
                 rightsRoute: true,
+                status: true,
               },
             },
           },
@@ -2484,6 +2693,7 @@ export class CatalogService implements OnModuleInit {
               release: {
                 select: {
                   rightsRoute: true,
+                  status: true,
                 },
               },
             },
@@ -2493,6 +2703,20 @@ export class CatalogService implements OnModuleInit {
     }
 
     if (!stem) return null;
+
+    // #1793: the public side door. This route is unauthenticated and serves the
+    // full stem, so a withdrawal that only gated `getTrackStream` would be one
+    // anyone could step around with a URL. Gated behind `includeRestricted`
+    // exactly like the rights check below, which is what keeps every internal
+    // caller working — ingestion, stem quality and the artist's own playback
+    // all pass that flag, and only the public controller route does not.
+    //
+    // This does not touch a buyer: purchased audio is served by
+    // `EncryptionService` against a `StemPurchase` row and never comes through
+    // here.
+    if (!options?.includeRestricted && stem.track.release.status === "withdrawn") {
+      return null;
+    }
 
     const effectiveRoute = this.getMostRestrictiveRoute(
       stem.track.rightsRoute,

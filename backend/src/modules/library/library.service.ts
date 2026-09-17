@@ -1,5 +1,11 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import {
+    LOCAL_FILE_AVAILABILITY,
+    REMOVED_AVAILABILITY,
+    resolveTrackAvailability,
+    type TrackAvailability,
+} from "../catalog/track-availability";
 
 const prisma = new PrismaClient();
 
@@ -181,7 +187,7 @@ export class LibraryService {
         }
 
         if (catalogTrackIds.size === 0 && catalogReleaseIds.size === 0 && catalogStemIds.size === 0) {
-            return tracks;
+            return withAvailability(tracks, new Map());
         }
 
         const [existingCatalogTracks, existingCatalogReleases, existingCatalogStems] = await Promise.all([
@@ -217,8 +223,13 @@ export class LibraryService {
         });
         const staleTrackIds = staleTracks.map((track) => track.id);
 
+        // #1793: a withdrawn release is NOT stale — its rows above still resolve,
+        // so nothing is deleted. Annotate every catalog-backed row with why it
+        // can or cannot be played, in one batched query.
+        const availability = await resolveTrackAvailability(catalogTrackIds);
+
         if (staleTrackIds.length === 0) {
-            return tracks;
+            return withAvailability(tracks, availability);
         }
 
         await prisma.libraryTrack.deleteMany({
@@ -245,7 +256,10 @@ export class LibraryService {
             });
         }
 
-        return tracks.filter((track) => !staleTrackIds.includes(track.id));
+        return withAvailability(
+            tracks.filter((track) => !staleTrackIds.includes(track.id)),
+            availability,
+        );
     }
 
     async getTrack(userId: string, id: string) {
@@ -253,7 +267,11 @@ export class LibraryService {
         if (!track) {
             throw new NotFoundException("Library track not found");
         }
-        return track;
+        const [annotated] = withAvailability(
+            [track],
+            await resolveTrackAvailability(collectCatalogReferences(track).trackIds),
+        );
+        return annotated;
     }
 
     async deleteTrack(userId: string, id: string) {
@@ -275,6 +293,35 @@ export class LibraryService {
             where: { userId, source: "local" },
         });
     }
+}
+
+/**
+ * Annotate library rows with catalog availability (#1793).
+ *
+ * A row whose release an artist withdrew STAYS in the library — it is returned
+ * with `availability.state === "withdrawn"` so the person sees what happened
+ * instead of finding a hole. Device-local rows report "local_file".
+ */
+function withAvailability<
+    T extends {
+        id: string;
+        source: string;
+        catalogTrackId?: string | null;
+        remoteUrl?: string | null;
+        remoteArtworkUrl?: string | null;
+        previewUrl?: string | null;
+    },
+>(tracks: T[], availability: Map<string, TrackAvailability>): Array<T & { availability: TrackAvailability }> {
+    return tracks.map((track) => {
+        const [catalogTrackId] = Array.from(collectCatalogReferences(track).trackIds);
+        if (!catalogTrackId) {
+            return { ...track, availability: LOCAL_FILE_AVAILABILITY };
+        }
+        return {
+            ...track,
+            availability: availability.get(catalogTrackId) ?? REMOVED_AVAILABILITY,
+        };
+    });
 }
 
 /**
