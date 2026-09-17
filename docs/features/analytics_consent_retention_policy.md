@@ -22,10 +22,16 @@ propagation and consent withdrawal remove or rebuild the person's rows in
 `events_raw`, `events_clean` and `analytics_facts`, then recompute the affected
 days of `analytics_views` from the facts that survive (#1770).
 
+The server-side consent gate for client-emitted telemetry now exists (#1772,
+backend slice): the three authenticated browser ingest routes refuse to record
+unless the person has an explicit granted decision. The user-facing surface for
+making that decision is still missing, so the control exists only as an API in
+this slice.
+
 This page defines the product and operational policy that those jobs must
-follow. User-facing export/deletion controls (#1771), user-facing consent
-capture and withdrawal (#1772), and yearly listener summary controls still need
-product UI and operator runbook work before this is complete.
+follow. User-facing export/deletion controls (#1771), the consent capture and
+withdrawal UI (#1772 frontend slice), and yearly listener summary controls still
+need product UI and operator runbook work before this is complete.
 
 ## Who It Is For
 
@@ -70,6 +76,88 @@ Every personal or sensitive analytics event must include `consentBasis`.
 Pseudonymous behavior events should include it when tied to an authenticated
 user preference, even when the current backend accepts pseudonymous events
 without one.
+
+### The Consent Rule
+
+**Client-emitted telemetry is consent-gated. Server-emitted domain records are
+not.**
+
+The boundary is the ingest surface, not the event name. The taxonomy mixes
+money and telemetry inside the same event families — `agent.purchase_completed`
+sits beside `agent.intent_viewed`, `remix.published` beside
+`remix.cta_impression` — so classifying individual event names would either
+over-collect or drop a record the platform is obliged to keep.
+
+- **Consent-gated (optional product analytics).** Everything a browser posts to
+  the three authenticated telemetry routes:
+  `POST /analytics/playback/completed`, `POST /analytics/playback/event`, and
+  `POST /analytics/product/event`. These are recorded only when the
+  authenticated person has an explicit granted decision, and the resulting
+  events carry `consentBasis: "consent"`.
+- **Not gated.** The server-side `record*` calls for commerce, rights,
+  contract, generation and similar domain records. Each is a record of
+  something that happened and runs under performance of contract or a legal
+  obligation, with its own `consentBasis`. Consent withdrawal does not erase
+  them; the audit-preserving redaction rules above apply instead.
+- `POST /analytics/ingest` is a service-to-service route with no authenticated
+  user and is not part of the browser telemetry surface.
+
+**No decision means no optional collection.** A missing decision is refusal, not
+permission: GDPR Article 7 requires a clear affirmative act, so a person who has
+never been asked has not consented. The gate
+(`AnalyticsConsentService.isProductAnalyticsAllowed`) returns false for an
+absent decision, for a refusal, for an absent or empty user id, and for a
+decision given against superseded consent text. A refused request is not an
+error — the route answers `202` with
+`{ "recorded": false, "reason": "consent_not_granted" }` and writes nothing, so
+a client can see the refusal and stop emitting.
+
+The decision is stored per user in `AnalyticsConsent` (`productAnalytics`,
+`decidedAt`, `policyVersion`), cascades away with the user record, and is read
+and written strictly for the authenticated user — no endpoint accepts a user id
+from a body or query parameter, because an endpoint that can be pointed at
+another account is a way to switch off someone else's privacy choice.
+
+**The policy version is server-authoritative.** `policyVersion` records which
+consent text the person agreed to, which is the evidence that the consent was
+informed — so the server stores its own constant
+(`ANALYTICS_CONSENT_POLICY_VERSION` in
+`backend/src/modules/analytics/analytics_consent.service.ts`) and never a string
+the client supplied. The constant lives in code rather than configuration
+because it versions the wording the product ships: bump it in the same commit
+that changes that wording. A client must still declare which version it
+displayed, and a mismatch is refused with `409` and
+`{ "error": "policy_version_stale", "currentVersion": "…" }`, so a stale browser
+showing outdated text reloads and re-asks instead of recording an answer against
+wording the person never saw.
+
+**A decision is scoped to the version it was given against.** Consent covers
+the processing that was described when it was given, so once that description
+materially changes, prior consent does not extend to the new version — the gate
+requires `policyVersion` to equal the current constant as well as
+`productAnalytics: true`. The stored version is read, not merely recorded.
+
+**Bump the constant only for a material change.** A typo fix or a reworded
+sentence must not bump it. Every bump closes the gate for everyone until they
+decide again, and re-asking people about nothing trains them to click through,
+which degrades every consent that follows. The version must mean "what we do
+with your data changed", never "we edited the copy".
+
+Clients have three states to render, and the server computes which one applies
+so that every client agrees:
+
+| State | `decided` | `needsDecision` | Meaning |
+| --- | --- | --- | --- |
+| Never decided | `false` | `true` | Ask. No optional collection in the meantime. |
+| Decided against the current text | `true` | `false` | Do not ask again — including when the decision was a refusal. Someone who said no has decided, and re-prompting them on the next page load is nagging, which undermines the validity of the refusal. |
+| Decided against superseded text | `true` | `true` | Ask again. The gate is closed until they decide under the current text. |
+
+Consent API (this slice; no user-facing surface yet):
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /analytics/consent` | Returns the authenticated user's decision as `{ productAnalytics, decided, needsDecision, policyVersion?, decidedAt?, currentPolicyVersion }`. `decided: false` means nothing has been recorded; `needsDecision` is computed server-side and is the value a client should branch on; `currentPolicyVersion` is the version a client must echo back on `PUT`. |
+| `PUT /analytics/consent` | Takes `{ productAnalytics: boolean, policyVersion: string }`. Records the decision for the authenticated user against the server's policy version and moves `decidedAt` on every explicit decision. Answers `409 policy_version_stale` and writes nothing when the declared version is not the current one. |
 
 ## Retention By Layer
 
@@ -193,6 +281,10 @@ When adding analytics events or marts:
   `backend/src/modules/analytics/analytics_event.ts`
 - Governance implementation:
   `backend/src/modules/analytics/analytics_governance.service.ts`
+- Consent gate and decision store:
+  `backend/src/modules/analytics/analytics_consent.service.ts`
+- Consent enforcement on the browser telemetry routes:
+  `backend/src/modules/analytics/analytics.controller.ts`
 - Admin retention trigger:
   `POST /admin/retention/cleanup`
 - Analytics platform feature page:
@@ -211,6 +303,10 @@ When adding analytics events or marts:
 - Governance behavior is covered by
   `backend/src/tests/analytics_governance.spec.ts` and
   `backend/src/tests/analytics_governance.integration.spec.ts`.
+- Consent storage and gate behavior are covered by
+  `backend/src/tests/analytics_consent.integration.spec.ts`; enforcement on the
+  three telemetry routes and the consent endpoints by
+  `backend/src/tests/analytics_consent.controller.http.spec.ts`.
 - New analytics events should add unit or integration coverage for
   privacy-tier validation, allowed payload fields, deletion/redaction behavior,
   and downstream fact/view propagation when applicable.

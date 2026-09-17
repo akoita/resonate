@@ -3,6 +3,7 @@ import { AnalyticsController } from "./analytics.controller";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AnalyticsService } from "./analytics.service";
 import { AnalyticsAuthorizationService } from "./analytics_authorization.service";
+import { AnalyticsConsentService } from "./analytics_consent.service";
 import { AnalyticsInstrumentationService } from "./analytics_instrumentation.service";
 import { AnalyticsGovernanceService } from "./analytics_governance.service";
 import { ANALYTICS_EVENT_STORE, PrismaAnalyticsEventStore } from "./analytics_event_store";
@@ -30,6 +31,7 @@ import { AgentsModule } from "../agents/agents.module";
   providers: [
     AnalyticsService,
     AnalyticsAuthorizationService,
+    AnalyticsConsentService,
     AnalyticsIngestService,
     AnalyticsInstrumentationService,
     AnalyticsDomainEventBridgeService,
@@ -63,6 +65,7 @@ import { AgentsModule } from "../agents/agents.module";
   exports: [
     AnalyticsIngestService,
     AnalyticsAuthorizationService,
+    AnalyticsConsentService,
     AnalyticsInstrumentationService,
     AnalyticsDomainEventBridgeService,
     AnalyticsCatalogMetadataService,

@@ -47,6 +47,7 @@ model User {
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
   generationCostRecords       GenerationCostRecord[]
+  analyticsConsent            AnalyticsConsent?
 }
 
 // Generation-credit meter (#1334, ADR-BM-3). USD-cent balance a user spends on
@@ -1033,6 +1034,21 @@ model AgentSignal {
   @@index([trackId])
   @@index([sessionId])
   @@index([action])
+}
+
+/// #1772: the durable record of a person's explicit decision about optional
+/// product analytics. A missing row means no decision has been made, which the
+/// consent gate treats as refusal — never as permission. `policyVersion`
+/// records which privacy policy the person actually agreed to, so a later
+/// policy change can re-ask instead of silently inheriting a stale decision.
+model AnalyticsConsent {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  productAnalytics Boolean
+  decidedAt        DateTime
+  policyVersion    String
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ListenerTasteMemorySettings {

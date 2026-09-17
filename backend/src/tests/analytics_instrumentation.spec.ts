@@ -52,6 +52,43 @@ describe("AnalyticsInstrumentationService", () => {
     ]);
   });
 
+  it("stamps client telemetry with the consent basis the route granted, and leaves server records unstamped", async () => {
+    const ingest = new AnalyticsIngestService();
+    const instrumentation = new AnalyticsInstrumentationService(ingest);
+
+    // #1772: the three browser telemetry routes pass `consentBasis: "consent"`
+    // only after the consent gate allows the recording.
+    await instrumentation.recordProductEvent({
+      eventName: "search.submitted",
+      actorId: "listener_hash",
+      consentBasis: "consent",
+    });
+    await instrumentation.recordPlaybackCompleted({
+      trackId: "track-1",
+      artistId: "artist-1",
+      completionRatio: 1,
+      actorId: "listener_hash",
+      consentBasis: "consent",
+    });
+    await instrumentation.recordPlaybackLifecycle({
+      action: "started",
+      trackId: "track-1",
+      artistId: "artist-1",
+      actorId: "listener_hash",
+      consentBasis: "consent",
+    });
+    // Server-emitted domain record: not consent-gated, so no consent basis.
+    await instrumentation.recordCommerceSettled({ paymentId: "payment-1", canonicalAmountUsd: 1 });
+
+    const events = await ingest.listEvents();
+    expect(events.map((event) => [event.eventName, event.consentBasis])).toEqual([
+      ["search.submitted", "consent"],
+      ["playback.completed", "consent"],
+      ["playback.started", "consent"],
+      ["commerce.settled", undefined],
+    ]);
+  });
+
   it("resolves playback artist id from catalog metadata when the client omits it", async () => {
     const ingest = new AnalyticsIngestService();
     const catalogMetadata = {
