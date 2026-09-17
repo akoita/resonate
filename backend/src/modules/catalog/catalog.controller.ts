@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Headers,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -205,6 +206,38 @@ export class CatalogController {
     @Request() req: any,
   ) {
     return this.catalogService.getReleaseForUser(releaseId, req.user.userId);
+  }
+
+  /**
+   * Withdraw a release from streaming (#1793).
+   *
+   * Owner-scoped: the release id comes from the path, but ownership is resolved
+   * from the authenticated user through Artist inside the service — never from
+   * the body. Withdrawal stops streaming only; purchases, library entries and
+   * playlist references are untouched.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("me/releases/:releaseId/withdraw")
+  @HttpCode(200)
+  withdrawRelease(
+    @Param("releaseId") releaseId: string,
+    @Body() body: { reason?: string } | undefined,
+    @Request() req: any,
+  ) {
+    return this.catalogService.withdrawRelease(releaseId, req.user.userId, {
+      reason: body?.reason,
+    });
+  }
+
+  /** Restore a withdrawn release to the status it held before withdrawal (#1793). */
+  @UseGuards(AuthGuard("jwt"))
+  @Post("me/releases/:releaseId/restore")
+  @HttpCode(200)
+  restoreRelease(
+    @Param("releaseId") releaseId: string,
+    @Request() req: any,
+  ) {
+    return this.catalogService.restoreRelease(releaseId, req.user.userId);
   }
 
   @UseGuards(AuthGuard("jwt"))

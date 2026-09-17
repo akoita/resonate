@@ -6,7 +6,14 @@ import {
 } from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
-import { PUBLIC_RELEASE_ROUTES } from "../catalog/catalog-public.constants";
+import {
+    LOCAL_FILE_AVAILABILITY,
+    REMOVED_AVAILABILITY,
+    classifyTrackAvailability,
+    isPlayableAvailability,
+    resolveTrackAvailability,
+    type TrackAvailability,
+} from "../catalog/track-availability";
 
 export interface QueueCreationContext {
     origin: "player_queue";
@@ -38,8 +45,17 @@ export interface PublicPlaylistTrack {
     artworkPath: string | null;
     catalogTrackId: string | null;
     releaseId: string | null;
-    /** False when the track is a local device file that other listeners cannot stream. */
+    /**
+     * False when the track cannot be streamed here: a local device file, or a
+     * catalog track whose availability is anything but "available".
+     */
     playable: boolean;
+    /**
+     * Why the entry is or is not streamable (#1793). A withdrawn track KEEPS its
+     * place in the playlist and is reported as `{ state: "withdrawn" }` — the
+     * listener sees what happened instead of finding a hole.
+     */
+    availability: TrackAvailability;
 }
 
 /** A public playlist as seen by anyone (owner identity is intentionally minimal). */
@@ -160,18 +176,27 @@ export class PlaylistService {
         }
         const playlist = await prisma.$transaction(async tx => {
             if (context) {
+                // #1793: resolve every requested id, then decide. A track whose
+                // release the artist WITHDREW is still saved — the playlist keeps
+                // it and reads it back marked withdrawn. Only ids that resolve to
+                // nothing, or to something genuinely gone (removed for rights,
+                // quarantined, restricted, not published), are rejected.
                 const tracks = await tx.track.findMany({
-                    where: { id: { in: data.trackIds }, contentStatus: "clean", release: { status: { in: ["ready", "published"] }, OR: [{ rightsRoute: null }, { rightsRoute: { in: PUBLIC_RELEASE_ROUTES } }] } },
+                    where: { id: { in: data.trackIds } },
                     include: { release: { include: { artist: true } } },
                 });
-                if (tracks.length !== data.trackIds!.length) {
-                    const availableIds = new Set(tracks.map(track => track.id));
+                const saveableTracks = tracks.filter((track) => {
+                    const state = classifyTrackAvailability(track).state;
+                    return state === "available" || state === "withdrawn";
+                });
+                if (saveableTracks.length !== data.trackIds!.length) {
+                    const saveableIds = new Set(saveableTracks.map(track => track.id));
                     throw new BadRequestException({
-                        message: "Some tracks are no longer available. Review the omitted tracks before trying again; no playlist was saved.",
-                        invalidTrackIds: data.trackIds!.filter(id => !availableIds.has(id)),
+                        message: "Some tracks are no longer available in the catalogue, so nothing was saved. Remove them and try again; tracks an artist has withdrawn from streaming are kept in place and marked unavailable.",
+                        invalidTrackIds: data.trackIds!.filter(id => !saveableIds.has(id)),
                     });
                 }
-                for (const track of tracks) {
+                for (const track of saveableTracks) {
                     await tx.libraryTrack.upsert({
                         where: { userId_catalogTrackId: { userId, catalogTrackId: track.id } },
                         create: { userId, catalogTrackId: track.id, source: "remote", title: track.title,
@@ -218,12 +243,22 @@ export class PlaylistService {
     }
 
     async listPlaylists(userId: string, folderId?: string) {
-        return prisma.playlist.findMany({
+        const playlists = await prisma.playlist.findMany({
             where: {
                 userId,
                 folderId: folderId === undefined ? undefined : folderId
             },
         });
+        // #1793: one batched availability lookup across every playlist, so the
+        // owner sees which entries are unavailable instead of losing them.
+        const trackAvailability = await this.resolveAvailabilityByPlaylistKey(
+            userId,
+            Array.from(new Set(playlists.flatMap((playlist) => playlist.trackIds))),
+        );
+        return playlists.map((playlist) => ({
+            ...playlist,
+            trackAvailability: pickAvailability(trackAvailability, playlist.trackIds),
+        }));
     }
 
     async getPlaylist(userId: string, id: string) {
@@ -231,7 +266,13 @@ export class PlaylistService {
         if (!playlist || playlist.userId !== userId) {
             throw new NotFoundException("Playlist not found");
         }
-        return playlist;
+        return {
+            ...playlist,
+            trackAvailability: await this.resolveAvailabilityByPlaylistKey(
+                userId,
+                playlist.trackIds,
+            ),
+        };
     }
 
     async updatePlaylist(userId: string, id: string, data: { name?: string; folderId?: string | null; trackIds?: string[]; visibility?: string }) {
@@ -397,6 +438,14 @@ export class PlaylistService {
         });
         const byKey = indexLibraryTracksByPlaylistKey(records);
 
+        // One batched availability lookup for every catalog track referenced here
+        // (#1793) — never one query per entry.
+        const availabilityByCatalogId = await resolveTrackAvailability(
+            records
+                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .filter((id): id is string => Boolean(id)),
+        );
+
         const resolved: PublicPlaylistTrack[] = [];
         const seenRecordIds = new Set<string>();
         for (const trackId of trackIds) {
@@ -406,6 +455,8 @@ export class PlaylistService {
             seenRecordIds.add(record.id);
             const refs = extractCatalogRefs(record);
             const { streamPath, artworkPath } = catalogPathsFor(refs);
+            const catalogTrackId = refs.trackId ?? record.catalogTrackId ?? null;
+            const availability = availabilityFor(catalogTrackId, availabilityByCatalogId);
             resolved.push({
                 id: record.id,
                 title: record.title,
@@ -414,12 +465,57 @@ export class PlaylistService {
                 duration: record.duration ?? null,
                 streamPath,
                 artworkPath,
-                catalogTrackId: refs.trackId ?? record.catalogTrackId ?? null,
+                catalogTrackId,
                 releaseId: refs.releaseId ?? null,
-                playable: Boolean(streamPath),
+                playable: Boolean(streamPath) && isPlayableAvailability(availability),
+                availability,
             });
         }
         return resolved;
+    }
+
+    /**
+     * Availability of every catalog track a playlist references, keyed by the id
+     * as the playlist stores it (LibraryTrack uuid or catalog track id), so an
+     * owner-facing view can mark an entry unavailable without dropping it (#1793).
+     */
+    private async resolveAvailabilityByPlaylistKey(
+        ownerUserId: string,
+        trackIds: string[],
+    ): Promise<Record<string, TrackAvailability>> {
+        if (trackIds.length === 0) return {};
+        const records = await prisma.libraryTrack.findMany({
+            where: {
+                userId: ownerUserId,
+                OR: [{ id: { in: trackIds } }, { catalogTrackId: { in: trackIds } }],
+            },
+            select: {
+                id: true,
+                catalogTrackId: true,
+                remoteUrl: true,
+                remoteArtworkUrl: true,
+                previewUrl: true,
+            },
+        });
+        const availabilityByCatalogId = await resolveTrackAvailability(
+            records
+                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .filter((id): id is string => Boolean(id)),
+        );
+        const byPlaylistKey: Record<string, TrackAvailability> = {};
+        for (const record of records) {
+            const catalogTrackId =
+                extractCatalogRefs(record).trackId ?? record.catalogTrackId ?? null;
+            const availability = availabilityFor(catalogTrackId, availabilityByCatalogId);
+            byPlaylistKey[record.id] = availability;
+            if (record.catalogTrackId) byPlaylistKey[record.catalogTrackId] = availability;
+        }
+        for (const trackId of trackIds) {
+            // A playlist id nothing in the owner's library resolves: report it
+            // rather than silently omitting the key.
+            if (!byPlaylistKey[trackId]) byPlaylistKey[trackId] = REMOVED_AVAILABILITY;
+        }
+        return byPlaylistKey;
     }
 
     /**
@@ -457,6 +553,13 @@ export class PlaylistService {
                 where: { OR: [{ id: { in: allTrackIds } }, { catalogTrackId: { in: allTrackIds } }] },
             })
             : [];
+        // #1793: a withdrawn (or otherwise unavailable) track is not playable, so
+        // it must not inflate a discovery card's playable count. One batched query.
+        const availabilityByCatalogId = await resolveTrackAvailability(
+            records
+                .map((record) => extractCatalogRefs(record).trackId ?? record.catalogTrackId)
+                .filter((id): id is string => Boolean(id)),
+        );
         // ownerUserId -> (id | catalogTrackId) -> row, so a playlist only resolves
         // ITS OWN owner's rows — never another user's row that shares a catalog id.
         const byOwner = new Map<string, Map<string, (typeof records)[number]>>();
@@ -483,8 +586,14 @@ export class PlaylistService {
                 if (seenRecordIds.has(record.id)) continue; // already counted via its other key
                 seenRecordIds.add(record.id);
                 trackCount += 1;
-                const { streamPath, artworkPath } = catalogPathsFor(extractCatalogRefs(record));
+                const refs = extractCatalogRefs(record);
+                const { streamPath, artworkPath } = catalogPathsFor(refs);
                 if (!streamPath) continue; // local-only file: visible to owner, not streamable here
+                const availability = availabilityFor(
+                    refs.trackId ?? record.catalogTrackId ?? null,
+                    availabilityByCatalogId,
+                );
+                if (!isPlayableAvailability(availability)) continue; // withdrawn or gone
                 playableTrackCount += 1;
                 if (
                     artworkPath &&
@@ -602,6 +711,27 @@ export class PlaylistService {
         });
         return { removed: true };
     }
+}
+
+/** Availability of one catalog id, defaulting a library row with no catalog ref to "local file". */
+function availabilityFor(
+    catalogTrackId: string | null,
+    byCatalogId: Map<string, TrackAvailability>,
+): TrackAvailability {
+    if (!catalogTrackId) return LOCAL_FILE_AVAILABILITY;
+    return byCatalogId.get(catalogTrackId) ?? REMOVED_AVAILABILITY;
+}
+
+/** Narrow a batched availability map down to the keys one playlist actually stores. */
+function pickAvailability(
+    byPlaylistKey: Record<string, TrackAvailability>,
+    trackIds: string[],
+): Record<string, TrackAvailability> {
+    const picked: Record<string, TrackAvailability> = {};
+    for (const trackId of trackIds) {
+        picked[trackId] = byPlaylistKey[trackId] ?? REMOVED_AVAILABILITY;
+    }
+    return picked;
 }
 
 function getChangedFields(

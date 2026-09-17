@@ -18,9 +18,28 @@ const artistId = `${TEST_PREFIX}artist`;
 
 let service: PlaylistService;
 
+/**
+ * Seed the catalog rows a library entry points at. Availability is read from the
+ * catalog since #1793 (a withdrawn release must not count as playable), so a
+ * catalog-backed fixture needs a real Release + Track behind it.
+ */
+async function seedCatalogTrack(releaseId: string, catalogTrackId: string, title: string) {
+  await prisma.release.upsert({
+    where: { id: releaseId },
+    update: {},
+    create: { id: releaseId, artistId, title: `Release ${releaseId}`, status: 'published' },
+  });
+  await prisma.track.upsert({
+    where: { id: catalogTrackId },
+    update: {},
+    create: { id: catalogTrackId, releaseId, title },
+  });
+}
+
 /** Create a catalog-backed (streamable) library track for the owner with a given release id. */
 async function remoteTrack(releaseId: string, label: string) {
   const ctid = `${TEST_PREFIX}ct_${label}`;
+  await seedCatalogTrack(releaseId, ctid, `Catalog ${label}`);
   const track = await prisma.libraryTrack.create({
     data: {
       userId: owner,
@@ -93,6 +112,8 @@ describe('PlaylistService — public playlist discovery (integration)', () => {
   afterAll(async () => {
     await prisma.playlist.deleteMany({ where: { userId: owner } }).catch(() => {});
     await prisma.libraryTrack.deleteMany({ where: { userId: owner } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { release: { artistId } } }).catch(() => {});
+    await prisma.release.deleteMany({ where: { artistId } }).catch(() => {});
     await prisma.artist.delete({ where: { id: artistId } }).catch(() => {});
     await prisma.user.delete({ where: { id: owner } }).catch(() => {});
   });
@@ -184,6 +205,7 @@ describe('PlaylistService — public playlist discovery (integration)', () => {
       data: { id: artist2, userId: owner2, displayName: 'Other Curator', payoutAddress: '0x' + 'E'.repeat(40) },
     });
     try {
+      await seedCatalogTrack(rid, cid, 'Disc Catalog');
       // `owner` has the catalog track in their library (per-user uuid id, carries catalogTrackId).
       await prisma.libraryTrack.create({
         data: {

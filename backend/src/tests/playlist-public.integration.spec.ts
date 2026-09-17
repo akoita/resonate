@@ -25,12 +25,31 @@ let events: ResonateEvent[];
 
 let seedCount = 0;
 
+/**
+ * Seed the catalog rows a library entry points at. Availability is read from the
+ * catalog since #1793 (a withdrawn release must not count as playable), so a
+ * catalog-backed fixture needs a real Release + Track behind it.
+ */
+async function seedCatalogTrack(rid: string, ctid: string, title: string) {
+  await prisma.release.upsert({
+    where: { id: rid },
+    update: {},
+    create: { id: rid, artistId, title: `Release ${rid}`, status: 'published' },
+  });
+  await prisma.track.upsert({
+    where: { id: ctid },
+    update: {},
+    create: { id: ctid, releaseId: rid, title },
+  });
+}
+
 /** Seed a catalog-backed (streamable) and a local-only (non-streamable) library track for the owner.
  *  Ids are unique per call so repeated seeding does not hit LibraryTrack unique constraints. */
 async function seedOwnerLibrary() {
   seedCount += 1;
   const rid = `${releaseId}_${seedCount}`;
   const ctid = `${catalogTrackId}_${seedCount}`;
+  await seedCatalogTrack(rid, ctid, 'Catalog Anthem');
   const remote = await prisma.libraryTrack.create({
     data: {
       userId: owner,
@@ -84,6 +103,8 @@ describe('PlaylistService — public playlists (integration)', () => {
     await prisma.savedPlaylist.deleteMany({ where: { userId: { in: [owner, viewer] } } }).catch(() => {});
     await prisma.playlist.deleteMany({ where: { userId: { in: [owner, viewer] } } }).catch(() => {});
     await prisma.libraryTrack.deleteMany({ where: { userId: { in: [owner, viewer] } } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { release: { artistId } } }).catch(() => {});
+    await prisma.release.deleteMany({ where: { artistId } }).catch(() => {});
     await prisma.artist.delete({ where: { id: artistId } }).catch(() => {});
     await prisma.user.delete({ where: { id: owner } }).catch(() => {});
     await prisma.user.delete({ where: { id: viewer } }).catch(() => {});
@@ -149,6 +170,7 @@ describe('PlaylistService — public playlists (integration)', () => {
   it('resolves a catalog track added to a playlist by its catalog id, scoped to the owner', async () => {
     const ctid = `${TEST_PREFIX}cat_byid`;
     const rid = `${TEST_PREFIX}rel_byid`;
+    await seedCatalogTrack(rid, ctid, 'Added By Catalog Id');
     // Owner's library row has a per-user uuid id but carries the catalog track id.
     await prisma.libraryTrack.create({
       data: {
@@ -180,6 +202,7 @@ describe('PlaylistService — public playlists (integration)', () => {
   it('emits a track only once when a playlist references both its per-user uuid and catalog id', async () => {
     const ctid = `${TEST_PREFIX}dup_cat`;
     const rid = `${TEST_PREFIX}dup_rel`;
+    await seedCatalogTrack(rid, ctid, 'Dup-Keyed Track');
     const row = await prisma.libraryTrack.create({
       data: {
         userId: owner,

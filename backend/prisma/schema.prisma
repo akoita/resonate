@@ -495,6 +495,11 @@ model Release {
   title                 String
   status                String                        @default("processing")
   processingError       String?                       @db.Text
+  // #1793 withdrawal: a withdrawn release keeps existing (purchases, library and
+  // playlist references survive); only its streaming licence is suspended.
+  withdrawnAt            DateTime?
+  withdrawalReason       String?                      @db.Text
+  statusBeforeWithdrawal String?
   type                  String                        @default("single")
   primaryArtist         String?
   featuredArtists       String?

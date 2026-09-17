@@ -181,3 +181,9 @@ cd web && npx vitest run src/components/settings/DataExportPanel.test.tsx src/li
   `WebAuthnCredential` is authentication material with a dangling `userId`.
 - **Decide the address-casing fix** before erasure runs against wallet-keyed
   tables. Under-deleting is worse than under-exporting.
+- **An artist's erasure is not a private act.** Their releases were bought,
+  their punchlines are held, their campaign took other people's money, so
+  erasure cannot delete a catalogue other people paid into. The mechanism it
+  needs is [Release Withdrawal](release_withdrawal.md) (#1793): withdraw the
+  streaming licence, leave every purchase whole, and detach the profile from
+  the person — `Artist.userId` is already nullable.

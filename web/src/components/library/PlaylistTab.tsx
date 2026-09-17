@@ -29,6 +29,7 @@ import {
     removeSavedPlaylistAPI,
     type SavedPlaylistView,
 } from "../../lib/api";
+import { queueableTracks } from "./trackAvailability";
 
 interface PlaylistTabProps {
     tracks: LocalTrack[];
@@ -195,21 +196,30 @@ export function PlaylistTab({
 
         const playlistTracks = await Promise.all(playlist.trackIds.map(id => getTrack(id)));
         const validTracks = playlistTracks.filter((t): t is LocalTrack => t !== null);
+        // Anything unavailable stays in the playlist, but never in the queue (#1793).
+        const playable = queueableTracks(validTracks);
 
-        if (validTracks.length > 0) {
-            await playQueue(validTracks, 0, { playlistId: playlist.id, sourceTrackIds: playlist.trackIds });
-            recordProductAnalyticsFromBrowser("playlist.played", {
-                source: "library_playlist_tab",
-                subjectType: "playlist",
-                subjectId: playlist.id,
-                payload: {
-                    playlistId: playlist.id,
-                    trackCount: playlist.trackIds.length,
-                    playableTrackCount: validTracks.length,
-                },
+        if (playable.length === 0) {
+            addToast({
+                type: "info",
+                title: "Nothing to play right now",
+                message: `Every track in "${playlist.name}" is unavailable at the moment. Open the playlist to see why.`,
             });
-            addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${playlist.name}"` });
+            return;
         }
+
+        await playQueue(playable, 0, { playlistId: playlist.id, sourceTrackIds: playlist.trackIds });
+        recordProductAnalyticsFromBrowser("playlist.played", {
+            source: "library_playlist_tab",
+            subjectType: "playlist",
+            subjectId: playlist.id,
+            payload: {
+                playlistId: playlist.id,
+                trackCount: playlist.trackIds.length,
+                playableTrackCount: playable.length,
+            },
+        });
+        addToast({ type: "success", title: "Playing Playlist", message: `Started playing "${playlist.name}"` });
     };
 
     if (loading) {

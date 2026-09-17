@@ -533,13 +533,29 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "unavailable-tracks",
+        heading: "When a track is greyed out",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A track in your library or a playlist can show as unavailable — most often because the artist has withdrawn it from streaming. It stays where you put it, greyed out and labelled with the reason, instead of disappearing on you. It cannot be played and it is skipped when you play the playlist, and it starts working again if the artist puts it back.",
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "What you bought stays yours",
+            text: "Purchases are not affected. A stem or a moment you own stays playable whatever happens to the streaming version.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Your library", href: "/library", description: "Saved tracks and folders." },
       { label: "Playlists", href: "/library?tab=playlists", description: "Create, manage, and share playlists." },
       { label: "Browse the catalog", href: "/catalog", description: "Find public playlists from other listeners." },
     ],
-    related: ["playing-music", "discover-music"],
+    related: ["playing-music", "discover-music", "withdraw-a-release"],
   },
 
   // ─────────────────────────── Collect & sell ─────────────────────────────
@@ -1067,7 +1083,103 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Artist analytics", href: "/artist/analytics", description: "Plays, payouts, protection, and suggested actions." },
     ],
-    related: ["marketplace-sell", "upload-music", "shows-run", "community"],
+    related: ["marketplace-sell", "upload-music", "shows-run", "withdraw-a-release", "community"],
+  },
+  {
+    slug: "withdraw-a-release",
+    title: "Take a release out of streaming (and put it back)",
+    summary:
+      "Stop new listeners streaming a release, without taking anything away from people who bought it — and restore it whenever you are ready.",
+    category: "artists",
+    audiences: ["artist", "listener"],
+    status: "available",
+    keywords: [
+      "withdraw",
+      "unpublish",
+      "take down",
+      "remove from streaming",
+      "pull a release",
+      "restore",
+      "republish",
+      "put it back",
+      "unavailable",
+      "greyed out",
+      "no longer available",
+    ],
+    sections: [
+      {
+        id: "what-it-does",
+        heading: "What withdrawing does",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Sometimes you need a release to stop streaming — a mix you are no longer happy with, a sample you are clearing, a decision you want to take back for a while. Withdrawing does that without erasing anything.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Nobody new can stream the release on Resonate from the moment you withdraw it.",
+              "People who bought it keep it. A purchase is theirs, and withdrawing does not reach it.",
+              "It stays where listeners saved it — in their libraries and playlists — shown as unavailable, so it does not vanish on them without a word.",
+              "Nothing is deleted, and you can put it back at any time.",
+            ],
+          },
+          {
+            kind: "callout",
+            tone: "note",
+            title: "This is a pause, not a deletion",
+            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, that is a different decision — talk to us rather than leaving it withdrawn forever.",
+          },
+        ],
+      },
+      {
+        id: "how-to",
+        heading: "Withdraw a release",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open your catalogue and find the release in the Releases list.",
+              "Select Withdraw from streaming in the Streaming column.",
+              "Read what the confirmation tells you, then confirm. The catalogue marks the release as withdrawn, with the date.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "restore",
+        heading: "Putting it back",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A withdrawn release shows Restore to streaming in the same place. One action, no warnings: the release starts streaming again, and every library and playlist that kept it lights back up.",
+          },
+        ],
+      },
+      {
+        id: "greyed-out",
+        heading: "If something in your library is greyed out",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If a track you saved shows as unavailable, the artist has usually withdrawn it from streaming. We leave it in your library and in your playlists, greyed out and labelled, rather than quietly removing it — you saved it for a reason, and you deserve to know what happened to it.",
+          },
+          {
+            kind: "list",
+            items: [
+              "It cannot be played and it is skipped when you play the playlist it sits in.",
+              "It may come back: withdrawing is reversible, and if the artist restores it, it simply starts working again.",
+              "Anything you bought is unaffected. Your purchases stay playable whatever happens to streaming.",
+            ],
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Your catalogue", href: "/artist/catalog", description: "Withdraw or restore any of your releases." },
+      { label: "Your library", href: "/library", description: "Where a withdrawn track shows as unavailable." },
+    ],
+    related: ["upload-music", "library-playlists", "marketplace-buy"],
   },
   {
     slug: "punchline-drops",
