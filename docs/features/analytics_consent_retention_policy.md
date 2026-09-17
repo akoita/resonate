@@ -29,9 +29,11 @@ making that decision is still missing, so the control exists only as an API in
 this slice.
 
 This page defines the product and operational policy that those jobs must
-follow. User-facing export/deletion controls (#1771), the consent capture and
-withdrawal UI (#1772 frontend slice), and yearly listener summary controls still
-need product UI and operator runbook work before this is complete.
+follow. The user-facing export shipped with #1771 slice 2 — a person downloads
+their own data, analytics included, from Settings > Privacy; see
+[Personal Data Rights](personal_data_rights.md). User-facing erasure (#1771
+slice 3) and yearly listener summary controls still need product UI and operator
+runbook work before this is complete.
 
 ## Who It Is For
 
@@ -235,6 +237,16 @@ warehouse erasure target in
 - Deployments without a BigQuery warehouse (`ANALYTICS_WAREHOUSE_TARGET` unset
   or `local_json`) get a disabled target that reports `skipped` and performs no
   work. No new environment variable is involved.
+
+**Retention cleanup is not on this path.** `runRetentionCleanup` calls
+`deleteEvent` and `redactEvent` directly rather than going through
+`applyDeletionPolicy`, so it is the one governance action that stops at
+Postgres. An event past its window is removed from `prisma.analyticsEvent` and
+left in the warehouse, which means the retention windows in the table above are
+currently enforced only in the copy that is not the long-lived one. This is
+tracked in [#1789](https://github.com/akoita/resonate/issues/1789) and was found
+while building the export half of #1771; the gap is latent only because the
+ledger is younger than the shortest window.
 
 ## Yearly Summary Rules
 

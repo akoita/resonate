@@ -1315,6 +1315,115 @@ export async function updateAnalyticsConsent(
   }
 }
 
+/**
+ * #1771: the copy of their own data a signed-in person can take away with them.
+ *
+ * Deliberately not routed through `apiRequest`: the response is a streamed
+ * file rather than a JSON payload we want to buffer through `text()` and
+ * parse, and it is downloaded rather than read. It also cannot be a plain
+ * `<a href>`, because an anchor cannot carry the bearer token the endpoint
+ * requires — hence fetch here and an object URL at the call site.
+ */
+export type PersonalDataExportResult =
+  | { status: "ready"; blob: Blob; filename: string }
+  /**
+   * Distinct from a failure: the export worked, recently enough that the
+   * server is asking this person to wait. Callers must say that rather than
+   * "something went wrong", which would read as data loss.
+   */
+  | { status: "rate_limited" };
+
+function personalDataExportFallbackFilename(now: Date = new Date()) {
+  return `resonate-data-export-${now.toISOString().slice(0, 10)}.json`;
+}
+
+/** The server names the file; we only fall back when it did not. */
+function filenameFromContentDisposition(header: string | null): string | undefined {
+  if (!header) return undefined;
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(header);
+  const value = match?.[1]?.trim();
+  if (!value) return undefined;
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+export async function requestPersonalDataExport(
+  token: string,
+): Promise<PersonalDataExportResult> {
+  const response = await fetch(`${API_BASE}/privacy/export`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (response.status === 429) {
+    return { status: "rate_limited" };
+  }
+
+  if (!response.ok) {
+    let errorDetail = "";
+    try {
+      errorDetail = await response.text();
+    } catch {
+      // ignore
+    }
+    if (response.status === 401) {
+      invalidateStoredAuthSession();
+    }
+    let details: unknown;
+    try {
+      details = JSON.parse(errorDetail);
+    } catch {
+      details = undefined;
+    }
+    throw new ApiRequestError(
+      formatApiErrorMessage(response.status, response.statusText, errorDetail),
+      response.status,
+      details,
+    );
+  }
+
+  return {
+    status: "ready",
+    blob: await response.blob(),
+    filename:
+      filenameFromContentDisposition(response.headers.get("Content-Disposition")) ??
+      personalDataExportFallbackFilename(),
+  };
+}
+
+/**
+ * Hand an already-fetched file to the browser's own download.
+ *
+ * The object URL pins the whole body in memory, so it is released once the
+ * click has been dispatched — on a turn of the event loop rather than
+ * synchronously, because revoking in the same tick can cancel the download
+ * the click just started.
+ */
+export function saveBlobAsDownload(blob: Blob, filename: string): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof document === "undefined" ||
+    typeof URL.createObjectURL !== "function"
+  ) {
+    return false;
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  return true;
+}
+
 export type TrustTier = {
   artistId: string;
   tier: string;
