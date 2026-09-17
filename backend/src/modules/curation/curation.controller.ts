@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
+import { seconds } from "../shared/rate_limits";
 import { Roles } from "../auth/roles.decorator";
 import { CurationService } from "./curation.service";
 
@@ -11,7 +12,7 @@ export class CurationController {
   @UseGuards(AuthGuard("jwt"))
   @Post("stake")
   @Roles("curator", "admin")
-  @Throttle({ default: { limit: 10, ttl: 60 } })
+  @Throttle({ default: { limit: 10, ttl: seconds(60) } })
   stake(@Body() body: { curatorId: string; amountUsd: number }) {
     return this.curationService.stake(body);
   }
@@ -26,7 +27,7 @@ export class CurationController {
   @UseGuards(AuthGuard("jwt"))
   @Post("report")
   @Roles("curator", "admin")
-  @Throttle({ default: { limit: 15, ttl: 60 } })
+  @Throttle({ default: { limit: 15, ttl: seconds(60) } })
   report(@Body() body: { curatorId: string; trackId: string; reason: string }) {
     return this.curationService.report(body);
   }

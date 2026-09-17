@@ -98,10 +98,11 @@ IP**: the framework's default tracker is `req.ip`, which would make a household
 behind one NAT share one account's budget while letting a stolen token lift the
 limit by changing address.
 
-Note that `ttl` is **milliseconds** in @nestjs/throttler v5+, so this route
-passes `3_600_000` while the rest of the codebase passes second-shaped values
-that are a thousand times shorter than they read — tracked as
-[#1790](https://github.com/akoita/resonate/issues/1790).
+The window is written with `hours(1)` from
+`backend/src/modules/shared/rate_limits.ts`, because `ttl` is milliseconds and
+second-shaped values had made every limit in the API a thousand times shorter
+than it read ([#1790](https://github.com/akoita/resonate/issues/1790), fixed).
+A test now fails on any throttled route whose window is under a second.
 
 A served export is logged (`privacy.personal_data_export.served`, user id only,
 nothing from the file). Before that, only failures were recorded, which left the

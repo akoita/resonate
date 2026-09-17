@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { GLOBAL_RATE_LIMIT } from "./shared/rate_limits";
 import { ConfigModule } from "@nestjs/config";
 import { BullModule } from "@nestjs/bullmq";
 import { SharedModule } from "./shared/shared.module";
@@ -53,7 +54,7 @@ import { PrivacyModule } from "./privacy/privacy.module";
     }),
     SharedModule,
     ThrottlerModule.forRoot({
-      throttlers: [{ limit: 100, ttl: 60 }],
+      throttlers: [GLOBAL_RATE_LIMIT],
     }),
     HealthModule,
     AuthModule,

@@ -2052,4 +2052,40 @@ describe('API Client', () => {
       expect(api.isClientTelemetryRefused(result)).toBe(true);
     });
   });
+
+  describe('rate limiting', () => {
+    // #1790 turned the API's limits from inert into live, so this is the first
+    // error a person can reach by simply going fast. It must not be the
+    // server's phrasing for it.
+    it('says a 429 in words a person can act on', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        text: async () =>
+          JSON.stringify({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' }),
+      });
+
+      await expect(api.getArtistAnalyticsDashboard('artist-1', 'token')).rejects.toThrow(
+        /too quickly/i,
+      );
+    });
+
+    it('leaks neither the exception name nor the status code into the message', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        text: async () =>
+          JSON.stringify({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' }),
+      });
+
+      const error = await api
+        .getArtistAnalyticsDashboard('artist-1', 'token')
+        .catch((caught: Error) => caught);
+
+      expect((error as Error).message).not.toMatch(/Throttler/i);
+      expect((error as Error).message).not.toMatch(/API 429/);
+    });
+  });
 });

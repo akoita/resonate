@@ -15,6 +15,7 @@ import {
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
+import { seconds } from "../shared/rate_limits";
 import { IngestionService } from "./ingestion.service";
 import { IngestionMultipartInterceptor } from "./ingestion-multipart.interceptor";
 import {
@@ -35,7 +36,7 @@ export class IngestionController {
     storage: new IngestionMultipartStorage(),
     limits: { files: 21, parts: 25 },
   }))
-  @Throttle({ default: { limit: 20, ttl: 60 } })
+  @Throttle({ default: { limit: 20, ttl: seconds(60) } })
   async upload(
     @UploadedFiles() files: { files?: Express.Multer.File[], artwork?: Express.Multer.File[] },
     @Body()
