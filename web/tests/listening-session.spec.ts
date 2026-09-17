@@ -44,7 +44,26 @@ async function seedPlayer(page: Page, source = false, local = false) {
       return audio;
     } as unknown as typeof Audio;
   });
-  await page.route('**/analytics/**', route => route.fulfill({ json: { status: 'ok', eventId: 'test-event', ingested: 1 } }));
+  // #1772 gated client telemetry behind a recorded consent decision, and the
+  // browser fails closed: until it knows the answer it sends nothing. This
+  // catch-all also matches GET /analytics/consent, so without an explicit
+  // decision the player emits no events at all and the assertions below see an
+  // empty list. Grant it — these tests are about player events, not about the
+  // consent gate, which has its own coverage.
+  await page.route('**/analytics/**', route => {
+    if (route.request().url().includes('/analytics/consent')) {
+      return route.fulfill({
+        json: {
+          productAnalytics: true,
+          decided: true,
+          needsDecision: false,
+          policyVersion: 'analytics-consent:test',
+          currentPolicyVersion: 'analytics-consent:test',
+        },
+      });
+    }
+    return route.fulfill({ json: { status: 'ok', eventId: 'test-event', ingested: 1 } });
+  });
   await page.route('**/playlists/folders', route => route.fulfill({ json: [] }));
   await page.goto('/player');
   await expect(page.getByText('Queue Manifest', { exact: true })).toBeVisible();

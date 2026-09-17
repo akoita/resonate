@@ -11,9 +11,20 @@ import { TOKEN_KEY } from "./authSession";
 
 vi.mock("./api", () => ({
   recordProductAnalyticsEvent: vi.fn(() => Promise.resolve({ status: "ok", eventId: "event-1", ingested: 1 })),
+  isClientTelemetryRefused: (response: unknown) =>
+    Boolean(response && (response as { recorded?: unknown }).recorded === false),
+}));
+
+// #1772: consent is the gate in front of every emit, so it is stubbed rather
+// than reaching for the network. Its own behaviour is covered in
+// analyticsConsent.test.ts.
+vi.mock("./analyticsConsent", () => ({
+  isProductAnalyticsAllowed: vi.fn(() => true),
+  noteServerRefusal: vi.fn(),
 }));
 
 import { recordProductAnalyticsEvent } from "./api";
+import { isProductAnalyticsAllowed, noteServerRefusal } from "./analyticsConsent";
 
 describe("product analytics helpers", () => {
   beforeEach(() => {
@@ -42,6 +53,14 @@ describe("product analytics helpers", () => {
       crypto: cryptoMock,
     });
     localStorage.setItem(TOKEN_KEY, "token-1");
+    vi.mocked(isProductAnalyticsAllowed).mockReturnValue(true);
+    vi.mocked(recordProductAnalyticsEvent).mockReset();
+    vi.mocked(recordProductAnalyticsEvent).mockResolvedValue({
+      status: "ok",
+      eventId: "event-1",
+      ingested: 1,
+    });
+    vi.mocked(noteServerRefusal).mockClear();
   });
 
   afterEach(() => {
@@ -140,6 +159,27 @@ describe("product analytics helpers", () => {
         "marketplace.owner_inventory_viewed",
       ]),
     );
+  });
+
+  it("sends nothing while the consent decision is unknown or refused", async () => {
+    vi.mocked(isProductAnalyticsAllowed).mockReturnValue(false);
+
+    await recordProductAnalytics("token-1", "playlist.created", { subjectType: "playlist", subjectId: "p1" });
+    recordProductAnalyticsFromBrowser("settings.updated");
+
+    expect(recordProductAnalyticsEvent).not.toHaveBeenCalled();
+  });
+
+  it("stops emitting when the server refuses the event for want of consent", async () => {
+    vi.mocked(recordProductAnalyticsEvent).mockResolvedValue({
+      recorded: false,
+      reason: "consent_not_granted",
+    });
+
+    const result = await recordProductAnalytics("token-1", "search.submitted");
+
+    expect(result).toBeNull();
+    expect(noteServerRefusal).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to generated ids outside browser crypto", () => {

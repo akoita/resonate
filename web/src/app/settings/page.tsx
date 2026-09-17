@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import AnalyticsConsentSettingsPanel from "../../components/settings/AnalyticsConsentSettingsPanel";
 import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
 import TasteMemorySettingsPanel from "../../components/settings/TasteMemorySettingsPanel";
@@ -29,7 +30,7 @@ import { clearLibrary } from "../../lib/localLibrary";
 import { useAuth } from "../../components/auth/AuthProvider";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
 
-type SettingsSectionId = "library" | "artist" | "taste" | "community" | "cohorts" | "usage" | "notifications" | "troubleshooting";
+type SettingsSectionId = "library" | "artist" | "taste" | "privacy" | "community" | "cohorts" | "usage" | "notifications" | "troubleshooting";
 
 const SETTINGS_SECTIONS: Array<{
     id: SettingsSectionId;
@@ -48,6 +49,12 @@ const SETTINGS_SECTIONS: Array<{
         label: "Taste Memory",
         eyebrow: "Recommendations",
         description: "Signals that guide discovery and AI DJ.",
+    },
+    {
+        id: "privacy",
+        label: "Privacy",
+        eyebrow: "Your data",
+        description: "Whether we may measure how you use Resonate.",
     },
     {
         id: "artist",
@@ -484,6 +491,10 @@ export default function SettingsPage() {
 
                         {activeSection === "taste" ? (
                             <TasteMemorySettingsPanel token={token} addToast={addToast} />
+                        ) : null}
+
+                        {activeSection === "privacy" ? (
+                            <AnalyticsConsentSettingsPanel token={token} addToast={addToast} />
                         ) : null}
 
                         {activeSection === "artist" ? (

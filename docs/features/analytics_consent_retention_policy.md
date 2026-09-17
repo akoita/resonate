@@ -64,7 +64,7 @@ summaries as a mature product surface:
 
 | Control | Behavior |
 | --- | --- |
-| Product analytics preference | Allows authenticated users to opt out of optional product analytics. Required operational, security, payment, rights, and fraud events may still be captured under the appropriate legal basis. |
+| Product analytics preference | **Live (#1772).** A persistent banner asks once; Settings > Privacy changes the answer later. Refusing is exactly as prominent as accepting, nothing is preselected, and the browser stops emitting before a request is made. Required operational, security, payment, rights, and fraud events may still be captured under the appropriate legal basis. |
 | Yearly summary preference | Lets listeners opt in or out of personalized yearly summaries such as Wrapped-style recaps. Opting out disables summary generation from future eligible facts and hides generated summary surfaces. |
 | Analytics export | Exports the user's linked personal and pseudonymous analytics facts, plus plain-language explanations of aggregate-only data that cannot be attributed back to them. |
 | Analytics deletion | Deletes or redacts raw and fact rows linked to the user's actor ID or subject IDs, except financial/audit facts that must be preserved with personal fields minimized. |
