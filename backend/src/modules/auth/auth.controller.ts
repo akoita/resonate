@@ -1,5 +1,6 @@
 import { Body, Controller, ForbiddenException, Inject, Optional, Post } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
+import { seconds } from "../shared/rate_limits";
 import { recoverMessageAddress, type PublicClient } from "viem";
 import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
@@ -17,7 +18,10 @@ export class AuthController {
   ) { }
 
   @Post("login")
-  @Throttle({ default: { limit: 10, ttl: 60 } })
+  // Dev-only shortcut: the handler 403s unless AUTH_DEV_LOGIN_ENABLED is
+  // set, so this limit binds only where the flag is on — local work and the
+  // E2E suite, which signs in once per spec from a single address.
+  @Throttle({ default: { limit: 60, ttl: seconds(60) } })
   login(@Body() body: { userId: string; role?: string }) {
     if (process.env.AUTH_DEV_LOGIN_ENABLED !== "true") {
       throw new ForbiddenException("auth/login is disabled");
@@ -27,13 +31,13 @@ export class AuthController {
   }
 
   @Post("nonce")
-  @Throttle({ default: { limit: 20, ttl: 60 } })
+  @Throttle({ default: { limit: 20, ttl: seconds(60) } })
   nonce(@Body() body: { address: string }) {
     return { nonce: this.nonceService.issue(body.address) };
   }
 
   @Post("verify")
-  @Throttle({ default: { limit: 10, ttl: 60 } })
+  @Throttle({ default: { limit: 10, ttl: seconds(60) } })
   async verify(
     @Body()
     body: {

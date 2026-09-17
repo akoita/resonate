@@ -3,6 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
 import { Response } from "express";
 import { PersonalDataExportService } from "./personal_data_export.service";
+import { hours } from "../shared/rate_limits";
 import { writeStructuredLog } from "../shared/structured_logging";
 
 type AuthenticatedRequest = { user?: { userId?: string; role?: string } };
@@ -27,22 +28,14 @@ export class PrivacyController {
    * and the most valuable single response in it, so it is both an amplification
    * vector and the thing an attacker with a stolen token would ask for first.
    *
-   * `ttl` is **milliseconds** in @nestjs/throttler v5+ (v6.5.0 here:
-   * `throttler.service.js` assigns `const ttlMilliseconds = ttl` and feeds it
-   * straight to `setTimeout`). So three per hour is 3_600_000, not 3600.
-   *
-   * Every other `@Throttle` in this repository — and `ThrottlerModule.forRoot`
-   * itself — passes second-shaped values, which means their windows are a
-   * thousand times shorter than they read. That is tracked as a security
-   * defect in #1790. This route does not inherit the mistake: a comment
-   * promising "throttled hard" above a limit that is really three per 3.6
-   * seconds would be a control that exists only on paper, and this is the one
-   * endpoint that returns a person's entire dossier in a single response.
+   * The window is written with `hours()` rather than a bare number because
+   * `ttl` is milliseconds — see `shared/rate_limits.ts` for why every limit in
+   * this repository was once a thousand times shorter than it read (#1790).
    */
   @Throttle({
     default: {
       limit: 3,
-      ttl: 3_600_000,
+      ttl: hours(1),
       // Tracked per person, not per IP. `ThrottlerGuard.getTracker` returns
       // `req.ip` by default, which is wrong in both directions for an
       // authenticated route: a household or office behind one NAT shares a

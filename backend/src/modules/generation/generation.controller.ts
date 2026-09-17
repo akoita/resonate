@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Post, Patch, Query, UseGuards, Req, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
+import { seconds } from '../shared/rate_limits';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GenerationService } from './generation.service';
 import { CreateGenerationDto, CreateComplementaryDto, PublishGenerationDto } from './generation.dto';
@@ -16,7 +17,7 @@ export class GenerationController {
    */
   @UseGuards(AuthGuard('jwt'))
   @Post('create')
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async create(
     @Body() dto: CreateGenerationDto,
     @Req() req: any,
@@ -73,7 +74,7 @@ export class GenerationController {
    */
   @UseGuards(AuthGuard('jwt'))
   @Post('complementary')
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async generateComplementary(
     @Body() dto: CreateComplementaryDto,
     @Req() req: any,
@@ -117,7 +118,7 @@ export class GenerationController {
    */
   @UseGuards(AuthGuard('jwt'))
   @Post('artwork')
-  @Throttle({ default: { limit: 5, ttl: 60 } })
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
   async generateArtwork(
     @Body() body: { prompt: string },
   ) {

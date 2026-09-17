@@ -89,6 +89,15 @@ export class ApiRequestError extends Error {
 
 function formatApiErrorMessage(status: number, statusText: string, detail: string) {
   const trimmedDetail = detail.trim();
+
+  // #1790 made the API's rate limits real for the first time — their windows
+  // had been a thousand times shorter than they read, so nothing ever hit one.
+  // The server's own words for it are "ThrottlerException: Too Many Requests",
+  // which is not something to show a person who simply went too fast.
+  if (status === 429) {
+    return "You are doing that a bit too quickly. Please wait a moment and try again.";
+  }
+
   if (!trimmedDetail) {
     return `API ${status}: ${statusText}`;
   }
