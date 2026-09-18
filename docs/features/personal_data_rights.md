@@ -270,11 +270,14 @@ cd web && npx vitest run src/components/settings/DataExportPanel.test.tsx src/li
 
 ## Still missing
 
-- **Nothing runs the scheduled erasures** ([#1797](https://github.com/akoita/resonate/issues/1797)).
-  The engine and `POST /admin/erasure/run-due` exist; no scheduler calls it, so
-  a due request waits for an operator. This is what still blocks the privacy
-  policy's "When you delete" section from publication, and it is the difference
-  between the 30-day promise being true and being a sentence in a panel.
+- **Nothing invokes the scheduled erasures yet** ([#1797](https://github.com/akoita/resonate/issues/1797)).
+  The engine, the endpoint and the entry point
+  (`backend/src/scripts/run_due_erasures.ts`) exist, and the operator procedure
+  is in [the runbook](../operations/account_erasure_runbook.md) — but no Cloud
+  Scheduler job calls it, so a due request waits for someone to run it by hand.
+  This is what still blocks the privacy policy's "When you delete" section from
+  publication, and it is the difference between the 30-day promise being true
+  and being a sentence in a panel. The remaining work is infrastructure.
 - **The step-up accepts an unverifiable signature as a last resort**
   ([#1798](https://github.com/akoita/resonate/issues/1798)). Narrowed — ERC-6492
   validation no longer requires the account to have bytecode, which is what
