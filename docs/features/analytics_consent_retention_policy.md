@@ -238,15 +238,25 @@ warehouse erasure target in
   or `local_json`) get a disabled target that reports `skipped` and performs no
   work. No new environment variable is involved.
 
-**Retention cleanup is not on this path.** `runRetentionCleanup` calls
+**Retention cleanup is on this path too, as of #1789.** It used to call
 `deleteEvent` and `redactEvent` directly rather than going through
-`applyDeletionPolicy`, so it is the one governance action that stops at
-Postgres. An event past its window is removed from `prisma.analyticsEvent` and
-left in the warehouse, which means the retention windows in the table above are
-currently enforced only in the copy that is not the long-lived one. This is
-tracked in [#1789](https://github.com/akoita/resonate/issues/1789) and was found
-while building the export half of #1771; the gap is latent only because the
-ledger is younger than the shortest window.
+`applyDeletionPolicy`, so it was the one governance action that stopped at
+Postgres: an event past its window was removed from `prisma.analyticsEvent` and
+left in the warehouse, which meant the windows in the table above were enforced
+only in the copy that is not the long-lived one.
+
+It now goes through the same path as an erasure, with one difference visible in
+the lineage: retention writes a per-event action of `retention_deleted` or
+`retention_redacted`, while the single batch-level `warehouse_erasure` row is
+labelled `sourceAction: "retention"`. A tier with nothing expired makes no
+warehouse call at all.
+
+**Nothing schedules retention yet**, which is the remaining half of
+[#1789](https://github.com/akoita/resonate/issues/1789). The order is not
+arbitrary: retention derives its event ids from the Postgres rows, so a first
+scheduled run against the previous code would have purged Postgres and left
+every corresponding warehouse row permanently unreachable. The fix had to land
+first, and it is inert until the schedule exists.
 
 ## Yearly Summary Rules
 

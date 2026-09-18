@@ -28,6 +28,22 @@ export interface AnalyticsConsentWithdrawalRequest extends AnalyticsDeletionRequ
   consentBasis: string;
 }
 
+/**
+ * Lineage actions an erasure writes.
+ *
+ * Deletion and consent withdrawal name the whole batch with one action, so they
+ * pass a string. Retention distinguishes the two dispositions — whether a row
+ * was deleted or redacted is the first thing an audit reviewer asks — so it
+ * passes a pair plus the `source` name that labels the batch's single
+ * `warehouse_erasure` record.
+ */
+type DeletionLineageActions = string | { deleted: string; redacted: string; source: string };
+
+/** Per-tier warehouse outcome of a retention run. */
+export interface AnalyticsRetentionWarehouseOutcome extends WarehouseErasureResult {
+  tier: RetentionTier;
+}
+
 const FINANCIAL_AUDIT_EVENT_FAMILIES = new Set(["commerce", "payment", "rights", "license"]);
 const REDACTED_VALUE = "[redacted]";
 
@@ -49,9 +65,17 @@ export class AnalyticsGovernanceService {
     };
   }
 
+  /**
+   * Expire analytics events past their tier's retention window.
+   *
+   * Goes through `applyDeletionPolicy` like every other erasure, so the
+   * warehouse copy — the long-lived one since the Sprint 21 cutover — is erased
+   * with the Postgres copy instead of keeping the expired rows forever (#1789).
+   */
   async runRetentionCleanup(options?: { now?: Date; policy?: AnalyticsRetentionPolicy }) {
     const now = options?.now ?? new Date();
     const policy = options?.policy ?? this.getRetentionPolicy();
+    const warehouse: AnalyticsRetentionWarehouseOutcome[] = [];
     const result = {
       status: "ok",
       deleted: 0,
@@ -70,25 +94,29 @@ export class AnalyticsGovernanceService {
         },
       });
 
-      for (const event of expired) {
-        if (shouldPreserveForAudit(event.eventName)) {
-          await this.redactEvent(event, "retention_redacted", `retention expired for ${tier} event`, {
-            cutoff: cutoff.toISOString(),
-            policy,
-          });
-          result.redacted += 1;
-        } else {
-          await this.deleteEvent(event, "retention_deleted", `retention expired for ${tier} event`, {
-            cutoff: cutoff.toISOString(),
-            policy,
-          });
-          result.deleted += 1;
-        }
-        result.lineageRecords += 1;
-      }
+      // Nothing expired in this tier: no warehouse call, no warehouse_erasure record.
+      if (expired.length === 0) continue;
+
+      const tierResult = await this.applyDeletionPolicy(
+        expired,
+        { deleted: "retention_deleted", redacted: "retention_redacted", source: "retention" },
+        `retention expired for ${tier} event`,
+        { cutoff: cutoff.toISOString(), policy },
+      );
+
+      result.deleted += tierResult.deleted;
+      result.redacted += tierResult.redacted;
+      result.lineageRecords += tierResult.lineageRecords;
+      warehouse.push({ tier, ...tierResult.warehouse });
     }
 
-    return result;
+    // Postgres alone is no longer the whole job: a run that emptied Postgres but
+    // could not reach the warehouse is not "ok".
+    if (warehouse.some((outcome) => outcome.status === "failed")) {
+      result.status = "warehouse_failed";
+    }
+
+    return { ...result, warehouse };
   }
 
   async propagateDeletion(input: AnalyticsDeletionRequest) {
@@ -137,10 +165,12 @@ export class AnalyticsGovernanceService {
 
   private async applyDeletionPolicy(
     events: Awaited<ReturnType<typeof prisma.analyticsEvent.findMany>>,
-    action: string,
+    action: DeletionLineageActions,
     reason: string,
     details: Record<string, unknown>,
   ) {
+    const actions =
+      typeof action === "string" ? { deleted: action, redacted: action, source: action } : action;
     const { deleteEventIds, redactEventIds } = partitionEventsForErasure(events);
     const redacting = new Set(redactEventIds);
     const affectedDates = [...new Set(events.map((event) => event.occurredAt.toISOString().slice(0, 10)))];
@@ -155,10 +185,10 @@ export class AnalyticsGovernanceService {
 
     for (const event of events) {
       if (redacting.has(event.eventId)) {
-        await this.redactEvent(event, action, reason, details);
+        await this.redactEvent(event, actions.redacted, reason, details);
         result.redacted += 1;
       } else {
-        await this.deleteEvent(event, action, reason, details);
+        await this.deleteEvent(event, actions.deleted, reason, details);
         result.deleted += 1;
       }
       result.lineageRecords += 1;
@@ -171,7 +201,7 @@ export class AnalyticsGovernanceService {
       deleteEventIds,
       redactEventIds,
       affectedDates,
-      action,
+      action: actions.source,
       reason,
       details,
     });
