@@ -251,12 +251,21 @@ the lineage: retention writes a per-event action of `retention_deleted` or
 labelled `sourceAction: "retention"`. A tier with nothing expired makes no
 warehouse call at all.
 
-**Nothing schedules retention yet**, which is the remaining half of
-[#1789](https://github.com/akoita/resonate/issues/1789). The order is not
-arbitrary: retention derives its event ids from the Postgres rows, so a first
-scheduled run against the previous code would have purged Postgres and left
-every corresponding warehouse row permanently unreachable. The fix had to land
-first, and it is inert until the schedule exists.
+The scheduled entry point is `backend/src/scripts/run_retention_cleanup.ts`,
+with the operator procedure in
+[Analytics Retention Runbook](../operations/analytics_retention_runbook.md). It
+is a script rather than a scheduled HTTP call because every route on
+`MaintenanceController` requires a JWT plus an admin role, which a scheduled
+caller cannot mint — the mechanical reason retention went unscheduled.
+
+The order in which the two halves landed was not arbitrary: retention derives
+its event ids from the Postgres rows, so a run against the pre-#1801 code would
+have purged Postgres and left every corresponding warehouse row permanently
+unreachable. Propagation had to land first.
+
+**Size the first run with `--dry-run` before scheduling it.** Against a ledger
+that has never been pruned, the first real execution is the largest single
+governance action the system takes.
 
 ## Yearly Summary Rules
 
