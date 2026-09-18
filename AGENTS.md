@@ -21,30 +21,18 @@ from elsewhere in the repository.
 - Document new application variables in `docs/deployment/environment.md` and the
   corresponding deploy configuration in `resonate-iac`. Keep
   `docs/smart-contracts/deployment.md` contract-focused.
-
-## This repository is public; deployment information is not
-
-`akoita/resonate` is public. `akoita/resonate-iac` is private. **Deployment
-information belongs in the private repository** — not only credentials and
-operator identity, but scheduler job names and cron expressions, environment
-URLs, `gcloud` invocations, project identifiers, and statements about what does
-or does not currently run in a deployed environment. A live weakness described
-in a public tracker is a disclosure, not a to-do.
-
-**When a task needs deployment action, split it into two cross-linked issues:**
-the application half here, the deployment half in `resonate-iac`. The
-established shape is `resonate-iac#228` ("Companion to `akoita/resonate#1770`"),
-which states what changed in the application and what infrastructure work it
-requires.
-
-What stays public is the mechanism — the code, the defect, and application-level
-constraints that bind the code rather than a deployment. "The admin routes
-require a JWT with an admin role, so a scheduled caller cannot reach them"
-explains why an entry point exists in a given shape and belongs here. "Job X
-runs on cron Y in environment Z, and nothing currently invokes it" does not.
-
-Runbooks in this repository describe the application procedure and defer URLs,
-tokens and platform wiring to the private repository.
+- This repository is public; `resonate-iac` is private. Keep deployment
+  information there: project IDs, environment URLs, `gcloud` invocations, job
+  names and schedules, and any claim about what does or does not currently run
+  in a deployed environment. A live weakness described in a public tracker is a
+  disclosure, not a to-do.
+- A task needing deployment action becomes two cross-linked issues: the
+  application half here, the deployment half in `resonate-iac` (shape:
+  `resonate-iac#228`).
+- Mechanism stays public — code, defects, and constraints that bind the code
+  ("admin routes require an admin JWT, so no scheduled caller can reach them").
+  Runbooks here give the application procedure and defer URLs, tokens and
+  platform wiring to `resonate-iac`.
 
 ## Business Model v2
 
