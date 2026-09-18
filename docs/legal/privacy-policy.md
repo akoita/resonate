@@ -156,9 +156,11 @@ below.
 > 3b).
 >
 > **Still missing: nothing runs the scheduled erasures.**
-> [#1797](https://github.com/akoita/resonate/issues/1797) — the engine and its
-> endpoint exist, but no scheduler calls it, so a request reaches its due date
-> and waits for an operator. There is also no operator runbook.
+> [#1797](https://github.com/akoita/resonate/issues/1797) — the engine, its
+> endpoint and its scheduled entry point exist, and the operator procedure is
+> written down (`docs/operations/account_erasure_runbook.md`), but no scheduler
+> invokes it yet, so a request reaches its due date and waits for someone to run
+> it.
 >
 > So this section may not yet say a deletion completes on its own. Once #1797
 > lands, the paragraphs below are accurate as written and this block comes off.
