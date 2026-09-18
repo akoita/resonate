@@ -91,6 +91,41 @@ export class AuthService {
     return wallet !== null;
   }
 
+  /**
+   * The address this person is expected to sign with, or `null` if they have
+   * none.
+   *
+   * Deliberately the sign-in flow's own notion of "your address" rather than a
+   * fresh query: whatever this returns is handed back to a caller who will sign
+   * with it and then be checked by {@link isAddressForUser}, so the two must
+   * agree. Returns the smart-account address — the same one `/auth/verify`
+   * receives — because that is what the browser signs with; `isAddressForUser`
+   * accepts the owner EOA too, so a client that signs with the owner instead is
+   * not locked out.
+   *
+   * Falls back to the subject itself when it is an address, because a
+   * wallet-authenticated user id *is* the lowercased address and a `Wallet` row
+   * can be missing after a redeploy.
+   */
+  async findSigningAddressForUser(userId: string): Promise<string | null> {
+    if (typeof userId !== "string" || !userId.trim()) {
+      return null;
+    }
+
+    const subject = userId.trim();
+    const wallet = await prisma.wallet.findFirst({
+      where: { userId: { equals: subject, mode: "insensitive" } },
+      select: { address: true },
+    });
+
+    const address = wallet?.address?.trim();
+    if (address) {
+      return address.toLowerCase();
+    }
+
+    return /^0x[0-9a-fA-F]{40}$/.test(subject) ? subject.toLowerCase() : null;
+  }
+
   async upsertWalletIdentity(input: {
     userId: string;
     walletAddress: string;

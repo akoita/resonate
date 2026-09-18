@@ -1,10 +1,11 @@
-import { Module, Global } from "@nestjs/common";
+import { Module, Global, forwardRef } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { createPublicClient, http, type Chain } from "viem";
 import { base, baseSepolia, foundry, sepolia } from "viem/chains";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { AuditModule } from "../audit/audit.module";
+import { PrivacyModule } from "../privacy/privacy.module";
 import { SharedModule } from "../shared/shared.module";
 import { AuthController } from "./auth.controller";
 import { AuthNonceService } from "./auth_nonce.service";
@@ -87,6 +88,12 @@ function getChainFromConfig(config: ConfigService): { chain: Chain; transport: R
     PassportModule.register({ defaultStrategy: "jwt" }),
     AuditModule,
     SharedModule,
+    // For `AccountClosureService`: every successful sign-in cancels a scheduled
+    // erasure, and with no email channel in this backend (#1777) signing in is
+    // the only way a real owner can discover and stop one a stolen token
+    // scheduled. `forwardRef` because privacy depends on identity, which
+    // depends on auth — the cancel closes that loop deliberately.
+    forwardRef(() => PrivacyModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -124,6 +131,15 @@ function getChainFromConfig(config: ConfigService): { chain: Chain; transport: R
       },
     },
   ],
-  exports: [AuthService, "PUBLIC_CLIENT", PassportModule, JwtStrategy, SignupFaucetService],
+  exports: [
+    AuthService,
+    // Exported so the account-closure step-up can rebuild its own challenge
+    // from the same nonce store sign-in uses (#1771 slice 3b).
+    AuthNonceService,
+    "PUBLIC_CLIENT",
+    PassportModule,
+    JwtStrategy,
+    SignupFaucetService,
+  ],
 })
 export class AuthModule { }

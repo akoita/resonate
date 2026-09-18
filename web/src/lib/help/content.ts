@@ -1771,7 +1771,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Open Settings", href: "/settings", description: "Profile, privacy, notifications, and library." },
     ],
-    related: ["ai-dj", "community", "product-analytics", "download-your-data", "troubleshooting"],
+    related: ["ai-dj", "community", "product-analytics", "download-your-data", "delete-your-account", "troubleshooting"],
   },
   {
     slug: "product-analytics",
@@ -1978,7 +1978,134 @@ export const HELP_ARTICLES: HelpArticle[] = [
         description: "The Privacy section is where you download your data.",
       },
     ],
-    related: ["settings-privacy", "product-analytics", "troubleshooting"],
+    related: ["delete-your-account", "settings-privacy", "product-analytics", "troubleshooting"],
+  },
+  {
+    slug: "delete-your-account",
+    title: "Delete your account",
+    summary:
+      "Ask us to delete your account and the data we hold about you. It happens after 30 days, signing in cancels it, and some records stay — here is exactly which.",
+    category: "account",
+    audiences: ["everyone", "listener", "artist", "producer", "curator"],
+    status: "available",
+    keywords: [
+      "delete my account",
+      "delete account",
+      "close account",
+      "erase my data",
+      "erasure",
+      "remove my data",
+      "right to be forgotten",
+      "cancel deletion",
+      "leave resonate",
+      "quit",
+      "privacy",
+      "gdpr",
+    ],
+    sections: [
+      {
+        id: "how-to",
+        heading: "How to ask for deletion",
+        blocks: [
+          {
+            kind: "steps",
+            items: [
+              "Open Settings and choose Privacy in the list of sections.",
+              "Under 'Delete your account', select 'Delete my account'.",
+              "Read the confirmation and confirm it.",
+              "Approve the passkey prompt. This is how we know the request is really from you, and not from someone who found your screen unlocked.",
+            ],
+          },
+          {
+            kind: "paragraph",
+            text: "We do not ask why, and you do not have to give a reason. If you change your mind at the passkey prompt, simply dismiss it — nothing is requested until you approve it.",
+          },
+          {
+            kind: "paragraph",
+            text: "If you also want a copy of your information, download it before the deletion runs. Afterwards there is nothing left for us to put in a file.",
+          },
+        ],
+      },
+      {
+        id: "thirty-days",
+        heading: "It happens after 30 days, and signing in cancels it",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Nothing is deleted straight away. We wait 30 days first. During that time your account works exactly as it did before, and Resonate shows you the date it is due to run every time you use the app.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Signing in cancels it",
+            text: "If you sign in at any point in those 30 days, the deletion is cancelled. You can also cancel it outright: the notice at the top of the app and the Privacy section in Settings both have a 'Cancel deletion' button, and neither asks you for anything. If you are seeing a deletion you did not ask for, cancel it now and change how you sign in.",
+          },
+          {
+            kind: "paragraph",
+            text: "Once the 30 days are up and the deletion runs, it is permanent. It cannot be undone, and we cannot bring your account or your data back.",
+          },
+        ],
+      },
+      {
+        id: "what-goes",
+        heading: "What deletion removes",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "What Resonate keeps about you in our own systems, apart from the records described below.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Your account and profile, including the ways we recognise you when you sign in.",
+              "Your library, playlists, and follows.",
+              "Messages, reports, and other things you have sent us.",
+              "The record of how you use Resonate, if you allowed usage measurement.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "what-stays",
+        heading: "What stays, and why",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Some things cannot be deleted, and we would rather tell you before you decide than after.",
+          },
+          {
+            kind: "list",
+            items: [
+              "Records we are legally obliged to keep — for example what the law requires us to hold about a sale or a payment. We keep only what we must, and only for as long as we must.",
+              "Entries written to the blockchain — purchases, listings, payouts recorded on-chain — are public records that live outside Resonate. They are permanent by design and nobody can remove them.",
+              "Files stored on IPFS, such as published audio and artwork, stay where they are. IPFS is a public network that is not ours, and we cannot pull other people's copies of a file back in.",
+            ],
+          },
+        ],
+      },
+      {
+        id: "if-you-released-music",
+        heading: "If you have released music",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Your releases stop streaming on Resonate. People who bought something from you keep it: a purchase belongs to the person who made it, and deleting your account does not take it away from them.",
+          },
+          {
+            kind: "paragraph",
+            text: "Anything you are owed is worth settling before you ask for deletion, because afterwards there is no account left to pay into.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      {
+        label: "Open Settings",
+        href: "/settings",
+        description: "The Privacy section is where you ask for deletion, and where you cancel it.",
+      },
+    ],
+    related: ["download-your-data", "product-analytics", "settings-privacy", "troubleshooting"],
   },
   {
     slug: "troubleshooting",

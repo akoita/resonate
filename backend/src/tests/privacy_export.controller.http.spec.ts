@@ -1,12 +1,25 @@
 import { INestApplication, NotFoundException } from "@nestjs/common";
 import { THROTTLER_TRACKER, THROTTLER_TTL } from "@nestjs/throttler/dist/throttler.constants";
 import request from "supertest";
+import { AccountClosureService } from "../modules/privacy/account_closure.service";
+import { AccountClosureStepUpService } from "../modules/privacy/account_closure_step_up.service";
 import { PersonalDataExportService } from "../modules/privacy/personal_data_export.service";
 import { PrivacyController } from "../modules/privacy/privacy.controller";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
 
 const exportService = {
   prepare: jest.fn(),
+};
+
+const closureService = {
+  request: jest.fn(),
+  cancel: jest.fn(),
+  findPending: jest.fn().mockResolvedValue(null),
+};
+
+const closureStepUp = {
+  challenge: jest.fn(),
+  verify: jest.fn(),
 };
 
 function preparedFor(userId: string) {
@@ -31,6 +44,10 @@ describe("Privacy personal data export (HTTP)", () => {
   beforeAll(async () => {
     app = await createControllerTestApp(PrivacyController, [
       { provide: PersonalDataExportService, useValue: exportService },
+      // The same controller carries the account-closure door (#1771 slice 3b);
+      // its own contract is asserted in account_closure_door.controller.http.spec.ts.
+      { provide: AccountClosureService, useValue: closureService },
+      { provide: AccountClosureStepUpService, useValue: closureStepUp },
     ]);
   });
 

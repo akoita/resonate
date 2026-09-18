@@ -1,4 +1,12 @@
-import { Body, Controller, ForbiddenException, Inject, Optional, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Inject,
+  Optional,
+  Post,
+  forwardRef,
+} from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import { seconds } from "../shared/rate_limits";
 import { recoverMessageAddress, type PublicClient } from "viem";
@@ -6,6 +14,8 @@ import { AuthService } from "./auth.service";
 import { AuthNonceService } from "./auth_nonce.service";
 import { SignupFaucetService, type AuthMode } from "./signup_faucet.service";
 import { EventBus } from "../shared/event_bus";
+import { AccountClosureService } from "../privacy/account_closure.service";
+import { writeStructuredLog } from "../shared/structured_logging";
 
 @Controller("auth")
 export class AuthController {
@@ -14,6 +24,8 @@ export class AuthController {
     private readonly nonceService: AuthNonceService,
     @Inject("PUBLIC_CLIENT") private readonly publicClient: PublicClient,
     private readonly eventBus: EventBus,
+    @Inject(forwardRef(() => AccountClosureService))
+    private readonly accountClosureService: AccountClosureService,
     @Optional() private readonly signupFaucetService?: SignupFaucetService,
   ) { }
 
@@ -205,6 +217,50 @@ export class AuthController {
     }
   }
 
+  /**
+   * Every successful sign-in cancels a pending account closure.
+   *
+   * This is the load-bearing half of #1771 slice 3b, not a convenience. There
+   * is no email channel in this backend yet (#1777), so nothing can tell a
+   * person "someone asked to delete your account". Signing in is therefore the
+   * *only* way a real owner can discover and stop an erasure that a stolen
+   * token scheduled, and it is why the closure window is thirty days: an
+   * attacker has to keep the owner out of their account for a month rather than
+   * a minute.
+   *
+   * Awaited rather than published as an event, because a cancel that is
+   * dispatched and then dropped is an account erased after its owner tried to
+   * save it, and nothing afterwards would say so.
+   *
+   * A failure is logged at `error` and swallowed: locking somebody out of their
+   * account because the cancel failed would be worse than a cancel they can
+   * retry simply by signing in again — and being locked out is the exact
+   * condition that lets the erasure run.
+   */
+  private async cancelScheduledClosureOnSignIn(userId: string) {
+    try {
+      const cancelled = await this.accountClosureService.cancel(userId);
+      if (cancelled) {
+        writeStructuredLog({
+          level: "info",
+          event: "privacy.account_closure.cancelled_by_sign_in",
+          message: "Scheduled account closure cancelled because the account holder signed in",
+          userId,
+          closureRequestId: cancelled.id,
+        });
+      }
+    } catch (error) {
+      writeStructuredLog({
+        level: "error",
+        event: "privacy.account_closure.cancel_on_sign_in_failed",
+        message:
+          "Sign-in could not cancel a scheduled account closure; the closure may still be pending",
+        userId,
+        error: (error as Error).message,
+      });
+    }
+  }
+
   private async issueTokenAndMaybeFundSignup(input: {
     userId: string;
     walletAddress: string;
@@ -223,6 +279,12 @@ export class AuthController {
       pubKeyY: input.pubKeyY,
     });
     const canonicalUserId = wallet.userId ?? input.userId;
+
+    // Signing in calls off a scheduled erasure — see below. Awaited before the
+    // token is issued so the answer to "did my account survive?" is settled by
+    // the time the caller holds a session.
+    await this.cancelScheduledClosureOnSignIn(canonicalUserId);
+
     const result = this.authService.issueTokenForAddress(canonicalUserId, input.role ?? "listener");
     let signupFaucet:
       | { status: "sent"; txHash: `0x${string}`; chainId: number; amountEth: string }

@@ -43,6 +43,10 @@ const mockSignupFaucet = {
   maybeFundOnSignup: jest.fn().mockResolvedValue({ status: 'skipped', reason: 'disabled' }),
 };
 const mockEventBus = { publish: jest.fn() };
+// Every successful sign-in cancels a scheduled account closure (#1771 slice
+// 3b). Mocked here; the real cancel is covered end to end in
+// account_closure_door.integration.spec.ts.
+const mockAccountClosure = { cancel: jest.fn().mockResolvedValue(null) };
 
 function makeController() {
   return new AuthController(
@@ -50,6 +54,7 @@ function makeController() {
     mockNonceService as any,
     mockPublicClient as any,
     mockEventBus as any,
+    mockAccountClosure as any,
     mockSignupFaucet as any,
   );
 }
@@ -70,6 +75,7 @@ beforeEach(() => {
   mockNonceService.issue.mockReturnValue('nonce-123');
   mockNonceService.consume.mockReturnValue(true);
   mockSignupFaucet.maybeFundOnSignup.mockResolvedValue({ status: 'skipped', reason: 'disabled' });
+  mockAccountClosure.cancel.mockResolvedValue(null);
 });
 
 // ====================================================================
