@@ -238,15 +238,20 @@ the privacy policy from #1769 once that exists.
 - **Reports other people filed about them.** Those contain the reporter's
   personal data, which is theirs to request.
 
-### One limit that is a bug, not a policy
+### One limit that was a bug, not a policy
 
-`runRetentionCleanup` never reaches the warehouse, so analytics events past
-their retention window are deleted from Postgres and left in BigQuery. The
-export reads Postgres, so past that window it would omit them —
-[#1789](https://github.com/akoita/resonate/issues/1789). Latent today only
-because the ledger is younger than the shortest window. The fix belongs in
-retention, not in the export: having the export read BigQuery would make the
-divergence permanent and put a cloud dependency in a user-facing request.
+`runRetentionCleanup` did not reach the warehouse, so analytics events past
+their retention window were deleted from Postgres and left in BigQuery — and
+since the export reads Postgres, past that window it would have omitted them.
+Fixed in [#1789](https://github.com/akoita/resonate/issues/1789): retention now
+propagates exactly as an erasure does.
+
+The fix belonged in retention rather than in the export. Having the export read
+BigQuery would have made the divergence permanent and put a cloud dependency in
+a user-facing request.
+
+**Retention still has no schedule**, so nothing has yet aged out of either
+store. That is the remaining half of #1789, and it deliberately comes second.
 
 ## Surfaces
 

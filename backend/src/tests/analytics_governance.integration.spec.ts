@@ -31,6 +31,8 @@ class RecordingWarehouseGovernanceTarget implements AnalyticsWarehouseGovernance
 }
 
 const TEST_PREFIX = `analytics_governance_${Date.now()}_`;
+/** A retention window long enough that nothing seeded here has expired. */
+const KEEP_EVERYTHING_DAYS = 36500;
 
 describe("Analytics governance integration", () => {
   const governance = new AnalyticsGovernanceService();
@@ -43,6 +45,8 @@ describe("Analytics governance integration", () => {
           { eventId: { startsWith: TEST_PREFIX } },
           { actorId: { startsWith: TEST_PREFIX } },
           { subjectId: { startsWith: TEST_PREFIX } },
+          // Retention's warehouse_erasure rows carry no subject or actor.
+          { action: "warehouse_erasure", reason: { startsWith: "retention expired for " } },
         ],
       },
     });
@@ -135,6 +139,159 @@ describe("Analytics governance integration", () => {
       orderBy: { eventId: "asc" },
     });
     expect(lineage.map((row) => row.action).sort()).toEqual(["retention_deleted", "retention_redacted"]);
+  });
+
+  /**
+   * The warehouse is the long-lived store since the Sprint 21 cutover, so a
+   * retention run that stops at Postgres enforces the window only in the copy
+   * that is not the long-lived one (#1789). The `sensitive` tier is used on its
+   * own here because no other suite writes it, and the retention scan is global.
+   */
+  it("erases the expired events from the warehouse as well as Postgres", async () => {
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}retention_playback`,
+      eventName: "playback.completed",
+      privacyTier: "sensitive",
+      actorId: `${TEST_PREFIX}retention_user`,
+      subjectType: "track",
+      subjectId: `${TEST_PREFIX}retention_track`,
+      occurredAt: new Date("2024-02-03T00:00:00.000Z"),
+      payload: { userId: `${TEST_PREFIX}retention_user`, trackId: `${TEST_PREFIX}retention_track` },
+    });
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}retention_commerce`,
+      eventName: "commerce.settled",
+      privacyTier: "sensitive",
+      actorId: `${TEST_PREFIX}retention_user`,
+      subjectType: "track",
+      subjectId: `${TEST_PREFIX}retention_track`,
+      occurredAt: new Date("2024-02-04T00:00:00.000Z"),
+      payload: { userId: `${TEST_PREFIX}retention_user`, canonicalAmountUsd: 7 },
+    });
+
+    const postgresState: { deleted: unknown; redactedActorId: string | null | undefined }[] = [];
+    const target = new RecordingWarehouseGovernanceTarget(async () => {
+      postgresState.push({
+        deleted: await prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}retention_playback` } }),
+        redactedActorId: (
+          await prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}retention_commerce` } })
+        )?.actorId,
+      });
+    });
+
+    const result = await new AnalyticsGovernanceService(target).runRetentionCleanup({
+      now,
+      policy: { personalDays: KEEP_EVERYTHING_DAYS, sensitiveDays: 30, pseudonymousDays: KEEP_EVERYTHING_DAYS },
+    });
+
+    expect(target.calls).toHaveLength(1);
+    expect(target.calls[0]).toEqual(
+      expect.objectContaining({
+        deleteEventIds: [`${TEST_PREFIX}retention_playback`],
+        redactEventIds: [`${TEST_PREFIX}retention_commerce`],
+        reason: "retention expired for sensitive event",
+      }),
+    );
+    expect(target.calls[0].affectedDates.sort()).toEqual(["2024-02-03", "2024-02-04"]);
+    // Postgres first, as for any other erasure: a load in between cannot reintroduce the rows.
+    expect(postgresState).toEqual([{ deleted: null, redactedActorId: "[redacted]" }]);
+    expect(target.calls[0].redactedEnvelopes).toEqual([
+      expect.objectContaining({ eventId: `${TEST_PREFIX}retention_commerce`, actorId: "[redacted]", subjectId: "[redacted]" }),
+    ]);
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "ok",
+        deleted: 1,
+        redacted: 1,
+        lineageRecords: 2,
+        warehouse: [
+          { tier: "sensitive", status: "ok", provider: "recording", deletedRows: 1, redactedRows: 1, statements: 1 },
+        ],
+      }),
+    );
+
+    // The disposition survives the batching: an audit reviewer still sees which was which.
+    const lineage = await prisma.analyticsGovernanceLog.findMany({
+      where: { eventId: { in: [`${TEST_PREFIX}retention_playback`, `${TEST_PREFIX}retention_commerce`] } },
+      orderBy: { eventId: "asc" },
+    });
+    expect(lineage.map((row) => row.action).sort()).toEqual(["retention_deleted", "retention_redacted"]);
+    await expect(
+      prisma.analyticsGovernanceLog.findFirst({
+        where: { action: "warehouse_erasure", reason: "retention expired for sensitive event" },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        details: expect.objectContaining({ sourceAction: "retention", warehouse: expect.objectContaining({ status: "ok" }) }),
+      }),
+    );
+  });
+
+  it("does not touch the warehouse when nothing has expired", async () => {
+    const target = new RecordingWarehouseGovernanceTarget();
+
+    const result = await new AnalyticsGovernanceService(target).runRetentionCleanup({
+      now,
+      policy: {
+        personalDays: KEEP_EVERYTHING_DAYS,
+        sensitiveDays: KEEP_EVERYTHING_DAYS,
+        pseudonymousDays: KEEP_EVERYTHING_DAYS,
+      },
+    });
+
+    expect(target.calls).toEqual([]);
+    expect(result).toEqual(
+      expect.objectContaining({ status: "ok", deleted: 0, redacted: 0, lineageRecords: 0, warehouse: [] }),
+    );
+  });
+
+  it("keeps the expired-event purge and reports a retention warehouse failure", async () => {
+    // The previous retention test left its redacted audit event in the same tier.
+    await prisma.analyticsEvent.deleteMany({ where: { eventId: `${TEST_PREFIX}retention_commerce` } });
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}retention_failure`,
+      eventName: "playback.completed",
+      privacyTier: "sensitive",
+      actorId: `${TEST_PREFIX}retention_failure_user`,
+      subjectType: "track",
+      subjectId: `${TEST_PREFIX}retention_failure_track`,
+      occurredAt: new Date("2024-02-05T00:00:00.000Z"),
+      payload: { userId: `${TEST_PREFIX}retention_failure_user` },
+    });
+
+    const failing: AnalyticsWarehouseGovernanceTarget = {
+      describe: () => ({ provider: "recording" }),
+      applyErasure: async () => {
+        throw new Error("warehouse unavailable");
+      },
+    };
+
+    const result = await new AnalyticsGovernanceService(failing).runRetentionCleanup({
+      now,
+      policy: { personalDays: KEEP_EVERYTHING_DAYS, sensitiveDays: 30, pseudonymousDays: KEEP_EVERYTHING_DAYS },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        status: "warehouse_failed",
+        deleted: 1,
+        warehouse: [expect.objectContaining({ tier: "sensitive", status: "failed", error: "warehouse unavailable" })],
+      }),
+    );
+    // The completed Postgres work is never discarded because the warehouse failed.
+    await expect(
+      prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}retention_failure` } }),
+    ).resolves.toBeNull();
+    await expect(
+      prisma.analyticsGovernanceLog.findFirst({
+        where: { action: "warehouse_erasure", reason: "retention expired for sensitive event" },
+        orderBy: { createdAt: "desc" },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        details: expect.objectContaining({ warehouse: expect.objectContaining({ status: "failed" }) }),
+      }),
+    );
   });
 
   it("propagates deletion while preserving lawful financial facts with redaction", async () => {

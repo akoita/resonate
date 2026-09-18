@@ -30,7 +30,12 @@ export class MaintenanceService {
   async runRetentionCleanup() {
     const analytics = await this.analyticsGovernanceService.runRetentionCleanup();
     return {
-      status: "ok",
+      // Carried from the governance run, not hardcoded. Retention reaches the
+      // warehouse as of #1789, and a run that cleared Postgres while BigQuery
+      // refused is not "ok" — reporting it as such is the same shape of silence
+      // that let retention sit unscheduled and unnoticed in the first place.
+      status: analytics.status,
+      warehouse: analytics.warehouse,
       purged: {
         sessions: 0,
         uploads: 0,
