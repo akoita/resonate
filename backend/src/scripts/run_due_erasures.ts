@@ -1,8 +1,10 @@
 import "dotenv/config";
-import { NestFactory } from "@nestjs/core";
-import { AppModule } from "../modules/app.module";
-import { MaintenanceService } from "../modules/maintenance/maintenance.service";
+import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
+import { AccountClosureService } from "../modules/privacy/account_closure.service";
+import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 import { writeStructuredLog } from "../modules/shared/structured_logging";
+import { prisma } from "../db/prisma";
 
 /**
  * #1797 — the scheduled entry point for account erasures whose 30-day window
@@ -14,19 +16,27 @@ import { writeStructuredLog } from "../modules/shared/structured_logging";
  * but nothing scheduled can: every route on `MaintenanceController` is guarded
  * by `AuthGuard("jwt")` + `RolesGuard` + `@Roles("admin")`, and Cloud Scheduler
  * can present a Google OIDC token but cannot mint an application JWT carrying
- * an allowlisted admin address. That is also why analytics retention
- * (#1789) was never scheduled — its endpoint was unreachable in exactly the
- * same way.
+ * an allowlisted admin address. That is also why analytics retention (#1789)
+ * was never scheduled — its endpoint was unreachable in exactly the same way.
  *
  * So this follows the one scheduled task that does work: a Cloud Run Job on the
- * backend image, calling the service in-process, with Cloud Scheduler invoking
- * the job rather than the service. No application authentication is involved
- * because no request crosses a boundary.
+ * backend image, with Cloud Scheduler invoking the job rather than the service.
+ * No request crosses a boundary, so no application authentication is involved.
  *
- * It is a real file rather than the inline `args = ["-e", <script>]` string the
- * analytics warehouse job embeds in Terraform. An erasure is irreversible; its
- * entry point should be reviewable, diffable and testable like any other code,
- * not a string literal in an infrastructure module.
+ * ## Why it builds its own services instead of booting Nest
+ *
+ * All three collaborators are plain classes with no injected dependencies —
+ * `PersonalDataResolverService` has no constructor, `AnalyticsGovernanceService`
+ * takes an `@Optional()` target that defaults from the environment, and
+ * `AccountClosureService` uses the Prisma singleton. Constructing them directly
+ * keeps this job's environment down to a database URL and the analytics
+ * settings.
+ *
+ * Booting `AppModule` instead would drag in the HTTP server, BullMQ and Redis,
+ * and every secret the running service needs — which would mean duplicating the
+ * service's whole environment block in Terraform and keeping two copies in step
+ * by hand. It would also let an unrelated queue connection failure abort an
+ * erasure run. A scheduled job should depend on as little as the work requires.
  *
  * ## Exit codes
  *
@@ -53,18 +63,19 @@ export function exitCodeFor(result: { failed: number }): 0 | 1 {
   return result.failed > 0 ? 1 : 0;
 }
 
+export function buildErasureService(): PersonalDataErasureService {
+  return new PersonalDataErasureService(
+    new PersonalDataResolverService(),
+    new AnalyticsGovernanceService(),
+    new AccountClosureService(),
+  );
+}
+
 export async function runDueErasuresScript(argv: string[] = process.argv.slice(2)) {
   const limit = parseLimit(argv);
 
-  // A standalone context: this process serves no traffic and must not open a
-  // port next to the running service.
-  const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: ["error", "warn", "log"],
-  });
-
   try {
-    const maintenance = app.get(MaintenanceService);
-    const result = await maintenance.runDueAccountErasures(limit ? { limit } : {});
+    const result = await buildErasureService().runDueErasures(limit ? { limit } : {});
 
     writeStructuredLog({
       level: result.failed > 0 ? "error" : "info",
@@ -86,7 +97,7 @@ export async function runDueErasuresScript(argv: string[] = process.argv.slice(2
 
     return result;
   } finally {
-    await app.close();
+    await prisma.$disconnect();
   }
 }
 

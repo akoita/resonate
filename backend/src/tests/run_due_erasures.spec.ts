@@ -1,4 +1,5 @@
-import { exitCodeFor, parseLimit } from "../scripts/run_due_erasures";
+import { buildErasureService, exitCodeFor, parseLimit } from "../scripts/run_due_erasures";
+import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 
 describe("scheduled erasure runner", () => {
   describe("exit code", () => {
@@ -15,6 +16,23 @@ describe("scheduled erasure runner", () => {
     it("is a failure when any erasure failed, not only when all did", () => {
       expect(exitCodeFor({ failed: 1 })).toBe(1);
       expect(exitCodeFor({ failed: 9 })).toBe(1);
+    });
+  });
+
+  describe("building the service without Nest", () => {
+    /**
+     * The job constructs its three collaborators directly so its Cloud Run
+     * environment stays down to a database URL and the analytics settings —
+     * booting `AppModule` would drag in the HTTP server, BullMQ and Redis, and
+     * force the service's whole environment block to be duplicated in Terraform.
+     *
+     * That only holds while those three take no injected dependencies. If one
+     * gains a constructor argument the compiler catches it here first, which is
+     * the point: the alternative is finding out from a scheduled erasure that
+     * crashed in production at 03:00.
+     */
+    it("constructs with no arguments and no container", () => {
+      expect(buildErasureService()).toBeInstanceOf(PersonalDataErasureService);
     });
   });
 
