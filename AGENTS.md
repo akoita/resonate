@@ -21,6 +21,18 @@ from elsewhere in the repository.
 - Document new application variables in `docs/deployment/environment.md` and the
   corresponding deploy configuration in `resonate-iac`. Keep
   `docs/smart-contracts/deployment.md` contract-focused.
+- This repository is public; `resonate-iac` is private. Keep deployment
+  information there: project IDs, environment URLs, `gcloud` invocations, job
+  names and schedules, and any claim about what does or does not currently run
+  in a deployed environment. A live weakness described in a public tracker is a
+  disclosure, not a to-do.
+- A task needing deployment action becomes two cross-linked issues: the
+  application half here, the deployment half in `resonate-iac` (shape:
+  `resonate-iac#228`).
+- Mechanism stays public — code, defects, and constraints that bind the code
+  ("admin routes require an admin JWT, so no scheduled caller can reach them").
+  Runbooks here give the application procedure and defer URLs, tokens and
+  platform wiring to `resonate-iac`.
 
 ## Business Model v2
 

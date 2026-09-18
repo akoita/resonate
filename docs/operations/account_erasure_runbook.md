@@ -30,27 +30,31 @@ everybody else's data. Read the whole of this page before running anything.
 
 ### Scheduled (normal)
 
-A Cloud Run Job executes `node dist/scripts/run_due_erasures.js` on the backend
-image, invoked by Cloud Scheduler. **Exit code 0 means every due erasure
-completed** — including the common case where none were due. Exit 1 means at
-least one failed.
+A scheduled job runs `node dist/scripts/run_due_erasures.js` against the backend
+image. **Exit code 0 means every due erasure completed** — including the common
+case where none were due. Exit 1 means at least one failed.
 
-Do not expect this to run over an HTTP endpoint. Every route on
+It deliberately does not run over an HTTP endpoint. Every route on
 `MaintenanceController` requires `AuthGuard("jwt")` + `RolesGuard` +
-`@Roles("admin")`, and Cloud Scheduler cannot mint an application JWT with an
-allowlisted admin address. That is also why analytics retention was never
-scheduled (#1789).
+`@Roles("admin")`, and a scheduled caller cannot mint an application JWT with an
+allowlisted admin address, so the script calls the service in-process instead.
+
+**How that job is defined, invoked and configured is deployment configuration
+and lives in the infrastructure repository, not here.**
 
 ### By hand
 
 An operator holding an admin token can drive the same work over HTTP:
 
 ```bash
-curl -X POST "$BACKEND_URL/admin/erasure/run-due" \
-  -H "Authorization: Bearer $ADMIN_JWT" \
+curl -X POST "<backend-base-url>/admin/erasure/run-due" \
+  -H "Authorization: Bearer <admin-jwt>" \
   -H "Content-Type: application/json" \
   -d '{"limit": 1}'
 ```
+
+Environment URLs and how to obtain an admin token are in the infrastructure
+repository.
 
 Use `limit` when working through a backlog deliberately — one at a time is the
 right instinct the first time this is ever run against real data.
