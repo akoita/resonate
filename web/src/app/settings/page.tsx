@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "../../components/ui/Button";
 import AuthGate from "../../components/auth/AuthGate";
 import NotificationPreferences from "../../components/notifications/NotificationPreferences";
+import AccountClosurePanel from "../../components/settings/AccountClosurePanel";
 import AnalyticsConsentSettingsPanel from "../../components/settings/AnalyticsConsentSettingsPanel";
 import ArtistRemixSettingsPanel from "../../components/settings/ArtistRemixSettingsPanel";
 import CommunityProfileSettingsPanel from "../../components/settings/CommunityProfileSettingsPanel";
@@ -55,7 +56,7 @@ const SETTINGS_SECTIONS: Array<{
         id: "privacy",
         label: "Privacy",
         eyebrow: "Your data",
-        description: "Whether we may measure how you use Resonate, and getting a copy of your data.",
+        description: "Whether we may measure how you use Resonate, getting a copy of your data, and deleting your account.",
     },
     {
         id: "artist",
@@ -498,6 +499,7 @@ export default function SettingsPage() {
                             <>
                                 <AnalyticsConsentSettingsPanel token={token} addToast={addToast} />
                                 <DataExportPanel token={token} addToast={addToast} />
+                                <AccountClosurePanel token={token} addToast={addToast} />
                             </>
                         ) : null}
 

@@ -1470,6 +1470,166 @@ export function saveBlobAsDownload(blob: Blob, filename: string): boolean {
   return true;
 }
 
+/**
+ * #1771: the request to delete an account and the person behind it.
+ *
+ * The four calls are deliberately asymmetric. Scheduling a deletion costs a
+ * fresh passkey signature over a message only the server writes; cancelling
+ * one costs nothing beyond being signed in. Putting friction in front of the
+ * stop button would be a trap rather than a safeguard — the person using it
+ * is either undoing their own mistake or undoing someone else's.
+ */
+export type AccountClosureRequest = {
+  id: string;
+  requestedAt: string;
+  /** When the deletion actually runs if nobody stops it. */
+  dueAt: string;
+  status: string;
+};
+
+/**
+ * The step-up challenge.
+ *
+ * `message` is composed by the server and must reach the signer verbatim. The
+ * server verifies the signature against its own reconstruction of the text, so
+ * a client that writes, trims, or decorates the message can only produce a
+ * signature the server will reject — and a client that writes its own message
+ * could also ask someone to sign words other than the ones being enforced.
+ */
+export type AccountClosureChallenge = {
+  address: string;
+  message: string;
+  nonce: string;
+};
+
+export async function requestAccountClosureChallenge(token: string) {
+  return apiRequest<AccountClosureChallenge>(
+    "/privacy/account/closure/challenge",
+    { method: "POST" },
+    token,
+  );
+}
+
+/**
+ * The closure routes answer with `{ request, windowDays }`, and the request is
+ * null when nothing is pending. Both the envelope and a bare request object are
+ * accepted here so one shape landing on the other side of a deploy cannot make
+ * a pending deletion silently invisible — which, on this feature, is the one
+ * failure nobody would notice until the account was gone.
+ */
+function unwrapAccountClosure(payload: unknown): AccountClosureRequest | null {
+  if (!payload || typeof payload !== "object") return null;
+  const candidate =
+    "request" in (payload as Record<string, unknown>)
+      ? (payload as { request?: unknown }).request
+      : payload;
+  if (!candidate || typeof candidate !== "object") return null;
+  return typeof (candidate as AccountClosureRequest).dueAt === "string"
+    ? (candidate as AccountClosureRequest)
+    : null;
+}
+
+/**
+ * A refused signature and a wrong account are two different things to say to a
+ * person, so — as with a stale analytics policy version — they are outcomes
+ * rather than one generic thrown error. "That signature did not check out, try
+ * again" invites a retry that can work; "that is not this account's address"
+ * does not, and saying the first when we mean the second sends someone round a
+ * loop that cannot end.
+ */
+export type AccountClosureRequestResult =
+  | { status: "scheduled"; request: AccountClosureRequest }
+  /** The signature did not verify, or its challenge was already spent. */
+  | { status: "signature_rejected" }
+  /** The address signed for is not one this session's account owns. */
+  | { status: "wrong_account" };
+
+/**
+ * Deliberately not routed through `apiRequest`.
+ *
+ * The server answers a refused step-up signature with 400, because the bearer
+ * token was valid — the request reached the signature check only by passing the
+ * auth guard. But `apiRequest` clears the stored session on any 401, so if that
+ * status ever drifted back, a rejected signature would sign a person out in the
+ * middle of deleting their account. A failed step-up must cost them a retry,
+ * not their session, and that guarantee should not depend on a status code
+ * staying put in another codebase. Hence the direct `fetch`, and hence 401 is
+ * still treated as a rejected signature below rather than as a dead session.
+ */
+export async function requestAccountClosure(
+  token: string,
+  input: { address: string; signature: string; reason?: string },
+): Promise<AccountClosureRequestResult> {
+  const response = await fetch(`${API_BASE}/privacy/account/closure`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+
+  if (response.status === 403) {
+    return { status: "wrong_account" };
+  }
+
+  // 400 (nothing usable was sent) and 401 (it did not verify, or the challenge
+  // was already spent) are the same sentence to a person: that did not work,
+  // try again.
+  if (response.status === 400 || response.status === 401) {
+    return { status: "signature_rejected" };
+  }
+
+  const body = await readResponseBody(response);
+
+  if (!response.ok) {
+    throw new ApiRequestError(
+      formatApiErrorMessage(response.status, response.statusText, body.text),
+      response.status,
+      body.json,
+    );
+  }
+
+  const request = unwrapAccountClosure(body.json);
+  if (!request) {
+    // Reporting success without a due date would leave someone believing a
+    // deletion is scheduled with no way to see or stop it.
+    throw new ApiRequestError(
+      "The server did not say when the deletion would run.",
+      response.status,
+      body.json,
+    );
+  }
+
+  return { status: "scheduled", request };
+}
+
+async function readResponseBody(response: Response): Promise<{ text: string; json: unknown }> {
+  let text = "";
+  try {
+    text = await response.text();
+  } catch {
+    // ignore
+  }
+  try {
+    return { text, json: text ? JSON.parse(text) : null };
+  } catch {
+    return { text, json: null };
+  }
+}
+
+/** The pending deletion, or `null` when nothing is scheduled. */
+export async function getAccountClosure(token: string): Promise<AccountClosureRequest | null> {
+  return unwrapAccountClosure(
+    await apiRequest<unknown>("/privacy/account/closure", { cache: "no-store" }, token),
+  );
+}
+
+/** Stop a scheduled deletion. No signature: cancelling is the safe direction. */
+export async function cancelAccountClosure(token: string) {
+  await apiRequest<unknown>("/privacy/account/closure", { method: "DELETE" }, token);
+}
+
 export type TrustTier = {
   artistId: string;
   tier: string;

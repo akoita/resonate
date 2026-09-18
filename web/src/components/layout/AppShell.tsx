@@ -11,6 +11,7 @@ import { AddToPlaylistModal } from "../library/AddToPlaylistModal";
 import { ResaleModal } from "../marketplace/ResaleModal";
 import AgentOnboardingGate from "../agent/AgentOnboardingGate";
 import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
+import AccountClosureNotice from "../settings/AccountClosureNotice";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
 
 export default function AppShell({
@@ -36,6 +37,12 @@ export default function AppShell({
         <Sidebar />
         <div className="app-main">
           <Topbar />
+          {/* #1771: a pending account deletion is announced here, in flow under
+            * the topbar, so nobody has to open Settings to learn their account
+            * is going away. It deliberately stays out of the fixed bottom stack
+            * where the consent banner (9999) outranks the update pill (9998),
+            * rather than adding a third undismissable thing to that corner. */}
+          <AccountClosureNotice />
           <main id="main-content" className="app-content" tabIndex={-1}>
             <Suspense fallback={null}>
               {children}

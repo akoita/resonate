@@ -13,6 +13,7 @@ import { AuthController } from '../modules/auth/auth.controller';
 import { AuthService } from '../modules/auth/auth.service';
 import { AuthNonceService } from '../modules/auth/auth_nonce.service';
 import { EventBus } from '../modules/shared/event_bus';
+import { AccountClosureService } from '../modules/privacy/account_closure.service';
 import { createControllerTestApp } from './e2e-helpers';
 import { restoreEnv } from './env-helpers';
 
@@ -26,6 +27,8 @@ const mockNonceService = {
   issue: jest.fn().mockReturnValue('nonce-abc'),
   consume: jest.fn().mockReturnValue(true),
 };
+
+const mockAccountClosure = { cancel: jest.fn().mockResolvedValue(null) };
 
 const mockPublicClient = {
   getChainId: jest.fn().mockResolvedValue(1),
@@ -44,6 +47,8 @@ describe('AuthController (e2e)', () => {
       { provide: AuthNonceService, useValue: mockNonceService },
       { provide: 'PUBLIC_CLIENT', useValue: mockPublicClient },
       { provide: EventBus, useValue: { publish: jest.fn() } },
+      // Sign-in cancels a scheduled account closure (#1771 slice 3b).
+      { provide: AccountClosureService, useValue: mockAccountClosure },
     ]);
   });
 
@@ -63,6 +68,7 @@ describe('AuthController (e2e)', () => {
     mockPublicClient.getChainId.mockResolvedValue(1);
     mockPublicClient.verifyMessage.mockResolvedValue(true);
     mockPublicClient.getCode.mockResolvedValue('0x6080604052');
+    mockAccountClosure.cancel.mockResolvedValue(null);
   });
 
   // ----- POST /auth/login -----

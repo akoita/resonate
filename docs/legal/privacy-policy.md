@@ -144,26 +144,42 @@ removes or redacts the analytics rows linked to the identifier it is given.
 Financial and audit records are redacted rather than deleted, as described
 below.
 
-> **This section describes an incomplete mechanism and must not be published
-> until it is finished.** What exists today deletes from the primary event
-> store only, and only for one identifier supplied by the caller — it does not
-> resolve a person to their wallet, artist profile, sessions and releases. The
-> analytics warehouse and the facts derived from it are untouched, and the
-> backfill path does not read deletion lineage as a tombstone, so rebuilt rows
-> can reappear. There is no account-close workflow and no runbook for
-> completing a deletion by hand, which means the earlier draft's promise of
-> manual completion was not a real fallback either.
+> **Most of this mechanism now exists; one gap still blocks publication.**
 >
-> [#1770](https://github.com/akoita/resonate/issues/1770) and
-> [#1771](https://github.com/akoita/resonate/issues/1771) build the missing
-> parts. Until they ship, this document cannot honestly describe erasure at
-> all, and the operator cannot honestly answer an erasure request.
+> Shipped: a person is resolved to every identifier their data is keyed by
+> (#1785); erasure reaches the analytics warehouse and the facts derived from it
+> (#1770); the erasure itself anonymises in place, rotates the account id — which
+> for a wallet account *is* the wallet address — detaches an artist profile
+> without deleting a catalogue other people bought from, and keeps only what
+> retention obliges (#1795); and a person can ask for it themselves, from
+> Settings, behind a signature, with 30 days to change their mind (#1771 slice
+> 3b).
+>
+> **Still missing: nothing runs the scheduled erasures.**
+> [#1797](https://github.com/akoita/resonate/issues/1797) — the engine and its
+> endpoint exist, but no scheduler calls it, so a request reaches its due date
+> and waits for an operator. There is also no operator runbook.
+>
+> So this section may not yet say a deletion completes on its own. Once #1797
+> lands, the paragraphs below are accurate as written and this block comes off.
+> Two related gaps do not block it but should be known:
+> [#1796](https://github.com/akoita/resonate/issues/1796) (an unset salt makes
+> analytics erasure depend on never rotating an auth secret) and
+> [#1789](https://github.com/akoita/resonate/issues/1789) (retention has never
+> run, so nothing has yet aged out of either store).
 
-Once the mechanism is complete, this section will describe it: resolving a
-person to every identifier held, recording the request, removing or redacting
-across the raw store, the warehouse and derived facts, keeping aggregates only
-where they remain anonymous, revoking or rebuilding summaries, and reading the
-deletion record on every later rebuild so deleted rows do not come back.
+When you ask us to delete your account, we resolve you to every identifier your
+data is held under — not just your account id, but the wallet addresses, the
+artist profile and the pseudonymous identifier your activity is recorded against
+— and record the request. Nothing happens for 30 days, and signing in during
+that time cancels it.
+
+After that we remove or redact your data across the primary store, the analytics
+warehouse and the facts derived from it, keep aggregates only where they remain
+anonymous, and read the deletion record on every later rebuild so deleted rows
+do not come back. Your account id is replaced, because for a wallet account that
+id is your wallet address. If you released music, it stops streaming; people who
+bought something from you keep it.
 
 **Financial and audit records are redacted rather than deleted.** We keep what
 accounting, rights and tax law require us to keep — the fact, the date, the

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AnalyticsModule } from "../analytics/analytics.module";
 import { IdentityModule } from "../identity/identity.module";
 import { AccountClosureService } from "./account_closure.service";
+import { AccountClosureStepUpService } from "./account_closure_step_up.service";
 import { PersonalDataErasureService } from "./personal_data_erasure.service";
 import { PersonalDataExportService } from "./personal_data_export.service";
 import { PrivacyController } from "./privacy.controller";
@@ -20,7 +21,12 @@ import { PrivacyController } from "./privacy.controller";
 @Module({
   imports: [IdentityModule, AnalyticsModule],
   controllers: [PrivacyController],
-  providers: [PersonalDataExportService, AccountClosureService, PersonalDataErasureService],
+  providers: [
+    PersonalDataExportService,
+    AccountClosureService,
+    AccountClosureStepUpService,
+    PersonalDataErasureService,
+  ],
   // `AccountClosureService` is exported for the sign-in path, which must be
   // able to cancel a scheduled closure; `PersonalDataErasureService` for the
   // maintenance route the external scheduler calls.

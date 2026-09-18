@@ -14,18 +14,16 @@ issue: 1771
 **Export works end to end.** A signed-in person downloads everything Resonate
 holds about them from Settings > Privacy, without an operator doing anything.
 
-**Erasure works, but nothing in the app offers it yet.** The engine is built and
-operator-drivable; the Settings door, the passkey step-up and cancel-on-sign-in
-are the remaining slice. Until they ship, nothing in the UI offers, promises or
-hints at deletion — deliberately, because a delete control that does not
-propagate is the false promise #1770 was opened to prevent.
+**Export and erasure both work end to end.** A person downloads their data, and
+schedules their own account closure and erasure, without an operator touching
+anything.
 
 | Slice | What it is | State |
 | --- | --- | --- |
 | 1 | Resolve a person to all five identifiers their data is keyed by | merged (#1785) |
 | 2 | Export: endpoint, Settings surface, User Guide article | this page |
-| 3a | Erasure engine, closure state machine, operator endpoint | this page |
-| 3b | Settings door, passkey step-up, cancel-on-sign-in | not started |
+| 3a | Erasure engine, closure state machine, operator endpoint | merged (#1795) |
+| 3b | Settings door, signature step-up, cancel-on-sign-in | this page |
 
 ## Who It Is For
 
@@ -173,6 +171,57 @@ Address-shaped identifiers are now pseudonymized at the log writer; non-person
 subject ids pass through, because an audit trail nobody can read is not one.
 **Rows written before this need a backfill** — nothing rewrites history.
 
+## Asking for deletion
+
+Scheduling an erasure takes two deliberate acts: a confirmation that states what
+is about to happen, and **a signature over a message that names the action**.
+For a passkey account that signature *is* a passkey prompt, so the person
+authorises the deletion the same way they sign in.
+
+**The server composes that message and verifies against its own reconstruction
+of it — never against a string the client sent.** Accepting a client-supplied
+message would let a caller obtain a signature over one text and submit it as
+consent to another, and naming the action would buy nothing.
+
+The step-up is a signature rather than a WebAuthn assertion for a structural
+reason worth recording, because "require a passkey assertion" is the obvious
+first design and it does not work here: `WebAuthnCredential.userId` is a
+`randomUUID()` minted per registration and unrelated to `User.id`, so a verified
+assertion proves someone holds *a* passkey, not that they hold *this account's*.
+Tying the two together would mean re-deriving a public-key hash through
+`PasskeyIdentity` — a new authentication path invented to guard an irreversible
+action. The signature route reuses the proven sign-in machinery instead.
+
+### Two asymmetries, both deliberate
+
+**Cancelling requires no signature.** Requiring proof to *stop* an irreversible
+deletion would mean somebody who lost their signer could not save their own
+account. Cancelling is the safe direction: the worst case is an account that
+survives when its owner wanted it gone, and they can ask again.
+
+**Signing in cancels a pending request.** This is not a convenience. There is no
+outbound email channel in this backend (#1777), so **signing in is the only way
+a real owner can discover and stop an erasure that somebody else scheduled with
+a stolen token.** The cancel is awaited and its failure logged loudly rather than
+dispatched and forgotten, because a silently dropped cancel means an account
+erased after its owner tried to save it.
+
+### The 30-day window
+
+Nothing happens for 30 days (`ACCOUNT_CLOSURE_WINDOW_DAYS`). One active request
+per person, enforced by a partial unique index rather than an application check,
+because a double-submitted request racing itself would schedule the engine twice
+against the same account and the second run would find a person who no longer
+exists.
+
+The pending state is visible outside Settings, in the app shell, with no dismiss
+control — somebody who did not schedule it needs to find out without going
+looking. It deliberately does not join the fixed bottom stack where the
+analytics consent banner sits: that banner already wins a documented stacking
+contest against the update pill (#1772), and a third undismissable element in
+one corner would reopen it. A deletion deadline is a state of the account rather
+than an interruption, so it takes layout space instead of covering anything.
+
 ## Honest Limits
 
 Stated in the app beside the download control, in the User Guide article, and in
@@ -218,6 +267,26 @@ cd backend && npm run test -- personal_data_export_manifest privacy_export
 cd backend && npm run test:integration -- personal_data_export
 cd web && npx vitest run src/components/settings/DataExportPanel.test.tsx src/lib/help/help.test.ts
 ```
+
+## Still missing
+
+- **Nothing runs the scheduled erasures** ([#1797](https://github.com/akoita/resonate/issues/1797)).
+  The engine and `POST /admin/erasure/run-due` exist; no scheduler calls it, so
+  a due request waits for an operator. This is what still blocks the privacy
+  policy's "When you delete" section from publication, and it is the difference
+  between the 30-day promise being true and being a sentence in a panel.
+- **The step-up accepts an unverifiable signature as a last resort**
+  ([#1798](https://github.com/akoita/resonate/issues/1798)). Narrowed — ERC-6492
+  validation no longer requires the account to have bytecode, which is what
+  6492 is for — but the `nonce_only` rung remains for a signature that is
+  neither recoverable nor checkable on chain.
+- **`ANALYTICS_ACTOR_ID_SALT` is unset everywhere**
+  ([#1796](https://github.com/akoita/resonate/issues/1796)), so analytics
+  erasure completeness currently depends on nobody rotating `JWT_SECRET`.
+- **Pre-#1795 governance lineage rows still hold raw wallet addresses** and want
+  a backfill. New rows are pseudonymized; history is not rewritten.
+- No help-article screenshots: capturing them needs a running stack and seeded
+  accounts.
 
 ## For Slice 3
 
