@@ -72,6 +72,14 @@ export function normalizeGenerationErrorMessage(error: unknown): string {
   return raw || 'Generation failed. Please try again.';
 }
 
+export function classifyGenerationFailure(error: unknown): string {
+  const message = normalizeGenerationErrorMessage(error);
+  if (message.includes('rate-limited')) return 'provider_rate_limited';
+  if (message.includes('prompt was rejected')) return 'provider_rejected_prompt';
+  if (message.includes('provider is not available')) return 'provider_unavailable';
+  return 'generation_failed';
+}
+
 /**
  * Appends a RIFF LIST INFO chunk to a standard WAV buffer,
  * and repairs any truncated chunk size declarations (e.g. from Lyria).
@@ -202,6 +210,13 @@ export class GenerationService {
       // The charge is only justified once the work is queued; a failed enqueue
       // returns the credits so the user is never charged for a no-op.
       await this.credits
+        .markGenerationEnqueueFailed(userId, jobId)
+        .catch((outcomeError) =>
+          this.logger.error(
+            `Failed to persist enqueue failure for job ${jobId}: ${outcomeError?.message ?? outcomeError}`,
+          ),
+        );
+      await this.credits
         .refund(userId, costCents, 'enqueue_failed_refund', jobId)
         .catch((refundError) =>
           this.logger.error(
@@ -224,6 +239,16 @@ export class GenerationService {
     return { jobId };
   }
 
+  async markGenerationAttemptStarted(
+    data: { jobId?: string; userId?: string },
+    attemptNumber: number,
+  ): Promise<void> {
+    if (!data.jobId || !data.userId) {
+      throw new Error('Generation job is missing its durable outcome identity');
+    }
+    await this.credits.markGenerationAttemptStarted(data.userId, data.jobId, attemptNumber);
+  }
+
   /**
    * #1334: return the debited credits when a generation job terminally fails
    * (all BullMQ retries exhausted). Idempotent per jobId, so a re-delivery or a
@@ -235,12 +260,18 @@ export class GenerationService {
     jobId?: string;
     userId?: string;
     durationSeconds?: number;
-  }): Promise<void> {
+  }, attemptCount: number, failure: unknown): Promise<void> {
     if (!data?.userId || !data?.jobId) {
       return;
     }
     const costCents = this.credits.costForDurationCents(data.durationSeconds ?? 30);
     try {
+      await this.credits.markGenerationTerminalFailure(
+        data.userId,
+        data.jobId,
+        attemptCount,
+        classifyGenerationFailure(failure),
+      );
       await this.credits.refund(data.userId, costCents, 'job_failed_refund', data.jobId);
     } catch (error: any) {
       this.logger.error(
@@ -278,6 +309,14 @@ export class GenerationService {
   }): Promise<GenerationJobResult> {
     const { jobId, userId, prompt, negativePrompt, seed, durationSeconds = 30 } = data;
     let { artistId } = data;
+
+    const durableOutcome = await prisma.generationJobOutcome.findUnique({ where: { jobId } });
+    if (durableOutcome?.status === 'completed' && durableOutcome.trackId && durableOutcome.releaseId) {
+      return { trackId: durableOutcome.trackId, releaseId: durableOutcome.releaseId };
+    }
+    if (durableOutcome?.status === 'terminal_failed' || durableOutcome?.status === 'enqueue_failed') {
+      throw new Error(`Generation job ${jobId} is already terminal`);
+    }
 
     // Auto-resolve artistId from userId if not provided
     if (!artistId) {
@@ -421,6 +460,21 @@ export class GenerationService {
           durationSeconds: generationMetadata.durationSeconds,
           userId,
         });
+
+        const outcome = await tx.generationJobOutcome.updateMany({
+          where: { jobId, userId, status: { in: ['queued', 'in_flight'] } },
+          data: {
+            status: 'completed',
+            trackId: createdRelease.tracks[0].id,
+            releaseId: createdRelease.id,
+            completedAt: new Date(),
+            terminalAt: new Date(),
+            failureCode: null,
+          },
+        });
+        if (outcome.count !== 1) {
+          throw new Error(`Could not persist completion for generation job ${jobId}`);
+        }
 
         return createdRelease;
       });

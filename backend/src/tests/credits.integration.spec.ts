@@ -99,6 +99,38 @@ describe("GenerationCreditsService integration", () => {
       balanceAfterCents: 70,
       jobId: "job-debit-1",
     });
+    expect(
+      await prisma.generationJobOutcome.findUnique({ where: { jobId: "job-debit-1" } }),
+    ).toMatchObject({ userId: USER, status: "queued", attemptCount: 0 });
+  });
+
+  it("records attempts idempotently and only marks failure when terminal", async () => {
+    await service.markGenerationAttemptStarted(USER, "job-debit-1", 1);
+    await service.markGenerationAttemptStarted(USER, "job-debit-1", 1);
+    await service.markGenerationAttemptStarted(USER, "job-debit-1", 2);
+    expect(
+      await prisma.generationJobOutcome.findUnique({ where: { jobId: "job-debit-1" } }),
+    ).toMatchObject({ status: "in_flight", attemptCount: 2 });
+
+    await service.markGenerationTerminalFailure(
+      USER,
+      "job-debit-1",
+      3,
+      "provider_unavailable",
+    );
+    await service.markGenerationTerminalFailure(
+      USER,
+      "job-debit-1",
+      3,
+      "provider_unavailable",
+    );
+    expect(
+      await prisma.generationJobOutcome.findUnique({ where: { jobId: "job-debit-1" } }),
+    ).toMatchObject({
+      status: "terminal_failed",
+      attemptCount: 3,
+      failureCode: "provider_unavailable",
+    });
   });
 
   it("BLOCKS an insufficient debit: throws, no charge, balance unchanged", async () => {

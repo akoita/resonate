@@ -108,6 +108,11 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "GenerationJobOutcome",
+    primaryKey: "jobId",
+    keys: [{ kind: "userId", column: "userId" }],
+  },
+  {
     model: "GenerationCostRecord",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],

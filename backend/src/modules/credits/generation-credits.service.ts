@@ -332,6 +332,11 @@ export class GenerationCreditsService {
             balanceAfterCents: account.balanceCents,
           },
         });
+        if (kind === "lyria" && jobId) {
+          await tx.generationJobOutcome.create({
+            data: { jobId, userId, status: "queued" },
+          });
+        }
         return account.balanceCents;
       });
     } catch (error) {
@@ -359,6 +364,67 @@ export class GenerationCreditsService {
       kind,
     });
     return balanceAfterCents;
+  }
+
+  /** Record that BullMQ started an attempt without allowing a stale delivery
+   * to move a terminal row backwards. The explicit attempt ordinal makes a
+   * repeated delivery idempotent. */
+  async markGenerationAttemptStarted(
+    userId: string,
+    jobId: string,
+    attemptNumber: number,
+  ): Promise<void> {
+    const changed = await prisma.generationJobOutcome.updateMany({
+      where: {
+        jobId,
+        userId,
+        status: { in: ["queued", "in_flight"] },
+        attemptCount: { lt: attemptNumber },
+      },
+      data: { status: "in_flight", attemptCount: attemptNumber },
+    });
+    if (changed.count === 1) return;
+    const current = await prisma.generationJobOutcome.findUnique({ where: { jobId } });
+    if (!current || current.userId !== userId) {
+      throw new Error(`Missing generation outcome for metered job ${jobId}`);
+    }
+    // Same/lower attempt deliveries and terminal redeliveries are no-ops.
+  }
+
+  async markGenerationEnqueueFailed(userId: string, jobId: string): Promise<void> {
+    const changed = await prisma.generationJobOutcome.updateMany({
+      where: { jobId, userId, status: "queued" },
+      data: { status: "enqueue_failed", terminalAt: new Date() },
+    });
+    if (changed.count !== 1) {
+      throw new Error(`Could not mark enqueue failure for generation job ${jobId}`);
+    }
+  }
+
+  async markGenerationTerminalFailure(
+    userId: string,
+    jobId: string,
+    attemptCount: number,
+    failureCode: string,
+  ): Promise<void> {
+    const changed = await prisma.generationJobOutcome.updateMany({
+      where: { jobId, userId, status: { in: ["queued", "in_flight"] } },
+      data: {
+        status: "terminal_failed",
+        attemptCount,
+        failureCode: failureCode.slice(0, 64),
+        terminalAt: new Date(),
+      },
+    });
+    if (changed.count === 1) return;
+    const current = await prisma.generationJobOutcome.findUnique({ where: { jobId } });
+    if (!current || current.userId !== userId) {
+      throw new Error(`Missing generation outcome for metered job ${jobId}`);
+    }
+    if (current.status === "completed") {
+      throw new Error(`Refusing terminal failure for completed generation job ${jobId}`);
+    }
+    // Repeated terminal/enqueue-failure deliveries are idempotent.
   }
 
   /**

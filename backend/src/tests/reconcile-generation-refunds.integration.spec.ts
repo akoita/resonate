@@ -32,6 +32,13 @@ describe("generation refund reconciliation", () => {
         },
       ],
     });
+    await prisma.generationJobOutcome.createMany({
+      data: [
+        { jobId: FAILED_JOB, userId: USER_ID, status: "terminal_failed", terminalAt: OLD_DATE },
+        { jobId: SUCCESS_JOB, userId: USER_ID, status: "completed", completedAt: OLD_DATE, terminalAt: OLD_DATE },
+        { jobId: REFUNDED_JOB, userId: USER_ID, status: "terminal_failed", terminalAt: OLD_DATE },
+      ],
+    });
 
     const artist = await prisma.artist.create({
       data: { userId: USER_ID, displayName: `${PREFIX}artist` },
@@ -56,6 +63,7 @@ describe("generation refund reconciliation", () => {
       await prisma.artist.delete({ where: { id: artist.id } });
     }
     await prisma.generationCreditTransaction.deleteMany({ where: { userId: USER_ID } });
+    await prisma.generationJobOutcome.deleteMany({ where: { userId: USER_ID } });
     await prisma.generationCreditAccount.deleteMany({ where: { userId: USER_ID } });
     await prisma.user.deleteMany({ where: { id: USER_ID } });
     await prisma.$disconnect();
@@ -64,33 +72,27 @@ describe("generation refund reconciliation", () => {
   it("reports candidates without changing balances", async () => {
     const result = await reconcileGenerationRefunds({
       apply: false,
-      confirmedFailedJobIds: [],
       cutoffHours: 1,
     });
 
     expect(result.candidateJobIds).toEqual(expect.arrayContaining([FAILED_JOB, SUCCESS_JOB]));
     expect(result.candidateJobIds).not.toContain(REFUNDED_JOB);
     expect(result.successfulCount).toBeGreaterThanOrEqual(1);
-    expect(result.needsConfirmationCount).toBeGreaterThanOrEqual(1);
+    expect(result.terminalFailedJobIds).toContain(FAILED_JOB);
+    expect(result.needsConfirmationCount).toBe(0);
     expect(
       await prisma.generationCreditAccount.findUnique({ where: { userId: USER_ID } }),
     ).toMatchObject({ balanceCents: 80 });
   });
 
-  it("refuses to refund a job that produced a generated track", async () => {
-    await expect(
-      reconcileGenerationRefunds({
-        apply: true,
-        confirmedFailedJobIds: [SUCCESS_JOB],
-        cutoffHours: 1,
-      }),
-    ).rejects.toThrow(`Refusing to refund successful generation job ${SUCCESS_JOB}`);
+  it("does not refund a job that produced a generated track", async () => {
+    const result = await reconcileGenerationRefunds({ apply: false, cutoffHours: 1 });
+    expect(result.refundedJobIds).not.toContain(SUCCESS_JOB);
   });
 
-  it("refunds an explicitly confirmed failure and makes reruns a no-op", async () => {
+  it("refunds a durable terminal failure and makes reruns a no-op", async () => {
     const applied = await reconcileGenerationRefunds({
       apply: true,
-      confirmedFailedJobIds: [FAILED_JOB],
       cutoffHours: 1,
     });
     expect(applied.refundedJobIds).toEqual([FAILED_JOB]);
@@ -98,11 +100,10 @@ describe("generation refund reconciliation", () => {
 
     const rerun = await reconcileGenerationRefunds({
       apply: true,
-      confirmedFailedJobIds: [FAILED_JOB],
       cutoffHours: 1,
     });
     expect(rerun.refundedJobIds).toEqual([]);
-    expect(rerun.alreadyRefundedJobIds).toEqual([FAILED_JOB]);
+    expect(rerun.candidateJobIds).not.toContain(FAILED_JOB);
     expect(
       await prisma.generationCreditTransaction.count({
         where: { userId: USER_ID, jobId: FAILED_JOB, type: "refund" },
@@ -122,7 +123,6 @@ describe("generation refund reconciliation", () => {
       await expect(
         reconcileGenerationRefunds({
           apply: true,
-          confirmedFailedJobIds: [duplicateJob],
           cutoffHours: 1,
         }),
       ).rejects.toThrow(`Refusing ambiguous duplicate debits for job IDs: ${duplicateJob}`);
@@ -130,6 +130,32 @@ describe("generation refund reconciliation", () => {
       await prisma.generationCreditTransaction.deleteMany({
         where: { userId: USER_ID, jobId: duplicateJob },
       });
+    }
+  });
+
+  it("refuses to apply when durable completion contradicts catalog evidence", async () => {
+    const inconsistentJob = `${PREFIX}inconsistent`;
+    await prisma.generationCreditTransaction.create({
+      data: debit(inconsistentJob, 10, 80),
+    });
+    await prisma.generationJobOutcome.create({
+      data: {
+        jobId: inconsistentJob,
+        userId: USER_ID,
+        status: "completed",
+        completedAt: OLD_DATE,
+        terminalAt: OLD_DATE,
+      },
+    });
+    try {
+      await expect(
+        reconcileGenerationRefunds({ apply: true, cutoffHours: 1 }),
+      ).rejects.toThrow(
+        `Refusing reconciliation with inconsistent generation outcomes: ${inconsistentJob}`,
+      );
+    } finally {
+      await prisma.generationJobOutcome.delete({ where: { jobId: inconsistentJob } });
+      await prisma.generationCreditTransaction.deleteMany({ where: { jobId: inconsistentJob } });
     }
   });
 });

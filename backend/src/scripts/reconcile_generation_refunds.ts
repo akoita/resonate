@@ -1,15 +1,11 @@
 /**
  * Reconcile catalog-generation debits affected by #1778.
  *
- * Dry-run is the default. A missing generated track is not proof of failure, so
- * mutation requires each job ID to have been independently confirmed as a
- * terminal failure from BullMQ history or worker logs.
+ * Dry-run is the default. A missing generated track is not proof of failure;
+ * mutation requires a durable Postgres `terminal_failed` outcome.
  *
  *   npm run credits:reconcile-generation-refunds -- --cutoff-hours 24
- *   npm run credits:reconcile-generation-refunds -- \
- *     --confirmed-failed-job <job-id> [--confirmed-failed-job <job-id> ...]
- *   npm run credits:reconcile-generation-refunds -- --apply \
- *     --confirmed-failed-job <job-id> [--confirmed-failed-job <job-id> ...]
+ *   npm run credits:reconcile-generation-refunds -- --apply
  */
 import { prisma } from "../db/prisma";
 import { GenerationCreditsService } from "../modules/credits/generation-credits.service";
@@ -25,11 +21,11 @@ type Candidate = {
   createdAt: Date;
   costRecordExists: boolean;
   generatedTrackExists: boolean;
+  outcomeStatus: string | null;
 };
 
 export type ReconciliationOptions = {
   apply: boolean;
-  confirmedFailedJobIds: string[];
   cutoffHours?: number;
   since?: Date;
 };
@@ -43,7 +39,8 @@ export type ReconciliationResult = {
   successfulJobIds: string[];
   needsConfirmationJobIds: string[];
   costRecordJobIds: string[];
-  confirmedFailedJobIds: string[];
+  terminalFailedJobIds: string[];
+  inconsistentJobIds: string[];
   alreadyRefundedJobIds: string[];
   refundedJobIds: string[];
   totalRefundedCents: number;
@@ -86,7 +83,7 @@ export async function reconcileGenerationRefunds(
     );
   }
 
-  const [refunds, costRecords] = await Promise.all([
+  const [refunds, costRecords, outcomes] = await Promise.all([
     prisma.generationCreditTransaction.findMany({
       where: { type: "refund", jobId: { in: jobIds } },
       select: { userId: true, jobId: true },
@@ -96,10 +93,16 @@ export async function reconcileGenerationRefunds(
       select: { jobId: true },
       distinct: ["jobId"],
     }),
+    prisma.generationJobOutcome.findMany({
+      where: { jobId: { in: jobIds } },
+      select: { jobId: true, status: true },
+    }),
   ]);
 
   const refundedKeys = new Set(refunds.map((row) => `${row.userId}\0${row.jobId}`));
+  const alreadyRefundedJobIds = [...new Set(refunds.flatMap((row) => row.jobId ? [row.jobId] : []))];
   const costJobIds = new Set(costRecords.map((row) => row.jobId));
+  const outcomeByJobId = new Map(outcomes.map((row) => [row.jobId, row.status]));
   const candidates: Candidate[] = [];
   for (const debit of debits) {
     const jobId = debit.jobId as string;
@@ -113,49 +116,25 @@ export async function reconcileGenerationRefunds(
       jobId,
       costRecordExists: costJobIds.has(jobId),
       generatedTrackExists: Boolean(generatedTrack),
+      outcomeStatus: outcomeByJobId.get(jobId) ?? null,
     });
   }
 
-  const requested = [...new Set(options.confirmedFailedJobIds.filter(Boolean))];
-  const requestedRows = new Map(candidates.map((row) => [row.jobId, row]));
-  const alreadyRefundedJobIds: string[] = [];
-  const invalidJobIds: string[] = [];
-
-  for (const jobId of requested) {
-    const candidate = requestedRows.get(jobId);
-    if (candidate) {
-      if (candidate.generatedTrackExists) {
-        throw new Error(`Refusing to refund successful generation job ${jobId}`);
-      }
-      continue;
-    }
-
-    const matchingDebits = await prisma.generationCreditTransaction.findMany({
-      where: { type: "debit", reason: "lyria_generation", jobId },
-      select: { userId: true },
-    });
-    if (matchingDebits.length !== 1) {
-      invalidJobIds.push(jobId);
-      continue;
-    }
-    const debit = matchingDebits[0];
-    const refund = await prisma.generationCreditTransaction.findFirst({
-      where: { type: "refund", jobId, userId: debit.userId },
-      select: { id: true },
-    });
-    if (refund) alreadyRefundedJobIds.push(jobId);
-    else invalidJobIds.push(jobId);
-  }
-
-  if (invalidJobIds.length > 0) {
+  const inconsistent = candidates.filter(
+    (row) =>
+      (row.generatedTrackExists && row.outcomeStatus === "terminal_failed") ||
+      (!row.generatedTrackExists && row.outcomeStatus === "completed"),
+  );
+  const refundable = candidates.filter(
+    (row) => row.outcomeStatus === "terminal_failed" && !row.generatedTrackExists,
+  );
+  if (options.apply && inconsistent.length > 0) {
     throw new Error(
-      `Confirmed job IDs are not eligible historical debits: ${invalidJobIds.join(", ")}`,
+      `Refusing reconciliation with inconsistent generation outcomes: ${inconsistent
+        .map((row) => row.jobId)
+        .join(", ")}`,
     );
   }
-
-  const refundable = requested
-    .map((jobId) => requestedRows.get(jobId))
-    .filter((row): row is Candidate => Boolean(row));
   const refundedJobIds: string[] = [];
   let totalRefundedCents = 0;
   if (options.apply) {
@@ -170,19 +149,32 @@ export async function reconcileGenerationRefunds(
   return {
     mode: options.apply ? "apply" : "dry-run",
     candidateCount: candidates.length,
-    successfulCount: candidates.filter((row) => row.generatedTrackExists).length,
-    needsConfirmationCount: candidates.filter((row) => !row.generatedTrackExists).length,
+    successfulCount: candidates.filter(
+      (row) => row.generatedTrackExists || row.outcomeStatus === "completed",
+    ).length,
+    needsConfirmationCount: candidates.filter(
+      (row) =>
+        !row.generatedTrackExists &&
+        row.outcomeStatus !== "completed" &&
+        row.outcomeStatus !== "terminal_failed",
+    ).length,
     candidateJobIds: candidates.map((row) => row.jobId),
     successfulJobIds: candidates
-      .filter((row) => row.generatedTrackExists)
+      .filter((row) => row.generatedTrackExists || row.outcomeStatus === "completed")
       .map((row) => row.jobId),
     needsConfirmationJobIds: candidates
-      .filter((row) => !row.generatedTrackExists)
+      .filter(
+        (row) =>
+          !row.generatedTrackExists &&
+          row.outcomeStatus !== "completed" &&
+          row.outcomeStatus !== "terminal_failed",
+      )
       .map((row) => row.jobId),
     costRecordJobIds: candidates
       .filter((row) => row.costRecordExists)
       .map((row) => row.jobId),
-    confirmedFailedJobIds: requested,
+    terminalFailedJobIds: refundable.map((row) => row.jobId),
+    inconsistentJobIds: inconsistent.map((row) => row.jobId),
     alreadyRefundedJobIds,
     refundedJobIds,
     totalRefundedCents,
@@ -217,9 +209,13 @@ function value(name: string): string | undefined {
 async function main() {
   const cutoffRaw = value("cutoff-hours");
   const sinceRaw = value("since");
+  if (values("confirmed-failed-job").length > 0) {
+    throw new Error(
+      "--confirmed-failed-job is no longer accepted; refund authority comes from durable Postgres outcomes",
+    );
+  }
   const result = await reconcileGenerationRefunds({
     apply: process.argv.includes("--apply"),
-    confirmedFailedJobIds: values("confirmed-failed-job"),
     cutoffHours: cutoffRaw ? Number(cutoffRaw) : undefined,
     since: sinceRaw ? new Date(sinceRaw) : undefined,
   });

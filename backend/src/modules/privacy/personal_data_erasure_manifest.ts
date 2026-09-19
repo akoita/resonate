@@ -217,6 +217,13 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "(ADR-BM-3); `reason` is an operator-set movement code, not the person's words.",
   },
   {
+    model: "GenerationJobOutcome",
+    disposition: "retain",
+    reason:
+      "Durable generation completion/failure evidence justifies credit charges and refunds; "
+      + "the user id rotates by cascade and the bounded failure code contains no submitted content.",
+  },
+  {
     model: "GenerationCostRecord",
     disposition: "retain",
     reason:
