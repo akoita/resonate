@@ -3,6 +3,10 @@ import { createHash } from "crypto";
 import { AccountClosureStatus } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
+import {
+  AnalyticsWarehouseGovernanceTarget,
+  analyticsWarehouseGovernanceFromEnv,
+} from "../modules/analytics/analytics_warehouse_governance";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { ERASED_EMAIL_DOMAIN } from "../modules/privacy/personal_data_erasure_manifest";
 import { writeStructuredLog } from "../modules/shared/structured_logging";
@@ -892,6 +896,7 @@ export async function verifyErasure(
         where: {
           createdAt: { gte: closure.requestedAt },
         },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         select: { action: true, actorId: true, subjectId: true, details: true },
       })
     : [];
@@ -910,6 +915,7 @@ export async function verifyErasure(
     const warehouse = (details.warehouse ?? {}) as Record<string, unknown>;
     return typeof warehouse.status === "string" ? warehouse.status : "unknown";
   });
+  const latestErasureWarehouseStatus = erasureWarehouseStatuses.at(-1) ?? null;
 
   const [controlUser, controlWallet, controlMessage, controlPlaylist, controlRelease, controlSessionKey] =
     await Promise.all([
@@ -1026,11 +1032,11 @@ export async function verifyErasure(
       actual: erasureWarehouseStatuses.length,
     },
     {
-      id: "erasure.warehouse.all_succeeded",
-      what: "A failed or skipped warehouse target means the person's analytics were not proven erased everywhere.",
+      id: "erasure.warehouse.latest_succeeded",
+      what: "The latest warehouse attempt must succeed; earlier failures remain useful retry history.",
       operator: "equals",
-      expected: 0,
-      actual: erasureWarehouseStatuses.filter((status) => status !== "ok").length,
+      expected: "ok",
+      actual: latestErasureWarehouseStatus,
     },
     {
       id: "erasure.session_key_deleted",
@@ -1176,6 +1182,8 @@ export async function verifyErasure(
     warehouse: {
       records: erasureWarehouseStatuses.length,
       statuses: erasureWarehouseStatuses,
+      failedAttempts: erasureWarehouseStatuses.filter((status) => status === "failed").length,
+      latestStatus: latestErasureWarehouseStatus,
     },
   });
 }
@@ -1200,15 +1208,55 @@ export interface CleanupSummary {
  * that prefix. There is no branch here that can reach a row the harness did not
  * create.
  */
-export async function cleanupAll(invocation: GovernanceValidationInvocation): Promise<CleanupSummary> {
+export async function cleanupAll(
+  invocation: GovernanceValidationInvocation,
+  warehouse: AnalyticsWarehouseGovernanceTarget = analyticsWarehouseGovernanceFromEnv(),
+): Promise<CleanupSummary> {
+  const warehouseCleanup = await cleanupWarehouseFixtures(invocation, warehouse);
+  if (warehouseCleanup.failures.length > 0) return warehouseCleanup;
   const erasure = await cleanupErasure(invocation);
   const retention = await cleanupRetention(invocation);
   return {
     phase: "cleanup",
-    removed: { ...erasure.removed, ...retention.removed },
+    removed: { ...warehouseCleanup.removed, ...erasure.removed, ...retention.removed },
     failures: [...erasure.failures, ...retention.failures],
     residue: [...new Set([...erasure.residue, ...retention.residue])],
   };
+}
+
+async function cleanupWarehouseFixtures(
+  invocation: GovernanceValidationInvocation,
+  warehouse: AnalyticsWarehouseGovernanceTarget,
+): Promise<CleanupSummary> {
+  const events = await prisma.analyticsEvent.findMany({
+    where: { id: { startsWith: invocation.prefix } },
+    select: { eventId: true, occurredAt: true },
+  });
+  if (events.length === 0) return { phase: "cleanup:warehouse", removed: {}, failures: [], residue: [] };
+
+  try {
+    const outcome = await warehouse.applyErasure({
+      deleteEventIds: events.map((event) => event.eventId),
+      redactEventIds: [],
+      redactedEnvelopes: [],
+      affectedDates: [...new Set(events.map((event) => event.occurredAt.toISOString().slice(0, 10)))],
+      reason: "governance_validation_cleanup",
+    });
+    if (outcome.status === "failed") throw new Error(outcome.error ?? "warehouse cleanup failed");
+    return {
+      phase: "cleanup:warehouse",
+      removed: { "warehouse.analyticsEvent": outcome.deletedRows },
+      failures: [],
+      residue: outcome.status === "skipped" ? ["No warehouse target is configured in this environment."] : [],
+    };
+  } catch (error) {
+    return {
+      phase: "cleanup:warehouse",
+      removed: { "warehouse.analyticsEvent": 0 },
+      failures: [{ model: "warehouse.analyticsEvent", error: error instanceof Error ? error.message : String(error) }],
+      residue: ["Postgres fixtures were preserved because warehouse cleanup did not complete."],
+    };
+  }
 }
 
 export async function cleanupRetention(
@@ -1269,6 +1317,9 @@ export async function cleanupErasure(
   await remove(removed, failures, "erasure.stem", () => prisma.stem.deleteMany({ where }));
   await remove(removed, failures, "erasure.track", () => prisma.track.deleteMany({ where }));
   await remove(removed, failures, "erasure.release", () => prisma.release.deleteMany({ where }));
+  await remove(removed, failures, "erasure.creatorTrust", () =>
+    prisma.creatorTrust.deleteMany({ where: { artistId: { startsWith: prefix } } }),
+  );
   await remove(removed, failures, "erasure.artist", () => prisma.artist.deleteMany({ where }));
   await remove(removed, failures, "erasure.royaltyPayment", () => prisma.royaltyPayment.deleteMany({ where }));
   await remove(removed, failures, "erasure.agentTransaction", () => prisma.agentTransaction.deleteMany({ where }));

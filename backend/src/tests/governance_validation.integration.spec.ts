@@ -15,6 +15,7 @@
  * position as the retention job was before this existed.
  */
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import {
   AnalyticsWarehouseGovernanceTarget,
   WarehouseErasureRequest,
@@ -229,6 +230,14 @@ describe("governance validation harness — erasure", () => {
   }, 180000);
 
   it("passes after a real due-erasure run", async () => {
+    await prisma.analyticsGovernanceLog.create({
+      data: {
+        action: "warehouse_erasure",
+        actorId: pseudonymousAnalyticsActorId(identities.subjectUserId),
+        reason: "expected retry history",
+        details: { warehouse: { status: "failed" } },
+      },
+    });
     // The same call the scheduled `run_due_erasures` job makes.
     const service = new PersonalDataErasureService(
       new PersonalDataResolverService(),
@@ -244,6 +253,11 @@ describe("governance validation harness — erasure", () => {
     if (result.kind === "verify") {
       expect(result.report.failures.map((failure) => failure.id)).toEqual([]);
       expect(result.report.status).toBe("pass");
+      expect(result.report.observations).toEqual(
+        expect.objectContaining({
+          warehouse: expect.objectContaining({ failedAttempts: 1, latestStatus: "ok" }),
+        }),
+      );
     }
     expect(result.exitCode).toBe(0);
   }, 300000);
@@ -267,15 +281,46 @@ describe("governance validation harness — erasure", () => {
     });
   }, 180000);
 
+  it("preserves Postgres fixtures when warehouse cleanup fails", async () => {
+    const failingWarehouse: AnalyticsWarehouseGovernanceTarget = {
+      describe: () => ({ provider: "recording" }),
+      applyErasure: async () => ({
+        status: "failed",
+        provider: "recording",
+        deletedRows: 0,
+        redactedRows: 0,
+        statements: 0,
+        error: "buffered rows",
+      }),
+    };
+
+    const summary = await cleanupAll(INVOCATION, failingWarehouse);
+
+    expect(summary.failures).toEqual([
+      expect.objectContaining({ model: "warehouse.analyticsEvent", error: "buffered rows" }),
+    ]);
+    expect(await prisma.analyticsEvent.count({ where: { id: { startsWith: INVOCATION.prefix } } })).toBeGreaterThan(0);
+  });
+
   it("cleans up the erasure fixtures, rotated ids included", async () => {
-    const summary = await cleanupAll(INVOCATION);
+    const warehouse = { ...successfulWarehouse, applyErasure: jest.fn(successfulWarehouse.applyErasure) };
+    const summary = await cleanupAll(INVOCATION, warehouse);
     expect(summary.failures).toEqual([]);
+    expect(warehouse.applyErasure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deleteEventIds: expect.arrayContaining([
+          `${INVOCATION.erasurePrefix}analytics_pseudonymous_event_control`,
+        ]),
+        redactEventIds: [],
+      }),
+    );
 
     expect(await prisma.user.count({ where: { id: identities.subjectUserId } })).toBe(0);
     expect(await prisma.user.count({ where: { id: identities.controlUserId } })).toBe(0);
     for (const remaining of [
       prisma.wallet.count({ where: { id: { startsWith: INVOCATION.prefix } } }),
       prisma.artist.count({ where: { id: { startsWith: INVOCATION.prefix } } }),
+      prisma.creatorTrust.count({ where: { artistId: { startsWith: INVOCATION.prefix } } }),
       prisma.release.count({ where: { id: { startsWith: INVOCATION.prefix } } }),
       prisma.stemPurchase.count({ where: { id: { startsWith: INVOCATION.prefix } } }),
       prisma.sessionKey.count({ where: { id: { startsWith: INVOCATION.prefix } } }),
