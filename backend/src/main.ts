@@ -8,11 +8,14 @@ import { AppModule } from "./modules/app.module";
 import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 import { getCorsAllowedOrigins } from "./config/cors";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
+import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
 
 async function bootstrap() {
   console.log("========================================");
   console.log("🚀 RESONATE BACKEND BOOTING...");
   console.log("========================================");
+
+  assertAnalyticsActorIdSaltConfiguration();
 
   // Self-Healing: Reset indexer if it's vastly out of date (e.g. from an old Sepolia fork/deployment)
   try {

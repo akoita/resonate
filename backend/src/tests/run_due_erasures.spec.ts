@@ -1,7 +1,31 @@
-import { buildErasureService, exitCodeFor, parseLimit } from "../scripts/run_due_erasures";
+import {
+  buildErasureService,
+  exitCodeFor,
+  parseLimit,
+  runDueErasuresScript,
+} from "../scripts/run_due_erasures";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 
 describe("scheduled erasure runner", () => {
+  const originalEnvironment = process.env;
+
+  afterEach(() => {
+    process.env = originalEnvironment;
+  });
+
+  it("fails before querying for due accounts when the stable analytics salt is missing", async () => {
+    process.env = {
+      ...originalEnvironment,
+      NODE_ENV: "production",
+      ANALYTICS_ACTOR_ID_SALT: "",
+      ANALYTICS_ACTOR_ID_SALT_ALLOW_INSECURE_FALLBACK: "",
+    };
+
+    await expect(runDueErasuresScript([])).rejects.toThrow(
+      "ANALYTICS_ACTOR_ID_SALT is required outside local development",
+    );
+  });
+
   describe("exit code", () => {
     /**
      * The contract with the scheduler. Getting this backwards in either

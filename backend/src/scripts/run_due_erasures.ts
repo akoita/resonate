@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import { assertAnalyticsActorIdSaltConfiguration } from "../modules/analytics/analytics_identity";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
@@ -72,6 +73,7 @@ export function buildErasureService(): PersonalDataErasureService {
 }
 
 export async function runDueErasuresScript(argv: string[] = process.argv.slice(2)) {
+  assertAnalyticsActorIdSaltConfiguration();
   const limit = parseLimit(argv);
 
   try {
