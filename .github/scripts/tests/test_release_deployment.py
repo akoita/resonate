@@ -109,6 +109,24 @@ class ReleaseDeploymentTests(unittest.TestCase):
                 ):
                     build_plan(ci_run=ci_run(**{field: value}))
 
+    def test_accepts_exact_sha_workflow_dispatch_ci_on_canonical_branch(self) -> None:
+        plan = build_plan(
+            environment="staging",
+            ci_run=ci_run(event="workflow_dispatch", head_branch="main"),
+        )
+        self.assertEqual(plan["source_sha"], REVISION)
+        self.assertEqual(plan["source_branch"], "main")
+        self.assertEqual(plan["ci_run_id"], 123456)
+
+    def test_rejects_non_release_ci_event_types(self) -> None:
+        for event in ("pull_request", "merge_group", "schedule"):
+            with self.subTest(event=event):
+                with self.assertRaisesRegex(
+                    release_deployment.ReleaseDeploymentError,
+                    "push or workflow_dispatch",
+                ):
+                    build_plan(ci_run=ci_run(event=event))
+
     def test_rejects_branch_environment_mismatch(self) -> None:
         with self.assertRaisesRegex(
             release_deployment.ReleaseDeploymentError,
