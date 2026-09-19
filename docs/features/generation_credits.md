@@ -79,7 +79,11 @@ internal meter.
      never true inside the processor. That was live from #1334 until #1778 —
      no terminally failed Lyria generation refunded during that window, and
      `backend/scripts/find-unrefunded-generation-debits.sql` finds the debits
-     it left behind.
+     it left behind. The reconciliation command defaults to dry-run, separates
+     database-proven successful generations, and requires each remaining job
+     ID to be independently confirmed as a terminal failure before `--apply`.
+     It refuses ambiguous or successful jobs and refunds through the idempotent
+     service method rather than a generic grant or direct SQL mutation.
      A refund that itself fails stays best-effort (it must not mask the job
      error) but now emits `generation.credit_refund_failed` through
      `writeStructuredLog`, so it is alertable rather than lost in a log line.
@@ -152,7 +156,10 @@ now; email/Slack fan-out is a future enhancement.
 - Module: `backend/src/modules/credits/credits.module.ts` (imported by the
   generation and remix modules).
 - Operator CLI: `backend/src/scripts/grant_credits.ts` (`npm run credits:grant`),
-  wrapped by the `grant-credits` Makefile target.
+  wrapped by the `grant-credits` Makefile target. Historical catalog-failure
+  correction uses `backend/src/scripts/reconcile_generation_refunds.ts`
+  (`npm run credits:reconcile-generation-refunds`); dry-run is the default and
+  mutation requires `--apply --confirmed-failed-job <job-id>`.
 - Env vars: `GENERATION_PRICE_CENTS_PER_30S` (default `10`),
   `GENERATION_CREDITS_SIGNUP_STARTER_CENTS` (default `0`; staging `100`).
 - Data model: `GenerationCreditAccount`, `GenerationCreditTransaction`

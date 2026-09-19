@@ -26,7 +26,9 @@
     "fixtures:shows:prod": "node dist/scripts/create_sample_show_campaigns.js",
     "identity:resolve": "ts-node --transpile-only src/scripts/resolve_identity.ts",
     "verify:migration": "ts-node --transpile-only src/scripts/verify_migration.ts",
-    "credits:grant": "ts-node --transpile-only src/scripts/grant_credits.ts"
+    "credits:grant": "ts-node --transpile-only src/scripts/grant_credits.ts",
+    "credits:reconcile-generation-refunds": "ts-node --transpile-only src/scripts/reconcile_generation_refunds.ts",
+    "credits:reconcile-generation-refunds:prod": "node dist/scripts/reconcile_generation_refunds.js"
   },
   "dependencies": {
     "@google-cloud/kms": "^6.0.0",

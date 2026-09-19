@@ -75,10 +75,12 @@ WHERE d."type"   = 'debit'
   AND d."createdAt" <  now() - (:'cutoff_hours' || ' hours')::interval
   AND d."createdAt" >= :'since'::timestamptz;
 
--- Refunding a confirmed case goes through the service rather than SQL, so the
--- ledger keeps its balanceAfterCents invariant and the refund stays idempotent
--- per jobId:
+-- Refunding a confirmed case goes through the reconciliation command rather
+-- than SQL or the generic grant endpoint, so the ledger keeps its
+-- balanceAfterCents invariant and the refund stays idempotent per jobId:
 --
---   POST /credits/grant   (operator endpoint, see the credits runbook)
+--   npm run credits:reconcile-generation-refunds -- --apply \
+--     --confirmed-failed-job <job-id>
 --
--- Record the corrected users and amounts on #1778 when the remediation runs.
+-- Live results and affected accounts are deployment information: record them
+-- in the private infrastructure tracker, not in this public repository.
