@@ -1,6 +1,8 @@
+import { createHash } from "crypto";
 import { prisma } from "../db/prisma";
 import { Prisma } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import {
   AnalyticsWarehouseGovernanceTarget,
   WarehouseErasureRequest,
@@ -45,6 +47,7 @@ describe("Analytics governance integration", () => {
           { eventId: { startsWith: TEST_PREFIX } },
           { actorId: { startsWith: TEST_PREFIX } },
           { subjectId: { startsWith: TEST_PREFIX } },
+          { reason: { startsWith: TEST_PREFIX } },
           // Retention's warehouse_erasure rows carry no subject or actor.
           { action: "warehouse_erasure", reason: { startsWith: "retention expired for " } },
         ],
@@ -179,6 +182,12 @@ describe("Analytics governance integration", () => {
       });
     });
 
+    // `runRetentionCleanup` scans the whole table, so any other suite's expired
+    // fixtures land in the same run and write their own `warehouse_erasure`
+    // row. Scope the lineage assertion below to this run by time rather than
+    // matching the first row with the right action — the batch-level row
+    // carries no eventId, actorId or subjectId to scope it by.
+    const runStartedAt = new Date();
     const result = await new AnalyticsGovernanceService(target).runRetentionCleanup({
       now,
       policy: { personalDays: KEEP_EVERYTHING_DAYS, sensitiveDays: 30, pseudonymousDays: KEEP_EVERYTHING_DAYS },
@@ -218,7 +227,12 @@ describe("Analytics governance integration", () => {
     expect(lineage.map((row) => row.action).sort()).toEqual(["retention_deleted", "retention_redacted"]);
     await expect(
       prisma.analyticsGovernanceLog.findFirst({
-        where: { action: "warehouse_erasure", reason: "retention expired for sensitive event" },
+        where: {
+          action: "warehouse_erasure",
+          reason: "retention expired for sensitive event",
+          createdAt: { gte: runStartedAt },
+        },
+        orderBy: { createdAt: "desc" },
       }),
     ).resolves.toEqual(
       expect.objectContaining({
@@ -409,6 +423,40 @@ describe("Analytics governance integration", () => {
         details: expect.objectContaining({ sourceAction: "deletion_propagated" }),
       }),
     );
+  });
+
+  it("does not copy a wallet address into the warehouse erasure summary", async () => {
+    const walletAddress = `0x${createHash("sha256").update(TEST_PREFIX).digest("hex").slice(0, 40)}`;
+    const reason = `${TEST_PREFIX}wallet_erasure`;
+    await createAnalyticsEvent({
+      eventId: `${TEST_PREFIX}wallet_lineage_event`,
+      eventName: "generation.created",
+      privacyTier: "personal",
+      actorId: walletAddress,
+      occurredAt: now,
+      payload: { userId: walletAddress },
+    });
+
+    await new AnalyticsGovernanceService(new RecordingWarehouseGovernanceTarget()).propagateDeletion({
+      actorId: walletAddress,
+      reason,
+    });
+
+    const lineage = await prisma.analyticsGovernanceLog.findMany({ where: { reason } });
+    expect(lineage).not.toHaveLength(0);
+    expect(lineage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "warehouse_erasure",
+          actorId: pseudonymousAnalyticsActorId(walletAddress),
+        }),
+      ]),
+    );
+    for (const row of lineage) {
+      expect(row.actorId).not.toBe(walletAddress);
+      expect(row.subjectId).not.toBe(walletAddress);
+      expect(JSON.stringify(row.details).toLowerCase()).not.toContain(walletAddress.toLowerCase());
+    }
   });
 
   it("keeps the Postgres erasure and reports the failure when the warehouse rejects it", async () => {

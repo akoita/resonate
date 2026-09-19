@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { AnalyticsEvent, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { shouldPreserveForAudit } from "./analytics_audit_families";
 import { pseudonymousAnalyticsActorId } from "./analytics_identity";
 import {
   ANALYTICS_WAREHOUSE_GOVERNANCE,
@@ -44,7 +45,6 @@ export interface AnalyticsRetentionWarehouseOutcome extends WarehouseErasureResu
   tier: RetentionTier;
 }
 
-const FINANCIAL_AUDIT_EVENT_FAMILIES = new Set(["commerce", "payment", "rights", "license"]);
 const REDACTED_VALUE = "[redacted]";
 
 @Injectable()
@@ -217,6 +217,7 @@ export class AnalyticsGovernanceService {
     reason: string;
     details: Record<string, unknown>;
   }): Promise<WarehouseErasureResult> {
+    const safeDetails = privacySafeGovernanceDetails(input.details);
     let outcome: WarehouseErasureResult;
     try {
       outcome = await this.warehouseGovernance.applyErasure({
@@ -246,11 +247,14 @@ export class AnalyticsGovernanceService {
       data: {
         action: "warehouse_erasure",
         subjectType: optionalDetail(input.details, "subjectType"),
-        subjectId: optionalDetail(input.details, "subjectId"),
-        actorId: optionalDetail(input.details, "actorId"),
+        // Batch summaries are deletion lineage too. Hash wallet-shaped values
+        // here for the same reason as the per-event rows: an erasure must not
+        // recreate the address in the record that proves it was removed.
+        subjectId: pseudonymizeIfPersonal(optionalDetail(input.details, "subjectId")),
+        actorId: pseudonymizeIfPersonal(optionalDetail(input.details, "actorId")),
         reason: input.reason,
         details: {
-          ...input.details,
+          ...safeDetails,
           sourceAction: input.action,
           events: { deleted: input.deleteEventIds.length, redacted: input.redactEventIds.length },
           affectedDates: input.affectedDates,
@@ -384,9 +388,7 @@ function retentionDays(policy: AnalyticsRetentionPolicy, tier: RetentionTier) {
   }
 }
 
-function shouldPreserveForAudit(eventName: string) {
-  return FINANCIAL_AUDIT_EVENT_FAMILIES.has(eventName.split(".")[0]);
-}
+
 
 /** An EVM address, in any casing. */
 const ADDRESS_SHAPED = /^0x[0-9a-fA-F]{40}$/;
@@ -431,8 +433,20 @@ function governanceLogData(
     actorId: pseudonymizeIfPersonal(event.actorId),
     privacyTier: event.privacyTier,
     reason,
-    details: details as Prisma.InputJsonValue,
+    details: privacySafeGovernanceDetails(details) as Prisma.InputJsonValue,
   };
+}
+
+/** Hash personal identifiers wherever deletion request metadata is persisted. */
+function privacySafeGovernanceDetails(details: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(details).map(([key, value]) => [
+      key,
+      (key === "actorId" || key === "subjectId") && typeof value === "string"
+        ? pseudonymizeIfPersonal(value)
+        : value,
+    ]),
+  );
 }
 
 function redactPayload(value: Prisma.JsonValue): unknown {
