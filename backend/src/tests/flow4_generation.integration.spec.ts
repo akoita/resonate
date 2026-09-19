@@ -107,6 +107,9 @@ describe('Choreography Flow 4: AI Generation Pipeline', () => {
     expect((startedEvents[0] as any).prompt).toBe('Epic orchestral soundtrack');
 
     // Step 2: Process the job (simulates BullMQ worker picking up the job)
+    await prisma.generationJobOutcome.create({
+      data: { jobId: 'flow4-job', userId, status: 'in_flight', attemptCount: 1 },
+    });
     await service.processGenerationJob({
       jobId: 'flow4-job',
       userId,

@@ -159,11 +159,20 @@ now; email/Slack fan-out is a future enhancement.
   wrapped by the `grant-credits` Makefile target. Historical catalog-failure
   correction uses `backend/src/scripts/reconcile_generation_refunds.ts`
   (`npm run credits:reconcile-generation-refunds`); dry-run is the default and
-  mutation requires `--apply --confirmed-failed-job <job-id>`.
+  `--apply` refunds only rows whose durable Postgres outcome is
+  `terminal_failed`. Operator assertions, Redis state, and logs are not accepted
+  as refund authority.
 - Env vars: `GENERATION_PRICE_CENTS_PER_30S` (default `10`),
   `GENERATION_CREDITS_SIGNUP_STARTER_CENTS` (default `0`; staging `100`).
 - Data model: `GenerationCreditAccount`, `GenerationCreditTransaction`
-  (migration `20260707120337_generation_credit_ledger`).
+  (migration `20260707120337_generation_credit_ledger`) and
+  `GenerationJobOutcome` (migration
+  `20260920120000_generation_job_outcomes`). The outcome is created atomically
+  with every catalog-generation debit, moves through `queued`/`in_flight`, and
+  reaches `completed`, `terminal_failed`, or `enqueue_failed`. Completion is
+  committed with its release and track IDs; terminal failure is written only
+  after all worker attempts are exhausted. Failure detail is a bounded category
+  and never contains prompts or provider payloads.
 - Analytics events (personal tier): `generation.credits_debited`,
   `generation.credits_insufficient`, `generation.credits_granted`,
   `generation.credits_requested`.

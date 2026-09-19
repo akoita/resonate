@@ -14,6 +14,8 @@ export class GenerationProcessor extends WorkerHost {
 
   async process(job: Job<any, any, string>): Promise<any> {
     this.logger.log(`[GenerationProcessor] Starting job ${job.id} for user ${job.data.userId}`);
+    const attemptNumber = job.attemptsMade + 1;
+    await this.generationService.markGenerationAttemptStarted(job.data, attemptNumber);
     try {
       const result = await this.generationService.processGenerationJob(job.data);
       this.logger.log(`[GenerationProcessor] Successfully completed job ${job.id}`);
@@ -34,9 +36,13 @@ export class GenerationProcessor extends WorkerHost {
       // Count the in-flight attempt explicitly. If this ever needs revisiting,
       // the spec asserts the whole attempt sequence rather than one value.
       const maxAttempts = job.opts?.attempts ?? 1;
-      const attemptsFailedIncludingThisOne = job.attemptsMade + 1;
+      const attemptsFailedIncludingThisOne = attemptNumber;
       if (attemptsFailedIncludingThisOne >= maxAttempts) {
-        await this.generationService.refundFailedGenerationJob(job.data);
+        await this.generationService.refundFailedGenerationJob(
+          job.data,
+          attemptsFailedIncludingThisOne,
+          error,
+        );
       }
       throw error;
     }

@@ -10,9 +10,9 @@ datasource db {
 }
 
 model User {
-  id                          String                       @id @default(uuid())
-  email                       String                       @unique
-  createdAt                   DateTime                     @default(now())
+  id                          String                        @id @default(uuid())
+  email                       String                        @unique
+  createdAt                   DateTime                      @default(now())
   // #1771 slice 3. Account closure and erasure anonymize in place rather than
   // deleting this row: 103 foreign keys point at `id`, and a person's financial
   // and audit history has to survive under the retention the privacy policy
@@ -46,14 +46,15 @@ model User {
   wallet                      Wallet?
   passkeyIdentities           PasskeyIdentity[]
   sessionKeys                 SessionKey[]
-  showCampaignEvents          ShowCampaignEvent[]          @relation("ShowCampaignEventActor")
-  showCampaignDisputes        ShowCampaignDispute[]        @relation("ShowCampaignDisputeInitiator")
+  showCampaignEvents          ShowCampaignEvent[]           @relation("ShowCampaignEventActor")
+  showCampaignDisputes        ShowCampaignDispute[]         @relation("ShowCampaignDisputeInitiator")
   showPledges                 ShowPledge[]
   stemQualityRatings          StemQualityRating[]
   remixProjects               RemixProject[]
-  reputationFeedbackSubmitted AgentReputationFeedback[]    @relation("AgentReputationFeedbackSubmitter")
+  reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
+  generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
   accountClosureRequests      AccountClosureRequest[]
@@ -71,24 +72,24 @@ model User {
 // double-submitted request racing itself would otherwise schedule the erasure
 // engine twice against the same person.
 model AccountClosureRequest {
-  id           String                @id @default(uuid())
-  userId       String
-  status       AccountClosureStatus  @default(pending)
-  requestedAt  DateTime              @default(now())
+  id             String               @id @default(uuid())
+  userId         String
+  status         AccountClosureStatus @default(pending)
+  requestedAt    DateTime             @default(now())
   // When the erasure engine may run. Set on creation; not moved afterwards.
-  dueAt        DateTime
-  cancelledAt  DateTime?
-  completedAt  DateTime?
-  failedAt     DateTime?
+  dueAt          DateTime
+  cancelledAt    DateTime?
+  completedAt    DateTime?
+  failedAt       DateTime?
   // Free text the person optionally gave for why they are leaving. Personal
   // data written by them, so the erasure engine scrubs it.
-  reason       String?               @db.Text
+  reason         String?              @db.Text
   // Operator-facing failure detail from the erasure engine. Never shown to the
   // person and never carried into a retained row.
-  failureMessage String?             @db.Text
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
-  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  failureMessage String?              @db.Text
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status, dueAt])
   @@index([userId, requestedAt])
@@ -128,6 +129,35 @@ model GenerationCreditTransaction {
 
   @@index([userId, createdAt])
   @@index([jobId])
+}
+
+// Durable lifecycle evidence for each metered catalogue-generation debit.
+// Redis/BullMQ is execution state, not the financial audit source of truth:
+// this row is created atomically with the debit and reaches a terminal state
+// only with the catalogue write or after the worker exhausts all retries.
+model GenerationJobOutcome {
+  jobId        String                     @id
+  userId       String
+  status       GenerationJobOutcomeStatus @default(queued)
+  attemptCount Int                        @default(0)
+  trackId      String?
+  releaseId    String?
+  failureCode  String?                    @db.VarChar(64)
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  completedAt  DateTime?
+  terminalAt   DateTime?
+  user         User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, updatedAt])
+}
+
+enum GenerationJobOutcomeStatus {
+  queued
+  in_flight
+  completed
+  terminal_failed
+  enqueue_failed
 }
 
 // Realized per-job generation cost telemetry (#1421, ADR-BM-3, RFC
@@ -286,19 +316,19 @@ model CommunityCohortMembership {
 }
 
 model CommunityBenefitRule {
-  id                String                         @id @default(uuid())
+  id                String                       @id @default(uuid())
   artistId          String?
   title             String
-  description       String?                        @db.Text
+  description       String?                      @db.Text
   benefitType       String
   eligibilityPolicy Json
   redemptionPolicy  Json?
-  status            String                         @default("draft")
+  status            String                       @default("draft")
   startsAt          DateTime?
   endsAt            DateTime?
-  createdAt         DateTime                       @default(now())
-  updatedAt         DateTime                       @updatedAt
-  artist            Artist?                        @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  artist            Artist?                      @relation(fields: [artistId], references: [id], onDelete: Cascade)
   redemptions       CommunityBenefitRedemption[]
 
   @@index([artistId, status])
@@ -325,18 +355,18 @@ model CommunityBenefitRedemption {
 }
 
 model CommunityRoom {
-  id               String                       @id @default(uuid())
+  id               String                      @id @default(uuid())
   roomType         String
   ownerType        String
   ownerId          String
   artistId         String?
   title            String
-  description      String?                      @db.Text
+  description      String?                     @db.Text
   accessPolicyJson Json?
-  status           String                       @default("active")
-  createdAt        DateTime                     @default(now())
-  updatedAt        DateTime                     @updatedAt
-  artist           Artist?                      @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  status           String                      @default("active")
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  artist           Artist?                     @relation(fields: [artistId], references: [id], onDelete: Cascade)
   memberships      CommunityMembership[]
   messages         CommunityMessage[]
   reports          CommunityModerationReport[]
@@ -369,17 +399,17 @@ model CommunityMembership {
 }
 
 model CommunityMessage {
-  id          String                       @id @default(uuid())
+  id          String                      @id @default(uuid())
   roomId      String
   authorId    String
-  body        String                       @db.Text
-  messageType String                       @default("message")
-  status      String                       @default("visible")
-  createdAt   DateTime                     @default(now())
-  updatedAt   DateTime                     @updatedAt
+  body        String                      @db.Text
+  messageType String                      @default("message")
+  status      String                      @default("visible")
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
   deletedAt   DateTime?
-  room        CommunityRoom                @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  author      User                         @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  room        CommunityRoom               @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  author      User                        @relation(fields: [authorId], references: [id], onDelete: Cascade)
   reports     CommunityModerationReport[]
 
   @@index([roomId, status, createdAt])
@@ -406,30 +436,30 @@ model CommunityModerationReport {
 }
 
 model CommunityDiscordBridge {
-  id                         String                         @id @default(uuid())
-  artistId                   String                         @unique
-  provider                   String                         @default("discord")
-  serverId                   String?
-  serverName                 String?
-  channelId                  String?
-  channelName                String?
-  webhookUrl                 String?                        @db.Text
-  webhookUrlMasked           String
-  inviteUrl                  String?
-  publicLinkEnabled          Boolean                        @default(false)
-  announcementMirrorEnabled  Boolean                        @default(false)
-  roleSyncEnabled            Boolean                        @default(false)
-  status                     String                         @default("connected")
-  lastTestedAt               DateTime?
-  lastMirroredAt             DateTime?
-  lastRoleSyncAt             DateTime?
-  lastFailureAt              DateTime?
-  lastFailureReason          String?                        @db.Text
-  createdAt                  DateTime                       @default(now())
-  updatedAt                  DateTime                       @updatedAt
-  artist                     Artist                         @relation(fields: [artistId], references: [id], onDelete: Cascade)
-  roleMappings               CommunityDiscordRoleMapping[]
-  syncAttempts               CommunityDiscordSyncAttempt[]
+  id                        String                        @id @default(uuid())
+  artistId                  String                        @unique
+  provider                  String                        @default("discord")
+  serverId                  String?
+  serverName                String?
+  channelId                 String?
+  channelName               String?
+  webhookUrl                String?                       @db.Text
+  webhookUrlMasked          String
+  inviteUrl                 String?
+  publicLinkEnabled         Boolean                       @default(false)
+  announcementMirrorEnabled Boolean                       @default(false)
+  roleSyncEnabled           Boolean                       @default(false)
+  status                    String                        @default("connected")
+  lastTestedAt              DateTime?
+  lastMirroredAt            DateTime?
+  lastRoleSyncAt            DateTime?
+  lastFailureAt             DateTime?
+  lastFailureReason         String?                       @db.Text
+  createdAt                 DateTime                      @default(now())
+  updatedAt                 DateTime                      @updatedAt
+  artist                    Artist                        @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  roleMappings              CommunityDiscordRoleMapping[]
+  syncAttempts              CommunityDiscordSyncAttempt[]
 
   @@index([artistId, status])
   @@index([publicLinkEnabled, status])
@@ -457,20 +487,20 @@ model CommunityDiscordRoleMapping {
 }
 
 model CommunityDiscordSyncAttempt {
-  id             String                  @id @default(uuid())
+  id             String                 @id @default(uuid())
   bridgeId       String
   action         String
-  status         String                  @default("pending")
+  status         String                 @default("pending")
   messageId      String?
   roleMappingId  String?
   retryOfId      String?
-  attemptCount   Int                     @default(1)
+  attemptCount   Int                    @default(1)
   requestSummary Json?
   responseStatus Int?
-  errorReason    String?                 @db.Text
-  createdAt      DateTime                @default(now())
+  errorReason    String?                @db.Text
+  createdAt      DateTime               @default(now())
   completedAt    DateTime?
-  bridge         CommunityDiscordBridge  @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
+  bridge         CommunityDiscordBridge @relation(fields: [bridgeId], references: [id], onDelete: Cascade)
 
   @@index([bridgeId, action, status, createdAt])
   @@index([messageId])
@@ -541,43 +571,43 @@ model Artist {
 }
 
 model Release {
-  id                    String                        @id @default(uuid())
-  artistId              String
-  title                 String
-  status                String                        @default("processing")
-  processingError       String?                       @db.Text
+  id                     String                        @id @default(uuid())
+  artistId               String
+  title                  String
+  status                 String                        @default("processing")
+  processingError        String?                       @db.Text
   // #1793 withdrawal: a withdrawn release keeps existing (purchases, library and
   // playlist references survive); only its streaming licence is suspended.
   withdrawnAt            DateTime?
-  withdrawalReason       String?                      @db.Text
+  withdrawalReason       String?                       @db.Text
   statusBeforeWithdrawal String?
-  type                  String                        @default("single")
-  primaryArtist         String?
-  featuredArtists       String?
-  genre                 String?
-  moods                 String[]                      @default([])
-  label                 String?
-  releaseDate           DateTime?
-  explicit              Boolean                       @default(false)
-  createdAt             DateTime                      @default(now())
-  artworkUrl            String?
-  artworkData           Bytes?
-  artworkMimeType       String?
-  artworkRevision       Int                           @default(1)
-  attestation           String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
-  attestationSignature  String?                       @db.Text // Wallet signature of the attestation
-  rightsRoute           String?
-  rightsFlags           Json?
-  rightsReason          String?                       @db.Text
-  rightsPolicyVersion   String?
-  rightsSourceType      String?
-  rightsEvaluatedAt     DateTime?
-  artist                Artist                        @relation(fields: [artistId], references: [id])
-  artistCredits         ReleaseArtistCredit[]
-  tracks                Track[]
-  rightsUpgradeRequests ReleaseRightsUpgradeRequest[]
-  rightsReassessments   RightsRouteReassessment[]
-  publishedRemixProject RemixProject?                 @relation("RemixProjectPublishedRelease")
+  type                   String                        @default("single")
+  primaryArtist          String?
+  featuredArtists        String?
+  genre                  String?
+  moods                  String[]                      @default([])
+  label                  String?
+  releaseDate            DateTime?
+  explicit               Boolean                       @default(false)
+  createdAt              DateTime                      @default(now())
+  artworkUrl             String?
+  artworkData            Bytes?
+  artworkMimeType        String?
+  artworkRevision        Int                           @default(1)
+  attestation            String?                       @db.Text // JSON: {contentHash, isOriginalWork, sourceCredits[]}
+  attestationSignature   String?                       @db.Text // Wallet signature of the attestation
+  rightsRoute            String?
+  rightsFlags            Json?
+  rightsReason           String?                       @db.Text
+  rightsPolicyVersion    String?
+  rightsSourceType       String?
+  rightsEvaluatedAt      DateTime?
+  artist                 Artist                        @relation(fields: [artistId], references: [id])
+  artistCredits          ReleaseArtistCredit[]
+  tracks                 Track[]
+  rightsUpgradeRequests  ReleaseRightsUpgradeRequest[]
+  rightsReassessments    RightsRouteReassessment[]
+  publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
 
   @@index([rightsRoute])
 }
@@ -601,39 +631,39 @@ model ReleaseArtistCredit {
 }
 
 model Track {
-  id                  String            @id @default(uuid())
-  title               String
-  isrc                String?
-  explicit            Boolean           @default(false)
-  createdAt           DateTime          @default(now())
-  position            Int               @default(1)
-  releaseId           String
-  artist              String?
-  processingStatus    String            @default("pending") // pending, processing, complete, failed
-  processingError     String?           @db.Text
-  processingStartedAt DateTime?
-  lastProgressAt      DateTime?
-  contentStatus       String            @default("clean") // clean, quarantined, dmca_removed
-  generationMetadata  Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
-  aiDisclosureLevel   AiDisclosureLevel @default(UNDECLARED)
+  id                   String            @id @default(uuid())
+  title                String
+  isrc                 String?
+  explicit             Boolean           @default(false)
+  createdAt            DateTime          @default(now())
+  position             Int               @default(1)
+  releaseId            String
+  artist               String?
+  processingStatus     String            @default("pending") // pending, processing, complete, failed
+  processingError      String?           @db.Text
+  processingStartedAt  DateTime?
+  lastProgressAt       DateTime?
+  contentStatus        String            @default("clean") // clean, quarantined, dmca_removed
+  generationMetadata   Json? // { provider, prompt, negativePrompt, seed, generatedAt, synthIdPresent, durationSeconds, sampleRate, cost }
+  aiDisclosureLevel    AiDisclosureLevel @default(UNDECLARED)
   aiContributionFacets String[]          @default([])
-  aiDisclosureSource  String             @default("migration")
-  aiDisclosureVersion String?
-  aiDeclaredAt        DateTime?
-  licenses            License[]
-  agentSignals        AgentSignal[]
-  stems               Stem[]
-  embedding           TrackEmbedding?
-  fingerprint         AudioFingerprint?
-  dmcaReports         DmcaReport[]
-  release             Release           @relation(fields: [releaseId], references: [id])
-  remixProjects       RemixProject[]
-  punchlineDrops      PunchlineDrop[]
-  rightsRoute         String?
-  rightsFlags         Json?
-  rightsReason        String?           @db.Text
-  rightsPolicyVersion String?
-  rightsEvaluatedAt   DateTime?
+  aiDisclosureSource   String            @default("migration")
+  aiDisclosureVersion  String?
+  aiDeclaredAt         DateTime?
+  licenses             License[]
+  agentSignals         AgentSignal[]
+  stems                Stem[]
+  embedding            TrackEmbedding?
+  fingerprint          AudioFingerprint?
+  dmcaReports          DmcaReport[]
+  release              Release           @relation(fields: [releaseId], references: [id])
+  remixProjects        RemixProject[]
+  punchlineDrops       PunchlineDrop[]
+  rightsRoute          String?
+  rightsFlags          Json?
+  rightsReason         String?           @db.Text
+  rightsPolicyVersion  String?
+  rightsEvaluatedAt    DateTime?
 
   @@index([rightsRoute])
   @@index([aiDisclosureLevel])
@@ -1021,13 +1051,13 @@ model ShowEscrowIndexerState {
 // The actor is stored as an audit scalar so deleting a user cannot erase the
 // operational record (#1534).
 model ShowEscrowReconciliationAcknowledgement {
-  id                   String   @id @default(uuid())
+  id                   String    @id @default(uuid())
   chainId              Int
   contractAddress      String
   contractCampaignId   String
   acknowledgedByUserId String
-  note                 String?  @db.Text
-  acknowledgedAt       DateTime @default(now())
+  note                 String?   @db.Text
+  acknowledgedAt       DateTime  @default(now())
   revokedByUserId      String?
   revokedAt            DateTime?
 
@@ -1203,12 +1233,12 @@ model Playlist {
 // Resolved through the public endpoint on read, so owner edits propagate and a
 // source that goes private/deleted surfaces as unavailable instead of stale data.
 model SavedPlaylist {
-  id              String   @id @default(uuid())
-  userId          String
+  id               String   @id @default(uuid())
+  userId           String
   sourcePlaylistId String
-  createdAt       DateTime @default(now())
-  user            User     @relation(fields: [userId], references: [id])
-  source          Playlist @relation("SavedPlaylistSource", fields: [sourcePlaylistId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id])
+  source           Playlist @relation("SavedPlaylistSource", fields: [sourcePlaylistId], references: [id], onDelete: Cascade)
 
   @@unique([userId, sourcePlaylistId])
   @@index([userId])
@@ -1526,20 +1556,20 @@ enum ShowCampaignDisputeOutcome {
 // on-chain dispute concept, so MVP disputes are operator-driven and tracked
 // here; an open dispute is the backend signal that final release must wait.
 model ShowCampaignDispute {
-  id               String                     @id @default(uuid())
+  id               String                      @id @default(uuid())
   campaignId       String
   initiatorUserId  String?
   initiatorRole    String
-  reason           String?                    @db.Text
-  status           ShowCampaignDisputeStatus  @default(open)
+  reason           String?                     @db.Text
+  status           ShowCampaignDisputeStatus   @default(open)
   outcome          ShowCampaignDisputeOutcome?
-  operatorNote     String?                    @db.Text
+  operatorNote     String?                     @db.Text
   resolvedByUserId String?
   resolvedAt       DateTime?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  campaign         ShowCampaign               @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  initiator        User?                      @relation("ShowCampaignDisputeInitiator", fields: [initiatorUserId], references: [id])
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+  campaign         ShowCampaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  initiator        User?                       @relation("ShowCampaignDisputeInitiator", fields: [initiatorUserId], references: [id])
 
   @@index([campaignId, status])
   @@index([status, createdAt])
@@ -1551,12 +1581,12 @@ model ShowCampaign {
   artistId                    String?
   artistDisplayName           String
   artistImageUrl              String?
-  heroImageUrl                 String?
-  heroImageStorageUri          String?
-  heroImageMimeType            String?
-  cardImageUrl                 String?
-  cardImageStorageUri          String?
-  cardImageMimeType            String?
+  heroImageUrl                String?
+  heroImageStorageUri         String?
+  heroImageMimeType           String?
+  cardImageUrl                String?
+  cardImageStorageUri         String?
+  cardImageMimeType           String?
   title                       String
   description                 String?                      @db.Text
   city                        String
@@ -1643,19 +1673,19 @@ model ShowCampaign {
 }
 
 model ShowCampaignVisual {
-  id         String       @id @default(uuid())
-  campaignId String
-  role       String       @default("gallery")
-  publicUrl  String
-  storageUri String
-  mimeType   String
+  id              String       @id @default(uuid())
+  campaignId      String
+  role            String       @default("gallery")
+  publicUrl       String
+  storageUri      String
+  mimeType        String
   artworkRevision Int          @default(1)
-  sortOrder  Int          @default(0)
-  caption    String?      @db.Text
-  credit     String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
-  campaign   ShowCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  sortOrder       Int          @default(0)
+  caption         String?      @db.Text
+  credit          String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  campaign        ShowCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId, role, sortOrder])
 }
@@ -2265,22 +2295,22 @@ model PunchlineDrop {
 // collectible metadata (lyric, artwork, edition size, price). The clip asset
 // is extracted server-side later, so clipAssetUri is nullable until then.
 model PunchlineMoment {
-  id             String                 @id @default(uuid())
-  dropId         String
-  title          String
-  lyricText      String                 @db.Text
-  artworkUrl     String?
-  sourceStemType String                 @default("vocals")
-  startMs        Int
-  endMs          Int
-  clipAssetUri   String?
-  editionSize    Int
-  priceCents     Int
-  rightsLabel    String                 @default("NON_COMMERCIAL_COLLECTIBLE")
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  drop           PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
-  collectibles   PunchlineCollectible[]
+  id              String                 @id @default(uuid())
+  dropId          String
+  title           String
+  lyricText       String                 @db.Text
+  artworkUrl      String?
+  sourceStemType  String                 @default("vocals")
+  startMs         Int
+  endMs           Int
+  clipAssetUri    String?
+  editionSize     Int
+  priceCents      Int
+  rightsLabel     String                 @default("NON_COMMERCIAL_COLLECTIBLE")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  drop            PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  collectibles    PunchlineCollectible[]
   x402Settlements X402Settlement[]
 
   @@index([dropId])
@@ -2315,12 +2345,12 @@ model PunchlineCollectible {
 // A drop-level unlock rule. v1 supports one type: collect every moment in the
 // drop to earn a bonus reward (rewardMetadata carries the reward payload).
 model PunchlineUnlock {
-  id             String              @id @default(uuid())
+  id             String                 @id @default(uuid())
   dropId         String
-  unlockType     PunchlineUnlockType @default(complete_set)
+  unlockType     PunchlineUnlockType    @default(complete_set)
   rewardMetadata Json?
-  createdAt      DateTime            @default(now())
-  drop           PunchlineDrop       @relation(fields: [dropId], references: [id], onDelete: Cascade)
+  createdAt      DateTime               @default(now())
+  drop           PunchlineDrop          @relation(fields: [dropId], references: [id], onDelete: Cascade)
   grants         PunchlineUnlockGrant[]
 
   @@index([dropId])

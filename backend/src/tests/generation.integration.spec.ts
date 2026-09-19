@@ -176,6 +176,9 @@ describe('GenerationService (integration)', () => {
       eventBus.subscribe('generation.progress', (e: any) => events.push(e));
       eventBus.subscribe('generation.completed', (e: any) => events.push(e));
       eventBus.subscribe('catalog.ai_disclosure_recorded', (e: any) => events.push(e));
+      await prisma.generationJobOutcome.create({
+        data: { jobId: 'job-1', userId: `${TEST_PREFIX}user`, status: 'in_flight', attemptCount: 1 },
+      });
 
       const jobResult = await service.processGenerationJob({
         jobId: 'job-1',
@@ -220,6 +223,13 @@ describe('GenerationService (integration)', () => {
         level: 'ALL',
         source: 'resonate_native',
       }));
+      expect(
+        await prisma.generationJobOutcome.findUnique({ where: { jobId: 'job-1' } }),
+      ).toMatchObject({
+        status: 'completed',
+        trackId: completedEvent.trackId,
+        releaseId: completedEvent.releaseId,
+      });
 
       await expect(service.getStatus('job-1')).resolves.toMatchObject({
         status: 'completed',
@@ -266,6 +276,9 @@ describe('GenerationService (integration)', () => {
       let failedEvent: any;
       eventBus.subscribe('generation.failed', (e: any) => {
         failedEvent = e;
+      });
+      await prisma.generationJobOutcome.create({
+        data: { jobId: 'job-fail', userId: `${TEST_PREFIX}user`, status: 'in_flight', attemptCount: 1 },
       });
 
       await expect(

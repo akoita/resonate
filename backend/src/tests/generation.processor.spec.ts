@@ -4,6 +4,7 @@ describe('GenerationProcessor', () => {
   it('returns generated track identifiers as the BullMQ job result', async () => {
     const result = { trackId: 'track-1', releaseId: 'release-1' };
     const generationService = {
+      markGenerationAttemptStarted: jest.fn().mockResolvedValue(undefined),
       processGenerationJob: jest.fn().mockResolvedValue(result),
     };
     const processor = new GenerationProcessor(generationService as any);
@@ -34,6 +35,7 @@ describe('GenerationProcessor', () => {
 
     const runAttempt = async (attemptsMade: number) => {
       const generationService = {
+        markGenerationAttemptStarted: jest.fn().mockResolvedValue(undefined),
         processGenerationJob: jest.fn().mockRejectedValue(new Error('boom')),
         refundFailedGenerationJob: jest.fn().mockResolvedValue(undefined),
       };
@@ -61,7 +63,7 @@ describe('GenerationProcessor', () => {
 
     it('refunds on the third and final attempt', async () => {
       const service = await runAttempt(2);
-      expect(service.refundFailedGenerationJob).toHaveBeenCalledWith(data);
+      expect(service.refundFailedGenerationJob).toHaveBeenCalledWith(data, 3, expect.any(Error));
       expect(service.refundFailedGenerationJob).toHaveBeenCalledTimes(1);
     });
   });
@@ -69,6 +71,7 @@ describe('GenerationProcessor', () => {
   it('refunds immediately when the job is configured for a single attempt', async () => {
     const data = { jobId: 'job-2', userId: 'user-1', durationSeconds: 30 };
     const generationService = {
+      markGenerationAttemptStarted: jest.fn().mockResolvedValue(undefined),
       processGenerationJob: jest.fn().mockRejectedValue(new Error('boom')),
       refundFailedGenerationJob: jest.fn().mockResolvedValue(undefined),
     };
@@ -78,12 +81,13 @@ describe('GenerationProcessor', () => {
       processor.process({ id: 'job-2', data, attemptsMade: 0, opts: { attempts: 1 } } as any),
     ).rejects.toThrow('boom');
 
-    expect(generationService.refundFailedGenerationJob).toHaveBeenCalledWith(data);
+    expect(generationService.refundFailedGenerationJob).toHaveBeenCalledWith(data, 1, expect.any(Error));
   });
 
   it('refunds when no attempt limit is configured at all', async () => {
     const data = { jobId: 'job-3', userId: 'user-1', durationSeconds: 30 };
     const generationService = {
+      markGenerationAttemptStarted: jest.fn().mockResolvedValue(undefined),
       processGenerationJob: jest.fn().mockRejectedValue(new Error('boom')),
       refundFailedGenerationJob: jest.fn().mockResolvedValue(undefined),
     };
@@ -93,6 +97,6 @@ describe('GenerationProcessor', () => {
       processor.process({ id: 'job-3', data, attemptsMade: 0 } as any),
     ).rejects.toThrow('boom');
 
-    expect(generationService.refundFailedGenerationJob).toHaveBeenCalledWith(data);
+    expect(generationService.refundFailedGenerationJob).toHaveBeenCalledWith(data, 1, expect.any(Error));
   });
 });
