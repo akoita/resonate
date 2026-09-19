@@ -179,6 +179,12 @@ describe("Analytics governance integration", () => {
       });
     });
 
+    // `runRetentionCleanup` scans the whole table, so any other suite's expired
+    // fixtures land in the same run and write their own `warehouse_erasure`
+    // row. Scope the lineage assertion below to this run by time rather than
+    // matching the first row with the right action — the batch-level row
+    // carries no eventId, actorId or subjectId to scope it by.
+    const runStartedAt = new Date();
     const result = await new AnalyticsGovernanceService(target).runRetentionCleanup({
       now,
       policy: { personalDays: KEEP_EVERYTHING_DAYS, sensitiveDays: 30, pseudonymousDays: KEEP_EVERYTHING_DAYS },
@@ -218,7 +224,12 @@ describe("Analytics governance integration", () => {
     expect(lineage.map((row) => row.action).sort()).toEqual(["retention_deleted", "retention_redacted"]);
     await expect(
       prisma.analyticsGovernanceLog.findFirst({
-        where: { action: "warehouse_erasure", reason: "retention expired for sensitive event" },
+        where: {
+          action: "warehouse_erasure",
+          reason: "retention expired for sensitive event",
+          createdAt: { gte: runStartedAt },
+        },
+        orderBy: { createdAt: "desc" },
       }),
     ).resolves.toEqual(
       expect.objectContaining({

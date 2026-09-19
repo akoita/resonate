@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import { AnalyticsEvent, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { shouldPreserveForAudit } from "./analytics_audit_families";
 import { pseudonymousAnalyticsActorId } from "./analytics_identity";
 import {
   ANALYTICS_WAREHOUSE_GOVERNANCE,
@@ -44,7 +45,6 @@ export interface AnalyticsRetentionWarehouseOutcome extends WarehouseErasureResu
   tier: RetentionTier;
 }
 
-const FINANCIAL_AUDIT_EVENT_FAMILIES = new Set(["commerce", "payment", "rights", "license"]);
 const REDACTED_VALUE = "[redacted]";
 
 @Injectable()
@@ -384,9 +384,7 @@ function retentionDays(policy: AnalyticsRetentionPolicy, tier: RetentionTier) {
   }
 }
 
-function shouldPreserveForAudit(eventName: string) {
-  return FINANCIAL_AUDIT_EVENT_FAMILIES.has(eventName.split(".")[0]);
-}
+
 
 /** An EVM address, in any casing. */
 const ADDRESS_SHAPED = /^0x[0-9a-fA-F]{40}$/;
