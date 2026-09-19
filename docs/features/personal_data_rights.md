@@ -277,28 +277,18 @@ cd web && npx vitest run src/components/settings/DataExportPanel.test.tsx src/li
 
 ## Still missing
 
-- **Nothing invokes the scheduled erasures yet** ([#1797](https://github.com/akoita/resonate/issues/1797)).
-  The engine, the endpoint and the entry point
-  (`backend/src/scripts/run_due_erasures.ts`) exist, and the operator procedure
-  is in [the runbook](../operations/account_erasure_runbook.md) — but no Cloud
-  scheduled job invokes it, so a due request waits for someone to run it by hand.
-  How that is wired is deployment configuration and lives in the infrastructure
-  repository.
-  This is what still blocks the privacy policy's "When you delete" section from
-  publication, and it is the difference between the 30-day promise being true
-  and being a sentence in a panel. The remaining work is infrastructure.
 - **The step-up accepts an unverifiable signature as a last resort**
   ([#1798](https://github.com/akoita/resonate/issues/1798)). Narrowed — ERC-6492
   validation no longer requires the account to have bytecode, which is what
   6492 is for — but the `nonce_only` rung remains for a signature that is
   neither recoverable nor checkable on chain.
-- **`ANALYTICS_ACTOR_ID_SALT` is unset everywhere**
-  ([#1796](https://github.com/akoita/resonate/issues/1796)), so analytics
-  erasure completeness currently depends on nobody rotating `JWT_SECRET`.
-- **Pre-#1795 governance lineage rows still hold raw wallet addresses** and want
-  a backfill. New rows are pseudonymized; history is not rewritten.
 - No help-article screenshots: capturing them needs a running stack and seeded
   accounts.
+
+Deployed processes fail closed when `ANALYTICS_ACTOR_ID_SALT` is absent. Local
+and test development may use the deterministic fallback; an explicit emergency
+compatibility exception restores the legacy fallback with a startup warning.
+The salt is non-rotatable without a planned analytics identity migration.
 
 ## For Slice 3
 
