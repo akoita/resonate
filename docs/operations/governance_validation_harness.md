@@ -150,8 +150,10 @@ that the seeded private key is gone; that financial rows are retained but
 relinked to the rotated id; that the artist is detached and the release
 `withdrawn` rather than deleted; and that **the control account is entirely
 untouched**. It also checks that warehouse erasure summaries exist for the
-fixture, that every one completed successfully, and that neither per-event nor
-batch lineage copied the wallet address it exists to prove was removed.
+fixture and that the latest attempt succeeded. Earlier failed outcomes remain
+visible as retry history; they do not make a later successful, fully verified
+retry fail forever. Neither per-event nor batch lineage may copy the wallet
+address it exists to prove was removed.
 
 ### Cleanup
 
@@ -159,8 +161,11 @@ batch lineage copied the wallet address it exists to prove was removed.
 node dist/scripts/governance_validation.js cleanup --run-id sprint23
 ```
 
-Safe to re-run on an already-clean prefix. It reports what it removed per model
-and anything it could not.
+Safe to re-run on an already-clean prefix. Cleanup removes prefixed warehouse
+events first, using the governance target that recomputes affected daily views
+from surviving facts. Only after that succeeds does it remove Postgres fixtures
+in foreign-key-safe order, including `CreatorTrust` before `Artist`. A warehouse
+failure preserves the Postgres source rows so cleanup can be retried.
 
 **One thing it deliberately leaves behind:** `AnalyticsGovernanceLog` rows with
 action `warehouse_erasure`. Those are per-run batch summaries that carry no

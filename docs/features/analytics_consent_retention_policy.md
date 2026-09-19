@@ -238,6 +238,10 @@ every BigQuery loader, and only then applies the Postgres decision per event
   scheduled execution exits non-zero, and a later run can retry after the
   temporary warehouse condition clears. Sign-in can still cancel that pending
   request.
+- The validation harness retains failed outcomes as retry history. It requires
+  the latest attempt to succeed and the final Postgres invariants to hold;
+  cleanup removes warehouse fixtures and recomputes affected views before it
+  deletes the corresponding Postgres fixtures.
 - Deployments without a BigQuery warehouse (`ANALYTICS_WAREHOUSE_TARGET` unset
   or `local_json`) get a disabled target that reports `skipped` and performs no
   work. No new environment variable is involved.
