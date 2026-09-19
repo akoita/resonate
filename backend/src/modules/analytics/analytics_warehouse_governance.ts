@@ -35,9 +35,9 @@ export interface WarehouseErasureRequest {
   /** Audit-preserved events redacted in Postgres rather than deleted. */
   redactEventIds: string[];
   /**
-   * Envelopes re-read from Postgres *after* redaction. The warehouse rows are
-   * rebuilt from them, so warehouse redaction is identical to Postgres
-   * redaction by construction instead of a second set of rules that can drift.
+   * Redacted envelopes projected from the source records before either store
+   * is mutated. The warehouse and Postgres therefore use the same redaction
+   * rules instead of maintaining two implementations that can drift.
    */
   redactedEnvelopes: unknown[];
   /** `YYYY-MM-DD` occurrence dates of every touched event, for the view recompute. */
@@ -57,7 +57,7 @@ export interface WarehouseErasureResult {
 }
 
 export interface AnalyticsWarehouseGovernanceTarget {
-  describe(): { provider: string };
+  describe(): { provider: string; location?: string };
   applyErasure(request: WarehouseErasureRequest): Promise<WarehouseErasureResult>;
 }
 
@@ -132,7 +132,7 @@ export class BigQueryWarehouseGovernanceTarget implements AnalyticsWarehouseGove
   }
 
   describe() {
-    return { provider: "bigquery" };
+    return { provider: "bigquery", location: this.projectId };
   }
 
   async applyErasure(request: WarehouseErasureRequest): Promise<WarehouseErasureResult> {

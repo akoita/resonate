@@ -74,13 +74,16 @@ right instinct the first time this is ever run against real data.
 ## When a run fails
 
 A failure is durable before it is visible: `runOneDueErasure` writes the message
-onto `AccountClosureRequest.failureMessage` and leaves the request `failed`, so
-it survives the process that logged it.
+onto `AccountClosureRequest.failureMessage`. A temporary warehouse failure
+leaves the request `pending`, so it remains cancellable on sign-in and the next
+scheduled run retries it. Non-retryable failures settle the request as
+`failed` for operator review.
 
 ```sql
 SELECT id, "userId", status, "dueAt", "failedAt", "failureMessage"
 FROM "AccountClosureRequest"
-WHERE status = 'failed'
+WHERE status IN ('pending', 'failed')
+  AND "failureMessage" IS NOT NULL
 ORDER BY "dueAt";
 ```
 
@@ -88,9 +91,10 @@ ORDER BY "dueAt";
 analytics step runs in one transaction, so the account either erased or did not.
 
 **The analytics step is outside that transaction**, because it calls out to
-BigQuery. So a failure between the two leaves analytics erased and the account
-intact. That is the safe direction — the person asked for erasure — and a re-run
-is idempotent: the second pass finds no analytics to erase and proceeds.
+BigQuery. Warehouse mutation runs first under the loader's exclusive lock. If
+BigQuery refuses the mutation — including while recently streamed rows remain
+buffered — Postgres stays intact, the account stays intact, and the pending
+request keeps the event ids required for a later retry.
 
 Re-running against an account that already erased returns `already_erased` and
 writes nothing.

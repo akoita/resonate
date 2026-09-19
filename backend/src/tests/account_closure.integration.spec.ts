@@ -287,6 +287,18 @@ describe("AccountClosureService", () => {
       expect(failed.completedAt).toBeNull();
     });
 
+    it("records a retryable failure without consuming the pending request", async () => {
+      const request = await service.request(USER_A);
+      const attempted = await service.recordAttemptFailure(request.id, "warehouse rows still buffered");
+
+      expect(attempted.status).toBe(AccountClosureStatus.pending);
+      expect(attempted.failedAt).toBeInstanceOf(Date);
+      expect(attempted.failureMessage).toBe("warehouse rows still buffered");
+      await expect(service.findPending(USER_A)).resolves.toEqual(
+        expect.objectContaining({ id: request.id, status: AccountClosureStatus.pending }),
+      );
+    });
+
     it("refuses to complete a request the person cancelled mid-run", async () => {
       const request = await service.request(USER_A);
       await service.cancel(USER_A);

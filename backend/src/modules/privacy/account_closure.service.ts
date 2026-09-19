@@ -158,7 +158,27 @@ export class AccountClosureService {
   async markCompleted(requestId: string): Promise<AccountClosureRequest> {
     return this.settle(requestId, AccountClosureStatus.completed, {
       completedAt: new Date(),
+      failedAt: null,
+      failureMessage: null,
     });
+  }
+
+  /**
+   * Record a retryable attempt without consuming the person's pending request.
+   *
+   * A temporary warehouse refusal (notably BigQuery's streaming buffer) must
+   * make the current job fail, while leaving the request cancellable on sign-in
+   * and eligible for the next scheduled attempt.
+   */
+  async recordAttemptFailure(requestId: string, message: string): Promise<AccountClosureRequest> {
+    const moved = await prisma.accountClosureRequest.updateMany({
+      where: { id: requestId, status: AccountClosureStatus.pending },
+      data: { failedAt: new Date(), failureMessage: message },
+    });
+    if (moved.count === 0) throw new AccountClosureTransitionError(requestId, AccountClosureStatus.failed);
+    const request = await prisma.accountClosureRequest.findUnique({ where: { id: requestId } });
+    if (!request) throw new AccountClosureTransitionError(requestId, AccountClosureStatus.failed);
+    return request;
   }
 
   /**

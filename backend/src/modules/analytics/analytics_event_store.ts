@@ -18,6 +18,11 @@ export interface AnalyticsEventListFilters {
   limit?: number;
 }
 
+/** One lock namespace shared by warehouse loads and governance mutations. */
+export function analyticsWarehouseLockKey(location: string, datasetPrefix: string) {
+  return `analytics-warehouse:${location}:${datasetPrefix}`;
+}
+
 const activeMemoryLoads = new Set<string>();
 
 export class InMemoryAnalyticsEventStore implements AnalyticsEventStore {
