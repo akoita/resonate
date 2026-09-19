@@ -3,6 +3,7 @@ import { prisma } from "../db/prisma";
 import { Prisma } from "@prisma/client";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
+import { InMemoryAnalyticsEventStore } from "../modules/analytics/analytics_event_store";
 import {
   AnalyticsWarehouseGovernanceTarget,
   WarehouseErasureRequest,
@@ -202,8 +203,14 @@ describe("Analytics governance integration", () => {
       }),
     );
     expect(target.calls[0].affectedDates.sort()).toEqual(["2024-02-03", "2024-02-04"]);
-    // Postgres first, as for any other erasure: a load in between cannot reintroduce the rows.
-    expect(postgresState).toEqual([{ deleted: null, redactedActorId: "[redacted]" }]);
+    // Warehouse first preserves the source event ids until BigQuery accepts the
+    // mutation; the shared mutation lock prevents a concurrent loader race.
+    expect(postgresState).toEqual([
+      {
+        deleted: expect.objectContaining({ eventId: `${TEST_PREFIX}retention_playback` }),
+        redactedActorId: `${TEST_PREFIX}retention_user`,
+      },
+    ]);
     expect(target.calls[0].redactedEnvelopes).toEqual([
       expect.objectContaining({ eventId: `${TEST_PREFIX}retention_commerce`, actorId: "[redacted]", subjectId: "[redacted]" }),
     ]);
@@ -288,14 +295,15 @@ describe("Analytics governance integration", () => {
     expect(result).toEqual(
       expect.objectContaining({
         status: "warehouse_failed",
-        deleted: 1,
+        deleted: 0,
+        lineageRecords: 0,
         warehouse: [expect.objectContaining({ tier: "sensitive", status: "failed", error: "warehouse unavailable" })],
       }),
     );
-    // The completed Postgres work is never discarded because the warehouse failed.
+    // The source survives so the next scheduled attempt still has its event id.
     await expect(
       prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}retention_failure` } }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual(expect.objectContaining({ eventId: `${TEST_PREFIX}retention_failure` }));
     await expect(
       prisma.analyticsGovernanceLog.findFirst({
         where: { action: "warehouse_erasure", reason: "retention expired for sensitive event" },
@@ -401,8 +409,12 @@ describe("Analytics governance integration", () => {
       }),
     );
     expect(target.calls[0].affectedDates.sort()).toEqual(["2026-05-20", "2026-05-21"]);
-    // The warehouse runs after Postgres, so a load in between cannot reintroduce rows.
-    expect(postgresState).toEqual([{ deleted: null, redactedActorId: "[redacted]" }]);
+    expect(postgresState).toEqual([
+      {
+        deleted: expect.objectContaining({ eventId: `${TEST_PREFIX}warehouse_generation` }),
+        redactedActorId: `${TEST_PREFIX}warehouse_user`,
+      },
+    ]);
     expect(target.calls[0].redactedEnvelopes).toEqual([
       expect.objectContaining({ eventId: `${TEST_PREFIX}warehouse_commerce`, actorId: "[redacted]", subjectId: "[redacted]" }),
     ]);
@@ -459,7 +471,7 @@ describe("Analytics governance integration", () => {
     }
   });
 
-  it("keeps the Postgres erasure and reports the failure when the warehouse rejects it", async () => {
+  it("keeps the Postgres source row for a retry when the warehouse rejects erasure", async () => {
     await createAnalyticsEvent({
       eventId: `${TEST_PREFIX}warehouse_failure`,
       eventName: "generation.created",
@@ -472,26 +484,33 @@ describe("Analytics governance integration", () => {
     });
 
     const failing: AnalyticsWarehouseGovernanceTarget = {
-      describe: () => ({ provider: "recording" }),
+      describe: () => ({ provider: "bigquery", location: "analytics-project" }),
       applyErasure: async () => {
         throw new Error("warehouse unavailable");
       },
     };
+    const eventStore = new InMemoryAnalyticsEventStore();
+    const lock = jest.spyOn(eventStore, "withExclusiveWarehouseLoad");
 
-    const result = await new AnalyticsGovernanceService(failing).propagateDeletion({
+    const result = await new AnalyticsGovernanceService(failing, eventStore).propagateDeletion({
       actorId: `${TEST_PREFIX}warehouse_failure_user`,
       reason: "user deletion request",
     });
 
     expect(result).toEqual(
       expect.objectContaining({
-        deleted: 1,
+        deleted: 0,
+        lineageRecords: 0,
         warehouse: expect.objectContaining({ status: "failed", error: "warehouse unavailable" }),
       }),
     );
+    expect(lock).toHaveBeenCalledWith(
+      expect.stringContaining("analytics-warehouse:analytics-project:"),
+      expect.any(Function),
+    );
     await expect(
       prisma.analyticsEvent.findUnique({ where: { eventId: `${TEST_PREFIX}warehouse_failure` } }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual(expect.objectContaining({ eventId: `${TEST_PREFIX}warehouse_failure` }));
     await expect(
       prisma.analyticsGovernanceLog.findFirst({
         where: { action: "warehouse_erasure", actorId: `${TEST_PREFIX}warehouse_failure_user` },

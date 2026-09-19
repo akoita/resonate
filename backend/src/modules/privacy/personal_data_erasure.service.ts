@@ -40,11 +40,10 @@ import {
  * They cannot join the transaction either: `AnalyticsGovernanceService` calls
  * out to BigQuery, and a Postgres transaction held open across a network round
  * trip to a warehouse is a lock nobody can bound. So the boundary is
- * deliberate, and its failure mode is deliberate too: a crash after step 2
- * leaves the analytics erased and the account intact. That is the safe
- * direction — the person asked for erasure — and a re-run is idempotent,
- * because the second pass finds no analytics and `erasedAt` short-circuits an
- * account that is already done.
+ * deliberate. Warehouse mutation happens before Postgres under the same lock
+ * used by warehouse loads. A temporary warehouse refusal therefore leaves the
+ * source rows intact and the closure pending, so the next scheduled attempt
+ * still has the event ids it needs and sign-in can still cancel the request.
  *
  * **Everything else is one transaction.** An account half-erased is worse than
  * an account not erased: it has lost the rows that made it usable and kept the
@@ -74,6 +73,13 @@ const ERASURE_WITHDRAWAL_REASON =
 
 /** The reason handed to `AnalyticsGovernanceService` and written into its lineage. */
 const ANALYTICS_ERASURE_REASON = "account_erasure";
+
+export class RetryableAnalyticsErasureError extends Error {
+  constructor(readonly warehouseStatuses: string[]) {
+    super(`Analytics warehouse erasure incomplete: ${warehouseStatuses.join(", ")}`);
+    this.name = "RetryableAnalyticsErasureError";
+  }
+}
 
 /**
  * Hex-shaped values are safe to compare with Prisma's case-insensitive
@@ -499,7 +505,11 @@ export class PersonalDataErasureService {
       // a failure survives the process that logged it and is readable from the
       // database rather than only from a log search.
       try {
-        await this.closures.markFailed(request.id, message);
+        if (error instanceof RetryableAnalyticsErasureError) {
+          await this.closures.recordAttemptFailure(request.id, message);
+        } else {
+          await this.closures.markFailed(request.id, message);
+        }
       } catch (settleError) {
         writeStructuredLog({
           level: "error",
@@ -563,10 +573,6 @@ export class PersonalDataErasureService {
       totals.matched += outcome.matched;
       totals.deleted += outcome.deleted;
       totals.redacted += outcome.redacted;
-      // A warehouse failure is already recorded as lineage by the governance
-      // service and must not abort the erasure: the Postgres rows are gone
-      // either way, and stopping here would leave the account intact with its
-      // analytics half-removed.
       warehouseStatuses.push(outcome.warehouse.status);
     };
 
@@ -588,7 +594,9 @@ export class PersonalDataErasureService {
       );
     }
 
-    return { ...totals, warehouseStatuses: unique(warehouseStatuses) };
+    const statuses = unique(warehouseStatuses);
+    if (statuses.includes("failed")) throw new RetryableAnalyticsErasureError(statuses);
+    return { ...totals, warehouseStatuses: statuses };
   }
 
   private async storedAnalyticsActorIds(candidates: string[]): Promise<string[]> {

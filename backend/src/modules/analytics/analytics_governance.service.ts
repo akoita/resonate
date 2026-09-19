@@ -3,6 +3,13 @@ import { AnalyticsEvent, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { shouldPreserveForAudit } from "./analytics_audit_families";
 import { pseudonymousAnalyticsActorId } from "./analytics_identity";
+import { analyticsWarehouseConfigFromEnv } from "./analytics_warehouse";
+import {
+  ANALYTICS_EVENT_STORE,
+  AnalyticsEventStore,
+  PrismaAnalyticsEventStore,
+  analyticsWarehouseLockKey,
+} from "./analytics_event_store";
 import {
   ANALYTICS_WAREHOUSE_GOVERNANCE,
   AnalyticsWarehouseGovernanceTarget,
@@ -55,6 +62,9 @@ export class AnalyticsGovernanceService {
     @Optional()
     @Inject(ANALYTICS_WAREHOUSE_GOVERNANCE)
     private readonly warehouseGovernance: AnalyticsWarehouseGovernanceTarget = analyticsWarehouseGovernanceFromEnv(),
+    @Optional()
+    @Inject(ANALYTICS_EVENT_STORE)
+    private readonly eventStore: AnalyticsEventStore = new PrismaAnalyticsEventStore(),
   ) {}
 
   getRetentionPolicy(env: NodeJS.ProcessEnv = process.env): AnalyticsRetentionPolicy {
@@ -183,35 +193,51 @@ export class AnalyticsGovernanceService {
       ranAt: new Date().toISOString(),
     };
 
-    for (const event of events) {
-      if (redacting.has(event.eventId)) {
-        await this.redactEvent(event, actions.redacted, reason, details);
-        result.redacted += 1;
-      } else {
-        await this.deleteEvent(event, actions.deleted, reason, details);
-        result.deleted += 1;
+    const apply = async () => {
+      // Warehouse first. If BigQuery temporarily refuses DML (for example while
+      // insertAll rows are still buffered), Postgres remains the durable source
+      // of the event ids and a later scheduled attempt can retry safely.
+      const warehouse = await this.eraseFromWarehouse({
+        deleteEventIds,
+        redactEventIds,
+        redactedEnvelopes: events.filter((event) => redacting.has(event.eventId)).map(redactedEnvelopeFor),
+        affectedDates,
+        action: actions.source,
+        reason,
+        details,
+      });
+
+      if (warehouse.status === "failed") {
+        return { ...result, warehouse };
       }
-      result.lineageRecords += 1;
+
+      for (const event of events) {
+        if (redacting.has(event.eventId)) {
+          await this.redactEvent(event, actions.redacted, reason, details);
+          result.redacted += 1;
+        } else {
+          await this.deleteEvent(event, actions.deleted, reason, details);
+          result.deleted += 1;
+        }
+        result.lineageRecords += 1;
+      }
+      return { ...result, warehouse };
+    };
+
+    const warehouse = this.warehouseGovernance.describe();
+    if (warehouse.provider !== "bigquery") return apply();
+    if (!this.eventStore.withExclusiveWarehouseLoad) {
+      throw new Error("BigQuery governance requires an exclusive warehouse mutation lock");
     }
-
-    // Postgres first, warehouse second: a warehouse load running in between
-    // cannot reintroduce the erased rows, because the source rows are already
-    // deleted or already redacted.
-    const warehouse = await this.eraseFromWarehouse({
-      deleteEventIds,
-      redactEventIds,
-      affectedDates,
-      action: actions.source,
-      reason,
-      details,
-    });
-
-    return { ...result, warehouse };
+    const location = warehouse.location ?? analyticsWarehouseConfigFromEnv().projectId;
+    const key = analyticsWarehouseLockKey(location, analyticsWarehouseConfigFromEnv().datasetPrefix);
+    return this.eventStore.withExclusiveWarehouseLoad(key, apply);
   }
 
   private async eraseFromWarehouse(input: {
     deleteEventIds: string[];
     redactEventIds: string[];
+    redactedEnvelopes: unknown[];
     affectedDates: string[];
     action: string;
     reason: string;
@@ -223,14 +249,13 @@ export class AnalyticsGovernanceService {
       outcome = await this.warehouseGovernance.applyErasure({
         deleteEventIds: input.deleteEventIds,
         redactEventIds: input.redactEventIds,
-        // Re-read after the Postgres redaction so the warehouse rows are rebuilt
-        // from the redacted record rather than from a second set of rules.
-        redactedEnvelopes: await this.readRedactedEnvelopes(input.redactEventIds),
+        redactedEnvelopes: input.redactedEnvelopes,
         affectedDates: input.affectedDates,
         reason: input.reason,
       });
     } catch (error) {
-      // The Postgres erasure already succeeded; a warehouse failure must not discard it.
+      // Convert warehouse exceptions into a durable failed outcome. The caller
+      // will leave Postgres untouched so a later attempt can use the same ids.
       const message = error instanceof Error ? error.message : String(error);
       outcome = {
         status: "failed",
@@ -266,18 +291,6 @@ export class AnalyticsGovernanceService {
     return outcome;
   }
 
-  private async readRedactedEnvelopes(eventIds: string[]) {
-    const envelopes: unknown[] = [];
-    for (let index = 0; index < eventIds.length; index += 500) {
-      const rows = await prisma.analyticsEvent.findMany({
-        where: { eventId: { in: eventIds.slice(index, index + 500) } },
-        select: { envelope: true },
-      });
-      envelopes.push(...rows.map((row) => row.envelope));
-    }
-    return envelopes;
-  }
-
   private async deleteEvent(
     event: AnalyticsEvent,
     action: string,
@@ -298,27 +311,8 @@ export class AnalyticsGovernanceService {
     reason: string,
     details: Record<string, unknown>,
   ) {
-    const redactedPayload = redactPayload(event.payload);
-    const sourceRefs = event.sourceRefs && typeof event.sourceRefs === "object" ? event.sourceRefs : undefined;
-    const redactedEnvelope = {
-      eventId: event.eventId,
-      eventName: event.eventName,
-      eventVersion: event.eventVersion,
-      occurredAt: event.occurredAt.toISOString(),
-      receivedAt: event.receivedAt.toISOString(),
-      producer: event.producer,
-      environment: event.environment,
-      privacyTier: event.privacyTier,
-      subjectType: event.subjectType ?? undefined,
-      subjectId: event.subjectId ? REDACTED_VALUE : undefined,
-      actorId: event.actorId ? REDACTED_VALUE : undefined,
-      sessionId: event.sessionId ? REDACTED_VALUE : undefined,
-      traceId: event.traceId ? REDACTED_VALUE : undefined,
-      schemaUri: event.schemaUri ?? undefined,
-      consentBasis: event.consentBasis ?? undefined,
-      payload: redactedPayload,
-      sourceRefs,
-    };
+    const redactedEnvelope = redactedEnvelopeFor(event);
+    const redactedPayload = redactedEnvelope.payload;
 
     await prisma.$transaction([
       prisma.analyticsGovernanceLog.create({
@@ -362,6 +356,29 @@ export function partitionEventsForErasure(
     }
   }
   return { deleteEventIds, redactEventIds };
+}
+
+function redactedEnvelopeFor(event: AnalyticsEvent) {
+  const sourceRefs = event.sourceRefs && typeof event.sourceRefs === "object" ? event.sourceRefs : undefined;
+  return {
+    eventId: event.eventId,
+    eventName: event.eventName,
+    eventVersion: event.eventVersion,
+    occurredAt: event.occurredAt.toISOString(),
+    receivedAt: event.receivedAt.toISOString(),
+    producer: event.producer,
+    environment: event.environment,
+    privacyTier: event.privacyTier,
+    subjectType: event.subjectType ?? undefined,
+    subjectId: event.subjectId ? REDACTED_VALUE : undefined,
+    actorId: event.actorId ? REDACTED_VALUE : undefined,
+    sessionId: event.sessionId ? REDACTED_VALUE : undefined,
+    traceId: event.traceId ? REDACTED_VALUE : undefined,
+    schemaUri: event.schemaUri ?? undefined,
+    consentBasis: event.consentBasis ?? undefined,
+    payload: redactPayload(event.payload),
+    sourceRefs,
+  };
 }
 
 function describeWarehouseProvider(target: AnalyticsWarehouseGovernanceTarget) {

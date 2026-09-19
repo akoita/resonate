@@ -187,8 +187,8 @@ analytics path:
    pseudonymous actor ID, wallet subjects, artist profile subjects, active
    session IDs when available, and relevant release/track ownership IDs for
    artist-side exports.
-2. Write a governance lineage record before mutating downstream data.
-3. Delete non-audit raw, clean, and fact rows linked to the user or withdrawn
+2. Mutate the warehouse while holding the same exclusive lock as its loader.
+3. Write governance lineage and delete non-audit raw, clean, and fact rows linked to the user or withdrawn
    consent basis.
 4. Redact financial/audit rows instead of deleting lawful transaction history.
    Keep event name, dates, amounts, settlement/rights status, and source refs
@@ -206,15 +206,16 @@ facts. A backfill that ignores deletion lineage is considered unsafe.
 ### What The Backend Does Today
 
 `AnalyticsGovernanceService.propagateDeletion` and `withdrawConsent` apply the
-Postgres decision per event first (delete, or redact for the audit-preserved
-`commerce`, `payment`, `rights` and `license` families), and only then call the
-warehouse erasure target in
+warehouse decision first, while holding the same exclusive mutation lock as
+every BigQuery loader, and only then applies the Postgres decision per event
+(delete, or redact for the audit-preserved `commerce`, `payment`, `rights` and
+`license` families) in
 `backend/src/modules/analytics/analytics_warehouse_governance.ts`:
 
 - **Deleted events** are removed from `events_raw`, `events_clean` and
   `analytics_facts` in one transaction per chunk of 500 event IDs.
-- **Redacted events** are re-read from Postgres after redaction, and their
-  warehouse rows are rebuilt from the redacted envelope and replaced by key.
+- **Redacted events** are projected into their redacted envelope before either
+  store is mutated, and their warehouse rows are rebuilt and replaced by key.
   Warehouse redaction is therefore identical to Postgres redaction by
   construction, rather than a second set of rules that can drift.
 - **`analytics_views` is recomputed, not patched**: the erasure collects the
@@ -228,12 +229,15 @@ warehouse erasure target in
   retention window in the table above. A redacted event that cannot be rebuilt
   (and would therefore be quarantined) fails the erasure loudly instead of
   leaving un-redacted rows behind.
-- Ordering matters: Postgres first means a warehouse load running in between
-  cannot reintroduce the rows, because the source rows are already gone or
-  already redacted.
-- A warehouse failure never discards the completed Postgres erasure. It is
-  returned as `warehouse.status = "failed"` with the error and written to the
-  governance lineage as a `warehouse_erasure` record, so an operator can retry.
+- Ordering and locking matter: warehouse first preserves the Postgres event ids
+  when BigQuery temporarily refuses DML against streaming-buffer rows. The
+  shared loader/governance lock prevents a warehouse load from reintroducing a
+  row between the warehouse mutation and the Postgres mutation.
+- A warehouse failure is returned as `warehouse.status = "failed"`, written to
+  lineage, and leaves Postgres untouched. Account closure remains pending, the
+  scheduled execution exits non-zero, and a later run can retry after the
+  temporary warehouse condition clears. Sign-in can still cancel that pending
+  request.
 - Deployments without a BigQuery warehouse (`ANALYTICS_WAREHOUSE_TARGET` unset
   or `local_json`) get a disabled target that reports `skipped` and performs no
   work. No new environment variable is involved.

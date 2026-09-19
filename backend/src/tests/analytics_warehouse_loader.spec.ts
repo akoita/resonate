@@ -144,6 +144,24 @@ describe("analytics warehouse loader", () => {
     expect(bigQueryTarget.describe()).toEqual({ provider: "bigquery_insert_all", location: "analytics-project" });
   });
 
+  it("serializes insertAll loads through the shared warehouse mutation lock", async () => {
+    const store = new InMemoryAnalyticsEventStore();
+    const lock = jest.spyOn(store, "withExclusiveWarehouseLoad");
+    const target = {
+      describe: () => ({ provider: "bigquery_insert_all", location: "analytics-project" }),
+      load: jest.fn().mockResolvedValue([]),
+    };
+    const loader = new AnalyticsWarehouseLoaderService(store, target);
+
+    await loader.load({ runId: "locked-insert-all" });
+
+    expect(lock).toHaveBeenCalledWith(
+      expect.stringContaining("analytics-warehouse:analytics-project:"),
+      expect.any(Function),
+    );
+    expect(target.load).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes BigQuery JSON columns for insertAll", () => {
     expect(
       toBigQueryInsertAllJson("eventsRaw", {

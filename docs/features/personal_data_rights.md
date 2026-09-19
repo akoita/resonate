@@ -250,8 +250,10 @@ The fix belonged in retention rather than in the export. Having the export read
 BigQuery would have made the divergence permanent and put a cloud dependency in
 a user-facing request.
 
-**Retention still has no schedule**, so nothing has yet aged out of either
-store. That is the remaining half of #1789, and it deliberately comes second.
+The retention entry point is designed for external scheduling and defaults to
+dry-run so activation and destructive retention remain separate operator
+decisions. Per-environment scheduling state belongs in the private
+infrastructure tracker rather than this public feature page.
 
 ## Surfaces
 

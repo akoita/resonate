@@ -4,7 +4,12 @@ import { GoogleAuth } from "google-auth-library";
 import { dirname, join, resolve } from "path";
 import { BigQueryBatchAnalyticsWarehouseTarget } from "./analytics_bigquery_batch";
 import { analyticsBigQueryReportConfigFromEnv } from "./analytics_bigquery_report";
-import { AnalyticsEventListFilters, AnalyticsEventStore, ANALYTICS_EVENT_STORE } from "./analytics_event_store";
+import {
+  AnalyticsEventListFilters,
+  AnalyticsEventStore,
+  ANALYTICS_EVENT_STORE,
+  analyticsWarehouseLockKey,
+} from "./analytics_event_store";
 import {
   AnalyticsWarehouseExport,
   AnalyticsFactRow,
@@ -96,9 +101,11 @@ export class AnalyticsWarehouseLoaderService {
 
   async load(request: AnalyticsWarehouseLoadRequest = {}): Promise<AnalyticsWarehouseLoadResult> {
     const target = this.warehouseTarget.describe();
-    if (target.provider === "bigquery_batch" && !request.dryRun) {
-      if (!this.eventStore.withExclusiveWarehouseLoad) throw new Error("Batch target requires an exclusive warehouse load lock");
-      const key = `analytics-batch:${target.location}:${analyticsWarehouseConfigFromEnv().datasetPrefix}`;
+    if (target.provider.startsWith("bigquery_") && !request.dryRun) {
+      if (!this.eventStore.withExclusiveWarehouseLoad) {
+        throw new Error("BigQuery target requires an exclusive warehouse mutation lock");
+      }
+      const key = analyticsWarehouseLockKey(target.location, analyticsWarehouseConfigFromEnv().datasetPrefix);
       return this.eventStore.withExclusiveWarehouseLoad(key, () => this.loadOnce(request));
     }
     return this.loadOnce(request);
