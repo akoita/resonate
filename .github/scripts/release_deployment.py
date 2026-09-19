@@ -274,8 +274,15 @@ def validate_ci_run(
         raise ReleaseDeploymentError("CI run status must be completed")
     if ci_run.get("conclusion") != "success":
         raise ReleaseDeploymentError("CI run conclusion must be success")
-    if ci_run.get("event") != "push":
-        raise ReleaseDeploymentError("CI run event must be push")
+    # GitHub occasionally omits the post-merge push run. An explicit CI
+    # dispatch on the canonical branch is equivalent evidence because the
+    # exact head SHA and branch-to-environment mapping are still enforced
+    # below, and Release Deployment reruns the release-scoped CI graph.
+    ci_event = ci_run.get("event")
+    if ci_event not in {"push", "workflow_dispatch"}:
+        raise ReleaseDeploymentError(
+            "CI run event must be push or workflow_dispatch"
+        )
 
     run_id = _validate_run_id(ci_run.get("id"))
     head_sha = _require_string(ci_run, "head_sha")
@@ -299,7 +306,7 @@ def validate_ci_run(
         "name": "CI",
         "status": "completed",
         "conclusion": "success",
-        "event": "push",
+        "event": ci_event,
         "head_branch": source_branch,
         "head_sha": source_sha,
     }
