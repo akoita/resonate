@@ -5,11 +5,44 @@ import {
   buildAnalyticsEventId,
   normalizeAnalyticsEventInput,
   parseAnalyticsEventEnvelope,
+  resolveAnalyticsEnvironment,
 } from "../modules/analytics/analytics_event";
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 
 describe("analytics event envelope", () => {
   const now = new Date("2026-05-20T12:00:00.000Z");
+
+  it("derives deployment identity from RESONATE_ENVIRONMENT_ID, never NODE_ENV", () => {
+    expect(
+      resolveAnalyticsEnvironment({
+        RESONATE_ENVIRONMENT_ID: "staging",
+        NODE_ENV: "production",
+      }),
+    ).toBe("staging");
+    expect(
+      resolveAnalyticsEnvironment({
+        RESONATE_ENVIRONMENT_ID: "resonate-staging-blue",
+        NODE_ENV: "production",
+      }),
+    ).toBe("staging");
+    expect(
+      resolveAnalyticsEnvironment({
+        RESONATE_ENVIRONMENT_ID: "resonate-prod-blue",
+        NODE_ENV: "development",
+      }),
+    ).toBe("prod");
+  });
+
+  it("defaults an unlabeled deployment to dev even when NODE_ENV is production", () => {
+    expect(resolveAnalyticsEnvironment({ NODE_ENV: "production" })).toBe("dev");
+    expect(resolveAnalyticsEnvironment({ NODE_ENV: "test" })).toBe("local");
+    expect(
+      resolveAnalyticsEnvironment({
+        RESONATE_ENVIRONMENT_ID: "unclassified-preview",
+        NODE_ENV: "production",
+      }),
+    ).toBe("dev");
+  });
 
   it("normalizes legacy analytics ingest payloads into canonical envelopes", () => {
     const event = normalizeAnalyticsEventInput(

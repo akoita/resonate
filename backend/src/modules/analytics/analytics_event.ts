@@ -639,14 +639,47 @@ export function normalizeAnalyticsGeoDimension(input: unknown): AnalyticsGeoDime
   };
 }
 
+type AnalyticsEnvironmentVariables = {
+  [key: string]: string | undefined;
+  RESONATE_ENVIRONMENT_ID?: string;
+  NODE_ENV?: string;
+};
+
+/**
+ * Resolve deployment identity into the bounded analytics taxonomy.
+ *
+ * `NODE_ENV=production` describes how Node should run and is baked into every
+ * container image; it does not mean the deployment is production. The stable
+ * environment id wins. Unknown or missing shared-environment labels fail safe
+ * to `dev`, while NODE_ENV is retained only to make test processes `local`.
+ */
+export function resolveAnalyticsEnvironment(
+  env: AnalyticsEnvironmentVariables = process.env,
+): AnalyticsEnvironment {
+  const environmentId = env.RESONATE_ENVIRONMENT_ID?.trim().toLowerCase();
+  if (environmentId) {
+    if ((ANALYTICS_ENVIRONMENTS as readonly string[]).includes(environmentId)) {
+      return environmentId as AnalyticsEnvironment;
+    }
+
+    const tokens = environmentId.split(/[^a-z0-9]+/).filter(Boolean);
+    if (tokens.some((token) => ["staging", "stage", "stg"].includes(token))) {
+      return "staging";
+    }
+    if (tokens.some((token) => ["prod", "production", "prd"].includes(token))) {
+      return "prod";
+    }
+    if (tokens.some((token) => ["local", "test", "testing", "integration"].includes(token))) {
+      return "local";
+    }
+    return "dev";
+  }
+
+  return env.NODE_ENV?.trim().toLowerCase() === "test" ? "local" : "dev";
+}
+
 export function defaultAnalyticsEnvironment(): AnalyticsEnvironment {
-  if (process.env.NODE_ENV === "production") {
-    return "prod";
-  }
-  if (process.env.NODE_ENV === "test") {
-    return "local";
-  }
-  return "dev";
+  return resolveAnalyticsEnvironment();
 }
 
 function normalizedCountryCode(value: unknown) {

@@ -3,6 +3,29 @@ import { AnalyticsInstrumentationService } from "../modules/analytics/analytics_
 import { AnalyticsIngestService } from "../modules/analytics/analytics_ingest.service";
 
 describe("AnalyticsInstrumentationService", () => {
+  it("stamps the canonical deployment environment even when NODE_ENV is production", async () => {
+    const previousEnvironmentId = process.env.RESONATE_ENVIRONMENT_ID;
+    const previousNodeEnvironment = process.env.NODE_ENV;
+    process.env.RESONATE_ENVIRONMENT_ID = "staging";
+    process.env.NODE_ENV = "production";
+    try {
+      const ingest = new AnalyticsIngestService();
+      const instrumentation = new AnalyticsInstrumentationService(ingest);
+      await instrumentation.recordCommerceSettled({
+        paymentId: "environment-test-payment",
+        canonicalAmountUsd: 1,
+      });
+      expect(await ingest.listEvents()).toEqual([
+        expect.objectContaining({ environment: "staging" }),
+      ]);
+    } finally {
+      if (previousEnvironmentId === undefined) delete process.env.RESONATE_ENVIRONMENT_ID;
+      else process.env.RESONATE_ENVIRONMENT_ID = previousEnvironmentId;
+      if (previousNodeEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnvironment;
+    }
+  });
+
   it("deduplicates player action retries without merging different actors, tracks, events, or deliberate actions", async () => {
     const ingest = new AnalyticsIngestService();
     const instrumentation = new AnalyticsInstrumentationService(ingest);
