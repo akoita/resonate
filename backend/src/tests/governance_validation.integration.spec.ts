@@ -15,6 +15,10 @@
  * position as the retention job was before this existed.
  */
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
+import {
+  AnalyticsWarehouseGovernanceTarget,
+  WarehouseErasureRequest,
+} from "../modules/analytics/analytics_warehouse_governance";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
@@ -48,6 +52,18 @@ function invocationFor(phase: string): GovernanceValidationInvocation {
 }
 
 const INVOCATION = invocationFor("cleanup");
+
+/** External BigQuery stays mocked; the harness must still require an actual success. */
+const successfulWarehouse: AnalyticsWarehouseGovernanceTarget = {
+  describe: () => ({ provider: "recording" }),
+  applyErasure: async (request: WarehouseErasureRequest) => ({
+    status: "ok",
+    provider: "recording",
+    deletedRows: request.deleteEventIds.length,
+    redactedRows: request.redactEventIds.length,
+    statements: 1,
+  }),
+};
 
 afterAll(async () => {
   await cleanupAll(INVOCATION);
@@ -123,7 +139,7 @@ describe("governance validation harness — retention", () => {
   it("passes after a real retention run, having seen deletion, redaction and survival", async () => {
     // The real service, the real policy, the real database — the same call the
     // scheduled `run_retention_cleanup` job makes.
-    const run = await new AnalyticsGovernanceService().runRetentionCleanup();
+    const run = await new AnalyticsGovernanceService(successfulWarehouse).runRetentionCleanup();
     expect(run.status).toBe("ok");
     expect(run.deleted).toBeGreaterThan(0);
     expect(run.redacted).toBeGreaterThan(0);
@@ -216,7 +232,7 @@ describe("governance validation harness — erasure", () => {
     // The same call the scheduled `run_due_erasures` job makes.
     const service = new PersonalDataErasureService(
       new PersonalDataResolverService(),
-      new AnalyticsGovernanceService(),
+      new AnalyticsGovernanceService(successfulWarehouse),
       new AccountClosureService(),
     );
     const run = await service.runDueErasures();

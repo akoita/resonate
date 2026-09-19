@@ -438,6 +438,7 @@ export async function verifyRetention(
   }
 
   const warehouse = await warehouseOutcomesForRun(lineage);
+  const unsuccessfulWarehouseOutcomes = warehouse.statuses.filter((status) => status !== "ok");
   expectations.push(
     {
       id: "retention.warehouse.recorded",
@@ -448,10 +449,10 @@ export async function verifyRetention(
     },
     {
       id: "retention.warehouse.no_failure",
-      what: "A run that cleared Postgres while the warehouse refused has left the two stores disagreeing.",
+      what: "Every warehouse erasure must complete; a failed or skipped target leaves the validation incomplete.",
       operator: "equals",
       expected: 0,
-      actual: warehouse.failed,
+      actual: unsuccessfulWarehouseOutcomes.length,
     },
   );
 
@@ -883,6 +884,33 @@ export async function verifyErasure(
     }),
   ]);
 
+  // The default run id is intentionally reusable. Scope warehouse summaries to
+  // this closure request so residue from an earlier run with the same fixture
+  // identity cannot make a later validation pass or fail.
+  const erasureLineageRows = closure
+    ? await prisma.analyticsGovernanceLog.findMany({
+        where: {
+          createdAt: { gte: closure.requestedAt },
+        },
+        select: { action: true, actorId: true, subjectId: true, details: true },
+      })
+    : [];
+  const addressLower = subject.toLowerCase();
+  const governanceAddressHits = erasureLineageRows.filter((row) =>
+    [row.actorId, row.subjectId, JSON.stringify(row.details)]
+      .filter((value): value is string => typeof value === "string")
+      .some((value) => value.toLowerCase().includes(addressLower)),
+  ).length;
+  const erasureWarehouseRows = erasureLineageRows.filter(
+    (row) => row.action === WAREHOUSE_ERASURE_ACTION
+      && (row.actorId === pseudonym || row.subjectId === pseudonym),
+  );
+  const erasureWarehouseStatuses = erasureWarehouseRows.map((row) => {
+    const details = (row.details ?? {}) as Record<string, unknown>;
+    const warehouse = (details.warehouse ?? {}) as Record<string, unknown>;
+    return typeof warehouse.status === "string" ? warehouse.status : "unknown";
+  });
+
   const [controlUser, controlWallet, controlMessage, controlPlaylist, controlRelease, controlSessionKey] =
     await Promise.all([
       prisma.user.findUnique({ where: { id: identities.controlUserId } }),
@@ -982,6 +1010,27 @@ export async function verifyErasure(
       operator: "equals",
       expected: 0,
       actual: analyticsHits,
+    },
+    {
+      id: "erasure.address.governance_lineage",
+      what: "Deletion lineage must prove the erasure without copying the wallet address into its batch summary.",
+      operator: "equals",
+      expected: 0,
+      actual: governanceAddressHits,
+    },
+    {
+      id: "erasure.warehouse.recorded",
+      what: "The erasure must leave at least one warehouse outcome tied to the fixture's pseudonymous identity.",
+      operator: "atLeast",
+      expected: 1,
+      actual: erasureWarehouseStatuses.length,
+    },
+    {
+      id: "erasure.warehouse.all_succeeded",
+      what: "A failed or skipped warehouse target means the person's analytics were not proven erased everywhere.",
+      operator: "equals",
+      expected: 0,
+      actual: erasureWarehouseStatuses.filter((status) => status !== "ok").length,
     },
     {
       id: "erasure.session_key_deleted",
@@ -1124,6 +1173,10 @@ export async function verifyErasure(
     // The rotated id is a fresh UUID naming nobody, so it is safe to report.
     // The pre-rotation id is the person's address and is deliberately absent.
     rotatedUserId,
+    warehouse: {
+      records: erasureWarehouseStatuses.length,
+      statuses: erasureWarehouseStatuses,
+    },
   });
 }
 

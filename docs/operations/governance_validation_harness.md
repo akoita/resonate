@@ -119,8 +119,10 @@ session and trace ids replaced by `[redacted]` and their person-shaped payload
 keys emptied *while the non-personal payload survives*; the control rows are
 present, unredacted, and have no lineage claiming otherwise; and a lineage row
 exists with `retention_deleted` or `retention_redacted` as appropriate. It also
-reports the warehouse outcome for the run and fails if any tier's warehouse half
-failed.
+reports the warehouse outcome for the run and fails unless every observed
+warehouse half completed with `status: "ok"`. A disabled target reports
+`skipped`, which is a failed validation here: a green governance check must
+prove the warehouse was actually reached.
 
 ### Erasure
 
@@ -147,7 +149,9 @@ analytics in all keyings, and every dangling column the cascade cannot reach;
 that the seeded private key is gone; that financial rows are retained but
 relinked to the rotated id; that the artist is detached and the release
 `withdrawn` rather than deleted; and that **the control account is entirely
-untouched**.
+untouched**. It also checks that warehouse erasure summaries exist for the
+fixture, that every one completed successfully, and that neither per-event nor
+batch lineage copied the wallet address it exists to prove was removed.
 
 ### Cleanup
 
