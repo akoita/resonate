@@ -1804,6 +1804,17 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. We use it to see what helps and to fix what does not.",
           },
           {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/analytics-consent-banner.png`,
+              alt: "The Resonate analytics consent banner explains optional usage measurement and gives equally prominent No, do not measure and Yes, measure my use buttons.",
+              caption: "The choice appears after sign-in. Saying no and saying yes are presented with equal weight.",
+              width: 544,
+              height: 268,
+              source: STAGING,
+            },
+          },
+          {
             kind: "list",
             items: [
               "We ask before anything is recorded. Until you answer, nothing about how you use the app is collected.",
