@@ -138,7 +138,7 @@ test.describe("keyboard accessibility smoke", () => {
   });
 
   test("tabs and their panels support arrow-key navigation", async ({ page }) => {
-    await openSettledRoute(page, "/artist/test-artist-id");
+    await openSettledRoute(page, "/artist/e2e-artist-0000-0000-0000-000000000001");
 
     const discography = page.getByRole("tab", { name: "Discography" });
     const community = page.getByRole("tab", { name: "Community" });
