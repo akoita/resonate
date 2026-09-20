@@ -768,6 +768,7 @@ a {
 .app-content {
   padding: var(--space-6) var(--space-10);
   padding-bottom: 120px;
+  scroll-padding-bottom: 120px;
   /* Ensure content clears the floating bottom bar */
   flex: 1;
   overflow-y: auto;
@@ -13888,6 +13889,7 @@ tr[draggable="true"]:hover {
   .app-content {
     padding: var(--space-4);
     padding-bottom: 140px;
+    scroll-padding-bottom: 140px;
   }
 
   /* Global playlist panel becomes a full-screen sheet on phone.

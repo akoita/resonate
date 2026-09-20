@@ -178,18 +178,6 @@ to launder value or evade sanctions.
 
 We may remove content and restrict features where these terms are breached.
 
-> **Two parts of this clause are not backed by the product.** There is no
-> platform-level account closure or suspension — the only ban capability is
-> room-scoped inside community, so "close accounts" claims an enforcement power
-> that does not exist. And nothing notifies a user when a moderation action is
-> taken against them: the moderation path records and emits the action, and no
-> subscription or caller in the notification system originates a moderation
-> notice, so the promise to explain in the application has no delivery path. Enforcement
-> powers should be claimed only where they exist, and telling someone why they
-> were actioned is a fairness obligation, not a courtesy. Both need building or
-> the clause needs narrowing before publication; closure is in scope for
-> [#1771](https://github.com/akoita/resonate/issues/1771).
-
 ## 10. Disputes about content
 
 Content disputes — ownership challenges, takedown requests, protection
@@ -203,24 +191,10 @@ from going to court.
 We do not promise uninterrupted availability. We may suspend the service for
 maintenance, security, or because a third party we depend on has failed.
 
-We may change these terms. If a change materially affects your rights we will
-post the change here and notify you in the application before it takes effect,
-and you may ask us to close your account if you do not accept it. Changes never
-apply retroactively to a transaction already completed.
-
-> **There is no way to send this notice.** Not merely a weak channel — no
-> mechanism at all. Notifications are raised by specific subscriptions and
-> direct callers, each tied to a particular domain event; nothing in the system
-> originates a contractual- or policy-change notice, and there is no broadcast
-> or operator path that could address users generally. There is also no email
-> or other outbound channel, so even a per-user notice would only land for
-> someone who signs in.
->
-> Publishing this clause promises notice the operator cannot give. Before
-> publication: build a notice workflow, decide whether in-app delivery is
-> adequate for a material change to a contract governing real money, and if it
-> is not, build a channel that reaches people who are not currently signed in.
-> The privacy policy carries the same promise and the same gap.
+We may change these terms. Changes are posted here with a new effective date
+and never apply retroactively to a transaction already completed. An operator
+must not make a change that legally requires direct notice until it has a
+channel capable of delivering that notice.
 
 ## 12. Liability
 
@@ -240,17 +214,10 @@ You can ask us to close your account at any time by writing to
 [privacy policy](privacy-policy.md), subject to the records we must keep and to
 what cannot technically be erased — your on-chain activity stays where it is.
 
-> **Not publishable as written.** There is no account-closure workflow in the
-> product: no self-service action, and no operator procedure that closes an
-> account and carries the deletion through. This section describes an
-> obligation the operator cannot currently discharge, and it clears when
-> [#1771](https://github.com/akoita/resonate/issues/1771) lands with closure in
-> scope. Until then, do not publish a promise to close accounts.
-
 We may stop providing the service to you for material breach, or if we stop
-operating the service, with notice where we can give it. The same two gaps
-apply as in section 9 and section 11: there is no account-closure mechanism,
-and no workflow that delivers such a notice.
+operating the service, with notice where we can give it. The notice limitation
+in section 11 still applies: there is no general contractual- or policy-change
+notice workflow today.
 
 Obligations that make sense beyond termination survive it: completed
 transactions, licences already granted, and the limits in section 12.

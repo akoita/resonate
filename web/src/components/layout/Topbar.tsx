@@ -33,6 +33,10 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/settings", "Settings"],
   ["/help", "User Guide"],
   ["/about", "About"],
+  ["/terms", "Terms of Service"],
+  ["/privacy", "Privacy Policy"],
+  ["/refunds", "Refund Policy"],
+  ["/imprint", "Imprint & Contact"],
 ];
 
 function getRouteTitle(pathname: string | null) {

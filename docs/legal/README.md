@@ -20,7 +20,7 @@ published text belongs in this repository.
 | Terms of Service | [terms-of-service.md](terms-of-service.md) | Template |
 | Privacy Policy | [privacy-policy.md](privacy-policy.md) | Template; several sections blocked on software capabilities — #1770, #1771, #1772 |
 | Refund policy | [refund-policy.md](refund-policy.md) | Template; #1776 and #1778 change it when they land |
-| Imprint / operator identity | not templated | Requirements are jurisdiction-specific; see below |
+| Imprint / operator identity | [imprint.md](imprint.md) | Template; requirements are jurisdiction-specific |
 
 ## What lives where
 
@@ -40,10 +40,13 @@ source-code default.
 
 ## Why the software's own gaps stay here
 
-Several sections carry blocks saying a claim cannot be published yet — no
-account-closure workflow, product analytics collected without a consent gate,
-erasure that stops at the primary event store, a generation-credit refund that
-never fires.
+Several sections carry blocks saying a claim cannot be published yet. Keep
+those blocks only while the underlying capability is genuinely missing. The
+account-closure workflow, consent gate, warehouse erasure and durable
+generation-credit refund reconciliation have shipped; the templates now state
+those behaviours plainly. Open legal or product gaps remain explicit, notably
+the escrow-classification review (#1774), the digital-content withdrawal flow
+(#1776), and the missing material-policy-change notice workflow.
 
 Those are **facts about this software**, true for every deployment, and they
 belong in the open where a prospective operator can read them before adopting

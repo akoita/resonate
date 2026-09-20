@@ -76,19 +76,12 @@ easy as giving it. Withdrawing consent does not affect processing that already
 happened, and it does not switch off the operational, security, payment and
 rights events we must keep.
 
-> **This table cannot be published as it stands.** Product analytics are
-> currently recorded for any signed-in session with no prior choice offered and
-> no persistent opt-out: `recordProductAnalytics` fires whenever a stored auth
-> token exists. Consent under GDPR Article 7 requires a clear affirmative act,
-> demonstrable afterwards, and withdrawal as easy as giving it — none of which
-> exists yet, and a request by email after the fact cannot make consent the
-> lawful basis retroactively.
->
-> Before publication, one of two things must be true: the consent mechanism in
-> [#1772](https://github.com/akoita/resonate/issues/1772) is live and enforced
-> at ingest, or these rows name the basis that actually applies today and the
-> collection is narrowed to match it. Choosing the second is a decision with
-> product consequences, not a drafting choice.
+Optional product analytics are collected only after an explicit choice. No
+answer is treated as refusal. The browser suppresses optional events before
+sending them and the authenticated ingest routes independently refuse them
+unless the current consent version is granted. You can change the choice at
+any time in Settings under Privacy; turning it off stops future optional
+collection and applies the withdrawal policy to previously consented events.
 
 ## Your controls
 
@@ -96,20 +89,15 @@ rights events we must keep.
 at any moment, you can exercise every right below by writing to
 {{OPERATOR_CONTACT_EMAIL}}.
 
-Being able to *receive* such a request is not the same as being able to
-*fulfil* it. The table below says which controls exist; the sections that
-follow say where the underlying mechanism is still incomplete. This document
-must not go live while a row it describes cannot actually be honoured.
-
 As of {{EFFECTIVE_DATE}}:
 
 | Control | Status |
 | --- | --- |
-| Turning optional product analytics off | **Not yet available**, and there is no opt-out gate behind the scenes either — see the note under "Why, and on what basis". |
+| Turning optional product analytics off | Available in Settings under Privacy; the browser and server both enforce the choice. |
 | Personalised yearly summaries | Not yet offered. |
 | Resetting or adjusting taste memory | Partially available; social taste matching is off unless you turn it on. |
-| Exporting your data | **Not yet available**, self-service or otherwise. |
-| Deleting your data | **Not yet available** beyond the primary event store — see "When you delete". |
+| Exporting your data | Available in Settings under Privacy as a self-service download. |
+| Deleting your data | Available in Settings under Privacy, with signature confirmation and a 30-day cancellation period. |
 
 Each row must be re-checked against the product on the day this ships and
 whenever a control becomes available. A privacy policy that claims a control
@@ -143,32 +131,6 @@ A deletion request writes a record that the deletion was asked for, and then
 removes or redacts the analytics rows linked to the identifier it is given.
 Financial and audit records are redacted rather than deleted, as described
 below.
-
-> **Most of this mechanism now exists; one gap still blocks publication.**
->
-> Shipped: a person is resolved to every identifier their data is keyed by
-> (#1785); erasure reaches the analytics warehouse and the facts derived from it
-> (#1770); the erasure itself anonymises in place, rotates the account id — which
-> for a wallet account *is* the wallet address — detaches an artist profile
-> without deleting a catalogue other people bought from, and keeps only what
-> retention obliges (#1795); and a person can ask for it themselves, from
-> Settings, behind a signature, with 30 days to change their mind (#1771 slice
-> 3b).
->
-> **Still missing: nothing runs the scheduled erasures.**
-> [#1797](https://github.com/akoita/resonate/issues/1797) — the engine, its
-> endpoint and its scheduled entry point exist, and the operator procedure is
-> written down (`docs/operations/account_erasure_runbook.md`), but no scheduler
-> invokes it yet, so a request reaches its due date and waits for someone to run
-> it.
->
-> So this section may not yet say a deletion completes on its own. Once #1797
-> lands, the paragraphs below are accurate as written and this block comes off.
-> Two related gaps do not block it but should be known:
-> [#1796](https://github.com/akoita/resonate/issues/1796) (an unset salt makes
-> analytics erasure depend on never rotating an auth secret) and
-> [#1789](https://github.com/akoita/resonate/issues/1789) (retention has never
-> run, so nothing has yet aged out of either store).
 
 When you ask us to delete your account, we resolve you to every identifier your
 data is held under — not just your account id, but the wallet addresses, the
@@ -224,17 +186,6 @@ interests. You can withdraw consent at any time. Write to
 {{OPERATOR_CONTACT_EMAIL}}. Where a self-service control exists you can also
 use it — see the table above for which ones are live.
 
-> **Not publishable while the mechanisms are missing.** The rights above exist
-> regardless of what we have built, but the statutory deadline to satisfy them
-> is not met by intending to. Access and portability have no export path;
-> erasure reaches only the primary event store; withdrawal of consent for
-> product analytics has nothing to withdraw from, because consent was never
-> taken. Publishing this section is a commitment to a deadline the system
-> cannot currently keep, which is a worse position than not publishing at all.
-> It clears when [#1770](https://github.com/akoita/resonate/issues/1770),
-> [#1771](https://github.com/akoita/resonate/issues/1771) and
-> [#1772](https://github.com/akoita/resonate/issues/1772) land.
-
 You can also complain to your data protection authority. In the operator's
 jurisdiction that is {{SUPERVISORY_AUTHORITY}}.
 
@@ -246,8 +197,8 @@ effect on you.
 
 Taste memory controls — resetting it, hiding individual signals — are partly
 available today, and social taste matching stays off unless you turn it on.
-Turning off the product analytics that feed these surfaces is **not** available;
-see the controls table above.
+Turning off product analytics stops future optional analytics collection; it
+does not remove operational records or independently chosen taste settings.
 
 ## Children
 
@@ -255,26 +206,11 @@ Resonate is not for people under {{MINIMUM_AGE}}. We are obliged to delete data
 we hold about someone below that age. Reports can be sent to
 {{OPERATOR_CONTACT_EMAIL}}.
 
-> **This case depends on the same missing erasure mechanism, and there is no
-> response process behind the address.** Deleting a child's data completely
-> requires exactly what "When you delete" says does not exist yet — identifier
-> resolution, warehouse and derived-fact deletion, and rebuild tombstones — and
-> no runbook or workflow turns a report into a completed deletion. Stating the
-> obligation is right; implying that a report will be acted on today is not. It
-> clears with
-> [#1770](https://github.com/akoita/resonate/issues/1770) and
-> [#1771](https://github.com/akoita/resonate/issues/1771).
-
 ## Changes
 
-We will post changes here, and where they matter we will notify you before they
-take effect.
-
-> **No mechanism sends that notice.** Notifications are raised only by
-> subscriptions and callers tied to particular domain events; nothing
-> originates a policy-change notice, there is no broadcast or operator path,
-> and there is no email or other outbound channel. The same gap is recorded in
-> section 11 of the terms of service and must be closed in one place for both.
+Changes are posted here with a new effective date. An operator must not make a
+change that legally requires direct notice until it has a channel capable of
+delivering that notice.
 
 ---
 

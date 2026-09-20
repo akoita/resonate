@@ -96,6 +96,60 @@ export const HELP_ARTICLES: HelpArticle[] = [
     related: ["smart-wallet", "troubleshooting"],
   },
   {
+    slug: "legal-privacy-refunds",
+    title: "Terms, privacy & refunds",
+    summary:
+      "Read who operates this Resonate instance, what you agree to, how your data is handled, and when an escrow pledge is refundable.",
+    category: "account",
+    audiences: ["everyone"],
+    keywords: ["terms", "privacy", "refund", "imprint", "contact", "legal", "data", "escrow", "pledge"],
+    sections: [
+      {
+        id: "before-signing-up",
+        heading: "Before signing up",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "The sign-up area links the Terms, Privacy Policy and Refund Policy. You can open every document without an account. The Imprint identifies and provides contact details for the operator of the instance you are using.",
+          },
+        ],
+      },
+      {
+        id: "privacy-controls",
+        heading: "Your privacy controls",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Optional product analytics are your choice. No answer means no optional collection. Settings under Privacy lets you change that choice, download your data, or request account deletion with a 30-day period to change your mind.",
+          },
+          {
+            kind: "callout",
+            tone: "warning",
+            title: "Some public records are permanent",
+            text: "Resonate cannot erase a confirmed public-blockchain transaction or guarantee deletion of content already published to IPFS. The Privacy Policy explains these limits before you publish or transact.",
+          },
+        ],
+      },
+      {
+        id: "escrow-refunds",
+        heading: "Escrow pledge refunds",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "A campaign that misses its goal, or is cancelled before any artist release, makes your full pledge refundable with no platform fee deducted. If a deposit was already released, the refund is your proportional share of what remains in escrow. You claim it from the campaign with the wallet that pledged.",
+          },
+        ],
+      },
+    ],
+    appLinks: [
+      { label: "Terms of Service", href: "/terms", description: "The agreement for using this Resonate instance." },
+      { label: "Privacy Policy", href: "/privacy", description: "Collection, retention, rights and permanent-data limits." },
+      { label: "Refund Policy", href: "/refunds", description: "Refund conditions for pledges and other purchases." },
+      { label: "Imprint & contact", href: "/imprint", description: "Operator identity, hosting and contact details." },
+    ],
+    related: ["getting-started", "settings-privacy", "download-your-data"],
+  },
+  {
     slug: "smart-wallet",
     title: "Your wallet & smart account",
     summary:

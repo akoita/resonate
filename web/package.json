@@ -32,6 +32,8 @@
     "permissionless": "^0.4.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "socket.io-client": "^4.8.3",
     "viem": "^2.56.0",
     "zustand": "^5.0.15"
