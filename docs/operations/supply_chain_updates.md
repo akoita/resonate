@@ -33,6 +33,31 @@ checks and changes that conflict with another selected update are also listed
 rather than forced into the train. Use the workflow's manual trigger when a
 reviewed batch should be refreshed before its weekly schedule.
 
+### Dependency Train authentication
+
+The workflow publishes with a dedicated GitHub App installation token rather
+than the repository's default `GITHUB_TOKEN`. The app must be installed only on
+this repository and have only `contents: write` and `pull requests: write`
+repository permissions. It needs no account permissions. This scope lets the
+workflow update `automation/dependency-train` and create or update its review
+pull request; it cannot administer the repository, manage secrets, or operate
+on another repository.
+
+Repository secrets `DEPENDENCY_TRAIN_APP_ID` and
+`DEPENDENCY_TRAIN_APP_PRIVATE_KEY` supply the app credentials. The workflow
+mints a short-lived installation token for each run and does not persist it in
+the checkout. Keep the repository-wide **Allow GitHub Actions to create and
+approve pull requests** setting disabled: the app-authored review pull request
+triggers CI without widening every workflow's default token.
+
+Rotate the app private key on the owner's normal credential-rotation schedule
+and immediately after suspected disclosure. Install the replacement secret
+before revoking the prior key, then run Dependency Train manually and verify
+that it updates the review branch and opens or refreshes the CI-bearing pull
+request. Missing or invalid app credentials fail the rebuild visibly; the
+scheduled-failure reporter then records the failure without receiving the app
+token.
+
 For production Node.js images, select a supported LTS line rather than blindly
 accepting Dependabot's newest major tag. Digest-pin the reviewed multi-platform
 manifest and validate the resulting image reference with the repository's

@@ -3,6 +3,13 @@ name: Dependency Train
 # Scheduled workflows execute from the repository's default branch.  The
 # explicit ref guard below also makes a manually selected non-default ref a
 # no-op, so write access is never granted to source-branch code.
+#
+# Publishing uses a dedicated GitHub App installed only on this repository.
+# The app has repository permissions `contents: write` and
+# `pull requests: write`; its installation token is minted per run from the
+# DEPENDENCY_TRAIN_APP_ID and DEPENDENCY_TRAIN_APP_PRIVATE_KEY secrets. This
+# keeps the repository-wide "Actions can create pull requests" setting off and
+# still lets the app-authored review PR trigger CI.
 on:
   schedule:
     - cron: "15 6 * * 1"
@@ -39,9 +46,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Mint dependency train installation token
+        id: dependency-train-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.DEPENDENCY_TRAIN_APP_ID }}
+          private-key: ${{ secrets.DEPENDENCY_TRAIN_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Configure non-interactive GitHub authentication
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.dependency-train-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
           EXPECTED_REF: refs/heads/main
         run: |
@@ -62,7 +78,7 @@ jobs:
 
       - name: Rebuild and publish the review train
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.dependency-train-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
