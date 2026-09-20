@@ -6,19 +6,10 @@ import Link from "next/link";
 import {
   APP_NAME,
   APP_TAGLINE,
-  BUILDER_HANDLE,
-  BUILDER_URL,
-  COMMIT_SHA,
   ISSUES_URL,
-  REPO_URL,
-  getCommitUrl,
   getEnvironment,
   isProduction,
 } from "../../lib/buildInfo";
-import {
-  resolveDeployedRelease,
-  type DeployedRelease,
-} from "../../lib/releaseIdentity";
 
 interface AboutModalProps {
   isOpen: boolean;
@@ -31,7 +22,6 @@ interface AboutModalProps {
 export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   const [mounted, setMounted] = useState(false);
   const [animating, setAnimating] = useState(false);
-  const [release, setRelease] = useState<DeployedRelease | null>(null);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- SSR hydration guard
   useEffect(() => setMounted(true), []);
@@ -39,20 +29,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- trigger enter animation
     if (isOpen) setAnimating(true);
-  }, [isOpen]);
-
-  // The release tag is created after the deployed image is built, so it can
-  // only be resolved live. Never blocks the dialog: unresolved simply means
-  // the Build row keeps showing the commit link.
-  useEffect(() => {
-    if (!isOpen || !COMMIT_SHA) return;
-    let active = true;
-    void resolveDeployedRelease(COMMIT_SHA).then((resolved) => {
-      if (active && resolved) setRelease(resolved);
-    });
-    return () => {
-      active = false;
-    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -68,7 +44,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
 
   const env = getEnvironment();
   const showEnvBadge = !isProduction();
-  const commitUrl = getCommitUrl();
 
   const sheet = (
     <div
@@ -108,12 +83,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
           color: var(--ds-on-surface-variant, #cdc2d8);
           letter-spacing: 0.04em;
           text-transform: uppercase;
-        }
-        .about-value {
-          font-size: 13px;
-          color: #fff;
-          font-variant-numeric: tabular-nums;
-          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
         .about-link {
           color: var(--ds-primary, #d4bbff);
@@ -209,21 +178,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                   flexWrap: "wrap",
                 }}
               >
-                {/* Tag names render verbatim: v* tags already carry a "v"
-                    and milestone-* tags must not gain one. Nothing is shown
-                    when no tag points at the deployed commit. */}
-                {release ? (
-                  <span
-                    style={{
-                      fontSize: 12,
-                      color: "rgba(255,255,255,0.55)",
-                      fontFamily:
-                        "ui-monospace, SFMono-Regular, Menlo, monospace",
-                    }}
-                  >
-                    {release.name}
-                  </span>
-                ) : null}
                 {showEnvBadge ? (
                   <span
                     style={{
@@ -264,28 +218,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
               </Link>
             </div>
             <div className="about-row">
-              <span className="about-label">Source</span>
-              <a
-                className="about-link"
-                href={REPO_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                github.com/akoita/resonate ↗
-              </a>
-            </div>
-            <div className="about-row">
-              <span className="about-label">Built by</span>
-              <a
-                className="about-link"
-                href={BUILDER_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                @{BUILDER_HANDLE} ↗
-              </a>
-            </div>
-            <div className="about-row">
               <span className="about-label">Issues</span>
               <a
                 className="about-link"
@@ -296,47 +228,6 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
                 Report a bug ↗
               </a>
             </div>
-            {COMMIT_SHA ? (
-              <div className="about-row">
-                <span className="about-label">Build</span>
-                <span
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {/* The tag name already appears beside the title, so this
-                      link names the destination instead of repeating it. The
-                      short SHA stays beside it: the exact build identity is
-                      never lost, tagged or not. */}
-                  {release ? (
-                    <a
-                      className="about-link"
-                      href={release.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {release.kind === "release" ? "Release notes" : "Tag"} ↗
-                    </a>
-                  ) : null}
-                  {commitUrl ? (
-                    <a
-                      className="about-link about-value"
-                      href={commitUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {COMMIT_SHA} ↗
-                    </a>
-                  ) : (
-                    <span className="about-value">{COMMIT_SHA}</span>
-                  )}
-                </span>
-              </div>
-            ) : null}
           </div>
         </div>
 
