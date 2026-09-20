@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable, Optional } from "@nestjs/common";
 import { createHash } from "crypto";
-import { AnalyticsEventInput, AnalyticsGeoDimension } from "./analytics_event";
+import {
+  AnalyticsEventInput,
+  AnalyticsGeoDimension,
+  resolveAnalyticsEnvironment,
+} from "./analytics_event";
 import { AnalyticsCatalogMetadataService } from "./analytics_catalog_metadata.service";
 import { AnalyticsIngestService } from "./analytics_ingest.service";
 import { AgentLearningService, buildAgentSignalMetadata, type AgentSignalAction } from "../agents/agent_learning.service";
@@ -601,7 +605,7 @@ export class AnalyticsInstrumentationService {
     return this.ingestService.ingest({
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
-      environment: process.env.NODE_ENV === "production" ? "prod" : "dev",
+      environment: resolveAnalyticsEnvironment(),
       ...input,
     });
   }

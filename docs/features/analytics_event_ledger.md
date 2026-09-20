@@ -30,7 +30,22 @@ persisted through the Postgres-backed `AnalyticsEvent` ledger model via
 fallback only for direct unit-test construction outside Nest dependency
 injection. The first warehouse export contract is available through
 `backend/src/modules/analytics/analytics_warehouse.ts`; it emits raw, clean,
-fact, view, and quarantine layers from stored events. Core producer helpers for
+fact, view, and quarantine layers from stored events.
+
+Every envelope's `environment` comes from the backend's stable
+`RESONATE_ENVIRONMENT_ID`, mapped into `local`, `dev`, `staging`, or `prod`.
+`NODE_ENV` is deliberately not a deployment signal: runtime images use
+`NODE_ENV=production` in every environment. An unknown or missing deployment
+identity is therefore labelled `dev`, never `prod`.
+
+Rows written before this correction keep their recorded label. Their source
+deployment cannot be reconstructed reliably from the event envelope, and a
+guess-based rewrite would replace known bad metadata with false certainty.
+Environment filtering is trustworthy only for events written by a release
+that includes #1806; any historical warehouse remediation requires independent
+deployment evidence and is an operator-owned backfill.
+
+Core producer helpers for
 playback, library, commerce, rights, agent, and generation events are available
 in `backend/src/modules/analytics/analytics_instrumentation.service.ts`; the
 web player records qualifying `playback.completed` events through the narrow
