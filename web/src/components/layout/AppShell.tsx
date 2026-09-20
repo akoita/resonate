@@ -13,6 +13,7 @@ import AgentOnboardingGate from "../agent/AgentOnboardingGate";
 import AnalyticsConsentPrompt from "../analytics/AnalyticsConsentPrompt";
 import AccountClosureNotice from "../settings/AccountClosureNotice";
 import PlaybackIntentBridge from "../player/PlaybackIntentBridge";
+import { LegalFooter } from "../legal/LegalFooter";
 
 export default function AppShell({
   children,
@@ -47,6 +48,7 @@ export default function AppShell({
             <Suspense fallback={null}>
               {children}
             </Suspense>
+            <LegalFooter />
           </main>
           <PlayerBar />
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 import { useAuth } from "./AuthProvider";
 
@@ -103,6 +104,15 @@ export default function ConnectButton() {
           </span>
         </button>
       </div>
+
+      <p className="wallet-legal-links">
+        <span>By signing up, you agree to the</span>
+        <Link href="/terms">Terms</Link>
+        <span>and acknowledge the</span>
+        <Link href="/privacy">Privacy Policy</Link>
+        <span>and</span>
+        <Link href="/refunds">Refund Policy</Link>
+      </p>
 
       {status === "error" && error ? (
         <div className="wallet-error">{error}</div>
