@@ -120,7 +120,8 @@ policy and the export's `notIncluded` section:
 
 - Feature: [Personal Data Rights](../features/personal_data_rights.md)
 - Inventory: [Personal data inventory](../engineering/personal-data-inventory.md)
-- Open: [#1797](https://github.com/akoita/resonate/issues/1797) (scheduling),
-  [#1798](https://github.com/akoita/resonate/issues/1798) (step-up fallback),
-  [#1796](https://github.com/akoita/resonate/issues/1796) (salt),
-  [#1789](https://github.com/akoita/resonate/issues/1789) (retention)
+- Account-closure step-up and governance hardening history:
+  [#1798](https://github.com/akoita/resonate/issues/1798),
+  [#1797](https://github.com/akoita/resonate/issues/1797),
+  [#1796](https://github.com/akoita/resonate/issues/1796), and
+  [#1789](https://github.com/akoita/resonate/issues/1789)

@@ -17,12 +17,7 @@ export type AccountClosureStepUpMode =
   /** ERC-1271/ERC-6492 said yes — a deployed smart account. */
   | "erc1271"
   /** The signature recovered to another address this same person owns. */
-  | "recovered_eoa"
-  /**
-   * Nothing cryptographic held, and the request was accepted on the strength
-   * of the session and a single-use nonce alone. See {@link verify}.
-   */
-  | "nonce_only";
+  | "recovered_eoa";
 
 export interface AccountClosureChallenge {
   address: string;
@@ -99,22 +94,11 @@ export class AccountClosureStepUpService {
    *    the challenge, which costs an honest client one extra round trip and
    *    denies an attacker unlimited attempts against one nonce.
    *
-   * The `nonce_only` outcome mirrors `AuthController.verify`, which accepts
-   * nonce-gated authentication when ERC-1271 cannot be evaluated — a
-   * counterfactual (undeployed) smart account has no code to call, and its
-   * WebAuthn-wrapped signature is not one viem can recover from. Refusing that
-   * case here would leave every passkey user who has never transacted unable to
-   * delete their own account, which is a worse failure than the one it
-   * prevents. It is logged at `warn` so the weakest outcome is visible rather
-   * than assumed, and the 30-day window plus cancel-on-sign-in remain the real
-   * protection against a request the account holder did not make.
-   *
-   * It is narrower than auth's, though, in the one way that matters here: that
-   * fallback applies only when the signature could not be evaluated *at all*.
-   * A signature that recovers cleanly to somebody else is a signature over
-   * different words, or by a different key, and is refused — otherwise a caller
-   * who obtained a signature over some other text could still submit it, and
-   * naming the action in the message would buy nothing.
+   * Counterfactual smart accounts are supported without weakening this check:
+   * viem wraps an undeployed smart account's signature in ERC-6492 using its
+   * factory data, and `verifyMessage` evaluates that deployment path before
+   * asking ERC-1271. If neither that check nor offline EOA recovery proves the
+   * signature, an irreversible action must fail closed.
    */
   /**
    * A refused step-up answers 400, not 401.
@@ -177,12 +161,9 @@ export class AccountClosureStepUpService {
     }
 
     writeStructuredLog({
-      level: mode === "nonce_only" ? "warn" : "info",
+      level: "info",
       event: "privacy.account_closure.step_up_verified",
-      message:
-        mode === "nonce_only"
-          ? "Account-closure step-up accepted on nonce alone; no signature check held"
-          : "Account-closure step-up verified by signature",
+      message: "Account-closure step-up verified by signature",
       userId: input.userId,
       stepUpMode: mode,
     });
@@ -241,15 +222,11 @@ export class AccountClosureStepUpService {
       return "recovered_eoa";
     }
 
-    if (recovered) {
-      // The signature was fully evaluable and named a stranger. Nothing about
-      // it is ambiguous, so there is no fallback to fall back to: refuse.
-      return null;
-    }
-
-    // Not recoverable and not checkable on chain — a WebAuthn-wrapped signature
-    // from an account with no code. See the note on `verify`.
-    return "nonce_only";
+    // A recoverable signature that names a stranger is a definite refusal. An
+    // opaque signature that neither ERC-6492/ERC-1271 nor EOA recovery can
+    // prove is also a refusal: the nonce prevents replay, but is not proof that
+    // the account holder approved deletion.
+    return null;
   }
 
   private async recoverSigner(message: string, signature: `0x${string}`) {
