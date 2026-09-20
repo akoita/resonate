@@ -103,7 +103,6 @@ placeholder without registering it fails rather than ships.
 | `{{OPERATOR_CONTACT_EMAIL}}` | Published contact address |
 | `{{OPERATOR_PUBLICATION_DIRECTOR}}` | Publication director, where required |
 | `{{HOSTING_PROVIDER}}` | Hosting provider's name and address, where required |
-| `{{SERVICE_URL}}` | Canonical public URL of the deployment |
 | `{{EFFECTIVE_DATE}}` | Date the document takes effect |
 | `{{MINIMUM_AGE}}` | Minimum age to hold an account |
 | `{{GOVERNING_LAW}}` | Law governing the terms |

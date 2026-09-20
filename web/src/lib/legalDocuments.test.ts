@@ -38,10 +38,15 @@ describe("legal documents", () => {
     expect(markdown).not.toContain("Template — not any deployment");
   });
 
-  it("derives public service, chain, asset, and credit values from canonical configuration", () => {
+  it("does not expose the canonical deployment origin in legal copy", () => {
+    const markdown = renderLegalMarkdown("terms", configuredEnv);
+    expect(markdown).toMatch(/use of this Resonate\s+service/);
+    expect(markdown).not.toContain(configuredEnv.NEXT_PUBLIC_SITE_URL);
+  });
+
+  it("derives chain, asset, and credit values from canonical configuration", () => {
     const values = legalTemplateValues(configuredEnv);
     expect(values).toMatchObject({
-      SERVICE_URL: "https://music.example",
       ACCEPTED_PAYMENT_ASSETS: "USDC",
       CHAIN_NAME: "Base Sepolia",
       CREDIT_CURRENCY: "USD cents",

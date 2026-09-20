@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chainName } from "./shows";
-import { SITE_URL, configuredChainId } from "./seo";
+import { configuredChainId } from "./seo";
 
 export type LegalDocumentSlug = "terms" | "privacy" | "refunds" | "imprint";
 
@@ -76,10 +76,6 @@ export function legalTemplateValues(env: NodeJS.ProcessEnv = process.env): Recor
     throw new Error(`Missing required legal build variables: ${missing.join(", ")}`);
   }
 
-  values.SERVICE_URL = env.NEXT_PUBLIC_SITE_URL?.trim() || (strict ? "" : SITE_URL);
-  if (strict && !values.SERVICE_URL) {
-    throw new Error("Missing required legal build variable: NEXT_PUBLIC_SITE_URL");
-  }
   values.ACCEPTED_PAYMENT_ASSETS = acceptedPaymentAssets(env, strict);
   values.CHAIN_NAME = chainName(configuredChainId(env.NEXT_PUBLIC_CHAIN_ID));
   values.CREDIT_CURRENCY = "USD cents";

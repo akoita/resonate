@@ -84,7 +84,9 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
 ## Surfaces
 
 - **UI routes:** `/help`, `/help/[slug]`
-- **Entry points:** sidebar `User Guide`, top-bar `?` button, About dialog
+- **Entry points:** sidebar `User Guide`, top-bar `?` button, About dialog. The
+  About dialog identifies non-production environments and links support/help;
+  it does not publish maintainer identity or exact build provenance.
 - **Code:** `web/src/app/help/`, `web/src/components/help/`,
   `web/src/lib/help/`, `web/src/styles/help.css`
 - **Assets:** `web/public/help/screenshots/`

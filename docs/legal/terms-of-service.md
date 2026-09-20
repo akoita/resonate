@@ -15,8 +15,8 @@ are shaped by European obligations and do not transfer elsewhere unaltered.
 Requires review by someone qualified in the operator's jurisdiction. Not legal
 advice. See [README](README.md).
 
-Effective from {{EFFECTIVE_DATE}}. These terms govern your use of Resonate at
-{{SERVICE_URL}}.
+Effective from {{EFFECTIVE_DATE}}. These terms govern your use of this Resonate
+service.
 
 ## 1. Who you are contracting with
 

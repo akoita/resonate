@@ -19,6 +19,10 @@ contact, jurisdiction and hosting values are deployment-specific. The reference
 deployment supplies them from private `resonate-iac` configuration during the
 frontend build.
 
+The canonical application origin remains technical configuration for links and
+metadata. Legal copy does not render it, so provider-generated hostnames and
+other deployment topology are not exposed as visible document content.
+
 A normal development build renders conspicuous bracketed placeholders so an
 open-source adopter can work on the UI without impersonating an operator. A
 deployable build sets `LEGAL_PUBLISH_MODE=required`; any missing value, invalid
