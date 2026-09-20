@@ -61,11 +61,12 @@ describe("analytics consent prompt (#1772)", () => {
     expect(html).not.toContain("analytics-consent-overlay");
   });
 
-  it("says plainly that refusing costs nothing and links to the guide", () => {
+  it("explains both the free choice and the honest product tradeoff", () => {
     const html = render();
 
     expect(html).toContain("entirely optional");
-    expect(html).toContain("works exactly the same either way");
+    expect(html).toContain("does not disable any feature");
+    expect(html).toContain("less tailored or complete");
     expect(html).toContain("/help/product-analytics");
   });
 
