@@ -46,7 +46,9 @@ trackArtist → joined main-role credits → primaryArtist → accountDisplayNam
   counterpart rule for release objects; keep the two in step. Displayed-name →
   profile linking uses `artistCreditHref` / `catalogArtistHref` in
   [`web/src/lib/artistRoutes.ts`](../../web/src/lib/artistRoutes.ts) so a
-  free-text credit never mis-links to the uploader's profile.
+  free-text credit never mis-links to the uploader's profile. The same helper
+  sends unresolved credits to `/catalog/artists/<credited-name>` rather than
+  fabricating an `/artist/<slug>` profile.
 
 ### Surfaces routed through the helper (Phase A)
 
@@ -71,10 +73,28 @@ accounts. As an interim fix with **no schema change**:
   identity key (a credited display name), not an account id.
 - `getTopArtists()` returns items `{ rank, name, artistId, imageUrl, score,
   plays, uniqueListeners, saves }` where `name` is the credited artist and
-  `artistId` is the matching account **only** when a claimed/self-managed
-  artist's `displayName` equals the credited name (else `null`).
+  `artistId` is set only when published release-credit evidence resolves that
+  name to one unique profile. Display-name equality alone is not trusted, so a
+  stale same-name profile cannot capture the link (else `artistId` is `null`).
 - The Home rail links to the artist profile when `artistId` is set, otherwise to
   the catalog artist route (`/catalog/artists/<name>`).
+
+## Public profiles, catalog credits, and the local library
+
+The three destinations communicate different identity guarantees:
+
+- `/artist/<profile-id>` is a managed Resonate profile backed by a stable id.
+- `/catalog/artists/<credited-name>` groups public releases by an unresolved or
+  unclaimed credit without implying profile ownership.
+- `/library/artists/<artist-name>` and Library album query links are private
+  groupings from the listener's saved or device-local metadata.
+
+`web/src/lib/artistRoutes.ts` owns these builders, including public release and
+local album destinations. A missing `/artist/<id>` no longer renders an empty
+profile: a resolvable legacy name redirects using public catalog evidence, and
+an unresolved value renders an explicit not-found state. The compact Player
+also preserves source scope: catalog-backed tracks open the public catalog
+credit, while device-local tracks open the local Library grouping.
 
 **Phase B (#1492):** replace the credited-name string key with a stable
 credited-artist id. [#1450](https://github.com/akoita/resonate/issues/1450)'s
@@ -128,6 +148,7 @@ asserting they import `resolveCreditedArtistName` and no longer inline the raw
 - Owner correction (ownership + validation):
   `cd backend && npx jest --runInBand --forceExit --config jest.integration.config.js --testPathPattern='catalog.integration'`
 - Frontend rail: `cd web && npx vitest run PopularityRails`
+- Frontend destinations: `cd web && npx vitest run src/lib/artistRoutes.test.ts`
 
 ## References
 
@@ -136,6 +157,7 @@ asserting they import `resolveCreditedArtistName` and no longer inline the raw
 - Related: [#1419](https://github.com/akoita/resonate/issues/1419) (artist links),
   [#1451](https://github.com/akoita/resonate/issues/1451) (True Trending & Top
   Artists), [#1450](https://github.com/akoita/resonate/issues/1450) (warehouse
-  marts)
+  marts), [#1820](https://github.com/akoita/resonate/issues/1820) (destination
+  consistency)
 - Code: `backend/src/modules/shared/artist_attribution.ts`,
   `web/src/lib/catalogDisplay.ts`, `web/src/lib/artistRoutes.ts`

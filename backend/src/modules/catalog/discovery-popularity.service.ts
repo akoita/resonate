@@ -425,27 +425,69 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       orderBy: { score: "desc" },
       take: limit,
     });
-    // `row.artistId` is now the credited artist NAME (#1492 Phase A interim key).
-    // Hydrate an account only when its displayName equals the credited name
-    // (claimed/self-managed artists) — that gives us a profile link + image.
-    // Otherwise the credited artist has no matching account, so `artistId` is
-    // null and the UI links to the catalog artist route.
+    // `row.artistId` is the credited artist NAME (#1492 Phase A interim key).
+    // A matching account display name is not identity evidence: stale and
+    // duplicate profiles can share that text. Resolve a profile only through
+    // the published releases that carry the credit, and only when every
+    // matching release points to one unambiguous profile id (#1820).
     const names = rows.map((row) => row.artistId);
-    const accounts = names.length
-      ? await prisma.artist.findMany({
-          where: { displayName: { in: names } },
-          select: { id: true, displayName: true, imageUrl: true },
+    const releases = names.length
+      ? await prisma.release.findMany({
+          where: {
+            status: "ready",
+            OR: [
+              { primaryArtist: { in: names } },
+              { artist: { displayName: { in: names } } },
+              { artistCredits: { some: { displayName: { in: names } } } },
+            ],
+          },
+          select: {
+            primaryArtist: true,
+            artist: { select: { id: true, displayName: true, imageUrl: true } },
+            artistCredits: {
+              where: { displayName: { in: names } },
+              select: {
+                artistId: true,
+                displayName: true,
+                artist: { select: { imageUrl: true } },
+              },
+            },
+          },
         })
       : [];
-    const accountByName = new Map(
-      accounts.map((account) => [account.displayName, account]),
-    );
+    const profilesByName = new Map<
+      string,
+      Map<string, { id: string; imageUrl: string | null }>
+    >();
+    const addCandidate = (
+      name: string,
+      profile: { id: string; imageUrl: string | null },
+    ) => {
+      const candidates = profilesByName.get(name) ?? new Map();
+      candidates.set(profile.id, profile);
+      profilesByName.set(name, candidates);
+    };
+    for (const release of releases) {
+      for (const credit of release.artistCredits) {
+        addCandidate(credit.displayName, {
+          id: credit.artistId,
+          imageUrl: credit.artist.imageUrl,
+        });
+      }
+      const ownerName = release.artist.displayName;
+      if (!release.primaryArtist || release.primaryArtist === ownerName) {
+        addCandidate(ownerName, release.artist);
+      }
+    }
     const result = {
       window,
       genre: genre || null,
       minimumAudience: minAudience(),
       items: rows.map((row, index) => {
-        const account = accountByName.get(row.artistId) ?? null;
+        const candidates = profilesByName.get(row.artistId);
+        const account = candidates?.size === 1
+          ? [...candidates.values()][0]
+          : null;
         return {
           rank: index + 1,
           name: row.artistId,

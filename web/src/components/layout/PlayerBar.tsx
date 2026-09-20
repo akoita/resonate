@@ -4,7 +4,7 @@ import { ListeningControls } from "../player/ListeningControls";
 import { useRouter, usePathname } from "next/navigation";
 import { usePlayer } from "../../lib/playerContext";
 import { MarqueeText } from "../ui/MarqueeText";
-import { libraryArtistHref } from "../../lib/artistRoutes";
+import { playerArtistHref } from "../../lib/artistRoutes";
 import { useToast } from "../ui/Toast";
 import { useUIStore } from "../../lib/uiStore";
 import { MixerConsole } from "../player/MixerConsole";
@@ -105,8 +105,8 @@ export default function PlayerBar() {
                 className="player-artist clickable"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const target = currentTrack.artist;
-                  if (target) router.push(libraryArtistHref(target));
+                  const target = playerArtistHref(currentTrack);
+                  if (target) router.push(target);
                 }}
               />
             </div>

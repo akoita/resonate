@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, getArtistMe, listArtistReleases, Release, ArtistProfile } from "../../../lib/api";
+import { getArtistPublic, getArtistMe, listArtistReleases, listPublishedReleases, Release, ArtistProfile } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
@@ -11,6 +11,8 @@ import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLin
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
 import { isArtistProfileOwner } from "../../../lib/artistProfileForm";
 import { useAuth } from "../../../components/auth/AuthProvider";
+import { legacyArtistAliasDestination, legacyArtistAliasSearchName, publicReleaseHref } from "../../../lib/artistRoutes";
+import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
 
 type ArtistTab = "discography" | "community";
 
@@ -26,6 +28,7 @@ export default function ArtistPage() {
 
     const [releases, setReleases] = useState<Release[]>([]);
     const [loading, setLoading] = useState(true);
+    const [notFound, setNotFound] = useState(false);
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
     const isOwner = isArtistProfileOwner(me, artist);
 
@@ -49,8 +52,32 @@ export default function ArtistPage() {
                     listArtistReleases(artistId).catch(() => []),
                 ]);
 
-                setArtist(profile);
-                setReleases(profileReleases);
+                if (profile) {
+                    setArtist(profile);
+                    setReleases(profileReleases);
+                    setNotFound(false);
+                    return;
+                }
+
+                // Legacy /artist/{slug} aliases must not render an empty
+                // second profile. Resolve only from public catalog evidence;
+                // otherwise show an explicit not-found state (#1820).
+                const catalogReleases = await listPublishedReleases(
+                    100,
+                    legacyArtistAliasSearchName(artistId),
+                ).catch(() => []);
+                const legacyDestination = legacyArtistAliasDestination(
+                    artistId,
+                    summarizeCreditedArtists(catalogReleases),
+                );
+                if (legacyDestination) {
+                    router.replace(legacyDestination);
+                    return;
+                }
+
+                setArtist(null);
+                setReleases([]);
+                setNotFound(true);
 
             } catch (err) {
                 console.error("Failed to load artist", err);
@@ -62,7 +89,7 @@ export default function ArtistPage() {
         };
 
         void fetchData();
-    }, [artistId]);
+    }, [artistId, router]);
 
     // Owner detection (#1419): only fetched when signed in, and only used to
     // gate the "Edit profile" affordance below — never blocks the public view.
@@ -93,6 +120,18 @@ export default function ArtistPage() {
     const genres = Array.from(
         new Set(releases.map((r) => r.genre).filter((g): g is string => Boolean(g))),
     ).slice(0, 4);
+
+    if (!loading && notFound) {
+        return (
+            <div className="page-container artist-page">
+                <div className="empty-state" role="status">
+                    <h1>Artist not found</h1>
+                    <p>This artist profile or catalog credit could not be resolved.</p>
+                    <Button variant="ghost" onClick={handleBack}>← Back</Button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="page-container artist-page">
@@ -202,7 +241,7 @@ export default function ArtistPage() {
                                     title={release.title}
                                     image={release.artworkUrl || undefined}
                                     variant="standard"
-                                    onClick={() => router.push(`/release/${release.id}`)}
+                                    onClick={() => router.push(publicReleaseHref(release.id))}
                                 >
                                     <div className="card-meta">
                                         <span className="card-type">{release.type}</span>

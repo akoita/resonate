@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
-import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
+import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
 import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
 
@@ -52,7 +52,7 @@ export function TrendingNowRail({
           {items.slice(0, 8).map((item) => (
             <Link
               key={item.trackId}
-              href={`/release/${item.releaseId}`}
+              href={publicReleaseHref(item.releaseId)}
               className="ng-play-card ng-glass"
               style={{ borderRadius: 20, position: "relative" }}
             >
