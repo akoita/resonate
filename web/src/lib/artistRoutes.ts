@@ -10,6 +10,66 @@ export function catalogArtistHref(artistName: string) {
   return `/catalog/artists/${encodeURIComponent(artistName)}`;
 }
 
+export function publicReleaseHref(releaseId: string) {
+  return `/release/${encodeURIComponent(releaseId)}`;
+}
+
+export function libraryAlbumHref(albumName: string, artistName: string) {
+  const search = new URLSearchParams({
+    tab: "albums",
+    album: albumName,
+    albumArtist: artistName,
+  });
+  return `/library?${search.toString()}`;
+}
+
+export function legacyArtistAliasSearchName(alias: string) {
+  return alias
+    .trim()
+    .replace(/^sample-artist-/i, "")
+    .replace(/[-_]+/g, " ");
+}
+
+export function playerArtistHref(track: {
+  artist?: string | null;
+  catalogTrackId?: string | null;
+  releaseId?: string | null;
+}) {
+  const artistName = track.artist?.trim();
+  if (!artistName) return null;
+  return track.catalogTrackId || track.releaseId
+    ? catalogArtistHref(artistName)
+    : libraryArtistHref(artistName);
+}
+
+export function legacyArtistAliasDestination(
+  alias: string,
+  artists: Array<{ name: string; artistId: string | null }>,
+) {
+  const normalizedAlias = alias.trim().toLowerCase();
+  const slugAlias = normalizedAlias.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const aliasKeys = new Set([
+    normalizedAlias,
+    slugAlias,
+    slugAlias.replace(/^sample-artist-/, ""),
+  ]);
+  const matches = artists.filter(
+    (artist) => {
+      const normalizedName = artist.name.trim().toLowerCase();
+      const slugName = normalizedName.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      return aliasKeys.has(normalizedName) || aliasKeys.has(slugName);
+    },
+  );
+  if (matches.length === 0) return null;
+
+  const profileIds = [...new Set(
+    matches.map((artist) => artist.artistId).filter((id): id is string => Boolean(id)),
+  )];
+  return profileIds.length === 1
+    ? artistProfileHref(profileIds[0])
+    : catalogArtistHref(alias);
+}
+
 /**
  * The release's OWN backing artist profile — i.e. the uploader/owner profile,
  * which is NOT necessarily the credited primary artist (an uploader/manager can
@@ -37,7 +97,8 @@ export function releaseArtistProfileHref(input: {
  *      (the release really is by the owner artist); else
  *   2. a matching `artistCredits[]` row (covers the primary + featured artists);
  *      else
- *   3. nothing — never mis-link a free-text credit to an unrelated profile.
+ *   3. the public catalog-credit route — never fabricate a profile id for
+ *      free-text or unclaimed credits.
  */
 export function artistCreditHref(
   displayedName: string | null | undefined,
@@ -63,5 +124,5 @@ export function artistCreditHref(
     return artistProfileHref(credit.artistId);
   }
 
-  return null;
+  return catalogArtistHref(displayedName!.trim());
 }

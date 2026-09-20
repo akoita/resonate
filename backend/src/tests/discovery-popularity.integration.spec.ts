@@ -26,6 +26,7 @@ const USER_ID = `${TEST_PREFIX}owner`;
 const HOT_ARTIST = `${TEST_PREFIX}hot_artist`; // manager account; displayName "Hot Artist"
 const QUIET_ARTIST = `${TEST_PREFIX}quiet_artist`;
 const CLAIMED_ARTIST = `${TEST_PREFIX}claimed_artist`; // self-managed; displayName == credit
+const STALE_DUPLICATE_ARTIST = `${TEST_PREFIX}stale_duplicate_artist`;
 const HOT_RELEASE = `${TEST_PREFIX}hot_release`;
 const QUIET_RELEASE = `${TEST_PREFIX}quiet_release`;
 const CLAIMED_RELEASE = `${TEST_PREFIX}claimed_release`;
@@ -83,6 +84,11 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     });
     await prisma.artist.create({
       data: { id: CLAIMED_ARTIST, displayName: CLAIMED_NAME },
+    });
+    // A display-name collision alone must never become the Top Artists link.
+    // This stale profile has no release-credit evidence for CLAIMED_NAME.
+    await prisma.artist.create({
+      data: { id: STALE_DUPLICATE_ARTIST, displayName: CLAIMED_NAME },
     });
     await prisma.release.create({
       data: {
@@ -274,7 +280,7 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     });
   });
 
-  it("getTopArtists attaches the account when its displayName is the credited name", async () => {
+  it("getTopArtists attaches only the profile backed by matching release evidence", async () => {
     // CLAIMED_RELEASE has no primaryArtist, so the credited name falls back to
     // the self-managed account's displayName — which lets us hydrate a profile
     // id + image for a real artist-account link.
@@ -289,6 +295,7 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       artistId: CLAIMED_ARTIST,
       uniqueListeners: 3,
     });
+    expect(result.items[0].artistId).not.toBe(STALE_DUPLICATE_ARTIST);
   });
 
   it("re-refresh replaces the window snapshot instead of accumulating", async () => {

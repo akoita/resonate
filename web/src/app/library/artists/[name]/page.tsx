@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { libraryAlbumHref } from "../../../../lib/artistRoutes";
 import AuthGate from "../../../../components/auth/AuthGate";
 import { Button } from "../../../../components/ui/Button";
 import { TrackActionMenu } from "../../../../components/ui/TrackActionMenu";
@@ -106,8 +107,7 @@ export default function LibraryArtistPage() {
     .map((track) => track.remoteArtworkUrl || artworkUrls.get(track.id))
     .find(Boolean);
 
-  const albumHref = (albumName: string) =>
-    `/library?tab=albums&album=${encodeURIComponent(albumName)}&albumArtist=${encodeURIComponent(artistName)}`;
+  const albumHref = (albumName: string) => libraryAlbumHref(albumName, artistName);
 
   const playFrom = (list: LocalTrack[], trackId: string) => {
     const index = list.findIndex((t) => t.id === trackId);

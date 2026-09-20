@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
-import { artistProfileHref, catalogArtistHref } from "../../lib/artistRoutes";
+import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import {
   filterPublicPlaylists,
   flattenCatalogStems,
@@ -217,7 +217,7 @@ export default function GlobalCatalogPage() {
                   <div className="ng-resource-grid ng-resource-grid--catalog">
                     {filteredReleases.length > 0 ? (
                       filteredReleases.map((release) => (
-                        <Link key={release.id} href={`/release/${release.id}`} className="ng-resource-card ng-resource-card__link">
+                        <Link key={release.id} href={publicReleaseHref(release.id)} className="ng-resource-card ng-resource-card__link">
                           <ReleaseThumb release={release} />
                           <div className="ng-resource-card__body">
                             <h4>{release.title}</h4>
@@ -269,7 +269,7 @@ export default function GlobalCatalogPage() {
                   <div className="ng-stem-browser ng-catalog-results">
                     {filteredStems.length > 0 ? (
                       filteredStems.map((stem) => (
-                        <Link key={stem.id} href={`/release/${stem.releaseId}?mixer=true`} className="ng-stem-row">
+                        <Link key={stem.id} href={`${publicReleaseHref(stem.releaseId)}?mixer=true`} className="ng-stem-row">
                           <span className="ng-stem-row__icon" aria-hidden>
                             <span className="ms-icon">graphic_eq</span>
                           </span>

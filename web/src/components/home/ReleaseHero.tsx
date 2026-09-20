@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "../ui/Button";
 import { Release } from "../../lib/api";
-import { artistCreditHref } from "../../lib/artistRoutes";
+import { artistCreditHref, publicReleaseHref } from "../../lib/artistRoutes";
 
 interface ReleaseHeroProps {
   release: Release;
@@ -15,7 +15,7 @@ export function ReleaseHero({ release }: ReleaseHeroProps) {
 
   const handleViewDetails = () => {
     if (release.id) {
-      router.push(`/release/${release.id}`);
+      router.push(publicReleaseHref(release.id));
     }
   };
 

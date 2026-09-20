@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { listPublishedReleases, type Release } from "../../../../lib/api";
 import { Button } from "../../../../components/ui/Button";
 import { Card } from "../../../../components/ui/Card";
+import { publicReleaseHref } from "../../../../lib/artistRoutes";
 
 function getReleaseYear(release: Release) {
   return release.releaseDate ? new Date(release.releaseDate).getFullYear() : "";
@@ -102,7 +103,7 @@ export default function CatalogArtistPage() {
                   title={release.title}
                   image={release.artworkUrl || undefined}
                   variant="standard"
-                  onClick={() => router.push(`/release/${release.id}`)}
+                  onClick={() => router.push(publicReleaseHref(release.id))}
                 >
                   <div className="card-meta">
                     <span className="card-type">{release.type}</span>

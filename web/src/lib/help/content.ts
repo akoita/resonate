@@ -220,6 +220,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "These charts are honest: if not enough different people have listened yet (overall or in a genre you selected), the rail says \"not enough listening yet\" instead of showing a made-up ranking. Charts fill in as the community listens more.",
           },
+          {
+            kind: "paragraph",
+            text: "Artist links also say what Resonate knows. A managed artist opens their Resonate profile. An unclaimed name opens a catalog-credit page containing releases credited to that name, without pretending the credit is an owned profile.",
+          },
         ],
       },
       {
@@ -485,6 +489,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Your library is everything you have saved. Save a track from Discover, a release page, the catalog, or the Player, and it appears here ready to play.",
+          },
+          {
+            kind: "paragraph",
+            text: "Artist and album pages inside My Library are private groupings built from your saved or device-local music metadata. Their Local Library label distinguishes them from public Resonate profiles and catalog-credit pages, even when the names happen to match.",
           },
           {
             kind: "figure",

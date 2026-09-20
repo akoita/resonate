@@ -2,8 +2,60 @@ import { describe, expect, it } from "vitest";
 import {
   artistCreditHref,
   artistProfileHref,
+  catalogArtistHref,
+  libraryAlbumHref,
+  libraryArtistHref,
+  legacyArtistAliasDestination,
+  legacyArtistAliasSearchName,
+  playerArtistHref,
+  publicReleaseHref,
   releaseArtistProfileHref,
 } from "./artistRoutes";
+
+describe("canonical artist and album destinations (#1820)", () => {
+  it("encodes public profile, catalog-credit, and local-library identities", () => {
+    expect(artistProfileHref("profile/a")).toBe("/artist/profile%2Fa");
+    expect(catalogArtistHref("A/B & C")).toBe("/catalog/artists/A%2FB%20%26%20C");
+    expect(libraryArtistHref("A/B & C")).toBe("/library/artists/A%2FB%20%26%20C");
+  });
+
+  it("keeps public releases and local albums in their own namespaces", () => {
+    expect(publicReleaseHref("release/a")).toBe("/release/release%2Fa");
+    expect(libraryAlbumHref("Same Name", "Artist A")).toBe(
+      "/library?tab=albums&album=Same+Name&albumArtist=Artist+A",
+    );
+    expect(libraryAlbumHref("Same Name", "Artist B")).not.toBe(
+      libraryAlbumHref("Same Name", "Artist A"),
+    );
+  });
+
+  it("keeps player links in the source identity namespace", () => {
+    expect(playerArtistHref({ artist: "Aya Lune", releaseId: "release-1" })).toBe(
+      "/catalog/artists/Aya%20Lune",
+    );
+    expect(playerArtistHref({ artist: "Aya Lune" })).toBe(
+      "/library/artists/Aya%20Lune",
+    );
+    expect(playerArtistHref({ artist: null })).toBeNull();
+  });
+
+  it("resolves a legacy alias only from matching catalog evidence", () => {
+    expect(legacyArtistAliasSearchName("sample-artist-aya-lune")).toBe("aya lune");
+    expect(legacyArtistAliasDestination("Aya Lune", [
+      { name: "Aya Lune", artistId: "profile-1" },
+    ])).toBe("/artist/profile-1");
+    expect(legacyArtistAliasDestination("sample-artist-aya-lune", [
+      { name: "Aya Lune", artistId: "profile-1" },
+    ])).toBe("/artist/profile-1");
+    expect(legacyArtistAliasDestination("Aya Lune", [
+      { name: "Aya Lune", artistId: "profile-1" },
+      { name: "Aya Lune", artistId: "profile-2" },
+    ])).toBe("/catalog/artists/Aya%20Lune");
+    expect(legacyArtistAliasDestination("Missing", [
+      { name: "Aya Lune", artistId: "profile-1" },
+    ])).toBeNull();
+  });
+});
 
 describe("releaseArtistProfileHref (#1419)", () => {
   it("links purely off the profile id — the release's OWNER profile", () => {
@@ -72,8 +124,10 @@ describe("artistCreditHref (#1419)", () => {
     );
   });
 
-  it("does not link a free-text name with no matching id-backed entry", () => {
-    expect(artistCreditHref("Some Random Feature", release)).toBeNull();
+  it("routes a free-text name with no matching id-backed entry to its catalog credit", () => {
+    expect(artistCreditHref("Some Random Feature", release)).toBe(
+      catalogArtistHref("Some Random Feature"),
+    );
   });
 
   it("does not link when there is no name at all", () => {
@@ -82,7 +136,9 @@ describe("artistCreditHref (#1419)", () => {
     expect(artistCreditHref("", release)).toBeNull();
   });
 
-  it("does not link when the release has no id anywhere", () => {
-    expect(artistCreditHref("Anyone", { artistCredits: [] })).toBeNull();
+  it("uses the catalog fallback when the release has no profile id anywhere", () => {
+    expect(artistCreditHref("Anyone", { artistCredits: [] })).toBe(
+      catalogArtistHref("Anyone"),
+    );
   });
 });
