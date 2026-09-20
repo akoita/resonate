@@ -22,11 +22,19 @@ propagation and consent withdrawal remove or rebuild the person's rows in
 `events_raw`, `events_clean` and `analytics_facts`, then recompute the affected
 days of `analytics_views` from the facts that survive (#1770).
 
-The server-side consent gate for client-emitted telemetry now exists (#1772,
-backend slice): the three authenticated browser ingest routes refuse to record
-unless the person has an explicit granted decision. The user-facing surface for
-making that decision is still missing, so the control exists only as an API in
-this slice.
+The consent gate for client-emitted telemetry now exists end to end (#1772):
+the three authenticated browser ingest routes refuse to record unless the
+person has an explicit granted decision, the browser suppresses optional
+events before sending them, and the consent banner plus Settings > Privacy
+surface let the person make or change that decision.
+
+Refusal does not disable product capabilities, change prices, or affect the
+person's music, wallet, purchases, or account. It does reduce the behavioral
+data available for personalizing discovery and recommendations, producing
+aggregate artist insights, evaluating feature usefulness, and planning future
+improvements. Those experiences continue to work, but some results may be less
+tailored or complete. This consequence must be explained honestly rather than
+hidden or engineered around.
 
 This page defines the product and operational policy that those jobs must
 follow. The user-facing export shipped with #1771 slice 2 — a person downloads
@@ -154,7 +162,7 @@ so that every client agrees:
 | Decided against the current text | `true` | `false` | Do not ask again — including when the decision was a refusal. Someone who said no has decided, and re-prompting them on the next page load is nagging, which undermines the validity of the refusal. |
 | Decided against superseded text | `true` | `true` | Ask again. The gate is closed until they decide under the current text. |
 
-Consent API (this slice; no user-facing surface yet):
+Consent API:
 
 | Endpoint | Behavior |
 | --- | --- |

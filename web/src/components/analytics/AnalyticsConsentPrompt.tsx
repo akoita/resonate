@@ -136,13 +136,16 @@ export function AnalyticsConsentBanner({
         <div className="analytics-consent-body">
           <p>
             We would like to record which parts of Resonate you use — starting a track, saving
-            something to your library, searching, opening a listing — so we can see what helps and fix
-            what does not.
+            something to your library, searching, opening a listing — to improve discovery and
+            recommendations, understand which features help, give artists aggregate insights, and
+            decide what to build next.
           </p>
           <p>
-            This is entirely optional. Resonate works exactly the same either way: saying no does not
-            limit any feature, change any price, or affect your music, your wallet, or your account.
-            You can change your answer whenever you like, in Settings under Privacy.{" "}
+            This is entirely optional. Saying no does not disable any feature, change any price, or
+            affect your music, your wallet, or your account. It does mean Resonate has less activity
+            data to personalize recommendations and improve aggregate insights, so some results may be
+            less tailored or complete. You can change your answer whenever you like, in Settings under
+            Privacy.{" "}
             <Link href="/help/product-analytics" className="analytics-consent-link">
               Read more about what this covers
             </Link>

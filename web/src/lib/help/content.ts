@@ -1777,7 +1777,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "product-analytics",
     title: "Usage measurement: your choice",
     summary:
-      "We only record how you use Resonate if you say yes. Saying no is free of consequences, and you can change your answer at any time.",
+      "We only record how you use Resonate if you say yes. Saying no disables no features, but it gives Resonate less information for personalization and aggregate insights.",
     category: "account",
     audiences: ["everyone", "listener", "artist"],
     status: "available",
@@ -1801,7 +1801,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. We use it to see what helps and to fix what does not.",
+            text: "The first time you sign in, Resonate asks one question: may we record how you use the app? If you say yes, we note which parts you use and when — for example starting a track, saving something to your library, running a search, or opening a listing. These signals can help improve discovery and recommendations, show artists aggregate patterns, reveal which features are useful, and guide what Resonate builds next.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/analytics-consent-banner.png`,
+              alt: "The Resonate analytics consent banner explains optional usage measurement and gives equally prominent No, do not measure and Yes, measure my use buttons.",
+              caption: "The choice appears after sign-in. Saying no and saying yes are presented with equal weight.",
+              width: 544,
+              height: 329,
+              source: LOCAL,
+            },
           },
           {
             kind: "list",
@@ -1819,7 +1830,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Refusing is exactly as easy as accepting, and it costs you nothing. Every feature works the same, prices are the same, recommendations still work, and your account is unaffected. There is no reduced version of Resonate for people who say no.",
+            text: "Refusing is exactly as easy as accepting. Saying no does not disable features, change prices, or affect your music, wallet, purchases, or account. Discovery and recommendations still work, but Resonate has less activity data to personalize them or produce aggregate insights, so some results may be less tailored or complete.",
           },
           {
             kind: "callout",
