@@ -277,13 +277,14 @@ cd web && npx vitest run src/components/settings/DataExportPanel.test.tsx src/li
 
 ## Still missing
 
-- **The step-up accepts an unverifiable signature as a last resort**
-  ([#1798](https://github.com/akoita/resonate/issues/1798)). Narrowed — ERC-6492
-  validation no longer requires the account to have bytecode, which is what
-  6492 is for — but the `nonce_only` rung remains for a signature that is
-  neither recoverable nor checkable on chain.
 - No help-article screenshots: capturing them needs a running stack and seeded
   accounts.
+
+Account closure now fails closed when a signature cannot be verified. Plain
+wallet signatures use offline recovery; deployed and counterfactual smart
+accounts use ERC-1271/ERC-6492. The client already wraps an undeployed account's
+signature with its factory data, so removing the former nonce-only fallback does
+not exclude passkey accounts that have not transacted yet.
 
 Deployed processes fail closed when `ANALYTICS_ACTOR_ID_SALT` is absent. Local
 and test development may use the deterministic fallback; an explicit emergency

@@ -231,6 +231,37 @@ describe("Account closure door (HTTP)", () => {
       expect(closureService.request).not.toHaveBeenCalled();
     });
 
+    it("fails closed when an opaque signature cannot be verified", async () => {
+      await challenge();
+
+      await request(app.getHttpServer())
+        .post("/privacy/account/closure")
+        .set("Authorization", asOwner())
+        .send({ address: OWNER_ADDRESS, signature: "0xdead" })
+        .expect(400);
+
+      expect(publicClient.verifyMessage).toHaveBeenCalled();
+      expect(closureService.request).not.toHaveBeenCalled();
+    });
+
+    it("accepts an opaque smart-account signature only when on-chain verification proves it", async () => {
+      publicClient.verifyMessage.mockResolvedValueOnce(true);
+      await challenge();
+
+      await request(app.getHttpServer())
+        .post("/privacy/account/closure")
+        .set("Authorization", asOwner())
+        // Representative opaque wrapper: offline EOA recovery cannot evaluate
+        // it, so only the ERC-6492/ERC-1271 verifier can authorize the request.
+        .send({ address: OWNER_ADDRESS, signature: "0xdead" })
+        .expect(201);
+
+      expect(publicClient.verifyMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ address: OWNER_ADDRESS }),
+      );
+      expect(closureService.request).toHaveBeenCalledTimes(1);
+    });
+
     it("never verifies a message the client supplied", async () => {
       // The attack this route is shaped against: obtain a signature over some
       // other text — here an innocuous sign-in prompt carrying the very same
