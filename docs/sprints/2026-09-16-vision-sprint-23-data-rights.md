@@ -1,10 +1,25 @@
 # Vision Sprint 23: Data rights the app can actually honor
 
-**Status:** planned.
+**Status:** completed 2026-09-20 (8/8 issues closed).
 **Milestone:** [25](https://github.com/akoita/resonate/milestone/25).
 **Goal:** A person in the v1 cohort can read what they are agreeing to, choose
 what is collected about them, and have their data exported or erased
 everywhere it landed.
+
+## Outcome
+
+The sprint shipped the legal surface, analytics consent controls, personal-data
+export, account erasure through the warehouse, governance scheduling and
+retention, durable generation-credit refunds, scheduled-workflow failure
+reporting, and the scoped GitHub App path for Dependency Train. The legal pages
+were owner-approved for test-stage publication, deployed to staging, and
+verified there without unresolved placeholders.
+
+Production publication was not part of this completion. Its operator-specific
+configuration remains tracked privately in `resonate-iac#226`; the escrow
+classification and digital-content withdrawal questions remain tracked in
+#1774 and #1776. The feature catalog therefore continues to describe the legal
+surface as partial until those production gates are resolved.
 
 ## Approved scope and order
 
