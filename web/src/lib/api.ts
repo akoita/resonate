@@ -3073,9 +3073,8 @@ export interface TrendingTrackItem {
 export interface TopArtistItem {
   rank: number;
   /**
-   * The matching account profile id when a claimed/self-managed artist's
-   * displayName equals the credited name; null when the credited artist has no
-   * matching account (#1492 — `name` is the credited artist, not an account).
+   * The unique profile id backed by matching published-release credit
+   * evidence; null when the credit is unresolved or ambiguous (#1492/#1820).
    */
   artistId: string | null;
   name: string;
@@ -3121,10 +3120,34 @@ export async function fetchTopArtists(options?: {
   if (options?.genre) params.set("genre", options.genre);
   if (options?.limit) params.set("limit", String(options.limit));
   const query = params.toString();
-  return apiRequest<PopularityResponse<TopArtistItem>>(
+  const response = await apiRequest<PopularityResponse<TopArtistItem>>(
     `/catalog/top-artists${query ? `?${query}` : ""}`,
     {},
   );
+  return {
+    ...response,
+    items: response.items.map(mapTopArtistItem),
+  };
+}
+
+/** Resolve backend-served artist portraits without treating relative paths as frontend assets. */
+export function resolveApiAssetUrl(value: string | null): string | null {
+  const candidate = value?.trim();
+  if (!candidate) return null;
+
+  try {
+    const url = new URL(candidate, `${API_BASE.replace(/\/$/, "")}/`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function mapTopArtistItem(item: TopArtistItem): TopArtistItem {
+  return {
+    ...item,
+    imageUrl: resolveApiAssetUrl(item.imageUrl),
+  };
 }
 
 type PublicPlaylistSummaryResponse = Omit<PublicPlaylistSummary, "coverArtworkUrls"> & {
