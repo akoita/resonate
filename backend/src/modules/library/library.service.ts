@@ -6,8 +6,55 @@ import {
     resolveTrackAvailability,
     type TrackAvailability,
 } from "../catalog/track-availability";
+import {
+    normalizeCreditName,
+    resolveCreditedArtistName,
+} from "../shared/artist_attribution";
 
 const prisma = new PrismaClient();
+
+type CatalogLibraryIdentity = {
+    releaseId: string;
+    creditedArtistId: string | null;
+    creditedArtistName: string | null;
+};
+
+function resolveCatalogLibraryIdentity(track: {
+    artist?: string | null;
+    releaseId: string;
+    release: {
+        primaryArtist?: string | null;
+        artist: { id: string; displayName: string };
+        artistCredits: Array<{ artistId: string; displayName: string; role: string }>;
+    };
+}): CatalogLibraryIdentity {
+    const creditedArtistName = resolveCreditedArtistName({
+        trackArtist: track.artist,
+        credits: track.release.artistCredits,
+        primaryArtist: track.release.primaryArtist,
+        accountDisplayName: track.release.artist.displayName,
+    });
+    const normalizedName = normalizeCreditName(creditedArtistName).toLowerCase();
+    const matchingIds = new Set(
+        track.release.artistCredits
+            .filter((credit) => normalizeCreditName(credit.displayName).toLowerCase() === normalizedName)
+            .map((credit) => credit.artistId),
+    );
+
+    if (
+        matchingIds.size === 0 &&
+        normalizedName &&
+        normalizeCreditName(track.release.artist.displayName).toLowerCase() === normalizedName
+    ) {
+        matchingIds.add(track.release.artist.id);
+    }
+
+    return {
+        releaseId: track.releaseId,
+        creditedArtistId: matchingIds.size === 1 ? Array.from(matchingIds)[0] : null,
+        creditedArtistName,
+    };
+}
 
 function extractPath(value?: string | null): string {
     if (!value) return "";
@@ -194,7 +241,21 @@ export class LibraryService {
             catalogTrackIds.size > 0
                 ? prisma.track.findMany({
                     where: { id: { in: Array.from(catalogTrackIds) } },
-                    select: { id: true },
+                    select: {
+                        id: true,
+                        artist: true,
+                        releaseId: true,
+                        release: {
+                            select: {
+                                primaryArtist: true,
+                                artist: { select: { id: true, displayName: true } },
+                                artistCredits: {
+                                    select: { artistId: true, displayName: true, role: true },
+                                    orderBy: { sortOrder: "asc" },
+                                },
+                            },
+                        },
+                    },
                 })
                 : Promise.resolve([]),
             catalogReleaseIds.size > 0
@@ -211,6 +272,9 @@ export class LibraryService {
                 : Promise.resolve([]),
         ]);
         const existingCatalogTrackIds = new Set(existingCatalogTracks.map((track) => track.id));
+        const catalogIdentities = new Map(
+            existingCatalogTracks.map((track) => [track.id, resolveCatalogLibraryIdentity(track)]),
+        );
         const existingCatalogReleaseIds = new Set(existingCatalogReleases.map((release) => release.id));
         const existingCatalogStemIds = new Set(existingCatalogStems.map((stem) => stem.id));
         const staleTracks = remoteTracks.filter((track) => {
@@ -229,7 +293,7 @@ export class LibraryService {
         const availability = await resolveTrackAvailability(catalogTrackIds);
 
         if (staleTrackIds.length === 0) {
-            return withAvailability(tracks, availability);
+            return withAvailability(tracks, availability, catalogIdentities);
         }
 
         await prisma.libraryTrack.deleteMany({
@@ -259,6 +323,7 @@ export class LibraryService {
         return withAvailability(
             tracks.filter((track) => !staleTrackIds.includes(track.id)),
             availability,
+            catalogIdentities,
         );
     }
 
@@ -311,15 +376,26 @@ function withAvailability<
         remoteArtworkUrl?: string | null;
         previewUrl?: string | null;
     },
->(tracks: T[], availability: Map<string, TrackAvailability>): Array<T & { availability: TrackAvailability }> {
+>(
+    tracks: T[],
+    availability: Map<string, TrackAvailability>,
+    catalogIdentities: Map<string, CatalogLibraryIdentity> = new Map(),
+): Array<T & {
+    availability: TrackAvailability;
+    releaseId?: string;
+    creditedArtistId?: string | null;
+    creditedArtistName?: string | null;
+}> {
     return tracks.map((track) => {
         const [catalogTrackId] = Array.from(collectCatalogReferences(track).trackIds);
         if (!catalogTrackId) {
             return { ...track, availability: LOCAL_FILE_AVAILABILITY };
         }
+        const identity = catalogIdentities.get(catalogTrackId);
         return {
             ...track,
             availability: availability.get(catalogTrackId) ?? REMOVED_AVAILABILITY,
+            ...(identity || {}),
         };
     });
 }

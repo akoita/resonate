@@ -56,7 +56,14 @@ import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
 import { MarqueeText } from "../../components/ui/MarqueeText";
 import Link from "next/link";
-import { libraryArtistHref } from "../../lib/artistRoutes";
+import {
+    libraryAlbumHref,
+    libraryAlbumsHref,
+    libraryArtistHref,
+    libraryArtistsHref,
+    publicReleaseHref,
+    sharedLibraryReleaseId,
+} from "../../lib/artistRoutes";
 
 type ViewTab = "tracks" | "artists" | "albums" | "playlists" | "stems" | "ai_creations" | "moments";
 
@@ -94,8 +101,7 @@ export default function LibraryPage() {
         const active = container.querySelector<HTMLElement>(".library-tab.active");
         if (active) active.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
     }, [activeTab]);
-    const [selectedArtist, setSelectedArtist] = useState<string | null>(null);
-    const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string } | null>(null);
+    const [selectedAlbum, setSelectedAlbum] = useState<{ name: string; artist: string; releaseId?: string | null } | null>(null);
     const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
     const [playlistCount, setPlaylistCount] = useState(0);
     const { setTracksToAddToPlaylist, setResaleModal } = useUIStore();
@@ -343,24 +349,24 @@ export default function LibraryPage() {
         const artist = searchParams.get("artist");
         const album = searchParams.get("album");
         const albumArtist = searchParams.get("albumArtist");
+        const releaseId = searchParams.get("release");
 
-        if (tab === "playlists") {
+        if (artist) {
+            router.replace(libraryArtistHref(artist));
+        } else if (album && albumArtist) {
+            setSelectedAlbum({ name: album, artist: albumArtist, releaseId });
+            setActiveTab("albums");
+        } else if (tab === "playlists") {
             setActiveTab("playlists");
+            setSelectedAlbum(null);
             const playlistId = searchParams.get("playlist");
             // A stale or unreachable deep link falls back to the playlist list rather than a blank tab.
             if (playlistId) void getPlaylist(playlistId).then(setSelectedPlaylist).catch(() => setSelectedPlaylist(null));
-        } else if (tab === "ai_creations") {
-            setActiveTab("ai_creations");
-        } else if (tab === "moments") {
-            setActiveTab("moments");
-        } else if (artist) {
-            setSelectedArtist(artist);
-            setActiveTab("artists");
-        } else if (album && albumArtist) {
-            setSelectedAlbum({ name: album, artist: albumArtist });
-            setActiveTab("albums");
+        } else if (tab && ["tracks", "artists", "albums", "stems", "ai_creations", "moments"].includes(tab)) {
+            setActiveTab(tab as ViewTab);
+            setSelectedAlbum(null);
         }
-    }, [searchParams]);
+    }, [router, searchParams]);
 
     // Real-time: append newly scanned tracks
     useEffect(() => {
@@ -740,8 +746,8 @@ export default function LibraryPage() {
                             onClick={(e) => {
                                 if (!track.album) return;
                                 e.stopPropagation();
-                                setSelectedAlbum({ name: track.album, artist: track.artist || "Unknown Artist" });
-                                setActiveTab("albums");
+                                const albumArtist = track.albumArtist || track.artist || "Unknown Artist";
+                                router.push(libraryAlbumHref(track.album, albumArtist, track.releaseId));
                             }}
                         >
                             {track.album || "—"}
@@ -843,7 +849,11 @@ export default function LibraryPage() {
                     <div
                         key={`${album.artist}::${album.name}`}
                         className="library-card"
-                        onClick={() => setSelectedAlbum({ name: album.name, artist: album.artist })}
+                        onClick={() => router.push(libraryAlbumHref(
+                            album.name,
+                            album.artist,
+                            sharedLibraryReleaseId(album.tracks),
+                        ))}
                         onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist)}
                         draggable
                         onDragStart={(e) => {
@@ -885,124 +895,15 @@ export default function LibraryPage() {
         </div>
     );
 
-    const renderArtistDetail = () => {
-        const artistTracks = filteredTracks.filter(t => (t.artist || "Unknown Artist") === selectedArtist);
-        const artistAlbums = albums.filter(a => (a.artist || "Unknown Artist") === selectedArtist);
-
-        // Find best image for artist
-        const trackWithArt = artistTracks.find(t => (t.remoteArtworkUrl || artworkUrls.has(t.id)));
-        const artUrl = trackWithArt ? (trackWithArt.remoteArtworkUrl || artworkUrls.get(trackWithArt.id)) : null;
-
-        return (
-            <div className="library-detail">
-                <div className="library-detail-back">
-                    <Button variant="ghost" onClick={() => setSelectedArtist(null)}>← Back to Artists</Button>
-                </div>
-
-                <div className="detail-hero">
-                    {artUrl ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img src={artUrl} alt={selectedArtist || ""} className="detail-hero-artwork" />
-                    ) : (
-                        <div className="detail-hero-artwork" style={{ background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "80px" }}>
-                            🎤
-                        </div>
-                    )}
-                    <div className="detail-hero-content">
-                        <div className="detail-hero-label">Library Artist</div>
-                        <h1 className="detail-hero-title">{selectedArtist}</h1>
-                        <div className="detail-hero-meta">
-                            {artistAlbums.length} album{artistAlbums.length !== 1 ? "s" : ""} • {artistTracks.length} track{artistTracks.length !== 1 ? "s" : ""}
-                        </div>
-                        <div className="detail-hero-actions" style={{ marginTop: "var(--space-4)" }}>
-                            <Button
-                                variant="primary"
-                                onClick={() => playQueue(artistTracks, 0)}
-                                disabled={artistTracks.length === 0}
-                            >
-                                ▶ Play Artist
-                            </Button>
-                            <QueueActionsButton
-                                tracks={artistTracks}
-                                label="Queue artist"
-                                nextLabel="Play artist next"
-                                disabled={artistTracks.length === 0}
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {artistAlbums.length > 0 && (
-                    <div className="detail-projects">
-                        <h2 className="detail-section-title">Albums</h2>
-                        <div className="library-grid-view">
-                            {artistAlbums.map((album) => {
-                                const albumTrackWithArt = filteredTracks.find(
-                                    t => (t.album || "Unknown Album") === album.name &&
-                                        (t.artist || "Unknown Artist") === album.artist &&
-                                        (t.remoteArtworkUrl || artworkUrls.has(t.id))
-                                );
-                                const albumArtUrl = albumTrackWithArt ? (albumTrackWithArt.remoteArtworkUrl || artworkUrls.get(albumTrackWithArt.id)) : null;
-                                return (
-                                    <div
-                                        key={`${album.artist}::${album.name}`}
-                                        className="library-card"
-                                        onClick={() => {
-                                            setSelectedAlbum({ name: album.name, artist: album.artist });
-                                            setActiveTab("albums");
-                                        }}
-                                        onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist)}
-                                        draggable
-                                        onDragStart={(e) => {
-                                            const albumTracks = filteredTracks.filter(t =>
-                                                (t.album || "Unknown Album") === album.name &&
-                                                (t.artist || "Unknown Artist") === album.artist
-                                            );
-                                            const payload = JSON.stringify({
-                                                type: "album",
-                                                name: album.name,
-                                                artist: album.artist,
-                                                tracks: albumTracks
-                                            });
-                                            e.dataTransfer.setData("application/json", payload);
-                                            e.dataTransfer.setData("text/plain", payload);
-                                            e.dataTransfer.effectAllowed = "copy";
-                                        }}
-                                    >
-                                        {albumArtUrl ? (
-                                            /* eslint-disable-next-line @next/next/no-img-element */
-                                            <img src={albumArtUrl} alt={album.name} className="library-card-artwork" />
-                                        ) : (
-                                            <div className="library-card-icon">💿</div>
-                                        )}
-                                        <div className="library-card-title">{album.name}</div>
-                                        <div className="library-card-meta">
-                                            {album.year || "Unknown Year"}
-                                        </div>
-                                        <div className="library-card-count">
-                                            {album.trackCount} track{album.trackCount !== 1 ? "s" : ""}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                <div className="detail-tracks">
-                    <h2 className="detail-section-title">All Tracks</h2>
-                    {renderTrackList(artistTracks)}
-                </div>
-            </div>
-        );
-    };
-
     const renderAlbumDetail = () => {
         if (!selectedAlbum) return null;
         const albumTracks = filteredTracks.filter(
-            t => (t.album || "Unknown Album") === selectedAlbum.name &&
-                (t.artist || "Unknown Artist") === selectedAlbum.artist
+            t => selectedAlbum.releaseId
+                ? t.releaseId === selectedAlbum.releaseId
+                : (t.album || "Unknown Album") === selectedAlbum.name &&
+                    (t.albumArtist || t.artist || "Unknown Artist") === selectedAlbum.artist
         );
+        const catalogReleaseId = selectedAlbum.releaseId || sharedLibraryReleaseId(albumTracks);
 
         // Find cover art
         const trackWithArt = albumTracks.find(t => (t.remoteArtworkUrl || artworkUrls.has(t.id)));
@@ -1013,7 +914,7 @@ export default function LibraryPage() {
         return (
             <div className="library-detail">
                 <div className="library-detail-back">
-                    <Button variant="ghost" onClick={() => setSelectedAlbum(null)}>← Back to Albums</Button>
+                    <Button variant="ghost" onClick={() => router.push(libraryAlbumsHref())}>← Back to Albums</Button>
                 </div>
 
                 <div className="detail-hero">
@@ -1026,15 +927,12 @@ export default function LibraryPage() {
                         </div>
                     )}
                     <div className="detail-hero-content">
-                        <div className="detail-hero-label">Album</div>
+                        <div className="detail-hero-label">My Library · Album</div>
                         <h1 className="detail-hero-title">{selectedAlbum.name}</h1>
                         <div className="detail-hero-meta">
                             <span
                                 className="text-accent cursor-pointer hover:underline"
-                                onClick={() => {
-                                    setSelectedArtist(selectedAlbum.artist);
-                                    setActiveTab("artists");
-                                }}
+                                onClick={() => router.push(libraryArtistHref(selectedAlbum.artist))}
                             >
                                 {selectedAlbum.artist}
                             </span>
@@ -1060,6 +958,11 @@ export default function LibraryPage() {
                             >
                                 Add Album to Playlist
                             </Button>
+                            {catalogReleaseId ? (
+                                <Link href={publicReleaseHref(catalogReleaseId)}>
+                                    <Button variant="ghost">View catalog release</Button>
+                                </Link>
+                            ) : null}
                         </div>
                     </div>
                 </div>
@@ -1105,43 +1008,43 @@ export default function LibraryPage() {
                         <div className="library-tabs" ref={tabsRef}>
                             <button
                                 className={`library-tab ${activeTab === "tracks" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("tracks"); setSelectedArtist(null); setSelectedAlbum(null); }}
+                                onClick={() => router.push("/library?tab=tracks")}
                             >
                                 Tracks ({unifiedTracks.length})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "artists" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("artists"); setSelectedArtist(null); setSelectedAlbum(null); }}
+                                onClick={() => router.push(libraryArtistsHref())}
                             >
                                 Artists ({artists.length})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "albums" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("albums"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                                onClick={() => router.push(libraryAlbumsHref())}
                             >
                                 Albums ({albums.length})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "playlists" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("playlists"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                                onClick={() => router.push("/library?tab=playlists")}
                             >
                                 Playlists ({playlistCount})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "stems" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("stems"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                                onClick={() => router.push("/library?tab=stems")}
                             >
                                 Stems ({ownedStems.length})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "ai_creations" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("ai_creations"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                                onClick={() => router.push("/library?tab=ai_creations")}
                             >
                                 ✨ AI Creations ({aiCreations.length})
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "moments" ? "active" : ""}`}
-                                onClick={() => { setActiveTab("moments"); setSelectedArtist(null); setSelectedAlbum(null); setSelectedPlaylist(null); }}
+                                onClick={() => router.push("/library?tab=moments")}
                             >
                                 🎤 Moments ({ownedMoments.length})
                             </button>
@@ -1201,7 +1104,7 @@ export default function LibraryPage() {
                             ) : (
                                 <>
                                     {activeTab === "tracks" && renderTrackList(filteredTracks)}
-                                    {activeTab === "artists" && (selectedArtist ? renderArtistDetail() : renderArtists())}
+                                    {activeTab === "artists" && renderArtists()}
                                     {activeTab === "albums" && (selectedAlbum ? renderAlbumDetail() : renderAlbums())}
                                     {activeTab === "playlists" && (
                                         selectedPlaylist ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import {
   filterPublicPlaylists,
@@ -28,10 +29,16 @@ const RECENT_CATALOG_LIMIT = 200;
 const PLAYLIST_DISCOVERY_LIMIT = 60;
 
 export default function GlobalCatalogPage() {
+  const searchParams = useSearchParams();
   const [releases, setReleases] = useState<Release[]>([]);
   const [playlists, setPlaylists] = useState<PublicPlaylistSummary[]>([]);
-  const [query, setQuery] = useState("");
-  const [view, setView] = useState<CatalogView>("releases");
+  const [query, setQuery] = useState(() => searchParams.get("q") || "");
+  const [view, setView] = useState<CatalogView>(() => {
+    const requestedView = searchParams.get("view");
+    return requestedView && CATALOG_VIEWS.includes(requestedView as CatalogView)
+      ? requestedView as CatalogView
+      : "releases";
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);

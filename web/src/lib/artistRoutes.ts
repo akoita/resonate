@@ -14,13 +14,47 @@ export function publicReleaseHref(releaseId: string) {
   return `/release/${encodeURIComponent(releaseId)}`;
 }
 
-export function libraryAlbumHref(albumName: string, artistName: string) {
+export function libraryArtistsHref() {
+  return "/library?tab=artists";
+}
+
+export function libraryAlbumsHref() {
+  return "/library?tab=albums";
+}
+
+export function libraryAlbumHref(
+  albumName: string,
+  artistName: string,
+  releaseId?: string | null,
+) {
   const search = new URLSearchParams({
     tab: "albums",
     album: albumName,
     albumArtist: artistName,
   });
+  if (releaseId) search.set("release", releaseId);
   return `/library?${search.toString()}`;
+}
+
+export function sharedLibraryReleaseId(
+  tracks: Array<{ releaseId?: string | null }>,
+): string | null {
+  if (tracks.length === 0 || tracks.some((track) => !track.releaseId)) return null;
+  const releaseIds = new Set(tracks.map((track) => track.releaseId));
+  return releaseIds.size === 1 ? Array.from(releaseIds)[0] || null : null;
+}
+
+export function libraryArtistCatalogHref(
+  artistName: string,
+  tracks: Array<{ creditedArtistId?: string | null }>,
+) {
+  if (tracks.length > 0 && tracks.every((track) => Boolean(track.creditedArtistId))) {
+    const artistIds = new Set(tracks.map((track) => track.creditedArtistId));
+    if (artistIds.size === 1) {
+      return artistProfileHref(Array.from(artistIds)[0]!);
+    }
+  }
+  return catalogArtistHref(artistName);
 }
 
 export function legacyArtistAliasSearchName(alias: string) {

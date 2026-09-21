@@ -5230,6 +5230,10 @@ export type APILibraryTrack = {
   sourcePath?: string | null;
   fileSize?: number | null;
   catalogTrackId?: string | null;
+  /** Authoritative catalog identity, enriched when listing saved catalog tracks. */
+  releaseId?: string | null;
+  creditedArtistId?: string | null;
+  creditedArtistName?: string | null;
   remoteUrl?: string | null;
   remoteArtworkUrl?: string | null;
   stemType?: string | null;
@@ -5244,7 +5248,7 @@ export type APILibraryTrack = {
 
 export async function saveLibraryTrackAPI(
   token: string,
-  track: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt">
+  track: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt" | "releaseId" | "creditedArtistId" | "creditedArtistName">
 ) {
   return apiRequest<APILibraryTrack>(
     "/library/tracks",
@@ -5255,7 +5259,7 @@ export async function saveLibraryTrackAPI(
 
 export async function saveLibraryTracksAPI(
   token: string,
-  tracks: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt">[]
+  tracks: Omit<APILibraryTrack, "userId" | "createdAt" | "updatedAt" | "releaseId" | "creditedArtistId" | "creditedArtistName">[]
 ) {
   return apiRequest<APILibraryTrack[]>(
     "/library/tracks/batch",

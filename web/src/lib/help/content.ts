@@ -546,7 +546,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Artist and album pages inside My Library are private groupings built from your saved or device-local music metadata. Their Local Library label distinguishes them from public Resonate profiles and catalog-credit pages, even when the names happen to match.",
+            text: "Artist and album pages inside My Library are private groupings built from your saved or device-local music metadata. Their My Library label distinguishes them from public Resonate profiles and catalog-credit pages, even when the names happen to match.",
+          },
+          {
+            kind: "paragraph",
+            text: "For music saved from Resonate, use View catalog release or View Resonate profile to move from your private grouping to its public page. Public releases you have saved show Open in My Library. Device-only or mixed artist groupings use Explore in catalog, so a matching name is never presented as proof that two artists are the same person.",
           },
           {
             kind: "figure",
