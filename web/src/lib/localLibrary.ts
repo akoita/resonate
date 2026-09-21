@@ -85,6 +85,8 @@ export interface LocalTrack {
     createdAt: string;
     catalogTrackId?: string | null;
     artistId?: string | null;
+    creditedArtistId?: string | null;
+    creditedArtistName?: string | null;
     releaseId?: string | null;
     aiDisclosure?: AiDisclosure | null;
     remoteUrl?: string; // For streaming catalog
@@ -135,6 +137,9 @@ function apiTrackToLocal(apiTrack: APILibraryTrack): LocalTrack {
         sourcePath: apiTrack.sourcePath ?? undefined,
         fileSize: apiTrack.fileSize ?? undefined,
         catalogTrackId: apiTrack.catalogTrackId ?? null,
+        releaseId: apiTrack.releaseId ?? null,
+        creditedArtistId: apiTrack.creditedArtistId ?? null,
+        creditedArtistName: apiTrack.creditedArtistName ?? null,
         remoteUrl: apiTrack.remoteUrl ?? undefined,
         remoteArtworkUrl: apiTrack.remoteArtworkUrl ?? undefined,
         source: apiTrack.source,

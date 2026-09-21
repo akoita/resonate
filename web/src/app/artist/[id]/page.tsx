@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getArtistPublic, getArtistMe, listArtistReleases, listPublishedReleases, Release, ArtistProfile } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
@@ -11,8 +11,13 @@ import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLin
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
 import { isArtistProfileOwner } from "../../../lib/artistProfileForm";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { legacyArtistAliasDestination, legacyArtistAliasSearchName, publicReleaseHref } from "../../../lib/artistRoutes";
+import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
 import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
+import { listTracks } from "../../../lib/localLibrary";
+import { libraryArtistNameForProfile } from "../../../lib/libraryNavigation";
+import { catalogArtistPlaybackTracks } from "../../../lib/catalogArtistPlayback";
+import { usePlayer } from "../../../lib/playerContext";
+import { QueueActionsButton } from "../../../components/player/QueueActionsButton";
 
 type ArtistTab = "discography" | "community";
 
@@ -20,6 +25,7 @@ export default function ArtistPage() {
     const params = useParams();
     const router = useRouter();
     const { token } = useAuth();
+    const { playQueue } = usePlayer();
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
@@ -29,8 +35,10 @@ export default function ArtistPage() {
     const [releases, setReleases] = useState<Release[]>([]);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
+    const [libraryArtistName, setLibraryArtistName] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
     const isOwner = isArtistProfileOwner(me, artist);
+    const playbackTracks = useMemo(() => catalogArtistPlaybackTracks(releases), [releases]);
 
     useEffect(() => {
         const tab = new URLSearchParams(window.location.search).get("tab");
@@ -91,6 +99,26 @@ export default function ArtistPage() {
         void fetchData();
     }, [artistId, router]);
 
+    useEffect(() => {
+        if (!artist?.id || !token) {
+            setLibraryArtistName(null);
+            return;
+        }
+        let cancelled = false;
+        listTracks()
+            .then((tracks) => {
+                if (!cancelled) {
+                    setLibraryArtistName(libraryArtistNameForProfile(artist.id, tracks));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setLibraryArtistName(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [artist?.id, token]);
+
     // Owner detection (#1419): only fetched when signed in, and only used to
     // gate the "Edit profile" affordance below — never blocks the public view.
     useEffect(() => {
@@ -112,7 +140,7 @@ export default function ArtistPage() {
     }, [token]);
 
     const handleBack = () => {
-        router.back();
+        router.push("/catalog?view=artists");
     };
 
     const coverArt = artist?.imageUrl || releases.find((r) => r.artworkUrl)?.artworkUrl || null;
@@ -144,7 +172,7 @@ export default function ArtistPage() {
                     />
                 ) : null}
                 <Button variant="ghost" className="back-btn" onClick={handleBack}>
-                    ← Back
+                    ← Back to Artists
                 </Button>
                 <div className="artist-hero-content">
                     <div className="artist-avatar-lg placeholder-avatar">
@@ -191,6 +219,30 @@ export default function ArtistPage() {
                             <p className="artist-bio">{artist.summary}</p>
                         ) : null}
                         <ArtistSocialLinksRow website={artist?.website} socialLinks={artist?.socialLinks} />
+                        {playbackTracks.length > 0 || libraryArtistName ? (
+                            <div className="library-artist-actions">
+                                {playbackTracks.length > 0 ? (
+                                    <>
+                                        <Button variant="primary" onClick={() => void playQueue(playbackTracks, 0)}>
+                                            ▶ Play all
+                                        </Button>
+                                        <QueueActionsButton
+                                            tracks={playbackTracks}
+                                            label="Queue artist"
+                                            nextLabel="Play artist next"
+                                        />
+                                    </>
+                                ) : null}
+                                {libraryArtistName ? (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => router.push(libraryArtistHref(libraryArtistName))}
+                                >
+                                    Open in My Library
+                                </Button>
+                                ) : null}
+                            </div>
+                        ) : null}
                         {artist ? (
                             <ArtistProfileEditor
                                 artist={artist}
@@ -246,7 +298,7 @@ export default function ArtistPage() {
                                     <div className="card-meta">
                                         <span className="card-type">{release.type}</span>
                                         <span className="card-year">
-                                            {release.releaseDate ? new Date(release.releaseDate).getFullYear() : ""}
+                                            · {release.releaseDate ? new Date(release.releaseDate).getFullYear() : ""}
                                         </span>
                                     </div>
                                 </Card>

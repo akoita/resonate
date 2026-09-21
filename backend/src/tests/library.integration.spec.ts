@@ -13,6 +13,7 @@ describe('LibraryService (integration)', () => {
   const service = new LibraryService();
   const userId = `${TEST_PREFIX}user`;
   const artistId = `${TEST_PREFIX}artist`;
+  const creditedArtistId = `${TEST_PREFIX}credited_artist`;
   const releaseId = `${TEST_PREFIX}release`;
   const catalogTrackId = `${TEST_PREFIX}catalog_track`;
   const localTrackId = `${TEST_PREFIX}local_track`;
@@ -32,12 +33,28 @@ describe('LibraryService (integration)', () => {
         payoutAddress: '0x' + 'B'.repeat(40),
       },
     });
+    await prisma.artist.create({
+      data: {
+        id: creditedArtistId,
+        displayName: 'Credited Library Artist',
+        payoutAddress: '0x' + 'C'.repeat(40),
+      },
+    });
     await prisma.release.create({
       data: {
         id: releaseId,
         artistId,
         title: 'Library Test Release',
         status: 'ready',
+        primaryArtist: 'Credited Library Artist',
+      },
+    });
+    await prisma.releaseArtistCredit.create({
+      data: {
+        releaseId,
+        artistId: creditedArtistId,
+        role: 'primary',
+        displayName: 'Credited Library Artist',
       },
     });
     await prisma.track.create({
@@ -55,7 +72,7 @@ describe('LibraryService (integration)', () => {
     await prisma.libraryTrack.deleteMany({ where: { userId } });
     await prisma.track.deleteMany({ where: { id: catalogTrackId } }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: releaseId } }).catch(() => {});
-    await prisma.artist.deleteMany({ where: { id: artistId } }).catch(() => {});
+    await prisma.artist.deleteMany({ where: { id: { in: [artistId, creditedArtistId] } } }).catch(() => {});
     await prisma.user.deleteMany({ where: { id: userId } }).catch(() => {});
   });
 
@@ -111,6 +128,11 @@ describe('LibraryService (integration)', () => {
     expect(tracks.map((track) => track.id)).toEqual(expect.arrayContaining([catalogTrackId, liveUrlTrackId, localTrackId]));
     expect(tracks.map((track) => track.id)).not.toContain(staleTrackId);
     expect(tracks.map((track) => track.id)).not.toContain(staleUrlTrackId);
+    expect(tracks.find((track) => track.catalogTrackId === catalogTrackId)).toMatchObject({
+      releaseId,
+      creditedArtistId,
+      creditedArtistName: 'Credited Library Artist',
+    });
     expect(await prisma.libraryTrack.findUnique({ where: { id: staleTrackId } })).toBeNull();
     expect(await prisma.libraryTrack.findUnique({ where: { id: staleUrlTrackId } })).toBeNull();
     const updatedPlaylist = await prisma.playlist.findUnique({ where: { id: playlist.id } });

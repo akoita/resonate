@@ -96,6 +96,31 @@ an unresolved value renders an explicit not-found state. The compact Player
 also preserves source scope: catalog-backed tracks open the public catalog
 credit, while device-local tracks open the local Library grouping.
 
+### Moving between the catalog and My Library
+
+The catalog and My Library remain separate scopes, but related pages provide a
+way across when the relationship is trustworthy:
+
+- Saved catalog tracks are enriched from their stable catalog track id with the
+  authoritative release id and credited-artist id. Library album pages can then
+  link to the exact public release, and Library artist pages can link to the
+  exact managed profile only when every grouped track agrees on one credited
+  identity.
+- A mixed or device-only Library artist never claims a managed identity from a
+  matching display name. Its fallback action opens the name-based catalog-credit
+  page instead.
+- Public artist and catalog-credit pages offer **Open in My Library** only when
+  the signed-in listener has the corresponding grouping. A saved public release
+  changes its save action to **Open in My Library**.
+
+Library tabs and details are URL-driven. Artist details have one canonical
+`/library/artists/<artist-name>` implementation, while album details retain the
+Library query route and include a release id when catalog evidence exists. Back
+actions name and target their parent list instead of depending on browser
+history. Scope labels use **My Library** for private groupings and **Resonate
+Catalog/Profile** for public resources. Public and Library artist pages expose
+the same Play all and Queue artist pattern when tracks are available.
+
 **Phase B (#1492):** replace the credited-name string key with a stable
 credited-artist id. [#1450](https://github.com/akoita/resonate/issues/1450)'s
 warehouse marts MUST adopt the same key so the serving contract stays

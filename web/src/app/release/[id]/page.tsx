@@ -21,7 +21,7 @@ import {
   listMyTrustedSourceLinks,
   type TrustedSourceArtistLinkRecord,
 } from "../../../lib/api";
-import { LocalTrack, saveTracksMetadata } from "../../../lib/localLibrary";
+import { LocalTrack, listTracks, saveTracksMetadata } from "../../../lib/localLibrary";
 import { Button } from "../../../components/ui/Button";
 import { RemixCta } from "../../../components/remix/RemixCta";
 import { useBreakpoint } from "../../../hooks/useBreakpoint";
@@ -35,7 +35,8 @@ import { useToast } from "../../../components/ui/Toast";
 // import { addTracksByCriteria } from "../../../lib/playlistStore";
 import { formatDuration } from "../../../lib/metadataExtractor";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { artistCreditHref } from "../../../lib/artistRoutes";
+import { artistCreditHref, libraryAlbumHref } from "../../../lib/artistRoutes";
+import { isCatalogReleaseFullySaved, releaseActionNoun } from "../../../lib/libraryNavigation";
 import { buildTrackStreamUrl } from "../../../lib/urlUtils";
 import { MintStemButton } from "../../../components/marketplace/MintStemButton";
 import { BatchMintListModal } from "../../../components/marketplace/BatchMintListModal";
@@ -388,6 +389,7 @@ export default function ReleaseDetails() {
     setRightsMonitorCardOpen(!isPhone);
   }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
+  const [isReleaseSaved, setIsReleaseSaved] = useState(false);
   // Release-level Punchline summary reported up by the collect module, driving
   // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
   const [punchlineSummary, setPunchlineSummary] =
@@ -538,6 +540,25 @@ export default function ReleaseDetails() {
   useEffect(() => {
     rightsUpgradeStatusRef.current = rightsUpgradeStatus;
   }, [rightsUpgradeStatus]);
+  useEffect(() => {
+    if (!token || !release?.id || !release.tracks?.length) {
+      setIsReleaseSaved(false);
+      return;
+    }
+    let cancelled = false;
+    const releaseTrackIds = release.tracks.map((track) => track.id);
+    listTracks()
+      .then((libraryTracks) => {
+        if (cancelled) return;
+        setIsReleaseSaved(isCatalogReleaseFullySaved(release.id, releaseTrackIds, libraryTracks));
+      })
+      .catch(() => {
+        if (!cancelled) setIsReleaseSaved(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [release?.id, release?.tracks, token]);
   const needsAttestationForMinting =
     marketplaceApprovedByRights && !!releaseProtection && !releaseProtection.attested;
   const canCompleteAttestation =
@@ -1126,6 +1147,7 @@ export default function ReleaseDetails() {
     try {
       const allTracks = await Promise.all(release.tracks.map((t) => mapToPlayableLocalTrack(t)));
       await saveTracksMetadata(allTracks, "remote");
+      setIsReleaseSaved(true);
       addToast({
         title: "Success",
         message: `Saved ${allTracks.length} tracks to library`,
@@ -1364,11 +1386,23 @@ export default function ReleaseDetails() {
 
   if (loading) return <div className="loading-state">Initializing Studio...</div>;
   if (!release) return <div className="error-state">Release not found.</div>;
+  const releaseNoun = releaseActionNoun(release.type);
+  const displayedReleaseArtist = getReleaseArtistCredit(release);
+  const releaseArtistHref = artistCreditHref(displayedReleaseArtist, release);
+  const savedLibraryHref = libraryAlbumHref(release.title, displayedReleaseArtist, release.id);
 
   return (
     <>
     <div className="release-details-container fade-in-up">
       <div className="mesh-gradient-bg" />
+
+      {releaseArtistHref ? (
+        <div className="library-detail-back">
+          <Link href={releaseArtistHref} className="ui-btn ui-btn-ghost">
+            ← Back to Artist
+          </Link>
+        </div>
+      ) : null}
 
       <header className="release-header">
         <div
@@ -1395,7 +1429,7 @@ export default function ReleaseDetails() {
             e.dataTransfer.setDragImage(target, 75, 75);
           }}
           onClick={() => isOwner && artworkInputRef.current?.click()}
-          title={isOwner ? "Click to change artwork, drag to add to playlist" : "Drag to add entire album to playlist"}
+          title={isOwner ? "Click to change artwork, drag to add to playlist" : `Drag to add this ${releaseNoun} to a playlist`}
         >
           {release.artworkUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -1425,7 +1459,7 @@ export default function ReleaseDetails() {
               </svg>
             </div>
           )}
-          <div className="drag-badge">Drag Album</div>
+          <div className="drag-badge">Drag {releaseNoun}</div>
         </div>
 
         <input
@@ -1439,7 +1473,9 @@ export default function ReleaseDetails() {
         <div className="header-info">
           <div className="header-metadata">
             <span className="release-type-badge">{release.type}</span>
-            <span className="release-year">{release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}</span>
+            <span className="release-year">
+              Resonate Catalog · {release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}
+            </span>
           </div>
           <h1 className="release-title-lg text-gradient">{release.title}</h1>
           <AiDisclosureBadge disclosure={release.aiDisclosure} showHumanMade />
@@ -1632,15 +1668,21 @@ export default function ReleaseDetails() {
               </Button>
               <QueueActionsButton
                 tracks={queueSelectionTracks}
-                label={selectedTrackIds.size > 0 ? `Queue ${selectedTrackIds.size} selected` : "Queue album"}
-                nextLabel={selectedTrackIds.size > 0 ? "Play selection next" : "Play album next"}
+                label={selectedTrackIds.size > 0 ? `Queue ${selectedTrackIds.size} selected` : `Queue ${releaseNoun}`}
+                nextLabel={selectedTrackIds.size > 0 ? "Play selection next" : `Play ${releaseNoun} next`}
                 disabled={!release.tracks?.length}
               />
               <Button variant="ghost" className="btn-save" onClick={handleAddReleaseToPlaylist}>
                 Add to Playlist
               </Button>
-              <Button variant="ghost" className="btn-save" onClick={handleSaveToLibrary}>
-                Save to Library
+              <Button
+                variant="ghost"
+                className="btn-save"
+                onClick={isReleaseSaved
+                  ? () => router.push(savedLibraryHref)
+                  : handleSaveToLibrary}
+              >
+                {isReleaseSaved ? "Open in My Library" : "Save to Library"}
               </Button>
               {canUseMixerPreview && hasMixerStem(currentTrack?.stems) && (
                 <Button

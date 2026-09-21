@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { listPublishedReleases, type Release } from "../../../../lib/api";
 import { Button } from "../../../../components/ui/Button";
 import { Card } from "../../../../components/ui/Card";
-import { publicReleaseHref } from "../../../../lib/artistRoutes";
+import { libraryArtistHref, publicReleaseHref } from "../../../../lib/artistRoutes";
+import { listTracks } from "../../../../lib/localLibrary";
+import { libraryArtistNameForCatalogCredit } from "../../../../lib/libraryNavigation";
+import { catalogArtistPlaybackTracks } from "../../../../lib/catalogArtistPlayback";
+import { usePlayer } from "../../../../lib/playerContext";
+import { QueueActionsButton } from "../../../../components/player/QueueActionsButton";
 
 function getReleaseYear(release: Release) {
   return release.releaseDate ? new Date(release.releaseDate).getFullYear() : "";
@@ -14,11 +19,13 @@ function getReleaseYear(release: Release) {
 export default function CatalogArtistPage() {
   const params = useParams();
   const router = useRouter();
+  const { playQueue } = usePlayer();
   const artistName = typeof params.name === "string" ? decodeURIComponent(params.name) : "";
   const [catalogState, setCatalogState] = useState<{
     artistName: string;
     releases: Release[];
   }>({ artistName: "", releases: [] });
+  const [libraryArtistName, setLibraryArtistName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!artistName) return;
@@ -32,6 +39,14 @@ export default function CatalogArtistPage() {
       .catch(() => {
         if (!cancelled) setCatalogState({ artistName, releases: [] });
       });
+    listTracks()
+      .then((tracks) => {
+        if (cancelled) return;
+        setLibraryArtistName(libraryArtistNameForCatalogCredit(artistName, tracks));
+      })
+      .catch(() => {
+        if (!cancelled) setLibraryArtistName(null);
+      });
 
     return () => {
       cancelled = true;
@@ -39,16 +54,20 @@ export default function CatalogArtistPage() {
   }, [artistName]);
 
   const loading = catalogState.artistName !== artistName;
-  const releases = loading ? [] : catalogState.releases;
+  const releases = useMemo(
+    () => loading ? [] : catalogState.releases,
+    [catalogState.releases, loading],
+  );
   const releaseCount = releases.length;
   const trackCount = releases.reduce((sum, release) => sum + (release.tracks?.length ?? 0), 0);
+  const playbackTracks = useMemo(() => catalogArtistPlaybackTracks(releases), [releases]);
   const heroArtwork = releases.find((release) => release.artworkUrl)?.artworkUrl;
 
   return (
     <div className="page-container artist-page">
       <div className="artist-hero glass-panel">
-        <Button variant="ghost" className="back-btn" onClick={() => router.back()}>
-          ← Back
+        <Button variant="ghost" className="back-btn" onClick={() => router.push("/catalog?view=artists")}>
+          ← Back to Artists
         </Button>
         <div className="artist-hero-content">
           {heroArtwork ? (
@@ -77,6 +96,30 @@ export default function CatalogArtistPage() {
                 ? ` • ${trackCount} track${trackCount !== 1 ? "s" : ""}`
                 : ""}
             </p>
+            {playbackTracks.length > 0 || libraryArtistName ? (
+              <div className="library-artist-actions">
+                {playbackTracks.length > 0 ? (
+                  <>
+                    <Button variant="primary" onClick={() => void playQueue(playbackTracks, 0)}>
+                      ▶ Play all
+                    </Button>
+                    <QueueActionsButton
+                      tracks={playbackTracks}
+                      label="Queue artist"
+                      nextLabel="Play artist next"
+                    />
+                  </>
+                ) : null}
+                {libraryArtistName ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => router.push(libraryArtistHref(libraryArtistName))}
+                  >
+                    Open in My Library
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -107,7 +150,7 @@ export default function CatalogArtistPage() {
                 >
                   <div className="card-meta">
                     <span className="card-type">{release.type}</span>
-                    <span className="card-year">{getReleaseYear(release)}</span>
+                    <span className="card-year">· {getReleaseYear(release)}</span>
                   </div>
                 </Card>
               ))}

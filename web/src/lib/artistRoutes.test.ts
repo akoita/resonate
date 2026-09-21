@@ -4,11 +4,15 @@ import {
   artistProfileHref,
   catalogArtistHref,
   libraryAlbumHref,
+  libraryAlbumsHref,
+  libraryArtistCatalogHref,
   libraryArtistHref,
+  libraryArtistsHref,
   legacyArtistAliasDestination,
   legacyArtistAliasSearchName,
   playerArtistHref,
   publicReleaseHref,
+  sharedLibraryReleaseId,
   releaseArtistProfileHref,
 } from "./artistRoutes";
 
@@ -19,6 +23,19 @@ describe("canonical artist and album destinations (#1820)", () => {
     expect(libraryArtistHref("A/B & C")).toBe("/library/artists/A%2FB%20%26%20C");
   });
 
+  it("cross-links Library groupings only from unambiguous catalog identity", () => {
+    expect(sharedLibraryReleaseId([{ releaseId: "release-1" }, { releaseId: "release-1" }])).toBe("release-1");
+    expect(sharedLibraryReleaseId([{ releaseId: "release-1" }, { releaseId: null }])).toBeNull();
+    expect(libraryArtistCatalogHref("Aya Lune", [
+      { creditedArtistId: "artist-1" },
+      { creditedArtistId: "artist-1" },
+    ])).toBe("/artist/artist-1");
+    expect(libraryArtistCatalogHref("Aya Lune", [
+      { creditedArtistId: "artist-1" },
+      { creditedArtistId: null },
+    ])).toBe("/catalog/artists/Aya%20Lune");
+  });
+
   it("keeps public releases and local albums in their own namespaces", () => {
     expect(publicReleaseHref("release/a")).toBe("/release/release%2Fa");
     expect(libraryAlbumHref("Same Name", "Artist A")).toBe(
@@ -27,6 +44,11 @@ describe("canonical artist and album destinations (#1820)", () => {
     expect(libraryAlbumHref("Same Name", "Artist B")).not.toBe(
       libraryAlbumHref("Same Name", "Artist A"),
     );
+    expect(libraryAlbumHref("Same Name", "Artist A", "release/a")).toBe(
+      "/library?tab=albums&album=Same+Name&albumArtist=Artist+A&release=release%2Fa",
+    );
+    expect(libraryArtistsHref()).toBe("/library?tab=artists");
+    expect(libraryAlbumsHref()).toBe("/library?tab=albums");
   });
 
   it("keeps player links in the source identity namespace", () => {

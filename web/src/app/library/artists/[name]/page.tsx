@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { libraryAlbumHref } from "../../../../lib/artistRoutes";
+import {
+  libraryAlbumHref,
+  libraryArtistCatalogHref,
+  libraryArtistsHref,
+  sharedLibraryReleaseId,
+} from "../../../../lib/artistRoutes";
 import AuthGate from "../../../../components/auth/AuthGate";
 import { Button } from "../../../../components/ui/Button";
 import { TrackActionMenu } from "../../../../components/ui/TrackActionMenu";
@@ -107,7 +112,10 @@ export default function LibraryArtistPage() {
     .map((track) => track.remoteArtworkUrl || artworkUrls.get(track.id))
     .find(Boolean);
 
-  const albumHref = (albumName: string) => libraryAlbumHref(albumName, artistName);
+  const albumHref = (album: LibraryAlbum) =>
+    libraryAlbumHref(album.name, artistName, sharedLibraryReleaseId(album.tracks));
+  const catalogHref = libraryArtistCatalogHref(artistName, tracks);
+  const linksToProfile = catalogHref.startsWith("/artist/");
 
   const playFrom = (list: LocalTrack[], trackId: string) => {
     const index = list.findIndex((t) => t.id === trackId);
@@ -118,8 +126,8 @@ export default function LibraryArtistPage() {
     <AuthGate title="Connect your wallet to view your library.">
       <div className="page-container artist-page">
         <div className="artist-hero glass-panel">
-          <Button variant="ghost" className="back-btn" onClick={() => router.back()}>
-            ← Back
+          <Button variant="ghost" className="back-btn" onClick={() => router.push(libraryArtistsHref())}>
+            ← Back to Artists
           </Button>
           <div className="artist-hero-content">
             {heroArtwork ? (
@@ -132,7 +140,7 @@ export default function LibraryArtistPage() {
             )}
             <div className="artist-info">
               <div className="flex items-center gap-3 mb-3">
-                <span className="artist-label mb-0">Library Artist</span>
+                <span className="artist-label mb-0">My Library · Artist</span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white/10 text-gray-400 border border-white/10">
                   LOCAL LIBRARY
                 </span>
@@ -159,6 +167,9 @@ export default function LibraryArtistPage() {
                     label="Queue artist"
                     nextLabel="Play artist next"
                   />
+                  <Button variant="ghost" onClick={() => router.push(catalogHref)}>
+                    {linksToProfile ? "View Resonate profile" : "Explore in catalog"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -180,7 +191,7 @@ export default function LibraryArtistPage() {
             <div className="library-grid-view">
               {albums.map((album) => (
                 <div key={album.name} className="library-card library-card--linked">
-                  <Link href={albumHref(album.name)} className="library-card-link">
+                  <Link href={albumHref(album)} className="library-card-link">
                     {album.artworkUrl ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={album.artworkUrl} alt={album.name} className="library-card-artwork" />
