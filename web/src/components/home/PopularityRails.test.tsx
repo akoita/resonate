@@ -151,6 +151,16 @@ describe("TopArtistsRail", () => {
     expect(html).not.toContain('href="/artist/');
   });
 
+  it("keeps the artist initial behind a portrait as the broken-image fallback", () => {
+    const html = renderToStaticMarkup(
+      <TopArtistsRail
+        items={[artistItem({ name: "Felicia Farerre", imageUrl: "https://api.example.test/portrait" })]}
+      />,
+    );
+    expect(html).toContain('class="ng-artist-pill__initial">F</span>');
+    expect(html).toContain('src="https://api.example.test/portrait"');
+  });
+
   it("re-ranks per genre: a different ranking for the selected genre renders as served", () => {
     // The genre chip triggers a server-side re-rank; the rail renders whatever
     // ranking the endpoint returns for that genre, labeled accordingly.

@@ -2230,12 +2230,22 @@
   font-size: 14px;
   overflow: hidden;
   flex-shrink: 0;
+  position: relative;
+}
+
+.home-ng .ng-artist-pill__initial {
+  position: relative;
+  z-index: 0;
 }
 
 .home-ng .ng-artist-pill__avatar img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
+  z-index: 1;
 }
 
 /* ---------- Material Symbols utility -------------------------- */

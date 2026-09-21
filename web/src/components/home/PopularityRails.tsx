@@ -138,16 +138,19 @@ export function TopArtistsRail({
               title={`#${a.rank} · ${listenersLabel(a.uniqueListeners)}`}
             >
               <span className="ng-artist-pill__avatar" aria-hidden>
+                <span className="ng-artist-pill__initial">
+                  {a.name[0]?.toUpperCase() ?? "?"}
+                </span>
                 {a.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={a.imageUrl}
                     alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }}
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
                   />
-                ) : (
-                  a.name[0]?.toUpperCase() ?? "?"
-                )}
+                ) : null}
               </span>
               <span>
                 <span style={{ opacity: 0.6, fontWeight: 800, marginRight: 6 }}>#{a.rank}</span>
