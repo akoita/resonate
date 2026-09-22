@@ -235,7 +235,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
     sections: [
       {
         id: "home",
@@ -299,10 +299,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Open Catalog to browse the latest public releases, their stems, and public playlists curated by other listeners. Switch between Releases, Artists, Stems, and Playlists, and search by title, artist, stem, or playlist name. Opening a playlist card lets you press Play or add the whole playlist to your library.",
           },
           {
+            kind: "paragraph",
+            text: "Releases appear as a grid of cover art with the title, the credited artist, and the release type, genre, and when it was added. Hover over a cover and press its play button to start listening right away (on a phone the play button is always shown); select the title to open the full release page. Any AI-contribution label stays visible under each release. Use the genre chips above the grid to narrow releases to one genre — they work together with search.",
+          },
+          {
+            kind: "paragraph",
+            text: "Artists show their latest cover, how many releases and stems they have, and their main genre. Stems are grouped by track: each row lists the parts that track offers (Full mix, Vocals, Drums, Bass, and so on) and opens the release mixer. The Recently Added section on the home page shows a smaller preview with the same cards, plus buttons to add a release to a playlist or save it to your library.",
+          },
+          {
             kind: "figure",
             figure: {
               src: `${SHOT}/catalog.png`,
-              alt: "The catalog page titled 'Browse recent catalog' with counts of releases, artists, and stems, tabs for Releases/Artists/Stems, and a grid of release cards.",
+              alt: "The catalog page titled 'Browse recent catalog' with a search field, tabs for Releases, Artists, Stems, and Playlists, a row of genre chips, and a grid of release cover art.",
               caption: "Catalog: search and filter recent releases, artists, stems, and public playlists.",
               width: 1440,
               height: 900,

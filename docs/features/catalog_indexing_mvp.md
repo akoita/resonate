@@ -15,9 +15,9 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
 
 - The home page catalog browser (`/`) presents a compact recent-catalog
   snapshot of published releases, artists, stems, and public playlists from
-  `GET /catalog/published` and `GET /catalog/playlists`. It shows
-  visible-vs-total counts and links to a larger recent-catalog browser so the
-  preview is not mistaken for an exhaustive list.
+  `GET /catalog/published` and `GET /catalog/playlists`. It says when a view
+  is truncated and links to a larger recent-catalog browser so the preview is
+  not mistaken for an exhaustive list.
 - The global catalog page (`/catalog`) provides a larger public browse surface
   for recent releases, artists, stems, and public playlists with shared search
   and tabbed views. It searches the latest 200 public releases returned by
@@ -41,7 +41,22 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   older records and clients, but catalog APIs now return `artistCredits` so
   UI and machine clients can distinguish manager ownership from public artist
   identity.
-- Release rows in the home catalog expose direct listener actions:
+- Both surfaces share artwork-first catalog components
+  (`web/src/components/catalog/`, #1838): release cards with large square
+  cover art, the credited artist, a `Type · Genre · age` meta line, a visible
+  AI-disclosure label, and a coral play button over the cover (shown only when
+  the release has tracks); circular artist cards with pluralized release/stem
+  counts and the main genre; stem rows grouped one per track with ordered stem
+  type tags (Full mix, Vocals, Drums, Bass, Piano, Guitar, Other, then others
+  alphabetically) linking to the release mixer; and playlist cards using the
+  cover mosaic. Neither surface repeats the tab counts in stat tiles.
+- `/catalog` adds genre chips (All plus the eight most frequent genres in the
+  window) that combine with search, and shows a result summary only while
+  searching or filtering. The home snapshot shows up to 12 releases, 12
+  artists, 6 stem tracks, and 12 playlists, with a "Showing N of M" line only
+  when the view is truncated.
+- Release cards in the home catalog expose direct listener actions:
+  - play the release
   - add all release tracks to a playlist using the existing playlist modal
   - save all release tracks to the listener library as remote catalog tracks
 - Authenticated artists can open `/artist/catalog` for a complete managed

@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import {
   filterPublicPlaylists,
   flattenCatalogStems,
+  formatCount,
   getArtistName,
   getCatalogSortTime,
+  groupCatalogStemsByTrack,
   summarizeCreditedArtists,
+  topCatalogGenres,
   type CatalogArtistSummary,
   type CatalogStemSummary,
 } from "../../lib/catalogDisplay";
@@ -19,14 +20,19 @@ import {
   type PublicPlaylistSummary,
   type Release,
 } from "../../lib/api";
+import { catalogArtistPlaybackTracks } from "../../lib/catalogArtistPlayback";
+import { usePlayer } from "../../lib/playerContext";
+import { CatalogArtistCard } from "../../components/catalog/CatalogArtistCard";
 import { CatalogPlaylistCard } from "../../components/catalog/CatalogPlaylistCard";
-import { AiDisclosureBadge } from "../../components/content/AiDisclosureBadge";
+import { CatalogReleaseCard } from "../../components/catalog/CatalogReleaseCard";
+import { CatalogStemTrackRow } from "../../components/catalog/CatalogStemTrackRow";
 
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
 const CATALOG_VIEWS: CatalogView[] = ["releases", "artists", "stems", "playlists"];
 const RECENT_CATALOG_LIMIT = 200;
 const PLAYLIST_DISCOVERY_LIMIT = 60;
+const GENRE_CHIP_LIMIT = 8;
 
 export default function GlobalCatalogPage() {
   const searchParams = useSearchParams();
@@ -70,12 +76,17 @@ export default function GlobalCatalogPage() {
     };
   }, []);
 
+  const { playQueue } = usePlayer();
+  const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const artists = useMemo(() => summarizeCreditedArtists(releases), [releases]);
   const stems = useMemo(() => flattenCatalogStems(releases), [releases]);
+  const stemTrackTotal = useMemo(() => groupCatalogStemsByTrack(stems).length, [stems]);
+  const genres = useMemo(() => topCatalogGenres(releases, GENRE_CHIP_LIMIT), [releases]);
   const normalizedQuery = query.trim().toLowerCase();
+  const normalizedGenre = selectedGenre?.toLowerCase() ?? null;
   const filteredReleases = useMemo(
-    () => filterReleases(releases, normalizedQuery),
-    [releases, normalizedQuery],
+    () => filterReleases(releases, normalizedQuery, normalizedGenre),
+    [releases, normalizedQuery, normalizedGenre],
   );
   const filteredArtists = useMemo(
     () => filterArtists(artists, normalizedQuery),
@@ -84,6 +95,10 @@ export default function GlobalCatalogPage() {
   const filteredStems = useMemo(
     () => filterStems(stems, normalizedQuery),
     [stems, normalizedQuery],
+  );
+  const filteredStemTracks = useMemo(
+    () => groupCatalogStemsByTrack(filteredStems),
+    [filteredStems],
   );
   const filteredPlaylists = useMemo(
     () => filterPublicPlaylists(playlists, normalizedQuery),
@@ -96,14 +111,16 @@ export default function GlobalCatalogPage() {
     stems: filteredStems.length,
     playlists: filteredPlaylists.length,
   };
-  const totalCounts: Record<CatalogView, number> = {
-    releases: releases.length,
-    artists: artists.length,
-    stems: stems.length,
-    playlists: playlists.length,
-  };
-  const currentCount = tabCounts[view];
   const isSearching = normalizedQuery.length > 0;
+  const isFiltering = isSearching || (view === "releases" && selectedGenre !== null);
+  const resultSummary =
+    view === "releases"
+      ? `${filteredReleases.length} of ${formatCount(releases.length, "release")}`
+      : view === "artists"
+        ? `${filteredArtists.length} of ${formatCount(artists.length, "artist")}`
+        : view === "stems"
+          ? `${filteredStemTracks.length} of ${formatCount(stemTrackTotal, "track")} · ${formatCount(filteredStems.length, "stem")}`
+          : `${filteredPlaylists.length} of ${formatCount(playlists.length, "playlist")}`;
 
   const handleTabKeyDown = (event: KeyboardEvent, index: number) => {
     const lastIndex = CATALOG_VIEWS.length - 1;
@@ -116,6 +133,16 @@ export default function GlobalCatalogPage() {
     event.preventDefault();
     setView(CATALOG_VIEWS[nextIndex]);
     tabRefs.current[nextIndex]?.focus();
+  };
+
+  const handlePlayRelease = (release: Release) => {
+    const tracks = catalogArtistPlaybackTracks([release]);
+    if (tracks.length > 0) void playQueue(tracks, 0);
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setSelectedGenre(null);
   };
 
   return (
@@ -154,25 +181,6 @@ export default function GlobalCatalogPage() {
 
         <section className="ng-section">
           <div className="ng-catalog-shell ng-glass">
-            <div className="ng-catalog-stats" aria-label="Recent catalog totals">
-              <div>
-                <strong>{releases.length}</strong>
-                <span>Recent releases</span>
-              </div>
-              <div>
-                <strong>{artists.length}</strong>
-                <span>Credited artists</span>
-              </div>
-              <div>
-                <strong>{stems.length}</strong>
-                <span>Stems</span>
-              </div>
-              <div>
-                <strong>{playlists.length}</strong>
-                <span>Playlists</span>
-              </div>
-            </div>
-
             <div className="ng-catalog-toolbar">
               <div className="ng-segmented" role="tablist" aria-label="Catalog view">
                 {CATALOG_VIEWS.map((tab, index) => (
@@ -196,14 +204,35 @@ export default function GlobalCatalogPage() {
                   </button>
                 ))}
               </div>
-              <div className="ng-catalog-window" aria-live="polite">
-                {loading
-                  ? "Loading recent catalog"
-                  : isSearching
-                    ? `${currentCount} of ${totalCounts[view]} recent ${view}`
-                    : `${currentCount} recent ${currentCount === 1 ? singularize(view) : view}`}
-              </div>
             </div>
+
+            {view === "releases" && !loading && !error && genres.length > 0 && (
+              <div className="ng-cat-genres" role="group" aria-label="Filter releases by genre">
+                <button
+                  type="button"
+                  className={selectedGenre === null ? "ng-cat-genre active" : "ng-cat-genre"}
+                  aria-pressed={selectedGenre === null}
+                  onClick={() => setSelectedGenre(null)}
+                >
+                  All
+                </button>
+                {genres.map((genre) => (
+                  <button
+                    key={genre}
+                    type="button"
+                    className={selectedGenre === genre ? "ng-cat-genre active" : "ng-cat-genre"}
+                    aria-pressed={selectedGenre === genre}
+                    onClick={() => setSelectedGenre(selectedGenre === genre ? null : genre)}
+                  >
+                    {genre}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="ng-cat-summary" aria-live="polite">
+              {loading ? "Loading recent catalog" : isFiltering && !error ? resultSummary : ""}
+            </p>
 
             {error && (
               <div className="ng-empty-state">
@@ -221,86 +250,47 @@ export default function GlobalCatalogPage() {
                 {loading ? (
                   <CatalogSkeleton view={view} />
                 ) : view === "releases" ? (
-                  <div className="ng-resource-grid ng-resource-grid--catalog">
-                    {filteredReleases.length > 0 ? (
-                      filteredReleases.map((release) => (
-                        <Link key={release.id} href={publicReleaseHref(release.id)} className="ng-resource-card ng-resource-card__link">
-                          <ReleaseThumb release={release} />
-                          <div className="ng-resource-card__body">
-                            <h4>{release.title}</h4>
-                            <AiDisclosureBadge disclosure={release.aiDisclosure} />
-                            <p>{getArtistName(release)}</p>
-                            <div className="ng-resource-card__meta">
-                              <span>{release.type || "Release"}</span>
-                              <span>{release.genre || "Uncategorized"}</span>
-                              <span>{formatRelativeTime(getCatalogSortTime(release))}</span>
-                            </div>
-                          </div>
-                        </Link>
-                      ))
-                    ) : (
-                      <CatalogEmptyState label="releases" isSearching={isSearching} onClear={() => setQuery("")} />
-                    )}
-                  </div>
+                  filteredReleases.length > 0 ? (
+                    <div className="ng-cat-grid">
+                      {filteredReleases.map((release) => (
+                        <CatalogReleaseCard
+                          key={release.id}
+                          release={release}
+                          onPlay={handlePlayRelease}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <CatalogEmptyState label="releases" isFiltering={isFiltering} onClear={clearFilters} />
+                  )
                 ) : view === "artists" ? (
-                  <div className="ng-artist-browser ng-catalog-results">
-                    {filteredArtists.length > 0 ? (
-                      filteredArtists.map((artist) => (
-                        <Link
-                          key={artist.key}
-                          href={artist.artistId ? artistProfileHref(artist.artistId) : catalogArtistHref(artist.name)}
-                          className="ng-artist-row"
-                        >
-                          <span className="ng-artist-row__avatar" aria-hidden>
-                            {artist.name[0]?.toUpperCase() ?? "?"}
-                          </span>
-                          <span className="ng-artist-row__main">
-                            <strong>{artist.name}</strong>
-                            <small>{artist.latestRelease?.title ?? "No recent release"}</small>
-                          </span>
-                          <span className="ng-artist-row__metric">
-                            {artist.releaseCount}
-                            <small>releases</small>
-                          </span>
-                          <span className="ng-artist-row__metric">
-                            {artist.stemCount}
-                            <small>stems</small>
-                          </span>
-                        </Link>
-                      ))
-                    ) : (
-                      <CatalogEmptyState label="artists" isSearching={isSearching} onClear={() => setQuery("")} />
-                    )}
-                  </div>
+                  filteredArtists.length > 0 ? (
+                    <div className="ng-cat-grid">
+                      {filteredArtists.map((artist) => (
+                        <CatalogArtistCard key={artist.key} artist={artist} />
+                      ))}
+                    </div>
+                  ) : (
+                    <CatalogEmptyState label="artists" isFiltering={isFiltering} onClear={clearFilters} />
+                  )
                 ) : view === "stems" ? (
-                  <div className="ng-stem-browser ng-catalog-results">
-                    {filteredStems.length > 0 ? (
-                      filteredStems.map((stem) => (
-                        <Link key={stem.id} href={`${publicReleaseHref(stem.releaseId)}?mixer=true`} className="ng-stem-row">
-                          <span className="ng-stem-row__icon" aria-hidden>
-                            <span className="ms-icon">graphic_eq</span>
-                          </span>
-                          <span className="ng-stem-row__main">
-                            <strong>{stem.title}</strong>
-                            <small>{stem.releaseTitle} · {stem.artistName}</small>
-                          </span>
-                          <span className="ng-stem-row__type">{stem.type}</span>
-                        </Link>
-                      ))
-                    ) : (
-                      <CatalogEmptyState label="stems" isSearching={isSearching} onClear={() => setQuery("")} />
-                    )}
+                  filteredStemTracks.length > 0 ? (
+                    <div className="ng-cat-stem-list">
+                      {filteredStemTracks.map((group) => (
+                        <CatalogStemTrackRow key={group.key} group={group} />
+                      ))}
+                    </div>
+                  ) : (
+                    <CatalogEmptyState label="stems" isFiltering={isFiltering} onClear={clearFilters} />
+                  )
+                ) : filteredPlaylists.length > 0 ? (
+                  <div className="ng-cat-grid">
+                    {filteredPlaylists.map((playlist) => (
+                      <CatalogPlaylistCard key={playlist.id} playlist={playlist} />
+                    ))}
                   </div>
                 ) : (
-                  <div className="ng-resource-grid ng-resource-grid--catalog">
-                    {filteredPlaylists.length > 0 ? (
-                      filteredPlaylists.map((playlist) => (
-                        <CatalogPlaylistCard key={playlist.id} playlist={playlist} />
-                      ))
-                    ) : (
-                      <CatalogEmptyState label="playlists" isSearching={isSearching} onClear={() => setQuery("")} />
-                    )}
-                  </div>
+                  <CatalogEmptyState label="playlists" isFiltering={isFiltering} onClear={clearFilters} />
                 )}
               </div>
             )}
@@ -311,30 +301,16 @@ export default function GlobalCatalogPage() {
   );
 }
 
-function ReleaseThumb({ release }: { release: Release }) {
-  return (
-    <span className="ng-release-thumb">
-      {release.artworkUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={release.artworkUrl} alt="" />
-      ) : (
-        <span aria-hidden>{(release.title?.[0] ?? "?").toUpperCase()}</span>
-      )}
-    </span>
-  );
-}
-
 function CatalogSkeleton({ view }: { view: CatalogView }) {
-  if (view === "releases" || view === "playlists") {
+  if (view === "stems") {
     return (
-      <div className="ng-resource-grid ng-resource-grid--catalog" aria-hidden>
+      <div className="ng-cat-stem-list" aria-hidden>
         {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="ng-skeleton-card">
-            <span className="ng-skeleton-card__thumb" />
-            <span className="ng-skeleton-card__lines">
-              <span className="ng-skeleton-line ng-skeleton-line--lg" />
-              <span className="ng-skeleton-line ng-skeleton-line--md" />
-              <span className="ng-skeleton-line ng-skeleton-line--sm" />
+          <div key={index} className="ng-cat-skeleton-row">
+            <span className="ng-cat-skeleton__thumb" />
+            <span className="ng-cat-skeleton__lines">
+              <span className="ng-cat-skeleton__line ng-cat-skeleton__line--lg" />
+              <span className="ng-cat-skeleton__line ng-cat-skeleton__line--md" />
             </span>
           </div>
         ))}
@@ -342,10 +318,18 @@ function CatalogSkeleton({ view }: { view: CatalogView }) {
     );
   }
 
+  const round = view === "artists";
   return (
-    <div className="ng-stem-browser ng-catalog-results" aria-hidden>
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div key={index} className="ng-skeleton-row" />
+    <div className="ng-cat-grid" aria-hidden>
+      {Array.from({ length: 12 }).map((_, index) => (
+        <div
+          key={index}
+          className={round ? "ng-cat-skeleton-card ng-cat-skeleton-card--round" : "ng-cat-skeleton-card"}
+        >
+          <span className="ng-cat-skeleton__art" />
+          <span className="ng-cat-skeleton__line ng-cat-skeleton__line--lg" />
+          <span className="ng-cat-skeleton__line ng-cat-skeleton__line--md" />
+        </div>
       ))}
     </div>
   );
@@ -353,22 +337,22 @@ function CatalogSkeleton({ view }: { view: CatalogView }) {
 
 function CatalogEmptyState({
   label,
-  isSearching,
+  isFiltering,
   onClear,
 }: {
   label: string;
-  isSearching: boolean;
+  isFiltering: boolean;
   onClear: () => void;
 }) {
   return (
     <div className="ng-empty-state">
-      <span className="ms-icon" aria-hidden>{isSearching ? "search_off" : "library_music"}</span>
+      <span className="ms-icon" aria-hidden>{isFiltering ? "search_off" : "library_music"}</span>
       <p>
-        {isSearching
+        {isFiltering
           ? `No ${label} match your search.`
           : `No ${label} in the catalog yet.`}
       </p>
-      {isSearching && (
+      {isFiltering && (
         <button type="button" className="ng-empty-state__action" onClick={onClear}>
           Clear search
         </button>
@@ -377,30 +361,21 @@ function CatalogEmptyState({
   );
 }
 
-function singularize(view: CatalogView) {
-  return view === "releases"
-    ? "release"
-    : view === "artists"
-      ? "artist"
-      : view === "stems"
-        ? "stem"
-        : "playlist";
-}
-
 function sortCatalogReleases(releases: Release[]) {
   return [...releases].sort((left, right) => getCatalogSortTime(right) - getCatalogSortTime(left));
 }
 
-function filterReleases(releases: Release[], search: string) {
-  if (!search) return releases;
+function filterReleases(releases: Release[], search: string, genre: string | null) {
+  if (!search && !genre) return releases;
   return releases.filter((release) =>
-    [
+    (!genre || release.genre?.trim().toLowerCase() === genre)
+    && (!search || [
       release.title,
       getArtistName(release),
       release.genre,
       release.label,
       release.type,
-    ].some((value) => value?.toLowerCase().includes(search)),
+    ].some((value) => value?.toLowerCase().includes(search))),
   );
 }
 
@@ -420,21 +395,10 @@ function filterStems(stems: CatalogStemSummary[], search: string) {
   return stems.filter((stem) =>
     [
       stem.title,
+      stem.trackTitle,
       stem.type,
       stem.releaseTitle,
       stem.artistName,
     ].some((value) => value.toLowerCase().includes(search)),
   );
-}
-
-function formatRelativeTime(time: number) {
-  if (!time) return "Unknown";
-  const diffMs = Date.now() - time;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diffMs < hour) return `${Math.max(1, Math.round(diffMs / minute))}m ago`;
-  if (diffMs < day) return `${Math.round(diffMs / hour)}h ago`;
-  if (diffMs < 30 * day) return `${Math.round(diffMs / day)}d ago`;
-  return new Date(time).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }

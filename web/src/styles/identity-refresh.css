@@ -369,23 +369,15 @@
 /* Section titles: subtle weight + tracking refinement. */
 .home-ng .ng-section-title { letter-spacing: -0.015em; font-size: var(--r-text-h2); }
 
-/* Recommendation + resource cards: lift, glow edge, smoother motion. */
-.home-ng .ng-recommendation-card,
-.home-ng .ng-resource-card {
+/* Recommendation cards: lift, glow edge, smoother motion. */
+.home-ng .ng-recommendation-card {
   transition: transform 0.28s var(--r-ease-out), border-color 0.28s ease,
     box-shadow 0.28s ease, background 0.28s ease;
 }
-.home-ng .ng-recommendation-card:hover,
-.home-ng .ng-resource-card:hover {
+.home-ng .ng-recommendation-card:hover {
   transform: translateY(-3px);
   border-color: rgba(124, 92, 255, 0.30);
   box-shadow: var(--r-elev-2), 0 0 0 1px rgba(124, 92, 255, 0.10);
-}
-
-/* Catalog stat numbers read as instrument readouts — mono + tabular. */
-.home-ng .ng-catalog-stats {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-variant-numeric: tabular-nums;
 }
 
 /* AI DJ session-intent presets are agent context — give them a quiet
