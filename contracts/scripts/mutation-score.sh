@@ -21,6 +21,7 @@ MATCH="${2:-}"
 MAX="${MAX_MUTANTS:-0}"
 SHARD_INDEX="${MUTANT_SHARD_INDEX:-0}"
 SHARD_COUNT="${MUTANT_SHARD_COUNT:-1}"
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 if [[ ! "$MAX" =~ ^[0-9]+$ ]]; then
   echo "ERROR: MAX_MUTANTS must be a non-negative integer." >&2
@@ -37,7 +38,7 @@ ORIGINAL=$(python3 -c "import json; print(json.load(open('$CONFIG'))['filename']
 
 echo "==> Generating mutants: $CONFIG ($ORIGINAL)"
 rm -rf "$OUTDIR"
-if ! gambit mutate --json "$CONFIG" >/dev/null; then
+if ! "$SCRIPT_DIR/gambit-mutate.sh" "$CONFIG" >/dev/null; then
   echo "ERROR: Gambit failed to generate mutants; check compiler output and remappings." >&2
   exit 2
 fi

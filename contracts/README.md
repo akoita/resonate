@@ -305,14 +305,15 @@ certoraRun certora/conf/stem_marketplace.conf
 #   solc 0.8.28: https://github.com/ethereum/solidity/releases (solc-static-linux)
 #   gambit v1.0.6: https://github.com/Certora/gambit/releases (gambit-linux-*)
 # Generate mutants (counts observed with gambit v1.0.6):
-gambit mutate --json gambit.json                     # StemNFT            (~80 mutants)
-gambit mutate --json gambit-marketplace.json         # StemMarketplaceV2  (~255 mutants)
-gambit mutate --json gambit-revenue-escrow.json      # RevenueEscrow      (~199 mutants)
-gambit mutate --json gambit-show-campaign.json       # ShowCampaignEscrow (~347 mutants)
-gambit mutate --json gambit-content-protection.json  # ContentProtection
-# Each config carries its own solc_remappings; Gambit never reads remappings.txt. A
-# contract that gains an import its config does not map yields 0 mutants, not an
-# obvious error — keep the two lists in step when imports change.
+scripts/gambit-mutate.sh gambit.json                     # StemNFT            (91 mutants)
+scripts/gambit-mutate.sh gambit-marketplace.json         # StemMarketplaceV2  (255 mutants)
+scripts/gambit-mutate.sh gambit-revenue-escrow.json      # RevenueEscrow      (199 mutants)
+scripts/gambit-mutate.sh gambit-show-campaign.json       # ShowCampaignEscrow (347 mutants)
+scripts/gambit-mutate.sh gambit-content-protection.json  # ContentProtection  (405 mutants)
+# The launcher derives solc_remappings from `forge remappings`, keeping mappings
+# whose target paths are installed (Gambit 1.0.6 crashes on dangling dependency
+# mappings). Keep remappings out of the Gambit configs; the launcher rejects a
+# config that declares its own list.
 # Kill-score against the suite (a mutant that leaves the suite green is a survivor —
 # a gap to turn into a new test or CVL spec rule). MAX_MUTANTS limits a quick run:
 MAX_MUTANTS=10 scripts/mutation-score.sh gambit-revenue-escrow.json RevenueEscrow

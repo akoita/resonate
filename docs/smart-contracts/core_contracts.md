@@ -433,8 +433,9 @@ halmos --contract ShowCampaignEscrowFormalTest
 certoraRun certora/conf/show_campaign_escrow.conf
 
 # Mutation testing for high-value contracts/specs
-# Configure Gambit per target before running it in CI.
-gambit --help
+# The launcher injects Foundry's installed effective remappings into a temporary config.
+cd contracts
+scripts/gambit-mutate.sh gambit-show-campaign.json
 ```
 
 For material contract changes, Resonate expects a risk-scaled test ladder:
