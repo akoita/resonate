@@ -130,9 +130,7 @@ export function TopArtistsRail({
         <div className="ng-artist-pills">
           {items.map((a) => (
             <Link
-              // Key by credited name (#1492): artistId is null when the credited
-              // artist has no matching account, so it cannot be the key.
-              key={a.name}
+              key={a.artistId ?? a.name}
               href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
               className="ng-artist-pill"
               title={`#${a.rank} · ${listenersLabel(a.uniqueListeners)}`}

@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+    BadRequestException,
+    ConflictException,
+    ForbiddenException,
+    Injectable,
+    NotFoundException,
+} from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
@@ -14,8 +20,7 @@ export type ArtistSearchResult = {
     claimStatus: string | null;
 };
 
-// When two profiles share a name (e.g. a managed profile and an auto-created
-// unclaimed public profile), keep the one most useful to credit against.
+// Rank suggestions without collapsing distinct same-name identities.
 function artistCandidateScore(artist: ArtistSearchResult): number {
     let score = 0;
     if (artist.claimStatus === "claimed") score += 4;
@@ -58,6 +63,9 @@ export type ArtistSocialLinks = Partial<Record<ArtistSocialLinkKey, string>>;
 
 const MAX_BIO_LENGTH = 2000;
 const MAX_URL_LENGTH = 2048;
+const MIN_ARTIST_CLAIM_EVIDENCE_LENGTH = 20;
+const MAX_ARTIST_CLAIM_EVIDENCE_LENGTH = 4000;
+const MAIN_ARTIST_CREDIT_ROLES = ["main", "primary"];
 // Only http(s) URLs are ever persisted — this is the primary XSS/open-redirect
 // guard for values that get rendered back as anchors/img src on the profile
 // page (rejects `javascript:`, `data:`, `vbscript:`, bare `//host`, etc).
@@ -69,6 +77,47 @@ export type UpdateArtistProfileInput = {
     socialLinks?: unknown;
     website?: unknown;
 };
+
+export type ArtistClaimDecision = "approve" | "reject" | "revoke";
+
+function normalizeArtistClaimEvidence(input: unknown): string {
+    if (typeof input !== "string") {
+        throw new BadRequestException("evidence must be a string");
+    }
+    const evidence = input.trim();
+    const length = Array.from(evidence).length;
+    if (length < MIN_ARTIST_CLAIM_EVIDENCE_LENGTH || length > MAX_ARTIST_CLAIM_EVIDENCE_LENGTH) {
+        throw new BadRequestException(
+            `evidence must be between ${MIN_ARTIST_CLAIM_EVIDENCE_LENGTH} and ${MAX_ARTIST_CLAIM_EVIDENCE_LENGTH} characters`,
+        );
+    }
+    return evidence;
+}
+
+function normalizeArtistClaimDecision(input: unknown): ArtistClaimDecision {
+    if (input !== "approve" && input !== "reject" && input !== "revoke") {
+        throw new BadRequestException("decision must be approve, reject, or revoke");
+    }
+    return input;
+}
+
+function normalizeArtistClaimReviewNote(input: unknown): string | null {
+    if (input === undefined || input === null) return null;
+    if (typeof input !== "string") {
+        throw new BadRequestException("note must be a string");
+    }
+    return input.trim() || null;
+}
+
+function assertArtistClaimOperator(role: unknown): void {
+    if (role !== "admin" && role !== "operator") {
+        throw new ForbiddenException("Artist claim review is restricted to operators");
+    }
+}
+
+function isUniqueConstraintViolation(error: unknown): boolean {
+    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
+}
 
 /**
  * Validates and normalizes a single URL-like field. `undefined` means "field
@@ -172,16 +221,230 @@ export class ArtistService {
         });
     }
 
+    async submitClaim(userId: string, artistId: string, evidenceInput: unknown) {
+        const evidence = normalizeArtistClaimEvidence(evidenceInput);
+        try {
+            return await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Artist" WHERE "id" = ${artistId} FOR UPDATE`);
+
+            const artist = await tx.artist.findUnique({
+                where: { id: artistId },
+                select: {
+                    id: true,
+                    userId: true,
+                    profileType: true,
+                    claimStatus: true,
+                    releaseCredits: {
+                        where: {
+                            role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                            identityStatus: { not: "ambiguous" },
+                        },
+                        select: { id: true },
+                        take: 1,
+                    },
+                },
+            });
+            if (!artist) throw new NotFoundException("Artist not found");
+            if (
+                artist.userId !== null
+                || artist.profileType !== "public_artist"
+                || artist.claimStatus !== "unclaimed"
+                || artist.releaseCredits.length === 0
+            ) {
+                throw new ConflictException("Artist profile is not eligible for a claim");
+            }
+
+            const existing = await tx.artistClaimRequest.findFirst({
+                where: { artistId, claimantUserId: userId, status: "pending" },
+                select: { id: true },
+            });
+            if (existing) throw new ConflictException("A pending claim already exists for this artist");
+
+                return tx.artistClaimRequest.create({
+                    data: { artistId, claimantUserId: userId, evidence },
+                    select: {
+                        id: true,
+                        artistId: true,
+                        status: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        reviewedAt: true,
+                    },
+                });
+            });
+        } catch (error) {
+            if (isUniqueConstraintViolation(error)) {
+                throw new ConflictException("A pending claim already exists for this artist");
+            }
+            throw error;
+        }
+    }
+
+    async getMyClaim(userId: string, artistId: string) {
+        return prisma.artistClaimRequest.findFirst({
+            where: { artistId, claimantUserId: userId },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: {
+                id: true,
+                artistId: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true,
+                reviewedAt: true,
+            },
+        });
+    }
+
+    async listPendingClaims(actorRole: unknown) {
+        assertArtistClaimOperator(actorRole);
+        return prisma.artistClaimRequest.findMany({
+            where: { status: "pending" },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: {
+                id: true,
+                artistId: true,
+                claimantUserId: true,
+                evidence: true,
+                status: true,
+                createdAt: true,
+                artist: { select: { id: true, displayName: true } },
+            },
+        });
+    }
+
+    async reviewClaim(
+        reviewerUserId: string,
+        reviewerRole: unknown,
+        claimId: string,
+        decisionInput: unknown,
+        noteInput?: unknown,
+    ) {
+        assertArtistClaimOperator(reviewerRole);
+        const decision = normalizeArtistClaimDecision(decisionInput);
+        const reviewNote = normalizeArtistClaimReviewNote(noteInput);
+
+        try {
+            return await prisma.$transaction(async (tx) => {
+            const initial = await tx.artistClaimRequest.findUnique({
+                where: { id: claimId },
+                select: { artistId: true },
+            });
+            if (!initial) throw new NotFoundException("Artist claim not found");
+
+            await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Artist" WHERE "id" = ${initial.artistId} FOR UPDATE`);
+            const claim = await tx.artistClaimRequest.findUnique({
+                where: { id: claimId },
+                include: { artist: { select: { id: true, userId: true, profileType: true, claimStatus: true } } },
+            });
+            if (!claim) throw new NotFoundException("Artist claim not found");
+
+            const now = new Date();
+            if (decision === "revoke") {
+                if (claim.status !== "approved") {
+                    throw new ConflictException("Only an approved artist claim can be revoked");
+                }
+                const updated = await tx.artistClaimRequest.updateMany({
+                    where: { id: claimId, status: "approved" },
+                    data: { status: "revoked", reviewerUserId, reviewNote, reviewedAt: now },
+                });
+                if (updated.count !== 1) throw new ConflictException("Artist claim is no longer approved");
+                await tx.artist.update({
+                    where: { id: claim.artistId },
+                    data: { claimStatus: "unclaimed" },
+                });
+            } else {
+                if (claim.status !== "pending") {
+                    throw new ConflictException("Only a pending artist claim can be reviewed");
+                }
+
+                if (decision === "approve") {
+                    if (
+                        claim.artist.userId !== null
+                        || claim.artist.profileType !== "public_artist"
+                        || claim.artist.claimStatus !== "unclaimed"
+                    ) {
+                        throw new ConflictException("Artist profile is no longer available to claim");
+                    }
+                    const eligibleCredit = await tx.releaseArtistCredit.findFirst({
+                        where: {
+                            artistId: claim.artistId,
+                            role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                            identityStatus: { not: "ambiguous" },
+                        },
+                        select: { id: true },
+                    });
+                    if (!eligibleCredit) {
+                        throw new ConflictException("Artist no longer has an eligible main credit");
+                    }
+                    const artistUpdated = await tx.artist.updateMany({
+                        where: {
+                            id: claim.artistId,
+                            userId: null,
+                            profileType: "public_artist",
+                            claimStatus: "unclaimed",
+                        },
+                        data: { claimStatus: "claimed" },
+                    });
+                    if (artistUpdated.count !== 1) {
+                        throw new ConflictException("Artist profile is no longer available to claim");
+                    }
+                }
+
+                const updated = await tx.artistClaimRequest.updateMany({
+                    where: { id: claimId, status: "pending" },
+                    data: {
+                        status: decision === "approve" ? "approved" : "rejected",
+                        reviewerUserId,
+                        reviewNote,
+                        reviewedAt: now,
+                    },
+                });
+                if (updated.count !== 1) throw new ConflictException("Artist claim is no longer pending");
+
+                if (decision === "approve") {
+                    await tx.artistClaimRequest.updateMany({
+                        where: {
+                            artistId: claim.artistId,
+                            status: "pending",
+                            id: { not: claimId },
+                        },
+                        data: {
+                            status: "rejected",
+                            reviewerUserId,
+                            reviewNote: "Another claim for this artist was approved.",
+                            reviewedAt: now,
+                        },
+                    });
+                }
+            }
+
+            return tx.artistClaimRequest.findUnique({
+                where: { id: claimId },
+                select: {
+                    id: true,
+                    artistId: true,
+                    status: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    reviewedAt: true,
+                },
+            });
+            });
+        } catch (error) {
+            if (isUniqueConstraintViolation(error)) {
+                throw new ConflictException("Another claim has already been approved for this artist");
+            }
+            throw error;
+        }
+    }
+
     /**
      * Typeahead search used by the upload/publish studio so artists can pick an
      * existing profile instead of accidentally minting a duplicate via a typo or
      * a casing/spacing difference. Catalog credit resolution links names to
-     * profiles by exact (case-insensitive) displayName, so surfacing the canonical
-     * spelling here is what actually prevents the duplicate.
-     *
-     * Results are deduped by normalized name (a manager profile and an unclaimed
-     * public profile can share a name) and ranked so the most reusable, highest
-     * signal match shows first: exact match > prefix match > claimed > has art.
+     * profiles by exact (case-insensitive) displayName when no ID is supplied.
+     * Same-name profiles must remain separate results so callers can select
+     * the exact credited identity. Rank exact match > prefix > claimed > art.
      */
     async searchByName(query: string, limit = 8): Promise<ArtistSearchResult[]> {
         const normalized = (query ?? "").trim();
@@ -191,8 +454,12 @@ export class ArtistService {
         const take = Math.min(Math.max(Math.trunc(limit) || 8, 1), 25);
 
         const matches = await prisma.artist.findMany({
-            where: { displayName: { contains: normalized, mode: "insensitive" } },
-            // Over-fetch so JS-side ranking/dedupe still has enough to fill `take`.
+            where: {
+                displayName: { contains: normalized, mode: "insensitive" },
+                profileType: "public_artist",
+                userId: null,
+            },
+            // Over-fetch so ranking still has enough to fill `take`.
             take: take * 4,
             select: {
                 id: true,
@@ -204,18 +471,10 @@ export class ArtistService {
         });
 
         const lowerQuery = normalized.toLowerCase();
-        const byName = new Map<string, ArtistSearchResult>();
-        for (const artist of matches) {
-            const key = artist.displayName.trim().toLowerCase();
-            const existing = byName.get(key);
-            if (!existing || artistCandidateScore(artist) > artistCandidateScore(existing)) {
-                byName.set(key, artist);
-            }
-        }
-
-        return Array.from(byName.values())
+        return matches
             .sort((a, b) => artistRelevanceScore(b, lowerQuery) - artistRelevanceScore(a, lowerQuery)
-                || a.displayName.localeCompare(b.displayName))
+                || a.displayName.localeCompare(b.displayName)
+                || a.id.localeCompare(b.id))
             .slice(0, take);
     }
 
@@ -281,7 +540,7 @@ export class ArtistService {
      * and settings updates never touch these fields.
      */
     async updateProfile(userId: string, artistId: string, input: UpdateArtistProfileInput) {
-        const artist = await this.requireOwnedArtist(userId, artistId);
+        const artist = await this.requireProfileEditor(userId, artistId);
 
         const imageUrl = normalizeOptionalUrl(input.imageUrl, "imageUrl");
         const summary = normalizeOptionalSummary(input.summary);
@@ -313,6 +572,26 @@ export class ArtistService {
             throw new ForbiddenException("You do not manage this artist profile");
         }
         return artist;
+    }
+
+    private async requireProfileEditor(userId: string, artistId: string) {
+        const artist = await prisma.artist.findUnique({ where: { id: artistId } });
+        if (!artist) throw new NotFoundException("Artist profile not found");
+        if (artist.userId === userId) return artist;
+
+        if (
+            artist.userId === null
+            && artist.profileType === "public_artist"
+            && artist.claimStatus === "claimed"
+        ) {
+            const approvedClaim = await prisma.artistClaimRequest.findFirst({
+                where: { artistId, claimantUserId: userId, status: "approved" },
+                select: { id: true },
+            });
+            if (approvedClaim) return artist;
+        }
+
+        throw new ForbiddenException("You do not manage this artist profile");
     }
 }
 

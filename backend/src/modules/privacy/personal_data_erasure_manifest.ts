@@ -131,6 +131,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     scrub: ["reason", "failureMessage"],
     matchOn: "userId",
   },
+  {
+    model: "ArtistClaimRequest",
+    disposition: "anonymize",
+    reason:
+      "The claim decision remains auditable, while private evidence and review text are scrubbed when the claimant is erased.",
+    scrub: ["evidence", "reviewNote"],
+    matchOn: "claimantUserId",
+    note:
+      "If the erased person was the reviewer instead, only their review note is scrubbed; if they were an approved claimant, the grant is revoked before the user id rotates.",
+  },
 
   // ---------------------------------------------------------------------
   // Credentials, sessions and account-control material
@@ -816,6 +826,8 @@ export const RETAINED_BUT_NOT_EXPORTED: Readonly<Record<string, string>> = {
 export type DanglingColumnAction =
   /** Overwrite the old user id with the new UUID. */
   | "rewrite"
+  /** Clear the identifier and associated private text before id rotation. */
+  | "scrubbed"
   /** Nothing: the model's disposition deletes the whole row anyway. */
   | "deleted-with-row"
   /** Left to `AnalyticsGovernanceService`, which owns these rows end to end. */
@@ -846,6 +858,13 @@ export interface DanglingPersonColumn {
  * relation (on `initiatorUserId`), so a per-model check would have missed it too.
  */
 export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
+  {
+    model: "ReleaseArtistCredit",
+    column: "identityReviewerUserId",
+    action: "scrubbed",
+    reason:
+      "This optional reviewer id has no User relation; erasure clears it and the private review note before rotating the account id.",
+  },
   {
     model: "SignupFaucetAttempt",
     column: "userId",
@@ -932,9 +951,9 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
  * Field-name patterns the coverage test uses to find columns that might hold a
  * `User.id`.
  *
- * Deliberately wider than `userId`: nine models spell the user column something
- * else, and the polymorphic `ownerId`/`subjectId`/`actorId` shapes are exactly
- * where a person hides without the word "user" appearing anywhere.
+ * Deliberately wider than `userId`: several models spell the user column
+ * something else, and the polymorphic `ownerId`/`subjectId`/`actorId` shapes
+ * are exactly where a person hides without the word "user" appearing anywhere.
  */
 export const PERSON_ID_COLUMN_PATTERNS: readonly RegExp[] = [
   /user_?id$/i,

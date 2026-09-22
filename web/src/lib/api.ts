@@ -498,6 +498,7 @@ export type ReleaseArtistCredit = {
   artistId: string;
   role: string;
   displayName: string;
+  identityStatus?: "selected" | "created" | "inferred" | "ambiguous" | "reviewed";
   sortOrder: number;
   artist?: {
     id: string;
@@ -2034,6 +2035,32 @@ export async function updateArtistProfile(
   );
 }
 
+export type ArtistClaimStatus = "pending" | "approved" | "rejected" | "revoked";
+
+export type ArtistClaim = {
+  id: string;
+  artistId: string;
+  status: ArtistClaimStatus;
+  createdAt: string;
+  reviewedAt?: string | null;
+};
+
+export async function getMyArtistClaim(token: string, artistId: string) {
+  return apiRequest<ArtistClaim | null>(
+    `/artists/${encodeURIComponent(artistId)}/claims/me`,
+    {},
+    token,
+  );
+}
+
+export async function submitArtistClaim(token: string, artistId: string, evidence: string) {
+  return apiRequest<ArtistClaim>(
+    `/artists/${encodeURIComponent(artistId)}/claims`,
+    { method: "POST", body: JSON.stringify({ evidence }) },
+    token,
+  );
+}
+
 export async function getCuratorProfile(address: string) {
   return apiRequest<CuratorProfile>(`/metadata/curators/${address.toLowerCase()}`);
 }
@@ -3073,8 +3100,8 @@ export interface TrendingTrackItem {
 export interface TopArtistItem {
   rank: number;
   /**
-   * The unique profile id backed by matching published-release credit
-   * evidence; null when the credit is unresolved or ambiguous (#1492/#1820).
+   * Stable credited profile ID from the artist-engagement serving row.
+   * Null remains accepted for older cached responses.
    */
   artistId: string | null;
   name: string;

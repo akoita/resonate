@@ -276,7 +276,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Artist links also say what Resonate knows. A managed artist opens their Resonate profile. An unclaimed name opens a catalog-credit page containing releases credited to that name, without pretending the credit is an owned profile.",
+            text: "Artist links follow the credited profile when the music has a clear artist identity. If a credit could refer to more than one artist, it opens a catalog page for the credited name until the identity is reviewed.",
           },
         ],
       },
@@ -1020,7 +1020,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Add the primary artist, track artist, and any featured artists. As you type, Resonate suggests existing artist profiles so you reuse the right one instead of creating a duplicate from a typo.",
+            text: "Add the primary artist, track artist, and any featured artists. Choose the exact existing profile when Resonate suggests one, especially if several artists share a name. Your selected primary artist stays linked to that profile when you upload.",
           },
           {
             kind: "callout",
@@ -1062,11 +1062,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "artist-profile",
     title: "Your artist page",
     summary:
-      "Edit how listeners see you — profile image, bio, website, and social links — and know your name links to your page across Resonate.",
+      "Edit your public profile after it is yours, or submit evidence to claim an unclaimed artist page.",
     category: "artists",
     audiences: ["artist"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence"],
     sections: [
       {
         id: "edit",
@@ -1074,7 +1074,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Open your artist page and, when you're signed in as its owner, you'll see an \"Edit profile\" button. Use it to set your profile image, a short bio, your website, and links to your social accounts (X, Instagram, TikTok, YouTube, SoundCloud). Only you can edit your own page; everyone else sees it read-only.",
+            text: "Open your artist page and, when you have access, you'll see an \"Edit profile\" button. Use it to set your profile image, a short bio, your website, and links to your social accounts (X, Instagram, TikTok, YouTube, SoundCloud). Other visitors see the page read-only.",
           },
           {
             kind: "callout",
@@ -1085,12 +1085,26 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "claim",
+        heading: "Claiming a credited artist page",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "If a public artist page is unclaimed, sign in and submit a release or rights reference that shows you represent that artist. An operator reviews the evidence for that exact page. A matching name alone does not grant access. You can see when your request is pending or submit new evidence after a rejection.",
+          },
+          {
+            kind: "paragraph",
+            text: "An approved claim lets you edit the public page. It does not transfer release management, rights, payouts, or private analytics from another account.",
+          },
+        ],
+      },
+      {
         id: "links",
         heading: "Your name links to your page",
         blocks: [
           {
             kind: "paragraph",
-            text: "Wherever your name appears on a release or in the catalog, it now links straight to your artist page — on release pages, track credits (including featured artists), the home hero, and catalog and marketplace listings — so fans can always find your profile in one click.",
+            text: "When a release credit identifies your page clearly, its artist link opens that page. Credits that still need identity review open a catalog page for the credited name instead.",
           },
         ],
       },

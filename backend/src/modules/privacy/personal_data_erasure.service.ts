@@ -698,8 +698,59 @@ export class PersonalDataErasureService {
       }
       if (Object.keys(data).length === 0) continue;
       const result = await delegateFor(tx, rule.model).updateMany({ where, data });
-      anonymized[rule.model] = result.count;
+      let affected = result.count;
+
+      if (rule.model === "ArtistClaimRequest") {
+        // A review note belongs to the reviewer. The manifest's claimant match
+        // scrubs both private text fields on claims they submitted; this second
+        // match catches notes they wrote on somebody else's claim without
+        // scrubbing the claimant's evidence.
+        const reviewerNotes = await delegateFor(tx, rule.model).updateMany({
+          where: {
+            reviewerUserId: oldUserId,
+            claimantUserId: { not: oldUserId },
+            reviewNote: { not: null },
+          },
+          data: { reviewNote: null },
+        });
+        affected += reviewerNotes.count;
+
+        // An erased claimant must lose the edit grant as well as the private
+        // evidence. Keep the review row and its final status as revoked.
+        const approvedClaims = await delegateFor(tx, rule.model).findMany({
+          where: { claimantUserId: oldUserId, status: "approved" },
+          select: { artistId: true },
+        });
+        const revoked = await delegateFor(tx, rule.model).updateMany({
+          where: { claimantUserId: oldUserId, status: "approved" },
+          data: { status: "revoked" },
+        });
+        affected = Math.max(affected, revoked.count);
+
+        const artistIds = Array.from(new Set(
+          approvedClaims
+            .map((claim) => claim.artistId)
+            .filter((artistId): artistId is string => typeof artistId === "string"),
+        ));
+        if (artistIds.length > 0) {
+          await tx.artist.updateMany({
+            where: { id: { in: artistIds }, userId: null, claimStatus: "claimed" },
+            data: { claimStatus: "unclaimed" },
+          });
+        }
+      }
+
+      anonymized[rule.model] = affected;
     }
+
+    // Credit review attribution is deliberately not a User relation so the
+    // published credit survives account erasure. Its reviewer id and private
+    // note are scrubbed explicitly before the id rotation.
+    const creditReviewsScrubbed = await tx.releaseArtistCredit.updateMany({
+      where: { identityReviewerUserId: oldUserId },
+      data: { identityReviewerUserId: null, identityReviewNote: null },
+    });
+    anonymized["ReleaseArtistCredit.identityReview"] = creditReviewsScrubbed.count;
 
     // --- rotate the id, then chase what the cascade cannot reach ------------
     // For a wallet or passkey account `User.id` *is* the person's wallet
@@ -722,6 +773,7 @@ export class PersonalDataErasureService {
     // the rows the cascade does not reach, and a column missing from the
     // manifest's list keeps the wallet address forever without failing.
     for (const dangling of DANGLING_PERSON_COLUMNS) {
+      if (dangling.action === "scrubbed") continue;
       if (dangling.action !== "rewrite") continue;
       const result = await delegateFor(tx, dangling.model).updateMany({
         where: { [dangling.column]: oldUserId },

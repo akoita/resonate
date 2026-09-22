@@ -11,6 +11,8 @@ import {
     NotFoundException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
 import { ArtistService } from "./artist.service";
 
 @Controller("artists")
@@ -67,13 +69,65 @@ export class ArtistController {
         return this.artistService.updateProfile(req.user.userId, id, body);
     }
 
+    @UseGuards(AuthGuard("jwt"))
+    @Post(":id/claims")
+    submitClaim(
+        @Request() req: any,
+        @Param("id") id: string,
+        @Body() body: { evidence?: unknown },
+    ) {
+        return this.artistService.submitClaim(req.user.userId, id, body.evidence);
+    }
+
+    @UseGuards(AuthGuard("jwt"))
+    @Get(":id/claims/me")
+    getMyClaim(@Request() req: any, @Param("id") id: string) {
+        return this.artistService.getMyClaim(req.user.userId, id);
+    }
+
+    @UseGuards(AuthGuard("jwt"), RolesGuard)
+    @Roles("admin", "operator")
+    @Get("claims/pending")
+    listPendingClaims(@Request() req: any) {
+        return this.artistService.listPendingClaims(req.user.role);
+    }
+
+    @UseGuards(AuthGuard("jwt"), RolesGuard)
+    @Roles("admin", "operator")
+    @Patch("claims/:claimId")
+    reviewClaim(
+        @Request() req: any,
+        @Param("claimId") claimId: string,
+        @Body() body: { decision?: unknown; note?: unknown },
+    ) {
+        return this.artistService.reviewClaim(
+            req.user.userId,
+            req.user.role,
+            claimId,
+            body.decision,
+            body.note,
+        );
+    }
+
     @Get(":id")
     async getById(@Param("id") id: string) {
         const artist = await this.artistService.findById(id);
         if (!artist) {
             throw new NotFoundException(`Artist not found`);
         }
-        return artist;
+        return {
+            id: artist.id,
+            displayName: artist.displayName,
+            profileType: artist.profileType,
+            claimStatus: artist.claimStatus,
+            imageUrl: artist.imageUrl,
+            summary: artist.summary,
+            socialLinks: artist.socialLinks,
+            website: artist.website,
+            remixConsent: artist.remixConsent,
+            createdAt: artist.createdAt,
+            updatedAt: artist.updatedAt,
+        };
     }
 
     @UseGuards(AuthGuard("jwt"))

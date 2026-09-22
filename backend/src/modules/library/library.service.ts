@@ -25,7 +25,7 @@ function resolveCatalogLibraryIdentity(track: {
     release: {
         primaryArtist?: string | null;
         artist: { id: string; displayName: string };
-        artistCredits: Array<{ artistId: string; displayName: string; role: string }>;
+        artistCredits: Array<{ artistId: string; displayName: string; role: string; identityStatus: string }>;
     };
 }): CatalogLibraryIdentity {
     const creditedArtistName = resolveCreditedArtistName({
@@ -35,23 +35,20 @@ function resolveCatalogLibraryIdentity(track: {
         accountDisplayName: track.release.artist.displayName,
     });
     const normalizedName = normalizeCreditName(creditedArtistName).toLowerCase();
+    const matchingCredits = track.release.artistCredits.filter(
+        (credit) => normalizeCreditName(credit.displayName).toLowerCase() === normalizedName,
+    );
     const matchingIds = new Set(
-        track.release.artistCredits
-            .filter((credit) => normalizeCreditName(credit.displayName).toLowerCase() === normalizedName)
+        matchingCredits
+            .filter((credit) => credit.identityStatus !== "ambiguous")
             .map((credit) => credit.artistId),
     );
 
-    if (
-        matchingIds.size === 0 &&
-        normalizedName &&
-        normalizeCreditName(track.release.artist.displayName).toLowerCase() === normalizedName
-    ) {
-        matchingIds.add(track.release.artist.id);
-    }
-
     return {
         releaseId: track.releaseId,
-        creditedArtistId: matchingIds.size === 1 ? Array.from(matchingIds)[0] : null,
+        creditedArtistId: matchingCredits.some((credit) => credit.identityStatus === "ambiguous")
+            ? null
+            : matchingIds.size === 1 ? Array.from(matchingIds)[0] : null,
         creditedArtistName,
     };
 }
@@ -250,7 +247,7 @@ export class LibraryService {
                                 primaryArtist: true,
                                 artist: { select: { id: true, displayName: true } },
                                 artistCredits: {
-                                    select: { artistId: true, displayName: true, role: true },
+                                    select: { artistId: true, displayName: true, role: true, identityStatus: true },
                                     orderBy: { sortOrder: "asc" },
                                 },
                             },

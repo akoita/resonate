@@ -22,6 +22,8 @@ model User {
   closedAt                    DateTime?
   erasedAt                    DateTime?
   artist                      Artist?
+  artistClaimsSubmitted       ArtistClaimRequest[]           @relation("ArtistClaimRequestClaimant")
+  artistClaimsReviewed        ArtistClaimRequest[]           @relation("ArtistClaimRequestReviewer")
   agentConfig                 AgentConfig?
   agentSignals                AgentSignal[]
   communityBadges             CommunityBadge[]
@@ -556,6 +558,7 @@ model Artist {
   user                      User?                         @relation(fields: [userId], references: [id])
   releases                  Release[]
   releaseCredits            ReleaseArtistCredit[]
+  claimRequests              ArtistClaimRequest[]
   creatorTrust              CreatorTrust?
   rightsUpgradeRequests     ReleaseRightsUpgradeRequest[]
   showCampaigns             ShowCampaign[]
@@ -568,6 +571,33 @@ model Artist {
 
   @@index([displayName])
   @@index([profileType, claimStatus])
+}
+
+enum ArtistClaimRequestStatus {
+  pending
+  approved
+  rejected
+  revoked
+}
+
+model ArtistClaimRequest {
+  id             String                    @id @default(uuid())
+  artistId       String
+  claimantUserId String
+  // Required when submitted; nullable only so account erasure can scrub it.
+  evidence       String?                   @db.Text
+  status         ArtistClaimRequestStatus  @default(pending)
+  reviewerUserId String?
+  reviewNote     String?                   @db.Text
+  reviewedAt     DateTime?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+  artist         Artist                    @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  claimant       User                      @relation("ArtistClaimRequestClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
+  reviewer       User?                     @relation("ArtistClaimRequestReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+
+  @@index([claimantUserId, createdAt])
+  @@index([status, createdAt])
 }
 
 model Release {
@@ -613,16 +643,20 @@ model Release {
 }
 
 model ReleaseArtistCredit {
-  id          String   @id @default(uuid())
-  releaseId   String
-  artistId    String
-  role        String
-  displayName String
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  release     Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
-  artist      Artist   @relation(fields: [artistId], references: [id])
+  id             String   @id @default(uuid())
+  releaseId      String
+  artistId       String
+  role           String
+  displayName    String
+  identityStatus String   @default("inferred") // selected, created, inferred, ambiguous, reviewed
+  identityReviewedAt DateTime?
+  identityReviewerUserId String?
+  identityReviewNote String? @db.Text
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  release        Release  @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  artist         Artist   @relation(fields: [artistId], references: [id])
 
   @@unique([releaseId, role, artistId, sortOrder])
   @@index([artistId, role])

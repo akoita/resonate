@@ -22,9 +22,8 @@
  *   → null.
  *
  * The frontend counterpart is `getArtistName` in web/src/lib/catalogDisplay.ts;
- * keep the two rules in step. Phase B (#1492) replaces the interim
- * credited-name string identity used by the Home "Top Artists" rail with a
- * stable credited-artist id.
+ * keep the display rules in step. Identity-based rankings use the resolved
+ * `ReleaseArtistCredit.artistId` separately from this display-name helper.
  */
 
 /** Main credit roles that name the artist a release is BY (not features/guests). */

@@ -4,12 +4,9 @@
  * Artist pickers for the upload/publish studio.
  *
  * Artist credit fields used to be plain free-text inputs. Because the backend
- * resolves a credit name to an existing profile only by an exact
- * (case-insensitive) match — and otherwise silently mints a brand-new
- * `public_artist` — a typo or a casing/spacing difference created a *different*
- * artist by mistake. These components surface existing artists as you type so
- * the canonical spelling gets reused, and make creating a genuinely new artist
- * an explicit, deliberate action.
+ * can resolve a name to a unique existing profile or create an unclaimed
+ * public artist. These components surface existing IDs so an uploader can
+ * select the exact credited artist, especially when names collide.
  *
  * - `ArtistAutocomplete` — single value (Primary artist, Track artist).
  * - `ArtistTagInput` — multiple values as chips (Featured artists). Emits a
@@ -141,10 +138,19 @@ function ArtistSuggestInput({
     [results, excluded],
   );
 
-  const hasExact = suggestions.some(
-    (a) => a.displayName.trim().toLowerCase() === lowerTrimmed,
+  const exactMatches = useMemo(
+    () => suggestions.filter((a) => a.displayName.trim().toLowerCase() === lowerTrimmed),
+    [suggestions, lowerTrimmed],
   );
-  const showCreate = allowCreateRow && trimmed.length > 0 && !hasExact;
+  const duplicateNames = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const artist of suggestions) {
+      const name = artist.displayName.trim().toLowerCase();
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
+  }, [suggestions]);
+  const showCreate = allowCreateRow && trimmed.length > 0 && exactMatches.length !== 1;
 
   const options: SuggestOption[] = useMemo(
     () => [
@@ -156,17 +162,17 @@ function ArtistSuggestInput({
 
   const dropdownOpen = open && trimmed.length > 0 && options.length > 0;
 
-  // When no row has been explicitly highlighted, Enter targets the safest
-  // reuse-or-create row: an exact existing match first, otherwise "create new".
+  // Enter reuses an exact match only when there is exactly one. Multiple
+  // same-name profiles require an explicit selection or a new ambiguous credit.
   const defaultIndex = useMemo(() => {
-    const exactIdx = options.findIndex(
-      (o) => o.kind === "artist" && o.artist.displayName.trim().toLowerCase() === lowerTrimmed,
-    );
+    const exactIdx = exactMatches.length === 1
+      ? options.findIndex((o) => o.kind === "artist" && o.artist.id === exactMatches[0].id)
+      : -1;
     if (exactIdx >= 0) return exactIdx;
     const createIdx = options.findIndex((o) => o.kind === "create");
     if (createIdx >= 0) return createIdx;
     return options.length ? 0 : -1;
-  }, [options, lowerTrimmed]);
+  }, [options, exactMatches]);
 
   const effectiveHighlight = highlight >= 0 ? Math.min(highlight, options.length - 1) : defaultIndex;
 
@@ -196,9 +202,7 @@ function ArtistSuggestInput({
       if (dropdownOpen && effectiveHighlight >= 0) {
         selectOption(options[effectiveHighlight]);
       } else {
-        const exact = suggestions.find(
-          (a) => a.displayName.trim().toLowerCase() === lowerTrimmed,
-        );
+        const exact = exactMatches.length === 1 ? exactMatches[0] : null;
         onPick(exact ? exact.displayName : trimmed, exact ?? null);
         setOpen(false);
       }
@@ -265,6 +269,9 @@ function ArtistSuggestInput({
                     )}
                   </span>
                   <span className="artist-suggest__name">{a.displayName}</span>
+                  {duplicateNames.has(a.displayName.trim().toLowerCase()) && (
+                    <span className="artist-suggest__badge">{a.profileType === "public_artist" ? "Artist" : "Manager"} · {a.id.slice(0, 8)}</span>
+                  )}
                   {a.claimStatus === "unclaimed" && (
                     <span className="artist-suggest__badge">Unclaimed</span>
                   )}

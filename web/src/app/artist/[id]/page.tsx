@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, getArtistMe, listArtistReleases, listPublishedReleases, Release, ArtistProfile } from "../../../lib/api";
+import { getArtistPublic, getArtistMe, getMyArtistClaim, submitArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
@@ -30,6 +30,10 @@ export default function ArtistPage() {
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
     const [me, setMe] = useState<ArtistProfile | null>(null);
+    const [claim, setClaim] = useState<ArtistClaim | null>(null);
+    const [claimEvidence, setClaimEvidence] = useState("");
+    const [claimBusy, setClaimBusy] = useState(false);
+    const [claimError, setClaimError] = useState<string | null>(null);
     const [placeholderName, setPlaceholderName] = useState<string>("");
 
     const [releases, setReleases] = useState<Release[]>([]);
@@ -38,6 +42,7 @@ export default function ArtistPage() {
     const [libraryArtistName, setLibraryArtistName] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
     const isOwner = isArtistProfileOwner(me, artist);
+    const canEditProfile = isOwner || (claim?.artistId === artist?.id && claim?.status === "approved");
     const playbackTracks = useMemo(() => catalogArtistPlaybackTracks(releases), [releases]);
 
     useEffect(() => {
@@ -139,6 +144,34 @@ export default function ArtistPage() {
         };
     }, [token]);
 
+    useEffect(() => {
+        if (!token || !artistId) {
+            setClaim(null);
+            return;
+        }
+        let cancelled = false;
+        getMyArtistClaim(token, artistId)
+            .then((request) => { if (!cancelled) setClaim(request); })
+            .catch(() => { if (!cancelled) setClaim(null); });
+        return () => { cancelled = true; };
+    }, [token, artistId]);
+
+    async function requestClaim(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!token || !artistId || claimBusy) return;
+        setClaimBusy(true);
+        setClaimError(null);
+        try {
+            const request = await submitArtistClaim(token, artistId, claimEvidence);
+            setClaim(request);
+            setClaimEvidence("");
+        } catch {
+            setClaimError("Could not submit your claim. Check the evidence and try again.");
+        } finally {
+            setClaimBusy(false);
+        }
+    }
+
     const handleBack = () => {
         router.push("/catalog?view=artists");
     };
@@ -219,6 +252,36 @@ export default function ArtistPage() {
                             <p className="artist-bio">{artist.summary}</p>
                         ) : null}
                         <ArtistSocialLinksRow website={artist?.website} socialLinks={artist?.socialLinks} />
+                        {artist?.profileType === "public_artist" && !isOwner && artist.claimStatus === "unclaimed" ? (
+                            <div className="glass-panel" style={{ padding: 16, marginTop: 16 }}>
+                                <h2>Claim this artist profile</h2>
+                                {claim?.artistId === artist.id && claim.status === "pending" ? (
+                                    <p>Your evidence is awaiting operator review. This does not grant profile access yet.</p>
+                                ) : token ? (
+                                    <form onSubmit={(event) => void requestClaim(event)}>
+                                        <p>Share a release or rights reference that shows you represent this artist. An operator reviews each request.</p>
+                                        {claim?.artistId === artist.id && claim.status === "rejected" ? <p>Your previous request was declined. You can submit new evidence.</p> : null}
+                                        <label htmlFor="artist-claim-evidence">Evidence for review</label>
+                                        <textarea
+                                            id="artist-claim-evidence"
+                                            className="ui-input"
+                                            value={claimEvidence}
+                                            onChange={(event) => setClaimEvidence(event.target.value)}
+                                            minLength={20}
+                                            maxLength={4000}
+                                            required
+                                            rows={4}
+                                        />
+                                        {claimError ? <p role="alert">{claimError}</p> : null}
+                                        <Button type="submit" disabled={claimBusy || claimEvidence.trim().length < 20}>
+                                            {claimBusy ? "Submitting…" : "Submit for review"}
+                                        </Button>
+                                    </form>
+                                ) : (
+                                    <p>Sign in to submit evidence for this artist profile.</p>
+                                )}
+                            </div>
+                        ) : null}
                         {playbackTracks.length > 0 || libraryArtistName ? (
                             <div className="library-artist-actions">
                                 {playbackTracks.length > 0 ? (
@@ -246,7 +309,7 @@ export default function ArtistPage() {
                         {artist ? (
                             <ArtistProfileEditor
                                 artist={artist}
-                                isOwner={isOwner}
+                                isOwner={canEditProfile}
                                 onSaved={(updated) => setArtist(updated)}
                             />
                         ) : null}

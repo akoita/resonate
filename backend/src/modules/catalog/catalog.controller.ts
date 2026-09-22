@@ -19,6 +19,8 @@ import {
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { OptionalJwtAuthGuard } from "../auth/optional-jwt.guard";
+import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { CatalogService } from "./catalog.service";
@@ -40,6 +42,23 @@ export class CatalogController {
     private readonly catalogService: CatalogService,
     private readonly discoveryPopularity: DiscoveryPopularityService,
   ) { }
+
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  @Patch("credits/:creditId/identity")
+  reviewCreditIdentity(
+    @Param("creditId") creditId: string,
+    @Body() body: { artistId?: unknown; note?: unknown },
+    @Request() req: any,
+  ) {
+    return this.catalogService.reviewCreditIdentity(
+      creditId,
+      req.user.userId,
+      req.user.role,
+      body?.artistId,
+      body?.note,
+    );
+  }
 
   private sendAudioResponse(
     stem: { data: Buffer; mimeType?: string | null; range?: { start: number; end: number; total: number } },

@@ -152,6 +152,17 @@ describe("artistCreditHref (#1419)", () => {
     );
   });
 
+  it("does not link an ambiguous credit or infer identity from the uploader name", () => {
+    expect(artistCreditHref("Aya Lune", {
+      artist: { id: "uploader", displayName: "Aya Lune" },
+      artistCredits: [{ artistId: "candidate", displayName: "Aya Lune", identityStatus: "ambiguous" }],
+    })).toBe(catalogArtistHref("Aya Lune"));
+    expect(artistCreditHref("Aya Lune", {
+      artist: { id: "uploader", displayName: "Aya Lune" },
+      artistCredits: [],
+    })).toBe(catalogArtistHref("Aya Lune"));
+  });
+
   it("does not link when there is no name at all", () => {
     expect(artistCreditHref(null, release)).toBeNull();
     expect(artistCreditHref(undefined, release)).toBeNull();

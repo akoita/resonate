@@ -30,7 +30,7 @@ build until someone classifies it. The prose here explains; the manifest is what
 cannot drift.
 
 **1. The arithmetic did not reconcile.** The categories below claim 34 + 28 + 58
-models. The schema has **94**, not 120. The current classification is **75
+models. The schema has **95**, not 120. The current classification is **76
 models holding a person's data, 19 holding none**.
 
 **2. There was a blind spot shaped like its own thesis.** This document names
@@ -102,6 +102,18 @@ and every historical actor id becomes underivable — the same failure this
 document already warns about for salt rotation, reachable without anyone
 touching a secret.
 
+**8. Artist claim requests carry private evidence and review text.**
+`ArtistClaimRequest` is exported for the claimant by `claimantUserId`; the
+reviewer account id is redacted. Erasure keeps the claim's final audit status,
+scrubs the evidence and review note, and revokes an approved grant before the
+claimant's user id rotates. If the erased person reviewed somebody else's
+claim, only that person's review note is scrubbed.
+
+**9. Credit review attribution has a dangling reviewer id.**
+`ReleaseArtistCredit.identityReviewerUserId` has no declared `User` relation,
+even though the credit itself belongs to an artist. Erasure clears that id and
+`identityReviewNote` while retaining the credit's review status and timestamp.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -134,13 +146,14 @@ the hash, and any deployment serving real users should set
 `ANALYTICS_ACTOR_ID_SALT` explicitly and treat it as non-rotatable. Worth
 verifying it is set before the first real erasure request.
 
-## Category 1 — reachable by relation (34 models)
+## Category 1 — reachable by relation (35 models)
 
 These declare a `User` relation, so Prisma knows about them and a cascade
-reaches them. **Nine do not use `userId` as the foreign key**, which is the
-trap: a scan for `userId` finds 25 of 34 and looks thorough.
+reaches them. **Ten do not use `userId` as the foreign key**, which is the
+trap: a scan for `userId` finds 25 of 35 and looks thorough.
 
-The non-obvious keys: `authorId` (CommunityMessage), `reporterUserId`
+The non-obvious keys: `authorId` (CommunityMessage), `claimantUserId` and
+`reviewerUserId` (ArtistClaimRequest), `reporterUserId`
 (CommunityModerationReport), `curatorUserId` (StemQualityRating),
 `creatorUserId` (RemixProject), `submitterUserId` (AgentReputationFeedback),
 `initiatorUserId` (ShowCampaignDispute), `actorUserId` (ShowCampaignEvent),
@@ -151,7 +164,7 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `CommunityVisibilitySettings`, `CommunityBadge`, `CommunityRole`,
 `CommunityCohortMembership`, `CommunityBenefitRedemption`,
 `CommunityMembership`, `CommunityMessage`, `CommunityModerationReport`,
-`PasskeyIdentity`, `Artist`, `StemQualityRating`, `RemixProject`, `Session`,
+`PasskeyIdentity`, `Artist`, `ArtistClaimRequest`, `StemQualityRating`, `RemixProject`, `Session`,
 `AgentSignal`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,
@@ -169,6 +182,10 @@ makes erasure a feature rather than a `DELETE`.
 `SignupFaucetAttempt`, `AgentTransaction`, `WebAuthnCredential`, `KeyAuditLog`,
 `ShowEscrowReconciliationAcknowledgement` (`acknowledgedByUserId`,
 `revokedByUserId`).
+
+`ReleaseArtistCredit.identityReviewerUserId` is another dangling account id.
+The model has an `Artist` relation, but the reviewer field has no `User`
+relation; erasure explicitly clears it and the associated review note.
 
 `WebAuthnCredential` deserves naming: **authentication material with a
 dangling `userId`.** A closed account whose credential row survives is the

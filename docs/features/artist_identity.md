@@ -62,22 +62,28 @@ context).
 Intentionally **not** routed (account-anchored on purpose): community
 rooms/cohorts, playlist owner display name, and remix-project creation defaults.
 
-## Interim Home "Top Artists" keying (Phase A)
+## Credited IDs in Top Artists (Phase B)
 
-`GET /catalog/top-artists` (the Home "Top Artists" rail) previously rolled
-engagement up by the uploader **account id**, so it ranked and displayed manager
-accounts. As an interim fix with **no schema change**:
+`GET /catalog/top-artists` rolls engagement up by credited `Artist.id` from
+main-role release credits. This keeps two same-name artists separate and keeps
+the uploader's manager identity out of public rankings.
 
-- `refresh()` rolls per-track engagement up by the **credited artist name** and
-  writes it into `ArtistEngagement.artistId` — that column is now the interim
-  identity key (a credited display name), not an account id.
-- `getTopArtists()` returns items `{ rank, name, artistId, imageUrl, score,
-  plays, uniqueListeners, saves }` where `name` is the credited artist and
-  `artistId` is set only when published release-credit evidence resolves that
-  name to one unique profile. Display-name equality alone is not trusted, so a
-  stale same-name profile cannot capture the link (else `artistId` is `null`).
-- The Home rail links to the artist profile when `artistId` is set, otherwise to
-  the catalog artist route (`/catalog/artists/<name>`).
+- `ReleaseArtistCredit.identityStatus` records whether an ID was explicitly
+  selected, newly created, inferred from a unique name, or is ambiguous. The
+  migration marks legacy name collisions, mismatches, and manager-profile
+  links ambiguous without
+  rewriting their links. An operator repairs a flagged credit by sending its
+  exact `artistId` and a review note to
+  `PATCH /catalog/credits/:creditId/identity`. The credit becomes `reviewed`;
+  review time, reviewer ID, and note stay private. Release credit edits replace
+  the credit and require a new review if the association becomes ambiguous again.
+- `refresh()` writes only resolved credited IDs to `ArtistEngagement.artistId`.
+  Ambiguous credits remain visible on tracks but do not acquire someone else's
+  engagement. Old name-keyed serving rows are cleared by the migration and
+  rebuilt from source listening events.
+- `getTopArtists()` hydrates the ranked profile directly by ID. Catalog and
+  Library links use the same resolution status; an ambiguous credit opens its
+  name-based catalog page without asserting a profile identity.
 
 ## Public profiles, catalog credits, and the local library
 
@@ -121,10 +127,8 @@ history. Scope labels use **My Library** for private groupings and **Resonate
 Catalog/Profile** for public resources. Public and Library artist pages expose
 the same Play all and Queue artist pattern when tracks are available.
 
-**Phase B (#1492):** replace the credited-name string key with a stable
-credited-artist id. [#1450](https://github.com/akoita/resonate/issues/1450)'s
-warehouse marts MUST adopt the same key so the serving contract stays
-consistent.
+[#1450](https://github.com/akoita/resonate/issues/1450)'s warehouse marts MUST
+adopt the same credited ID key so the serving contract stays consistent.
 
 ## Creation-time laundering (and the fix)
 

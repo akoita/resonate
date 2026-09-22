@@ -12,8 +12,8 @@ impact):
 
 1. The owning artist can **edit their profile** — image, bio, website, and
    social links.
-2. An artist's name **reliably links to their `/artist/[id]` page** wherever a
-   backing profile id exists.
+2. A resolved release credit links to its `/artist/[id]` page; an ambiguous
+   credit stays on the name-based catalog route.
 
 ## Status
 
@@ -35,20 +35,21 @@ themselves, and fans can reach the profile in one click.
 
 ### Artist (edit)
 
-Open your artist page (`/artist/[id]`) while signed in as its owner → **Edit
-profile** → set profile image, bio, website, and social links (X, Instagram,
-TikTok, YouTube, SoundCloud) → save. The edit affordance is owner-only; the page
-is read-only for everyone else.
+Open your artist page (`/artist/[id]`) while signed in with profile access →
+**Edit profile** → set image, bio, website, and social links → save. A manager
+edits their own profile; an approved claimant can edit an unclaimed public
+artist page after operator review. Other visitors see the page read-only.
 
 ### Developer / API
 
-- `PATCH /artists/:id` (JWT, owner-scoped via `requireOwnedArtist`) — body
+- `PATCH /artists/:id` (JWT, manager owner or approved public-profile claimant) — body
   `{ imageUrl?, summary?, socialLinks?: { x?, instagram?, tiktok?, youtube?, soundcloud? }, website? }`.
   A field absent = leave unchanged; `null`/empty = clear. URLs are validated
   server-side to **http(s) only** (rejects `javascript:`/`data:`/other schemes)
   and length-capped; the bio is capped at 2000 chars. Returns the updated
   profile. `PATCH /artists/:id/settings` (remixConsent) is unchanged.
-- `GET /artists/:id` returns the profile including `website` and `socialLinks`.
+- `GET /artists/:id` returns public profile fields including `website` and
+  `socialLinks`, without account ownership, payout data, or private claim proof.
 
 ## Data model
 
@@ -57,13 +58,9 @@ is read-only for everyone else.
 
 ## Link behavior
 
-- **`releaseArtistProfileHref`** (id-based) is used wherever a release carries a
-  profile id — release page main artist, per-track credits (via
-  `trackArtistCreditHref`, which also links **featured** artists from
-  `artistCredits[]`), the home `ReleaseHero`, and catalog/marketplace listings.
-  Rendered as real `<Link>`/anchors (keyboard-focusable, open-in-new-tab).
-- The old name-match heuristic (`releaseArtistCreditHref`) is retained only for
-  free-text credits with no reliable id backing, to avoid mis-linking.
+- `artistCreditHref` uses the credited profile ID only when the matching credit
+  is resolved. Same-name or otherwise ambiguous credits open the catalog page
+  for their displayed name. Manager/uploader IDs remain for managed views.
 
 ## Deferred / not yet linked
 
