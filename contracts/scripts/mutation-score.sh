@@ -8,8 +8,10 @@
 # the surviving mutant ids — survivors become follow-up tests or CVL spec rules.
 #
 # Usage:  scripts/mutation-score.sh <gambit-config.json> [forge --match-contract pattern]
-# Env:    MAX_MUTANTS=<n>   score at most n mutants (0 = all; default 0). Useful for a
-#                           quick local smoke run.
+# Env:    MAX_MUTANTS=<n>        score at most n mutants in this shard (0 = all;
+#                                default 0). Useful for a quick local smoke run.
+#         MUTANT_SHARD_INDEX=<n> zero-based shard index (default 0).
+#         MUTANT_SHARD_COUNT=<n> total number of interleaved shards (default 1).
 #
 # Requires `gambit` and a standalone `solc` on PATH — see contracts/README.md.
 set -uo pipefail
@@ -17,6 +19,18 @@ set -uo pipefail
 CONFIG="${1:?usage: mutation-score.sh <gambit-config.json> [match-contract]}"
 MATCH="${2:-}"
 MAX="${MAX_MUTANTS:-0}"
+SHARD_INDEX="${MUTANT_SHARD_INDEX:-0}"
+SHARD_COUNT="${MUTANT_SHARD_COUNT:-1}"
+
+if [[ ! "$MAX" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: MAX_MUTANTS must be a non-negative integer." >&2
+  exit 2
+fi
+if [[ ! "$SHARD_INDEX" =~ ^[0-9]+$ ]] || [[ ! "$SHARD_COUNT" =~ ^[1-9][0-9]*$ ]] \
+  || [ "$SHARD_INDEX" -ge "$SHARD_COUNT" ]; then
+  echo "ERROR: MUTANT_SHARD_INDEX must be between 0 and MUTANT_SHARD_COUNT - 1." >&2
+  exit 2
+fi
 
 OUTDIR=$(python3 -c "import json; print(json.load(open('$CONFIG'))['outdir'])")
 ORIGINAL=$(python3 -c "import json; print(json.load(open('$CONFIG'))['filename'])")
@@ -43,6 +57,13 @@ if [[ ! "$TOTAL" =~ ^[0-9]+$ ]] || [ "$TOTAL" -eq 0 ]; then
   exit 2
 fi
 
+if [ "$TOTAL" -le "$SHARD_INDEX" ]; then
+  echo "ERROR: shard $((SHARD_INDEX + 1))/$SHARD_COUNT selects no mutants from $TOTAL generated." >&2
+  exit 2
+fi
+SHARD_TOTAL=$(((TOTAL - SHARD_INDEX + SHARD_COUNT - 1) / SHARD_COUNT))
+echo "==> Scoring shard $((SHARD_INDEX + 1))/$SHARD_COUNT ($SHARD_TOTAL mutants before MAX_MUTANTS)"
+
 # Always restore the pristine source, even on interrupt/timeout/error.
 cp "$ORIGINAL" "$ORIGINAL.mutorig"
 restore() { cp "$ORIGINAL.mutorig" "$ORIGINAL" 2>/dev/null; rm -f "$ORIGINAL.mutorig"; }
@@ -61,8 +82,14 @@ fi
 killed=0
 survived=0
 n=0
+position=0
 survivors=""
 while IFS=$'\t' read -r id name; do
+  if [ $((position % SHARD_COUNT)) -ne "$SHARD_INDEX" ]; then
+    position=$((position + 1))
+    continue
+  fi
+  position=$((position + 1))
   n=$((n + 1))
   if [ "$MAX" -gt 0 ] && [ "$n" -gt "$MAX" ]; then break; fi
   cp "$OUTDIR/$name" "$ORIGINAL"
@@ -72,6 +99,9 @@ while IFS=$'\t' read -r id name; do
   else
     killed=$((killed + 1))
   fi
+  if [ $((n % 25)) -eq 0 ]; then
+    echo "==> Scored $n/$SHARD_TOTAL shard mutants"
+  fi
 done < <(python3 -c "import json;[print(m['id']+chr(9)+m['name']) for m in json.load(open('$RESULTS'))]")
 
 restore
@@ -79,7 +109,7 @@ trap - EXIT
 
 scored=$((killed + survived))
 score=$(python3 -c "print(f'{$killed/$scored*100:.1f}' if $scored else '0.0')")
-echo "==> Mutation score: $killed killed / $scored scored (of $TOTAL total) = ${score}%"
+echo "==> Mutation score: $killed killed / $scored scored (of $SHARD_TOTAL in shard, $TOTAL total) = ${score}%"
 echo "==> Surviving mutant ids:${survivors:- none}"
 
 # Non-zero exit when mutants survive so a scheduled CI run surfaces the gap.

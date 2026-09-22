@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       max_mutants:
-        description: "Score at most N mutants per contract (0 = all)"
+        description: "Score at most N mutants per job/shard (0 = all)"
         default: "0"
 
 permissions:
@@ -27,18 +27,22 @@ env:
 
 jobs:
   mutation:
-    name: Gambit · ${{ matrix.contract }}
+    name: Gambit · ${{ matrix.contract }} · ${{ matrix.shard_name }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow }
-          - { contract: StemNFT, config: gambit.json, match: StemNFT }
-          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace }
-          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow }
-          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection }
+          # Interleaved shards keep the two largest campaigns below the job timeout
+          # while still scoring every generated mutant each week.
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 0, shards: 2, shard_name: shard 1/2 }
+          - { contract: ShowCampaignEscrow, config: gambit-show-campaign.json, match: ShowCampaignEscrow, shard: 1, shards: 2, shard_name: shard 2/2 }
+          - { contract: StemNFT, config: gambit.json, match: StemNFT, shard: 0, shards: 1, shard_name: full }
+          - { contract: StemMarketplaceV2, config: gambit-marketplace.json, match: StemMarketplace, shard: 0, shards: 1, shard_name: full }
+          - { contract: RevenueEscrow, config: gambit-revenue-escrow.json, match: RevenueEscrow, shard: 0, shards: 1, shard_name: full }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 0, shards: 2, shard_name: shard 1/2 }
+          - { contract: ContentProtection, config: gambit-content-protection.json, match: ContentProtection, shard: 1, shards: 2, shard_name: shard 2/2 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,14 +84,16 @@ jobs:
         working-directory: contracts
         env:
           MAX_MUTANTS: ${{ github.event.inputs.max_mutants || '0' }}
+          MUTANT_SHARD_INDEX: ${{ matrix.shard }}
+          MUTANT_SHARD_COUNT: ${{ matrix.shards }}
         run: |
           set +e
           scripts/mutation-score.sh "${{ matrix.config }}" "${{ matrix.match }}" | tee mutation-score.log
           code=${PIPESTATUS[0]}
           {
-            echo "### Mutation score — ${{ matrix.contract }}"
+            echo "### Mutation score — ${{ matrix.contract }} — ${{ matrix.shard_name }}"
             echo '```'
-            grep -E "mutants generated|Mutation score|Surviving mutant" mutation-score.log
+            grep -E "mutants generated|Scoring shard|Mutation score|Surviving mutant" mutation-score.log
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           # exit 2 = baseline suite not green (a real failure); exit 1 = mutants survived
