@@ -1,6 +1,6 @@
 # Vision Sprint 24: Stable artist identity, trustworthy test gates
 
-**Status:** planned.
+**Status:** in progress.
 **Milestone:** [26](https://github.com/akoita/resonate/milestone/26).
 **Goal:** Give every credited artist a stable, claimable identity across the
 catalog, Library, profiles, and rankings, while ensuring CI and mutation
@@ -17,7 +17,12 @@ The recently closed Sprint 23 has no unfinished milestone issue. The only
 carry-over is work started after closure on
 [#1827](https://github.com/akoita/resonate/issues/1827): diagnosis found that
 the two largest Gambit campaigns exceed the job timeout while scoring hundreds
-of mutants. That issue resumes first.
+of mutants. [PR #1832](https://github.com/akoita/resonate/pull/1832) split those
+campaigns, and [the complete manual run](https://github.com/akoita/resonate/actions/runs/35716270899)
+scored all five targets successfully. [#1827](https://github.com/akoita/resonate/issues/1827)
+is closed. [#1765](https://github.com/akoita/resonate/issues/1765) is also
+closed after [PR #1833](https://github.com/akoita/resonate/pull/1833)
+centralized Gambit remappings. Work has moved to #1783.
 
 ## Dependency order
 

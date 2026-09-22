@@ -89,6 +89,8 @@ class ChangeDetectionTests(unittest.TestCase):
             "backend/src/modules/generation/prompt.md": {"backend", "backend_generation"},
             "backend/src/modules/mcp/example.ts": {"backend", "backend_marketplace", "backend_generation"},
             "backend/src/modules/payments/example.ts": {"backend", "backend_marketplace"},
+            "backend/src/tests/analytics_event.spec.ts": {"backend"},
+            "backend/src/tests/new_feature.spec.ts": {"backend"},
             "backend/prisma/schema.prisma": {"backend", "backend_shared"},
             "backend/package-lock.json": {"backend", "backend_shared"},
             "web/src/lib/help/content.ts": {"web"},
