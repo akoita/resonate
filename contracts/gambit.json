@@ -3,9 +3,5 @@
   "contract": "StemNFT",
   "outdir": "gambit_out",
   "solc": "solc",
-  "solc_remappings": [
-    "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
-    "forge-std/=lib/forge-std/src/"
-  ],
   "solc_optimize": true
 }
