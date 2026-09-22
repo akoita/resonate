@@ -22,14 +22,14 @@ class WorkflowGraphTests(unittest.TestCase):
 
     def test_required_check_names_stay_stable(self):
         required = {"Detect Changes", "Lint", "Smart Contract Tests", "Backend Unit Tests",
-                    "Backend Integration Tests", "Backend Tests", "Build", "E2E Tests",
+                    "Backend Integration Tests", "Backend Tests", "Web Unit Tests", "Build", "E2E Tests",
                     "Demucs Worker Tests"}
         names = {re.search(r"^    name: (.+)$", text, re.MULTILINE).group(1)
                  for text in self.jobs.values()}
         self.assertTrue(required <= names)
 
     def test_independent_validation_does_not_wait_for_lint(self):
-        for job in ["backend-unit-tests", "backend-integration-tests", "build", "desktop-package"]:
+        for job in ["backend-unit-tests", "backend-integration-tests", "web-unit-tests", "build", "desktop-package"]:
             with self.subTest(job=job):
                 self.assertEqual(self.needs(job), {"changes"})
 

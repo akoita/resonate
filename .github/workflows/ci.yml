@@ -232,6 +232,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Setup hardened npm
         uses: ./.github/actions/setup-npm-hardened
@@ -253,23 +254,19 @@ jobs:
           selection="$(BACKEND_RUN_ALL='${{ needs.changes.outputs.run_all }}' \
             REPO_SHARED='${{ needs.changes.outputs.shared }}' \
             BACKEND_SHARED='${{ needs.changes.outputs.backend_shared }}' \
-            BACKEND_IDENTITY='${{ needs.changes.outputs.backend_identity }}' \
-            BACKEND_INGESTION='${{ needs.changes.outputs.backend_ingestion }}' \
-            BACKEND_CATALOG='${{ needs.changes.outputs.backend_catalog }}' \
-            BACKEND_GENERATION='${{ needs.changes.outputs.backend_generation }}' \
-            BACKEND_MARKETPLACE='${{ needs.changes.outputs.backend_marketplace }}' \
             bash ../.github/scripts/select-backend-tests.sh unit)"
 
           if [[ "${selection}" == "__FULL_SUITE__" ]]; then
             echo "Running full backend unit suite"
             npm exec -- jest --runInBand --config jest.config.js
           else
-            printf 'Selected backend unit tests:\n%s\n' "${selection}"
-            mapfile -t tests < <(printf '%s\n' "${selection}")
-            npm exec -- jest --runInBand --config jest.config.js "${tests[@]}"
+            printf 'Changed backend paths for Jest:\n%s\n' "${selection}"
+            mapfile -t sources < <(printf '%s\n' "${selection}")
+            npm exec -- jest --runInBand --config jest.config.js --findRelatedTests --passWithNoTests "${sources[@]}"
           fi
         working-directory: backend
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           SKIP_DEMUCS_INTEGRATION: "true"
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
@@ -298,6 +295,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Init contract submodules
         run: git submodule update --init --checkout
@@ -345,28 +343,62 @@ jobs:
           selection="$(BACKEND_RUN_ALL='${{ needs.changes.outputs.run_all }}' \
             REPO_SHARED='${{ needs.changes.outputs.shared }}' \
             BACKEND_SHARED='${{ needs.changes.outputs.backend_shared }}' \
-            BACKEND_IDENTITY='${{ needs.changes.outputs.backend_identity }}' \
-            BACKEND_INGESTION='${{ needs.changes.outputs.backend_ingestion }}' \
-            BACKEND_CATALOG='${{ needs.changes.outputs.backend_catalog }}' \
-            BACKEND_GENERATION='${{ needs.changes.outputs.backend_generation }}' \
-            BACKEND_MARKETPLACE='${{ needs.changes.outputs.backend_marketplace }}' \
             bash ../.github/scripts/select-backend-tests.sh integration)"
 
           if [[ "${selection}" == "__FULL_SUITE__" ]]; then
             echo "Running full backend integration suite"
             npm exec -- jest --runInBand --forceExit --config jest.integration.config.js
           else
-            printf 'Selected backend integration tests:\n%s\n' "${selection}"
-            mapfile -t tests < <(printf '%s\n' "${selection}")
-            npm exec -- jest --runInBand --forceExit --config jest.integration.config.js "${tests[@]}"
+            printf 'Changed backend paths for Jest:\n%s\n' "${selection}"
+            mapfile -t sources < <(printf '%s\n' "${selection}")
+            npm exec -- jest --runInBand --forceExit --config jest.integration.config.js --findRelatedTests --passWithNoTests "${sources[@]}"
           fi
         working-directory: backend
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           # Testcontainers sets DATABASE_URL, REDIS_URL, ANVIL_RPC_URL, PUBSUB_EMULATOR_HOST
           # via globalSetup.js → .testcontainers.env.json
           STEM_PROCESSING_MODE: sync
           JWT_SECRET: ci-test-secret
           ENCRYPTION_SECRET: ci-test-encryption-secret
+
+  web-unit-tests:
+    name: Web Unit Tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.main_post_merge != 'true' && (needs.changes.outputs.web == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.run_all == 'true')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup hardened npm
+        uses: ./.github/actions/setup-npm-hardened
+        with:
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: node ../scripts/hardened-npm-install.mjs --project web -- --legacy-peer-deps
+        working-directory: web
+
+      - name: Run selected web unit tests
+        working-directory: web
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          WEB_RUN_ALL: ${{ needs.changes.outputs.run_all }}
+          REPO_SHARED: ${{ needs.changes.outputs.shared }}
+        run: |
+          set -euo pipefail
+          selection="$(bash ../.github/scripts/select-web-tests.sh)"
+          if [[ "${selection}" == "__FULL_SUITE__" ]]; then
+            echo "Running full web unit suite"
+            npm run test:unit
+          else
+            printf 'Changed web source paths:\n%s\n' "${selection}"
+            mapfile -t sources < <(printf '%s\n' "${selection}")
+            npm exec -- vitest related --run --passWithNoTests --config ./vitest.config.ts "${sources[@]}"
+          fi
 
   backend-tests:
     name: Backend Tests

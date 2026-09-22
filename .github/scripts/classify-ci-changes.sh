@@ -127,6 +127,11 @@ if [[ "${run_all}" == "false" ]]; then
           backend=true
           backend_shared=true
           ;;
+        backend/src/tests/*.spec.ts)
+          # Direct spec edits are selected by the related-test runner. Keep
+          # job-level backend gating without forcing all backend specs.
+          backend=true
+          ;;
         backend/*)
           backend=true
           backend_shared=true

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# Print changed backend source paths for Jest's related-test selection, or a
+# full-suite marker when the change cannot be selected safely.
 set -euo pipefail
 
 suite="${1:-}"
@@ -22,167 +24,83 @@ if [[ "${BACKEND_RUN_ALL:-false}" == "true" || "${REPO_SHARED:-false}" == "true"
   run_full_suite
 fi
 
-tests=()
-
-add_tests() {
-  tests+=("$@")
-}
-
-add_identity_tests() {
-  if [[ "${suite}" == "unit" ]]; then
-    add_tests \
-      "src/tests/auth.controller.http.spec.ts" \
-      "src/tests/auth.controller.spec.ts" \
-      "src/tests/auth.spec.ts" \
-      "src/modules/identity/zerodev_session_key.spec.ts" \
-      "src/tests/erc6492.spec.ts" \
-      "src/tests/roles.guard.spec.ts" \
-      "src/tests/session_key.spec.ts" \
-      "src/tests/sessions.controller.http.spec.ts" \
-      "src/tests/sessions.controller.spec.ts" \
-      "src/tests/social_recovery.spec.ts" \
-      "src/tests/wallet.controller.http.spec.ts" \
-      "src/tests/wallet.controller.spec.ts"
-  else
-    add_tests \
-      "src/tests/erc4337_client.integration.spec.ts" \
-      "src/tests/flow3_session.integration.spec.ts" \
-      "src/tests/sessions.integration.spec.ts" \
-      "src/tests/wallet.integration.spec.ts"
-  fi
-}
-
-add_ingestion_tests() {
-  if [[ "${suite}" == "unit" ]]; then
-    add_tests \
-      "src/tests/encryption.spec.ts" \
-      "src/tests/ingestion.controller.http.spec.ts" \
-      "src/tests/ingestion.controller.spec.ts" \
-      "src/tests/ingestion_metadata.spec.ts" \
-      "src/tests/ingestion_stem_type.spec.ts" \
-      "src/tests/pubsub-runtime.spec.ts" \
-      "src/tests/release-pipeline.spec.ts" \
-      "src/tests/separation-progress.regression.spec.ts" \
-      "src/tests/stem-result.subscriber.spec.ts" \
-      "src/tests/stems-processor-pubsub.spec.ts" \
-      "src/tests/upload-rights-policy.spec.ts"
-  else
-    add_tests \
-      "src/tests/asset_persistence.integration.spec.ts" \
-      "src/tests/demucs_integration.spec.ts" \
-      "src/tests/fingerprint.service.integration.spec.ts" \
-      "src/tests/flow1_ingestion.integration.spec.ts" \
-      "src/tests/ingestion_api_metadata.integration.spec.ts" \
-      "src/tests/stem-pubsub.integration.spec.ts" \
-      "src/tests/stem-watchdog.integration.spec.ts" \
-      "src/tests/stems-processor.integration.spec.ts" \
-      "src/tests/storage.integration.spec.ts" \
-      "src/tests/upload-rights-routing.integration.spec.ts"
-  fi
-}
-
-add_catalog_tests() {
-  if [[ "${suite}" == "unit" ]]; then
-    add_tests \
-      "src/tests/catalog.controller.http.spec.ts" \
-      "src/tests/catalog.controller.spec.ts" \
-      "src/modules/contracts/human-verification.service.spec.ts" \
-      "src/tests/stem-pricing.controller.spec.ts"
-  else
-    add_tests \
-      "src/tests/catalog.integration.spec.ts" \
-      "src/tests/contracts.integration.spec.ts" \
-      "src/tests/flow2_contracts.integration.spec.ts" \
-      "src/tests/indexer.integration.spec.ts" \
-      "src/tests/metadata.controller.integration.spec.ts" \
-      "src/tests/stem-pricing.integration.spec.ts"
-  fi
-}
-
-add_generation_tests() {
-  if [[ "${suite}" == "unit" ]]; then
-    add_tests \
-      "src/modules/agents/agent_purchase.spec.ts" \
-      "src/modules/agents/agent_wallet.spec.ts" \
-      "src/tests/agent_evaluation.spec.ts" \
-      "src/tests/agent_golden_eval.spec.ts" \
-      "src/tests/agent_identity.spec.ts" \
-      "src/tests/agents.spec.ts" \
-      "src/tests/embeddings.spec.ts" \
-      "src/tests/generation.controller.http.spec.ts" \
-      "src/tests/generation.controller.spec.ts" \
-      "src/tests/lyria_client.spec.ts" \
-      "src/tests/openapi.controller.spec.ts"
-  else
-    add_tests \
-      "src/tests/agent_orchestration.integration.spec.ts" \
-      "src/tests/agent_orchestrator.integration.spec.ts" \
-      "src/tests/agent_purchase_strict.integration.spec.ts" \
-      "src/tests/agent_runtime.integration.spec.ts" \
-      "src/tests/flow4_generation.integration.spec.ts" \
-      "src/tests/generation.integration.spec.ts" \
-      "src/tests/tool_declarations.integration.spec.ts"
-  fi
-}
-
-add_marketplace_tests() {
-  if [[ "${suite}" == "unit" ]]; then
-    add_tests \
-      "src/tests/analytics.spec.ts" \
-      "src/tests/artist.controller.spec.ts" \
-      "src/tests/curation.spec.ts" \
-      "src/tests/mcp.controller.http.spec.ts" \
-      "src/modules/notifications/notification.service.spec.ts" \
-      "src/tests/payments.spec.ts" \
-      "src/tests/playlist.controller.http.spec.ts" \
-      "src/tests/playlist.controller.spec.ts" \
-      "src/tests/pricing.spec.ts" \
-      "src/tests/recommendations.controller.spec.ts" \
-      "src/tests/remix.spec.ts" \
-      "src/tests/rights-evidence.spec.ts" \
-      "src/tests/storefront.service.spec.ts" \
-      "src/tests/trust-tier-config.spec.ts" \
-      "src/tests/trust.controller.spec.ts" \
-      "src/tests/verification-semantics.spec.ts" \
-      "src/tests/x402.config.spec.ts" \
-      "src/tests/x402.controller.http.spec.ts" \
-      "src/tests/x402.controller.spec.ts" \
-      "src/tests/x402.middleware.spec.ts" \
-      "src/tests/x402.quote.spec.ts" \
-      "src/tests/x402.receipt.spec.ts"
-  else
-    add_tests \
-      "src/tests/artist.integration.spec.ts" \
-      "src/tests/curator-reputation.integration.spec.ts" \
-      "src/tests/dmca.service.integration.spec.ts" \
-      "src/tests/mcp.stem.integration.spec.ts" \
-      "src/tests/playlist.integration.spec.ts" \
-      "src/tests/recommendations.integration.spec.ts"
-  fi
-}
-
-if [[ "${BACKEND_IDENTITY:-false}" == "true" ]]; then
-  add_identity_tests
-fi
-
-if [[ "${BACKEND_INGESTION:-false}" == "true" ]]; then
-  add_ingestion_tests
-fi
-
-if [[ "${BACKEND_CATALOG:-false}" == "true" ]]; then
-  add_catalog_tests
-fi
-
-if [[ "${BACKEND_GENERATION:-false}" == "true" ]]; then
-  add_generation_tests
-fi
-
-if [[ "${BACKEND_MARKETPLACE:-false}" == "true" ]]; then
-  add_marketplace_tests
-fi
-
-if [[ ${#tests[@]} -eq 0 ]]; then
+if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   run_full_suite
 fi
 
-printf '%s\n' "${tests[@]}" | awk '!seen[$0]++'
+base_sha="${BASE_SHA:-}"
+if [[ ! "${base_sha}" =~ ^([[:xdigit:]]{40}|[[:xdigit:]]{64})$ ]] || \
+   ! git -C "${repo_root}" cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+  run_full_suite
+fi
+
+changed_file="$(mktemp)" || run_full_suite
+trap 'rm -f "${changed_file}"' EXIT
+if ! git -C "${repo_root}" diff --no-renames --name-status -z \
+  "${base_sha}...HEAD" -- backend > "${changed_file}"; then
+  run_full_suite
+fi
+
+mapfile -d '' -t changes < "${changed_file}"
+if (( ${#changes[@]} == 0 || ${#changes[@]} % 2 != 0 )); then
+  run_full_suite
+fi
+
+sources=()
+for ((index = 0; index < ${#changes[@]}; index += 2)); do
+  status="${changes[index]}"
+  path="${changes[index + 1]}"
+
+  # A removed or type-changed file cannot be passed reliably to Jest's import
+  # graph, and unexpected status records may hide a path we cannot classify.
+  case "${status}" in
+    A|M) ;;
+    *) run_full_suite ;;
+  esac
+
+  # Output is line-delimited for the workflow's mapfile, so unusual names are
+  # safer to handle with the complete suite.
+  if [[ "${path}" == *$'\n'* ]]; then
+    run_full_suite
+  fi
+
+  case "${path}" in
+    backend/prisma|backend/prisma/*|\
+    backend/jest*|backend/package*|backend/npm-shrinkwrap.json|backend/yarn.lock|\
+    backend/pnpm-lock.yaml|backend/src/main.ts|backend/src/tests/globalSetup.*|\
+    backend/src/tests/globalTeardown.*|backend/src/tests/testcontainers.setup.*)
+      run_full_suite
+      ;;
+    backend/src/*)
+      case "${path##*.}" in
+        ts|tsx|js|jsx|mts|cts|mjs|cjs) ;;
+        *) run_full_suite ;;
+      esac
+
+      if [[ "${path}" == backend/src/modules/shared/* && "${path}" != *.spec.ts ]] || \
+         [[ "${path}" == backend/src/db/prisma* && "${path}" != *.spec.ts ]]; then
+        run_full_suite
+      fi
+
+      if [[ ! -f "${repo_root}/${path}" ]]; then
+        run_full_suite
+      fi
+      sources+=("src/${path#backend/src/}")
+      ;;
+    backend/*)
+      # Unknown backend files may affect test setup, builds, or runtime
+      # behavior outside Jest's source import graph.
+      run_full_suite
+      ;;
+    *)
+      # Changes outside backend source do not provide a usable Jest input.
+      run_full_suite
+      ;;
+  esac
+done
+
+if (( ${#sources[@]} == 0 )); then
+  run_full_suite
+fi
+
+printf '%s\n' "${sources[@]}" | LC_ALL=C sort -u
