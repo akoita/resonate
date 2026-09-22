@@ -1020,7 +1020,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Add the primary artist, track artist, and any featured artists. Choose the exact existing profile when Resonate suggests one, especially if several artists share a name. Your selected primary artist stays linked to that profile when you upload.",
+            text: "Add the primary artist, track artist, and any featured artists. Choose the exact existing profile when Resonate suggests one, especially if several artists share a name. If several artists share the name, the list shows how many and a short ID beside each one — pick the right one, or add a new artist, which is held for review before it links to a profile. Your selected primary artist stays linked to that exact profile when you upload.",
           },
           {
             kind: "callout",
@@ -1090,7 +1090,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "If a public artist page is unclaimed, sign in and submit a release or rights reference that shows you represent that artist. An operator reviews the evidence for that exact page. A matching name alone does not grant access. You can see when your request is pending or submit new evidence after a rejection.",
+            text: "An unclaimed public artist page shows an \"Are you …?\" prompt with a \"Claim this profile\" button below the play buttons. Sign in, then share evidence that you represent the artist — for example a distributor or label reference, a rights document, or an official account that links to the page. An operator reviews it for that exact page; a matching name alone does not grant access. While you wait, the page shows \"Pending review\". If a claim isn't approved, you can submit new evidence.",
           },
           {
             kind: "paragraph",

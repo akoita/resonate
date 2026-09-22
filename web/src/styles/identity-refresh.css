@@ -1015,6 +1015,134 @@ button:focus-visible,
   gap: 10px;
 }
 
+/* Unclaimed public-artist badge + claim callout (#1492). Neutral, compact,
+ * collapsed by default; sits below the listener actions. */
+.artist-verified-badge--unclaimed {
+  color: var(--r-on-surface-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.artist-claim {
+  margin-top: 16px;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--r-radius-md);
+  padding: 14px 16px;
+  backdrop-filter: blur(12px);
+}
+.artist-claim__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.artist-claim__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--r-on-surface);
+}
+.artist-claim__text {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--r-on-surface-variant);
+}
+.artist-claim__text--notice {
+  color: var(--r-warning);
+}
+.artist-claim__status {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--r-warning);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.30);
+  border-radius: 999px;
+  padding: 3px 9px;
+  line-height: 1.2;
+}
+.artist-claim__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.artist-claim__cta {
+  font-size: 13px;
+}
+.artist-claim__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.artist-claim__label {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.6);
+}
+.artist-claim__help {
+  margin: 0;
+  max-width: 64ch;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface-variant);
+}
+.artist-claim__textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-family: inherit;
+  margin-top: 2px;
+}
+.artist-claim__counter {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--r-on-surface-muted);
+  text-align: right;
+}
+.artist-claim__counter--short {
+  color: var(--r-on-surface-variant);
+}
+.artist-claim__scope {
+  margin: 2px 0 0;
+  max-width: 64ch;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--r-on-surface-muted);
+}
+.artist-claim__error {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-error);
+  background: rgba(255, 107, 107, 0.10);
+  border: 1px solid rgba(255, 107, 107, 0.30);
+  border-radius: var(--r-radius-sm);
+  padding: 8px 12px;
+}
+@media (max-width: 480px) {
+  .artist-claim {
+    padding: 12px 14px;
+  }
+  .artist-claim__actions .ui-btn {
+    flex: 1 1 auto;
+  }
+}
+
 /* ----------------------------------------------------------------------
  * 17. Artist community (social rooms) — make it feel alive.
  * Adds presence pulses, a vibrant active room, hover energy, and an

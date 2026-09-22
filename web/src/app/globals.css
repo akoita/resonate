@@ -14474,6 +14474,30 @@ tr[draggable="true"]:hover {
   text-transform: uppercase;
 }
 
+/* Disambiguator for same-name artists: a quiet, readable profile ID. */
+.artist-suggest__id {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* Non-selectable heads-up when several artists share the typed name. */
+.artist-suggest__notice {
+  margin: 0 0 4px;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-warning, #eab308);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: default;
+}
+
 .artist-suggest__create .artist-suggest__name {
   color: var(--color-muted);
 }
@@ -14481,6 +14505,26 @@ tr[draggable="true"]:hover {
 .artist-suggest__create .artist-suggest__name strong {
   color: var(--color-text);
   font-weight: 600;
+}
+
+.artist-suggest__name--stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artist-suggest__create-label,
+.artist-suggest__create-note {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-suggest__create-note {
+  font-size: 11px;
+  color: var(--color-warning, #eab308);
 }
 
 .artist-suggest__status {
@@ -14499,6 +14543,17 @@ tr[draggable="true"]:hover {
 
 .artist-suggest__hint--existing {
   color: var(--color-success, #34d399);
+}
+
+.artist-suggest__hint a {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.artist-suggest__hint a:hover,
+.artist-suggest__hint a:focus-visible {
+  text-decoration: underline;
 }
 
 /* Chip-based multi-select (Featured artists) */

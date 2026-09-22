@@ -1277,6 +1277,7 @@ export default function ArtistUploadPage() {
                       token={token}
                       name="primaryArtist"
                       ariaLabel="Primary artist"
+                      linksProfile
                       placeholder="Credited artist — e.g. The Game"
                       value={formData.primaryArtist}
                       onChange={(value, artist) => {

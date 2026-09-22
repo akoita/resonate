@@ -3,10 +3,11 @@
 /**
  * Artist pickers for the upload/publish studio.
  *
- * Artist credit fields used to be plain free-text inputs. Because the backend
- * can resolve a name to a unique existing profile or create an unclaimed
- * public artist. These components surface existing IDs so an uploader can
- * select the exact credited artist, especially when names collide.
+ * A typed artist name alone is ambiguous: the backend reuses an existing public
+ * artist only when exactly one matches the name, and otherwise creates a new
+ * unclaimed artist that is held for review. These pickers surface the existing
+ * profiles so an uploader can credit the exact artist, especially when several
+ * artists share a name.
  *
  * - `ArtistAutocomplete` — single value (Primary artist, Track artist).
  * - `ArtistTagInput` — multiple values as chips (Featured artists). Emits a
@@ -26,10 +27,78 @@ import {
   type KeyboardEvent,
 } from "react";
 import { searchArtists, type ArtistSearchResult } from "../../lib/api";
+import { artistProfileHref } from "../../lib/artistRoutes";
 
-type SuggestOption =
+export type SuggestOption =
   | { kind: "artist"; artist: ArtistSearchResult }
   | { kind: "create"; name: string };
+
+export type SuggestState = {
+  /** Suggestions whose name equals the typed query (case-insensitive). */
+  exactMatches: ArtistSearchResult[];
+  /** Lower-cased names shared by more than one suggestion. */
+  duplicateNames: Set<string>;
+  /** Whether the "add new artist" row is offered. */
+  showCreate: boolean;
+  options: SuggestOption[];
+  /** Row highlighted before the user moves the highlight; -1 means none. */
+  defaultIndex: number;
+};
+
+const normalizeName = (name: string) => name.trim().toLowerCase();
+
+/**
+ * Pure derivation of the dropdown state from the (already filtered) search
+ * suggestions and the typed query.
+ *
+ * - Exactly one exact match: it is the default, and no create row is offered.
+ * - Several exact matches: nothing is highlighted by default, so Enter cannot
+ *   silently pick one of them or create yet another same-name artist; the
+ *   uploader must choose a row explicitly.
+ * - Otherwise the create row (when offered) is the default.
+ */
+export function buildSuggestState({
+  suggestions,
+  query,
+  allowCreateRow,
+}: {
+  suggestions: ArtistSearchResult[];
+  query: string;
+  allowCreateRow: boolean;
+}): SuggestState {
+  const trimmed = query.trim();
+  const lowerTrimmed = trimmed.toLowerCase();
+  const exactMatches = suggestions.filter((a) => normalizeName(a.displayName) === lowerTrimmed);
+
+  const counts = new Map<string, number>();
+  for (const artist of suggestions) {
+    const key = normalizeName(artist.displayName);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const duplicateNames = new Set(
+    [...counts].filter(([, count]) => count > 1).map(([key]) => key),
+  );
+
+  const showCreate = allowCreateRow && trimmed.length > 0 && exactMatches.length !== 1;
+  const options: SuggestOption[] = [
+    ...suggestions.map((artist) => ({ kind: "artist", artist }) as SuggestOption),
+    ...(showCreate ? [{ kind: "create", name: trimmed } as SuggestOption] : []),
+  ];
+
+  let defaultIndex: number;
+  if (exactMatches.length === 1) {
+    defaultIndex = options.findIndex(
+      (o) => o.kind === "artist" && o.artist.id === exactMatches[0].id,
+    );
+  } else if (exactMatches.length > 1) {
+    defaultIndex = -1;
+  } else {
+    const createIdx = options.findIndex((o) => o.kind === "create");
+    defaultIndex = createIdx >= 0 ? createIdx : options.length ? 0 : -1;
+  }
+
+  return { exactMatches, duplicateNames, showCreate, options, defaultIndex };
+}
 
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -126,7 +195,6 @@ function ArtistSuggestInput({
 
   const { results, loading } = useArtistSearch(token, query, open);
   const trimmed = query.trim();
-  const lowerTrimmed = trimmed.toLowerCase();
 
   const excluded = useMemo(
     () => new Set((excludeNames ?? []).map((n) => n.trim().toLowerCase())),
@@ -138,41 +206,13 @@ function ArtistSuggestInput({
     [results, excluded],
   );
 
-  const exactMatches = useMemo(
-    () => suggestions.filter((a) => a.displayName.trim().toLowerCase() === lowerTrimmed),
-    [suggestions, lowerTrimmed],
+  const { exactMatches, duplicateNames, options, defaultIndex } = useMemo(
+    () => buildSuggestState({ suggestions, query, allowCreateRow }),
+    [suggestions, query, allowCreateRow],
   );
-  const duplicateNames = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const artist of suggestions) {
-      const name = artist.displayName.trim().toLowerCase();
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
-  }, [suggestions]);
-  const showCreate = allowCreateRow && trimmed.length > 0 && exactMatches.length !== 1;
-
-  const options: SuggestOption[] = useMemo(
-    () => [
-      ...suggestions.map((artist) => ({ kind: "artist", artist }) as SuggestOption),
-      ...(showCreate ? [{ kind: "create", name: trimmed } as SuggestOption] : []),
-    ],
-    [suggestions, showCreate, trimmed],
-  );
+  const sharedNameCount = exactMatches.length > 1 ? exactMatches.length : 0;
 
   const dropdownOpen = open && trimmed.length > 0 && options.length > 0;
-
-  // Enter reuses an exact match only when there is exactly one. Multiple
-  // same-name profiles require an explicit selection or a new ambiguous credit.
-  const defaultIndex = useMemo(() => {
-    const exactIdx = exactMatches.length === 1
-      ? options.findIndex((o) => o.kind === "artist" && o.artist.id === exactMatches[0].id)
-      : -1;
-    if (exactIdx >= 0) return exactIdx;
-    const createIdx = options.findIndex((o) => o.kind === "create");
-    if (createIdx >= 0) return createIdx;
-    return options.length ? 0 : -1;
-  }, [options, exactMatches]);
 
   const effectiveHighlight = highlight >= 0 ? Math.min(highlight, options.length - 1) : defaultIndex;
 
@@ -201,6 +241,11 @@ function ArtistSuggestInput({
       e.preventDefault();
       if (dropdownOpen && effectiveHighlight >= 0) {
         selectOption(options[effectiveHighlight]);
+      } else if (sharedNameCount > 0) {
+        // Several artists share this exact name: never commit implicitly —
+        // keep the list open so the uploader picks the right profile (or
+        // deliberately chooses to add another one).
+        if (!open) setOpen(true);
       } else {
         const exact = exactMatches.length === 1 ? exactMatches[0] : null;
         onPick(exact ? exact.displayName : trimmed, exact ?? null);
@@ -242,6 +287,12 @@ function ArtistSuggestInput({
       />
       {dropdownOpen && (
         <ul className="artist-suggest__dropdown" role="listbox" id={listId}>
+          {sharedNameCount > 0 && (
+            <li className="artist-suggest__notice" role="presentation">
+              {sharedNameCount} artists are named “{exactMatches[0].displayName.trim()}”. Choose the
+              right one.
+            </li>
+          )}
           {options.map((opt, i) => {
             const active = i === effectiveHighlight;
             const optionClass = `artist-suggest__option${active ? " artist-suggest__option--active" : ""}`;
@@ -269,8 +320,10 @@ function ArtistSuggestInput({
                     )}
                   </span>
                   <span className="artist-suggest__name">{a.displayName}</span>
-                  {duplicateNames.has(a.displayName.trim().toLowerCase()) && (
-                    <span className="artist-suggest__badge">{a.profileType === "public_artist" ? "Artist" : "Manager"} · {a.id.slice(0, 8)}</span>
+                  {duplicateNames.has(normalizeName(a.displayName)) && (
+                    <span className="artist-suggest__id" title={`Profile ID ${a.id}`}>
+                      ID {a.id.slice(0, 8)}
+                    </span>
                   )}
                   {a.claimStatus === "unclaimed" && (
                     <span className="artist-suggest__badge">Unclaimed</span>
@@ -294,9 +347,20 @@ function ArtistSuggestInput({
                 <span className="artist-suggest__avatar artist-suggest__avatar--add" aria-hidden>
                   +
                 </span>
-                <span className="artist-suggest__name">
-                  Add new artist <strong>“{opt.name}”</strong>
-                </span>
+                {sharedNameCount > 0 ? (
+                  <span className="artist-suggest__name artist-suggest__name--stacked">
+                    <span className="artist-suggest__create-label">
+                      Add another artist named <strong>“{opt.name}”</strong>
+                    </span>
+                    <span className="artist-suggest__create-note">
+                      Held for review before it links to a profile
+                    </span>
+                  </span>
+                ) : (
+                  <span className="artist-suggest__name">
+                    Add new artist <strong>“{opt.name}”</strong>
+                  </span>
+                )}
               </li>
             );
           })}
@@ -319,6 +383,12 @@ type ArtistAutocompleteProps = {
   id?: string;
   name?: string;
   ariaLabel?: string;
+  /**
+   * Set when the pick is credited by profile ID (e.g. Primary artist). The hint
+   * then confirms the exact profile and links to it so the uploader can verify
+   * which of several same-name artists they chose.
+   */
+  linksProfile?: boolean;
 };
 
 /** Single-artist field with reuse-vs-create guidance. */
@@ -330,6 +400,7 @@ export function ArtistAutocomplete({
   id,
   name,
   ariaLabel,
+  linksProfile = false,
 }: ArtistAutocompleteProps) {
   const [picked, setPicked] = useState<ArtistSearchResult | null>(null);
   const matchesPicked =
@@ -355,12 +426,28 @@ export function ArtistAutocomplete({
       </div>
       {value.trim().length > 0 &&
         (effectivePicked ? (
-          <span className="artist-suggest__hint artist-suggest__hint--existing">
-            ✓ Linked to existing artist “{effectivePicked.displayName}”
-          </span>
+          linksProfile ? (
+            <span className="artist-suggest__hint artist-suggest__hint--existing">
+              ✓ Credited to this exact profile ·{" "}
+              <a
+                href={artistProfileHref(effectivePicked.id)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`View ${effectivePicked.displayName}'s profile in a new tab`}
+              >
+                View profile ↗
+              </a>
+            </span>
+          ) : (
+            <span className="artist-suggest__hint artist-suggest__hint--existing">
+              ✓ Linked to existing artist “{effectivePicked.displayName}”
+            </span>
+          )
         ) : (
           <span className="artist-suggest__hint">
-            Pick a match from the list to reuse an existing artist, or keep typing to create a new one.
+            {linksProfile
+              ? "Pick a profile from the list to credit it exactly, or keep typing to add a new artist."
+              : "Pick a match from the list to reuse an existing artist, or keep typing to create a new one."}
           </span>
         ))}
     </div>

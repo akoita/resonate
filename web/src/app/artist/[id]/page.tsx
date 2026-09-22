@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, getArtistMe, getMyArtistClaim, submitArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim } from "../../../lib/api";
+import { getArtistPublic, getArtistMe, getMyArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
+import { ArtistClaimCallout } from "../../../components/artist/ArtistClaimCallout";
 import { isArtistProfileOwner } from "../../../lib/artistProfileForm";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
@@ -24,16 +25,13 @@ type ArtistTab = "discography" | "community";
 export default function ArtistPage() {
     const params = useParams();
     const router = useRouter();
-    const { token } = useAuth();
+    const { token, login } = useAuth();
     const { playQueue } = usePlayer();
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
     const [me, setMe] = useState<ArtistProfile | null>(null);
     const [claim, setClaim] = useState<ArtistClaim | null>(null);
-    const [claimEvidence, setClaimEvidence] = useState("");
-    const [claimBusy, setClaimBusy] = useState(false);
-    const [claimError, setClaimError] = useState<string | null>(null);
     const [placeholderName, setPlaceholderName] = useState<string>("");
 
     const [releases, setReleases] = useState<Release[]>([]);
@@ -156,25 +154,12 @@ export default function ArtistPage() {
         return () => { cancelled = true; };
     }, [token, artistId]);
 
-    async function requestClaim(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
-        if (!token || !artistId || claimBusy) return;
-        setClaimBusy(true);
-        setClaimError(null);
-        try {
-            const request = await submitArtistClaim(token, artistId, claimEvidence);
-            setClaim(request);
-            setClaimEvidence("");
-        } catch {
-            setClaimError("Could not submit your claim. Check the evidence and try again.");
-        } finally {
-            setClaimBusy(false);
-        }
-    }
-
     const handleBack = () => {
         router.push("/catalog?view=artists");
     };
+
+    const isUnclaimedPublicArtist =
+        artist?.profileType === "public_artist" && artist.claimStatus === "unclaimed";
 
     const coverArt = artist?.imageUrl || releases.find((r) => r.artworkUrl)?.artworkUrl || null;
     const trackCount = releases.reduce((sum, r) => sum + (r.tracks?.length ?? 0), 0);
@@ -220,7 +205,11 @@ export default function ArtistPage() {
                         <div className="flex items-center gap-3 mb-3">
                             <span className="artist-label mb-0">Artist</span>
                             {artist ? (
-                                <span className="artist-verified-badge">RESONATE PROFILE</span>
+                                isUnclaimedPublicArtist ? (
+                                    <span className="artist-verified-badge artist-verified-badge--unclaimed">Unclaimed profile</span>
+                                ) : (
+                                    <span className="artist-verified-badge">RESONATE PROFILE</span>
+                                )
                             ) : null}
                         </div>
                         <h1 className="artist-name-lg text-gradient">
@@ -252,36 +241,6 @@ export default function ArtistPage() {
                             <p className="artist-bio">{artist.summary}</p>
                         ) : null}
                         <ArtistSocialLinksRow website={artist?.website} socialLinks={artist?.socialLinks} />
-                        {artist?.profileType === "public_artist" && !isOwner && artist.claimStatus === "unclaimed" ? (
-                            <div className="glass-panel" style={{ padding: 16, marginTop: 16 }}>
-                                <h2>Claim this artist profile</h2>
-                                {claim?.artistId === artist.id && claim.status === "pending" ? (
-                                    <p>Your evidence is awaiting operator review. This does not grant profile access yet.</p>
-                                ) : token ? (
-                                    <form onSubmit={(event) => void requestClaim(event)}>
-                                        <p>Share a release or rights reference that shows you represent this artist. An operator reviews each request.</p>
-                                        {claim?.artistId === artist.id && claim.status === "rejected" ? <p>Your previous request was declined. You can submit new evidence.</p> : null}
-                                        <label htmlFor="artist-claim-evidence">Evidence for review</label>
-                                        <textarea
-                                            id="artist-claim-evidence"
-                                            className="ui-input"
-                                            value={claimEvidence}
-                                            onChange={(event) => setClaimEvidence(event.target.value)}
-                                            minLength={20}
-                                            maxLength={4000}
-                                            required
-                                            rows={4}
-                                        />
-                                        {claimError ? <p role="alert">{claimError}</p> : null}
-                                        <Button type="submit" disabled={claimBusy || claimEvidence.trim().length < 20}>
-                                            {claimBusy ? "Submitting…" : "Submit for review"}
-                                        </Button>
-                                    </form>
-                                ) : (
-                                    <p>Sign in to submit evidence for this artist profile.</p>
-                                )}
-                            </div>
-                        ) : null}
                         {playbackTracks.length > 0 || libraryArtistName ? (
                             <div className="library-artist-actions">
                                 {playbackTracks.length > 0 ? (
@@ -311,6 +270,16 @@ export default function ArtistPage() {
                                 artist={artist}
                                 isOwner={canEditProfile}
                                 onSaved={(updated) => setArtist(updated)}
+                            />
+                        ) : null}
+                        {artist && isUnclaimedPublicArtist && !canEditProfile ? (
+                            <ArtistClaimCallout
+                                artistId={artist.id}
+                                artistName={artist.displayName}
+                                token={token}
+                                claim={claim?.artistId === artist.id ? claim : null}
+                                onSignIn={() => void login?.()}
+                                onSubmitted={setClaim}
                             />
                         ) : null}
                     </div>
