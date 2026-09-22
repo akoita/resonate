@@ -38,13 +38,13 @@ describe('ArtistService.searchByName (integration)', () => {
   beforeAll(async () => {
     service = new ArtistService(new EventBus());
     // Unique-enough names so substring matches don't collide with other suites.
-    await seedArtist('bouba', { displayName: `${TEST_PREFIX}Bouba`, imageUrl: 'https://img/bouba.png' });
-    await seedArtist('boubacar', { displayName: `${TEST_PREFIX}Boubacar Keita` });
+    await seedArtist('bouba', { displayName: `${TEST_PREFIX}Bouba`, imageUrl: 'https://img/bouba.png', profileType: 'public_artist' });
+    await seedArtist('boubacar', { displayName: `${TEST_PREFIX}Boubacar Keita`, profileType: 'public_artist' });
     await seedArtist('calista', { displayName: `${TEST_PREFIX}Calista`, profileType: 'public_artist', claimStatus: 'unclaimed' });
-    // Duplicate name across two profiles: an unclaimed public stub and a claimed
-    // managed profile. Dedupe must keep the claimed one.
+    // Same-name profiles must remain distinct so credit selection uses an ID.
     await seedArtist('dup_unclaimed', { displayName: `${TEST_PREFIX}DupName`, profileType: 'public_artist', claimStatus: 'unclaimed' });
-    await seedArtist('dup_claimed', { displayName: `${TEST_PREFIX}DupName`, profileType: 'manager', claimStatus: 'claimed' });
+    await seedArtist('dup_claimed', { displayName: `${TEST_PREFIX}DupName`, profileType: 'public_artist', claimStatus: 'claimed' });
+    await seedArtist('manager', { displayName: `${TEST_PREFIX}Manager`, profileType: 'manager' });
   });
 
   afterAll(async () => {
@@ -63,16 +63,21 @@ describe('ArtistService.searchByName (integration)', () => {
     expect(names).toContain(`${TEST_PREFIX}Boubacar Keita`);
   });
 
+  it('excludes uploader manager profiles from credit selection', async () => {
+    expect(await service.searchByName(`${TEST_PREFIX}Manager`)).toEqual([]);
+  });
+
   it('ranks an exact match above a longer prefix match', async () => {
     const results = await service.searchByName(`${TEST_PREFIX}Bouba`);
     expect(results[0].displayName).toBe(`${TEST_PREFIX}Bouba`);
   });
 
-  it('dedupes profiles that share a name, keeping the claimed one', async () => {
+  it('returns both same-name profiles with distinct IDs', async () => {
     const results = await service.searchByName(`${TEST_PREFIX}DupName`);
     const dupMatches = results.filter((r) => r.displayName === `${TEST_PREFIX}DupName`);
-    expect(dupMatches).toHaveLength(1);
+    expect(dupMatches).toHaveLength(2);
     expect(dupMatches[0].claimStatus).toBe('claimed');
+    expect(new Set(dupMatches.map((artist) => artist.id)).size).toBe(2);
   });
 
   it('exposes only safe public-facing fields and honours the limit', async () => {

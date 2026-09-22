@@ -34,11 +34,11 @@
  */
 export type PersonalDataKey =
   /**
-   * A column holding `User.id`. Nine models spell it something other than
-   * `userId` — `authorId`, `reporterUserId`, `curatorUserId`, `creatorUserId`,
-   * `submitterUserId`, `initiatorUserId`, `actorUserId`, `collectorUserId`,
-   * `acknowledgedByUserId`/`revokedByUserId` — which is exactly why the column
-   * name is declared per model rather than assumed.
+   * A column holding `User.id`. Several models spell it something other than
+   * `userId` — for example `authorId`, `reporterUserId`, `claimantUserId`,
+   * `curatorUserId`, `creatorUserId`, `submitterUserId`, `initiatorUserId`,
+   * `actorUserId`, `collectorUserId`, and `acknowledgedByUserId` — which is
+   * exactly why the column name is declared per model rather than assumed.
    */
   | { kind: "userId"; column: string }
   /**
@@ -180,6 +180,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     model: "Artist",
     primaryKey: "id",
     keys: [{ kind: "userId", column: "userId" }],
+  },
+  {
+    model: "ArtistClaimRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "claimantUserId" }],
+    note: "A claim this person submitted, including their evidence and the decision recorded for it.",
   },
   {
     model: "StemQualityRating",
@@ -647,6 +653,9 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
  * redaction is not a filter applied to a row that already exists in memory.
  */
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  ArtistClaimRequest: {
+    reviewerUserId: "Internal operator identity; the claimant can export the decision and note without the operator's account id.",
+  },
   SessionKey: {
     agentPrivateKey:
       "A raw ECDSA private key. The schema comment says it never leaves the backend; an export that included it would let anyone who obtained the file spend from the person's agent.",

@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
-import { LicenseType, Prisma, type AiDisclosureLevel, type ShowArtistAuthorityStatus } from "@prisma/client";
+import { LicenseType, Prisma, type AiDisclosureLevel, type Artist, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { validateArtworkUpload } from "../shared/artwork-validation";
 import { prisma } from "../../db/prisma";
@@ -110,6 +110,7 @@ const RELEASE_ARTIST_CREDITS_SELECT = {
     artistId: true,
     role: true,
     displayName: true,
+    identityStatus: true,
     sortOrder: true,
     artist: {
       select: {
@@ -334,6 +335,72 @@ export class CatalogService implements OnModuleInit {
     { items: unknown[]; cachedAt: number }
   >();
   private readonly cacheTtlMs = 30_000;
+
+  async reviewCreditIdentity(
+    creditId: string,
+    reviewerUserId: string,
+    reviewerRole: string,
+    artistId: unknown,
+    note: unknown,
+  ) {
+    if (reviewerRole !== "admin" && reviewerRole !== "operator") {
+      throw new ForbiddenException("Operator review is required");
+    }
+    if (typeof artistId !== "string" || !artistId.trim()) {
+      throw new BadRequestException("An exact artist profile ID is required");
+    }
+    if (typeof note !== "string" || note.trim().length < 20 || note.trim().length > 1000) {
+      throw new BadRequestException("Review note must be 20–1000 characters");
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const credit = await tx.releaseArtistCredit.findUnique({
+        where: { id: creditId },
+        select: { id: true, identityStatus: true },
+      });
+      if (!credit) {
+        throw new NotFoundException("Release artist credit was not found");
+      }
+      if (credit.identityStatus !== "ambiguous") {
+        throw new BadRequestException("Only ambiguous credits can be reviewed");
+      }
+      const artist = await tx.artist.findUnique({
+        where: { id: artistId.trim() },
+        select: { id: true, profileType: true, userId: true },
+      });
+      if (!artist) {
+        throw new BadRequestException("Artist profile was not found");
+      }
+      if (artist.profileType !== "public_artist" || artist.userId !== null) {
+        throw new BadRequestException("Credit identity must be a public artist profile");
+      }
+      const result = await tx.releaseArtistCredit.updateMany({
+        where: { id: creditId, identityStatus: "ambiguous" },
+        data: {
+          artistId: artist.id,
+          identityStatus: "reviewed",
+          identityReviewedAt: new Date(),
+          identityReviewerUserId: reviewerUserId,
+          identityReviewNote: note.trim(),
+        },
+      });
+      if (result.count !== 1) {
+        throw new BadRequestException("Credit identity changed during review");
+      }
+      return tx.releaseArtistCredit.findUniqueOrThrow({
+        where: { id: creditId },
+        select: {
+          id: true,
+          releaseId: true,
+          artistId: true,
+          role: true,
+          displayName: true,
+          identityStatus: true,
+          sortOrder: true,
+        },
+      });
+    });
+  }
 
   private async deleteLegacyStemQualityRatings(
     tx: Prisma.TransactionClient,
@@ -627,12 +694,15 @@ export class CatalogService implements OnModuleInit {
               },
             },
           });
-          await this.syncReleaseArtistCredits(tx, {
-            releaseId: event.releaseId,
-            managerArtistId: event.artistId,
-            primaryArtist: event.metadata?.primaryArtist,
-            featuredArtists: event.metadata?.featuredArtists,
-          });
+          if (event.checksum !== "retry") {
+            await this.syncReleaseArtistCredits(tx, {
+              releaseId: event.releaseId,
+              managerArtistId: event.artistId,
+              primaryArtist: event.metadata?.primaryArtist,
+              featuredArtists: event.metadata?.featuredArtists,
+              artistCredits: event.metadata?.artistCredits,
+            });
+          }
         });
         await this.uploadRightsRoutingService.evaluateAndPersistInitialDecision({
           releaseId: event.releaseId,
@@ -1139,9 +1209,22 @@ export class CatalogService implements OnModuleInit {
 
     await tx.releaseArtistCredit.deleteMany({ where: { releaseId: input.releaseId } });
     for (const credit of credits) {
-      const artist = credit.artistId
-        ? await tx.artist.findUnique({ where: { id: credit.artistId } })
-        : await this.findOrCreatePublicArtistProfile(tx, credit.displayName || managerArtist.displayName, managerArtist);
+      let artist: Artist | null;
+      let identityStatus: "selected" | "created" | "inferred" | "ambiguous";
+      if (credit.artistId) {
+        artist = await tx.artist.findUnique({ where: { id: credit.artistId } });
+        identityStatus = "selected";
+        if (artist && (artist.profileType !== "public_artist" || artist.userId !== null)) {
+          throw new BadRequestException("Release credits must select a public artist profile");
+        }
+      } else {
+        const resolution = await this.findOrCreatePublicArtistProfile(
+          tx,
+          credit.displayName || managerArtist.displayName,
+        );
+        artist = resolution.artist;
+        identityStatus = resolution.identityStatus;
+      }
       if (!artist) {
         throw new BadRequestException("Release artist credit must reference an existing artist profile");
       }
@@ -1152,6 +1235,7 @@ export class CatalogService implements OnModuleInit {
           artistId: artist.id,
           role: credit.role,
           displayName,
+          identityStatus,
           sortOrder: credit.sortOrder ?? 0,
         },
       });
@@ -1161,32 +1245,31 @@ export class CatalogService implements OnModuleInit {
   private async findOrCreatePublicArtistProfile(
     tx: Prisma.TransactionClient,
     displayName: string,
-    managerArtist: { id: string; displayName: string },
   ) {
     const normalizedDisplayName = normalizeCreditName(displayName);
     if (!normalizedDisplayName) {
       throw new BadRequestException("Release artist credit name is required");
     }
 
-    if (normalizedDisplayName.toLowerCase() === managerArtist.displayName.toLowerCase()) {
-      return tx.artist.findUnique({ where: { id: managerArtist.id } });
-    }
-
     const matches = await tx.artist.findMany({
       where: { displayName: { equals: normalizedDisplayName, mode: "insensitive" } },
       orderBy: { createdAt: "asc" },
-      take: 10,
     });
-    const publicProfile = matches.find((artist) => artist.profileType === "public_artist") ?? matches[0];
-    if (publicProfile) return publicProfile;
+    if (matches.length === 1 && matches[0].profileType === "public_artist" && matches[0].userId === null) {
+      return { artist: matches[0], identityStatus: "inferred" as const };
+    }
 
-    return tx.artist.create({
+    const artist = await tx.artist.create({
       data: {
         displayName: normalizedDisplayName,
         profileType: "public_artist",
         claimStatus: "unclaimed",
       },
     });
+    return {
+      artist,
+      identityStatus: matches.length > 0 ? "ambiguous" as const : "created" as const,
+    };
   }
 
   async getTrack(trackId: string) {
@@ -1349,14 +1432,16 @@ export class CatalogService implements OnModuleInit {
           select: { id: true },
         })
       : null;
-    // #1379: campaigns link to the public catalog artist credit, which can be
-    // a different Artist row than the uploader-profile release.artistId —
-    // match against every credited artist plus the profile fallback.
+    // Campaigns follow resolved public credits. Legacy releases without
+    // credits can still use their manager profile; an ambiguous credit cannot
+    // make a campaign appear to belong to an unverified artist identity.
     const campaignCandidateArtistIds = Array.from(
       new Set(
         [
-          ...track.release.artistCredits.map((credit) => credit.artistId),
-          track.release.artistId,
+          ...track.release.artistCredits
+            .filter((credit) => credit.identityStatus !== "ambiguous")
+            .map((credit) => credit.artistId),
+          ...(track.release.artistCredits.length === 0 ? [track.release.artistId] : []),
         ].filter((artistId): artistId is string => Boolean(artistId)),
       ),
     );
@@ -1744,7 +1829,7 @@ export class CatalogService implements OnModuleInit {
   ) {
     const artist = await prisma.artist.findUnique({
       where: { id: artistId },
-      select: { displayName: true },
+      select: { id: true },
     });
 
     if (!artist) {
@@ -1764,28 +1849,13 @@ export class CatalogService implements OnModuleInit {
     const ownershipFilter: Prisma.ReleaseWhereInput = options?.includeManagedCredits
       ? { artistId }
       : {
-          OR: [
-            {
-              artistCredits: {
-                some: {
-                  artistId,
-                  role: { in: ["main", "primary"] },
-                },
-              },
+          artistCredits: {
+            some: {
+              artistId,
+              role: { in: ["main", "primary"] },
+              identityStatus: { not: "ambiguous" },
             },
-            {
-              AND: [
-                { artistId },
-                {
-                  OR: [
-                    { primaryArtist: null },
-                    { primaryArtist: "" },
-                    { primaryArtist: { equals: artist.displayName, mode: "insensitive" as const } },
-                  ],
-                },
-              ],
-            },
-          ],
+          },
         };
 
     const releases = await prisma.release.findMany({

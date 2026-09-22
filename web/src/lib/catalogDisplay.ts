@@ -56,12 +56,9 @@ export function normalizeArtistCreditValue(value?: string | null) {
 
 export function getReleaseCreditProfileId(release: Release) {
   const mainCredit = getMainArtistCredits(release)[0];
-  if (mainCredit?.artistId) return mainCredit.artistId;
-
-  const primaryArtist = normalizeArtistName(release.primaryArtist);
-  const profileName = normalizeArtistName(release.artist?.displayName);
-  if (!release.artist?.id) return null;
-  return !primaryArtist || primaryArtist === profileName ? release.artist.id : null;
+  return mainCredit?.identityStatus !== "ambiguous"
+    ? mainCredit?.artistId ?? null
+    : null;
 }
 
 export function getTrackArtistName(track: Track, release: Release) {
@@ -118,7 +115,9 @@ export function summarizeCreditedArtists(releases: Release[]): CatalogArtistSumm
     return credits.length > 0
       ? credits.map((credit) => ({
           name: credit.displayName,
-          artistId: credit.artistId || credit.artist?.id || null,
+          artistId: credit.identityStatus === "ambiguous"
+            ? null
+            : credit.artistId || credit.artist?.id || null,
         }))
       : [{
           name: getArtistName(release),

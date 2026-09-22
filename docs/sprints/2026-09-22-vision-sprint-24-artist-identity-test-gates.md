@@ -22,7 +22,10 @@ campaigns, and [the complete manual run](https://github.com/akoita/resonate/acti
 scored all five targets successfully. [#1827](https://github.com/akoita/resonate/issues/1827)
 is closed. [#1765](https://github.com/akoita/resonate/issues/1765) is also
 closed after [PR #1833](https://github.com/akoita/resonate/pull/1833)
-centralized Gambit remappings. Work has moved to #1783.
+centralized Gambit remappings. [#1783](https://github.com/akoita/resonate/issues/1783)
+is closed after [PR #1834](https://github.com/akoita/resonate/pull/1834)
+replaced the CI test lists with related-test selection and added web Vitest.
+Work has moved to #1492.
 
 ## Dependency order
 

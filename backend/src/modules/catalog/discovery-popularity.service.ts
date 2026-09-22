@@ -165,9 +165,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       (acc) => acc.listeners.size >= threshold,
     );
 
-    // Resolve genre + CREDITED artist for qualifying tracks in one query. The
-    // rollup key is the credited artist name (#1492), not the uploader/manager
-    // account id, so the Home "Top Artists" rail ranks the real artist.
+    // Resolve genre and credited artist IDs for qualifying tracks in one query.
     const tracks = qualifying.length
       ? await prisma.track.findMany({
           where: {
@@ -186,6 +184,15 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
                 artistId: true,
                 primaryArtist: true,
                 artist: { select: { id: true, displayName: true } },
+                artistCredits: {
+                  orderBy: { sortOrder: "asc" },
+                  select: {
+                    artistId: true,
+                    displayName: true,
+                    role: true,
+                    identityStatus: true,
+                  },
+                },
               },
             },
           },
@@ -228,46 +235,69 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       trackRows.push({ ...row, genre: "" });
       if (genre) trackRows.push({ ...row, genre });
 
-      // Interim identity key (#1492 Phase A): roll up by CREDITED artist name,
-      // not the uploader/manager account id. Two different accounts crediting
-      // the same artist name collapse into one chart entry — which is correct.
-      const artistId =
-        resolveCreditedArtistName({
-          trackArtist: meta.artist,
-          primaryArtist: meta.release.primaryArtist,
-          accountDisplayName: meta.release.artist?.displayName,
-        }) ?? meta.release.artistId;
-      const artist =
-        byArtist.get(artistId) ??
-        ({
-          artistId,
-          score: 0,
-          plays: 0,
-          saves: 0,
-          listeners: new Set<string>(),
-          genres: new Map(),
-        } satisfies ArtistAccumulator);
-      artist.score += acc.weightedPlays;
-      artist.plays += acc.plays;
-      artist.saves += acc.saves;
-      for (const listener of acc.listeners) artist.listeners.add(listener);
-      if (genre) {
-        const g =
-          artist.genres.get(genre) ??
-          { score: 0, plays: 0, saves: 0, listeners: new Set<string>() };
-        g.score += acc.weightedPlays;
-        g.plays += acc.plays;
-        g.saves += acc.saves;
-        for (const listener of acc.listeners) g.listeners.add(listener);
-        artist.genres.set(genre, g);
+      const creditedName = resolveCreditedArtistName({
+        trackArtist: meta.artist,
+        credits: meta.release.artistCredits,
+        primaryArtist: meta.release.primaryArtist,
+        accountDisplayName: meta.release.artist?.displayName,
+      });
+      const mainCredits = meta.release.artistCredits.filter((credit) =>
+        ["main", "primary"].includes(credit.role.toLowerCase()),
+      );
+      const trackArtist = meta.artist?.trim().toLowerCase();
+      const mainCreditNames = mainCredits.map((credit) => credit.displayName.trim().toLowerCase()).join(", ");
+      const matchesMainCredit = Boolean(trackArtist && mainCredits.length > 0 && (
+        trackArtist === mainCreditNames
+        || trackArtist === meta.release.primaryArtist?.trim().toLowerCase()
+      ));
+      const matchingCredits = trackArtist
+        ? matchesMainCredit
+          ? mainCredits
+          : meta.release.artistCredits.filter((credit) =>
+              credit.displayName.trim().toLowerCase() === trackArtist,
+            )
+        : mainCredits.length > 0
+          ? mainCredits
+          : meta.release.artistCredits.filter((credit) =>
+              credit.displayName.trim().toLowerCase() === creditedName?.trim().toLowerCase(),
+            );
+      // Ambiguous credits remain visible in track listings, but do not acquire
+      // a public artist identity or merge another artist's engagement.
+      for (const artistId of new Set(
+        matchingCredits
+          .filter((credit) => credit.identityStatus !== "ambiguous")
+          .map((credit) => credit.artistId),
+      )) {
+        const artist =
+          byArtist.get(artistId) ??
+          ({
+            artistId,
+            score: 0,
+            plays: 0,
+            saves: 0,
+            listeners: new Set<string>(),
+            genres: new Map(),
+          } satisfies ArtistAccumulator);
+        artist.score += acc.weightedPlays;
+        artist.plays += acc.plays;
+        artist.saves += acc.saves;
+        for (const listener of acc.listeners) artist.listeners.add(listener);
+        if (genre) {
+          const g =
+            artist.genres.get(genre) ??
+            { score: 0, plays: 0, saves: 0, listeners: new Set<string>() };
+          g.score += acc.weightedPlays;
+          g.plays += acc.plays;
+          g.saves += acc.saves;
+          for (const listener of acc.listeners) g.listeners.add(listener);
+          artist.genres.set(genre, g);
+        }
+        byArtist.set(artistId, artist);
       }
-      byArtist.set(artistId, artist);
     }
 
-    // NOTE (#1492 Phase A): `ArtistEngagement.artistId` holds the interim
-    // identity key — the CREDITED artist display name, not an account id. Phase B
-    // replaces it with a stable credited-artist id; #1450's warehouse marts MUST
-    // adopt the same key so the serving contract stays consistent.
+    // ArtistEngagement.artistId is the stable credited Artist.id. The #1450
+    // warehouse filler must preserve this serving-table contract.
     const artistRows: {
       artistId: string;
       window: string;
@@ -316,7 +346,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
         : []),
     ]);
     await this.redisCache?.del(this.cacheKey("trending", window, ""));
-    await this.redisCache?.del(this.cacheKey("top-artists", window, ""));
+    await this.redisCache?.del(this.cacheKey("top-artists-v2", window, ""));
     this.logger.log(
       `Popularity refresh (${window}): ${trackRows.length} track rows, ${artistRows.length} artist rows (threshold ${threshold})`,
     );
@@ -416,7 +446,7 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
     const window: PopularityWindow = options.window ?? "7d";
     const genre = options.genre?.trim() ?? "";
     const limit = Math.min(Math.max(options.limit ?? 8, 1), 50);
-    const cacheKey = `${this.cacheKey("top-artists", window, genre)}:${limit}`;
+    const cacheKey = `${this.cacheKey("top-artists-v2", window, genre)}:${limit}`;
     const cached = await this.redisCache?.getJson<object>(cacheKey);
     if (cached) return cached;
 
@@ -425,80 +455,30 @@ export class DiscoveryPopularityService implements OnModuleInit, OnModuleDestroy
       orderBy: { score: "desc" },
       take: limit,
     });
-    // `row.artistId` is the credited artist NAME (#1492 Phase A interim key).
-    // A matching account display name is not identity evidence: stale and
-    // duplicate profiles can share that text. Resolve a profile only through
-    // the published releases that carry the credit, and only when every
-    // matching release points to one unambiguous profile id (#1820).
-    const names = rows.map((row) => row.artistId);
-    const releases = names.length
-      ? await prisma.release.findMany({
-          where: {
-            status: "ready",
-            OR: [
-              { primaryArtist: { in: names } },
-              { artist: { displayName: { in: names } } },
-              { artistCredits: { some: { displayName: { in: names } } } },
-            ],
-          },
-          select: {
-            primaryArtist: true,
-            artist: { select: { id: true, displayName: true, imageUrl: true } },
-            artistCredits: {
-              where: { displayName: { in: names } },
-              select: {
-                artistId: true,
-                displayName: true,
-                artist: { select: { imageUrl: true } },
-              },
-            },
-          },
+    const profiles = rows.length
+      ? await prisma.artist.findMany({
+          where: { id: { in: rows.map((row) => row.artistId) } },
+          select: { id: true, displayName: true, imageUrl: true },
         })
       : [];
-    const profilesByName = new Map<
-      string,
-      Map<string, { id: string; imageUrl: string | null }>
-    >();
-    const addCandidate = (
-      name: string,
-      profile: { id: string; imageUrl: string | null },
-    ) => {
-      const candidates = profilesByName.get(name) ?? new Map();
-      candidates.set(profile.id, profile);
-      profilesByName.set(name, candidates);
-    };
-    for (const release of releases) {
-      for (const credit of release.artistCredits) {
-        addCandidate(credit.displayName, {
-          id: credit.artistId,
-          imageUrl: credit.artist.imageUrl,
-        });
-      }
-      const ownerName = release.artist.displayName;
-      if (!release.primaryArtist || release.primaryArtist === ownerName) {
-        addCandidate(ownerName, release.artist);
-      }
-    }
+    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
     const result = {
       window,
       genre: genre || null,
       minimumAudience: minAudience(),
-      items: rows.map((row, index) => {
-        const candidates = profilesByName.get(row.artistId);
-        const account = candidates?.size === 1
-          ? [...candidates.values()][0]
-          : null;
+      items: rows.flatMap((row) => {
+        const profile = profilesById.get(row.artistId);
+        if (!profile) return [];
         return {
-          rank: index + 1,
-          name: row.artistId,
-          artistId: account?.id ?? null,
-          imageUrl: account?.imageUrl ?? null,
+          name: profile.displayName,
+          artistId: profile.id,
+          imageUrl: profile.imageUrl,
           score: row.score,
           plays: row.plays,
           uniqueListeners: row.uniqueListeners,
           saves: row.saves,
         };
-      }),
+      }).map((item, index) => ({ rank: index + 1, ...item })),
     };
     await this.redisCache?.setJson(cacheKey, result, CACHE_TTL_SECONDS);
     return result;

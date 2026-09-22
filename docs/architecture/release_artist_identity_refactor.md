@@ -46,6 +46,23 @@ ReleaseArtistCredit.sortOrder = display/billing order within that role
 Existing `primaryArtist` and `featuredArtists` strings remain as compatibility
 snapshots during migration. New code should prefer `ReleaseArtistCredit`.
 
+## Identity resolution and claims
+
+`ReleaseArtistCredit.identityStatus` distinguishes an explicitly selected
+profile, a newly created public profile, a unique-name inference, an
+operator-reviewed exact ID, and an ambiguous association. The legacy migration
+flags name collisions, manager-profile links, and mismatches without merging
+profiles or changing release ownership. Ambiguous
+credits retain their display text but do not supply a profile ID to Top Artists,
+catalog links, Library links, or analytics. The derived `ArtistEngagement`
+serving rows are rebuilt with credited `Artist.id` values.
+
+An artist requests a claim against a specific public profile ID and submits
+private evidence. Only an operator or admin can approve it. Approval grants
+public profile editing through a separate claim record; it does not change
+`Artist.userId`, release management, rights, payouts, or private analytics.
+Revocation removes that edit grant. Display-name equality is never authority.
+
 ## Music Credit Semantics
 
 Credits should not collapse music-business reality into one owner field:

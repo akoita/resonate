@@ -302,7 +302,7 @@ describe("personal data erasure manifest", () => {
       expect(keys.length).toBe(new Set(keys).size);
       for (const entry of DANGLING_PERSON_COLUMNS) {
         expect(entry.reason.trim().length).toBeGreaterThan(30);
-        expect(["rewrite", "deleted-with-row", "governance"]).toContain(entry.action);
+        expect(["rewrite", "scrubbed", "deleted-with-row", "governance"]).toContain(entry.action);
       }
     });
 
@@ -317,10 +317,22 @@ describe("personal data erasure manifest", () => {
           // A rewrite only makes sense on a row that is still there.
           expect(rule.disposition).not.toBe("delete");
         }
+        if (entry.action === "scrubbed") {
+          // The row survives, but this personal identifier is cleared directly.
+          expect(rule.disposition).not.toBe("delete");
+        }
         if (entry.action === "governance") {
           expect(rule.disposition).toBe("governance");
         }
       }
+    });
+
+    it("scrubs a credit review's dangling reviewer identity and note", () => {
+      expect(DANGLING_PERSON_COLUMNS).toContainEqual(expect.objectContaining({
+        model: "ReleaseArtistCredit",
+        column: "identityReviewerUserId",
+        action: "scrubbed",
+      }));
     });
 
     it("keeps the reviewed-clear list to columns the patterns actually flag", () => {

@@ -17,6 +17,12 @@ export interface StemsUploadedEvent extends BaseEvent {
     title?: string;
     primaryArtist?: string;
     featuredArtists?: string[];
+    artistCredits?: Array<{
+      artistId?: string | null;
+      displayName?: string | null;
+      role: string;
+      sortOrder?: number;
+    }>;
     genre?: string;
     moods?: string[];
     label?: string;

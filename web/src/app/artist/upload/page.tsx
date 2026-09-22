@@ -21,6 +21,7 @@ import {
   type AiDisclosureFacet,
   type AiDisclosureLevel,
   type ArtistProfile,
+  type ArtistSearchResult,
   type RightsEvidenceKind,
   type RightsEvidenceStrength,
 } from "../../../lib/api";
@@ -250,6 +251,7 @@ export default function ArtistUploadPage() {
     artworkUrl: "",
     artworkBlob: undefined as Blob | undefined,
   });
+  const [selectedPrimaryArtist, setSelectedPrimaryArtist] = useState<ArtistSearchResult | null>(null);
   const [uploadRightsEvidence, setUploadRightsEvidence] = useState({
     summary: "",
     evidenceKind: "proof_of_control" as RightsEvidenceKind,
@@ -576,6 +578,13 @@ export default function ArtistUploadPage() {
         type: formData.releaseType || "single",
         title: formData.releaseTitle,
         primaryArtist: formData.primaryArtist,
+        artistCredits: [{
+          role: "main",
+          displayName: formData.primaryArtist.trim(),
+          ...(selectedPrimaryArtist?.displayName.trim().toLowerCase() === formData.primaryArtist.trim().toLowerCase()
+            ? { artistId: selectedPrimaryArtist.id }
+            : {}),
+        }],
         genre: formData.genre || undefined,
         moods: formData.moods,
         label: formData.label || undefined,
@@ -712,6 +721,7 @@ export default function ArtistUploadPage() {
 
       // Reset form
       setStems([]);
+      setSelectedPrimaryArtist(null);
       setApplyAllDisclosureLevel("undeclared");
       setFormData({
         releaseType: "single",
@@ -1267,9 +1277,13 @@ export default function ArtistUploadPage() {
                       token={token}
                       name="primaryArtist"
                       ariaLabel="Primary artist"
+                      linksProfile
                       placeholder="Credited artist — e.g. The Game"
                       value={formData.primaryArtist}
-                      onChange={(value) => setFormData(prev => ({ ...prev, primaryArtist: value }))}
+                      onChange={(value, artist) => {
+                        setSelectedPrimaryArtist(artist ?? null);
+                        setFormData(prev => ({ ...prev, primaryArtist: value }));
+                      }}
                     />
                     <span className="studio-field-help">
                       The artist this music is credited to — shown on the release,

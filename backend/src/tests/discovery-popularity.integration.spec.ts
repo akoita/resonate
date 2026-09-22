@@ -24,15 +24,14 @@ const QUIET_GENRE = `${TEST_PREFIX}jazz`; // below-threshold everywhere
 const CLAIMED_GENRE = `${TEST_PREFIX}pop`; // credited name == account displayName
 const USER_ID = `${TEST_PREFIX}owner`;
 const HOT_ARTIST = `${TEST_PREFIX}hot_artist`; // manager account; displayName "Hot Artist"
+const HOT_CREDITED_ID = `${TEST_PREFIX}hot_credited_artist`;
 const QUIET_ARTIST = `${TEST_PREFIX}quiet_artist`;
 const CLAIMED_ARTIST = `${TEST_PREFIX}claimed_artist`; // self-managed; displayName == credit
 const STALE_DUPLICATE_ARTIST = `${TEST_PREFIX}stale_duplicate_artist`;
 const HOT_RELEASE = `${TEST_PREFIX}hot_release`;
 const QUIET_RELEASE = `${TEST_PREFIX}quiet_release`;
 const CLAIMED_RELEASE = `${TEST_PREFIX}claimed_release`;
-// Credited artist for HOT_RELEASE — DIFFERENT from the "Hot Artist" account
-// label (#1492). Prefixed so the ArtistEngagement rows keyed by this name are
-// isolated + cleaned up across parallel suites.
+// Credited artist for HOT_RELEASE — DIFFERENT from the manager account label.
 const HOT_CREDITED = `${TEST_PREFIX}Hot Credited`;
 // Self-managed artist whose account displayName IS the credited name.
 const CLAIMED_NAME = `${TEST_PREFIX}Claimed Star`;
@@ -80,6 +79,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       data: { id: HOT_ARTIST, displayName: "Hot Artist" },
     });
     await prisma.artist.create({
+      data: { id: HOT_CREDITED_ID, displayName: HOT_CREDITED, profileType: "public_artist", claimStatus: "unclaimed" },
+    });
+    await prisma.artist.create({
       data: { id: QUIET_ARTIST, displayName: "Quiet Artist" },
     });
     await prisma.artist.create({
@@ -99,6 +101,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         genre: GENRE,
         // Credited artist differs from the "Hot Artist" account label (#1492).
         primaryArtist: HOT_CREDITED,
+        artistCredits: {
+          create: { artistId: HOT_CREDITED_ID, role: "main", displayName: HOT_CREDITED, identityStatus: "selected" },
+        },
       },
     });
     await prisma.release.create({
@@ -117,8 +122,9 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         title: "Claimed Release",
         status: "ready",
         genre: CLAIMED_GENRE,
-        // No primaryArtist: the credited name falls back to the account label,
-        // which for a claimed/self-managed artist is the artist's real name.
+        artistCredits: {
+          create: { artistId: CLAIMED_ARTIST, role: "main", displayName: CLAIMED_NAME, identityStatus: "selected" },
+        },
       },
     });
     await prisma.track.createMany({
@@ -158,8 +164,7 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
         completionRatio: 1,
       });
     }
-    // TRACK_D: 3 unique listeners — claimed artist above threshold; credited
-    // name falls back to the (self-managed) account displayName.
+    // TRACK_D: 3 unique listeners — claimed artist above threshold.
     for (const listener of ["l1", "l2", "l3"]) {
       await seedEvent("playback.completed", TRACK_D, `${TEST_PREFIX}${listener}`, {
         completionRatio: 1,
@@ -210,8 +215,7 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     const trackRows = await prisma.trackPopularity.findMany({
       where: { trackId: TRACK_C },
     });
-    // ArtistEngagement is now keyed by credited name (#1492); the quiet artist
-    // is below threshold in its own genre, so no rows exist for QUIET_GENRE.
+    // The quiet artist is below threshold in its own genre.
     const artistRows = await prisma.artistEngagement.findMany({
       where: { genre: QUIET_GENRE },
     });
@@ -263,9 +267,11 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
   });
 
   it("getTopArtists ranks the CREDITED artist, not the manager account (#1492)", async () => {
-    // ArtistEngagement is keyed by credited name; HOT_RELEASE credits
-    // HOT_CREDITED, NOT the "Hot Artist" account. No account has that
-    // displayName, so artistId is null and the UI links to the catalog route.
+    // The serving row and the rail use the credited profile's stable ID.
+    const engagement = await prisma.artistEngagement.findUnique({
+      where: { artistId_window_genre: { artistId: HOT_CREDITED_ID, window: "7d", genre: GENRE } },
+    });
+    expect(engagement).not.toBeNull();
     const result = (await service.getTopArtists({
       window: "7d",
       genre: GENRE,
@@ -274,16 +280,14 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
     expect(result.items[0]).toMatchObject({
       rank: 1,
       name: HOT_CREDITED,
-      artistId: null,
+      artistId: HOT_CREDITED_ID,
       // 4 listeners on A ∪ 3 on B (same actor ids) = 4, not 7
       uniqueListeners: 4,
     });
   });
 
   it("getTopArtists attaches only the profile backed by matching release evidence", async () => {
-    // CLAIMED_RELEASE has no primaryArtist, so the credited name falls back to
-    // the self-managed account's displayName — which lets us hydrate a profile
-    // id + image for a real artist-account link.
+    // Same-name profiles do not redirect a selected credit to another ID.
     const result = (await service.getTopArtists({
       window: "7d",
       genre: CLAIMED_GENRE,
@@ -296,6 +300,64 @@ describe("Discovery popularity serving (#1451 WS-4)", () => {
       uniqueListeners: 3,
     });
     expect(result.items[0].artistId).not.toBe(STALE_DUPLICATE_ARTIST);
+  });
+
+  it("keeps ambiguous legacy credits out of artist rankings", async () => {
+    const genre = `${TEST_PREFIX}ambiguous_genre`;
+    const releaseId = `${TEST_PREFIX}ambiguous_release`;
+    const trackId = `${TEST_PREFIX}ambiguous_track`;
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: HOT_ARTIST,
+        title: "Ambiguous Legacy Credit",
+        status: "ready",
+        genre,
+        primaryArtist: HOT_CREDITED,
+        artistCredits: {
+          create: { artistId: HOT_CREDITED_ID, role: "main", displayName: HOT_CREDITED, identityStatus: "ambiguous" },
+        },
+        tracks: { create: { id: trackId, title: "Unresolved Track" } },
+      },
+    });
+    for (const listener of ["l1", "l2", "l3"]) {
+      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}ambiguous_${listener}`);
+    }
+    await service.refresh("24h");
+    expect(await prisma.trackPopularity.findFirst({ where: { trackId, genre } })).not.toBeNull();
+    expect(await prisma.artistEngagement.findFirst({ where: { artistId: HOT_CREDITED_ID, genre } })).toBeNull();
+  });
+
+  it("credits both stable IDs on a jointly billed release", async () => {
+    const genre = `${TEST_PREFIX}joint_genre`;
+    const releaseId = `${TEST_PREFIX}joint_release`;
+    const trackId = `${TEST_PREFIX}joint_track`;
+    const partnerId = `${TEST_PREFIX}joint_partner`;
+    const partnerName = `${TEST_PREFIX}Joint Partner`;
+    await prisma.artist.create({ data: { id: partnerId, displayName: partnerName } });
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: HOT_ARTIST,
+        title: "Joint Release",
+        status: "ready",
+        genre,
+        primaryArtist: `${HOT_CREDITED}, ${partnerName}`,
+        artistCredits: {
+          create: [
+            { artistId: HOT_CREDITED_ID, role: "main", displayName: HOT_CREDITED, sortOrder: 0, identityStatus: "selected" },
+            { artistId: partnerId, role: "main", displayName: partnerName, sortOrder: 1, identityStatus: "selected" },
+          ],
+        },
+        tracks: { create: { id: trackId, title: "Two Artists", artist: `${HOT_CREDITED}, ${partnerName}` } },
+      },
+    });
+    for (const listener of ["l1", "l2", "l3"]) {
+      await seedEvent("playback.completed", trackId, `${TEST_PREFIX}joint_${listener}`);
+    }
+    await service.refresh("24h");
+    const rows = await prisma.artistEngagement.findMany({ where: { window: "24h", genre } });
+    expect(new Set(rows.map((row) => row.artistId))).toEqual(new Set([HOT_CREDITED_ID, partnerId]));
   });
 
   it("re-refresh replaces the window snapshot instead of accumulating", async () => {

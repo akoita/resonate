@@ -61,6 +61,7 @@ export class AnalyticsCatalogMetadataService {
                 artistId: true,
                 displayName: true,
                 role: true,
+                identityStatus: true,
               },
             },
           },
@@ -73,7 +74,9 @@ export class AnalyticsCatalogMetadataService {
         const mainCredits = track.release.artistCredits.filter((credit) =>
           ["main", "primary"].includes(credit.role.toLowerCase()),
         );
-        const creditedArtistIds = mainCredits.map((credit) => credit.artistId);
+        const creditedArtistIds = mainCredits
+          .filter((credit) => credit.identityStatus !== "ambiguous")
+          .map((credit) => credit.artistId);
         const creditedArtistNames = mainCredits.map((credit) => credit.displayName).filter(Boolean);
         const creditedArtistName = creditedArtistNames.join(", ")
           || track.release.primaryArtist
@@ -92,7 +95,9 @@ export class AnalyticsCatalogMetadataService {
             artistName: creditedArtistName,
             managerArtistId: track.release.artistId,
             managerArtistName,
-            creditedArtistId: creditedArtistIds[0] ?? null,
+            creditedArtistId: mainCredits[0]?.identityStatus === "ambiguous"
+              ? null
+              : mainCredits[0]?.artistId ?? null,
             creditedArtistName,
             creditedArtistIds,
             creditedArtistNames,

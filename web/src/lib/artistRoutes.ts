@@ -126,36 +126,31 @@ export function releaseArtistProfileHref(input: {
  * credit, or the home hero "By …" — is free text that can differ from the
  * release's OWNER profile: an uploader/manager may publish a release credited to
  * another artist, so `release.artist.id` is the uploader, not the artist. We
- * link only to an id we can trust for THIS name:
- *   1. the release's own artist profile, when the name matches its displayName
- *      (the release really is by the owner artist); else
- *   2. a matching `artistCredits[]` row (covers the primary + featured artists);
- *      else
- *   3. the public catalog-credit route — never fabricate a profile id for
- *      free-text or unclaimed credits.
+ * Link only when the release has one resolved credit ID for this name.
+ * An uploader's matching display name and an ambiguous credit cannot prove
+ * public artist identity; those use the catalog-credit route.
  */
 export function artistCreditHref(
   displayedName: string | null | undefined,
   release: {
     artist?: { id?: string | null; displayName?: string | null } | null;
     artistId?: string | null;
-    artistCredits?: Array<{ artistId: string; displayName: string }> | null;
+    artistCredits?: Array<{ artistId: string; displayName: string; identityStatus?: string }> | null;
   },
 ): string | null {
   const name = displayedName?.trim().toLowerCase();
   if (!name) return null;
 
-  const ownerName = release.artist?.displayName?.trim().toLowerCase();
-  const ownerHref = releaseArtistProfileHref(release);
-  if (ownerHref && ownerName && name === ownerName) {
-    return ownerHref;
-  }
-
-  const credit = release.artistCredits?.find(
+  const matchingCredits = release.artistCredits?.filter(
     (c) => c.displayName?.trim().toLowerCase() === name,
-  );
-  if (credit?.artistId) {
-    return artistProfileHref(credit.artistId);
+  ) ?? [];
+  const ids = new Set(matchingCredits
+    .filter((credit) => credit.identityStatus !== "ambiguous")
+    .map((credit) => credit.artistId)
+    .filter(Boolean));
+  if (matchingCredits.length > 0 && ids.size === 1
+    && matchingCredits.every((credit) => credit.identityStatus !== "ambiguous")) {
+    return artistProfileHref([...ids][0]);
   }
 
   return catalogArtistHref(displayedName!.trim());

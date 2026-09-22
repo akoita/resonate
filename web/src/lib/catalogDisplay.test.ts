@@ -4,6 +4,7 @@ import {
   filterPublicPlaylists,
   getArtistName,
   getCatalogSortTime,
+  getReleaseCreditProfileId,
   summarizeCreditedArtists,
 } from "./catalogDisplay";
 
@@ -88,6 +89,32 @@ describe("catalog display helpers", () => {
         latestAt: new Date("2026-06-05T14:11:17.092Z").getTime(),
       }),
     ]);
+  });
+
+  it("keeps ambiguous and missing credits separate from manager identity", () => {
+    const release = {
+      id: "unresolved",
+      artistId: "manager",
+      title: "Unresolved",
+      status: "ready",
+      type: "single",
+      primaryArtist: "Same Name",
+      createdAt: "2026-09-23T00:00:00.000Z",
+      explicit: false,
+      artist: { id: "manager", displayName: "Same Name" },
+      artistCredits: [{
+        id: "credit",
+        releaseId: "unresolved",
+        artistId: "candidate",
+        role: "main",
+        displayName: "Same Name",
+        sortOrder: 0,
+        identityStatus: "ambiguous",
+      }],
+    } satisfies Release;
+    expect(getReleaseCreditProfileId(release)).toBeNull();
+    expect(summarizeCreditedArtists([release])[0].artistId).toBeNull();
+    expect(getReleaseCreditProfileId({ ...release, artistCredits: [] })).toBeNull();
   });
 });
 

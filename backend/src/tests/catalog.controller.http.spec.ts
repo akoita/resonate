@@ -35,6 +35,7 @@ const mockCatalogService = {
   updateReleaseArtwork: jest.fn().mockResolvedValue({ id: 'rel-1' }),
   listByArtist: jest.fn().mockResolvedValue([]),
   search: jest.fn().mockResolvedValue([]),
+  reviewCreditIdentity: jest.fn().mockResolvedValue({ id: 'credit-1', artistId: 'artist-2', identityStatus: 'reviewed' }),
 };
 
 const mockDiscoveryPopularityService = {
@@ -147,6 +148,18 @@ describe('CatalogController (e2e)', () => {
     await request(app.getHttpServer())
       .get('/catalog/me')
       .expect(401);
+  });
+
+  it('PATCH /catalog/credits/:id/identity requires operator role and passes exact target', async () => {
+    const body = { artistId: 'artist-2', note: 'Reviewed matching source evidence.' };
+    await request(app.getHttpServer()).patch('/catalog/credits/credit-1/identity').send(body).expect(401);
+    await request(app.getHttpServer()).patch('/catalog/credits/credit-1/identity')
+      .set('Authorization', `Bearer ${token}`).send(body).expect(403);
+    await request(app.getHttpServer()).patch('/catalog/credits/credit-1/identity')
+      .set('Authorization', `Bearer ${authToken('operator-1', 'operator')}`).send(body).expect(200);
+    expect(mockCatalogService.reviewCreditIdentity).toHaveBeenCalledWith(
+      'credit-1', 'operator-1', 'operator', 'artist-2', body.note,
+    );
   });
 
   it('GET /catalog/me → 200 with JWT', async () => {

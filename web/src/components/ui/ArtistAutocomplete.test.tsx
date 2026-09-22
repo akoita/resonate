@@ -6,7 +6,70 @@ vi.mock("../../lib/api", () => ({
   searchArtists: vi.fn(async () => []),
 }));
 
-import { ArtistAutocomplete, ArtistTagInput } from "./ArtistAutocomplete";
+import { ArtistAutocomplete, ArtistTagInput, buildSuggestState } from "./ArtistAutocomplete";
+import type { ArtistSearchResult } from "../../lib/api";
+
+const artist = (id: string, displayName: string): ArtistSearchResult => ({
+  id,
+  displayName,
+  profileType: "public_artist",
+  claimStatus: "unclaimed",
+});
+
+describe("buildSuggestState", () => {
+  it("defaults to the single exact match and offers no create row", () => {
+    const state = buildSuggestState({
+      suggestions: [artist("a1", "Bouba Band"), artist("a2", "Bouba")],
+      query: " bouba ",
+      allowCreateRow: true,
+    });
+    expect(state.exactMatches.map((a) => a.id)).toEqual(["a2"]);
+    expect(state.showCreate).toBe(false);
+    expect(state.options).toHaveLength(2);
+    expect(state.defaultIndex).toBe(1);
+    expect(state.duplicateNames.size).toBe(0);
+  });
+
+  it("forces an explicit choice when several artists share the exact name", () => {
+    const state = buildSuggestState({
+      suggestions: [artist("a1", "Bouba"), artist("a2", "bouba "), artist("a3", "Boubacar")],
+      query: "Bouba",
+      allowCreateRow: true,
+    });
+    expect(state.exactMatches.map((a) => a.id)).toEqual(["a1", "a2"]);
+    expect(state.defaultIndex).toBe(-1);
+    expect(state.showCreate).toBe(true);
+    expect(state.options[state.options.length - 1]).toEqual({ kind: "create", name: "Bouba" });
+    expect([...state.duplicateNames]).toEqual(["bouba"]);
+  });
+
+  it("defaults to the create row when nothing matches exactly", () => {
+    const state = buildSuggestState({
+      suggestions: [artist("a1", "Boubacar")],
+      query: "Bouba",
+      allowCreateRow: true,
+    });
+    expect(state.exactMatches).toHaveLength(0);
+    expect(state.showCreate).toBe(true);
+    expect(state.defaultIndex).toBe(1);
+    expect(state.options[1]).toEqual({ kind: "create", name: "Bouba" });
+  });
+
+  it("never offers a create row when allowCreateRow is false", () => {
+    const none = buildSuggestState({
+      suggestions: [artist("a1", "Boubacar")],
+      query: "Bouba",
+      allowCreateRow: false,
+    });
+    expect(none.showCreate).toBe(false);
+    expect(none.options).toHaveLength(1);
+    expect(none.defaultIndex).toBe(0);
+
+    const empty = buildSuggestState({ suggestions: [], query: "Bouba", allowCreateRow: false });
+    expect(empty.options).toHaveLength(0);
+    expect(empty.defaultIndex).toBe(-1);
+  });
+});
 
 describe("ArtistAutocomplete", () => {
   it("renders the current value and reuse/create guidance", () => {
@@ -23,6 +86,14 @@ describe("ArtistAutocomplete", () => {
     );
     expect(html).toContain('placeholder="Aya Lune"');
     expect(html).not.toContain("artist-suggest__hint");
+  });
+
+  it("asks for an exact profile pick when linksProfile is set", () => {
+    const html = renderToStaticMarkup(
+      <ArtistAutocomplete token="t" value="Bouba" onChange={() => {}} linksProfile />,
+    );
+    expect(html).toContain("Pick a profile from the list to credit it exactly");
+    expect(html).not.toContain("keep typing to create a new one");
   });
 });
 

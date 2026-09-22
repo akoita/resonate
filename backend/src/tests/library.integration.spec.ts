@@ -139,6 +139,25 @@ describe('LibraryService (integration)', () => {
     expect(updatedPlaylist?.trackIds).toEqual([localTrackId]);
   });
 
+  it('keeps an ambiguous catalog credit name without asserting a profile ID', async () => {
+    await prisma.releaseArtistCredit.updateMany({
+      where: { releaseId, artistId: creditedArtistId },
+      data: { identityStatus: 'ambiguous' },
+    });
+    try {
+      const tracks = await service.listTracks(userId);
+      expect(tracks.find((track) => track.catalogTrackId === catalogTrackId)).toMatchObject({
+        creditedArtistId: null,
+        creditedArtistName: 'Credited Library Artist',
+      });
+    } finally {
+      await prisma.releaseArtistCredit.updateMany({
+        where: { releaseId, artistId: creditedArtistId },
+        data: { identityStatus: 'inferred' },
+      });
+    }
+  });
+
   it('keeps per-user rows when two users save the same catalog track (no ownership hijack)', async () => {
     // The frontend saves catalog tracks with `id` = the SHARED catalog track id.
     // A naive upsert-by-id would let the second saver overwrite the first user's

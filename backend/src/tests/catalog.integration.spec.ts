@@ -71,6 +71,9 @@ describe('CatalogService (integration)', () => {
     await prisma.release.deleteMany({ where: { artistId: { startsWith: TEST_PREFIX } } });
     await prisma.showCampaign.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
     await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
+    await prisma.artist.deleteMany({
+      where: { displayName: { contains: TEST_PREFIX, mode: 'insensitive' } },
+    });
     await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   });
 
@@ -193,11 +196,20 @@ describe('CatalogService (integration)', () => {
   });
 
   it('separates public artist discography from managed uploader catalog', async () => {
+    const creditedArtist = await prisma.artist.create({
+      data: {
+        id: `${TEST_PREFIX}credited_official`,
+        displayName: 'TC Test Artist',
+        profileType: 'public_artist',
+        claimStatus: 'unclaimed',
+      },
+    });
     const officialRelease = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
       title: 'Official Credit Release',
       type: 'single',
       primaryArtist: 'TC Test Artist',
+      artistCredits: [{ role: 'main', artistId: creditedArtist.id, displayName: 'TC Test Artist' }],
     });
     const managedOnlyRelease = await catalog.createRelease({
       userId: `${TEST_PREFIX}user`,
@@ -214,8 +226,10 @@ describe('CatalogService (integration)', () => {
     });
 
     const publicArtistReleases = await catalog.listByArtist(`${TEST_PREFIX}artist`);
-    expect(publicArtistReleases.some((release) => release.id === officialRelease.id)).toBe(true);
+    expect(publicArtistReleases.some((release) => release.id === officialRelease.id)).toBe(false);
     expect(publicArtistReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(false);
+
+    expect((await catalog.listByArtist(creditedArtist.id)).some((release) => release.id === officialRelease.id)).toBe(true);
 
     const externalArtistReleases = await catalog.listByArtist(externalProfile.id);
     expect(externalArtistReleases.some((release) => release.id === managedOnlyRelease.id)).toBe(true);
@@ -249,6 +263,243 @@ describe('CatalogService (integration)', () => {
       { role: 'featured', displayName: 'Guest Artist', sortOrder: 2 },
       { role: 'producer', displayName: 'Studio Producer', sortOrder: 3 },
     ]);
+  });
+
+  it('records release credit identity provenance without changing artist ownership', async () => {
+    const uniqueName = `${TEST_PREFIX}Unique Credit Artist`;
+    const duplicateName = `${TEST_PREFIX}Twin Credit Artist`;
+    const createdName = `${TEST_PREFIX}New Credit Artist`;
+    const uniqueArtistId = `${TEST_PREFIX}identity_unique_artist`;
+    const duplicateArtistIds = [
+      `${TEST_PREFIX}identity_duplicate_a`,
+      `${TEST_PREFIX}identity_duplicate_b`,
+    ];
+    const selectedArtistId = `${TEST_PREFIX}identity_selected_artist`;
+
+    await prisma.artist.create({
+      data: {
+        id: uniqueArtistId,
+        displayName: uniqueName,
+        profileType: 'public_artist',
+        claimStatus: 'unclaimed',
+      },
+    });
+    await prisma.artist.createMany({
+      data: duplicateArtistIds.map((id, index) => ({
+        id,
+        displayName: index === 0 ? duplicateName : duplicateName.toLowerCase(),
+        profileType: 'public_artist',
+        claimStatus: 'unclaimed',
+      })),
+    });
+    const selectedArtist = await prisma.artist.create({
+      data: {
+        id: selectedArtistId,
+        displayName: `${TEST_PREFIX}Selected Artist`,
+        profileType: 'public_artist',
+        claimStatus: 'unclaimed',
+      },
+    });
+    const managerBefore = await prisma.artist.findUniqueOrThrow({
+      where: { id: `${TEST_PREFIX}artist` },
+      select: { id: true, userId: true, claimStatus: true },
+    });
+
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Credit Identity Provenance',
+      artistCredits: [
+        { role: 'main', displayName: uniqueName.toUpperCase(), sortOrder: 0 },
+        { role: 'main', displayName: duplicateName.toUpperCase(), sortOrder: 1 },
+        { role: 'main', artistId: selectedArtist.id, displayName: 'Selected Alias', sortOrder: 2 },
+        { role: 'featured', displayName: createdName, sortOrder: 3 },
+      ],
+    });
+    await prisma.release.update({ where: { id: created.id }, data: { status: 'ready' } });
+
+    const release = await catalog.getRelease(created.id, { includeRestricted: true });
+    expect(release).not.toBeNull();
+    const credits = release!.artistCredits as Array<{
+      id: string;
+      artistId: string;
+      displayName: string;
+      role: string;
+      sortOrder: number;
+      identityStatus: string;
+    }>;
+    expect(credits.map(({ identityStatus, sortOrder }) => ({ identityStatus, sortOrder }))).toEqual([
+      { identityStatus: 'inferred', sortOrder: 0 },
+      { identityStatus: 'ambiguous', sortOrder: 1 },
+      { identityStatus: 'selected', sortOrder: 2 },
+      { identityStatus: 'created', sortOrder: 3 },
+    ]);
+
+    const ambiguousCredit = credits.find(({ identityStatus }) => identityStatus === 'ambiguous')!;
+    const ambiguousArtist = await prisma.artist.findUniqueOrThrow({
+      where: { id: ambiguousCredit.artistId },
+      select: { id: true, displayName: true, profileType: true, claimStatus: true, userId: true },
+    });
+    expect(duplicateArtistIds).not.toContain(ambiguousArtist.id);
+    expect(ambiguousArtist).toMatchObject({
+      displayName: duplicateName.toUpperCase(),
+      profileType: 'public_artist',
+      claimStatus: 'unclaimed',
+      userId: null,
+    });
+
+    const uniqueCredit = credits.find(({ sortOrder }) => sortOrder === 0)!;
+    expect(uniqueCredit.artistId).toBe(uniqueArtistId);
+    const explicitCredit = credits.find(({ sortOrder }) => sortOrder === 2)!;
+    expect(explicitCredit.artistId).toBe(selectedArtistId);
+    expect(await prisma.artist.findUniqueOrThrow({
+      where: { id: selectedArtistId },
+      select: { userId: true, claimStatus: true },
+    })).toEqual({ userId: null, claimStatus: 'unclaimed' });
+
+    expect((await catalog.listByArtist(ambiguousArtist.id)).some(({ id }) => id === created.id)).toBe(false);
+    expect((await catalog.listByArtist(`${TEST_PREFIX}artist`)).some(({ id }) => id === created.id)).toBe(false);
+    expect((await catalog.listByArtist(uniqueArtistId)).some(({ id }) => id === created.id)).toBe(true);
+    expect((await catalog.listByArtist(selectedArtistId)).some(({ id }) => id === created.id)).toBe(true);
+
+    await expect(catalog.reviewCreditIdentity(
+      ambiguousCredit.id, `${TEST_PREFIX}user`, 'listener', selectedArtistId,
+      'Reviewed the source credit evidence.',
+    )).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(catalog.reviewCreditIdentity(
+      ambiguousCredit.id, `${TEST_PREFIX}user`, 'operator', `${TEST_PREFIX}missing`,
+      'Reviewed the source credit evidence.',
+    )).rejects.toThrow('Artist profile was not found');
+    await expect(catalog.reviewCreditIdentity(
+      ambiguousCredit.id, `${TEST_PREFIX}user`, 'operator', managerBefore.id,
+      'Reviewed the source credit evidence.',
+    )).rejects.toThrow('Credit identity must be a public artist profile');
+    const reviewedCredit = await catalog.reviewCreditIdentity(
+      ambiguousCredit.id, `${TEST_PREFIX}user`, 'operator', selectedArtistId,
+      'Reviewed the source credit evidence.',
+    );
+    expect(reviewedCredit).toMatchObject({
+      id: ambiguousCredit.id,
+      artistId: selectedArtistId,
+      identityStatus: 'reviewed',
+    });
+    expect(await prisma.releaseArtistCredit.findUniqueOrThrow({
+      where: { id: ambiguousCredit.id },
+      select: { identityReviewerUserId: true, identityReviewNote: true, identityReviewedAt: true },
+    })).toMatchObject({
+      identityReviewerUserId: `${TEST_PREFIX}user`,
+      identityReviewNote: 'Reviewed the source credit evidence.',
+      identityReviewedAt: expect.any(Date),
+    });
+    expect((await catalog.listByArtist(selectedArtistId)).some(({ id }) => id === created.id)).toBe(true);
+    await expect(catalog.reviewCreditIdentity(
+      ambiguousCredit.id, `${TEST_PREFIX}user`, 'operator', uniqueArtistId,
+      'Reviewed the source credit evidence.',
+    )).rejects.toThrow('Only ambiguous credits can be reviewed');
+
+    const managerFallbackRelease = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Manager Fallback Credit Identity',
+    });
+    const managerCredit = await prisma.releaseArtistCredit.findFirstOrThrow({
+      where: { releaseId: managerFallbackRelease.id, role: 'main' },
+    });
+    expect(managerCredit).toMatchObject({ identityStatus: 'ambiguous' });
+    expect(managerCredit.artistId).not.toBe(managerBefore.id);
+    expect((await prisma.artist.findUniqueOrThrow({ where: { id: managerCredit.artistId } })).profileType).toBe('public_artist');
+    expect(await prisma.release.findUniqueOrThrow({
+      where: { id: created.id },
+      select: { artistId: true },
+    })).toEqual({ artistId: managerBefore.id });
+    expect(await prisma.artist.findUniqueOrThrow({
+      where: { id: managerBefore.id },
+      select: { id: true, userId: true, claimStatus: true },
+    })).toEqual(managerBefore);
+
+    await expect(catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Unknown Explicit Credit Artist',
+      artistCredits: [{ role: 'main', artistId: `${TEST_PREFIX}missing_credit_artist` }],
+    })).rejects.toThrow('Release artist credit must reference an existing artist profile');
+    await expect(catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Manager Explicit Credit Artist',
+      artistCredits: [{ role: 'main', artistId: managerBefore.id }],
+    })).rejects.toThrow('Release credits must select a public artist profile');
+
+    const uploadReleaseId = `${TEST_PREFIX}identity_upload_release`;
+    eventBus.publish({
+      eventName: 'stems.uploaded',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: uploadReleaseId,
+      artistId: managerBefore.id,
+      checksum: 'identity-upload-checksum',
+      metadata: {
+        title: 'Upload Exact Credit Identity',
+        primaryArtist: 'Upload Fallback Name',
+        artistCredits: [{
+          artistId: selectedArtistId,
+          displayName: 'Upload Selected Alias',
+          role: 'main',
+          sortOrder: 0,
+        }],
+        tracks: [],
+      },
+    });
+    let uploadedCredit: { artistId: string; identityStatus: string } | null = null;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      uploadedCredit = await prisma.releaseArtistCredit.findFirst({
+        where: { releaseId: uploadReleaseId },
+        select: { artistId: true, identityStatus: true },
+      });
+      if (uploadedCredit) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(uploadedCredit).toEqual({ artistId: selectedArtistId, identityStatus: 'selected' });
+    const uploadCreditsBeforeRetry = await prisma.releaseArtistCredit.findMany({
+      where: { releaseId: uploadReleaseId },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    eventBus.publish({
+      eventName: 'stems.uploaded',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: uploadReleaseId,
+      artistId: managerBefore.id,
+      checksum: 'retry',
+      metadata: {
+        title: 'Retry Upload Credit Identity',
+        primaryArtist: 'Lost Exact Selection',
+        tracks: [],
+      },
+    });
+    let retryTitleUpdated = false;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const retryRelease = await prisma.release.findUnique({
+        where: { id: uploadReleaseId },
+        select: { title: true },
+      });
+      if (retryRelease?.title === 'Retry Upload Credit Identity') {
+        retryTitleUpdated = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    expect(retryTitleUpdated).toBe(true);
+    const creditsAfterRetry = await prisma.releaseArtistCredit.findMany({
+      where: { releaseId: uploadReleaseId },
+      orderBy: { sortOrder: 'asc' },
+    });
+    expect(creditsAfterRetry.map(({ artistId, identityStatus, sortOrder }) => ({
+      artistId,
+      identityStatus,
+      sortOrder,
+    }))).toEqual(uploadCreditsBeforeRetry.map(({ artistId, identityStatus, sortOrder }) => ({
+      artistId,
+      identityStatus,
+      sortOrder,
+    })));
   });
 
   it('consolidates an AI-generated release with its legacy Demucs duplicate', async () => {

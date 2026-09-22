@@ -17,18 +17,12 @@ themselves and collaborators on a release and its individual tracks.
 
 ## What Value It Provides
 
-Artist credit fields used to be plain free-text inputs. Catalog credit resolution
-links a credit name to an existing artist profile only by an **exact
-(case-insensitive) `displayName` match** — otherwise it silently mints a new
-unclaimed `public_artist` profile (see `findOrCreatePublicArtistProfile` in
-`backend/src/modules/catalog/catalog.service.ts`). A typo, casing difference, or
-trailing space (`"Bouba"` vs `"bouba"` vs `"Bouba "`) therefore created a
-*different* artist by mistake and fragmented a single artist's catalog across
-duplicate profiles.
-
-The credit picker turns these fields into a typeahead that surfaces existing
-artists as you type, so the canonical spelling is reused. Creating a genuinely
-new artist is still possible but becomes an explicit, deliberate action.
+The credit picker surfaces existing artist IDs while a manager enters credits.
+Selecting a primary artist carries that exact ID into the release upload. A
+typed name without an ID is linked only when there is one case-insensitive
+public artist profile match and no other profile with that name. A manager
+match or several same-name profiles produces an unresolved credit for review.
+This prevents the picker from silently choosing one artist by name.
 
 ## How To Use It
 
@@ -39,7 +33,8 @@ new artist is still possible but becomes an explicit, deliberate action.
   `Unclaimed` badge where relevant. Pick one to reuse it — an inline
   `✓ Linked to existing artist` confirmation appears. To create a new artist,
   keep typing the full name and choose the explicit **“Add new artist …”** row
-  (or press Enter when no exact match exists).
+  (or press Enter when no unique exact match exists). Same-name matches show
+  separate rows with profile type and an ID fragment.
 - **Featured artists** (Track Details): a chip field. Search and pick existing
   artists, or type a new name and press Enter / comma to add it. Each name
   becomes a removable chip. Backspace on the empty field removes the last chip.
@@ -53,7 +48,7 @@ degrade to ordinary text inputs.
 
 - **Search endpoint:** `GET /artists/search?q=<query>&limit=<n>` (JWT). Returns
   up to `limit` (default 8, max 25) existing profiles whose `displayName`
-  contains `q` (case-insensitive), deduped by normalized name and ranked
+  contains `q` (case-insensitive) and are public artist profiles, kept distinct by ID and ranked
   exact > prefix > claimed > has-image. Each item is
   `{ id, displayName, imageUrl, profileType, claimStatus }` — public-facing
   fields only; no user, payout, or contact data.
@@ -74,14 +69,10 @@ degrade to ordinary text inputs.
 
 ## Notes / Deferred
 
-- The publish payload is unchanged: credits are still submitted as display-name
-  strings, and the backend resolves them to existing profiles by exact name. The
-  picker's job is to make sure that name is the canonical existing one.
-- **Deferred:** passing the selected hard `artistId` through `artistCredits` for
-  100% precise linking (independent of name matching). This would also require
-  schema support for per-track artist ids, which today only exist at release
-  level. Tracked as follow-up; not needed to fix the duplication this feature
-  targets.
+- The selected **primary** artist ID is submitted in `artistCredits` during
+  upload. Selecting a Track artist or Featured artist still records a text
+  credit; per-track artist IDs need a separate catalog model change.
+- Credit selection does not grant profile ownership, rights, or payouts.
 
 ## Related
 
