@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => {
     const omissions = new Map<string, unknown>();
     const deleteOne = vi.fn();
     const deleteMany = vi.fn();
-    return { tracks, omissions, deleteOne, deleteMany };
+    const listRemote = vi.fn();
+    return { tracks, omissions, deleteOne, deleteMany, listRemote };
 });
 
 vi.mock("localforage", () => ({
@@ -20,10 +21,15 @@ vi.mock("localforage", () => ({
 }));
 
 vi.mock("./api", () => ({
+    ApiRequestError: class ApiRequestError extends Error {
+        constructor(message: string, readonly status: number) { super(message); }
+    },
     deleteLibraryTrackAPI: mocks.deleteOne,
     deleteLibraryTracksAPI: mocks.deleteMany,
+    listLibraryTracksAPI: mocks.listRemote,
 }));
 
+import { ApiRequestError } from "./api";
 import { deleteTrack, deleteTracks, listLocalTrackOmissions } from "./localLibrary";
 
 describe("library removal", () => {
@@ -32,6 +38,7 @@ describe("library removal", () => {
         mocks.omissions.clear();
         mocks.deleteOne.mockReset();
         mocks.deleteMany.mockReset();
+        mocks.listRemote.mockReset();
         vi.stubGlobal("window", {});
         vi.stubGlobal("localStorage", { getItem: () => "session-token" });
     });
@@ -66,5 +73,25 @@ describe("library removal", () => {
 
         expect(await listLocalTrackOmissions()).toEqual(["Music/song.mp3:123"]);
         expect(mocks.tracks.has("local-1")).toBe(false);
+    });
+
+    it("removes a local file when the server never had its metadata", async () => {
+        mocks.tracks.set("local-unsynced", { id: "local-unsynced", source: "local", sourcePath: "Music/offline.mp3", fileSize: 321 });
+        mocks.deleteOne.mockRejectedValue(new ApiRequestError("Not found", 404, null));
+
+        await deleteTrack("local-unsynced");
+
+        expect(mocks.tracks.has("local-unsynced")).toBe(false);
+        expect(await listLocalTrackOmissions()).toEqual(["Music/offline.mp3:321"]);
+    });
+
+    it("does not report a partial server batch as complete while a requested row remains", async () => {
+        mocks.tracks.set("track-1", { id: "track-1" });
+        mocks.tracks.set("track-2", { id: "track-2" });
+        mocks.deleteMany.mockResolvedValue({ count: 1 });
+        mocks.listRemote.mockResolvedValue([{ id: "track-2" }]);
+
+        await expect(deleteTracks(["track-1", "track-2"])).rejects.toThrow("Some library tracks could not be removed");
+        expect(mocks.tracks.has("track-2")).toBe(true);
     });
 });

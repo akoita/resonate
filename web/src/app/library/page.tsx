@@ -469,7 +469,7 @@ export default function LibraryPage() {
             });
         } catch {
             setRemovalRequest(null);
-            addToast({ type: "error", title: "Could not remove", message: "Your library was not changed. Please try again." });
+            addToast({ type: "error", title: "Could not remove", message: "Reload to check your library, then try again." });
         }
     };
 

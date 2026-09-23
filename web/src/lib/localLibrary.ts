@@ -16,6 +16,7 @@ import {
     getLibraryTrackAPI,
     deleteLibraryTrackAPI,
     deleteLibraryTracksAPI,
+    ApiRequestError,
     clearLocalLibraryAPI,
     APILibraryTrack,
     getStemPreviewUrl,
@@ -545,7 +546,13 @@ export async function deleteTrack(id: string, knownTrack?: LocalTrack): Promise<
     const track = knownTrack ?? await getTrack(id);
     const token = getToken();
     if (token) {
-        await deleteLibraryTrackAPI(id, token);
+        try {
+            await deleteLibraryTrackAPI(id, token);
+        } catch (error) {
+            // A local file may never have synced, or a stale server row may
+            // already be gone. In either case there is nothing left to delete.
+            if (!(error instanceof ApiRequestError && error.status === 404)) throw error;
+        }
     }
     const omissionKey = track ? localSourceKey(track) : null;
     if (omissionKey) await omissionStore.setItem(omissionKey, true);
@@ -572,7 +579,16 @@ export async function deleteTracks(ids: string[], knownTracks: LocalTrack[] = []
     const cached = await Promise.all(uniqueIds.map(id => knownById.get(id) ?? trackStore.getItem<LocalTrack>(id)));
     const token = getToken();
     if (token) {
-        await deleteLibraryTracksAPI(uniqueIds, token);
+        const result = await deleteLibraryTracksAPI(uniqueIds, token);
+        if (result.count !== uniqueIds.length) {
+            // A partial count can mean some rows were already absent. Verify
+            // that none remain before treating the batch as complete.
+            const remaining = await listLibraryTracksAPI(token);
+            const remainingIds = new Set(remaining.map(track => track.id));
+            if (uniqueIds.some(id => remainingIds.has(id))) {
+                throw new Error("Some library tracks could not be removed");
+            }
+        }
     }
     await Promise.all(cached.map(async track => {
         const key = track ? localSourceKey(track) : null;
