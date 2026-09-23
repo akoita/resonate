@@ -61,8 +61,11 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   - save all release tracks to the listener library as remote catalog tracks
 - Authenticated artists can open `/artist/catalog` for a complete managed
   inventory with release and track tabs, search, status, rights-route, and
-  resource counts. The home page keeps only compact previews and links to this
-  full inventory when the artist owns more catalog objects than fit there.
+  resource counts. During upload processing, release and track statuses refresh
+  through live events with a bounded fallback; the view also refreshes when
+  the artist returns to the tab. The home page keeps only compact previews and
+  links to this full inventory when the artist owns more catalog objects than
+  fit there.
 - Full release details, track-level actions, mixer previews, and owner tools
   remain available from `/release/:id`.
 - Release artwork has a persisted, server-owned revision. Canonical clients use

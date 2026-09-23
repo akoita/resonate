@@ -47,9 +47,9 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Latest: [Vision Sprint 24 — Stable artist identity, trustworthy test
-gates](2026-09-22-vision-sprint-24-artist-identity-test-gates.md) closed 5/5.
-The next sprint is not yet selected.
+Current: [Vision Sprint 25 — Artist management with reliable catalog
+status](2026-09-23-vision-sprint-25-artist-management.md), in progress.
+Vision Sprint 24 closed 5/5.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -78,3 +78,4 @@ The next sprint is not yet selected.
 | [2026-09-11](2026-09-11-vision-sprint-22-dependable-releases.md) | Vision Sprint 22 — dependable releases and complete artist analytics | ✅ Closed 2026-09-11 — 6/6; release-plane validation and nightly coverage, build identity, server-side artist attribution, duplicate rows repaired, and a dead wallet action removed |
 | [2026-09-16](2026-09-16-vision-sprint-23-data-rights.md) | Vision Sprint 23 — data rights the app can actually honor | ✅ Closed 2026-09-20 — 8/8; staging legal surface, consent, export and retryable warehouse erasure, durable generation refunds, and scheduled-automation reporting delivered |
 | [2026-09-22](2026-09-22-vision-sprint-24-artist-identity-test-gates.md) | Vision Sprint 24 — stable artist identity, trustworthy test gates | ✅ Closed 2026-09-23 — 5/5; stable credited-artist IDs with ambiguity review and profile claims, complete mutation scoring, related-test CI selection, and an artwork-first public catalog |
+| [2026-09-23](2026-09-23-vision-sprint-25-artist-management.md) | Vision Sprint 25 — artist management with reliable catalog status | In progress — #1836 catalog status refresh, then #1762 scoped artist management and transfer |

@@ -1,13 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { getArtistMe, listMyReleases, type ArtistProfile, type Release, type Track } from "../../../lib/api";
+import { useWebSockets, type ReleaseStatusUpdate, type TrackStatusUpdate } from "../../../hooks/useWebSockets";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
 import { useToast } from "../../../components/ui/Toast";
+import {
+  createCatalogRequestGate,
+  hasActiveCatalogProcessing,
+  isTerminalReleaseStatus,
+  patchReleaseStatus,
+  patchTrackStatus,
+  startCatalogPolling,
+} from "./catalogRealtime";
 import {
   ReleaseAvailabilityActions,
   ReleaseWithdrawnMarker,
@@ -44,6 +53,9 @@ export default function ArtistCatalogPage() {
   // request is in flight (#1793).
   const [pendingWithdrawal, setPendingWithdrawal] = useState<Release | null>(null);
   const [busyReleaseId, setBusyReleaseId] = useState<string | null>(null);
+  const [requestGate] = useState(createCatalogRequestGate);
+  const loadedTokenRef = useRef<string | null>(null);
+  const releasesRef = useRef<Release[]>([]);
 
   const availability = useMemo(
     () =>
@@ -52,7 +64,8 @@ export default function ArtistCatalogPage() {
         addToast,
         setPending: setPendingWithdrawal,
         setBusyReleaseId,
-        onUpdated: (updated) =>
+        onUpdated: (updated) => {
+          requestGate.invalidate();
           setState((prev) =>
             prev.status === "ready"
               ? {
@@ -62,31 +75,94 @@ export default function ArtistCatalogPage() {
                   ),
                 }
               : prev,
-          ),
+          );
+        },
       }),
-    [token, addToast],
+    [token, addToast, requestGate],
   );
+
+  const refreshCatalog = useCallback(async () => {
+    if (!token || loadedTokenRef.current !== token) return;
+
+    const requestId = requestGate.begin();
+    try {
+      const releases = sortReleases(await listMyReleases(token));
+      if (!requestGate.isCurrent(requestId) || loadedTokenRef.current !== token) return;
+
+      releasesRef.current = releases;
+      setState((previous) =>
+        previous.status === "ready" ? { ...previous, releases } : previous,
+      );
+    } catch {
+      // Background refreshes are best effort. Keep the current catalog visible
+      // and let the next poll, socket event, or focus refresh try again.
+    }
+  }, [requestGate, token]);
+
+  const handleReleaseStatusUpdate = useCallback((update: ReleaseStatusUpdate) => {
+    const current = releasesRef.current;
+    if (!current.some((release) => release.id === update.releaseId)) return;
+
+    const releases = patchReleaseStatus(current, update);
+    if (releases === current) return;
+
+    requestGate.invalidate();
+    releasesRef.current = releases;
+    setState((previous) =>
+      previous.status === "ready"
+        ? { ...previous, releases: patchReleaseStatus(previous.releases, update) }
+        : previous,
+    );
+
+    if (isTerminalReleaseStatus(update.status)) void refreshCatalog();
+  }, [refreshCatalog, requestGate]);
+
+  const handleTrackStatusUpdate = useCallback((update: TrackStatusUpdate) => {
+    const current = releasesRef.current;
+    const releases = patchTrackStatus(current, update);
+    if (releases === current) return;
+
+    requestGate.invalidate();
+    releasesRef.current = releases;
+    setState((previous) =>
+      previous.status === "ready"
+        ? { ...previous, releases: patchTrackStatus(previous.releases, update) }
+        : previous,
+    );
+  }, [requestGate]);
+
+  useWebSockets(handleReleaseStatusUpdate, undefined, handleTrackStatusUpdate);
 
   useEffect(() => {
     let cancelled = false;
+    const requestId = requestGate.begin();
+    loadedTokenRef.current = null;
+    releasesRef.current = [];
 
     async function load() {
-      if (!token) return;
       setState({ status: "loading" });
+      if (!token) return;
+
+      const isCurrentRequest = () =>
+        !cancelled && requestGate.isCurrent(requestId);
+
       try {
         const artist = await getArtistMe(token);
-        if (cancelled) return;
+        if (!isCurrentRequest()) return;
         if (!artist) {
           setState({ status: "no-artist" });
           return;
         }
 
         const releases = await listMyReleases(token);
-        if (!cancelled) {
-          setState({ status: "ready", artist, releases: sortReleases(releases) });
-        }
+        if (!isCurrentRequest()) return;
+
+        const sortedReleases = sortReleases(releases);
+        loadedTokenRef.current = token;
+        releasesRef.current = sortedReleases;
+        setState({ status: "ready", artist, releases: sortedReleases });
       } catch (error) {
-        if (!cancelled) {
+        if (isCurrentRequest()) {
           setState({
             status: "error",
             message: error instanceof Error ? error.message : "Unable to load catalog.",
@@ -98,8 +174,36 @@ export default function ArtistCatalogPage() {
     void load();
     return () => {
       cancelled = true;
+      requestGate.invalidate();
+      if (loadedTokenRef.current === token) loadedTokenRef.current = null;
     };
-  }, [token]);
+  }, [requestGate, token]);
+
+  useEffect(() => {
+    releasesRef.current = state.status === "ready" ? state.releases : [];
+  }, [state]);
+
+  const shouldPoll = state.status === "ready" && hasActiveCatalogProcessing(state.releases);
+
+  useEffect(
+    () => startCatalogPolling(shouldPoll, refreshCatalog),
+    [shouldPoll, refreshCatalog],
+  );
+
+  useEffect(() => {
+    if (state.status !== "ready" || !token) return;
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshCatalog();
+    };
+
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshCatalog, state.status, token]);
 
   return (
     <AuthGate title="Connect your wallet to view artist catalog.">
