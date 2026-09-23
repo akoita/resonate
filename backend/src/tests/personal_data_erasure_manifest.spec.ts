@@ -429,6 +429,11 @@ describe("personal data erasure manifest", () => {
       }
       expect(ERASURE_RULES_BY_MODEL.ManagementGrant.reason).toContain("grantee or inviter");
       expect(ERASURE_RULES_BY_MODEL.ManagementTransfer.reason).toContain("proposer or recipient");
+      expect(ERASURE_RULES_BY_MODEL.ManagementTransferRecoveryRequest).toMatchObject({
+        disposition: "anonymize",
+        matchOn: "requesterUserId",
+        scrub: ["evidence", "reviewNote"],
+      });
     });
 
     it("deletes every credential and address-to-account mapping", () => {

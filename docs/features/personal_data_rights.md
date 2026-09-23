@@ -164,6 +164,12 @@ since the chain publishes the address anyway.
 disappear: their releases are withdrawn through #1793 rather than deleted out
 from under the people who bought them.
 
+Management transfer recovery decisions remain in the audit history after an
+account is erased. The requester's evidence and review note are removed, and
+an unanswered request is rejected before the account id rotates. Export
+includes a person's own request and decision, without the operator's account
+id or another person's evidence.
+
 **The deletion log does not become a copy of what was deleted.** Lineage rows
 used to carry the erased event's identifiers verbatim, which for bridge-emitted
 events meant the wallet address stayed in the log proving its own removal.

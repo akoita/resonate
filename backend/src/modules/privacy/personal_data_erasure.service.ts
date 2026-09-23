@@ -745,6 +745,28 @@ export class PersonalDataErasureService {
         }
       }
 
+      if (rule.model === "ManagementTransferRecoveryRequest") {
+        // The requester owns the evidence; a reviewer owns the note they wrote
+        // on another person's request. Scrub each on the corresponding erasure.
+        const reviewerNotes = await delegateFor(tx, rule.model).updateMany({
+          where: {
+            reviewerUserId: oldUserId,
+            requesterUserId: { not: oldUserId },
+            reviewNote: { not: null },
+          },
+          data: { reviewNote: null },
+        });
+        affected += reviewerNotes.count;
+
+        // A closed requester cannot pursue a pending reversal. The accepted
+        // transfer and any completed recovery remain as pseudonymous audit.
+        const rejected = await delegateFor(tx, rule.model).updateMany({
+          where: { requesterUserId: oldUserId, status: "pending" },
+          data: { status: "rejected", reviewedAt: erasedAt },
+        });
+        affected += rejected.count;
+      }
+
       anonymized[rule.model] = affected;
     }
 

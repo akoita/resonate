@@ -4,6 +4,7 @@
  * matters most is that neither appears in the other's file.
  */
 import { PassThrough } from "stream";
+import { ManagementResourceType, ManagementTransferRecoveryStatus, ManagementTransferStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import { PersonalDataResolverService } from "../modules/identity/personal_data_resolver.service";
@@ -192,6 +193,8 @@ async function seed(person: Seed) {
 
 async function cleanup() {
   const where = { id: { startsWith: TEST_PREFIX } };
+  await prisma.managementTransferRecoveryRequest.deleteMany({ where });
+  await prisma.managementTransfer.deleteMany({ where });
   await prisma.sessionKey.deleteMany({ where });
   await prisma.analyticsEvent.deleteMany({ where });
   await prisma.royaltyPayment.deleteMany({ where });
@@ -234,6 +237,37 @@ describe("PersonalDataExportService integration", () => {
   beforeAll(async () => {
     await seed(SEED_A);
     await seed(SEED_B);
+    // These audit-only fixtures use same-person transfer parties so the
+    // cross-person export assertion remains focused on the recovery request's
+    // reviewer redaction rather than a legitimate transfer counterparty.
+    for (const person of [SEED_A, SEED_B]) {
+      const transferId = `${TEST_PREFIX}management_transfer_${person.suffix}`;
+      await prisma.managementTransfer.create({
+        data: {
+          id: transferId,
+          proposerUserId: person.userId,
+          recipientUserId: person.userId,
+          resourceType: ManagementResourceType.release,
+          resourceIds: [`${TEST_PREFIX}release_${person.suffix}`],
+          status: ManagementTransferStatus.accepted,
+          acceptedAt: new Date("2026-09-01T00:00:00.000Z"),
+        },
+      });
+      await prisma.managementTransferRecoveryRequest.create({
+        data: {
+          id: `${TEST_PREFIX}management_recovery_${person.suffix}`,
+          transferId,
+          requesterUserId: person.userId,
+          evidence: `${TEST_PREFIX}recovery_evidence_${person.suffix}`,
+          resourceType: ManagementResourceType.release,
+          resourceIds: [`${TEST_PREFIX}release_${person.suffix}`],
+          status: ManagementTransferRecoveryStatus.rejected,
+          reviewerUserId: person.suffix === "a" ? USER_B : USER_A,
+          reviewNote: "Evidence was insufficient.",
+          reviewedAt: new Date("2026-09-02T00:00:00.000Z"),
+        },
+      });
+    }
     textA = await exportText(USER_A);
     documentA = JSON.parse(textA) as ExportDocument;
   }, 60000);
@@ -297,6 +331,12 @@ describe("PersonalDataExportService integration", () => {
     expect(ids("SessionKey")).toContain(`${TEST_PREFIX}session_key_a`);
     // The account itself.
     expect(ids("User")).toEqual([USER_A]);
+    expect(ids("ManagementTransferRecoveryRequest")).toContain(`${TEST_PREFIX}management_recovery_a`);
+    const recovery = documentA.data.ManagementTransferRecoveryRequest.find(
+      (row) => row.id === `${TEST_PREFIX}management_recovery_a`,
+    );
+    expect(recovery?.evidence).toBe(`${TEST_PREFIX}recovery_evidence_a`);
+    expect(recovery).not.toHaveProperty("reviewerUserId");
   });
 
   it("finds a wallet-keyed row stored in a different case than the resolver returns", () => {

@@ -1,5 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
+import { RolesGuard } from "../modules/auth/roles.guard";
 import { ManagementController } from "../modules/management/management.controller";
 import { ManagementService } from "../modules/management/management.service";
 import { authToken, createControllerTestApp } from "./e2e-helpers";
@@ -17,6 +18,10 @@ const mockService = {
   acceptTransfer: jest.fn().mockResolvedValue({ id: "transfer-1", status: "accepted" }),
   declineTransfer: jest.fn().mockResolvedValue({ id: "transfer-1", status: "declined" }),
   cancelTransfer: jest.fn().mockResolvedValue({ id: "transfer-1", status: "cancelled" }),
+  createTransferRecoveryRequest: jest.fn().mockResolvedValue({ id: "recovery-1", status: "pending" }),
+  getMyTransferRecoveries: jest.fn().mockResolvedValue({ transfers: [] }),
+  getPendingTransferRecoveries: jest.fn().mockResolvedValue({ requests: [] }),
+  reviewTransferRecoveryRequest: jest.fn().mockResolvedValue({ id: "recovery-1", status: "rejected" }),
 };
 
 describe("ManagementController HTTP contract", () => {
@@ -26,6 +31,7 @@ describe("ManagementController HTTP contract", () => {
   beforeAll(async () => {
     app = await createControllerTestApp(ManagementController, [
       { provide: ManagementService, useValue: mockService },
+      RolesGuard,
     ]);
   });
 
@@ -38,6 +44,10 @@ describe("ManagementController HTTP contract", () => {
     await request(app.getHttpServer()).post("/management/grants").send({}).expect(401);
     await request(app.getHttpServer()).patch("/management/grants/grant-1").send({ scopes: ["CATALOG_READ"] }).expect(401);
     await request(app.getHttpServer()).post("/management/transfers/transfer-1/accept").expect(401);
+    await request(app.getHttpServer()).post("/management/transfers/transfer-1/recovery-requests").send({ evidence: "This is valid evidence text." }).expect(401);
+    await request(app.getHttpServer()).get("/management/recoveries/me").expect(401);
+    await request(app.getHttpServer()).get("/management/recoveries/pending").expect(401);
+    await request(app.getHttpServer()).patch("/management/recoveries/recovery-1").send({ decision: "reject", note: "Reviewed." }).expect(401);
   });
 
   it("uses the authenticated user for grant and transfer requests", async () => {
@@ -77,5 +87,55 @@ describe("ManagementController HTTP contract", () => {
       .expect(400);
 
     expect(mockService.updateGrant).not.toHaveBeenCalled();
+  });
+
+  it("uses the authenticated user for recovery requests and the recovery list", async () => {
+    const evidence = "I did not authorize this management transfer.";
+    await request(app.getHttpServer())
+      .post("/management/transfers/transfer-1/recovery-requests")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ evidence })
+      .expect(201);
+    await request(app.getHttpServer())
+      .get("/management/recoveries/me")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(mockService.createTransferRecoveryRequest).toHaveBeenCalledWith("manager-1", "transfer-1", evidence);
+    expect(mockService.getMyTransferRecoveries).toHaveBeenCalledWith("manager-1");
+  });
+
+  it("restricts pending recovery review to operators and admins and forwards note", async () => {
+    const review = { decision: "reject", note: "Evidence does not support recovery." };
+    await request(app.getHttpServer())
+      .get("/management/recoveries/pending")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(403);
+    await request(app.getHttpServer())
+      .patch("/management/recoveries/recovery-1")
+      .set("Authorization", `Bearer ${token}`)
+      .send(review)
+      .expect(403);
+    expect(mockService.getPendingTransferRecoveries).not.toHaveBeenCalled();
+    expect(mockService.reviewTransferRecoveryRequest).not.toHaveBeenCalled();
+
+    await request(app.getHttpServer())
+      .get("/management/recoveries/pending")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch("/management/recoveries/recovery-1")
+      .set("Authorization", `Bearer ${authToken("operator-1", "operator")}`)
+      .send(review)
+      .expect(200);
+
+    expect(mockService.getPendingTransferRecoveries).toHaveBeenCalledWith("operator-1", "operator");
+    expect(mockService.reviewTransferRecoveryRequest).toHaveBeenCalledWith(
+      "operator-1",
+      "operator",
+      "recovery-1",
+      "reject",
+      "Evidence does not support recovery.",
+    );
   });
 });

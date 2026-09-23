@@ -18,6 +18,7 @@ import {
   ManagementResourceType,
   ManagementScope,
   ManagementTransferStatus,
+  ManagementTransferRecoveryStatus,
 } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
@@ -455,6 +456,31 @@ async function seedShared() {
       acceptedAt: new Date("2026-09-01T00:00:00.000Z"),
     },
   });
+  await prisma.managementTransferRecoveryRequest.create({
+    data: {
+      id: id("management_recovery", "a_requester"),
+      transferId: id("management_transfer", "already_accepted"),
+      requesterUserId: USER_A,
+      evidence: `${TEST_PREFIX}private_recovery_evidence_a`,
+      resourceType: ManagementResourceType.release,
+      resourceIds: [id("release", "b")],
+      status: ManagementTransferRecoveryStatus.pending,
+    },
+  });
+  await prisma.managementTransferRecoveryRequest.create({
+    data: {
+      id: id("management_recovery", "a_reviewer"),
+      transferId: id("management_transfer", "already_accepted"),
+      requesterUserId: USER_B,
+      evidence: `${TEST_PREFIX}private_recovery_evidence_b`,
+      resourceType: ManagementResourceType.release,
+      resourceIds: [id("release", "b")],
+      status: ManagementTransferRecoveryStatus.rejected,
+      reviewerUserId: USER_A,
+      reviewNote: `${TEST_PREFIX}private_recovery_review_a`,
+      reviewedAt: new Date("2026-09-02T00:00:00.000Z"),
+    },
+  });
 
   await prisma.stemPurchase.create({
     data: {
@@ -530,6 +556,7 @@ async function cleanup() {
 
   await prisma.showCampaignDispute.deleteMany({ where });
   await prisma.showCampaign.deleteMany({ where });
+  await prisma.managementTransferRecoveryRequest.deleteMany({ where });
   await prisma.managementTransfer.deleteMany({ where });
   await prisma.managementGrant.deleteMany({ where });
   await prisma.stemPurchase.deleteMany({ where });
@@ -781,6 +808,22 @@ describe("PersonalDataErasureService integration", () => {
     expect(acceptedTransfer?.status).toBe(ManagementTransferStatus.accepted);
     expect(acceptedTransfer?.cancelledAt).toBeNull();
     expect(acceptedTransfer?.proposerUserId).toBe(newUserId);
+
+    const request = await prisma.managementTransferRecoveryRequest.findUnique({
+      where: { id: id("management_recovery", "a_requester") },
+    });
+    expect(request?.status).toBe(ManagementTransferRecoveryStatus.rejected);
+    expect(request?.requesterUserId).toBe(newUserId);
+    expect(request?.evidence).toBeNull();
+    expect(request?.reviewNote).toBeNull();
+
+    const reviewed = await prisma.managementTransferRecoveryRequest.findUnique({
+      where: { id: id("management_recovery", "a_reviewer") },
+    });
+    expect(reviewed?.requesterUserId).toBe(USER_B);
+    expect(reviewed?.reviewerUserId).toBe(newUserId);
+    expect(reviewed?.evidence).toContain("private_recovery_evidence_b");
+    expect(reviewed?.reviewNote).toBeNull();
   });
 
   it("keeps transferred owner overrides on the closed id and blocks legacy-owner fallback", async () => {

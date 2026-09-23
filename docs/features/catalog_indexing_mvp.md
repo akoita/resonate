@@ -80,6 +80,9 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   release invitations.
   Release transfers change management authority without rewriting
   the credited artist, uploader profile, rights route, or payout destination.
+  The former manager can request operator-reviewed recovery of an accepted
+  transfer while the recipient still manages every named resource and no later
+  transfer has changed the chain. A request alone does not change access.
   The home page keeps only compact previews and
   links to this full inventory when the artist owns more catalog objects than
   fit there.

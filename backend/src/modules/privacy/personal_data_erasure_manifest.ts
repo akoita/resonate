@@ -157,6 +157,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     note:
       "Both user foreign keys cascade to the rotated id, while `resourceIds` remains the resource snapshot recorded for the transfer.",
   },
+  {
+    model: "ManagementTransferRecoveryRequest",
+    disposition: "anonymize",
+    reason:
+      "The recovery decision stays auditable, while the requester's evidence and private review text are removed on erasure.",
+    scrub: ["evidence", "reviewNote"],
+    matchOn: "requesterUserId",
+    note:
+      "A pending request from an erased account is rejected before its user id rotates. A reviewer's note on somebody else's request is scrubbed when that reviewer is erased.",
+  },
 
   // ---------------------------------------------------------------------
   // Credentials, sessions and account-control material
