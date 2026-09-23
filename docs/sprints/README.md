@@ -47,8 +47,8 @@ Every sprint plan passes the **Business Model Conformance** check in
 
 ## Sprint index
 
-Current: [Vision Sprint 27 — Trustworthy artist profile enrichment](2026-09-23-vision-sprint-27-artist-enrichment.md),
-the sole issue and staging release are complete; milestone closeout is pending.
+Latest: [Vision Sprint 27 — Trustworthy artist profile enrichment](2026-09-23-vision-sprint-27-artist-enrichment.md),
+closed with staging release evidence. The next sprint has not yet been approved.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -79,4 +79,4 @@ the sole issue and staging release are complete; milestone closeout is pending.
 | [2026-09-22](2026-09-22-vision-sprint-24-artist-identity-test-gates.md) | Vision Sprint 24 — stable artist identity, trustworthy test gates | ✅ Closed 2026-09-23 — 5/5; stable credited-artist IDs with ambiguity review and profile claims, complete mutation scoring, related-test CI selection, and an artwork-first public catalog |
 | [2026-09-23](2026-09-23-vision-sprint-25-artist-management.md) | Vision Sprint 25 — artist management with reliable catalog status | ✅ Closed 2026-09-23 — 3/3; catalog status refresh, scoped artist management, and listener library removal |
 | [2026-09-23](2026-09-23-vision-sprint-26-safer-artist-claims.md) | Vision Sprint 26 — safer artist profile claims | ✅ Closed 2026-09-23 — #1856 merged, release evidence recorded, milestone changelog published |
-| [2026-09-23](2026-09-23-vision-sprint-27-artist-enrichment.md) | Vision Sprint 27 — trustworthy artist profile enrichment | #1763 merged; exact-source release and staging deployment verified; closeout pending |
+| [2026-09-23](2026-09-23-vision-sprint-27-artist-enrichment.md) | Vision Sprint 27 — trustworthy artist profile enrichment | ✅ Closed 2026-09-23 — #1763 merged, staging deployment verified, milestone changelog published |
