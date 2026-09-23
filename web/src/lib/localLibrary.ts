@@ -15,6 +15,8 @@ import {
     listLibraryTracksAPI,
     getLibraryTrackAPI,
     deleteLibraryTrackAPI,
+    deleteLibraryTracksAPI,
+    ApiRequestError,
     clearLocalLibraryAPI,
     APILibraryTrack,
     getStemPreviewUrl,
@@ -49,6 +51,22 @@ const playerStore = localforage.createInstance({
     name: "resonate",
     storeName: "player",
 });
+
+const omissionStore = localforage.createInstance({
+    name: "resonate",
+    storeName: "libraryOmissions",
+});
+
+function localSourceKey(track: LocalTrack): string | null {
+    return track.source === "local" && track.sourcePath && track.fileSize != null
+        ? `${track.sourcePath}:${track.fileSize}`
+        : null;
+}
+
+/** File signatures deliberately removed from this device's scanned library. */
+export async function listLocalTrackOmissions(): Promise<string[]> {
+    return omissionStore.keys();
+}
 
 function getToken(): string | null {
     if (typeof window === "undefined") return null;
@@ -524,26 +542,63 @@ async function pruneRemoteCacheNotInApi(apiTracks: LocalTrack[]): Promise<void> 
 /**
  * Delete a track from the library
  */
-export async function deleteTrack(id: string): Promise<void> {
-    const track = await getTrack(id);
-    if (track) {
-        if (track.blobKey) {
-            await blobStore.removeItem(track.blobKey);
-        }
-        if (track.artworkKey) {
-            await artworkStore.removeItem(track.artworkKey);
-        }
-        await trackStore.removeItem(id);
-    }
-
-    // Also delete from API
+export async function deleteTrack(id: string, knownTrack?: LocalTrack): Promise<void> {
+    const track = knownTrack ?? await getTrack(id);
     const token = getToken();
     if (token) {
         try {
             await deleteLibraryTrackAPI(id, token);
-        } catch (err) {
-            console.warn("[Library] Failed to delete track from API:", err);
+        } catch (error) {
+            // A local file may never have synced, or a stale server row may
+            // already be gone. In either case there is nothing left to delete.
+            if (!(error instanceof ApiRequestError && error.status === 404)) throw error;
         }
+    }
+    const omissionKey = track ? localSourceKey(track) : null;
+    if (omissionKey) await omissionStore.setItem(omissionKey, true);
+    try {
+        await removeCachedTrack(id);
+    } catch (error) {
+        if (!token) throw error;
+        console.warn("[Library] Server delete succeeded; local cache cleanup failed:", error);
+    }
+}
+
+async function removeCachedTrack(id: string): Promise<void> {
+    const track = await trackStore.getItem<LocalTrack>(id);
+    if (track?.blobKey) await blobStore.removeItem(track.blobKey);
+    if (track?.artworkKey) await artworkStore.removeItem(track.artworkKey);
+    await trackStore.removeItem(id);
+}
+
+/** Remove multiple saved tracks after the server confirms the request. */
+export async function deleteTracks(ids: string[], knownTracks: LocalTrack[] = []): Promise<void> {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return;
+    const knownById = new Map(knownTracks.map(track => [track.id, track]));
+    const cached = await Promise.all(uniqueIds.map(id => knownById.get(id) ?? trackStore.getItem<LocalTrack>(id)));
+    const token = getToken();
+    if (token) {
+        const result = await deleteLibraryTracksAPI(uniqueIds, token);
+        if (result.count !== uniqueIds.length) {
+            // A partial count can mean some rows were already absent. Verify
+            // that none remain before treating the batch as complete.
+            const remaining = await listLibraryTracksAPI(token);
+            const remainingIds = new Set(remaining.map(track => track.id));
+            if (uniqueIds.some(id => remainingIds.has(id))) {
+                throw new Error("Some library tracks could not be removed");
+            }
+        }
+    }
+    await Promise.all(cached.map(async track => {
+        const key = track ? localSourceKey(track) : null;
+        if (key) await omissionStore.setItem(key, true);
+    }));
+    const cleanup = await Promise.allSettled(uniqueIds.map(removeCachedTrack));
+    const failure = cleanup.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failure) {
+        if (!token) throw failure.reason;
+        console.warn("[Library] Server batch delete succeeded; local cache cleanup failed:", failure.reason);
     }
 }
 
@@ -551,18 +606,12 @@ export async function deleteTrack(id: string): Promise<void> {
  * Clear all local tracks from the library (IndexedDB + backend API)
  */
 export async function clearLibrary(): Promise<void> {
+    const token = getToken();
+    if (token) await clearLocalLibraryAPI(token);
     await trackStore.clear();
     await blobStore.clear();
     await artworkStore.clear();
-
-    const token = getToken();
-    if (token) {
-        try {
-            await clearLocalLibraryAPI(token);
-        } catch (err) {
-            console.warn("[Library] Failed to clear local tracks from API:", err);
-        }
-    }
+    await omissionStore.clear();
 }
 
 /**

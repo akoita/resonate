@@ -542,7 +542,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Save tracks to your library, organize them into playlists, and share a playlist publicly — by link or in the global catalog.",
     category: "library",
     audiences: ["listener"],
-    keywords: ["library", "playlist", "save", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog"],
+    keywords: ["library", "playlist", "save", "remove", "bulk remove", "collection", "share", "public playlist", "folders", "favorites", "discover", "catalog"],
     sections: [
       {
         id: "library",
@@ -551,6 +551,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Your library is everything you have saved. Save a track from Discover, a release page, the catalog, or the Player, and it appears here ready to play.",
+          },
+          {
+            kind: "paragraph",
+            text: "To remove saved music, open a track's More actions menu, or the menu on an artist or album card. Confirm the number of tracks to remove. You can also select several tracks and use Remove from library. If removal fails, your library stays as it was and shows an error. A track you remove also leaves your play queue. A removed local file stays on your device but will not return on the next folder scan. Owned stems stay in your library while you hold them; removing saved music does not affect purchases or playlists.",
           },
           {
             kind: "paragraph",
@@ -564,8 +568,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/library.png`,
-              alt: "The 'My Library' page with tabs for Tracks, Artists, Albums, Playlists, Stems, and AI Creations, a search field, and a 'Your library is quiet' empty state offering to add a music folder or browse the catalog.",
-              caption: "Your library starts empty — save tracks or add a local music folder to fill it.",
+              alt: "My Library with saved tracks and an open More actions menu offering Remove from library.",
+              caption: "Open a saved track's menu to remove it, or select several tracks for bulk removal.",
               width: 1440,
               height: 900,
               source: LOCAL,

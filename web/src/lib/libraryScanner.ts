@@ -6,7 +6,7 @@
  * re-scanning already indexed files on each app load.
  */
 import { extractMetadata } from "./metadataExtractor";
-import { saveTrack, listTracks, LocalTrack } from "./localLibrary";
+import { saveTrack, listTracks, listLocalTrackOmissions, LocalTrack } from "./localLibrary";
 
 const AUDIO_EXTENSIONS = /\.(mp3|wav|flac|aiff|m4a|ogg|wma|aac)$/i;
 
@@ -62,6 +62,10 @@ async function buildExistingIndex(): Promise<Map<string, number>> {
         if (track.title) {
             index.set(`title:${track.title}`, 1);
         }
+    }
+
+    for (const key of await listLocalTrackOmissions()) {
+        index.set(key, 1);
     }
 
     return index;
