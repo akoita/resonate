@@ -1076,9 +1076,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary:
       "Edit your public profile after it is yours, or submit evidence to claim an unclaimed artist page.",
     category: "artists",
-    audiences: ["artist"],
+    audiences: ["artist", "operator"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "notification", "transfer", "replace audio", "track audio", "audio replacement"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1152,6 +1152,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "paragraph",
             text: "To hand over management, send a transfer invitation for a profile, a selected release, or all releases you currently manage. The recipient must accept before your management access ends. Existing manager invitations for transferred resources end too, so the new owner can choose whom to invite. Profile and release management transfer separately; credits, rights, and payouts do not move with either transfer.",
           },
+          {
+            kind: "paragraph",
+            text: "If you sent a transfer that was accepted by mistake, open Artist management and request recovery with evidence for an operator to review. Sending a request does not restore your access. Recovery is available only while the recipient still manages every resource in that transfer and no later accepted transfer has involved them. You can see whether your request is pending, approved, or rejected there. Credits, rights, and payouts do not change.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-management-recovery.png`,
+              alt: "Artist management page showing an accepted release transfer and the evidence form for requesting operator review.",
+              caption: "Request an operator review of an eligible accepted transfer; access does not change when you submit.",
+              width: 1440,
+              height: 1050,
+              source: LOCAL,
+            },
+          },
         ],
       },
       {
@@ -1164,10 +1179,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
         ],
       },
+      {
+        id: "review-management-recovery",
+        heading: "Reviewing a transfer recovery request",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Operators and administrators can open Management transfer recovery from the admin navigation. Compare the requester's evidence with the accepted transfer and the listed profiles or releases, then record a review note before approving or rejecting. Approval restores management to the original sender only when the recipient still manages every listed resource and no later accepted transfer has involved one. It ends existing manager grants and pending transfers for those resources. A rejection leaves management as it is.",
+          },
+        ],
+      },
     ],
     appLinks: [
       { label: "Your catalog", href: "/artist/catalog", description: "Open your releases; your artist page is linked from your name." },
       { label: "Artist management", href: "/artist/management", description: "Review invitations, delegate access, or transfer management." },
+      { label: "Recovery reviews", href: "/admin/management-recovery", description: "Review accepted transfer recovery requests (operators and administrators)." },
     ],
     related: ["upload-music", "artist-analytics", "getting-started"],
   },

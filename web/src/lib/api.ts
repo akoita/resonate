@@ -6089,6 +6089,49 @@ export type PendingManagementInvitations = {
   transfers: PendingManagementTransferInvitation[];
 };
 
+export type ManagementRecoveryStatus = "pending" | "approved" | "rejected";
+
+export type ManagementTransferRecovery = {
+  id: string;
+  resourceType: "artist_profile" | "release";
+  resourceIds: string[];
+  resources: { id: string; name: string }[];
+  acceptedAt: string | null;
+  eligible: boolean;
+  recovery: {
+    id: string;
+    status: ManagementRecoveryStatus;
+    reviewedAt: string | null;
+  } | null;
+};
+
+export type ManagementRecoveryRequest = {
+  id: string;
+  transferId: string;
+  resourceType: "artist_profile" | "release";
+  resources: { id: string; name: string }[];
+  requesterEmail: string | null;
+  recipientEmail: string | null;
+  evidence: string;
+  createdAt: string;
+};
+
+export type MyManagementRecoveriesResponse = {
+  transfers: ManagementTransferRecovery[];
+};
+
+export type PendingManagementRecoveriesResponse = {
+  requests: ManagementRecoveryRequest[];
+};
+
+export type ManagementRecoveryDecision = "approve" | "reject";
+
+export function canRequestManagementTransferRecovery(transfer: ManagementTransferRecovery) {
+  return transfer.eligible
+    && transfer.recovery?.status !== "pending"
+    && transfer.recovery?.status !== "approved";
+}
+
 export type ManagedArtistSummary = {
   id: string;
   name: string;
@@ -6132,6 +6175,34 @@ export function getPendingManagementInvitations(token: string) {
     { cache: "no-store" },
     token,
   );
+}
+
+export function getMyManagementRecoveries(token: string) {
+  return apiRequest<MyManagementRecoveriesResponse>("/management/recoveries/me", { cache: "no-store" }, token);
+}
+
+export function requestManagementTransferRecovery(token: string, transferId: string, evidence: string) {
+  return apiRequest<unknown>(
+    `/management/transfers/${encodeURIComponent(transferId)}/recovery-requests`,
+    { method: "POST", body: JSON.stringify({ evidence }) },
+    token,
+  ).then(() => undefined);
+}
+
+export function getPendingManagementRecoveries(token: string) {
+  return apiRequest<PendingManagementRecoveriesResponse>("/management/recoveries/pending", { cache: "no-store" }, token);
+}
+
+export function reviewManagementRecovery(
+  token: string,
+  recoveryId: string,
+  input: { decision: ManagementRecoveryDecision; note: string },
+) {
+  return apiRequest<unknown>(
+    `/management/recoveries/${encodeURIComponent(recoveryId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  ).then(() => undefined);
 }
 
 export function getArtistManagementAccess(token: string, artistId: string) {

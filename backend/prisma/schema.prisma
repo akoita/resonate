@@ -66,6 +66,8 @@ model User {
   managementGrantsSent         ManagementGrant[]              @relation("ManagementGrantInviter")
   managementTransfersProposed  ManagementTransfer[]           @relation("ManagementTransferProposer")
   managementTransfersReceived  ManagementTransfer[]           @relation("ManagementTransferRecipient")
+  managementRecoveryRequestsSubmitted ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryRequester")
+  managementRecoveryRequestsReviewed  ManagementTransferRecoveryRequest[] @relation("ManagementTransferRecoveryReviewer")
 }
 
 // #1771 slice 3. A request to close an account and erase the person from it.
@@ -618,6 +620,12 @@ enum ManagementTransferStatus {
   cancelled
 }
 
+enum ManagementTransferRecoveryStatus {
+  pending
+  approved
+  rejected
+}
+
 model ArtistClaimRequest {
   id             String                    @id @default(uuid())
   artistId       String
@@ -724,10 +732,36 @@ model ManagementTransfer {
   updatedAt       DateTime                @updatedAt
   proposer        User                    @relation("ManagementTransferProposer", fields: [proposerUserId], references: [id], onDelete: Restrict)
   recipient       User                    @relation("ManagementTransferRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  recoveryRequests ManagementTransferRecoveryRequest[]
 
   @@index([proposerUserId, status, createdAt])
   @@index([recipientUserId, status, createdAt])
   @@index([resourceType, createdAt])
+}
+
+model ManagementTransferRecoveryRequest {
+  id              String                           @id @default(uuid())
+  transferId      String
+  requesterUserId String
+  // Required by the API when submitted; nullable so account erasure can scrub it.
+  evidence        String?                          @db.Text
+  // Snapshot captured at submission and rechecked before an operator approves.
+  resourceType    ManagementResourceType
+  resourceIds     String[]
+  status          ManagementTransferRecoveryStatus @default(pending)
+  reviewerUserId  String?
+  reviewNote      String?                          @db.Text
+  createdAt       DateTime                         @default(now())
+  reviewedAt      DateTime?
+  updatedAt       DateTime                         @updatedAt
+  transfer        ManagementTransfer              @relation(fields: [transferId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  requester       User                             @relation("ManagementTransferRecoveryRequester", fields: [requesterUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  reviewer        User?                            @relation("ManagementTransferRecoveryReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([requesterUserId, createdAt])
+  @@index([status, createdAt])
+  @@index([reviewerUserId, createdAt])
+  @@index([transferId, createdAt])
 }
 
 model ReleaseArtistCredit {

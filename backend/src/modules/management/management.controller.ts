@@ -1,5 +1,7 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Roles } from "../auth/roles.decorator";
+import { RolesGuard } from "../auth/roles.guard";
 import { ManagementService } from "./management.service";
 
 @Controller("management")
@@ -81,5 +83,54 @@ export class ManagementController {
   @Post("transfers/:id/cancel")
   cancelTransfer(@Req() req: any, @Param("id") transferId: string) {
     return this.managementService.cancelTransfer(req.user.userId, transferId);
+  }
+
+  @Post("transfers/:id/recovery-requests")
+  createTransferRecoveryRequest(
+    @Req() req: any,
+    @Param("id") transferId: string,
+    @Body() body: unknown,
+  ) {
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      throw new BadRequestException("Recovery request body must be an object");
+    }
+    return this.managementService.createTransferRecoveryRequest(
+      req.user.userId,
+      transferId,
+      (body as { evidence?: unknown }).evidence,
+    );
+  }
+
+  @Get("recoveries/me")
+  getMyTransferRecoveries(@Req() req: any) {
+    return this.managementService.getMyTransferRecoveries(req.user.userId);
+  }
+
+  @Get("recoveries/pending")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  getPendingTransferRecoveries(@Req() req: any) {
+    return this.managementService.getPendingTransferRecoveries(req.user.userId, req.user.role ?? "listener");
+  }
+
+  @Patch("recoveries/:id")
+  @UseGuards(AuthGuard("jwt"), RolesGuard)
+  @Roles("admin", "operator")
+  reviewTransferRecoveryRequest(
+    @Req() req: any,
+    @Param("id") requestId: string,
+    @Body() body: unknown,
+  ) {
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      throw new BadRequestException("Recovery review body must be an object");
+    }
+    const review = body as { decision?: unknown; note?: unknown };
+    return this.managementService.reviewTransferRecoveryRequest(
+      req.user.userId,
+      req.user.role ?? "listener",
+      requestId,
+      review.decision,
+      review.note,
+    );
   }
 }

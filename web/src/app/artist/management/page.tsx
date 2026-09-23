@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useToast } from "../../../components/ui/Toast";
 import {
+  canRequestManagementTransferRecovery,
   getArtistManagementAccess,
+  getMyManagementRecoveries,
   getMyManagement,
   getReleaseManagementAccess,
   inviteManager,
@@ -14,6 +16,8 @@ import {
   narrowManagementGrant,
   respondToManagementGrant,
   respondToManagementTransfer,
+  requestManagementTransferRecovery,
+  type ManagementTransferRecovery,
   type ManagementScope,
   type MyManagement,
   type ResourceManagementAccess,
@@ -29,44 +33,206 @@ const RELEASE_SCOPES: { value: ManagementScope; label: string }[] = [
   { value: "TRACK_AUDIO", label: "Replace track audio" },
 ];
 
+type ManagementFormState = {
+  selectedKey: string;
+  recipientEmail: string;
+  scopes: ManagementScope[];
+  allReleases: boolean;
+  inviteExpiresAt: string;
+  editingGrantId: string | null;
+  editedScopes: ManagementScope[];
+  editedExpiresAt: string;
+};
+
+const EMPTY_MANAGEMENT_FORM: ManagementFormState = {
+  selectedKey: "",
+  recipientEmail: "",
+  scopes: ["CATALOG_READ", "CATALOG_METADATA"],
+  allReleases: false,
+  inviteExpiresAt: "",
+  editingGrantId: null,
+  editedScopes: [],
+  editedExpiresAt: "",
+};
+
 export default function ArtistManagementPage() {
-  const { token } = useAuth();
+  const { token, userId } = useAuth();
+  const sessionScope = useMemo(() => token ? Symbol(userId ?? "management-session") : null, [token, userId]);
+  const currentScopeRef = useRef(sessionScope);
   const { addToast } = useToast();
-  const [data, setData] = useState<MyManagement | null>(null);
-  const [access, setAccess] = useState<ResourceManagementAccess | null>(null);
-  const [selectedKey, setSelectedKey] = useState("");
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [scopes, setScopes] = useState<ManagementScope[]>(["CATALOG_READ", "CATALOG_METADATA"]);
-  const [allReleases, setAllReleases] = useState(false);
-  const [inviteExpiresAt, setInviteExpiresAt] = useState("");
-  const [editingGrantId, setEditingGrantId] = useState<string | null>(null);
-  const [editedScopes, setEditedScopes] = useState<ManagementScope[]>([]);
-  const [editedExpiresAt, setEditedExpiresAt] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [managementSnapshot, setManagementSnapshot] = useState<{
+    scope: symbol | null;
+    data: MyManagement | null;
+    loading: boolean;
+    error: string | null;
+  }>({ scope: null, data: null, loading: true, error: null });
+  const [recoverySnapshot, setRecoverySnapshot] = useState<{
+    scope: symbol | null;
+    transfers: ManagementTransferRecovery[];
+    loading: boolean;
+    error: string | null;
+  }>({ scope: null, transfers: [], loading: true, error: null });
+  const [recoveryEvidenceSnapshot, setRecoveryEvidenceSnapshot] = useState<{
+    scope: symbol | null;
+    values: Record<string, string>;
+  }>({ scope: null, values: {} });
+  const [recoveryRequestErrorsSnapshot, setRecoveryRequestErrorsSnapshot] = useState<{
+    scope: symbol | null;
+    values: Record<string, string>;
+  }>({ scope: null, values: {} });
+  const managementView = sessionScope && managementSnapshot.scope === sessionScope
+    ? managementSnapshot
+    : { data: null, loading: Boolean(token), error: null };
+  const recoveryView = sessionScope && recoverySnapshot.scope === sessionScope
+    ? recoverySnapshot
+    : { transfers: [], loading: Boolean(token), error: null };
+  const data = managementView.data;
+  const loading = managementView.loading;
+  const error = managementView.error;
+  const recoveryTransfers = recoveryView.transfers;
+  const recoveryLoading = recoveryView.loading;
+  const recoveryError = recoveryView.error;
+  const recoveryEvidence = sessionScope && recoveryEvidenceSnapshot.scope === sessionScope
+    ? recoveryEvidenceSnapshot.values
+    : {};
+  const recoveryRequestErrors = sessionScope && recoveryRequestErrorsSnapshot.scope === sessionScope
+    ? recoveryRequestErrorsSnapshot.values
+    : {};
+  const setRecoveryEvidence = (update: React.SetStateAction<Record<string, string>>) => {
+    setRecoveryEvidenceSnapshot((previous) => {
+      const current = sessionScope && previous.scope === sessionScope ? previous.values : {};
+      return { scope: sessionScope, values: typeof update === "function" ? update(current) : update };
+    });
+  };
+  const setRecoveryRequestErrors = (update: React.SetStateAction<Record<string, string>>) => {
+    setRecoveryRequestErrorsSnapshot((previous) => {
+      const current = sessionScope && previous.scope === sessionScope ? previous.values : {};
+      return { scope: sessionScope, values: typeof update === "function" ? update(current) : update };
+    });
+  };
+  const [formSnapshot, setFormSnapshot] = useState<{ scope: symbol | null; value: ManagementFormState }>({
+    scope: null,
+    value: EMPTY_MANAGEMENT_FORM,
+  });
+  const form = sessionScope && formSnapshot.scope === sessionScope ? formSnapshot.value : EMPTY_MANAGEMENT_FORM;
+  const { selectedKey, recipientEmail, scopes, allReleases, inviteExpiresAt, editingGrantId, editedScopes, editedExpiresAt } = form;
+  const updateForm = (update: (previous: ManagementFormState) => ManagementFormState) => {
+    if (currentScopeRef.current !== sessionScope) return;
+    setFormSnapshot((previous) => {
+      const current = sessionScope && previous.scope === sessionScope ? previous.value : EMPTY_MANAGEMENT_FORM;
+      return { scope: sessionScope, value: update(current) };
+    });
+  };
+  const setSelectedKey = (value: string) => updateForm((previous) => ({ ...previous, selectedKey: value }));
+  const setRecipientEmail = (value: string) => updateForm((previous) => ({ ...previous, recipientEmail: value }));
+  const setScopes = (value: React.SetStateAction<ManagementScope[]>) => updateForm((previous) => ({
+    ...previous,
+    scopes: typeof value === "function" ? value(previous.scopes) : value,
+  }));
+  const setAllReleases = (value: boolean) => updateForm((previous) => ({ ...previous, allReleases: value }));
+  const setInviteExpiresAt = (value: string) => updateForm((previous) => ({ ...previous, inviteExpiresAt: value }));
+  const setEditingGrantId = (value: string | null) => updateForm((previous) => ({ ...previous, editingGrantId: value }));
+  const setEditedScopes = (value: React.SetStateAction<ManagementScope[]>) => updateForm((previous) => ({
+    ...previous,
+    editedScopes: typeof value === "function" ? value(previous.editedScopes) : value,
+  }));
+  const setEditedExpiresAt = (value: string) => updateForm((previous) => ({ ...previous, editedExpiresAt: value }));
+  const [busySnapshot, setBusySnapshot] = useState<{ scope: symbol | null; value: boolean }>({ scope: null, value: false });
+  const busy = Boolean(sessionScope && busySnapshot.scope === sessionScope && busySnapshot.value);
+  const setBusy = (value: boolean) => setBusySnapshot({ scope: sessionScope, value });
+  const [submittingRecoverySnapshot, setSubmittingRecoverySnapshot] = useState<{ scope: symbol | null; transferId: string | null }>({ scope: null, transferId: null });
+  const submittingRecoveryTransferId = sessionScope && submittingRecoverySnapshot.scope === sessionScope
+    ? submittingRecoverySnapshot.transferId
+    : null;
+  const [accessSnapshot, setAccessSnapshot] = useState<{
+    scope: symbol | null;
+    selectedKey: string;
+    value: ResourceManagementAccess | null;
+  }>({ scope: null, selectedKey: "", value: null });
+  const access = sessionScope && accessSnapshot.scope === sessionScope && accessSnapshot.selectedKey === selectedKey
+    ? accessSnapshot.value
+    : null;
+  const setAccess = (value: ResourceManagementAccess | null) => {
+    setAccessSnapshot({ scope: sessionScope, selectedKey, value });
+  };
+  const managementLoadSequenceRef = useRef(0);
+  const recoveryLoadSequenceRef = useRef(0);
+  useLayoutEffect(() => {
+    currentScopeRef.current = sessionScope;
+    setFormSnapshot((previous) => previous.scope === sessionScope
+      ? previous
+      : { scope: sessionScope, value: EMPTY_MANAGEMENT_FORM });
+    return () => { currentScopeRef.current = null; };
+  }, [sessionScope]);
 
-  const refresh = useCallback(async () => {
-    if (!token) return;
-    const next = await getMyManagement(token);
-    setData(next);
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) {
-      setLoading(false);
+  const refreshRecoveryTransfers = useCallback(async () => {
+    const requestScope = sessionScope;
+    if (!token || !requestScope || currentScopeRef.current !== requestScope) {
       return;
     }
-    let active = true;
-    setLoading(true);
-    getMyManagement(token)
-      .then((next) => { if (active) { setData(next); setError(null); } })
-      .catch((reason) => {
-        if (active) setError(reason instanceof Error ? reason.message : "Unable to load management access.");
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [token]);
+    const requestSequence = ++recoveryLoadSequenceRef.current;
+    setRecoverySnapshot((previous) => ({
+      scope: requestScope,
+      transfers: previous.scope === requestScope ? previous.transfers : [],
+      loading: true,
+      error: null,
+    }));
+    try {
+      const response = await getMyManagementRecoveries(token);
+      if (currentScopeRef.current === requestScope && requestSequence === recoveryLoadSequenceRef.current) {
+        setRecoverySnapshot({ scope: requestScope, transfers: response.transfers, loading: false, error: null });
+      }
+    } catch (reason) {
+      if (currentScopeRef.current === requestScope && requestSequence === recoveryLoadSequenceRef.current) {
+        setRecoverySnapshot((previous) => ({
+          scope: requestScope,
+          transfers: previous.scope === requestScope ? previous.transfers : [],
+          loading: false,
+          error: reason instanceof Error ? reason.message : "Unable to load accepted transfers.",
+        }));
+      }
+    }
+  }, [sessionScope, token]);
+
+  const refresh = useCallback(async () => {
+    if (!token || !sessionScope || currentScopeRef.current !== sessionScope) return;
+    const requestScope = sessionScope;
+    const requestSequence = ++managementLoadSequenceRef.current;
+    setManagementSnapshot((previous) => ({
+      scope: requestScope,
+      data: previous.scope === requestScope ? previous.data : null,
+      loading: true,
+      error: null,
+    }));
+    try {
+      const next = await getMyManagement(token);
+      if (currentScopeRef.current === requestScope && requestSequence === managementLoadSequenceRef.current) {
+        setManagementSnapshot({ scope: requestScope, data: next, loading: false, error: null });
+      }
+    } catch (reason) {
+      if (currentScopeRef.current === requestScope && requestSequence === managementLoadSequenceRef.current) {
+        setManagementSnapshot((previous) => ({
+          scope: requestScope,
+          data: previous.scope === requestScope ? previous.data : null,
+          loading: false,
+          error: reason instanceof Error ? reason.message : "Unable to load management access.",
+        }));
+      }
+      throw reason;
+    }
+    await refreshRecoveryTransfers();
+  }, [refreshRecoveryTransfers, sessionScope, token]);
+
+  useEffect(() => {
+    if (!token || !sessionScope) {
+      ++managementLoadSequenceRef.current;
+      ++recoveryLoadSequenceRef.current;
+      setManagementSnapshot({ scope: null, data: null, loading: false, error: null });
+      setRecoverySnapshot({ scope: null, transfers: [], loading: false, error: null });
+      return;
+    }
+    void refresh().catch(() => undefined);
+  }, [refresh, sessionScope, token]);
 
   const resources = useMemo<OwnedResource[]>(() => [
     ...(data?.ownedArtists ?? []).map((artist) => ({ kind: "artist" as const, id: artist.id, name: artist.name })),
@@ -76,24 +242,34 @@ export default function ArtistManagementPage() {
 
   useEffect(() => {
     if (!token || !selected) {
-      setAccess(null);
+      setAccessSnapshot({ scope: sessionScope, selectedKey, value: null });
       return;
     }
+    const requestScope = sessionScope;
+    const selectedResourceKey = `${selected.kind}:${selected.id}`;
+    if (!requestScope) return;
     let active = true;
     const request = selected.kind === "artist"
       ? getArtistManagementAccess(token, selected.id)
       : getReleaseManagementAccess(token, selected.id);
-    request.then((next) => { if (active) setAccess(next); })
-      .catch(() => { if (active) setAccess(null); });
+    request.then((next) => {
+      if (active) setAccessSnapshot({ scope: requestScope, selectedKey: selectedResourceKey, value: next });
+    })
+      .catch(() => {
+        if (active) setAccessSnapshot({ scope: requestScope, selectedKey: selectedResourceKey, value: null });
+      });
     return () => { active = false; };
-  }, [token, selected]);
+  }, [selectedKey, sessionScope, token, selected]);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
-    if (!token || busy) return;
+    const requestScope = sessionScope;
+    if (!token || !requestScope || busy || currentScopeRef.current !== requestScope) return;
     setBusy(true);
     try {
       await action();
+      if (currentScopeRef.current !== requestScope) return;
       await refresh();
+      if (currentScopeRef.current !== requestScope) return;
       if (selected) {
         const nextAccess = await (selected.kind === "artist"
           ? getArtistManagementAccess(token, selected.id)
@@ -103,13 +279,14 @@ export default function ArtistManagementPage() {
       setEditingGrantId(null);
       addToast({ type: "success", title: success });
     } catch (reason) {
+      if (currentScopeRef.current !== requestScope) return;
       addToast({
         type: "error",
         title: "Management request failed",
         message: reason instanceof Error ? reason.message : "Please try again.",
       });
     } finally {
-      setBusy(false);
+      if (currentScopeRef.current === requestScope) setBusy(false);
     }
   };
 
@@ -159,6 +336,47 @@ export default function ArtistManagementPage() {
     }), "Transfer invitation sent");
   };
 
+  const submitRecoveryRequest = (event: React.FormEvent, transfer: ManagementTransferRecovery) => {
+    event.preventDefault();
+    const requestScope = sessionScope;
+    if (!token || !requestScope || currentScopeRef.current !== requestScope || !canRequestManagementTransferRecovery(transfer)
+      || submittingRecoveryTransferId === transfer.id) return;
+
+    const evidence = recoveryEvidence[transfer.id] ?? "";
+    const trimmedEvidence = evidence.trim();
+    if (trimmedEvidence.length < 20 || trimmedEvidence.length > 4000) {
+      setRecoveryRequestErrors((previous) => ({
+        ...previous,
+        [transfer.id]: "Evidence must be between 20 and 4,000 characters.",
+      }));
+      return;
+    }
+
+    setSubmittingRecoverySnapshot({ scope: requestScope, transferId: transfer.id });
+    setRecoveryRequestErrors((previous) => ({ ...previous, [transfer.id]: "" }));
+    void (async () => {
+      try {
+        await requestManagementTransferRecovery(token, transfer.id, trimmedEvidence);
+        if (currentScopeRef.current !== requestScope) return;
+        await refreshRecoveryTransfers();
+        if (currentScopeRef.current !== requestScope) return;
+        setRecoveryEvidence((previous) => ({ ...previous, [transfer.id]: "" }));
+        addToast({
+          type: "success",
+          title: "Review requested",
+          message: "An operator will review the evidence. Management will not change automatically.",
+        });
+      } catch (reason) {
+        if (currentScopeRef.current !== requestScope) return;
+        const message = reason instanceof Error ? reason.message : "Unable to request a recovery review.";
+        setRecoveryRequestErrors((previous) => ({ ...previous, [transfer.id]: message }));
+        addToast({ type: "error", title: "Recovery request failed", message });
+      } finally {
+        if (currentScopeRef.current === requestScope) setSubmittingRecoverySnapshot({ scope: requestScope, transferId: null });
+      }
+    })();
+  };
+
   return (
     <AuthGate title="Connect your wallet to manage artist access.">
       <main className="analytics-container" style={{ padding: "12px 0 64px" }}>
@@ -191,6 +409,63 @@ export default function ArtistManagementPage() {
                 <button type="button" disabled={busy} onClick={() => token && void run(() => respondToManagementTransfer(token, transfer.id, "decline"), "Transfer declined")}>Decline</button>
               </div>
             </div>)}
+          </section>
+
+          <section className="glass-panel" style={{ padding: 24, marginBottom: 24 }} aria-labelledby="accepted-transfers-heading">
+            <h2 id="accepted-transfers-heading">Accepted management transfers</h2>
+            <p className="analytics-muted">
+              You can request an operator review for an eligible transfer you proposed. Submitting evidence does not automatically reverse management access. Credits, rights, and payouts do not move through this process.
+            </p>
+            {recoveryLoading && <p role="status">Loading accepted transfers…</p>}
+            {recoveryError && <p role="alert">{recoveryError} <button type="button" onClick={() => void refreshRecoveryTransfers()}>Try again</button></p>}
+            {!recoveryLoading && !recoveryError && recoveryTransfers.length === 0 && <p className="analytics-muted">No accepted transfers are available for review.</p>}
+            {!recoveryLoading && !recoveryError && recoveryTransfers.map((acceptedTransfer) => {
+              const resourceNames = acceptedTransfer.resources.map((resource) => resource.name);
+              const status = acceptedTransfer.recovery?.status;
+              const canRequest = canRequestManagementTransferRecovery(acceptedTransfer);
+              const statusMessage = status === "pending"
+                ? "A recovery request is pending operator review."
+                : status === "approved"
+                  ? "An operator approved the recovery request."
+                  : status === "rejected"
+                    ? "An operator rejected the recovery request."
+                    : null;
+              return (
+                <div key={acceptedTransfer.id} className="artist-management-row accepted-transfer-recovery">
+                  <div>
+                    <strong>{acceptedTransfer.resourceType === "artist_profile" ? "Profile" : "Release"} management transfer</strong>
+                    <ul className="artist-management-resource-list">
+                      {resourceNames.map((name, index) => <li key={`${acceptedTransfer.resourceIds[index] ?? name}-${index}`}>{name}</li>)}
+                    </ul>
+                    <p className="analytics-muted">{acceptedTransfer.acceptedAt
+                      ? `Accepted ${new Date(acceptedTransfer.acceptedAt).toLocaleString()}`
+                      : "Acceptance time unavailable"}</p>
+                    {statusMessage && <p className="analytics-muted" role="status">
+                      {statusMessage}{acceptedTransfer.recovery?.reviewedAt ? ` Reviewed ${new Date(acceptedTransfer.recovery.reviewedAt).toLocaleString()}.` : ""}
+                    </p>}
+                    {canRequest ? <form className="artist-management-form" onSubmit={(event) => submitRecoveryRequest(event, acceptedTransfer)}>
+                      {status === "rejected" && <p className="analytics-muted">You may submit new evidence while this transfer remains eligible.</p>}
+                      <label className="artist-management-field">Evidence for operator review
+                        <textarea
+                          required
+                          minLength={20}
+                          maxLength={4000}
+                          rows={5}
+                          value={recoveryEvidence[acceptedTransfer.id] ?? ""}
+                          onChange={(event) => setRecoveryEvidence((previous) => ({ ...previous, [acceptedTransfer.id]: event.target.value }))}
+                          aria-describedby={`recovery-evidence-hint-${acceptedTransfer.id}`}
+                        />
+                      </label>
+                      <p id={`recovery-evidence-hint-${acceptedTransfer.id}`} className="analytics-muted">Provide 20 to 4,000 characters. An operator reviews the request; this is not an automatic reversion.</p>
+                      {recoveryRequestErrors[acceptedTransfer.id] && <p role="alert">{recoveryRequestErrors[acceptedTransfer.id]}</p>}
+                      <button type="submit" disabled={submittingRecoveryTransferId === acceptedTransfer.id}>
+                        {submittingRecoveryTransferId === acceptedTransfer.id ? "Sending request…" : "Request operator review"}
+                      </button>
+                    </form> : (!statusMessage || status === "rejected") && <p className="analytics-muted">This transfer is not currently eligible for another operator review request.</p>}
+                  </div>
+                </div>
+              );
+            })}
           </section>
 
           <section className="glass-panel" style={{ padding: 24, marginBottom: 24 }} aria-labelledby="owned-heading">
@@ -282,7 +557,7 @@ export default function ArtistManagementPage() {
           .artist-management-actions { display: flex; gap: 8px; }
           .artist-management-form { display: grid; gap: 16px; max-width: 560px; margin: 18px 0; }
           .artist-management-field { display: grid; gap: 8px; max-width: 560px; }
-          .artist-management-field input, .artist-management-field select { width: 100%; min-height: 44px; border-radius: 10px; padding: 10px; color: var(--r-on-surface); background: var(--r-surface-container, #252430); border: 1px solid rgba(255,255,255,.2); }
+          .artist-management-field input, .artist-management-field select, .artist-management-field textarea { width: 100%; min-height: 44px; border-radius: 10px; padding: 10px; color: var(--r-on-surface); background: var(--r-surface-container, #252430); border: 1px solid rgba(255,255,255,.2); font: inherit; }
           .artist-management-form fieldset { display: grid; gap: 3px; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; padding: 8px 14px 12px; margin: 0; }
           .artist-management-form legend { color: var(--r-on-surface); padding: 0 5px; font-weight: 600; }
           .artist-management-checkbox { display: flex; align-items: center; gap: 10px; min-height: 42px; }

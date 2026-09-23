@@ -114,6 +114,13 @@ claim, only that person's review note is scrubbed.
 even though the credit itself belongs to an artist. Erasure clears that id and
 `identityReviewNote` while retaining the credit's review status and timestamp.
 
+**10. Management transfer recovery requests carry private evidence.**
+`ManagementTransferRecoveryRequest` is exported only for its requester, with
+the operator's account id redacted. Erasure retains the decision and resource
+snapshot, scrubs the requester's evidence and review note, and rejects any
+still-pending request. If the erased person reviewed someone else's request,
+only that review note is scrubbed. User foreign keys rotate with the account id.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:

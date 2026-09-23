@@ -10,6 +10,7 @@ import {
   ManagementResourceType,
   ManagementScope,
   ManagementTransferStatus,
+  ManagementTransferRecoveryStatus,
   Prisma,
 } from "@prisma/client";
 import { prisma } from "../../db/prisma";
@@ -28,6 +29,8 @@ const CATALOG_SCOPES = [
 ] as const;
 const OWNER_CATALOG_SCOPES = [...CATALOG_SCOPES];
 const MAX_RECIPIENT_EMAIL_LENGTH = 254;
+// Recovery approvals may lock and update a multi-release transfer snapshot in batches.
+const RECOVERY_TRANSACTION_TIMEOUT_MS = 15_000;
 
 function isValidRecipientEmail(email: string): boolean {
   let atIndex = -1;
@@ -80,6 +83,16 @@ type TransferResource = {
 };
 
 type ManagementTransaction = Prisma.TransactionClient;
+type RecoveryTransfer = {
+  id: string;
+  proposerUserId: string;
+  recipientUserId: string;
+  resourceType: ManagementResourceType;
+  resourceIds: string[];
+  status: ManagementTransferStatus;
+  acceptedAt: Date | null;
+};
+type RecoverySnapshot = { resourceType: ManagementResourceType; resourceIds: string[] };
 
 @Injectable()
 export class ManagementService {
@@ -739,18 +752,43 @@ export class ManagementService {
 
   async acceptTransfer(userId: string, transferId: string) {
     return prisma.$transaction(async (tx) => {
+      // Observe the immutable resource snapshot before locking. Resource rows are
+      // the shared serialization point for accepting and recovering transfers.
+      const observedTransfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
+      this.assertPendingTransfer(observedTransfer, userId);
+      await this.assertOpenUser(tx, userId);
+      await this.assertOpenUser(tx, observedTransfer.proposerUserId);
+
+      const ids = [...new Set(observedTransfer.resourceIds)].sort();
+      if (ids.length !== observedTransfer.resourceIds.length || ids.length === 0) {
+        throw new ConflictException("The transfer resource snapshot is invalid");
+      }
+      if (
+        observedTransfer.resourceType !== ManagementResourceType.artist_profile &&
+        observedTransfer.resourceType !== ManagementResourceType.release
+      ) {
+        throw new ConflictException("The transfer resource type is invalid");
+      }
+      await this.lockTransferResources(tx, {
+        resourceType: observedTransfer.resourceType,
+        resourceIds: ids,
+      });
+
       await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE`;
       const transfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
       this.assertPendingTransfer(transfer, userId);
+      if (
+        transfer.proposerUserId !== observedTransfer.proposerUserId ||
+        transfer.recipientUserId !== observedTransfer.recipientUserId ||
+        transfer.resourceType !== observedTransfer.resourceType ||
+        !sameStringList(transfer.resourceIds, observedTransfer.resourceIds)
+      ) {
+        throw new ConflictException("The transfer changed while it was being accepted");
+      }
       await this.assertOpenUser(tx, userId);
       await this.assertOpenUser(tx, transfer.proposerUserId);
 
-      const ids = [...new Set(transfer.resourceIds)].sort();
-      if (ids.length !== transfer.resourceIds.length || ids.length === 0) {
-        throw new ConflictException("The transfer resource snapshot is invalid");
-      }
       if (transfer.resourceType === ManagementResourceType.artist_profile) {
-        await this.lockArtists(tx, ids);
         const artists = await tx.artist.findMany({ where: { id: { in: ids } } });
         if (artists.length !== ids.length) throw new ConflictException("A transferred artist profile no longer exists");
         for (const artist of artists) {
@@ -767,7 +805,6 @@ export class ManagementService {
           data: { status: ManagementGrantStatus.revoked, revokedAt: new Date() },
         });
       } else if (transfer.resourceType === ManagementResourceType.release) {
-        await this.lockReleases(tx, ids);
         const releases = await tx.release.findMany({
           where: { id: { in: ids } },
           include: { artist: { select: { userId: true } } },
@@ -815,6 +852,29 @@ export class ManagementService {
   async cancelTransfer(userId: string, transferId: string) {
     return prisma.$transaction(async (tx) => {
       await this.assertOpenUser(tx, userId);
+      const observedTransfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
+      if (!observedTransfer) throw new NotFoundException("Management transfer not found");
+      if (!sameUserId(observedTransfer.proposerUserId, userId)) {
+        throw new ForbiddenException("Only the transfer proposer can cancel it");
+      }
+      if (observedTransfer.status !== ManagementTransferStatus.pending) {
+        throw new ConflictException("Only pending transfers can be cancelled");
+      }
+
+      const ids = [...new Set(observedTransfer.resourceIds)].sort();
+      if (ids.length === 0 || ids.length !== observedTransfer.resourceIds.length) {
+        throw new ConflictException("The transfer resource snapshot is invalid");
+      }
+      if (
+        observedTransfer.resourceType !== ManagementResourceType.artist_profile &&
+        observedTransfer.resourceType !== ManagementResourceType.release
+      ) {
+        throw new ConflictException("The transfer resource type is invalid");
+      }
+      await this.lockTransferResources(tx, {
+        resourceType: observedTransfer.resourceType,
+        resourceIds: ids,
+      });
       await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE`;
       const transfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
       if (!transfer) throw new NotFoundException("Management transfer not found");
@@ -824,7 +884,15 @@ export class ManagementService {
       if (transfer.status !== ManagementTransferStatus.pending) {
         throw new ConflictException("Only pending transfers can be cancelled");
       }
-      await this.lockTransferResources(tx, transfer);
+      if (
+        transfer.proposerUserId !== observedTransfer.proposerUserId ||
+        transfer.recipientUserId !== observedTransfer.recipientUserId ||
+        transfer.resourceType !== observedTransfer.resourceType ||
+        !sameStringList(transfer.resourceIds, observedTransfer.resourceIds)
+      ) {
+        throw new ConflictException("The transfer changed while it was being cancelled");
+      }
+      await this.assertOpenUser(tx, userId);
       await this.assertTransferProposerStillOwns(tx, transfer);
       const cancelled = await tx.managementTransfer.updateMany({
         where: { id: transferId, proposerUserId: equalsUserId(userId), status: ManagementTransferStatus.pending },
@@ -833,6 +901,389 @@ export class ManagementService {
       if (cancelled.count !== 1) throw new ConflictException("The transfer is no longer pending");
       return tx.managementTransfer.findUniqueOrThrow({ where: { id: transferId } });
     });
+  }
+
+  async createTransferRecoveryRequest(userId: string, transferId: string, evidenceValue: unknown) {
+    const evidence = readRecoveryEvidence(evidenceValue);
+    await this.assertOpenUser(prisma, userId);
+
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE`;
+        const transfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
+        if (!transfer) throw new NotFoundException("Management transfer not found");
+        if (!sameUserId(transfer.proposerUserId, userId)) {
+          throw new ForbiddenException("Only the original transfer proposer can request recovery");
+        }
+        await this.assertOpenUser(tx, transfer.proposerUserId);
+        if (transfer.status !== ManagementTransferStatus.accepted || !transfer.acceptedAt) {
+          throw new ConflictException("Only accepted transfers can be recovered");
+        }
+        await this.assertRecoverableTransfer(tx, transfer, {
+          resourceType: transfer.resourceType,
+          resourceIds: transfer.resourceIds,
+        });
+
+        const existing = await tx.managementTransferRecoveryRequest.findFirst({
+          where: {
+            transferId,
+            status: { in: [ManagementTransferRecoveryStatus.pending, ManagementTransferRecoveryStatus.approved] },
+          },
+          select: { id: true },
+        });
+        if (existing) throw new ConflictException("A recovery request already exists for this transfer");
+
+        const request = await tx.managementTransferRecoveryRequest.create({
+          data: {
+            transferId,
+            requesterUserId: transfer.proposerUserId,
+            evidence,
+            resourceType: transfer.resourceType,
+            resourceIds: [...transfer.resourceIds],
+          },
+          select: { id: true, transferId: true, status: true, createdAt: true },
+        });
+        return request;
+      }, { timeout: RECOVERY_TRANSACTION_TIMEOUT_MS });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        throw new ConflictException("A recovery request already exists for this transfer");
+      }
+      throw error;
+    }
+  }
+
+  async getMyTransferRecoveries(userId: string) {
+    await this.assertOpenUser(prisma, userId);
+    const transfers = await prisma.managementTransfer.findMany({
+      where: {
+        proposerUserId: equalsUserId(userId),
+        status: ManagementTransferStatus.accepted,
+      },
+      select: {
+        id: true,
+        resourceType: true,
+        resourceIds: true,
+        proposerUserId: true,
+        recipientUserId: true,
+        acceptedAt: true,
+        createdAt: true,
+        recoveryRequests: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true, status: true, reviewedAt: true },
+        },
+      },
+      orderBy: [{ acceptedAt: "desc" }, { createdAt: "desc" }],
+    });
+    const artistIds = [...new Set(transfers
+      .filter((transfer) => transfer.resourceType === ManagementResourceType.artist_profile)
+      .flatMap((transfer) => transfer.resourceIds))];
+    const releaseIds = [...new Set(transfers
+      .filter((transfer) => transfer.resourceType === ManagementResourceType.release)
+      .flatMap((transfer) => transfer.resourceIds))];
+
+    const [artists, releases, acceptedArtistTransfers, acceptedReleaseTransfers] = await Promise.all([
+      artistIds.length
+        ? prisma.artist.findMany({
+          where: { id: { in: artistIds } },
+          select: { id: true, displayName: true, managementOwnerUserId: true },
+        })
+        : Promise.resolve([]),
+      releaseIds.length
+        ? prisma.release.findMany({
+          where: { id: { in: releaseIds } },
+          select: { id: true, title: true, managementOwnerUserId: true },
+        })
+        : Promise.resolve([]),
+      artistIds.length
+        ? prisma.managementTransfer.findMany({
+          where: {
+            resourceType: ManagementResourceType.artist_profile,
+            status: ManagementTransferStatus.accepted,
+            resourceIds: { hasSome: artistIds },
+          },
+          select: { id: true, resourceIds: true, acceptedAt: true },
+        })
+        : Promise.resolve([]),
+      releaseIds.length
+        ? prisma.managementTransfer.findMany({
+          where: {
+            resourceType: ManagementResourceType.release,
+            status: ManagementTransferStatus.accepted,
+            resourceIds: { hasSome: releaseIds },
+          },
+          select: { id: true, resourceIds: true, acceptedAt: true },
+        })
+        : Promise.resolve([]),
+    ]);
+    const artistById = new Map(artists.map((artist) => [artist.id, artist]));
+    const releaseById = new Map(releases.map((release) => [release.id, release]));
+
+    return {
+      transfers: transfers.map((transfer) => {
+        const ids = transfer.resourceIds;
+        const snapshotIsValid = ids.length > 0 && new Set(ids).size === ids.length && !!transfer.acceptedAt;
+        const ownersMatch = snapshotIsValid && ids.every((id) => {
+          const ownerId = transfer.resourceType === ManagementResourceType.artist_profile
+            ? artistById.get(id)?.managementOwnerUserId
+            : releaseById.get(id)?.managementOwnerUserId;
+          return sameUserId(ownerId, transfer.recipientUserId);
+        });
+        const laterAcceptedTransfers = transfer.resourceType === ManagementResourceType.artist_profile
+          ? acceptedArtistTransfers
+          : acceptedReleaseTransfers;
+        const noLaterTransfer = snapshotIsValid && !laterAcceptedTransfers.some((candidate) =>
+          candidate.id !== transfer.id &&
+          candidate.acceptedAt !== null &&
+          candidate.acceptedAt >= transfer.acceptedAt! &&
+          candidate.resourceIds.some((id) => ids.includes(id)),
+        );
+        const names = transfer.resourceType === ManagementResourceType.artist_profile
+          ? ids.map((id) => ({ id, name: artistById.get(id)?.displayName ?? "Deleted profile" }))
+          : ids.map((id) => ({ id, name: releaseById.get(id)?.title ?? "Deleted release" }));
+        const recovery = transfer.recoveryRequests[0];
+        return {
+          id: transfer.id,
+          resourceType: transfer.resourceType,
+          resourceIds: ids,
+          resources: names,
+          acceptedAt: transfer.acceptedAt,
+          eligible: !!ownersMatch && !!noLaterTransfer,
+          recovery: recovery
+            ? { id: recovery.id, status: recovery.status, reviewedAt: recovery.reviewedAt }
+            : null,
+        };
+      }),
+    };
+  }
+
+  async getPendingTransferRecoveries(operatorUserId: string, role: string) {
+    this.assertRecoveryOperator(role);
+    await this.assertOpenUser(prisma, operatorUserId);
+    const requests = await prisma.managementTransferRecoveryRequest.findMany({
+      where: { status: ManagementTransferRecoveryStatus.pending },
+      select: {
+        id: true,
+        transferId: true,
+        evidence: true,
+        resourceType: true,
+        resourceIds: true,
+        createdAt: true,
+        requester: { select: { email: true } },
+        transfer: { select: { recipient: { select: { email: true } } } },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+    const artistIds = [...new Set(requests
+      .filter((request) => request.resourceType === ManagementResourceType.artist_profile)
+      .flatMap((request) => request.resourceIds))];
+    const releaseIds = [...new Set(requests
+      .filter((request) => request.resourceType === ManagementResourceType.release)
+      .flatMap((request) => request.resourceIds))];
+    const [artists, releases] = await Promise.all([
+      artistIds.length
+        ? prisma.artist.findMany({ where: { id: { in: artistIds } }, select: { id: true, displayName: true } })
+        : Promise.resolve([]),
+      releaseIds.length
+        ? prisma.release.findMany({ where: { id: { in: releaseIds } }, select: { id: true, title: true } })
+        : Promise.resolve([]),
+    ]);
+    const artistNames = new Map(artists.map((artist) => [artist.id, artist.displayName]));
+    const releaseNames = new Map(releases.map((release) => [release.id, release.title]));
+
+    return {
+      requests: requests.map((request) => ({
+        id: request.id,
+        transferId: request.transferId,
+        resourceType: request.resourceType,
+        resources: request.resourceIds.map((id) => ({
+          id,
+          name: request.resourceType === ManagementResourceType.artist_profile
+            ? artistNames.get(id) ?? "Deleted profile"
+            : releaseNames.get(id) ?? "Deleted release",
+        })),
+        requesterEmail: request.requester.email,
+        recipientEmail: request.transfer.recipient.email,
+        evidence: request.evidence,
+        createdAt: request.createdAt,
+      })),
+    };
+  }
+
+  async reviewTransferRecoveryRequest(
+    reviewerUserId: string,
+    role: string,
+    requestId: string,
+    decisionValue: unknown,
+    reviewNoteValue: unknown,
+  ) {
+    this.assertRecoveryOperator(role);
+    await this.assertOpenUser(prisma, reviewerUserId);
+    if (decisionValue !== "approve" && decisionValue !== "reject") {
+      throw new BadRequestException("decision must be approve or reject");
+    }
+    const decision = decisionValue;
+    const reviewNote = readReviewNote(reviewNoteValue);
+
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ManagementTransferRecoveryRequest" WHERE "id" = ${requestId} FOR UPDATE`;
+      const request = await tx.managementTransferRecoveryRequest.findUnique({ where: { id: requestId } });
+      if (!request) throw new NotFoundException("Transfer recovery request not found");
+      if (request.status !== ManagementTransferRecoveryStatus.pending) {
+        throw new ConflictException("Only pending recovery requests can be reviewed");
+      }
+
+      await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${request.transferId} FOR UPDATE`;
+      const transfer = await tx.managementTransfer.findUnique({ where: { id: request.transferId } });
+      if (!transfer) throw new NotFoundException("Management transfer not found");
+      if (
+        sameUserId(reviewerUserId, request.requesterUserId) ||
+        sameUserId(reviewerUserId, transfer.proposerUserId) ||
+        sameUserId(reviewerUserId, transfer.recipientUserId)
+      ) {
+        throw new ForbiddenException("A transfer participant cannot review its recovery request");
+      }
+
+      if (decision === "reject") {
+        return tx.managementTransferRecoveryRequest.update({
+          where: { id: requestId },
+          data: {
+            status: ManagementTransferRecoveryStatus.rejected,
+            reviewerUserId,
+            reviewNote,
+            reviewedAt: new Date(),
+          },
+          select: { id: true, transferId: true, status: true, reviewerUserId: true, reviewNote: true, reviewedAt: true },
+        });
+      }
+
+      if (!sameUserId(request.requesterUserId, transfer.proposerUserId)) {
+        throw new ConflictException("The recovery requester is not the original transfer proposer");
+      }
+      await this.assertOpenUser(tx, request.requesterUserId);
+      const ids = await this.assertRecoverableTransfer(tx, transfer, {
+        resourceType: request.resourceType,
+        resourceIds: request.resourceIds,
+      });
+
+      if (request.resourceType === ManagementResourceType.artist_profile) {
+        const ownership = await tx.artist.updateMany({
+          where: { id: { in: ids }, managementOwnerUserId: transfer.recipientUserId },
+          data: { managementOwnerUserId: request.requesterUserId },
+        });
+        if (ownership.count !== ids.length) throw new ConflictException("The transferred profile ownership changed during review");
+        await tx.managementGrant.updateMany({
+          where: {
+            artistId: { in: ids },
+            status: { in: [ManagementGrantStatus.pending, ManagementGrantStatus.active] },
+          },
+          data: { status: ManagementGrantStatus.revoked, revokedAt: new Date() },
+        });
+        await tx.managementTransfer.updateMany({
+          where: {
+            id: { not: transfer.id },
+            resourceType: ManagementResourceType.artist_profile,
+            resourceIds: { hasSome: ids },
+            status: ManagementTransferStatus.pending,
+          },
+          data: { status: ManagementTransferStatus.cancelled, cancelledAt: new Date() },
+        });
+      } else {
+        const ownership = await tx.release.updateMany({
+          where: { id: { in: ids }, managementOwnerUserId: transfer.recipientUserId },
+          data: { managementOwnerUserId: request.requesterUserId },
+        });
+        if (ownership.count !== ids.length) throw new ConflictException("The transferred release ownership changed during review");
+        await tx.managementGrant.updateMany({
+          where: {
+            releaseId: { in: ids },
+            status: { in: [ManagementGrantStatus.pending, ManagementGrantStatus.active] },
+          },
+          data: { status: ManagementGrantStatus.revoked, revokedAt: new Date() },
+        });
+        await tx.managementTransfer.updateMany({
+          where: {
+            id: { not: transfer.id },
+            resourceType: ManagementResourceType.release,
+            resourceIds: { hasSome: ids },
+            status: ManagementTransferStatus.pending,
+          },
+          data: { status: ManagementTransferStatus.cancelled, cancelledAt: new Date() },
+        });
+      }
+
+      return tx.managementTransferRecoveryRequest.update({
+        where: { id: requestId },
+        data: {
+          status: ManagementTransferRecoveryStatus.approved,
+          reviewerUserId,
+          reviewNote,
+          reviewedAt: new Date(),
+        },
+        select: { id: true, transferId: true, status: true, reviewerUserId: true, reviewNote: true, reviewedAt: true },
+      });
+    }, { timeout: RECOVERY_TRANSACTION_TIMEOUT_MS });
+  }
+
+  private assertRecoveryOperator(role: string) {
+    if (role !== "operator" && role !== "admin") {
+      throw new ForbiddenException("Only operators and admins can review transfer recovery requests");
+    }
+  }
+
+  private async assertRecoverableTransfer(
+    tx: ManagementTransaction,
+    transfer: RecoveryTransfer,
+    snapshot: RecoverySnapshot,
+  ): Promise<string[]> {
+    if (transfer.status !== ManagementTransferStatus.accepted || !transfer.acceptedAt) {
+      throw new ConflictException("The original transfer is no longer accepted");
+    }
+    if (snapshot.resourceType !== transfer.resourceType || !sameStringList(snapshot.resourceIds, transfer.resourceIds)) {
+      throw new ConflictException("The transfer resource snapshot changed after the request was submitted");
+    }
+    const ids = snapshot.resourceIds;
+    if (ids.length === 0 || new Set(ids).size !== ids.length) {
+      throw new ConflictException("The transfer resource snapshot is invalid");
+    }
+
+    if (snapshot.resourceType === ManagementResourceType.artist_profile) {
+      await this.lockArtists(tx, [...ids].sort());
+      const artists = await tx.artist.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, managementOwnerUserId: true },
+      });
+      if (artists.length !== ids.length || artists.some((artist) => !sameUserId(artist.managementOwnerUserId, transfer.recipientUserId))) {
+        throw new ConflictException("The original recipient no longer directly manages every transferred profile");
+      }
+    } else if (snapshot.resourceType === ManagementResourceType.release) {
+      await this.lockReleases(tx, [...ids].sort());
+      const releases = await tx.release.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, managementOwnerUserId: true },
+      });
+      if (releases.length !== ids.length || releases.some((release) => !sameUserId(release.managementOwnerUserId, transfer.recipientUserId))) {
+        throw new ConflictException("The original recipient no longer directly manages every transferred release");
+      }
+    } else {
+      throw new ConflictException("The transfer resource type is invalid");
+    }
+
+    const laterTransfers = await tx.managementTransfer.findMany({
+      where: {
+        resourceType: snapshot.resourceType,
+        status: ManagementTransferStatus.accepted,
+        id: { not: transfer.id },
+        resourceIds: { hasSome: ids },
+        acceptedAt: { gte: transfer.acceptedAt },
+      },
+      select: { id: true },
+    });
+    if (laterTransfers.length) {
+      throw new ConflictException("A later accepted transfer touches one or more recovered resources");
+    }
+    return ids;
   }
 
   private async readTransferResource(userId: string, input: CreateManagementTransferInput): Promise<TransferResource> {
@@ -1087,6 +1538,28 @@ function readIdList(value: unknown, fieldName: string): string[] {
   const ids = value.map((item) => (item as string).trim());
   if (new Set(ids).size !== ids.length) throw new BadRequestException(`${fieldName} cannot contain duplicate IDs`);
   return ids;
+}
+
+function readRecoveryEvidence(value: unknown): string {
+  if (typeof value !== "string") throw new BadRequestException("evidence is required");
+  const evidence = value.trim();
+  if (evidence.length < 20 || evidence.length > 4000) {
+    throw new BadRequestException("evidence must be between 20 and 4000 characters");
+  }
+  return evidence;
+}
+
+function readReviewNote(value: unknown): string {
+  if (typeof value !== "string") throw new BadRequestException("note is required");
+  const note = value.trim();
+  if (note.length === 0 || note.length > 4000) {
+    throw new BadRequestException("note must be between 1 and 4000 characters");
+  }
+  return note;
+}
+
+function sameStringList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function parseFutureExpiry(value: unknown): Date | null {

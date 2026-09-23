@@ -104,6 +104,16 @@ const AUTH_TARGETS = [
       await page.getByText("Management invitation", { exact: true }).waitFor();
     },
   }],
+  ["/artist/management", "artist-management-recovery.png", {
+    selectors: ["section[aria-labelledby='accepted-transfers-heading']"],
+    viewportHeight: 1050,
+    mockManagement: true,
+    mockRecovery: true,
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("heading", { name: "Accepted management transfers" }).scrollIntoViewIfNeeded();
+    },
+  }],
 ];
 
 const OWNER_TARGETS = [
@@ -186,9 +196,9 @@ async function capture(page, targets, passName) {
     if (ready?.mockManagement) {
       await page.route("**/management/me", (request) => request.fulfill({
         json: {
-          ownedArtists: ready.mockInvitation ? [] : [{ id: "guide-artist", name: "Test Artist" }],
+          ownedArtists: ready.mockInvitation || ready.mockRecovery ? [] : [{ id: "guide-artist", name: "Test Artist" }],
           managedArtists: [],
-          ownedReleases: ready.mockInvitation ? [] : [{ id: "guide-release", title: "Test Release", artistId: "guide-artist" }],
+          ownedReleases: ready.mockInvitation || ready.mockRecovery ? [] : [{ id: "guide-release", title: "Test Release", artistId: "guide-artist" }],
           managedReleases: [],
           pendingGrants: ready.mockInvitation ? [{
             id: "guide-invitation",
@@ -215,6 +225,19 @@ async function capture(page, targets, passName) {
             status: "active",
             expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
           }],
+        },
+      }));
+      await page.route("**/management/recoveries/me", (request) => request.fulfill({
+        json: {
+          transfers: ready.mockRecovery ? [{
+            id: "guide-accepted-transfer",
+            resourceType: "release",
+            resourceIds: ["guide-release"],
+            resources: [{ id: "guide-release", name: "Test Release" }],
+            acceptedAt: "2026-09-01T12:00:00.000Z",
+            eligible: true,
+            recovery: null,
+          }] : [],
         },
       }));
     }

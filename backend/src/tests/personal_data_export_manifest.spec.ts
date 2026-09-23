@@ -74,6 +74,13 @@ describe("personal data export manifest", () => {
           { kind: "userId", column: "recipientUserId" },
         ],
       });
+
+      const recovery = EXPORTED_MODELS.find((entry) => entry.model === "ManagementTransferRecoveryRequest");
+      expect(recovery).toMatchObject({
+        primaryKey: "id",
+        keys: [{ kind: "userId", column: "requesterUserId" }],
+      });
+      expect(REDACTED_FIELDS.ManagementTransferRecoveryRequest).toHaveProperty("reviewerUserId");
     });
 
     it("lists each exported model only once", () => {

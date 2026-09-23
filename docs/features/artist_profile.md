@@ -48,6 +48,13 @@ account association and does not regain edit access. A verified claim still
 grants profile editing only, not delegation, release control, rights, or payout
 authority.
 
+If an accepted transfer was a mistake, the former manager can open Artist
+management and submit evidence for operator review. The request does not
+restore access. An operator can approve recovery only while the recipient
+still manages the exact transferred resources and no later accepted transfer
+has involved them. The decision remains in the management audit history;
+rights, credits, and payouts are unchanged.
+
 ### Developer / API
 
 - `PATCH /artists/:id` (JWT, manager owner or approved public-profile claimant) — body
@@ -61,6 +68,12 @@ authority.
 - `GET /management/artists/:id/access` (JWT) reports the caller's profile
   scope; the current management owner alone sees invitation history. Grant and
   transfer endpoints require the current owner and recipient to act separately.
+- `POST /management/transfers/:id/recovery-requests` accepts the original
+  proposer's evidence for an accepted transfer. `GET /management/recoveries/me`
+  shows that account's transfer and recovery status without private review
+  evidence. Admin/operator-only reads and decisions under
+  `/management/recoveries` recheck the transfer snapshot and current management
+  owners before changing authority.
 
 ## Data model
 

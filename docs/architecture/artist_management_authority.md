@@ -78,6 +78,31 @@ An organization principal is a distinct future identity and must not be
 simulated through a shared personal login. Until organization identities exist,
 each individual accepts and uses their own grant, preserving an audit trail.
 
+## Recovery after an accepted transfer
+
+The original proposer may submit evidence that an accepted management transfer
+should be reversed. A request changes no authority by itself. An admin or
+operator reviews the evidence and records a decision and note; the recipient
+cannot be displaced by a request alone. Rejected requests remain in the audit
+history, and the proposer may submit new evidence if the transfer is still
+eligible.
+
+Approval is limited to the exact resources in the accepted transfer snapshot.
+In one transaction it rechecks that the original recipient still manages every
+resource and that no later accepted transfer touched any of them. If either
+condition fails, approval stops without changing any owner. Otherwise it sets
+the former proposer's explicit management-owner override on each resource,
+revokes pending and active grants for those resources, and cancels pending
+transfers that include them. The original accepted transfer and the reviewed
+recovery request remain in the audit trail. Recovery changes neither credited
+identity nor rights, legal ownership, licensing, payout, or settlement state.
+
+Account erasure removes free-text recovery evidence and review notes, rejects
+the erased requester's pending requests, and retains pseudonymous decision
+history. A transfer that has since passed to another manager needs a new
+management transfer or a separate operator investigation; it cannot be
+reversed through the stale snapshot.
+
 ## Migration and verification
 
 Existing profiles and releases need no owner rewrite: null overrides preserve
@@ -110,7 +135,10 @@ are exposed through the authenticated, recipient-scoped
 in-app notification bell. The client refreshes the list while signed in; an
 invitation remains visible until it is accepted, declined, revoked, or expires.
 This does not disclose invitations through the public wallet notification feed.
-The broader #1762 management work remains in progress; transfer recovery
-remains to be designed and delivered.
-Keep #1762 open until those workflows and their denied-access tests are
-explicitly completed or separately tracked.
+An original proposer can request operator-reviewed recovery of an accepted
+transfer while the original recipient still manages the exact transferred
+resources and no later accepted transfer has involved them. Approval restores
+only the explicit management-owner override and ends existing grants and
+pending transfers for those resources. The artist and operator surfaces show
+the request and decision state. #1762 remains the parent tracking issue for
+the broader management model and its acceptance criteria.

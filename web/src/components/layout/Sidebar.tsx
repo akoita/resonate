@@ -247,6 +247,7 @@ export default function Sidebar() {
   }, [status, token]);
 
   const showAdminLink = mounted && role === "admin";
+  const showManagementRecoveryLink = mounted && (role === "admin" || role === "operator");
   const accountAddress = smartAccountAddress ?? address;
   const showUserChip = mounted && status === "authenticated" && !!accountAddress;
 
@@ -401,6 +402,23 @@ export default function Sidebar() {
               <span className="link-text">Moderation</span>
             </Link>
           </>
+        ) : null}
+        {showManagementRecoveryLink ? (
+          <Link
+            href="/admin/management-recovery"
+            prefetch={false}
+            className={`sidebar-link ${pathname === "/admin/management-recovery" ? 'active' : ''}`}
+            aria-current={pathname === "/admin/management-recovery" ? "page" : undefined}
+          >
+            <span className="link-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 3v6" />
+                <path d="M8 7H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3" />
+                <path d="m9 13 2 2 4-4" />
+              </svg>
+            </span>
+            <span className="link-text">Transfer Recovery</span>
+          </Link>
         ) : null}
         <button
           type="button"

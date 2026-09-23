@@ -206,6 +206,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "Ownership transfers this person proposed or received, including the recorded resource ID snapshot.",
   },
   {
+    model: "ManagementTransferRecoveryRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "requesterUserId" }],
+    note: "A transfer recovery request this person submitted, its evidence, and the operator's decision. Reviewer identity is redacted.",
+  },
+  {
     model: "StemQualityRating",
     primaryKey: "id",
     // Not `userId`: the curator column is `curatorUserId`.
@@ -673,6 +679,9 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
 export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   ArtistClaimRequest: {
     reviewerUserId: "Internal operator identity; the claimant can export the decision and note without the operator's account id.",
+  },
+  ManagementTransferRecoveryRequest: {
+    reviewerUserId: "Internal operator identity; the requester can export the decision and note without the operator's account id.",
   },
   SessionKey: {
     agentPrivateKey:
