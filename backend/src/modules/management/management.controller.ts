@@ -12,6 +12,11 @@ export class ManagementController {
     return this.managementService.getMe(req.user.userId);
   }
 
+  @Get("invitations/pending")
+  getPendingInvitations(@Req() req: any) {
+    return this.managementService.getPendingInvitations(req.user.userId);
+  }
+
   @Get("artists/:id/access")
   getArtistAccess(@Req() req: any, @Param("id") artistId: string) {
     return this.managementService.getArtistAccess(req.user.userId, artistId);

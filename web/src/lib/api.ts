@@ -6068,6 +6068,27 @@ export type ManagementTransfer = {
   expiresAt: string | null;
 };
 
+export type PendingManagementGrantInvitation = {
+  id: string;
+  artistId: string | null;
+  releaseId: string | null;
+  resourceName: string;
+  scopes: ManagementScope[];
+  expiresAt: string | null;
+};
+
+export type PendingManagementTransferInvitation = {
+  id: string;
+  resourceType: "artist_profile" | "release";
+  resources: { id: string; name: string }[];
+  expiresAt: string | null;
+};
+
+export type PendingManagementInvitations = {
+  grants: PendingManagementGrantInvitation[];
+  transfers: PendingManagementTransferInvitation[];
+};
+
 export type ManagedArtistSummary = {
   id: string;
   name: string;
@@ -6103,6 +6124,14 @@ export type ResourceManagementAccess = {
 
 export function getMyManagement(token: string) {
   return apiRequest<MyManagement>("/management/me", {}, token);
+}
+
+export function getPendingManagementInvitations(token: string) {
+  return apiRequest<PendingManagementInvitations>(
+    "/management/invitations/pending",
+    { cache: "no-store" },
+    token,
+  );
 }
 
 export function getArtistManagementAccess(token: string, artistId: string) {

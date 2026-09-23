@@ -1078,7 +1078,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "transfer", "replace audio", "track audio", "audio replacement"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "notification", "transfer", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1128,6 +1128,21 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose the permissions they need and an optional expiry date. The invitation gives them no access until they accept it. You can later remove permissions or shorten their access, or revoke it entirely. Reducing access ends other pending invitations for that manager and resource. To add permissions or extend access, send a new invitation for them to accept.",
+          },
+          {
+            kind: "paragraph",
+            text: "When someone invites you to manage a profile or release, the notification bell shows the pending invitation while you are signed in. Open it to review the exact access and accept or decline on Artist management. The alert disappears after the invitation is resolved or expires.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-management-invitation.png`,
+              alt: "Notification bell showing a pending artist management invitation and a link to review it.",
+              caption: "A pending invitation stays in notifications until you respond or it expires.",
+              width: 1440,
+              height: 900,
+              source: LOCAL,
+            },
           },
           {
             kind: "paragraph",

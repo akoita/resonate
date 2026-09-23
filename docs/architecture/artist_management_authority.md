@@ -104,8 +104,13 @@ audio on ready, unpublished releases. Versioned processing activates each
 replacement atomically, keeps the current audio playable during processing, and
 preserves historical stem references for existing purchases and saved remix
 projects. See the [audio replacement design](track_audio_replacement.md) for
-the request and activation contract. The broader #1762 management work remains
-in progress; invite notifications and transfer recovery remain to be designed
-and delivered.
+the request and activation contract. Pending grant and transfer invitations
+are exposed through the authenticated, recipient-scoped
+`GET /management/invitations/pending` read and shown in the
+in-app notification bell. The client refreshes the list while signed in; an
+invitation remains visible until it is accepted, declined, revoked, or expires.
+This does not disclose invitations through the public wallet notification feed.
+The broader #1762 management work remains in progress; transfer recovery
+remains to be designed and delivered.
 Keep #1762 open until those workflows and their denied-access tests are
 explicitly completed or separately tracked.

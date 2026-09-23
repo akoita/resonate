@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect, useSyncExternalStore } from "react";
+import { useState, useRef, useEffect, useMemo, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useDisputeNotifications, DisputeNotification } from "../../hooks/useDisputeNotifications";
+import { toManagementInvitationItems, useManagementInvitations } from "../../hooks/useManagementInvitations";
 
 const typeIcon = (type: string) => {
   switch (type) {
@@ -37,9 +38,22 @@ const timeAgo = (dateStr: string) => {
 const subscribe = () => () => {};
 
 export default function NotificationBell() {
-  const { address, role } = useAuth();
+  const { address, role, status, token, userId } = useAuth();
   const hasMounted = useSyncExternalStore(subscribe, () => true, () => false);
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useDisputeNotifications(address ?? undefined);
+  const isAuthenticated = status === "authenticated" && Boolean(token);
+  const { notifications, unreadCount, markAsRead, markAllAsRead, refetch: refetchWalletNotifications } =
+    useDisputeNotifications(address ?? undefined);
+  const { invitations, refetch: refetchManagementInvitations } = useManagementInvitations(
+    isAuthenticated ? token : null,
+    userId,
+  );
+  const managementInvitationItems = useMemo(
+    () => toManagementInvitationItems(invitations),
+    [invitations],
+  );
+  const walletNotifications = address ? notifications : [];
+  const walletUnreadCount = address ? unreadCount : 0;
+  const badgeCount = walletUnreadCount + managementInvitationItems.length;
   const [open, setOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [menuTop, setMenuTop] = useState(0);
@@ -63,7 +77,11 @@ export default function NotificationBell() {
   };
 
   const toggleOpen = () => {
-    if (!open) measureMenuTop();
+    if (!open) {
+      measureMenuTop();
+      void refetchManagementInvitations();
+      void refetchWalletNotifications();
+    }
     setOpen((prev) => !prev);
   };
 
@@ -141,7 +159,7 @@ export default function NotificationBell() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  if (!hasMounted || !address) return null;
+  if (!hasMounted || !isAuthenticated) return null;
 
 
   return (
@@ -153,8 +171,8 @@ export default function NotificationBell() {
         aria-label="Notifications"
       >
         🔔
-        {unreadCount > 0 && (
-          <span style={badgeStyle}>{unreadCount > 9 ? "9+" : unreadCount}</span>
+        {badgeCount > 0 && (
+          <span style={badgeStyle}>{badgeCount > 9 ? "9+" : badgeCount}</span>
         )}
       </button>
 
@@ -167,7 +185,7 @@ export default function NotificationBell() {
               <Link href="/disputes" onClick={() => setOpen(false)} style={openCenterLinkStyle}>
                 Open Dispute Center
               </Link>
-              {unreadCount > 0 && (
+              {walletUnreadCount > 0 && (
                 <button onClick={markAllAsRead} style={markAllBtnStyle}>
                   Mark all read
                 </button>
@@ -175,11 +193,46 @@ export default function NotificationBell() {
             </div>
           </div>
 
-          {notifications.length === 0 ? (
-            <div style={emptyStyle}>No notifications yet</div>
+          {walletNotifications.length === 0 && managementInvitationItems.length === 0 ? (
+            <div style={emptyStyle}>No notifications or invitations yet</div>
           ) : (
             <div style={{ maxHeight: "360px", overflowY: "auto" }}>
-              {notifications.slice(0, 20).map((n: DisputeNotification) => (
+              {managementInvitationItems.map((invitation) => {
+                const expiryDate = invitation.expiresAt ? new Date(invitation.expiresAt) : null;
+                const expiryLabel = expiryDate && !Number.isNaN(expiryDate.getTime())
+                  ? `Expires ${expiryDate.toLocaleDateString()}`
+                  : "Pending invitation";
+                return (
+                  <Link
+                    key={invitation.id}
+                    href="/artist/management"
+                    onClick={() => setOpen(false)}
+                    style={{
+                      ...itemStyle,
+                      display: "block",
+                      color: "inherit",
+                      textDecoration: "none",
+                      background: "rgba(99, 102, 241, 0.06)",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div style={{ display: "flex", gap: "8px", flex: 1, minWidth: 0 }}>
+                        <span style={{ fontSize: "14px" }}>{invitation.kind === "grant" ? "👥" : "🔁"}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: "12px" }}>{invitation.title}</div>
+                          <div style={messageStyle}>{invitation.message}</div>
+                          <div style={notificationActionHintStyle}>Review in Artist Management →</div>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: "10px", opacity: 0.4, whiteSpace: "nowrap", marginLeft: "8px" }}>
+                        {expiryLabel}
+                      </span>
+                    </div>
+                    <div style={unreadDotStyle} />
+                  </Link>
+                );
+              })}
+              {walletNotifications.slice(0, 20).map((n: DisputeNotification) => (
                 <div
                   key={n.id}
                   onClick={() => { void handleNotificationClick(n); }}

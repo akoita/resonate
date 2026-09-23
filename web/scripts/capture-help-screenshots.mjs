@@ -94,6 +94,16 @@ const AUTH_TARGETS = [
     mockManagement: true,
     selectManagementRelease: true,
   }],
+  ["/artist/management", "artist-management-invitation.png", {
+    selectors: ["section[aria-labelledby='owned-heading']"],
+    mockManagement: true,
+    mockInvitation: true,
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("button", { name: "Notifications" }).click();
+      await page.getByText("Management invitation", { exact: true }).waitFor();
+    },
+  }],
 ];
 
 const OWNER_TARGETS = [
@@ -176,11 +186,19 @@ async function capture(page, targets, passName) {
     if (ready?.mockManagement) {
       await page.route("**/management/me", (request) => request.fulfill({
         json: {
-          ownedArtists: [{ id: "guide-artist", name: "Test Artist" }],
+          ownedArtists: ready.mockInvitation ? [] : [{ id: "guide-artist", name: "Test Artist" }],
           managedArtists: [],
-          ownedReleases: [{ id: "guide-release", title: "Test Release", artistId: "guide-artist" }],
+          ownedReleases: ready.mockInvitation ? [] : [{ id: "guide-release", title: "Test Release", artistId: "guide-artist" }],
           managedReleases: [],
-          pendingGrants: [],
+          pendingGrants: ready.mockInvitation ? [{
+            id: "guide-invitation",
+            artistId: "guide-artist",
+            releaseId: null,
+            resourceName: "Test Artist",
+            scopes: ["PROFILE_EDIT"],
+            status: "pending",
+            expiresAt: null,
+          }] : [],
           pendingTransfers: [],
           outgoingTransfers: [],
         },
@@ -197,6 +215,21 @@ async function capture(page, targets, passName) {
             status: "active",
             expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
           }],
+        },
+      }));
+    }
+    if (ready?.mockInvitation) {
+      await page.route("**/management/invitations/pending", (request) => request.fulfill({
+        json: {
+          grants: [{
+            id: "guide-invitation",
+            artistId: "guide-artist",
+            releaseId: null,
+            resourceName: "Test Artist",
+            scopes: ["PROFILE_EDIT"],
+            expiresAt: null,
+          }],
+          transfers: [],
         },
       }));
     }
