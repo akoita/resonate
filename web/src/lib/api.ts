@@ -947,6 +947,13 @@ export async function searchArtists(
   }
 }
 
+/** Claim requests surface search failures so an outage cannot look like no matching artist. */
+export async function searchArtistsForClaim(token: string, query: string, limit = 10): Promise<ArtistSearchResult[]> {
+  const params = new URLSearchParams({ q: query.trim(), limit: String(limit) });
+  const results = await apiRequest<ArtistSearchResult[]>(`/artists/search?${params}`, { cache: "no-store" }, token);
+  return Array.isArray(results) ? results : [];
+}
+
 export async function getArtistSettings(token: string, artistId: string) {
   return apiRequest<ArtistSettingsResponse>(
     `/artists/${encodeURIComponent(artistId)}/settings`,
@@ -2080,6 +2087,15 @@ export type ArtistClaim = {
   createdAt: string;
   reviewedAt?: string | null;
 };
+
+export type MyArtistClaim = Pick<ArtistClaim, "status" | "createdAt" | "reviewedAt"> & {
+  updatedAt: string;
+  artist: { id: string; displayName: string; imageUrl?: string | null };
+};
+
+export async function listMyArtistClaims(token: string) {
+  return apiRequest<MyArtistClaim[]>("/artists/claims/me", { cache: "no-store" }, token);
+}
 
 export async function getMyArtistClaim(token: string, artistId: string) {
   return apiRequest<ArtistClaim | null>(

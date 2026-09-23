@@ -121,6 +121,16 @@ snapshot, scrubs the requester's evidence and review note, and rejects any
 still-pending request. If the erased person reviewed someone else's request,
 only that review note is scrubbed. User foreign keys rotate with the account id.
 
+**11. Artist claim decisions now have append-only audit history.**
+`ArtistClaimDecisionEvent` records each manual approve, reject or revoke and
+automatic rejection of competing claims. It remains internal operator audit
+history and is not included in a personal export, because its actor may be a
+reviewer acting on another claimant's request. The claimant's current request
+and decision remain in the `ArtistClaimRequest` export. Erasure preserves each
+event's decision and timestamp, rotates `actorUserId` to the pseudonymous user
+id, and scrubs its free-text note when either the claimant or actor is erased.
+Deleting a claim cascades to its decision events.
+
 ## The problem this exists to prevent
 
 A person is not one identifier. Resolving them requires five:
@@ -153,17 +163,18 @@ the hash, and any deployment serving real users should set
 `ANALYTICS_ACTOR_ID_SALT` explicitly and treat it as non-rotatable. Worth
 verifying it is set before the first real erasure request.
 
-## Category 1 — reachable by relation (35 models)
+## Category 1 — reachable by relation
 
 These declare a `User` relation, so Prisma knows about them and a cascade
-reaches them. **Ten do not use `userId` as the foreign key**, which is the
-trap: a scan for `userId` finds 25 of 35 and looks thorough.
+reaches them. **Eleven do not use `userId` as the foreign key**, which is the
+trap: a scan for `userId` finds 25 of 36 and looks thorough.
 
 The non-obvious keys: `authorId` (CommunityMessage), `claimantUserId` and
-`reviewerUserId` (ArtistClaimRequest), `reporterUserId`
-(CommunityModerationReport), `curatorUserId` (StemQualityRating),
+`reviewerUserId` (ArtistClaimRequest), `actorUserId`
+(ArtistClaimDecisionEvent, ShowCampaignEvent), `reporterUserId` (CommunityModerationReport),
+`curatorUserId` (StemQualityRating),
 `creatorUserId` (RemixProject), `submitterUserId` (AgentReputationFeedback),
-`initiatorUserId` (ShowCampaignDispute), `actorUserId` (ShowCampaignEvent),
+`initiatorUserId` (ShowCampaignDispute),
 `collectorUserId` (PunchlineCollectible, PunchlineUnlockGrant).
 
 Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
@@ -171,7 +182,8 @@ Full list: `GenerationCreditAccount`, `GenerationCreditTransaction`,
 `CommunityVisibilitySettings`, `CommunityBadge`, `CommunityRole`,
 `CommunityCohortMembership`, `CommunityBenefitRedemption`,
 `CommunityMembership`, `CommunityMessage`, `CommunityModerationReport`,
-`PasskeyIdentity`, `Artist`, `ArtistClaimRequest`, `StemQualityRating`, `RemixProject`, `Session`,
+`PasskeyIdentity`, `Artist`, `ArtistClaimRequest`, `ArtistClaimDecisionEvent`,
+`StemQualityRating`, `RemixProject`, `Session`,
 `AgentSignal`, `ListenerTasteMemorySettings`, `ListenerTasteSignalControl`,
 `Playlist`, `SavedPlaylist`, `Folder`, `AgentConfig`,
 `AgentReputationFeedback`, `SessionKey`, `LibraryTrack`, `ShowCampaignDispute`,

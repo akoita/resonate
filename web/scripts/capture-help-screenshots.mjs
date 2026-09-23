@@ -101,6 +101,22 @@ const AUTH_TARGETS = [
     viewportHeight: 1900,
     mockManagement: true,
     selectManagementRelease: true,
+    prepare: async (page) => {
+      await page.locator("section[aria-labelledby='owned-heading']").evaluate((element) => element.scrollIntoView({ block: "start" }));
+    },
+  }],
+  ["/artist/management", "artist-claim-request.png", {
+    selectors: ["section[aria-labelledby='artist-claim-center-heading']"],
+    viewportHeight: 1100,
+    mockManagement: true,
+    mockClaim: true,
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByLabel("Find a credited profile").fill("Aya Lune");
+      await page.getByRole("list", { name: "Matching artist profiles" }).getByRole("button").first().click();
+      await page.getByText("First Light", { exact: false }).waitFor();
+      await page.getByRole("button", { name: "Continue to evidence" }).click();
+    },
   }],
   ["/artist/management", "artist-management-invitation.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
@@ -211,6 +227,15 @@ async function capture(page, targets, passName) {
       }));
     }
     if (ready?.mockManagement) {
+      await page.route("**/artists/claims/me", (request) => request.fulfill({ json: [] }));
+      if (ready.mockClaim) {
+        await page.route("**/artists/search?**", (request) => request.fulfill({ json: [
+          { id: "79b28c7b-79d3-4d83-9c76-8332a0316e0a", displayName: "Aya Lune", profileType: "public_artist", claimStatus: "unclaimed" },
+        ] }));
+        await page.route("**/catalog/artist/79b28c7b-79d3-4d83-9c76-8332a0316e0a", (request) => request.fulfill({ json: [
+          { id: "guide-first-light", artistId: "79b28c7b-79d3-4d83-9c76-8332a0316e0a", title: "First Light", type: "EP", status: "ready", releaseDate: "2026-09-01T00:00:00.000Z", explicit: false, createdAt: "2026-09-01T00:00:00.000Z", tracks: [] },
+        ] }));
+      }
       await page.route("**/management/me", (request) => request.fulfill({
         json: {
           ownedArtists: ready.mockInvitation || ready.mockRecovery ? [] : [{ id: "guide-artist", name: "Test Artist" }],

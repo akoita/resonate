@@ -19,7 +19,20 @@ const CLAIMANT_A = `${TEST_PREFIX}claimant_a`;
 const CLAIMANT_B = `${TEST_PREFIX}claimant_b`;
 const REVIEWER = `${TEST_PREFIX}reviewer`;
 const ADMIN = `${TEST_PREFIX}admin`;
-const USER_IDS = [CLAIMANT_A, CLAIMANT_B, REVIEWER, ADMIN];
+const CAP_CLAIMANT = `${TEST_PREFIX}cap_claimant`;
+const SUMMARY_CLAIMANT = `${TEST_PREFIX}summary_claimant`;
+const SUMMARY_OTHER = `${TEST_PREFIX}summary_other`;
+const CASCADE_CLAIMANT = `${TEST_PREFIX}cascade_claimant`;
+const USER_IDS = [
+  CLAIMANT_A,
+  CLAIMANT_B,
+  REVIEWER,
+  ADMIN,
+  CAP_CLAIMANT,
+  SUMMARY_CLAIMANT,
+  SUMMARY_OTHER,
+  CASCADE_CLAIMANT,
+];
 const rotatedUserIds: string[] = [];
 
 const MIGRATION_SQL = resolve(
@@ -133,6 +146,11 @@ describe("ArtistService claim lifecycle (integration)", () => {
     expect(await service.getMyClaim(CLAIMANT_B, first.id)).toBeNull();
     expect(await service.getMyClaim(CLAIMANT_A, second.id)).toBeNull();
     expect((await prisma.artist.findUnique({ where: { id: second.id } }))?.claimStatus).toBe("unclaimed");
+    await expect(service.submitClaim(
+      CLAIMANT_A,
+      first.id,
+      "A second pending claim for the same exact artist.",
+    )).rejects.toMatchObject({ status: 409 });
 
     await expect(service.submitClaim(CLAIMANT_A, first.id, "too short"))
       .rejects.toMatchObject({ status: 400 });
@@ -144,6 +162,122 @@ describe("ArtistService claim lifecycle (integration)", () => {
       .rejects.toMatchObject({ status: 403 });
 
     expect(await prisma.artistClaimRequest.count({ where: { artistId: second.id } })).toBe(0);
+  });
+
+  it("returns only each exact artist's latest claim summary for the caller", async () => {
+    const first = await createArtist("summary_same_name_a", "Summary Artist");
+    const second = await createArtist("summary_same_name_b", "Summary Artist");
+    const other = await createArtist("summary_other_user", "Other User Artist");
+    await prisma.artist.update({
+      where: { id: first.id },
+      data: { imageUrl: "https://cdn.test/summary-a.jpg" },
+    });
+
+    const older = await service.submitClaim(
+      SUMMARY_CLAIMANT,
+      first.id,
+      "Evidence for the earlier claim that was rejected.",
+    );
+    await service.reviewClaim(REVIEWER, "operator", older.id, "reject");
+    await prisma.artistClaimRequest.update({
+      where: { id: older.id },
+      data: { createdAt: new Date("2020-01-01T00:00:00.000Z") },
+    });
+
+    const latest = await service.submitClaim(
+      SUMMARY_CLAIMANT,
+      first.id,
+      "Evidence for the latest claim on this exact artist.",
+    );
+    await service.submitClaim(
+      SUMMARY_CLAIMANT,
+      second.id,
+      "Evidence for a same-name but separate artist identity.",
+    );
+    await service.submitClaim(
+      SUMMARY_OTHER,
+      other.id,
+      "Evidence from another user's independent claim.",
+    );
+
+    const summaries = await service.getMyClaims(SUMMARY_CLAIMANT);
+    expect(summaries).toHaveLength(2);
+    expect(summaries.map((summary) => summary.artist.id).sort()).toEqual([first.id, second.id].sort());
+
+    const firstSummary = summaries.find((summary) => summary.artist.id === first.id)!;
+    expect(firstSummary).toMatchObject({
+      status: "pending",
+      createdAt: latest.createdAt,
+      artist: {
+        id: first.id,
+        displayName: "Summary Artist",
+        imageUrl: "https://cdn.test/summary-a.jpg",
+      },
+    });
+    expect(Object.keys(firstSummary).sort()).toEqual(
+      ["artist", "createdAt", "reviewedAt", "status", "updatedAt"].sort(),
+    );
+    expect(firstSummary).not.toHaveProperty("evidence");
+    expect(firstSummary).not.toHaveProperty("claimantUserId");
+    expect(firstSummary).not.toHaveProperty("reviewerUserId");
+    expect(firstSummary).not.toHaveProperty("reviewNote");
+    expect(firstSummary).not.toHaveProperty("id");
+    expect(firstSummary).not.toHaveProperty("artistId");
+  });
+
+  it("cascades decision history when a claim is deleted", async () => {
+    const artist = await createArtist("decision_event_cascade", "Decision Event Cascade");
+    const claim = await service.submitClaim(
+      CASCADE_CLAIMANT,
+      artist.id,
+      "Evidence for a claim whose audit history will be deleted.",
+    );
+    await service.reviewClaim(REVIEWER, "operator", claim.id, "reject");
+    expect(await prisma.artistClaimDecisionEvent.count({ where: { claimId: claim.id } })).toBe(1);
+
+    await prisma.artistClaimRequest.delete({ where: { id: claim.id } });
+    expect(await prisma.artistClaimDecisionEvent.count({ where: { claimId: claim.id } })).toBe(0);
+  });
+
+  it("caps concurrent pending submissions at five per claimant and frees a slot after review", async () => {
+    const artists = await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        createArtist(`cap_${index}`, `Cap Artist ${index}`),
+      ),
+    );
+    const outcomes = await Promise.allSettled(
+      artists.map((artist) =>
+        service.submitClaim(
+          CAP_CLAIMANT,
+          artist.id,
+          "Evidence for a claimant's concurrent pending submission.",
+        ),
+      ),
+    );
+
+    const succeeded = outcomes.flatMap((outcome, index) =>
+      outcome.status === "fulfilled" ? [{ index, claim: outcome.value }] : [],
+    );
+    const failedIndex = outcomes.findIndex((outcome) => outcome.status === "rejected");
+    expect(succeeded).toHaveLength(5);
+    expect(failedIndex).toBeGreaterThanOrEqual(0);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    await expect(service.submitClaim(
+      CAP_CLAIMANT,
+      artists[failedIndex].id,
+      "Evidence for a submission over the pending limit.",
+    )).rejects.toMatchObject({ status: 409 });
+
+    await service.reviewClaim(REVIEWER, "operator", succeeded[0].claim.id, "reject");
+    const nextClaim = await service.submitClaim(
+      CAP_CLAIMANT,
+      artists[failedIndex].id,
+      "Evidence after another pending request was rejected.",
+    );
+    expect(nextClaim.status).toBe("pending");
+    expect(await prisma.artistClaimRequest.count({
+      where: { claimantUserId: CAP_CLAIMANT, status: "pending" },
+    })).toBe(5);
   });
 
   it("enforces the partial pending and approved uniqueness rules in Postgres", async () => {
@@ -205,6 +339,16 @@ describe("ArtistService claim lifecycle (integration)", () => {
     expect(ownDto).not.toHaveProperty("evidence");
     expect(ownDto).not.toHaveProperty("reviewNote");
     expect(ownDto).not.toHaveProperty("claimantUserId");
+    const decisionEvent = await prisma.artistClaimDecisionEvent.findFirst({
+      where: { claimId: claim.id },
+    });
+    expect(decisionEvent).toMatchObject({
+      claimId: claim.id,
+      actorUserId: REVIEWER,
+      decision: "reject",
+      note: "This release credit does not substantiate the claim.",
+    });
+    expect(decisionEvent?.createdAt).toBeInstanceOf(Date);
   });
 
   it("approves one competing claim, rejects the rest, and limits the claimant to public profile edits", async () => {
@@ -233,6 +377,16 @@ describe("ArtistService claim lifecycle (integration)", () => {
     });
     const approved = rows.find((row) => row.status === "approved")!;
     const rejected = rows.find((row) => row.status === "rejected")!;
+    const automaticRejection = await prisma.artistClaimDecisionEvent.findFirst({
+      where: { claimId: rejected.id },
+    });
+    expect(automaticRejection).toMatchObject({
+      claimId: rejected.id,
+      actorUserId: approved.reviewerUserId,
+      decision: "reject",
+      note: "Another claim for this artist was approved.",
+    });
+    expect(automaticRejection?.createdAt).toBeInstanceOf(Date);
     expect(rejected).toMatchObject({
       reviewNote: "Another claim for this artist was approved.",
     });
@@ -287,7 +441,28 @@ describe("ArtistService claim lifecycle (integration)", () => {
       "New information invalidated the claim.",
     );
     expect(revoked?.status).toBe("revoked");
+    const history = await prisma.artistClaimDecisionEvent.findMany({
+      where: { claimId: claim.id },
+    });
+    expect(history).toHaveLength(2);
+    expect(history.find((event) => event.decision === "approve")).toMatchObject({
+      claimId: claim.id,
+      actorUserId: REVIEWER,
+      decision: "approve",
+      note: null,
+    });
+    expect(history.find((event) => event.decision === "revoke")).toMatchObject({
+      claimId: claim.id,
+      actorUserId: ADMIN,
+      decision: "revoke",
+      note: "New information invalidated the claim.",
+    });
+    expect(history.every((event) => event.createdAt instanceof Date)).toBe(true);
     expect((await prisma.artist.findUnique({ where: { id: artist.id } }))?.claimStatus).toBe("unclaimed");
+    expect(await service.getMyClaims(CLAIMANT_A)).toContainEqual(expect.objectContaining({
+      status: "revoked",
+      artist: expect.objectContaining({ id: artist.id }),
+    }));
     await expect(service.updateProfile(CLAIMANT_A, artist.id, { summary: "After revocation" }))
       .rejects.toMatchObject({ status: 403 });
   });
@@ -324,6 +499,14 @@ describe("ArtistService claim lifecycle (integration)", () => {
 
     const row = await prisma.artistClaimRequest.findUnique({ where: { id: claim.id } });
     expect(row).toMatchObject({ status: "revoked", evidence: null, reviewNote: null });
+    const claimantEvent = await prisma.artistClaimDecisionEvent.findFirst({
+      where: { claimId: claim.id },
+    });
+    expect(claimantEvent).toMatchObject({
+      decision: "approve",
+      actorUserId: REVIEWER,
+      note: null,
+    });
     expect((await prisma.artist.findUnique({ where: { id: artist.id } }))?.claimStatus).toBe("unclaimed");
     const credit = await prisma.releaseArtistCredit.findUnique({
       where: { id: `${TEST_PREFIX}erasure_credit` },
@@ -353,6 +536,14 @@ describe("ArtistService claim lifecycle (integration)", () => {
       evidence: "Evidence written by a claimant who remains active.",
       reviewNote: null,
       reviewerUserId: reviewerErasure.newUserId,
+    });
+    const reviewerEvent = await prisma.artistClaimDecisionEvent.findFirst({
+      where: { claimId: reviewerClaim.id },
+    });
+    expect(reviewerEvent).toMatchObject({
+      decision: "reject",
+      actorUserId: reviewerErasure.newUserId,
+      note: null,
     });
   });
 });

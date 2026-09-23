@@ -60,6 +60,7 @@ model User {
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
   accountClosureRequests      AccountClosureRequest[]
+  artistClaimDecisionEvents   ArtistClaimDecisionEvent[]  @relation("ArtistClaimDecisionEventActor")
   managementOwnedArtists       Artist[]                       @relation("ArtistManagementOwner")
   managementOwnedReleases      Release[]                      @relation("ReleaseManagementOwner")
   managementGrantsReceived     ManagementGrant[]              @relation("ManagementGrantGrantee")
@@ -592,6 +593,12 @@ enum ArtistClaimRequestStatus {
   revoked
 }
 
+enum ArtistClaimDecision {
+  approve
+  reject
+  revoke
+}
+
 enum ManagementScope {
   PROFILE_EDIT
   CATALOG_READ
@@ -641,9 +648,24 @@ model ArtistClaimRequest {
   artist         Artist                    @relation(fields: [artistId], references: [id], onDelete: Cascade)
   claimant       User                      @relation("ArtistClaimRequestClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
   reviewer       User?                     @relation("ArtistClaimRequestReviewer", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  decisionEvents ArtistClaimDecisionEvent[]
 
   @@index([claimantUserId, createdAt])
   @@index([status, createdAt])
+}
+
+model ArtistClaimDecisionEvent {
+  id          String               @id @default(uuid())
+  claimId     String
+  actorUserId String?
+  decision    ArtistClaimDecision
+  note        String?              @db.Text
+  createdAt   DateTime             @default(now())
+  claim       ArtistClaimRequest   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  actor       User?                @relation("ArtistClaimDecisionEventActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([claimId, createdAt])
+  @@index([actorUserId])
 }
 
 model Release {

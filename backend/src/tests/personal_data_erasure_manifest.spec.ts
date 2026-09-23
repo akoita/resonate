@@ -436,6 +436,17 @@ describe("personal data erasure manifest", () => {
       });
     });
 
+    it("retains claim decision history while scrubbing private event notes on erasure", () => {
+      expect(ERASURE_RULES_BY_MODEL.ArtistClaimDecisionEvent).toMatchObject({
+        disposition: "retain",
+        matchOn: "actorUserId",
+        scrub: ["note"],
+      });
+      expect(RETAINED_BUT_NOT_EXPORTED.ArtistClaimDecisionEvent).toContain(
+        "internal operator audit history",
+      );
+    });
+
     it("deletes every credential and address-to-account mapping", () => {
       for (const model of [
         "Wallet",

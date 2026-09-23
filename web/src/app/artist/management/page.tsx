@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { useToast } from "../../../components/ui/Toast";
+import { ArtistClaimCenter } from "../../../components/artist/ArtistClaimCenter";
 import {
   canRequestManagementTransferRecovery,
   getArtistManagementAccess,
@@ -383,8 +384,10 @@ export default function ArtistManagementPage() {
         <header className="analytics-header-section">
           <p className="artist-analytics-eyebrow">Artist management</p>
           <h1>Profiles and releases</h1>
-          <p className="analytics-muted">Invite someone to manage a specific profile or release. They must accept before access begins. Credits, rights, and payouts stay separate.</p>
+          <p className="analytics-muted">Request access to a credited artist profile, or invite someone to manage a profile or release you control. Access requires review or acceptance. Credits, rights, and payouts stay separate.</p>
         </header>
+
+        {token && <ArtistClaimCenter key={token} token={token} />}
 
         {loading && <p role="status">Loading management access…</p>}
         {error && <p role="alert">{error} <button type="button" onClick={() => void refresh()}>Try again</button></p>}

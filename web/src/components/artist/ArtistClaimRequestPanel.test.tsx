@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ApiRequestError, type ArtistClaim } from "../../lib/api";
-import { ArtistClaimCallout, claimSubmitErrorMessage } from "./ArtistClaimCallout";
+import { ArtistClaimRequestPanel, claimSubmitErrorMessage } from "./ArtistClaimRequestPanel";
 
 vi.mock("../../lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/api")>();
@@ -20,56 +20,53 @@ function claim(status: ArtistClaim["status"]): ArtistClaim {
   };
 }
 
-function render(token: string | null, current: ArtistClaim | null = null) {
+function render(current: ArtistClaim | null = null) {
   return renderToStaticMarkup(
-    <ArtistClaimCallout
+    <ArtistClaimRequestPanel
       artistId="artist-1"
       artistName="Aya Lune"
-      token={token}
+      token="jwt-token"
       claim={current}
-      onSignIn={() => {}}
       onSubmitted={() => {}}
     />,
   );
 }
 
-describe("ArtistClaimCallout (#1492)", () => {
-  it("offers a sign-in action to signed-out visitors, with no form", () => {
-    const html = render(null);
-    expect(html).toContain("Are you Aya Lune?");
-    expect(html).toContain("Sign in to claim");
-    expect(html).toContain("<button");
-    expect(html).not.toContain("<textarea");
-    expect(html).not.toContain("style=");
-  });
-
-  it("is collapsed by default for signed-in listeners", () => {
-    const html = render("jwt-token");
-    expect(html).toContain("Claim this profile");
-    expect(html).toContain("hasn&#x27;t been claimed yet");
+describe("ArtistClaimRequestPanel (#1856)", () => {
+  it("starts with an evidence step in the signed-in workspace", () => {
+    const html = render();
+    expect(html).toContain("Request access to Aya Lune");
+    expect(html).toContain("Continue to evidence");
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain("Sign in to claim");
   });
 
   it("shows a pending status with no action while a claim is under review", () => {
-    const html = render("jwt-token", claim("pending"));
+    const html = render(claim("pending"));
     expect(html).toContain("Pending review");
-    expect(html).toContain("nothing on this page changes");
+    expect(html).toContain("only after approval");
     expect(html).not.toContain("<button");
     expect(html).not.toContain("<textarea");
   });
 
   it("invites new evidence after a rejected claim", () => {
-    const html = render("jwt-token", claim("rejected"));
+    const html = render(claim("rejected"));
     expect(html).toContain("Submit new evidence");
-    expect(html).toContain("Your previous claim wasn&#x27;t approved");
-    expect(html).not.toContain("Claim this profile");
+    expect(html).toContain("Your previous request wasn&#x27;t approved");
+    expect(html).not.toContain("Continue to evidence");
   });
 
   it("invites new evidence after revoked access", () => {
-    const html = render("jwt-token", claim("revoked"));
+    const html = render(claim("revoked"));
     expect(html).toContain("Submit new evidence");
     expect(html).toContain("Your earlier access to this profile was revoked");
+  });
+
+  it("shows approved scope without another request action", () => {
+    const html = render(claim("approved"));
+    expect(html).toContain("Approved");
+    expect(html).toContain("Release management, rights, payouts, and private analytics remain separate");
+    expect(html).not.toContain("<button");
   });
 });
 
@@ -100,6 +97,11 @@ describe("claimSubmitErrorMessage", () => {
     );
   });
 
+  it("explains the concurrent pending-request cap", () => {
+    expect(claimSubmitErrorMessage(apiError(409, "A claimant may have at most 5 pending artist claims")))
+      .toBe("You can have up to five profile requests under review at once. Wait for a decision before sending another.");
+  });
+
   it("explains invalid evidence length", () => {
     expect(
       claimSubmitErrorMessage(apiError(400, "evidence must be between 20 and 4000 characters")),
@@ -120,7 +122,7 @@ describe("claimSubmitErrorMessage", () => {
 
   it("explains rate limiting", () => {
     expect(claimSubmitErrorMessage(apiError(429, "Too Many Requests"))).toBe(
-      "Too many attempts. Wait a few minutes and try again.",
+      "Too many requests. Wait up to an hour before trying again.",
     );
   });
 
