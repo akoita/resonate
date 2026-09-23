@@ -93,7 +93,7 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   or AI-publication replacement increments the revision atomically. The legacy
   unversioned read remains available for older clients and rollback, but it
   resolves the current cover rather than preserving historical bytes.
-- Track audio replacement is implemented as a slice of [#1762](https://github.com/akoita/resonate/issues/1762), which remains open for broader management workflows. On a ready, unpublished release, the owner or a manager with `TRACK_AUDIO` can upload one MP3, WAV, FLAC, AIFF, M4A, AAC, or OGG file up to 100 MiB before a current stem is minted. Versioned processing keeps current audio playable until atomic activation, then leaves prior stems available to existing purchases and saved remixes. See the [audio replacement design](../architecture/track_audio_replacement.md) for the request and activation contract.
+- Track audio replacement is part of the [#1762 management model](https://github.com/akoita/resonate/issues/1762). On a ready, unpublished release, the owner or a manager with `TRACK_AUDIO` can upload one MP3, WAV, FLAC, AIFF, M4A, AAC, or OGG file up to 100 MiB before a current stem is minted. Versioned processing keeps current audio playable until atomic activation, then leaves prior stems available to existing purchases and saved remixes. See the [audio replacement design](../architecture/track_audio_replacement.md) for the request and activation contract.
 
 ## Actions
 
