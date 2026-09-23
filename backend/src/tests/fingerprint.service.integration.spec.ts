@@ -138,4 +138,58 @@ describe("FingerprintService (integration)", () => {
     const release = await prisma.release.findUnique({ where: { id: releaseId2 } });
     expect(release!.rightsRoute).toBe("QUARANTINED_REVIEW");
   });
+
+  it("stages a replacement fingerprint without changing active audio or accepting stale callbacks", async () => {
+    const revision = "11111111-1111-4111-8111-111111111111";
+    await prisma.release.update({ where: { id: releaseId1 }, data: { status: "ready" } });
+    await prisma.track.update({
+      where: { id: trackId1 },
+      data: { pendingAudioRevision: revision, audioReplacementStatus: "processing" },
+    });
+
+    const staged = await service.registerFingerprint({
+      trackId: trackId1,
+      releaseId: releaseId1,
+      audioRevision: revision,
+      fingerprint: "999,888,777",
+      fingerprintHash: `${P}replacement_hash`,
+      duration: 200,
+    });
+    expect(staged.quarantined).toBe(false);
+    const track = await prisma.track.findUnique({ where: { id: trackId1 } });
+    expect(track?.pendingAudioFingerprintHash).toBe(`${P}replacement_hash`);
+    expect((await prisma.audioFingerprint.findUnique({ where: { trackId: trackId1 } }))?.fingerprintHash).toBe(`${P}hash_unique`);
+
+    const stale = await service.registerFingerprint({
+      trackId: trackId1,
+      releaseId: releaseId1,
+      audioRevision: "22222222-2222-4222-8222-222222222222",
+      fingerprint: "123",
+      fingerprintHash: `${P}stale_hash`,
+      duration: 1,
+    });
+    expect(stale.quarantined).toBe(true);
+
+    const crossWallet = await service.registerFingerprint({
+      trackId: trackId1,
+      releaseId: releaseId1,
+      audioRevision: revision,
+      fingerprint: "111,222,333,444",
+      fingerprintHash: `${P}hash_unique`,
+      duration: 180,
+    });
+    expect(crossWallet.quarantined).toBe(true);
+    expect((await prisma.track.findUnique({ where: { id: trackId1 } }))?.contentStatus).toBe("clean");
+
+    const legacy = await service.registerFingerprint({
+      trackId: trackId1,
+      releaseId: releaseId1,
+      fingerprint: "123",
+      fingerprintHash: `${P}legacy_hash`,
+      duration: 1,
+    });
+    expect(legacy.quarantined).toBe(true);
+    expect((await prisma.track.findUnique({ where: { id: trackId1 } }))?.pendingAudioFingerprintHash).toBe(`${P}replacement_hash`);
+    expect((await prisma.audioFingerprint.findUnique({ where: { trackId: trackId1 } }))?.fingerprintHash).toBe(`${P}hash_unique`);
+  });
 });

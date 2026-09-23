@@ -126,7 +126,7 @@ export class AgentNegotiatorService {
    */
   private async findActiveListings(trackId: string): Promise<ListingInfo[]> {
     const stems = await prisma.stem.findMany({
-      where: { trackId },
+      where: { trackId, isCurrent: true },
       include: {
         nftMint: true,
         listings: {

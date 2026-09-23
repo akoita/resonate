@@ -248,7 +248,7 @@ export class SessionsService {
     const items = await prisma.track.findMany({
       orderBy: { createdAt: "desc" },
       take: cappedLimit,
-      include: { stems: true },
+      include: { stems: { where: { isCurrent: true } } },
     });
     this.playlistCache.set(cacheKey, { items, cachedAt: Date.now() });
     return { items };

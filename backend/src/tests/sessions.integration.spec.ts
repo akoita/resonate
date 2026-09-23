@@ -50,6 +50,7 @@ describe('SessionsService (integration)', () => {
     await prisma.license.deleteMany({ where: { track: { release: { artist: { userId: `${TEST_PREFIX}user` } } } } }).catch(() => {});
     await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
     await prisma.wallet.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.track.deleteMany({ where: { releaseId: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.release.delete({ where: { id: `${TEST_PREFIX}release` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
@@ -159,5 +160,38 @@ describe('SessionsService (integration)', () => {
       }),
     );
     expect(second.status).toBe('ok');
+  });
+
+  it('returns only current stems in playlist track summaries', async () => {
+    const currentStemId = `${TEST_PREFIX}current_stem`;
+    const historicalStemId = `${TEST_PREFIX}historical_stem`;
+    await prisma.stem.createMany({
+      data: [
+        {
+          id: currentStemId,
+          trackId: `${TEST_PREFIX}track`,
+          type: 'vocals',
+          uri: '/test/current-vocals.mp3',
+          isCurrent: true,
+        },
+        {
+          id: historicalStemId,
+          trackId: `${TEST_PREFIX}track`,
+          type: 'vocals',
+          uri: '/test/historical-vocals.mp3',
+          isCurrent: false,
+        },
+      ],
+    });
+
+    const { service } = makeService();
+    const playlist = await service.getPlaylist(50);
+    const track = (playlist.items as any[]).find(
+      (item) => item.id === `${TEST_PREFIX}track`,
+    );
+
+    expect(track?.stems.map((stem: { id: string }) => stem.id)).toEqual([
+      currentStemId,
+    ]);
   });
 });

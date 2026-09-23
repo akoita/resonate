@@ -64,6 +64,7 @@ export class StorefrontService {
     try {
       return await prisma.stem.findMany({
         where: {
+          isCurrent: true,
           ...(filters.stemType
             ? { type: { equals: filters.stemType, mode: "insensitive" } }
             : {}),
@@ -153,6 +154,7 @@ export class StorefrontService {
               artist: true,
               contentStatus: true,
               stems: {
+                where: { isCurrent: true },
                 select: {
                   id: true,
                   type: true,
@@ -217,6 +219,7 @@ export class StorefrontService {
               artist: true,
               contentStatus: true,
               stems: {
+                where: { isCurrent: true },
                 select: {
                   id: true,
                   type: true,

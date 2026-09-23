@@ -96,7 +96,7 @@ export class PunchlineEligibilityService {
           },
         },
         stems: {
-          where: { type: PUNCHLINE_SOURCE_STEM_TYPE },
+          where: { type: PUNCHLINE_SOURCE_STEM_TYPE, isCurrent: true },
           select: { id: true, type: true, uri: true },
         },
       },

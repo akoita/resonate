@@ -36,6 +36,7 @@ export class StemsProcessor extends WorkerHost {
         this.logger.log(`[StemsProcessor] (pubsub mode) Publishing jobs for release ${job.data.releaseId}`);
 
         const { releaseId, artistId, tracks } = job.data;
+        const replacementTrack = tracks.find((track: any) => !!track.audioRevision);
         const backendBaseUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
         const publishedTrackIds: string[] = [];
 
@@ -59,7 +60,7 @@ export class StemsProcessor extends WorkerHost {
                             : Buffer.from(originalStem.data);
                         const storage = await this.ingestionService.uploadToStorage(
                             buffer,
-                            `original_${track.id}.mp3`,
+                            `original_${track.id}_${track.audioRevision || "initial"}.mp3`,
                             originalStem.mimeType || "audio/mpeg",
                         );
                         originalStemUri = storage.uri;
@@ -86,10 +87,11 @@ export class StemsProcessor extends WorkerHost {
                 }
 
                 const message: StemSeparateMessage = {
-                    jobId: `sep_${releaseId}_${track.id}`,
+                    jobId: `sep_${releaseId}_${track.id}${track.audioRevision ? `_${track.audioRevision}` : ""}`,
                     releaseId,
                     artistId,
                     trackId: track.id,
+                    audioRevision: track.audioRevision,
                     trackTitle: track.title,
                     trackPosition: track.position,
                     // Local storage uses the shared /outputs volume; remote URIs stay fetchable over HTTP.
@@ -103,6 +105,7 @@ export class StemsProcessor extends WorkerHost {
                         uri: originalStem.uri,
                         durationSeconds: originalStem.durationSeconds,
                         storageProvider: originalStem.storageProvider,
+                        mimeType: originalStem.mimeType,
                     },
                 };
 
@@ -113,14 +116,22 @@ export class StemsProcessor extends WorkerHost {
             const cause = error?.message || String(error);
             const failureMessage = `Stem separation handoff failed for release ${releaseId}: ${cause}`;
             this.logger.error(failureMessage);
-            this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            if (replacementTrack) {
+                await this.ingestionService.failAudioReplacement(releaseId, replacementTrack.id, replacementTrack.audioRevision, failureMessage);
+            } else {
+                this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            }
             throw new Error(failureMessage);
         }
 
         if (publishedTrackIds.length === 0) {
             const failureMessage = `Stem separation handoff failed for release ${releaseId}: no publishable tracks were handed to the worker path`;
             this.logger.error(failureMessage);
-            this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            if (replacementTrack) {
+                await this.ingestionService.failAudioReplacement(releaseId, replacementTrack.id, replacementTrack.audioRevision, failureMessage);
+            } else {
+                this.ingestionService.markReleaseFailed(releaseId, artistId, failureMessage);
+            }
             throw new Error(failureMessage);
         }
 
@@ -143,10 +154,12 @@ export class StemsProcessor extends WorkerHost {
                     select: { id: true },
                 });
                 if (existing) {
-                    await prisma.release.update({
-                        where: { id: releaseId },
-                        data: { status: "processing" },
-                    });
+                    if (!replacementTrack) {
+                        await prisma.release.update({
+                            where: { id: releaseId },
+                            data: { status: "processing" },
+                        });
+                    }
                     releaseFound = true;
                     break;
                 }
@@ -163,13 +176,14 @@ export class StemsProcessor extends WorkerHost {
             }
 
             for (const trackId of publishedTrackIds) {
+                const replacement = tracks.find((track: any) => track.id === trackId && track.audioRevision);
                 await prisma.track.updateMany({
-                    where: { id: trackId },
-                    data: {
-                        processingStatus: "separating",
-                        processingStartedAt: new Date(),
-                        lastProgressAt: new Date(),
-                    },
+                    where: replacement
+                        ? { id: trackId, releaseId, pendingAudioRevision: replacement.audioRevision, release: { status: "ready" } }
+                        : { id: trackId, releaseId },
+                    data: replacement
+                        ? { audioReplacementStatus: "separating", lastProgressAt: new Date() }
+                        : { processingStatus: "separating", processingStartedAt: new Date(), lastProgressAt: new Date() },
                 });
             }
             if (releaseFound) {

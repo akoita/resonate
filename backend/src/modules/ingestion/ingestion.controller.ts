@@ -71,11 +71,40 @@ export class IngestionController {
     }
   }
 
+  @UseGuards(AuthGuard("jwt"))
+  @Post("releases/:releaseId/tracks/:trackId/audio")
+  @UseInterceptors(new IngestionMultipartInterceptor([
+    { name: "file", maxCount: 1 },
+  ], {
+    storage: new IngestionMultipartStorage(),
+    limits: { files: 1, fields: 0, parts: 2, fileSize: 100 * 1024 * 1024 },
+  }))
+  @Throttle({ default: { limit: 5, ttl: seconds(60) } })
+  async replaceTrackAudio(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @UploadedFiles() files: { file?: Express.Multer.File[] },
+    @Request() req: any,
+  ) {
+    try {
+      const file = files?.file?.[0];
+      if (!file) throw new BadRequestException("Select one audio file to replace this track");
+      return await this.ingestionService.replaceTrackAudio(
+        releaseId,
+        trackId,
+        req.user?.userId,
+        file,
+      );
+    } finally {
+      await cleanupIngestionMultipartRequest(req);
+    }
+  }
+
   @Post("progress/:releaseId/:trackId")
   handleProgress(
     @Param("releaseId") releaseId: string,
     @Param("trackId") trackId: string,
-    @Body() body: { progress: number },
+    @Body() body: { progress: number; audioRevision?: string },
     @Headers("x-internal-service-key") internalServiceKey?: string,
   ) {
     const configuredInternalKey = process.env.INTERNAL_SERVICE_KEY;
@@ -87,7 +116,7 @@ export class IngestionController {
       throw new InternalServerErrorException("INTERNAL_SERVICE_KEY must be set in production");
     }
 
-    return this.ingestionService.handleProgress(releaseId, trackId, body.progress);
+    return this.ingestionService.handleProgress(releaseId, trackId, body.progress, body.audioRevision);
   }
 
   @UseGuards(AuthGuard("jwt"))

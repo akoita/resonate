@@ -20,11 +20,30 @@ export class FingerprintService {
     fingerprint: string;
     fingerprintHash: string;
     duration: number;
+    audioRevision?: string;
   }): Promise<{ quarantined: boolean; reason?: string; duplicate?: boolean; sameWallet?: boolean }> {
-    const { trackId, releaseId, fingerprint, fingerprintHash, duration } = input;
+    const { trackId, releaseId, fingerprint, fingerprintHash, duration, audioRevision } = input;
+
+    if (audioRevision) {
+      const current = await prisma.track.findUnique({
+        where: { id: trackId, releaseId },
+        select: { pendingAudioRevision: true, release: { select: { status: true } } },
+      });
+      if (!current || current.pendingAudioRevision !== audioRevision || current.release.status !== "ready") {
+        return { quarantined: true, reason: "This audio replacement is no longer active" };
+      }
+    } else {
+      const current = await prisma.track.findUnique({
+        where: { id: trackId, releaseId },
+        select: { activeAudioRevision: true, pendingAudioRevision: true },
+      });
+      if (current?.activeAudioRevision || current?.pendingAudioRevision) {
+        return { quarantined: true, reason: "A newer audio revision is active" };
+      }
+    }
 
     // Store the fingerprint
-    await prisma.audioFingerprint.upsert({
+    if (!audioRevision) await prisma.audioFingerprint.upsert({
       where: { trackId },
       update: { fingerprint, fingerprintHash, duration },
       create: {
@@ -36,7 +55,7 @@ export class FingerprintService {
       },
     });
 
-    this.logger.log(`Fingerprint stored for track ${trackId} (hash=${fingerprintHash.slice(0, 16)}...)`);
+    this.logger.log(`Fingerprint ${audioRevision ? "received for replacement" : "stored"} for track ${trackId} (hash=${fingerprintHash.slice(0, 16)}...)`);
 
     // Check for duplicates — find other tracks with the same fingerprint hash
     const duplicates = await prisma.audioFingerprint.findMany({
@@ -55,7 +74,23 @@ export class FingerprintService {
       },
     });
 
+    const stageReplacementFingerprint = async () => {
+      if (!audioRevision) return true;
+      const update = await prisma.track.updateMany({
+        where: { id: trackId, releaseId, pendingAudioRevision: audioRevision, release: { status: "ready" } },
+        data: {
+          pendingAudioFingerprint: fingerprint,
+          pendingAudioFingerprintHash: fingerprintHash,
+          pendingAudioFingerprintDuration: duration,
+        },
+      });
+      return update.count === 1;
+    };
+
     if (duplicates.length === 0) {
+      if (!(await stageReplacementFingerprint())) {
+        return { quarantined: true, reason: "This audio replacement is no longer active" };
+      }
       return { quarantined: false };
     }
 
@@ -81,6 +116,9 @@ export class FingerprintService {
     if (sameWalletDuplicates.length > 0 && sameWalletDuplicates.length === duplicates.length) {
       // All duplicates are from the same artist — warn but don't quarantine
       this.logger.warn(`Same-wallet duplicate detected for track ${trackId}`);
+      if (!(await stageReplacementFingerprint())) {
+        return { quarantined: true, reason: "This audio replacement is no longer active" };
+      }
       return { quarantined: false, duplicate: true, sameWallet: true };
     }
 
@@ -90,11 +128,13 @@ export class FingerprintService {
       `Matching track(s): ${duplicates.map((d) => d.trackId).join(", ")}`,
     );
 
-    await prisma.track.update({
-      where: { id: trackId },
-      data: { contentStatus: "quarantined" },
-    });
-    await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(trackId);
+    if (!audioRevision) {
+      await prisma.track.update({
+        where: { id: trackId },
+        data: { contentStatus: "quarantined" },
+      });
+      await this.uploadRightsRoutingService.syncTrackRightsFromContentStatus(trackId);
+    }
 
     // Notify the original uploader(s) — TODO: implement notification system
     const originalArtists = [...new Set(duplicates.map((d) => d.track.release.artist.displayName))];

@@ -15,6 +15,7 @@ const TEST_PREFIX = `sp_${Date.now()}_`;
 let service: StemPricingService;
 let ownedStemId: string;
 let otherStemId: string;
+let historicalStemId: string;
 let releaseId: string;
 
 describe('StemPricingService (integration)', () => {
@@ -63,6 +64,16 @@ describe('StemPricingService (integration)', () => {
     });
     otherStemId = stem2.id;
 
+    const historicalStem = await prisma.stem.create({
+      data: {
+        trackId: track.id,
+        type: 'bass',
+        uri: '/test/historical-bass.mp3',
+        isCurrent: false,
+      },
+    });
+    historicalStemId = historicalStem.id;
+
     // Seed non-owner user
     await prisma.user.create({
       data: { id: `${TEST_PREFIX}other`, email: `${TEST_PREFIX}other@test.resonate` },
@@ -70,7 +81,7 @@ describe('StemPricingService (integration)', () => {
   });
 
   afterAll(async () => {
-    await prisma.stemPricing.deleteMany({ where: { stemId: { in: [ownedStemId, otherStemId] } } }).catch(() => {});
+    await prisma.stemPricing.deleteMany({ where: { stemId: { in: [ownedStemId, otherStemId, historicalStemId] } } }).catch(() => {});
     await prisma.stem.deleteMany({ where: { trackId: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.track.delete({ where: { id: `${TEST_PREFIX}track` } }).catch(() => {});
     await prisma.release.delete({ where: { id: releaseId } }).catch(() => {});
@@ -143,6 +154,38 @@ describe('StemPricingService (integration)', () => {
       };
       await expect(service.upsertPricing(otherStemId, `${TEST_PREFIX}other`, dto)).rejects.toThrow('You do not own this stem');
     });
+
+    it('rejects new pricing for a historical stem while preserving exact pricing reads', async () => {
+      await prisma.stemPricing.create({
+        data: {
+          stemId: historicalStemId,
+          basePlayPriceUsd: 0.25,
+          remixLicenseUsd: 8,
+          commercialLicenseUsd: 30,
+          floorUsd: 0.02,
+          ceilingUsd: 60,
+        },
+      });
+
+      const existing = await service.getPricing(historicalStemId);
+      expect(existing.basePlayPriceUsd).toBe(0.25);
+
+      await expect(
+        service.upsertPricing(historicalStemId, `${TEST_PREFIX}owner`, {
+          basePlayPriceUsd: 0.5,
+          remixLicenseUsd: 12,
+          commercialLicenseUsd: 40,
+          floorUsd: 0.05,
+          ceilingUsd: 100,
+          listingDurationDays: null,
+        }),
+      ).rejects.toThrow('cannot receive new pricing');
+
+      const stored = await prisma.stemPricing.findUnique({
+        where: { stemId: historicalStemId },
+      });
+      expect(stored?.basePlayPriceUsd).toBe(0.25);
+    });
   });
 
   describe('batchUpdateByRelease', () => {
@@ -159,6 +202,26 @@ describe('StemPricingService (integration)', () => {
       expect(result.updated).toBe(2);
       expect(result.stemIds).toContain(ownedStemId);
       expect(result.stemIds).toContain(otherStemId);
+      expect(result.stemIds).not.toContain(historicalStemId);
+    });
+
+    it('does not accept historical stem ids for new release pricing', async () => {
+      const result = await service.batchUpsertByMap(
+        releaseId,
+        `${TEST_PREFIX}owner`,
+        {
+          [historicalStemId]: {
+            basePlayPriceUsd: 0.2,
+            remixLicenseUsd: 10,
+            commercialLicenseUsd: 30,
+            floorUsd: 0.01,
+            ceilingUsd: 50,
+            listingDurationDays: null,
+          },
+        },
+      );
+
+      expect(result).toEqual({ updated: 0, stemIds: [] });
     });
 
     it('rejects non-owner batch update', async () => {

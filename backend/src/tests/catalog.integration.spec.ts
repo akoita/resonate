@@ -156,6 +156,383 @@ describe('CatalogService (integration)', () => {
     expect(processedTrack).toEqual({ title: editedTitle, processingStatus: 'complete' });
   });
 
+  it('activates a replacement without changing playback until commit and keeps historical stems addressable', async () => {
+    const releaseId = `${TEST_PREFIX}replacement_lifecycle_release`;
+    const trackId = `${TEST_PREFIX}replacement_lifecycle_track`;
+    const oldRevision = `${TEST_PREFIX}audio_old`;
+    const failedRevision = `${TEST_PREFIX}audio_failed`;
+    const activeRevision = `${TEST_PREFIX}audio_active`;
+    const oldOriginalId = `${TEST_PREFIX}replacement_old_original`;
+    const oldVocalId = `${TEST_PREFIX}replacement_old_vocals`;
+    const failedOriginalId = `${TEST_PREFIX}replacement_failed_original`;
+    const activeOriginalId = `${TEST_PREFIX}replacement_active_original`;
+    const activeVocalId = `${TEST_PREFIX}replacement_active_vocals`;
+    const oldAudio = Buffer.from('old-current-audio');
+    const oldVocalAudio = Buffer.from('old-current-vocals');
+    const activeAudio = Buffer.from('new-current-audio');
+    const activeVocalAudio = Buffer.from('new-current-vocals');
+    const trackStatusEvents: any[] = [];
+    const releaseReadyEvents: any[] = [];
+    eventBus.subscribe('catalog.track_status', (event: any) => trackStatusEvents.push(event));
+    eventBus.subscribe('catalog.release_ready', (event: any) => releaseReadyEvents.push(event));
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Replacement Revision Lifecycle',
+        status: 'ready',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Replacement Track',
+        artist: 'Current Artist',
+        position: 1,
+        processingStatus: 'complete',
+        activeAudioRevision: oldRevision,
+        pendingAudioRevision: failedRevision,
+        audioReplacementStatus: 'processing',
+        pendingAudioFingerprint: 'failed-pending-fingerprint',
+        pendingAudioFingerprintHash: `${TEST_PREFIX}failed-hash`,
+        pendingAudioFingerprintDuration: 125,
+      },
+    });
+    await prisma.stem.createMany({
+      data: [
+        {
+          id: oldOriginalId,
+          trackId,
+          type: 'original',
+          uri: '/catalog/stems/old-original.mp3',
+          data: oldAudio,
+          audioRevision: oldRevision,
+          isCurrent: true,
+        },
+        {
+          id: oldVocalId,
+          trackId,
+          type: 'vocals',
+          uri: '/catalog/stems/old-vocals.mp3',
+          data: oldVocalAudio,
+          audioRevision: oldRevision,
+          isCurrent: true,
+        },
+        {
+          id: failedOriginalId,
+          trackId,
+          type: 'original',
+          uri: '/catalog/stems/failed-original.mp3',
+          data: Buffer.from('failed-pending-audio'),
+          audioRevision: failedRevision,
+          isCurrent: false,
+        },
+      ],
+    });
+    await prisma.audioFingerprint.create({
+      data: {
+        trackId,
+        fingerprint: 'active-fingerprint-before-replacement',
+        fingerprintHash: `${TEST_PREFIX}active-fingerprint-hash`,
+        duration: 120,
+      },
+    });
+
+    try {
+      expect((await catalog.getTrackStream(trackId))?.data).toEqual(oldAudio);
+
+      eventBus.publish({
+        eventName: 'stems.failed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        trackId,
+        audioRevision: failedRevision,
+        error: 'Replacement separation failed',
+      });
+
+      let failedTrack: { pendingAudioRevision: string | null; audioReplacementStatus: string | null } | null = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        failedTrack = await prisma.track.findUnique({
+          where: { id: trackId },
+          select: { pendingAudioRevision: true, audioReplacementStatus: true },
+        });
+        if (failedTrack?.audioReplacementStatus === 'failed') break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(failedTrack).toEqual({ pendingAudioRevision: null, audioReplacementStatus: 'failed' });
+      expect((await prisma.release.findUnique({ where: { id: releaseId } }))?.status).toBe('ready');
+      expect((await prisma.audioFingerprint.findUnique({ where: { trackId } }))?.fingerprint)
+        .toBe('active-fingerprint-before-replacement');
+      expect((await catalog.getTrackStream(trackId))?.data).toEqual(oldAudio);
+
+      await prisma.track.update({
+        where: { id: trackId },
+        data: {
+          pendingAudioRevision: activeRevision,
+          audioReplacementStatus: 'processing',
+          audioReplacementError: null,
+          pendingAudioFingerprint: 'active-fingerprint-after-replacement',
+          pendingAudioFingerprintHash: `${TEST_PREFIX}active-fingerprint-new-hash`,
+          pendingAudioFingerprintDuration: 121.5,
+        },
+      });
+      await prisma.stem.create({
+        data: {
+          id: activeOriginalId,
+          trackId,
+          type: 'original',
+          uri: '/catalog/stems/new-original.mp3',
+          data: activeAudio,
+          audioRevision: activeRevision,
+          isCurrent: false,
+        },
+      });
+
+      const replacementEvent: StemsProcessedEvent = {
+        eventName: 'stems.processed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        audioRevision: activeRevision,
+        modelVersion: 'integration-test',
+        tracks: [{
+          id: trackId,
+          title: 'Replacement Track',
+          artist: 'Stale Worker Artist',
+          position: 99,
+          stems: [
+            {
+              id: activeOriginalId,
+              uri: '/catalog/stems/new-original.mp3',
+              type: 'original',
+              data: activeAudio,
+              mimeType: 'audio/mpeg',
+            },
+            {
+              id: activeVocalId,
+              uri: '/catalog/stems/new-vocals.mp3',
+              type: 'vocals',
+              data: activeVocalAudio,
+              mimeType: 'audio/mpeg',
+            },
+          ],
+        }],
+      };
+
+      const staleResult = await catalog.activateAudioReplacement({
+        ...replacementEvent,
+        audioRevision: failedRevision,
+        tracks: [{
+          ...replacementEvent.tracks[0],
+          stems: [{
+            id: failedOriginalId,
+            uri: '/catalog/stems/failed-result.mp3',
+            type: 'original',
+          }, {
+            id: `${TEST_PREFIX}failed-vocals`,
+            uri: '/catalog/stems/failed-vocals.mp3',
+            type: 'vocals',
+          }],
+        }],
+      });
+      expect(staleResult).toEqual({ applied: false, reason: 'stale_audio_revision' });
+      expect((await prisma.track.findUnique({ where: { id: trackId } }))?.pendingAudioRevision)
+        .toBe(activeRevision);
+      expect((await catalog.getTrackStream(trackId))?.data).toEqual(oldAudio);
+
+      // The event-bus path for tagged worker results delegates to the same method.
+      eventBus.publish(replacementEvent);
+      let activeTrack: { activeAudioRevision: string | null; audioReplacementStatus: string | null } | null = null;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        activeTrack = await prisma.track.findUnique({
+          where: { id: trackId },
+          select: { activeAudioRevision: true, audioReplacementStatus: true },
+        });
+        if (activeTrack?.activeAudioRevision === activeRevision) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(activeTrack).toEqual({ activeAudioRevision: activeRevision, audioReplacementStatus: 'complete' });
+
+      const duplicateResult = await catalog.activateAudioReplacement(replacementEvent);
+      expect(duplicateResult).toEqual({ applied: false, reason: 'duplicate_audio_revision' });
+      expect((await prisma.release.findUnique({ where: { id: releaseId } }))?.status).toBe('ready');
+      expect((await catalog.getTrackStream(trackId))?.data).toEqual(activeAudio);
+
+      const stems = await prisma.stem.findMany({ where: { trackId }, orderBy: { id: 'asc' } });
+      expect(stems).toHaveLength(5);
+      expect(stems.filter((stem) => stem.isCurrent).map((stem) => stem.id).sort()).toEqual(
+        [activeOriginalId, activeVocalId].sort(),
+      );
+      expect(stems.find((stem) => stem.id === oldVocalId)?.isCurrent).toBe(false);
+      expect(stems.find((stem) => stem.id === failedOriginalId)?.isCurrent).toBe(false);
+
+      const [historicalBlob, historicalPreview] = await Promise.all([
+        catalog.getStemBlob(oldVocalId),
+        catalog.getStemPreview(oldVocalId),
+      ]);
+      expect(historicalBlob?.data).toEqual(oldVocalAudio);
+      expect(historicalPreview.data).toEqual(oldVocalAudio);
+
+      const trackView = await catalog.getTrack(trackId);
+      expect(trackView?.stems.map((stem) => stem.id).sort()).toEqual([activeOriginalId, activeVocalId].sort());
+      const releaseView = await catalog.getRelease(releaseId);
+      expect(releaseView?.tracks[0].stems.map((stem: any) => stem.id).sort())
+        .toEqual([activeOriginalId, activeVocalId].sort());
+      const managedRelease = (await catalog.listByUserId(`${TEST_PREFIX}user`))
+        .find((item: any) => item.id === releaseId);
+      expect(managedRelease?.tracks[0].stems.map((stem: any) => stem.id).sort())
+        .toEqual([activeOriginalId, activeVocalId].sort());
+      const discoveryRelease = (await catalog.search('Replacement Revision Lifecycle')).items
+        .find((item: any) => item.id === releaseId);
+      expect((discoveryRelease as any)?.tracks[0].stems.map((stem: any) => stem.id).sort())
+        .toEqual([activeOriginalId, activeVocalId].sort());
+      const playerActions = await catalog.getPlayerTrackActions(trackId);
+      const inspectAction = playerActions?.actions.find((action) => action.key === 'inspect_stems');
+      expect(inspectAction?.metadata?.stemCount).toBe(2);
+
+      const fingerprint = await prisma.audioFingerprint.findUnique({ where: { trackId } });
+      expect(fingerprint).toEqual(expect.objectContaining({
+        fingerprint: 'active-fingerprint-after-replacement',
+        fingerprintHash: `${TEST_PREFIX}active-fingerprint-new-hash`,
+        duration: 121.5,
+      }));
+      const trackAfterFingerprint = await prisma.track.findUnique({ where: { id: trackId } });
+      expect(trackAfterFingerprint).toEqual(expect.objectContaining({
+        pendingAudioRevision: null,
+        pendingAudioFingerprint: null,
+        pendingAudioFingerprintHash: null,
+        pendingAudioFingerprintDuration: null,
+        artist: 'Current Artist',
+        position: 1,
+      }));
+      expect(trackStatusEvents.filter((event) => event.trackId === trackId && event.status === 'complete'))
+        .toHaveLength(1);
+      expect(releaseReadyEvents.filter((event) => event.releaseId === releaseId)).toHaveLength(0);
+    } finally {
+      await prisma.audioFingerprint.deleteMany({ where: { trackId } }).catch(() => {});
+      await prisma.stem.deleteMany({ where: { trackId } }).catch(() => {});
+      await prisma.track.deleteMany({ where: { id: trackId } }).catch(() => {});
+      await prisma.release.delete({ where: { id: releaseId } }).catch(() => {});
+    }
+  }, 15000);
+
+  it('fails a pending replacement if publication wins the release lock', async () => {
+    const releaseId = `${TEST_PREFIX}replacement_publish_race_release`;
+    const trackId = `${TEST_PREFIX}replacement_publish_race_track`;
+    const oldStemId = `${TEST_PREFIX}replacement_publish_race_old`;
+    const stagedOriginalId = `${TEST_PREFIX}replacement_publish_race_new`;
+    const revision = `${TEST_PREFIX}replacement_publish_race_revision`;
+    const oldAudio = Buffer.from('audio-before-publication');
+
+    await prisma.release.create({
+      data: {
+        id: releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Replacement Publication Race',
+        status: 'ready',
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: trackId,
+        releaseId,
+        title: 'Publication Race Track',
+        processingStatus: 'complete',
+        activeAudioRevision: `${TEST_PREFIX}previous_revision`,
+        pendingAudioRevision: revision,
+        audioReplacementStatus: 'processing',
+      },
+    });
+    await prisma.stem.createMany({
+      data: [
+        {
+          id: oldStemId,
+          trackId,
+          type: 'original',
+          uri: '/catalog/stems/before-publication.mp3',
+          data: oldAudio,
+          audioRevision: `${TEST_PREFIX}previous_revision`,
+          isCurrent: true,
+        },
+        {
+          id: stagedOriginalId,
+          trackId,
+          type: 'original',
+          uri: '/catalog/stems/pending-publication.mp3',
+          data: Buffer.from('pending-audio'),
+          audioRevision: revision,
+          isCurrent: false,
+        },
+      ],
+    });
+
+    try {
+      let signalReleaseLock!: () => void;
+      let allowPublication!: () => void;
+      const releaseLocked = new Promise<void>((resolve) => { signalReleaseLock = resolve; });
+      const publicationGate = new Promise<void>((resolve) => { allowPublication = resolve; });
+      const publicationTransaction = prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
+        signalReleaseLock();
+        await publicationGate;
+        await tx.release.update({ where: { id: releaseId }, data: { status: 'published' } });
+      });
+      await releaseLocked;
+
+      const activationPromise = catalog.activateAudioReplacement({
+        eventName: 'stems.processed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId,
+        artistId: `${TEST_PREFIX}artist`,
+        audioRevision: revision,
+        modelVersion: 'integration-test',
+        tracks: [{
+          id: trackId,
+          title: 'Publication Race Track',
+          position: 1,
+          stems: [
+            { id: stagedOriginalId, uri: '/catalog/stems/pending-publication.mp3', type: 'original' },
+            { id: `${TEST_PREFIX}replacement_publish_race_vocals`, uri: '/catalog/stems/pending-vocals.mp3', type: 'vocals' },
+          ],
+        }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      allowPublication();
+      await publicationTransaction;
+
+      await expect(activationPromise).resolves.toEqual({
+        applied: false,
+        reason: 'Release is no longer ready for audio replacement',
+      });
+      const [release, track, stems, stream] = await Promise.all([
+        prisma.release.findUnique({ where: { id: releaseId } }),
+        prisma.track.findUnique({ where: { id: trackId } }),
+        prisma.stem.findMany({ where: { trackId } }),
+        catalog.getTrackStream(trackId),
+      ]);
+      expect(release?.status).toBe('published');
+      expect(track).toEqual(expect.objectContaining({
+        pendingAudioRevision: null,
+        activeAudioRevision: `${TEST_PREFIX}previous_revision`,
+        audioReplacementStatus: 'failed',
+      }));
+      expect(stems).toHaveLength(2);
+      expect(stems.find((stem) => stem.id === oldStemId)).toEqual(expect.objectContaining({ isCurrent: true }));
+      expect(stems.find((stem) => stem.id === stagedOriginalId)).toEqual(expect.objectContaining({ isCurrent: false }));
+      expect(stream?.data).toEqual(oldAudio);
+    } finally {
+      await prisma.stem.deleteMany({ where: { trackId } }).catch(() => {});
+      await prisma.track.deleteMany({ where: { id: trackId } }).catch(() => {});
+      await prisma.release.delete({ where: { id: releaseId } }).catch(() => {});
+    }
+  }, 15000);
+
   it('increments release artworkRevision atomically and returns the versioned URL', async () => {
     const release = await prisma.release.create({
       data: {

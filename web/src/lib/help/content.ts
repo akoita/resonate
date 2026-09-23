@@ -1078,7 +1078,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "transfer"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "transfer", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1118,8 +1118,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/artist-management.png`,
-              alt: "Artist management page showing an invitation expiry field and controls to reduce a manager's permissions or access period.",
-              caption: "Choose a profile or release to invite a manager, then review or reduce their access here.",
+              alt: "Artist management page showing release permissions, including replacing track audio, and controls to reduce a manager's access.",
+              caption: "Choose the permissions a release manager needs, including track audio replacement for eligible releases.",
               width: 1440,
               height: 1900,
               source: LOCAL,
@@ -1128,6 +1128,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
           {
             kind: "paragraph",
             text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose the permissions they need and an optional expiry date. The invitation gives them no access until they accept it. You can later remove permissions or shorten their access, or revoke it entirely. Reducing access ends other pending invitations for that manager and resource. To add permissions or extend access, send a new invitation for them to accept.",
+          },
+          {
+            kind: "paragraph",
+            text: "On a ready release that has not been published yet, the owner or an accepted manager with Replace track audio permission can choose one audio file for a track. Supported formats are MP3, WAV, FLAC, AIFF (.aif or .aiff), M4A, AAC, and OGG; files can be up to 100 MiB. The existing audio stays playable while the replacement is processed; if it fails, the existing audio remains active. After a successful replacement, earlier stems remain available to purchases and remix projects that already use them.",
           },
           {
             kind: "paragraph",

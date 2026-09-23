@@ -24,6 +24,7 @@ const IDS = {
   grantRelease: `${TEST_PREFIX}grant_release`,
   grantReleaseOther: `${TEST_PREFIX}grant_release_other`,
   trackMetadataRelease: `${TEST_PREFIX}track_metadata_release`,
+  trackAudioRelease: `${TEST_PREFIX}track_audio_release`,
   mediaRelease: `${TEST_PREFIX}media_release`,
   profileGrantArtist: `${TEST_PREFIX}profile_grant_artist`,
   profileGrantRelease: `${TEST_PREFIX}profile_grant_release`,
@@ -36,6 +37,8 @@ const IDS = {
   pendingRelease: `${TEST_PREFIX}pending_release`,
   expiredRelease: `${TEST_PREFIX}expired_release`,
   revokedRelease: `${TEST_PREFIX}revoked_release`,
+  expiredAudioRelease: `${TEST_PREFIX}expired_audio_release`,
+  revokedAudioRelease: `${TEST_PREFIX}revoked_audio_release`,
 };
 
 async function createArtist(
@@ -97,10 +100,13 @@ beforeAll(async () => {
   await createRelease(IDS.grantRelease, IDS.grantArtist);
   await createRelease(IDS.grantReleaseOther, IDS.grantArtist);
   await createRelease(IDS.trackMetadataRelease, IDS.grantArtist);
+  await createRelease(IDS.trackAudioRelease, IDS.grantArtist);
   await createRelease(IDS.mediaRelease, IDS.grantArtist);
   await createRelease(IDS.pendingRelease, IDS.grantArtist);
   await createRelease(IDS.expiredRelease, IDS.grantArtist);
   await createRelease(IDS.revokedRelease, IDS.grantArtist);
+  await createRelease(IDS.expiredAudioRelease, IDS.grantArtist);
+  await createRelease(IDS.revokedAudioRelease, IDS.grantArtist);
 
   await createArtist(IDS.profileGrantArtist);
   await createRelease(IDS.profileGrantRelease, IDS.profileGrantArtist);
@@ -142,6 +148,12 @@ beforeAll(async () => {
     scopes: [ManagementScope.TRACK_METADATA],
   });
   await createGrant({
+    id: `${TEST_PREFIX}release_track_audio`,
+    granteeUserId: DELEGATE,
+    releaseId: IDS.trackAudioRelease,
+    scopes: [ManagementScope.TRACK_AUDIO],
+  });
+  await createGrant({
     id: `${TEST_PREFIX}release_media`,
     granteeUserId: DELEGATE,
     releaseId: IDS.mediaRelease,
@@ -175,6 +187,21 @@ beforeAll(async () => {
     status: ManagementGrantStatus.revoked,
     revokedAt: new Date(),
   });
+  await createGrant({
+    id: `${TEST_PREFIX}expired_audio`,
+    granteeUserId: DELEGATE,
+    releaseId: IDS.expiredAudioRelease,
+    scopes: [ManagementScope.TRACK_AUDIO],
+    expiresAt: new Date(Date.now() - 60_000),
+  });
+  await createGrant({
+    id: `${TEST_PREFIX}revoked_audio`,
+    granteeUserId: DELEGATE,
+    releaseId: IDS.revokedAudioRelease,
+    scopes: [ManagementScope.TRACK_AUDIO],
+    status: ManagementGrantStatus.revoked,
+    revokedAt: new Date(),
+  });
 });
 
 afterAll(async () => {
@@ -205,6 +232,9 @@ describe("management access resolver (integration)", () => {
     ).resolves.toBe(true);
     await expect(
       hasReleaseManagementAccess(OWNER, IDS.legacyRelease, "catalog_media"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(OWNER, IDS.legacyRelease, "track_audio"),
     ).resolves.toBe(true);
     await expect(
       hasArtistManagementAccess(OWNER.toUpperCase(), IDS.legacyArtist, "profile_owner"),
@@ -264,6 +294,27 @@ describe("management access resolver (integration)", () => {
       hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "catalog_media"),
     ).resolves.toBe(false);
     await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "track_audio"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackAudioRelease, "track_audio"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackAudioRelease, "catalog_read"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackAudioRelease, "track_metadata"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackAudioRelease, "catalog_media"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.grantRelease, "track_audio"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.mediaRelease, "track_audio"),
+    ).resolves.toBe(false);
+    await expect(
       hasArtistManagementAccess(DELEGATE, IDS.grantArtist, "profile_edit"),
     ).resolves.toBe(false);
   });
@@ -292,6 +343,12 @@ describe("management access resolver (integration)", () => {
     ).resolves.toBe(false);
     await expect(
       hasReleaseManagementAccess(DELEGATE, IDS.revokedRelease, "catalog_media"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.expiredAudioRelease, "track_audio"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.revokedAudioRelease, "track_audio"),
     ).resolves.toBe(false);
   });
 

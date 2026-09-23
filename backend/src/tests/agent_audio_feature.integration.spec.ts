@@ -139,6 +139,36 @@ describe("AgentAudioFeatureService (integration)", () => {
     }
   });
 
+  it("recomputes cached features after an audio revision becomes active", async () => {
+    const service = new AgentAudioFeatureService();
+    await service.getOrCreate(`${TEST_PREFIX}track`);
+    await prisma.stem.update({ where: { id: `${TEST_PREFIX}stem` }, data: { isCurrent: false } });
+    await prisma.stem.create({
+      data: {
+        id: `${TEST_PREFIX}replacement_stem`,
+        trackId: `${TEST_PREFIX}track`,
+        type: "vocals",
+        uri: "local://new-vocals.mp3",
+        durationSeconds: 45,
+        audioRevision: "replacement-revision",
+      },
+    });
+    await prisma.track.update({
+      where: { id: `${TEST_PREFIX}track` },
+      data: { activeAudioRevision: "replacement-revision" },
+    });
+
+    const result = await service.getOrCreate(`${TEST_PREFIX}track`);
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") {
+      expect(result.features.durationSeconds).toBe(45);
+      expect(result.features.descriptors.instrumentation).toContain("vocals");
+      expect(result.features.descriptors.instrumentation).not.toContain("drums");
+    }
+    const track = await prisma.track.findUniqueOrThrow({ where: { id: `${TEST_PREFIX}track` } });
+    expect(track.generationMetadata).toEqual(expect.objectContaining({ agentAudioRevision: "replacement-revision" }));
+  });
+
   it("backfills legacy feature schemas to the current version", async () => {
     const service = new AgentAudioFeatureService();
 

@@ -13,6 +13,7 @@ import {
 import {
   CatalogTrackStatusEvent,
   IpNftMintedEvent,
+  StemsFailedEvent,
   StemsProcessedEvent,
   StemsUploadedEvent,
 } from "../../events/event_types";
@@ -507,7 +508,7 @@ export class CatalogService implements OnModuleInit {
       include: {
         tracks: {
           orderBy: { position: "asc" },
-          include: { stems: true },
+          include: { stems: { where: { isCurrent: true } } },
         },
       },
     });
@@ -531,6 +532,7 @@ export class CatalogService implements OnModuleInit {
           some: {
             stems: {
               some: {
+                isCurrent: true,
                 type: { notIn: ["original", "ORIGINAL", "master", "MASTER"] },
               },
             },
@@ -541,7 +543,7 @@ export class CatalogService implements OnModuleInit {
       include: {
         tracks: {
           orderBy: { position: "asc" },
-          include: { stems: true },
+          include: { stems: { where: { isCurrent: true } } },
         },
       },
     });
@@ -636,6 +638,232 @@ export class CatalogService implements OnModuleInit {
     this.clearCache();
     console.log(`[Catalog] Consolidated duplicate Demucs release ${duplicate.id} into AI release ${canonical.id}`);
     return true;
+  }
+
+  async activateAudioReplacement(
+    event: StemsProcessedEvent,
+  ): Promise<{ applied: boolean; reason?: string }> {
+    const audioRevision = event.audioRevision;
+    if (!audioRevision) {
+      return { applied: false, reason: "audio_revision_required" };
+    }
+
+    const tracks = event.tracks ?? [];
+    if (tracks.length !== 1) {
+      return { applied: false, reason: "replacement_requires_one_track" };
+    }
+    const trackData = tracks[0];
+
+    const result = await prisma.$transaction(async (tx) => {
+      const lockedRelease = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Release" WHERE "id" = ${event.releaseId} FOR UPDATE
+      `;
+      if (lockedRelease.length === 0) {
+        return { applied: false, reason: "release_not_found" };
+      }
+
+      const release = await tx.release.findUnique({
+        where: { id: event.releaseId },
+        select: { status: true },
+      });
+      if (!release) {
+        return { applied: false, reason: "release_not_found" };
+      }
+
+      const lockedTrack = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "Track" WHERE "id" = ${trackData.id} FOR UPDATE
+      `;
+      if (lockedTrack.length === 0) {
+        return { applied: false, reason: "track_not_found" };
+      }
+
+      const track = await tx.track.findUnique({
+        where: { id: trackData.id },
+        select: {
+          releaseId: true,
+          pendingAudioRevision: true,
+          activeAudioRevision: true,
+          pendingAudioFingerprint: true,
+          pendingAudioFingerprintHash: true,
+          pendingAudioFingerprintDuration: true,
+        },
+      });
+      if (!track) {
+        return { applied: false, reason: "track_not_found" };
+      }
+      if (track.releaseId !== event.releaseId) {
+        return { applied: false, reason: "track_release_mismatch" };
+      }
+      if (track.pendingAudioRevision !== audioRevision) {
+        return {
+          applied: false,
+          reason: track.activeAudioRevision === audioRevision
+            ? "duplicate_audio_revision"
+            : "stale_audio_revision",
+        };
+      }
+
+      const failPendingAttempt = async (reason: string) => {
+        await tx.track.update({
+          where: { id: trackData.id },
+          data: {
+            pendingAudioRevision: null,
+            audioReplacementStatus: "failed",
+            audioReplacementError: "The replacement could not be activated. The existing audio remains available.",
+            pendingAudioFingerprint: null,
+            pendingAudioFingerprintHash: null,
+            pendingAudioFingerprintDuration: null,
+          },
+        });
+        return { applied: false, reason };
+      };
+
+      if (release.status !== "ready") {
+        return failPendingAttempt("Release is no longer ready for audio replacement");
+      }
+
+      const incomingStems = trackData.stems ?? [];
+      const stemIds = incomingStems.map((stem) => stem.id);
+      if (
+        incomingStems.some((stem) => !stem.id?.trim() || !stem.type?.trim()) ||
+        new Set(stemIds).size !== stemIds.length
+      ) {
+        return failPendingAttempt("Replacement result contains invalid or duplicate stem IDs");
+      }
+
+      const hasOriginal = incomingStems.some(
+        (stem) => stem.type.toLowerCase() === "original",
+      );
+      const hasProcessedStem = incomingStems.some(
+        (stem) => !SOURCE_STEM_TYPES.has(stem.type.toLowerCase()),
+      );
+      if (!hasOriginal || !hasProcessedStem) {
+        return failPendingAttempt("Replacement result must contain an original and at least one processed stem");
+      }
+
+      const existingStems = await tx.stem.findMany({
+        where: { id: { in: stemIds } },
+        select: { id: true, trackId: true, audioRevision: true, isCurrent: true },
+      });
+      for (const stem of existingStems) {
+        if (stem.trackId !== trackData.id) {
+          return failPendingAttempt(`Replacement stem ${stem.id} belongs to another track`);
+        }
+        if (stem.audioRevision !== audioRevision || stem.isCurrent) {
+          return failPendingAttempt(`Replacement stem ${stem.id} is not staged for this audio revision`);
+        }
+      }
+
+      const fingerprintFields = [
+        track.pendingAudioFingerprint,
+        track.pendingAudioFingerprintHash,
+        track.pendingAudioFingerprintDuration,
+      ];
+      const fingerprintHasAnyValue = fingerprintFields.some((value) => value !== null);
+      const hasCompleteFingerprint = fingerprintFields.every((value) => value !== null);
+      if (fingerprintHasAnyValue && !hasCompleteFingerprint) {
+        return failPendingAttempt("Replacement fingerprint is incomplete");
+      }
+      if (
+        hasCompleteFingerprint &&
+        (!track.pendingAudioFingerprint?.trim() ||
+          !track.pendingAudioFingerprintHash?.trim() ||
+          !Number.isFinite(track.pendingAudioFingerprintDuration) ||
+          (track.pendingAudioFingerprintDuration ?? 0) <= 0)
+      ) {
+        return failPendingAttempt("Replacement fingerprint is invalid");
+      }
+
+      await tx.stem.updateMany({
+        where: { trackId: trackData.id, isCurrent: true },
+        data: { isCurrent: false },
+      });
+
+      for (const stem of incomingStems) {
+        await tx.stem.upsert({
+          where: { id: stem.id, trackId: trackData.id },
+          create: {
+            id: stem.id,
+            trackId: trackData.id,
+            type: stem.type,
+            uri: stem.uri,
+            data: stem.data,
+            mimeType: stem.mimeType,
+            durationSeconds: stem.durationSeconds,
+            audioFeatures:
+              (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
+            isEncrypted: stem.isEncrypted ?? false,
+            encryptionMetadata: stem.encryptionMetadata,
+            storageProvider: stem.storageProvider ?? "local",
+            audioRevision,
+            isCurrent: true,
+          },
+          update: {
+            type: stem.type,
+            uri: stem.uri,
+            data: stem.data,
+            mimeType: stem.mimeType,
+            durationSeconds: stem.durationSeconds,
+            audioFeatures:
+              (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
+            isEncrypted: stem.isEncrypted ?? false,
+            encryptionMetadata: stem.encryptionMetadata,
+            storageProvider: stem.storageProvider ?? "local",
+            audioRevision,
+            isCurrent: true,
+          },
+        });
+      }
+
+      if (hasCompleteFingerprint) {
+        const fingerprint = track.pendingAudioFingerprint!;
+        const fingerprintHash = track.pendingAudioFingerprintHash!;
+        const duration = track.pendingAudioFingerprintDuration!;
+        await tx.audioFingerprint.upsert({
+          where: { trackId: trackData.id },
+          create: {
+            trackId: trackData.id,
+            fingerprint,
+            fingerprintHash,
+            duration,
+            source: "upload",
+          },
+          update: {
+            fingerprint,
+            fingerprintHash,
+            duration,
+            source: "upload",
+          },
+        });
+      }
+
+      await tx.track.update({
+        where: { id: trackData.id },
+        data: {
+          activeAudioRevision: audioRevision,
+          pendingAudioRevision: null,
+          audioReplacementStatus: "complete",
+          audioReplacementError: null,
+          pendingAudioFingerprint: null,
+          pendingAudioFingerprintHash: null,
+          pendingAudioFingerprintDuration: null,
+        },
+      });
+      return { applied: true, trackId: trackData.id };
+    }, { timeout: 30_000 });
+
+    if (result.applied) {
+      this.clearCache();
+      this.eventBus.publish({
+        eventName: "catalog.track_status",
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId: event.releaseId,
+        trackId: result.trackId,
+        status: "complete",
+      } as CatalogTrackStatusEvent);
+    }
+    return result;
   }
 
   onModuleInit() {
@@ -763,6 +991,16 @@ export class CatalogService implements OnModuleInit {
 
     this.eventBus.subscribe("stems.processed", async (event: StemsProcessedEvent) => {
       console.log(`[Catalog] Received stems.processed for release ${event.releaseId}`);
+      if (event.audioRevision) {
+        const result = await this.activateAudioReplacement(event);
+        if (!result.applied) {
+          console.warn(
+            `[Catalog] Skipped audio replacement ${event.audioRevision} for release ${event.releaseId}: ${result.reason}`,
+          );
+        }
+        return;
+      }
+
       this.clearCache();
 
       let release = await prisma.release.findUnique({ where: { id: event.releaseId } });
@@ -827,12 +1065,22 @@ export class CatalogService implements OnModuleInit {
           // Missing IDs remain eligible for the existing create/upsert path.
           const existingTracks = await tx.track.findMany({
             where: { id: { in: trackIds } },
-            select: { id: true, releaseId: true },
+            select: {
+              id: true,
+              releaseId: true,
+              pendingAudioRevision: true,
+              activeAudioRevision: true,
+            },
           });
           for (const track of existingTracks) {
             if (track.releaseId !== event.releaseId) {
               throw new Error(
                 `Rejecting stems.processed for release ${event.releaseId}: track ${track.id} belongs to another release`,
+              );
+            }
+            if (track.pendingAudioRevision || track.activeAudioRevision) {
+              throw new Error(
+                `Rejecting tokenless stems.processed for track ${track.id} with an audio replacement revision`,
               );
             }
           }
@@ -916,6 +1164,7 @@ export class CatalogService implements OnModuleInit {
                     isEncrypted: stem.isEncrypted ?? false,
                     encryptionMetadata: stem.encryptionMetadata,
                     storageProvider: stem.storageProvider ?? "local",
+                    isCurrent: true,
                   },
                   update: {
                     type: stem.type,
@@ -928,6 +1177,7 @@ export class CatalogService implements OnModuleInit {
                     isEncrypted: stem.isEncrypted ?? false,
                     encryptionMetadata: stem.encryptionMetadata,
                     storageProvider: stem.storageProvider ?? "local",
+                    isCurrent: true,
                   },
                 });
                 upsertedStemIds.push({ trackId: trackData.id, stemId: stem.id });
@@ -999,16 +1249,73 @@ export class CatalogService implements OnModuleInit {
         .catch(() => null);
     });
 
-    this.eventBus.subscribe("stems.failed", async (event: any) => {
+    this.eventBus.subscribe("stems.failed", async (event: StemsFailedEvent) => {
       console.log(`[Catalog] Received stems.failed for release ${event.releaseId}: ${event.error}`);
       this.clearCache();
       try {
+        if (event.audioRevision) {
+          if (!event.trackId) {
+            console.warn(
+              `[Catalog] Ignoring audio replacement failure without a track ID for revision ${event.audioRevision}`,
+            );
+            return;
+          }
+
+          const failedTrack = await prisma.$transaction(async (tx) => {
+            await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${event.releaseId} FOR UPDATE`;
+            await tx.$queryRaw`SELECT "id" FROM "Track" WHERE "id" = ${event.trackId} FOR UPDATE`;
+            const track = await tx.track.findUnique({
+              where: { id: event.trackId },
+              select: { releaseId: true, pendingAudioRevision: true },
+            });
+            if (
+              track?.releaseId !== event.releaseId ||
+              track.pendingAudioRevision !== event.audioRevision
+            ) {
+              return false;
+            }
+
+            await tx.track.update({
+              where: { id: event.trackId },
+              data: {
+                pendingAudioRevision: null,
+                audioReplacementStatus: "failed",
+                audioReplacementError: "Audio processing failed. The existing audio remains available.",
+                pendingAudioFingerprint: null,
+                pendingAudioFingerprintHash: null,
+                pendingAudioFingerprintDuration: null,
+              },
+            });
+            return true;
+          });
+
+          if (!failedTrack) {
+            console.warn(
+              `[Catalog] Ignoring stale stems.failed for audio revision ${event.audioRevision} on track ${event.trackId}`,
+            );
+          }
+          return;
+        }
+
         const releaseUpdate = await prisma.release.updateMany({
-          where: { id: event.releaseId },
+          where: {
+            id: event.releaseId,
+            status: "processing",
+          },
           data: { status: "failed", processingError: event.error || "Unknown processing error" },
         });
 
         if (releaseUpdate.count === 0) {
+          const release = await prisma.release.findUnique({
+            where: { id: event.releaseId },
+            select: { id: true, status: true },
+          });
+          if (release) {
+            console.warn(
+              `[Catalog] Ignoring late stems.failed for release ${event.releaseId} in status ${release.status}`,
+            );
+            return;
+          }
           console.warn(
             `[Catalog] Ignoring late stems.failed for missing release ${event.releaseId}`,
           );
@@ -1120,6 +1427,10 @@ export class CatalogService implements OnModuleInit {
             createdAt: true,
             processingStatus: true,
             processingError: true,
+            activeAudioRevision: true,
+            pendingAudioRevision: true,
+            audioReplacementStatus: true,
+            audioReplacementError: true,
             contentStatus: true,
             ...AI_DISCLOSURE_SELECT,
             rightsRoute: true,
@@ -1128,6 +1439,7 @@ export class CatalogService implements OnModuleInit {
             rightsPolicyVersion: true,
             rightsEvaluatedAt: true,
             stems: {
+              where: { isCurrent: true },
               select: {
                 id: true,
                 type: true,
@@ -1402,6 +1714,7 @@ export class CatalogService implements OnModuleInit {
         rightsPolicyVersion: true,
         rightsEvaluatedAt: true,
         stems: {
+          where: { isCurrent: true },
           select: {
             id: true,
             type: true,
@@ -1463,6 +1776,7 @@ export class CatalogService implements OnModuleInit {
         ...AI_DISCLOSURE_SELECT,
         rightsRoute: true,
         stems: {
+          where: { isCurrent: true },
           select: {
             id: true,
             type: true,
@@ -1762,6 +2076,10 @@ export class CatalogService implements OnModuleInit {
             contentStatus: true,
             ...AI_DISCLOSURE_SELECT,
             // Remix lineage (#1196): source attribution + AI-provenance
+            activeAudioRevision: true,
+            pendingAudioRevision: true,
+            audioReplacementStatus: true,
+            audioReplacementError: true,
             // label for published remix releases.
             generationMetadata: true,
             rightsRoute: true,
@@ -1770,6 +2088,7 @@ export class CatalogService implements OnModuleInit {
             rightsPolicyVersion: true,
             rightsEvaluatedAt: true,
             stems: {
+              where: { isCurrent: true },
               select: {
                 id: true,
                 type: true,
@@ -1840,6 +2159,10 @@ export class CatalogService implements OnModuleInit {
                 contentStatus: true,
                 ...AI_DISCLOSURE_SELECT,
                 // Remix lineage (#1196): keep parity with the primary select.
+                activeAudioRevision: true,
+                pendingAudioRevision: true,
+                audioReplacementStatus: true,
+                audioReplacementError: true,
                 generationMetadata: true,
                 rightsRoute: true,
                 rightsFlags: true,
@@ -1847,6 +2170,7 @@ export class CatalogService implements OnModuleInit {
                 rightsPolicyVersion: true,
                 rightsEvaluatedAt: true,
                 stems: {
+                  where: { isCurrent: true },
                   select: {
                     id: true,
                     type: true,
@@ -2027,6 +2351,7 @@ export class CatalogService implements OnModuleInit {
             rightsPolicyVersion: true,
             rightsEvaluatedAt: true,
             stems: {
+              where: { isCurrent: true },
               select: {
                 id: true,
                 type: true,
@@ -2059,7 +2384,7 @@ export class CatalogService implements OnModuleInit {
               granteeUserId: userId,
               status: "active",
               OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-              scopes: { hasSome: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA", "TRACK_METADATA"] },
+              scopes: { hasSome: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA", "TRACK_METADATA", "TRACK_AUDIO"] },
             },
           },
         },
@@ -2540,6 +2865,7 @@ export class CatalogService implements OnModuleInit {
             explicit: true,
             ...AI_DISCLOSURE_SELECT,
             stems: {
+              where: { isCurrent: true },
               select: {
                 id: true,
                 type: true,
@@ -2655,6 +2981,7 @@ export class CatalogService implements OnModuleInit {
             id: true,
             ...AI_DISCLOSURE_SELECT,
             stems: {
+              where: { isCurrent: true },
               select: {
                 listings: {
                   where: {
@@ -2823,6 +3150,7 @@ export class CatalogService implements OnModuleInit {
           },
         },
         stems: {
+          where: { isCurrent: true },
           select: { id: true, type: true, isEncrypted: true },
           orderBy: { type: 'asc' },
         },
@@ -2868,6 +3196,7 @@ export class CatalogService implements OnModuleInit {
       where: { id: stemId },
       select: {
         id: true,
+        isCurrent: true,
         data: true,
         mimeType: true,
         uri: true,
@@ -2892,6 +3221,7 @@ export class CatalogService implements OnModuleInit {
         where: { uri: { contains: stemId } },
         select: {
           id: true,
+          isCurrent: true,
           data: true,
           mimeType: true,
           uri: true,
@@ -2912,6 +3242,10 @@ export class CatalogService implements OnModuleInit {
     }
 
     if (!stem) return null;
+
+    // Replaced and pending stems are retained for audit and existing entitlements,
+    // but the unauthenticated blob route must only serve the active revision.
+    if (!options?.includeRestricted && !stem.isCurrent) return null;
 
     // #1793: the public side door. This route is unauthenticated and serves the
     // full stem, so a withdrawal that only gated `getTrackStream` would be one

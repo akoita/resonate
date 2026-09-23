@@ -122,6 +122,7 @@ describe('X402Controller HTTP contract', () => {
       id: 'stem_1',
       uri: 'https://example.com/stem.mp3',
       mimeType: 'audio/mpeg',
+      isCurrent: true,
     });
     prisma.stemPricing.findUnique.mockResolvedValue({
       basePlayPriceUsd: 0.05,
@@ -159,6 +160,7 @@ describe('X402Controller HTTP contract', () => {
         id: 'stem_local',
         uri: '/catalog/stems/e2e-x402.m4a/blob',
         mimeType: 'audio/mp4',
+        isCurrent: true,
       })
       .mockResolvedValueOnce({
         id: 'stem_local',

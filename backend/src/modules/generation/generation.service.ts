@@ -644,7 +644,7 @@ export class GenerationService {
       include: {
         tracks: {
           include: {
-            stems: { where: { type: 'master' }, take: 1 },
+            stems: { where: { type: 'master', isCurrent: true }, take: 1 },
           },
         },
       },
@@ -805,7 +805,7 @@ export class GenerationService {
     const track = await prisma.track.findUnique({
       where: { id: trackId },
       include: {
-        stems: { select: { type: true } },
+        stems: { where: { isCurrent: true }, select: { type: true } },
         release: { select: { title: true, genre: true } },
       },
     });

@@ -6,7 +6,11 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
   getReleaseManagementAccess,
+  replaceTrackAudio,
+  getTrackAudioFileValidationError,
+  TRACK_AUDIO_FILE_ACCEPT,
   Release,
+  type AudioReplacementStatus,
   type ResourceManagementAccess,
   type Track,
   getLatestReleaseRightsUpgradeRequest,
@@ -104,6 +108,20 @@ const getTrackArtistCredit = (track: Track, release?: Release | null) => {
 };
 
 const MIXER_STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"] as const;
+
+const isAudioReplacementActive = (status?: AudioReplacementStatus | null) =>
+  status != null && status !== "complete" && status !== "failed";
+
+const audioReplacementStatusLabel = (status: AudioReplacementStatus) => {
+  switch (status) {
+    case "processing": return "Audio replacement queued";
+    case "separating": return "Separating replacement audio";
+    case "encrypting": return "Securing replacement audio";
+    case "storing": return "Saving replacement audio";
+    case "complete": return "Audio replacement complete";
+    case "failed": return "Audio replacement failed. Existing audio remains active.";
+  }
+};
 
 const normalizeStemType = (type?: string | null): string => type?.trim().toLowerCase() ?? "";
 
@@ -418,6 +436,7 @@ export default function ReleaseDetails() {
   const [loading, setLoading] = useState(true);
   const [attestationFlowPending, setAttestationFlowPending] = useState(false);
   const [isUpdatingArtwork, setIsUpdatingArtwork] = useState(false);
+  const [uploadingTrackAudioId, setUploadingTrackAudioId] = useState<string | null>(null);
   // #1492: owner-only inline correction of the credited artist (primaryArtist).
   const [isEditingCreditedArtist, setIsEditingCreditedArtist] = useState(false);
   const [creditedArtistDraft, setCreditedArtistDraft] = useState("");
@@ -427,6 +446,9 @@ export default function ReleaseDetails() {
   const [trackStems, setTrackStems] = useState<Record<string, string>>({}); // trackId -> stemType (e.g. 'vocals')
   const [expandedNftTracks, setExpandedNftTracks] = useState<Set<string>>(new Set());
   const artworkInputRef = useRef<HTMLInputElement>(null);
+  const trackAudioInputRef = useRef<HTMLInputElement>(null);
+  const selectedTrackForAudioReplacementRef = useRef<string | null>(null);
+  const audioReplacementStatusesRef = useRef(new Map<string, AudioReplacementStatus | null>());
   const ownerScopedTrackUrlsRef = useRef<Record<string, string>>({});
   const rightsUpgradeStatusRef = useRef<string | null>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
@@ -461,6 +483,9 @@ export default function ReleaseDetails() {
     && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_MEDIA");
   const canEditTrackMetadata = catalogAccess?.resourceId === release?.id
     && catalogAccess?.currentUserAccess.scopes.includes("TRACK_METADATA");
+  const canReplaceTrackAudio = Boolean(catalogAccess && catalogAccess.resourceId === release?.id
+    && (catalogAccess.currentUserAccess.isOwner
+      || catalogAccess.currentUserAccess.scopes.includes("TRACK_AUDIO")));
   useEffect(() => {
     if (!token || !release?.id) {
       setCatalogAccess(null);
@@ -472,6 +497,74 @@ export default function ReleaseDetails() {
       .catch(() => { if (active) setCatalogAccess(null); });
     return () => { active = false; };
   }, [token, release?.id]);
+  useEffect(() => {
+    for (const track of release?.tracks ?? []) {
+      audioReplacementStatusesRef.current.set(track.id, track.audioReplacementStatus ?? null);
+    }
+  }, [release?.tracks]);
+  const hasActiveAudioReplacement = release?.tracks?.some((track) =>
+    isAudioReplacementActive(track.audioReplacementStatus),
+  ) ?? false;
+  useEffect(() => {
+    if (!token || !id || !hasActiveAudioReplacement) return;
+
+    let active = true;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const maxAttempts = 60;
+    const poll = async () => {
+      attempts += 1;
+      let latestRelease: Release | null = null;
+      try {
+        latestRelease = await getRelease(String(id), token);
+      } catch {
+        // Keep retrying within the bounded polling window.
+      }
+      if (!active) return;
+
+      if (latestRelease) {
+        for (const track of latestRelease.tracks ?? []) {
+          const previousStatus = audioReplacementStatusesRef.current.get(track.id);
+          const status = track.audioReplacementStatus ?? null;
+          if (isAudioReplacementActive(previousStatus) && status === "complete") {
+            addToast({
+              type: "success",
+              title: "Audio replaced",
+              message: `Replacement audio for ${track.title} is ready.`,
+            });
+          } else if (isAudioReplacementActive(previousStatus) && status === "failed") {
+            addToast({
+              type: "error",
+              title: "Audio replacement failed",
+              message: track.audioReplacementError || "The existing audio remains active. You can try again.",
+            });
+          }
+          audioReplacementStatusesRef.current.set(track.id, status);
+        }
+
+        setRelease(latestRelease);
+        if (!latestRelease.tracks?.some((track) => isAudioReplacementActive(track.audioReplacementStatus))) {
+          return;
+        }
+      }
+
+      if (attempts >= maxAttempts) {
+        addToast({
+          type: "info",
+          title: "Audio is still processing",
+          message: "This page stopped checking for updates. Reload later to see the final status.",
+        });
+        return;
+      }
+      timer = setTimeout(() => void poll(), 3_000);
+    };
+
+    timer = setTimeout(() => void poll(), 3_000);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [addToast, hasActiveAudioReplacement, id, token]);
   const hasFailedProcessing = release?.status === "failed" || release?.tracks?.some(t => t.processingStatus === "failed");
   const isProcessingRelease = release?.status === "processing";
   const hasUnprocessedTracks = release?.tracks?.some(t => !t.stems || t.stems.length <= 1);
@@ -655,6 +748,75 @@ export default function ReleaseDetails() {
       addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
     }
   }, [addToast, isCatalogOwner, release?.id, token]);
+
+  const handleTrackAudioFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    const trackId = selectedTrackForAudioReplacementRef.current;
+    event.currentTarget.value = "";
+    selectedTrackForAudioReplacementRef.current = null;
+    if (!file || !trackId || !token || !release?.id) return;
+    const validationError = getTrackAudioFileValidationError(file);
+    if (validationError) {
+      addToast({ type: "error", title: "Audio file not supported", message: validationError });
+      return;
+    }
+
+    setUploadingTrackAudioId(trackId);
+    try {
+      const result = await replaceTrackAudio(token, release.id, trackId, file);
+      if (result.status === "processing") {
+        // Keep the current stems in place until the server activates the new revision.
+        setRelease((previous) => previous ? {
+          ...previous,
+          tracks: previous.tracks?.map((track) => track.id === trackId ? {
+            ...track,
+            pendingAudioRevision: result.audioRevision,
+            audioReplacementStatus: "processing",
+            audioReplacementError: null,
+          } : track),
+        } : previous);
+        addToast({
+          type: "info",
+          title: "Audio replacement started",
+          message: "The current audio remains playable while the replacement is processed.",
+        });
+        return;
+      }
+
+      setRelease((previous) => previous ? {
+        ...previous,
+        tracks: previous.tracks?.map((track) => track.id === trackId ? {
+          ...track,
+          activeAudioRevision: result.audioRevision,
+          pendingAudioRevision: null,
+          audioReplacementStatus: "complete",
+          audioReplacementError: null,
+        } : track),
+      } : previous);
+      try {
+        const latestRelease = await getRelease(release.id, token);
+        if (latestRelease) setRelease(latestRelease);
+      } catch {
+        // The API already confirmed completion; a later page load can refresh details.
+      }
+      addToast({ type: "success", title: "Audio replaced", message: "The replacement audio is ready." });
+    } catch (reason) {
+      addToast({
+        type: "error",
+        title: "Audio replacement failed",
+        message: reason instanceof Error ? reason.message : "The existing audio remains active. Try again.",
+      });
+    } finally {
+      setUploadingTrackAudioId(null);
+    }
+  }, [addToast, release?.id, token]);
+
+  const chooseTrackAudioFile = useCallback((trackId: string) => {
+    if (!trackAudioInputRef.current || uploadingTrackAudioId) return;
+    selectedTrackForAudioReplacementRef.current = trackId;
+    trackAudioInputRef.current.value = "";
+    trackAudioInputRef.current.click();
+  }, [uploadingTrackAudioId]);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -2220,6 +2382,27 @@ export default function ReleaseDetails() {
         />
       )}
 
+      <input
+        id="track-audio-replacement-file"
+        ref={trackAudioInputRef}
+        type="file"
+        accept={TRACK_AUDIO_FILE_ACCEPT}
+        multiple={false}
+        aria-label="Choose one replacement audio file"
+        tabIndex={-1}
+        onChange={handleTrackAudioFileSelected}
+        style={{
+          position: "fixed",
+          width: 1,
+          height: 1,
+          padding: 0,
+          margin: -1,
+          overflow: "hidden",
+          clipPath: "inset(50%)",
+          whiteSpace: "nowrap",
+          border: 0,
+        }}
+      />
       <section className="tracklist-section glass-panel">
         <div className="tracklist-scroll-container">
           <table className="track-table">
@@ -2252,6 +2435,8 @@ export default function ReleaseDetails() {
             <tbody>
               {release.tracks?.map((track, idx) => {
                 const isSelected = selectedTrackIds.has(track.id);
+                const isTrackAudioBusy = uploadingTrackAudioId === track.id
+                  || isAudioReplacementActive(track.audioReplacementStatus);
                 return (
                   <tr
                     key={track.id}
@@ -2336,6 +2521,29 @@ export default function ReleaseDetails() {
                           >✎</button>}
                         </div>
                       )}
+
+                      {(track.audioReplacementStatus || (canReplaceTrackAudio && release.status === "ready")) && <div
+                        style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 5 }}
+                      >
+                        {track.audioReplacementStatus && <span
+                          role={track.audioReplacementStatus === "failed" ? "alert" : "status"}
+                          aria-live={isAudioReplacementActive(track.audioReplacementStatus) ? "polite" : undefined}
+                          style={{ fontSize: 11, color: track.audioReplacementStatus === "failed" ? "#f87171" : "#93c5fd" }}
+                        >
+                          {audioReplacementStatusLabel(track.audioReplacementStatus)}
+                        </span>}
+                        {canReplaceTrackAudio && release.status === "ready" && <button
+                          type="button"
+                          aria-label={`Replace audio for ${track.title}`}
+                          aria-controls="track-audio-replacement-file"
+                          aria-busy={isTrackAudioBusy}
+                          disabled={isTrackAudioBusy || uploadingTrackAudioId !== null}
+                          onClick={(event) => { event.stopPropagation(); chooseTrackAudioFile(track.id); }}
+                          style={{ whiteSpace: "nowrap", minHeight: 32, padding: "4px 9px", fontSize: 12 }}
+                        >
+                          {isTrackAudioBusy ? "Replacing…" : "Replace audio"}
+                        </button>}
+                      </div>}
 
                       {canUseMixerPreview && track.stems && track.stems.length > 1 && (
                         <div className="stem-selector" onClick={(e) => e.stopPropagation()}>

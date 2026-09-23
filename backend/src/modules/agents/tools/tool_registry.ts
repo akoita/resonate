@@ -65,6 +65,7 @@ export class ToolRegistry {
           include: {
             release: { select: { title: true, genre: true, artworkUrl: true } },
             stems: {
+              where: { isCurrent: true },
               select: {
                 listings: {
                   where: {

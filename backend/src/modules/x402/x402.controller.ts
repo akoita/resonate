@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Inject, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpStatus,
+  Inject,
+  Logger,
+  Optional,
+  Param,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -203,6 +216,28 @@ export class X402Controller {
     }
 
     try {
+      const stem = await prisma.stem.findUnique({
+        where: { id: stemId },
+        select: { isCurrent: true },
+      });
+      if (stem?.isCurrent === false) {
+        const existingSettlement =
+          body.txHash && TX_HASH_PATTERN.test(body.txHash)
+            ? await prisma.x402Settlement.findFirst({
+                where: { paymentTransactionHash: body.txHash },
+                select: { stemId: true },
+              })
+            : null;
+        if (existingSettlement?.stemId !== stemId) {
+          res.status(HttpStatus.CONFLICT).json({
+            error: 'Stem no longer available for purchase',
+            message:
+              'Historical stems cannot receive a new purchase entitlement. If this payment transaction was already submitted, this request will not record a download entitlement.',
+          });
+          return;
+        }
+      }
+
       const verified = await this.verifySmartAccountPayment(stemId, body);
       return this.servePaidStemDownload({
         stemId,
@@ -1242,6 +1277,7 @@ export class X402Controller {
         track: {
           include: {
             stems: {
+              where: { isCurrent: true },
               select: { id: true, type: true },
               orderBy: { type: 'asc' },
             },
@@ -1256,6 +1292,12 @@ export class X402Controller {
 
     if (!stem) {
       return { error: 'Stem not found' };
+    }
+    if (stem.isCurrent === false) {
+      throw new ConflictException({
+        code: 'stem_no_longer_available_for_purchase',
+        message: 'Historical stems do not accept new purchases.',
+      });
     }
 
     const listing = await this.findActiveListing(stem.id);

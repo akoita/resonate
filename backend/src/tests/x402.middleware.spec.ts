@@ -13,6 +13,7 @@ jest.mock('../db/prisma', () => ({
         id: 'stem_1',
         uri: 'https://example.com/stem.mp3',
         mimeType: 'audio/mpeg',
+        isCurrent: true,
       }),
     },
     stemListing: {
@@ -104,6 +105,7 @@ describe('X402Middleware', () => {
       id: 'stem_1',
       uri: 'https://example.com/stem.mp3',
       mimeType: 'audio/mpeg',
+      isCurrent: true,
     });
     prisma.stemListing.findFirst.mockResolvedValue(null);
     prisma.x402Settlement.findUnique.mockResolvedValue(null);
