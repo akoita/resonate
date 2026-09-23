@@ -6072,6 +6072,19 @@ export function inviteManager(
   );
 }
 
+/** Narrow an accepted grant immediately; broader access requires a new invitation. */
+export function narrowManagementGrant(
+  token: string,
+  grantId: string,
+  input: { scopes?: ManagementScope[]; expiresAt?: string },
+) {
+  return apiRequest<ManagementGrant>(
+    `/management/grants/${encodeURIComponent(grantId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
 export function respondToManagementGrant(
   token: string,
   grantId: string,

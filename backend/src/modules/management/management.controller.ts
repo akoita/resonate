@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { ManagementService } from "./management.service";
 
@@ -25,6 +25,22 @@ export class ManagementController {
   @Post("grants")
   createGrant(@Req() req: any, @Body() body: Parameters<ManagementService["createGrant"]>[1]) {
     return this.managementService.createGrant(req.user.userId, body);
+  }
+
+  @Patch("grants/:id")
+  updateGrant(
+    @Req() req: any,
+    @Param("id") grantId: string,
+    @Body() body: unknown,
+  ) {
+    if (body === null || typeof body !== "object" || Array.isArray(body)) {
+      throw new BadRequestException("Grant update body must be an object");
+    }
+    return this.managementService.updateGrant(
+      req.user.userId,
+      grantId,
+      body as Parameters<ManagementService["updateGrant"]>[2],
+    );
   }
 
   @Post("grants/:id/accept")

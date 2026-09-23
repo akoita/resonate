@@ -71,7 +71,11 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   editing track titles and explicit labels on that release without giving the
   manager release-title, rights, or financial controls. Publication status,
   credited-artist correction, processing controls, and deletion remain with the
-  management owner. Accepting a transfer ends existing release invitations.
+  management owner. The owner can set invitation expiry and later narrow an
+  accepted manager's scopes or shorten access from the same management page.
+  Broader access requires a fresh invitation and acceptance. Prior grants
+  remain in the resource's access history. Accepting a transfer ends existing
+  release invitations.
   Release transfers change management authority without rewriting
   the credited artist, uploader profile, rights route, or payout destination.
   The home page keeps only compact previews and

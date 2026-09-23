@@ -48,9 +48,12 @@ Only the current management owner can invite a registered account. The invite
 names a profile or release and its scopes, starts pending, and grants nothing
 until the recipient accepts. Active grants are checked on every request and
 stop working immediately when revoked or expired. A scope expansion requires
-recipient acceptance; replacing a grant leaves its previous record in history
-while the resource exists. Deleting a resource removes its grant records; the
-transfer snapshot remains available for audit.
+recipient acceptance. The owner may narrow an accepted grant or shorten its
+expiry immediately. That change revokes the prior row and creates a new active
+row with the reduced authority, retaining both records in resource history.
+Replacing a grant through a fresh invitation also leaves its previous record
+in history while the resource exists. Deleting a resource removes its grant
+records; the transfer snapshot remains available for audit.
 The recipient can decline or relinquish access. Private invite and audit data
 are never returned by public artist or release reads.
 
@@ -91,11 +94,12 @@ active grants and distinguish a public credit from a manageable resource.
 
 The current implementation covers profile details, release inventory, release
 title and artwork, track titles and explicit labels, invitation acceptance and
-revocation, and profile or catalog management transfers. Track audio replacement
-still needs a versioned processing path and a dedicated scope and UI; it must
+revocation, direct grant narrowing and expiry shortening, and profile or
+catalog management transfers. Track audio replacement still needs a versioned
+processing path and a dedicated scope and UI; it must
 remain unavailable for published releases and preserve existing purchases and
-remix references. Owners can replace a manager's scopes through a fresh
-invite, while direct scope editing, expiry controls in the UI, invite
-notifications, and transfer recovery remain to be designed and delivered.
+remix references. Owners can widen a manager's scopes or extend an expiry
+through a fresh invite. Invite notifications and transfer recovery remain
+to be designed and delivered.
 Keep #1762 open until those workflows and their denied-access tests are
 explicitly completed or separately tracked.

@@ -1118,16 +1118,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/artist-management.png`,
-              alt: "Artist management page showing owned artist profiles and releases, invitation controls, and transfer options.",
-              caption: "Artist management: choose a profile or release before inviting a manager or transferring management.",
+              alt: "Artist management page showing an invitation expiry field and controls to reduce a manager's permissions or access period.",
+              caption: "Choose a profile or release to invite a manager, then review or reduce their access here.",
               width: 1440,
-              height: 1100,
+              height: 1900,
               source: LOCAL,
             },
           },
           {
             kind: "paragraph",
-            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose exactly which release permissions they need, including a separate option to edit track titles and explicit labels. The invitation appears in their Artist management page and gives them no access until they accept it. You can revoke a pending or active invitation there.",
+            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose the permissions they need and an optional expiry date. The invitation gives them no access until they accept it. You can later remove permissions or shorten their access, or revoke it entirely. To add permissions or extend access, send a new invitation for them to accept.",
           },
           {
             kind: "paragraph",

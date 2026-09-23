@@ -90,7 +90,7 @@ const AUTH_TARGETS = [
   ["/disputes", "disputes.png"],
   ["/artist/management", "artist-management.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
-    viewportHeight: 1100,
+    viewportHeight: 1900,
     mockManagement: true,
     selectManagementRelease: true,
   }],
@@ -190,7 +190,13 @@ async function capture(page, targets, passName) {
           resourceType: "release",
           resourceId: "guide-release",
           currentUserAccess: { isOwner: true, scopes: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA"] },
-          grants: [],
+          grants: [{
+            id: "guide-grant",
+            granteeEmail: "manager@example.com",
+            scopes: ["CATALOG_READ", "CATALOG_METADATA"],
+            status: "active",
+            expiresAt: "2099-12-31T12:00:00.000Z",
+          }],
         },
       }));
     }
@@ -206,6 +212,8 @@ async function capture(page, targets, passName) {
     if (ready?.selectManagementRelease) {
       await page.getByLabel("Choose a resource").selectOption("release:guide-release");
       await page.getByText("Transfer management").waitFor({ state: "visible" });
+      await page.getByRole("button", { name: "Edit access" }).click();
+      await page.evaluate(() => window.scrollTo(0, 0));
     }
     if (ready?.prepare) await ready.prepare(page);
     // Let fonts, artwork, and async client data settle before the shot.
