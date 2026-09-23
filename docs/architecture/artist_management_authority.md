@@ -100,8 +100,10 @@ revocation, direct grant narrowing and expiry shortening, and profile or
 catalog management transfers. Track audio replacement still needs a versioned
 processing path and a dedicated scope and UI; it must
 remain unavailable for published releases and preserve existing purchases and
-remix references. Owners can widen a manager's scopes or extend an expiry
-through a fresh invite. Invite notifications and transfer recovery remain
+remix references. The [audio replacement design](track_audio_replacement.md)
+records the versioning and reference-preservation requirements. Owners can widen
+a manager's scopes or extend an expiry through a fresh invite. Invite
+notifications and transfer recovery remain
 to be designed and delivered.
 Keep #1762 open until those workflows and their denied-access tests are
 explicitly completed or separately tracked.
