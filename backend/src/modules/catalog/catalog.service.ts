@@ -802,7 +802,6 @@ export class CatalogService implements OnModuleInit {
                 rightsEvaluatedAt: release.rightsEvaluatedAt,
               },
               update: {
-                title: trackData.title,
                 artist: trackData.artist,
                 position: trackData.position,
                 processingStatus: "complete", // Mark as complete when processed

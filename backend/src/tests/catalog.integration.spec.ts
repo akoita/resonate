@@ -18,6 +18,7 @@ import { EncryptionService } from '../modules/encryption/encryption.service';
 import { AesEncryptionProvider } from '../modules/encryption/providers/aes_encryption_provider';
 import { ConfigService } from '@nestjs/config';
 import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
+import type { StemsProcessedEvent } from '../events/event_types';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
 const NO_AI_DISCLOSURE = { level: 'none' as const, facets: [] as string[] };
@@ -110,6 +111,49 @@ describe('CatalogService (integration)', () => {
       source: 'artist',
     });
     expect(result.artworkRevision).toBe(1);
+  });
+
+  it('preserves an edited track title when stems processing completes', async () => {
+    const sourceTitle = 'Original Track Title';
+    const editedTitle = 'Artist Edited Track Title';
+    const release = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Track Title Race',
+      tracks: [{ title: sourceTitle, position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const track = release.tracks[0];
+
+    await catalog.updateTrackMetadata(release.id, track.id, `${TEST_PREFIX}user`, {
+      title: editedTitle,
+    });
+
+    const processedEvent: StemsProcessedEvent = {
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: release.id,
+      artistId: `${TEST_PREFIX}artist`,
+      modelVersion: 'integration-test',
+      tracks: [{
+        id: track.id,
+        title: sourceTitle,
+        position: track.position,
+        stems: [],
+      }],
+    };
+    eventBus.publish(processedEvent);
+
+    let processedTrack: { title: string; processingStatus: string } | null = null;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      processedTrack = await prisma.track.findUnique({
+        where: { id: track.id },
+        select: { title: true, processingStatus: true },
+      });
+      if (processedTrack?.processingStatus === 'complete') break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    expect(processedTrack).toEqual({ title: editedTitle, processingStatus: 'complete' });
   });
 
   it('increments release artworkRevision atomically and returns the versioned URL', async () => {
