@@ -1,4 +1,4 @@
-import type { ArtistSocialLinks } from "./api";
+import type { ArtistEnrichmentField, ArtistEnrichmentSuggestion, ArtistSocialLinks } from "./api";
 
 /** Ownership check for the "Edit profile" affordance on `/artist/[id]` (#1419). */
 export function isArtistProfileOwner(
@@ -53,6 +53,20 @@ export const ARTIST_SOCIAL_LINK_LABELS: Record<ArtistSocialLinkField, string> = 
   soundcloud: "SoundCloud",
 };
 
+const SOCIAL_HOSTS: Record<ArtistSocialLinkField, readonly string[]> = {
+  x: ["x.com", "twitter.com"],
+  instagram: ["instagram.com"],
+  tiktok: ["tiktok.com"],
+  youtube: ["youtube.com", "youtu.be"],
+  soundcloud: ["soundcloud.com"],
+};
+
+export function isValidSocialProfileUrl(field: ArtistSocialLinkField, value: string): boolean {
+  if (!isValidHttpUrl(value)) return false;
+  const host = new URL(value).hostname.toLowerCase();
+  return SOCIAL_HOSTS[field].some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
 export type ArtistProfileFormState = {
   imageUrl: string;
   summary: string;
@@ -92,6 +106,39 @@ export type ArtistProfileUpdateResult =
   | { ok: true; body: ArtistProfileUpdateBody }
   | { ok: false; error: string };
 
+/** Suggestions stay local until the manager explicitly saves the edited form. */
+export function applyArtistEnrichmentSuggestions(
+  form: ArtistProfileFormState,
+  suggestions: ArtistEnrichmentSuggestion[],
+  selected: ReadonlySet<string>,
+  replacements: ReadonlySet<string>,
+): { form: ArtistProfileFormState; skipped: string[]; applied: ArtistEnrichmentField[] } {
+  const next = { ...form };
+  const skipped: string[] = [];
+  const applied: ArtistEnrichmentField[] = [];
+  for (const suggestion of suggestions) {
+    const field = suggestion.field;
+    if (!selected.has(field)) continue;
+    if (next[field].trim() && !replacements.has(field)) {
+      skipped.push(field);
+      continue;
+    }
+    const value = suggestion.value.trim();
+    const valid = field === "summary"
+      ? value.length <= 2000
+      : value.length <= 2048 && (ARTIST_SOCIAL_LINK_FIELDS.includes(field as ArtistSocialLinkField)
+        ? isValidSocialProfileUrl(field as ArtistSocialLinkField, value)
+        : isValidHttpUrl(value));
+    if (!value || !valid) {
+      skipped.push(field);
+      continue;
+    }
+    next[field] = value;
+    applied.push(field);
+  }
+  return { form: next, skipped, applied };
+}
+
 /**
  * Validates + normalizes the artist profile edit form into the
  * `PATCH /artists/:id` request body. Rejects the whole submission with a
@@ -101,12 +148,16 @@ export type ArtistProfileUpdateResult =
 export function buildArtistProfileUpdatePayload(
   form: ArtistProfileFormState,
 ): ArtistProfileUpdateResult {
+  const imageUrl = form.imageUrl.trim();
+  if (imageUrl && !isValidHttpUrl(imageUrl)) {
+    return { ok: false, error: "Enter a valid web address for your image, or leave it blank." };
+  }
   const socialLinks: ArtistSocialLinks = {};
   for (const field of ARTIST_SOCIAL_LINK_FIELDS) {
     const trimmed = form[field].trim();
     if (!trimmed) continue;
     const normalized = normalizeSocialUrl(trimmed);
-    if (!normalized) {
+    if (!normalized || !isValidSocialProfileUrl(field, normalized)) {
       return {
         ok: false,
         error: `Enter a valid web address for ${ARTIST_SOCIAL_LINK_LABELS[field]}, or leave it blank.`,
@@ -128,7 +179,7 @@ export function buildArtistProfileUpdatePayload(
   return {
     ok: true,
     body: {
-      imageUrl: form.imageUrl.trim(),
+      imageUrl,
       summary: form.summary.trim(),
       website,
       socialLinks,

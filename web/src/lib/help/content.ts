@@ -1082,7 +1082,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "operator"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1097,6 +1097,33 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Use full web addresses",
             text: "Paste complete links (for example https://instagram.com/yourname). Anything that isn't a normal web address is rejected so your page stays safe to click.",
+          },
+        ],
+      },
+      {
+        id: "suggest",
+        heading: "Suggesting profile information",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "While editing a profile you manage, choose \"Find suggestions\" to look up your artist in public music databases (MusicBrainz and Wikidata). Pick the exact artist from the results and choose \"Review suggestions\"; artists with the same name can have separate profiles, so check the details and source link first. Each proposed field shows its source and confidence, and the bio is marked \"AI draft\" because it is written by AI from public facts. Edit any suggested text and select only the fields you want. If a field already contains information, you'll see its current value and must confirm that you want to replace it. Choose \"Add … to form\" to fill the edit form; added fields are marked \"Suggested\" until you edit them. If you change a suggestion after adding it, add it to the form again before saving. Nothing is published until you choose \"Save changes\". Closing the panel before adding suggestions changes nothing, and canceling the editor discards staged changes.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-enrichment.png`,
+              alt: "Profile suggestions panel on the review step, showing the selected artist and a selected AI-drafted bio with its source.",
+              caption: "Check the selected artist, each source, and the fields you select before adding them to the form.",
+              width: 1440,
+              height: 1200,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Check sources before saving",
+            text: "Suggestions can be incomplete or mistaken. Open the linked sources and check the artist identity, links, and any image-use details. If no result matches, choose \"None of these match\" and keep editing by hand, or search again. A temporary source or AI error will not change your existing profile.",
           },
         ],
       },

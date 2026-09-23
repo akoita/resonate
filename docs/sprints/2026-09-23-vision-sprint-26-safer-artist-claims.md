@@ -1,6 +1,6 @@
 # Vision Sprint 26: Safer artist profile claims
 
-**Status:** Implementation complete; release evidence recorded.
+**Status:** Closed 2026-09-23; [milestone changelog](https://github.com/akoita/resonate/releases/tag/milestone-28-vision-sprint-26-safer-artist-claims) published.
 **Milestone:** [28](https://github.com/akoita/resonate/milestone/28).
 **Goal:** Keep public artist pages focused on music while artists and
 representatives request exact-profile access through an operator-reviewed path.
@@ -34,6 +34,9 @@ evidence are retained in `resonate-iac`
 
 This sprint changelog is separate from a SemVer software release. It does not
 claim a production deployment.
+
+[Closeout PR #1858](https://github.com/akoita/resonate/pull/1858) merged at
+`69afbeb52c565dc06ae02ba23c9923c2d567ce82`, and milestone 28 is closed.
 
 ## Carry-over and business-model boundary
 

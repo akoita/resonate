@@ -2079,6 +2079,51 @@ export async function updateArtistProfile(
   );
 }
 
+export type ArtistEnrichmentField =
+  | "imageUrl" | "summary" | "website" | "x" | "instagram"
+  | "tiktok" | "youtube" | "soundcloud";
+
+export type ArtistEnrichmentCandidate = {
+  id: string;
+  name: string;
+  disambiguation?: string | null;
+  area?: string | null;
+  type?: string | null;
+  score?: number | null;
+  sourceUrl: string;
+};
+
+export type ArtistEnrichmentSuggestion = {
+  field: ArtistEnrichmentField;
+  value: string;
+  sourceUrl: string;
+  sourceLabel: string;
+  confidence: "high" | "medium" | "low";
+  rights?: { license: string; attribution?: string; descriptionUrl: string };
+};
+
+export type ArtistEnrichmentSuggestions = {
+  candidate: ArtistEnrichmentCandidate;
+  suggestions: ArtistEnrichmentSuggestion[];
+  warnings: string[];
+};
+
+export function getArtistEnrichmentCandidates(token: string, artistId: string) {
+  return apiRequest<ArtistEnrichmentCandidate[]>(
+    `/artists/${encodeURIComponent(artistId)}/enrichment/candidates`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function getArtistEnrichmentSuggestions(token: string, artistId: string, candidateId: string) {
+  return apiRequest<ArtistEnrichmentSuggestions>(
+    `/artists/${encodeURIComponent(artistId)}/enrichment/suggestions`,
+    { method: "POST", body: JSON.stringify({ candidateId }) },
+    token,
+  );
+}
+
 export type ArtistClaimStatus = "pending" | "approved" | "rejected" | "revoked";
 
 export type ArtistClaim = {
