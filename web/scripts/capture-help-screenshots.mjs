@@ -118,6 +118,20 @@ const AUTH_TARGETS = [
       await page.getByRole("button", { name: "Continue to evidence" }).click();
     },
   }],
+  ["/artist/guide-enrichment-artist", "artist-enrichment.png", {
+    selectors: [".artist-edit-profile-btn"],
+    viewportHeight: 1200,
+    mockEnrichment: true,
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.getByRole("button", { name: "Edit profile" }).click();
+      await page.getByRole("button", { name: "Suggest profile info with AI" }).click();
+      await page.getByRole("radio").first().check();
+      await page.getByRole("button", { name: "Review suggestions" }).click();
+      await page.getByRole("checkbox", { name: /Bio/ }).check();
+      await page.locator(".artist-enrichment").scrollIntoViewIfNeeded();
+    },
+  }],
   ["/artist/management", "artist-management-invitation.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
     mockManagement: true,
@@ -282,6 +296,30 @@ async function capture(page, targets, passName) {
           }] : [],
         },
       }));
+    }
+    if (ready?.mockEnrichment) {
+      const id = "guide-enrichment-artist";
+      await page.route(`**/artists/${id}`, (request) => request.fulfill({ json: {
+        id, displayName: "Felicia Angels", profileType: "public_artist",
+        imageUrl: null, summary: null, website: null, socialLinks: null,
+      } }));
+      await page.route(`**/management/artists/${id}/access`, (request) => request.fulfill({ json: {
+        resourceType: "artist_profile", resourceId: id,
+        currentUserAccess: { isOwner: true, scopes: ["PROFILE_EDIT"] }, grants: [],
+      } }));
+      await page.route(`**/catalog/artist/${id}`, (request) => request.fulfill({ json: [] }));
+      await page.route(`**/artists/${id}/enrichment/candidates`, (request) => request.fulfill({ json: [
+        { id: "f3be8e9e-542a-4e4c-a5b3-ea2d58123e71", name: "Felicia Angels", area: "United States", type: "Person", score: 97, sourceUrl: "https://musicbrainz.org/artist/f3be8e9e-542a-4e4c-a5b3-ea2d58123e71" },
+        { id: "6226dc04-b38c-451a-86a8-8d5abddba733", name: "Felicia Angels", disambiguation: "producer", area: "Canada", type: "Person", score: 72, sourceUrl: "https://musicbrainz.org/artist/6226dc04-b38c-451a-86a8-8d5abddba733" },
+      ] }));
+      await page.route(`**/artists/${id}/enrichment/suggestions`, (request) => request.fulfill({ json: {
+        candidate: { id: "f3be8e9e-542a-4e4c-a5b3-ea2d58123e71", name: "Felicia Angels", area: "United States", type: "Person", sourceUrl: "https://musicbrainz.org/artist/f3be8e9e-542a-4e4c-a5b3-ea2d58123e71" },
+        suggestions: [
+          { field: "summary", value: "Felicia Angels is an independent singer and songwriter.", sourceUrl: "https://www.wikidata.org/wiki/Q123", sourceLabel: "Wikidata", confidence: "medium" },
+          { field: "website", value: "https://feliciaangels.example", sourceUrl: "https://musicbrainz.org/artist/f3be8e9e-542a-4e4c-a5b3-ea2d58123e71", sourceLabel: "MusicBrainz", confidence: "medium" },
+        ],
+        warnings: [],
+      } }));
     }
     if (ready?.mockInvitation) {
       await page.route("**/management/invitations/pending", (request) => request.fulfill({

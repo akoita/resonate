@@ -2,6 +2,8 @@ import {
     Body,
     Controller,
     Get,
+    HttpCode,
+    HttpStatus,
     Patch,
     Post,
     Query,
@@ -9,6 +11,8 @@ import {
     UseGuards,
     Param,
     NotFoundException,
+    Optional,
+    ServiceUnavailableException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
 import { Throttle } from "@nestjs/throttler";
@@ -16,10 +20,23 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { hours } from "../shared/rate_limits";
 import { ArtistService } from "./artist.service";
+import { ArtistEnrichmentService } from "./artist-enrichment.service";
+
+const ARTIST_ENRICHMENT_THROTTLE = {
+    default: {
+        limit: 10,
+        ttl: hours(1),
+        // The global throttler runs before the route JWT guard populates req.user.
+        getTracker: (req: Record<string, any>) => req.ip,
+    },
+} as const;
 
 @Controller("artists")
 export class ArtistController {
-    constructor(private readonly artistService: ArtistService) { }
+    constructor(
+        private readonly artistService: ArtistService,
+        @Optional() private readonly artistEnrichmentService?: ArtistEnrichmentService,
+    ) { }
 
     @UseGuards(AuthGuard("jwt"))
     @Get("me")
@@ -75,6 +92,34 @@ export class ArtistController {
         },
     ) {
         return this.artistService.updateProfile(req.user.userId, id, body);
+    }
+
+    @Throttle(ARTIST_ENRICHMENT_THROTTLE)
+    @UseGuards(AuthGuard("jwt"))
+    @Get(":id/enrichment/candidates")
+    async getEnrichmentCandidates(@Request() req: any, @Param("id") id: string) {
+        const artist = await this.artistService.authorizeProfileEdit(req.user.userId, id);
+        return this.requireArtistEnrichmentService().findCandidates(artist.displayName);
+    }
+
+    @Throttle(ARTIST_ENRICHMENT_THROTTLE)
+    @UseGuards(AuthGuard("jwt"))
+    @HttpCode(HttpStatus.OK)
+    @Post(":id/enrichment/suggestions")
+    async getEnrichmentSuggestions(
+        @Request() req: any,
+        @Param("id") id: string,
+        @Body() body: { candidateId?: unknown },
+    ) {
+        await this.artistService.authorizeProfileEdit(req.user.userId, id);
+        return this.requireArtistEnrichmentService().buildSuggestions(body?.candidateId);
+    }
+
+    private requireArtistEnrichmentService(): ArtistEnrichmentService {
+        if (!this.artistEnrichmentService) {
+            throw new ServiceUnavailableException("Artist enrichment is unavailable");
+        }
+        return this.artistEnrichmentService;
     }
 
     @Throttle({

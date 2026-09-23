@@ -2,7 +2,7 @@
 title: "Artist Profile (editable) + reliable artist links"
 status: implemented
 audiences: [artists, listeners, frontend/backend developers]
-issues: ["https://github.com/akoita/resonate/issues/1419", "https://github.com/akoita/resonate/issues/1762", "https://github.com/akoita/resonate/issues/1856"]
+issues: ["https://github.com/akoita/resonate/issues/1419", "https://github.com/akoita/resonate/issues/1762", "https://github.com/akoita/resonate/issues/1856", "https://github.com/akoita/resonate/issues/1763"]
 ---
 
 # Artist Profile (editable) + reliable artist links
@@ -51,6 +51,32 @@ account association and does not regain edit access. A verified claim still
 grants profile editing only, not delegation, release control, rights, or payout
 authority.
 
+### Artist (optional AI suggestions)
+
+In **Edit profile**, choose **Suggest profile info with AI** to search public
+MusicBrainz artist identities. Pick the exact artist after checking the
+disambiguation, location, and source page. A shared name alone never chooses
+an identity. A second request retrieves source-linked suggestions for the
+selected identity. You may edit and select individual fields. Replacing a
+non-empty field requires a separate explicit choice. **Add selected fields to
+form** only stages values locally; **Save changes** is still required to
+publish them. Closing the panel or canceling the editor changes nothing.
+
+MusicBrainz identity and official-link relationships are the source for
+candidates, website, and social links. The short bio is AI-written only from
+bounded, structured public facts associated with the chosen identity; the
+model cannot choose a different identity or write profile data. If model
+generation fails or is unavailable, the bio is omitted while usable link
+suggestions remain available. An image is suggested only when its Wikimedia
+Commons metadata identifies it as public domain or CC0; review the linked
+file details before use. Source links, confidence, and image rights appear in
+the review step. The editor stores only the fields you explicitly save, not
+the candidate search, model output, or rejected suggestions. External-source
+errors and rate limits leave the existing profile unchanged.
+
+The trust boundaries and request flow are documented in
+[artist profile enrichment architecture](../architecture/artist_profile_enrichment.md).
+
 If an accepted transfer was a mistake, the former manager can open Artist
 management and submit evidence for operator review. The request does not
 restore access. An operator can approve recovery only while the recipient
@@ -88,6 +114,12 @@ review history.
   server-side to **http(s) only** (rejects `javascript:`/`data:`/other schemes)
   and length-capped; the bio is capped at 2000 chars. Returns the updated
   profile. `PATCH /artists/:id/settings` (remixConsent) is unchanged.
+- `GET /artists/:id/enrichment/candidates` and
+  `POST /artists/:id/enrichment/suggestions` (JWT, `PROFILE_EDIT` scope) return
+  distinct public identities and then source-linked suggestions for one
+  selected identity. Both are throttled and read only. Their responses are
+  review material, not authority to edit; the existing `PATCH` remains the
+  sole write path.
 - `GET /artists/:id` returns public profile fields including `website` and
   `socialLinks`, without account ownership, payout data, claimability status,
   or private claim proof.
@@ -134,8 +166,10 @@ polish slice (tracked in #1419's follow-up notes).
 
 - Backend: `backend/src/modules/artist/artist.controller.ts` (`PATCH /artists/:id`),
   `artist.service.ts` (`updateProfile` + URL normalization),
+  `artist-enrichment.service.ts` (public-source suggestions),
   `backend/src/tests/artist-profile.integration.spec.ts`.
 - Frontend: `web/src/components/artist/ArtistProfileEditor.tsx`,
+  `ArtistEnrichmentPanel.tsx`,
   `ArtistSocialLinksRow.tsx`, `ArtistClaimCenter.tsx`,
   `ArtistClaimRequestPanel.tsx`, `web/src/lib/artistProfileForm.ts`,
   `web/src/lib/artistRoutes.ts` (`trackArtistCreditHref`),

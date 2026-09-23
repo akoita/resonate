@@ -14,6 +14,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { ArtistEnrichmentPanel } from "./ArtistEnrichmentPanel";
 
 type ArtistProfileEditorProps = {
   artist: ArtistProfile;
@@ -93,6 +94,15 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
       aria-label="Edit artist profile"
       onSubmit={handleSubmit}
     >
+      {token && (
+        <ArtistEnrichmentPanel
+          artistId={artist.id}
+          token={token}
+          form={form}
+          onApply={setForm}
+        />
+      )}
+
       <div className="artist-profile-edit-field">
         <label htmlFor="artist-edit-imageUrl">Image URL</label>
         <Input

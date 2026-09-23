@@ -1082,7 +1082,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "operator"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1097,6 +1097,33 @@ export const HELP_ARTICLES: HelpArticle[] = [
             tone: "tip",
             title: "Use full web addresses",
             text: "Paste complete links (for example https://instagram.com/yourname). Anything that isn't a normal web address is rejected so your page stays safe to click.",
+          },
+        ],
+      },
+      {
+        id: "suggest",
+        heading: "Suggesting profile information",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "While editing a profile you manage, choose \"Suggest profile info with AI\". Pick the exact artist from the public search results; artists with the same name can have separate profiles. Review each proposed field, its source, and its confidence. You can change the suggested text and select only the fields you want. If a field already contains information, confirm that you want to replace it. Adding suggestions fills the edit form; choose \"Save changes\" to publish them. Closing the panel before adding suggestions changes nothing. Canceling the editor discards staged changes.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-enrichment.png`,
+              alt: "Artist profile editor showing source-linked AI suggestions with a selected bio field.",
+              caption: "Check the selected artist, source, and fields before adding suggestions to the form.",
+              width: 1440,
+              height: 1200,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "callout",
+            tone: "tip",
+            title: "Check sources before saving",
+            text: "Suggestions can be incomplete or mistaken. Open the linked sources and check the artist identity, links, and any image-use details. If no result matches, continue editing manually or search again. A temporary source or AI error will not change your existing profile.",
           },
         ],
       },

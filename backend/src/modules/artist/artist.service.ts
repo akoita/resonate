@@ -687,6 +687,12 @@ export class ArtistService {
         });
     }
 
+    /** Reuses the profile_edit boundary for profile suggestions without writing artist data. */
+    async authorizeProfileEdit(userId: string, artistId: string): Promise<{ id: string; displayName: string }> {
+        const artist = await this.requireProfileEditor(userId, artistId);
+        return { id: artist.id, displayName: artist.displayName };
+    }
+
     private async requireOwnedArtist(userId: string, artistId: string) {
         const artist = await prisma.artist.findUnique({ where: { userId } });
         if (!artist) {

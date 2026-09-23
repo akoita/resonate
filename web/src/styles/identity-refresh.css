@@ -970,7 +970,7 @@ button:focus-visible,
 }
 .artist-profile-edit-form {
   margin-top: 16px;
-  max-width: 480px;
+  max-width: 640px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -1006,6 +1006,46 @@ button:focus-visible,
   display: flex;
   gap: 10px;
 }
+
+.artist-enrichment {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(162, 138, 255, 0.4);
+  border-radius: 12px;
+  background: rgba(113, 86, 221, 0.08);
+}
+.artist-enrichment p { margin: 4px 0; }
+.artist-enrichment-heading,
+.artist-enrichment-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.artist-enrichment-heading { flex-wrap: nowrap; }
+.artist-enrichment-heading > div { flex: 1; min-width: 0; }
+.artist-enrichment-candidates,
+.artist-enrichment-review { display: grid; gap: 12px; }
+.artist-enrichment-candidate,
+.artist-enrichment-suggestion {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.15);
+}
+.artist-enrichment-candidate { grid-template-columns: auto 1fr; cursor: pointer; }
+.artist-enrichment-candidate span { display: grid; gap: 4px; }
+.artist-enrichment-candidate small,
+.artist-enrichment-suggestion small { color: var(--r-on-surface-muted); }
+.artist-enrichment-select,
+.artist-enrichment-replace { display: flex; align-items: center; gap: 8px; }
+.artist-enrichment-select span { color: var(--r-on-surface-muted); font-size: 12px; }
+.artist-enrichment-error { color: #ffb4ab; }
+.artist-enrichment-warning { color: #ffdb8a; }
 
 /* Unclaimed public-artist badge + claim callout (#1492). Neutral, compact,
  * collapsed by default; sits below the listener actions. */

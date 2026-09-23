@@ -1,12 +1,61 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyArtistEnrichmentSuggestions,
   artistProfileFormStateFromProfile,
   buildArtistProfileUpdatePayload,
   isArtistProfileOwner,
+  isValidSocialProfileUrl,
   isValidHttpUrl,
   normalizeSocialUrl,
   type ArtistProfileFormState,
 } from "./artistProfileForm";
+
+describe("applyArtistEnrichmentSuggestions (#1763)", () => {
+  const existing: ArtistProfileFormState = {
+    imageUrl: "", summary: "Original bio", website: "", x: "",
+    instagram: "", tiktok: "", youtube: "", soundcloud: "",
+  };
+  const suggestions = [
+    { field: "summary" as const, value: "Suggested bio", sourceUrl: "https://www.wikidata.org/wiki/Q1", sourceLabel: "Wikidata", confidence: "medium" as const },
+    { field: "website" as const, value: "https://example.com", sourceUrl: "https://musicbrainz.org/artist/a", sourceLabel: "MusicBrainz", confidence: "high" as const },
+    { field: "x" as const, value: "javascript:alert(1)", sourceUrl: "https://musicbrainz.org/artist/a", sourceLabel: "MusicBrainz", confidence: "low" as const },
+  ];
+
+  it("stages only selected valid fields and preserves an existing bio without replacement approval", () => {
+    const result = applyArtistEnrichmentSuggestions(
+      existing, suggestions, new Set(["summary", "website"]), new Set(),
+    );
+    expect(result.form.summary).toBe("Original bio");
+    expect(result.form.website).toBe("https://example.com");
+    expect(result.skipped).toEqual(["summary"]);
+    expect(existing.website).toBe("");
+  });
+
+  it("replaces only an explicitly approved existing field and rejects unsafe URLs", () => {
+    const result = applyArtistEnrichmentSuggestions(
+      existing, suggestions, new Set(["summary", "x"]), new Set(["summary"]),
+    );
+    expect(result.form.summary).toBe("Suggested bio");
+    expect(result.form.x).toBe("");
+    expect(result.skipped).toEqual(["x"]);
+  });
+
+  it("rejects a social suggestion hosted on the wrong platform", () => {
+    const result = applyArtistEnrichmentSuggestions(existing, [
+      { field: "instagram", value: "https://not-instagram.example/artist", sourceUrl: "https://musicbrainz.org/artist/a", sourceLabel: "MusicBrainz", confidence: "low" },
+    ], new Set(["instagram"]), new Set());
+    expect(result.form.instagram).toBe("");
+    expect(result.skipped).toEqual(["instagram"]);
+  });
+});
+
+describe("isValidSocialProfileUrl", () => {
+  it("accepts the chosen network and rejects lookalike hosts", () => {
+    expect(isValidSocialProfileUrl("instagram", "https://www.instagram.com/artist")).toBe(true);
+    expect(isValidSocialProfileUrl("instagram", "https://instagram.com.evil.example/artist")).toBe(false);
+    expect(isValidSocialProfileUrl("x", "https://twitter.com/artist")).toBe(true);
+  });
+});
 
 describe("isArtistProfileOwner (#1419)", () => {
   it("is true only when the signed-in profile id matches the viewed artist's id", () => {
