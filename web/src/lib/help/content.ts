@@ -1047,6 +1047,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             text: "Publishing uses a release-specific route. You may self-attest provenance for an upload, but self-attestation is not independent rights verification. Depending on account trust and release signals, Resonate may publish with limited monitoring, request evidence, or route the release for review. Marketplace access and payout eligibility remain gated by the release's rights state; account verification alone does not clear release rights.",
           },
           {
+            kind: "paragraph",
+            text: "After publishing, open Your catalog to follow processing. Release and track statuses update while the page is open, including failures. The catalog checks again when you return to the tab, so you do not need to reload it to see the latest result.",
+          },
+          {
             kind: "figure",
             figure: {
               src: `${SHOT}/artist-catalog.png`,
