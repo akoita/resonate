@@ -121,6 +121,7 @@ export default function ManagementRecoveryAdminPage() {
       if (currentScopeRef.current !== requestScope) return;
       const message = reason instanceof Error ? reason.message : "Unable to record the review decision.";
       updateReviewErrors((previous) => ({ ...previous, [requestId]: message }));
+      if (decision === "approve") setApprovalSnapshot({ scope: requestScope, request: null });
       addToast({ type: "error", title: "Review decision failed", message });
     } finally {
       if (currentScopeRef.current === requestScope) setReviewingSnapshot({ scope: requestScope, requestId: null });

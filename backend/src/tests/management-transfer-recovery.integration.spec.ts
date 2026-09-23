@@ -113,6 +113,34 @@ async function requestRecovery(transferId: string) {
   );
 }
 
+async function waitForBlockedArtistLocks(minimumCount: number, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS "count"
+      FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> pg_backend_pid()
+        AND wait_event_type = 'Lock'
+        AND query ILIKE ${'%"Artist"%FOR UPDATE%'}
+    `;
+    if (Number(rows[0]?.count ?? 0) >= minimumCount) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for ${minimumCount} blocked artist row lock(s)`);
+}
+
+async function canLockTransferImmediately(transferId: string) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE NOWAIT`;
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("Management transfer recovery integration", () => {
   it("recovers an artist profile and revokes grants and pending transfers while preserving the accepted transfer", async () => {
     const { artist } = await createProfileWithRelease();
@@ -327,5 +355,87 @@ describe("Management transfer recovery integration", () => {
     expect(reviews.filter((result) => result.status === "rejected")).toHaveLength(1);
     const stored = await prisma.managementTransferRecoveryRequest.findUniqueOrThrow({ where: { id: recovery.id } });
     expect([ManagementTransferRecoveryStatus.approved, ManagementTransferRecoveryStatus.rejected]).toContain(stored.status);
+  });
+
+  it("serializes recovery approval against acceptance of an overlapping pending transfer", async () => {
+    const { artist } = await createProfileWithRelease();
+    const originalTransfer = await acceptedTransfer({ artistId: artist.id });
+    const recovery = await requestRecovery(originalTransfer.id);
+    const pendingTransfer = await service.createTransfer(USERS.recipient, {
+      artistId: artist.id,
+      recipientEmail: USER_EMAILS[USERS.nextRecipient],
+    });
+
+    let releaseResourceLock!: () => void;
+    let markResourceLocked!: () => void;
+    const resourceLockReleased = new Promise<void>((resolve) => { releaseResourceLock = resolve; });
+    const resourceLockReady = new Promise<void>((resolve) => { markResourceLocked = resolve; });
+    const resourceLocker = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Artist" WHERE "id" = ${artist.id} FOR UPDATE`;
+      markResourceLocked();
+      await resourceLockReleased;
+    }, { timeout: 15_000 });
+    await resourceLockReady;
+
+    let approval: Promise<unknown> | undefined;
+    let acceptance: Promise<unknown> | undefined;
+    let pendingTransferRowWasFree: boolean | null = null;
+    let orchestrationError: unknown;
+    try {
+      approval = service.reviewTransferRecoveryRequest(
+        USERS.operator,
+        "operator",
+        recovery.id,
+        "approve",
+        "The account holder confirmed the transfer was unauthorized.",
+      );
+      await waitForBlockedArtistLocks(1);
+
+      acceptance = service.acceptTransfer(USERS.nextRecipient, pendingTransfer.id);
+      await waitForBlockedArtistLocks(2);
+
+      // Resource-first acceptance must be waiting on the artist row without
+      // holding the pending transfer row needed by recovery cancellation.
+      pendingTransferRowWasFree = await canLockTransferImmediately(pendingTransfer.id);
+    } catch (error) {
+      orchestrationError = error;
+    } finally {
+      releaseResourceLock();
+    }
+
+    const activeTransactions = [
+      resourceLocker,
+      ...(approval ? [approval] : []),
+      ...(acceptance ? [acceptance] : []),
+    ];
+    const settled = await Promise.allSettled(activeTransactions);
+    expect(settled[0].status).toBe("fulfilled");
+    if (orchestrationError) throw orchestrationError;
+    if (!approval || !acceptance) throw new Error("Concurrency steps did not both start");
+    const [approvalResult, acceptanceResult] = await Promise.allSettled([approval, acceptance]);
+
+    expect(pendingTransferRowWasFree).toBe(true);
+    expect([approvalResult.status, acceptanceResult.status].filter((status) => status === "fulfilled")).toHaveLength(1);
+    const rejectedResult = approvalResult.status === "rejected" ? approvalResult : acceptanceResult;
+    expect(rejectedResult.status).toBe("rejected");
+    if (rejectedResult.status === "rejected") {
+      expect(rejectedResult.reason).toBeInstanceOf(ConflictException);
+      expect(String(rejectedResult.reason)).not.toMatch(/P2034|deadlock/i);
+    }
+
+    const [storedRecovery, storedTransfer, storedArtist] = await Promise.all([
+      prisma.managementTransferRecoveryRequest.findUniqueOrThrow({ where: { id: recovery.id } }),
+      prisma.managementTransfer.findUniqueOrThrow({ where: { id: pendingTransfer.id } }),
+      prisma.artist.findUniqueOrThrow({ where: { id: artist.id } }),
+    ]);
+    if (approvalResult.status === "fulfilled") {
+      expect(storedRecovery.status).toBe(ManagementTransferRecoveryStatus.approved);
+      expect(storedTransfer.status).toBe(ManagementTransferStatus.cancelled);
+      expect(storedArtist.managementOwnerUserId).toBe(USERS.proposer);
+    } else {
+      expect(storedRecovery.status).toBe(ManagementTransferRecoveryStatus.pending);
+      expect(storedTransfer.status).toBe(ManagementTransferStatus.accepted);
+      expect(storedArtist.managementOwnerUserId).toBe(USERS.nextRecipient);
+    }
   });
 });

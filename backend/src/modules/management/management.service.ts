@@ -752,18 +752,43 @@ export class ManagementService {
 
   async acceptTransfer(userId: string, transferId: string) {
     return prisma.$transaction(async (tx) => {
+      // Observe the immutable resource snapshot before locking. Resource rows are
+      // the shared serialization point for accepting and recovering transfers.
+      const observedTransfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
+      this.assertPendingTransfer(observedTransfer, userId);
+      await this.assertOpenUser(tx, userId);
+      await this.assertOpenUser(tx, observedTransfer.proposerUserId);
+
+      const ids = [...new Set(observedTransfer.resourceIds)].sort();
+      if (ids.length !== observedTransfer.resourceIds.length || ids.length === 0) {
+        throw new ConflictException("The transfer resource snapshot is invalid");
+      }
+      if (
+        observedTransfer.resourceType !== ManagementResourceType.artist_profile &&
+        observedTransfer.resourceType !== ManagementResourceType.release
+      ) {
+        throw new ConflictException("The transfer resource type is invalid");
+      }
+      await this.lockTransferResources(tx, {
+        resourceType: observedTransfer.resourceType,
+        resourceIds: ids,
+      });
+
       await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE`;
       const transfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
       this.assertPendingTransfer(transfer, userId);
+      if (
+        transfer.proposerUserId !== observedTransfer.proposerUserId ||
+        transfer.recipientUserId !== observedTransfer.recipientUserId ||
+        transfer.resourceType !== observedTransfer.resourceType ||
+        !sameStringList(transfer.resourceIds, observedTransfer.resourceIds)
+      ) {
+        throw new ConflictException("The transfer changed while it was being accepted");
+      }
       await this.assertOpenUser(tx, userId);
       await this.assertOpenUser(tx, transfer.proposerUserId);
 
-      const ids = [...new Set(transfer.resourceIds)].sort();
-      if (ids.length !== transfer.resourceIds.length || ids.length === 0) {
-        throw new ConflictException("The transfer resource snapshot is invalid");
-      }
       if (transfer.resourceType === ManagementResourceType.artist_profile) {
-        await this.lockArtists(tx, ids);
         const artists = await tx.artist.findMany({ where: { id: { in: ids } } });
         if (artists.length !== ids.length) throw new ConflictException("A transferred artist profile no longer exists");
         for (const artist of artists) {
@@ -780,7 +805,6 @@ export class ManagementService {
           data: { status: ManagementGrantStatus.revoked, revokedAt: new Date() },
         });
       } else if (transfer.resourceType === ManagementResourceType.release) {
-        await this.lockReleases(tx, ids);
         const releases = await tx.release.findMany({
           where: { id: { in: ids } },
           include: { artist: { select: { userId: true } } },
@@ -828,6 +852,29 @@ export class ManagementService {
   async cancelTransfer(userId: string, transferId: string) {
     return prisma.$transaction(async (tx) => {
       await this.assertOpenUser(tx, userId);
+      const observedTransfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
+      if (!observedTransfer) throw new NotFoundException("Management transfer not found");
+      if (!sameUserId(observedTransfer.proposerUserId, userId)) {
+        throw new ForbiddenException("Only the transfer proposer can cancel it");
+      }
+      if (observedTransfer.status !== ManagementTransferStatus.pending) {
+        throw new ConflictException("Only pending transfers can be cancelled");
+      }
+
+      const ids = [...new Set(observedTransfer.resourceIds)].sort();
+      if (ids.length === 0 || ids.length !== observedTransfer.resourceIds.length) {
+        throw new ConflictException("The transfer resource snapshot is invalid");
+      }
+      if (
+        observedTransfer.resourceType !== ManagementResourceType.artist_profile &&
+        observedTransfer.resourceType !== ManagementResourceType.release
+      ) {
+        throw new ConflictException("The transfer resource type is invalid");
+      }
+      await this.lockTransferResources(tx, {
+        resourceType: observedTransfer.resourceType,
+        resourceIds: ids,
+      });
       await tx.$queryRaw`SELECT "id" FROM "ManagementTransfer" WHERE "id" = ${transferId} FOR UPDATE`;
       const transfer = await tx.managementTransfer.findUnique({ where: { id: transferId } });
       if (!transfer) throw new NotFoundException("Management transfer not found");
@@ -837,7 +884,15 @@ export class ManagementService {
       if (transfer.status !== ManagementTransferStatus.pending) {
         throw new ConflictException("Only pending transfers can be cancelled");
       }
-      await this.lockTransferResources(tx, transfer);
+      if (
+        transfer.proposerUserId !== observedTransfer.proposerUserId ||
+        transfer.recipientUserId !== observedTransfer.recipientUserId ||
+        transfer.resourceType !== observedTransfer.resourceType ||
+        !sameStringList(transfer.resourceIds, observedTransfer.resourceIds)
+      ) {
+        throw new ConflictException("The transfer changed while it was being cancelled");
+      }
+      await this.assertOpenUser(tx, userId);
       await this.assertTransferProposerStillOwns(tx, transfer);
       const cancelled = await tx.managementTransfer.updateMany({
         where: { id: transferId, proposerUserId: equalsUserId(userId), status: ManagementTransferStatus.pending },
