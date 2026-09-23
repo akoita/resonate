@@ -1106,7 +1106,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Sign in and open Artist management, then search for the credited artist. Select the exact profile and check its releases, especially when artists share a name. Submit evidence that you represent the artist — for example a distributor or label reference, a rights document, or an official account that links to the page. An operator reviews each request; a matching name, release credit, or upload does not grant access. Your requests and their pending, approved, rejected, or revoked status appear in Artist management. If a request is rejected or access is revoked, you can submit new evidence.",
+            text: "Sign in and open Artist management, then search for the credited artist. Select the exact profile and check its releases, especially when artists share a name. Eligible profiles let you submit evidence that you represent the artist — for example a distributor or label reference, a rights document, or an official account that links to the page. An operator reviews each request; a matching name, release credit, or upload does not grant access. Your requests and their pending, approved, rejected, or revoked status appear in Artist management. After rejection or revocation, you can submit new evidence if the profile still accepts requests.",
           },
           {
             kind: "figure",

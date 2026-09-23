@@ -12,7 +12,7 @@ import {
 } from "../../lib/api";
 import { ArtistClaimRequestPanel } from "./ArtistClaimRequestPanel";
 
-type SelectedArtist = Pick<ArtistSearchResult, "id" | "displayName" | "imageUrl" | "claimStatus">;
+type SelectedArtist = Pick<ArtistSearchResult, "id" | "displayName" | "imageUrl" | "canRequestClaim">;
 
 export function ArtistClaimCenter({ token }: { token: string }) {
   const [query, setQuery] = useState("");
@@ -72,11 +72,9 @@ export function ArtistClaimCenter({ token }: { token: string }) {
   }, [selected, token]);
 
   const latestClaim = selected ? claims.find((claim) => claim.artist.id === selected.id) ?? null : null;
-  const mayRequest = selected?.claimStatus === "unclaimed"
+  const showClaimPanel = selected?.canRequestClaim === true
     || latestClaim?.status === "pending"
-    || latestClaim?.status === "approved"
-    || latestClaim?.status === "rejected"
-    || latestClaim?.status === "revoked";
+    || latestClaim?.status === "approved";
 
   return (
     <section className="glass-panel artist-claim-center" aria-labelledby="artist-claim-center-heading">
@@ -109,7 +107,7 @@ export function ArtistClaimCenter({ token }: { token: string }) {
             {results.map((artist) => <li key={artist.id}>
               <button type="button" className={selected?.id === artist.id ? "is-selected" : ""} onClick={() => chooseArtist(artist)}>
                 <strong>{artist.displayName}</strong>
-                <span>Profile {artist.id.slice(-8)} · {artist.claimStatus === "unclaimed" ? "Review profile" : "View status"}</span>
+                <span>Profile {artist.id.slice(-8)} · {artist.canRequestClaim ? "Review profile" : "View status"}</span>
               </button>
             </li>)}
           </ul>}
@@ -122,7 +120,7 @@ export function ArtistClaimCenter({ token }: { token: string }) {
           {!claimsLoading && !claimsError && claims.length === 0 && <p className="analytics-muted">You have no profile requests yet.</p>}
           {claims.length > 0 && <ul className="artist-claim-center__history">
             {claims.map((claim) => <li key={claim.artist.id}>
-              <button type="button" onClick={() => chooseArtist({ ...claim.artist, claimStatus: claim.status === "approved" ? "claimed" : "unclaimed" })}>
+              <button type="button" onClick={() => chooseArtist(claim.artist)}>
                 <strong>{claim.artist.displayName}</strong>
                 <span>{claim.status}</span>
               </button>
@@ -143,7 +141,7 @@ export function ArtistClaimCenter({ token }: { token: string }) {
         </ul>}
         {!catalogLoading && !catalogError && claimsLoading && <p role="status">Checking your request status…</p>}
         {!catalogLoading && !catalogError && claimsError && <p role="alert">Request status is unavailable. Refresh before submitting evidence.</p>}
-        {!catalogLoading && !catalogError && !claimsLoading && !claimsError && mayRequest && <ArtistClaimRequestPanel
+        {!catalogLoading && !catalogError && !claimsLoading && !claimsError && showClaimPanel && <ArtistClaimRequestPanel
           key={selected.id}
           artistId={selected.id}
           artistName={selected.displayName}
@@ -152,11 +150,11 @@ export function ArtistClaimCenter({ token }: { token: string }) {
           onSubmitted={(claim) => setClaims((previous) => [
             { status: claim.status, createdAt: claim.createdAt, reviewedAt: claim.reviewedAt,
               updatedAt: claim.createdAt,
-              artist: { id: selected.id, displayName: selected.displayName, imageUrl: selected.imageUrl } },
+              artist: { id: selected.id, displayName: selected.displayName, imageUrl: selected.imageUrl, canRequestClaim: selected.canRequestClaim === true } },
             ...previous.filter((item) => item.artist.id !== selected.id),
           ])}
         />}
-        {!catalogLoading && !catalogError && !claimsLoading && !claimsError && !mayRequest && <p className="analytics-muted">This profile is not accepting access requests. If this is an error, contact support with the public profile link.</p>}
+        {!catalogLoading && !catalogError && !claimsLoading && !claimsError && !showClaimPanel && <p className="analytics-muted">This profile is not accepting access requests. If this is an error, contact support with the public profile link.</p>}
       </div>}
     </section>
   );

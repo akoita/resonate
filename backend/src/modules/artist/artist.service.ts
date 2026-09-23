@@ -19,6 +19,7 @@ export type ArtistSearchResult = {
     imageUrl: string | null;
     profileType: string | null;
     claimStatus: string | null;
+    canRequestClaim: boolean;
 };
 
 // Rank suggestions without collapsing distinct same-name identities.
@@ -72,6 +73,18 @@ const AUTO_CLAIM_REJECTION_NOTE = "Another claim for this artist was approved.";
 // guard for values that get rendered back as anchors/img src on the profile
 // page (rejects `javascript:`, `data:`, `vbscript:`, bare `//host`, etc).
 const ALLOWED_URL_SCHEMES = ["http:", "https:"];
+
+function isClaimRequestEligible(artist: {
+    userId: string | null;
+    profileType: string | null;
+    claimStatus: string | null;
+    releaseCredits: Array<{ id: string }>;
+}): boolean {
+    return artist.userId === null
+        && artist.profileType === "public_artist"
+        && artist.claimStatus === "unclaimed"
+        && artist.releaseCredits.length > 0;
+}
 
 export type UpdateArtistProfileInput = {
     imageUrl?: unknown;
@@ -250,12 +263,7 @@ export class ArtistService {
                 },
             });
             if (!artist) throw new NotFoundException("Artist not found");
-            if (
-                artist.userId !== null
-                || artist.profileType !== "public_artist"
-                || artist.claimStatus !== "unclaimed"
-                || artist.releaseCredits.length === 0
-            ) {
+            if (!isClaimRequestEligible(artist)) {
                 throw new ConflictException("Artist profile is not eligible for a claim");
             }
 
@@ -318,7 +326,22 @@ export class ArtistService {
                 updatedAt: true,
                 reviewedAt: true,
                 artist: {
-                    select: { id: true, displayName: true, imageUrl: true },
+                    select: {
+                        id: true,
+                        displayName: true,
+                        imageUrl: true,
+                        userId: true,
+                        profileType: true,
+                        claimStatus: true,
+                        releaseCredits: {
+                            where: {
+                                role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                                identityStatus: { not: "ambiguous" },
+                            },
+                            select: { id: true },
+                            take: 1,
+                        },
+                    },
                 },
             },
         });
@@ -338,7 +361,12 @@ export class ArtistService {
             createdAt: claim.createdAt,
             updatedAt: claim.updatedAt,
             reviewedAt: claim.reviewedAt,
-            artist: claim.artist,
+            artist: {
+                id: claim.artist.id,
+                displayName: claim.artist.displayName,
+                imageUrl: claim.artist.imageUrl,
+                canRequestClaim: isClaimRequestEligible(claim.artist),
+            },
         }));
     }
 
@@ -544,13 +572,30 @@ export class ArtistService {
                 id: true,
                 displayName: true,
                 imageUrl: true,
+                userId: true,
                 profileType: true,
                 claimStatus: true,
+                releaseCredits: {
+                    where: {
+                        role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                        identityStatus: { not: "ambiguous" },
+                    },
+                    select: { id: true },
+                    take: 1,
+                },
             },
         });
 
         const lowerQuery = normalized.toLowerCase();
         return matches
+            .map((artist) => ({
+                id: artist.id,
+                displayName: artist.displayName,
+                imageUrl: artist.imageUrl,
+                profileType: artist.profileType,
+                claimStatus: artist.claimStatus,
+                canRequestClaim: isClaimRequestEligible(artist),
+            }))
             .sort((a, b) => artistRelevanceScore(b, lowerQuery) - artistRelevanceScore(a, lowerQuery)
                 || a.displayName.localeCompare(b.displayName)
                 || a.id.localeCompare(b.id))

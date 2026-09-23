@@ -6,6 +6,7 @@ const artist = {
   displayName: "Aya Lune",
   profileType: "public_artist",
   claimStatus: "unclaimed",
+  canRequestClaim: true,
   imageUrl: null,
   summary: null,
   website: null,
@@ -28,6 +29,32 @@ test("public artist pages do not solicit claims from guests or signed-in listene
   await expect(page.getByText("Are you Aya Lune?")).toHaveCount(0);
   await expect(page.getByText("Unclaimed profile")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /claim this profile/i })).toHaveCount(0);
+});
+
+test("uncredited search results and claimed request history do not offer evidence submission", async ({ authenticatedPage: page }) => {
+  await page.route("**/management/me", (route) => route.fulfill({ json: {
+    ownedArtists: [], managedArtists: [], ownedReleases: [], managedReleases: [],
+    pendingGrants: [], pendingTransfers: [], outgoingTransfers: [],
+  } }));
+  await page.route("**/management/recoveries/me", (route) => route.fulfill({ json: { transfers: [] } }));
+  await page.route("**/artists/claims/me", (route) => route.fulfill({ json: [{
+    status: "rejected", createdAt: "2026-09-23T10:00:00.000Z", updatedAt: "2026-09-23T11:00:00.000Z", reviewedAt: "2026-09-23T11:00:00.000Z",
+    artist: { id: "claimed-artist", displayName: "Other Claimed Artist", imageUrl: null, canRequestClaim: false },
+  }] }));
+  await page.route("**/artists/search?**", (route) => route.fulfill({ json: [
+    { ...artist, id: "uncredited-artist", displayName: "Uncredited Artist", canRequestClaim: false },
+  ] }));
+  await page.route("**/catalog/artist/*", (route) => route.fulfill({ json: [] }));
+
+  await page.goto("/artist/management");
+  await page.getByLabel("Find a credited profile").fill("Uncredited Artist");
+  await page.getByRole("list", { name: "Matching artist profiles" }).getByRole("button", { name: /Uncredited Artist/ }).click();
+  await expect(page.getByText("This profile is not accepting access requests.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue to evidence" })).toHaveCount(0);
+
+  await page.getByRole("list").filter({ has: page.getByRole("button", { name: /Other Claimed Artist/ }) }).getByRole("button").click();
+  await expect(page.getByText("This profile is not accepting access requests.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Submit new evidence" })).toHaveCount(0);
 });
 
 test("signed-in requester selects the exact catalog profile and sees only their request status", async ({ authenticatedPage: page }) => {

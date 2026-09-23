@@ -918,6 +918,7 @@ export type ArtistSearchResult = {
   imageUrl?: string | null;
   profileType?: string | null;
   claimStatus?: string | null;
+  canRequestClaim?: boolean;
 };
 
 /**
@@ -2090,7 +2091,7 @@ export type ArtistClaim = {
 
 export type MyArtistClaim = Pick<ArtistClaim, "status" | "createdAt" | "reviewedAt"> & {
   updatedAt: string;
-  artist: { id: string; displayName: string; imageUrl?: string | null };
+  artist: { id: string; displayName: string; imageUrl?: string | null; canRequestClaim: boolean };
 };
 
 export async function listMyArtistClaims(token: string) {

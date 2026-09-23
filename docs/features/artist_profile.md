@@ -65,8 +65,10 @@ exact profile, and compare its public catalog with the artist you represent.
 Same-name results remain separate profiles. Submit 20–4,000 characters of
 evidence for an operator to review. The request is private, and the workspace
 shows your latest pending, approved, rejected, or revoked status for each
-profile. Rejected or revoked requesters can submit new evidence. Public artist
-pages have no claim prompt or claimability badge.
+profile. Rejected or revoked requesters can submit new evidence while the exact
+profile remains eligible; a profile already claimed by someone else no longer
+offers a retry. Profiles without a confirmed main credit likewise do not offer
+an evidence form. Public artist pages have no claim prompt or claimability badge.
 
 Only an approved request permits editing that public profile. The server checks
 the exact artist ID and non-ambiguous release credit at submission and review;
@@ -90,7 +92,9 @@ review history.
   `socialLinks`, without account ownership, payout data, claimability status,
   or private claim proof.
 - `GET /artists/claims/me` (JWT) returns only the caller's latest status per
-  exact artist, with public artist name and image. `POST /artists/:id/claims`
+  exact artist, with the artist name, image, and current request eligibility.
+  Authenticated `GET /artists/search` includes that eligibility for exact-profile
+  selection. `POST /artists/:id/claims`
   (JWT) accepts bounded evidence for an eligible, credited public artist;
   operator-only claim review records the decision. These endpoints never grant
   release-level management by implication.

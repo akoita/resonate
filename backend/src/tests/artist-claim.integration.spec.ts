@@ -164,6 +164,27 @@ describe("ArtistService claim lifecycle (integration)", () => {
     expect(await prisma.artistClaimRequest.count({ where: { artistId: second.id } })).toBe(0);
   });
 
+  it("reports claim eligibility for credited and uncredited search results", async () => {
+    const eligible = await createArtist("search_eligible", "Search Eligible Artist", {
+      role: "primary",
+    });
+    const noCredit = await createArtist("search_no_credit", "Search No Credit Artist", {
+      credit: false,
+    });
+    const ambiguous = await createArtist("search_ambiguous", "Search Ambiguous Artist", {
+      identityStatus: "ambiguous",
+    });
+
+    const results = await service.searchByName("Search");
+
+    expect(results).toHaveLength(3);
+    expect(results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: eligible.id, canRequestClaim: true }),
+      expect.objectContaining({ id: noCredit.id, canRequestClaim: false }),
+      expect.objectContaining({ id: ambiguous.id, canRequestClaim: false }),
+    ]));
+  });
+
   it("returns only each exact artist's latest claim summary for the caller", async () => {
     const first = await createArtist("summary_same_name_a", "Summary Artist");
     const second = await createArtist("summary_same_name_b", "Summary Artist");
@@ -394,6 +415,17 @@ describe("ArtistService claim lifecycle (integration)", () => {
     expect([REVIEWER, ADMIN]).toContain(rejected.reviewerUserId);
     const pendingQueue = await service.listPendingClaims("operator");
     expect(pendingQueue.filter((pending) => pending.artistId === artist.id)).toEqual([]);
+
+    const rejectedHistory = await service.getMyClaims(rejected.claimantUserId);
+    expect(rejectedHistory).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        status: "rejected",
+        artist: expect.objectContaining({
+          id: artist.id,
+          canRequestClaim: false,
+        }),
+      }),
+    ]));
 
     const updatedArtist = await prisma.artist.findUnique({ where: { id: artist.id } });
     expect(updatedArtist).toMatchObject({ userId: null, claimStatus: "claimed" });
