@@ -253,10 +253,10 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "figure",
             figure: {
               src: `${SHOT}/discover-home.png`,
-              alt: "The Discover home page with a featured 'Sennarin in Paris' campaign, a row of trending and mood chips, and a 'Recommended for You' section.",
-              caption: "Discover: featured campaign, trending/mood chips, and personalized picks.",
+              alt: "The Discover home page with a featured 'Aya Nakamura in Montréal' campaign over its banner artwork, a rail of other campaigns with their funding progress, a row of trending and mood chips, and the Recently Added grid of release cover art.",
+              caption: "Discover while signed out: a featured Shows campaign, trending and mood chips, and the Recently Added catalog snapshot. Signed in, your personalized rows appear under the chips.",
               width: 1440,
-              height: 900,
+              height: 1200,
               source: STAGING,
             },
           },

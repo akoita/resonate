@@ -37,7 +37,8 @@
  *   npx playwright install chromium
  *
  * Output: web/public/help/screenshots/*.png (1440x900 viewport, 1x; selected
- * data-heavy pages use a taller viewport so all documented panels appear).
+ * data-heavy pages use a taller viewport so all documented panels appear, and
+ * a target may run a `prepare` step — e.g. Discover skips QA campaigns).
  */
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -58,7 +59,17 @@ const OUT_DIR = path.resolve(
 // route -> output filename. Keep in sync with figure `src` values in
 // web/src/lib/help/content.ts.
 const PUBLIC_TARGETS = [
-  ["/", "discover-home.png"],
+  [
+    "/",
+    "discover-home.png",
+    {
+      selectors: [".ng-hero__campaign-rail", ".ng-chips"],
+      text: ["Recently Added"],
+      viewportHeight: 1200,
+      reducedMotion: true,
+      prepare: featureRealCampaign,
+    },
+  ],
   ["/catalog", "catalog.png"],
   ["/shows", "shows.png"],
   ["/shows/sennarin-paris", "show-campaign.png"],
@@ -122,6 +133,28 @@ const MOCK_AUTH = {
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXIiLCJyb2xlIjoiYXJ0aXN0IiwiYWRkcmVzcyI6IjB4NzQyZDM1Y2M2NjM0YzA1MzI5MjVhM2I4NDRiYzllNzU5NWYxZWEyYyIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxODAwMDAwMDAwfQ.mock-signature",
 };
 
+// Staging carries QA campaigns ("TEST #1666 — …") that can outrank real ones in
+// the home hero. Feature the first campaign that doesn't look like test data so
+// the guide never illustrates a throwaway record.
+const TEST_DATA_TITLE = /^\s*(test|qa|e2e|tmp|dummy)\b/i;
+
+async function featureRealCampaign(page) {
+  const tabs = page.locator(".ng-hero__campaign-tab");
+  const count = await tabs.count();
+  for (let i = 0; i < count; i += 1) {
+    const tab = tabs.nth(i);
+    const title = await tab.locator(".ng-hero__campaign-copy strong").first().innerText();
+    if (TEST_DATA_TITLE.test(title)) continue;
+    await tab.click();
+    // Drop focus so no focus ring lands in the shot; reduced motion keeps the
+    // hero from rotating away from the selection.
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.mouse.move(0, 0);
+    return;
+  }
+  console.warn("! /: every featured campaign looks like test data; keeping the default hero");
+}
+
 async function waitForRouteReady(page, route, ready) {
   if (!ready) return;
 
@@ -161,9 +194,9 @@ async function capture(page, targets, passName) {
         },
       }));
     }
-    if (ready?.viewportHeight) {
-      await page.setViewportSize({ width: 1440, height: ready.viewportHeight });
-    }
+    // Reset per target so one tall capture doesn't leak into the next.
+    await page.setViewportSize({ width: 1440, height: ready?.viewportHeight ?? 900 });
+    await page.emulateMedia({ reducedMotion: ready?.reducedMotion ? "reduce" : "no-preference" });
     try {
       await page.goto(`${BASE_URL}${route}`, { waitUntil: "networkidle", timeout: 45000 });
     } catch (err) {
@@ -174,6 +207,7 @@ async function capture(page, targets, passName) {
       await page.getByLabel("Choose a resource").selectOption("release:guide-release");
       await page.getByText("Transfer management").waitFor({ state: "visible" });
     }
+    if (ready?.prepare) await ready.prepare(page);
     // Let fonts, artwork, and async client data settle before the shot.
     await page.waitForTimeout(3200);
     await page.screenshot({ path: path.join(OUT_DIR, file) });
