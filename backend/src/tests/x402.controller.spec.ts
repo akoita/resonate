@@ -13,28 +13,40 @@ const ERC20_TRANSFER_EVENT = {
   ],
 } as const;
 
-jest.mock('../db/prisma', () => ({
-  prisma: {
-    $transaction: jest.fn((operations) => Promise.all(operations)),
-    stem: {
-      findUnique: jest.fn(),
+jest.mock('../db/prisma', () => {
+  const settlementCreate = jest.fn();
+  const contractEventCreate = jest.fn();
+  return {
+    prisma: {
+      $transaction: jest.fn(async (operation) => {
+        if (typeof operation === 'function') {
+          return operation({
+            x402Settlement: { create: settlementCreate },
+            contractEvent: { create: contractEventCreate },
+          });
+        }
+        return Promise.all(operation);
+      }),
+      stem: {
+        findUnique: jest.fn(),
+      },
+      stemListing: {
+        findFirst: jest.fn(),
+      },
+      x402Settlement: {
+        findFirst: jest.fn(),
+        create: settlementCreate,
+      },
+      stemPricing: {
+        findUnique: jest.fn(),
+      },
+      contractEvent: {
+        findFirst: jest.fn(),
+        create: contractEventCreate,
+      },
     },
-    stemListing: {
-      findFirst: jest.fn(),
-    },
-    x402Settlement: {
-      findFirst: jest.fn(),
-      create: jest.fn(),
-    },
-    stemPricing: {
-      findUnique: jest.fn(),
-    },
-    contractEvent: {
-      findFirst: jest.fn(),
-      create: jest.fn(),
-    },
-  },
-}));
+  };
+});
 
 const { prisma } = jest.requireMock('../db/prisma') as {
   prisma: {
@@ -124,6 +136,7 @@ describe('X402Controller', () => {
 
   it('adds a structured receipt artifact to successful paid downloads', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_1',
       type: 'vocals',
       title: 'Hook Vocals',
@@ -131,8 +144,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: { tokenId: BigInt(42) },
       track: {
+        id: 'track_1',
         title: 'Midnight Run',
         release: {
+          id: 'release_1',
           title: 'Neon Heat',
           primaryArtist: 'Koita',
         },
@@ -198,6 +213,7 @@ describe('X402Controller', () => {
 
   it('marks receipts as requiring contract settlement when an active marketplace listing exists', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_listed',
       type: 'bass',
       title: 'Listed Bass',
@@ -205,8 +221,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: { tokenId: BigInt(77) },
       track: {
+        id: 'track_1',
         title: 'Listed Track',
         release: {
+          id: 'release_1',
           title: 'Listed Release',
           primaryArtist: 'Koita',
         },
@@ -258,6 +276,7 @@ describe('X402Controller', () => {
 
   it('marks listed x402 receipts contract-backed after marketplace settlement succeeds', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_backed',
       type: 'bass',
       title: 'Backed Bass',
@@ -265,8 +284,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: { tokenId: BigInt(77) },
       track: {
+        id: 'track_1',
         title: 'Backed Track',
         release: {
+          id: 'release_1',
           title: 'Backed Release',
           primaryArtist: 'Koita',
         },
@@ -335,6 +356,7 @@ describe('X402Controller', () => {
 
   it('records failed contract settlement and does not serve audio', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_failed',
       type: 'drums',
       title: 'Failed Drums',
@@ -342,8 +364,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: { tokenId: BigInt(77) },
       track: {
+        id: 'track_1',
         title: 'Failed Track',
         release: {
+          id: 'release_1',
           title: 'Failed Release',
           primaryArtist: 'Koita',
         },
@@ -414,6 +438,7 @@ describe('X402Controller', () => {
       receipt,
     });
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_1',
       type: 'vocals',
       title: 'Hook Vocals',
@@ -421,8 +446,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: null,
       track: {
+        id: 'track_1',
         title: 'Midnight Run',
         release: {
+          id: 'release_1',
           title: 'Neon Heat',
           primaryArtist: 'Koita',
         },
@@ -450,6 +477,7 @@ describe('X402Controller', () => {
       receipt: {},
     });
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_1',
       type: 'vocals',
       title: 'Hook Vocals',
@@ -457,8 +485,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: null,
       track: {
+        id: 'track_1',
         title: 'Midnight Run',
         release: {
+          id: 'release_1',
           title: 'Neon Heat',
           primaryArtist: 'Koita',
         },
@@ -481,6 +511,7 @@ describe('X402Controller', () => {
 
   it('loads relative local blob URLs through the contained source service', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_local',
       type: 'vocals',
       title: 'Local Stem',
@@ -489,8 +520,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: null,
       track: {
+        id: 'track_1',
         title: 'Local Track',
         release: {
+          id: 'release_1',
           title: 'Local Release',
           primaryArtist: 'Koita',
         },
@@ -538,6 +571,7 @@ describe('X402Controller', () => {
 
   it('serves downloads after verified smart-account x402 payments', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_smart',
       type: 'vocals',
       title: 'Passkey Stem',
@@ -546,8 +580,10 @@ describe('X402Controller', () => {
       encryptionMetadata: null,
       nftMint: null,
       track: {
+        id: 'track_1',
         title: 'Passkey Track',
         release: {
+          id: 'release_1',
           title: 'Passkey Release',
           primaryArtist: 'Koita',
         },
@@ -615,6 +651,7 @@ describe('X402Controller', () => {
     encryptionService.loadSourceBuffer.mockResolvedValue(encryptedData);
     encryptionService.decryptBuffer.mockResolvedValue(decryptedData);
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_encrypted',
       type: 'drums',
       title: 'Encrypted Stem',
@@ -628,8 +665,10 @@ describe('X402Controller', () => {
       data: null,
       nftMint: null,
       track: {
+        id: 'track_1',
         title: 'Encrypted Track',
         release: {
+          id: 'release_1',
           title: 'Encrypted Release',
           primaryArtist: 'Koita',
         },
@@ -864,6 +903,7 @@ describe('X402Controller', () => {
 
   it('returns storefront-grade x402 info metadata with payment aliases', async () => {
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_1',
       type: 'vocals',
       title: 'Hook Vocals',
@@ -1041,6 +1081,7 @@ describe('X402Controller', () => {
   it('quotes a listed stem from its exact stablecoin total and on-chain fee', async () => {
     const asset = '0x036CbD53842c5426634e7929541eC2318f3dCF7e';
     prisma.stem.findUnique.mockResolvedValue({
+      isCurrent: true,
       id: 'stem_listed',
       type: 'bass',
       title: 'Bass',

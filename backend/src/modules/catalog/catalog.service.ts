@@ -721,6 +721,13 @@ export class CatalogService implements OnModuleInit {
       if (release.status !== "ready") {
         return failPendingAttempt("Release is no longer ready for audio replacement");
       }
+      const mintedStem = await tx.stem.findFirst({
+        where: { trackId: trackData.id, isCurrent: true, nftMint: { isNot: null } },
+        select: { id: true },
+      });
+      if (mintedStem) {
+        return failPendingAttempt("A current stem was minted while the replacement was processing");
+      }
 
       const incomingStems = trackData.stems ?? [];
       const stemIds = incomingStems.map((stem) => stem.id);
@@ -835,6 +842,10 @@ export class CatalogService implements OnModuleInit {
             source: "upload",
           },
         });
+      } else {
+        // A replacement without a measured fingerprint must not inherit the
+        // previous audio's fingerprint and later produce false duplicates.
+        await tx.audioFingerprint.deleteMany({ where: { trackId: trackData.id } });
       }
 
       await tx.track.update({
@@ -3349,6 +3360,7 @@ export class CatalogService implements OnModuleInit {
     const stem = await prisma.stem.findUnique({
       where: { id: stemId },
       select: {
+        isCurrent: true,
         uri: true,
         encryptionMetadata: true,
         data: true,
@@ -3366,7 +3378,7 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    if (!stem) throw new NotFoundException("Stem not found");
+    if (!stem || !stem.isCurrent) throw new NotFoundException("Stem not found");
     if (
       !this.isStreamingAllowed(
         this.getMostRestrictiveRoute(

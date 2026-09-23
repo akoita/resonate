@@ -108,12 +108,55 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
 
     try {
       if (result.audioRevision) {
-        const pending = await prisma.track.findUnique({
-          where: { id: result.trackId, releaseId: result.releaseId },
-          select: { pendingAudioRevision: true, release: { select: { status: true } } },
+        const replacementResultState = await prisma.$transaction(async (tx) => {
+          // Match the release-before-track lock order used by activation and
+          // replacement failure handling so publication cannot race this gate.
+          const lockedRelease = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "Release" WHERE "id" = ${result.releaseId} FOR UPDATE
+          `;
+          if (lockedRelease.length === 0) return "stale" as const;
+
+          const lockedTrack = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "Track" WHERE "id" = ${result.trackId} AND "releaseId" = ${result.releaseId} FOR UPDATE
+          `;
+          if (lockedTrack.length === 0) return "stale" as const;
+
+          const [release, track] = await Promise.all([
+            tx.release.findUnique({
+              where: { id: result.releaseId },
+              select: { status: true },
+            }),
+            tx.track.findUnique({
+              where: { id: result.trackId },
+              select: { pendingAudioRevision: true },
+            }),
+          ]);
+          if (!release || track?.pendingAudioRevision !== result.audioRevision) {
+            return "stale" as const;
+          }
+          if (release.status !== "ready") {
+            await tx.track.update({
+              where: { id: result.trackId },
+              data: {
+                pendingAudioRevision: null,
+                audioReplacementStatus: "failed",
+                audioReplacementError: "The release is no longer ready for audio replacement.",
+                pendingAudioFingerprint: null,
+                pendingAudioFingerprintHash: null,
+                pendingAudioFingerprintDuration: null,
+              },
+            });
+            return "failed" as const;
+          }
+          return "continue" as const;
         });
-        if (!pending || pending.pendingAudioRevision !== result.audioRevision || pending.release.status !== "ready") {
-          this.logger.warn(`Ignoring stale replacement result for track ${result.trackId}`);
+
+        if (replacementResultState !== "continue") {
+          this.logger.warn(
+            replacementResultState === "failed"
+              ? `Failed replacement result for track ${result.trackId}: release is no longer ready`
+              : `Ignoring stale replacement result for track ${result.trackId}`,
+          );
           message.ack();
           return;
         }

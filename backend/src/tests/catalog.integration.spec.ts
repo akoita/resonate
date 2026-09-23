@@ -371,12 +371,10 @@ describe('CatalogService (integration)', () => {
       expect(stems.find((stem) => stem.id === oldVocalId)?.isCurrent).toBe(false);
       expect(stems.find((stem) => stem.id === failedOriginalId)?.isCurrent).toBe(false);
 
-      const [historicalBlob, historicalPreview] = await Promise.all([
-        catalog.getStemBlob(oldVocalId),
-        catalog.getStemPreview(oldVocalId),
-      ]);
+      const historicalBlob = await catalog.getStemBlob(oldVocalId, { includeRestricted: true });
       expect(historicalBlob?.data).toEqual(oldVocalAudio);
-      expect(historicalPreview.data).toEqual(oldVocalAudio);
+      expect(await catalog.getStemBlob(oldVocalId)).toBeNull();
+      await expect(catalog.getStemPreview(oldVocalId)).rejects.toThrow('Stem not found');
 
       const trackView = await catalog.getTrack(trackId);
       expect(trackView?.stems.map((stem) => stem.id).sort()).toEqual([activeOriginalId, activeVocalId].sort());
@@ -1583,6 +1581,7 @@ describe('CatalogService (integration)', () => {
       title: 'Failure Capture',
       tracks: [{ title: 'Broken Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
     });
+    await prisma.release.update({ where: { id: created.id }, data: { status: 'processing' } });
 
     eventBus.publish({
       eventName: 'stems.failed' as any,

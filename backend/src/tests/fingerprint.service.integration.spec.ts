@@ -192,4 +192,39 @@ describe("FingerprintService (integration)", () => {
     expect((await prisma.track.findUnique({ where: { id: trackId1 } }))?.pendingAudioFingerprintHash).toBe(`${P}replacement_hash`);
     expect((await prisma.audioFingerprint.findUnique({ where: { trackId: trackId1 } }))?.fingerprintHash).toBe(`${P}hash_unique`);
   });
+
+  it("serializes competing cross-wallet replacement fingerprints", async () => {
+    const firstRevision = "33333333-3333-4333-8333-333333333333";
+    const secondRevision = "44444444-4444-4444-8444-444444444444";
+    await prisma.release.updateMany({
+      where: { id: { in: [releaseId1, releaseId2] } },
+      data: { status: "ready" },
+    });
+    await prisma.track.update({
+      where: { id: trackId1 },
+      data: { pendingAudioRevision: firstRevision, pendingAudioFingerprintHash: null },
+    });
+    await prisma.track.update({
+      where: { id: trackId3 },
+      data: { pendingAudioRevision: secondRevision, pendingAudioFingerprintHash: null },
+    });
+
+    const hash = `${P}simultaneous_replacement`;
+    const results = await Promise.all([
+      service.registerFingerprint({
+        trackId: trackId1, releaseId: releaseId1, audioRevision: firstRevision,
+        fingerprint: "111,222", fingerprintHash: hash, duration: 120,
+      }),
+      service.registerFingerprint({
+        trackId: trackId3, releaseId: releaseId2, audioRevision: secondRevision,
+        fingerprint: "111,222", fingerprintHash: hash, duration: 120,
+      }),
+    ]);
+    expect(results.map((result) => result.quarantined).sort()).toEqual([false, true]);
+    const tracks = await prisma.track.findMany({
+      where: { id: { in: [trackId1, trackId3] } },
+      select: { pendingAudioFingerprintHash: true },
+    });
+    expect(tracks.filter((track) => track.pendingAudioFingerprintHash === hash)).toHaveLength(1);
+  });
 });

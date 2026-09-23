@@ -456,6 +456,89 @@ class AudioRevisionTest(unittest.TestCase):
         self.assertEqual(published[0]["status"], "failed")
         self.assertEqual(published[0]["audioRevision"], self.REVISION_ONE)
 
+    def test_consumer_nacks_input_when_failure_result_publish_is_rejected(self):
+        result_calls = []
+
+        class FakeFuture:
+            def result(self):
+                result_calls.append(True)
+                raise RuntimeError("Pub/Sub rejected the message")
+
+        class FakePublisher:
+            def topic_path(self, project, topic):
+                return f"{project}/{topic}"
+
+            def publish(self, *_args, **_kwargs):
+                return FakeFuture()
+
+        class FakeMessage:
+            data = json.dumps({
+                "jobId": "job_test",
+                "releaseId": "rel_test",
+                "trackId": "trk_test",
+                "audioRevision": self.REVISION_ONE,
+            }).encode("utf-8")
+
+            def __init__(self):
+                self.acks = 0
+                self.nacks = 0
+
+            def ack(self):
+                self.acks += 1
+
+            def nack(self):
+                self.nacks += 1
+
+        message = FakeMessage()
+
+        class FakeStreamingPullFuture:
+            def result(self):
+                return None
+
+        class FakeSubscriber:
+            def subscription_path(self, *_args):
+                return "project/subscription"
+
+            def subscribe(self, _subscription_path, callback, **_kwargs):
+                callback(message)
+                return FakeStreamingPullFuture()
+
+        class FakeFlowControl:
+            def __init__(self, **_kwargs):
+                pass
+
+        fake_google = types.ModuleType("google")
+        fake_google.__path__ = []
+        fake_cloud = types.ModuleType("google.cloud")
+        fake_cloud.__path__ = []
+        fake_pubsub = types.ModuleType("google.cloud.pubsub_v1")
+        fake_pubsub.PublisherClient = FakePublisher
+        fake_pubsub.SubscriberClient = FakeSubscriber
+        fake_pubsub.types = types.SimpleNamespace(FlowControl=FakeFlowControl)
+        fake_pubsub_types = types.ModuleType("google.cloud.pubsub_v1.types")
+        fake_pubsub_types.FlowControl = FakeFlowControl
+        fake_cloud.pubsub_v1 = fake_pubsub
+        fake_google.cloud = fake_cloud
+
+        async def fail_processing(_data):
+            raise RuntimeError("Demucs failed")
+
+        with patch.dict(
+            sys.modules,
+            {
+                "google": fake_google,
+                "google.cloud": fake_cloud,
+                "google.cloud.pubsub_v1": fake_pubsub,
+                "google.cloud.pubsub_v1.types": fake_pubsub_types,
+            },
+        ):
+            with patch.object(main, "process_pubsub_message", fail_processing):
+                main.pubsub_consumer_loop()
+
+        self.assertEqual(message.acks, 0)
+        self.assertEqual(message.nacks, 1)
+        self.assertEqual(result_calls, [True])
+
     def test_run_demucs_separation_retries_any_cuda_failure_before_raising(self):
         with tempfile.TemporaryDirectory() as temp_dir_name:
             temp_dir = Path(temp_dir_name)

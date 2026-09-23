@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { randomUUID } from "crypto";
-import { join } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { Queue } from "bullmq";
@@ -8,6 +8,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Agent } from "undici";
 import { EventBus } from "../shared/event_bus";
 import { resolveContainedPath } from "../storage/path_containment";
+import { getIngestionMultipartTempRoot } from "./ingestion-multipart.config";
 import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
@@ -153,6 +154,19 @@ export class IngestionService {
       `original_${stemId}_${audioRevision}.${extension}`,
       mimeType,
     );
+    const replacementTrack = {
+      id: trackId,
+      title: track.title,
+      position: track.position,
+      audioRevision,
+      stems: [{
+        id: stemId,
+        type: "original",
+        uri: storage.uri,
+        mimeType,
+        storageProvider: storage.provider,
+      }],
+    };
 
     try {
       await prisma.$transaction(async (tx) => {
@@ -171,6 +185,13 @@ export class IngestionService {
         if (!currentTrack) throw new NotFoundException("Track not found in this release");
         if (currentTrack.pendingAudioRevision) {
           throw new ConflictException("An audio replacement is already processing for this track");
+        }
+        const mintedStem = await tx.stem.findFirst({
+          where: { trackId, isCurrent: true, nftMint: { isNot: null } },
+          select: { id: true },
+        });
+        if (mintedStem) {
+          throw new ConflictException("Audio cannot be replaced after a stem has been minted");
         }
         await tx.track.update({
           where: { id: trackId, releaseId },
@@ -195,25 +216,24 @@ export class IngestionService {
             isCurrent: false,
           },
         });
-      });
+        // Queue before committing the pending revision. A crash can leave an
+        // orphan job, which the revision guard discards, but cannot leave a
+        // committed pending attempt with no job to process it.
+        if (!this.useSyncProcessing) {
+          // The delay exceeds the transaction timeout, so the worker cannot
+          // publish a result before the pending revision commits or rolls back.
+          await this.stemsQueue.add("process-stems", {
+            releaseId,
+            artistId: release.artistId,
+            tracks: [replacementTrack],
+          }, { jobId: `replace_${audioRevision}`, delay: 15_000 });
+        }
+      }, { timeout: 10_000 });
     } catch (error) {
       await this.storageProvider.delete(storage.uri).catch(() => undefined);
       throw error;
     }
 
-    const replacementTrack = {
-      id: trackId,
-      title: track.title,
-      position: track.position,
-      audioRevision,
-      stems: [{
-        id: stemId,
-        type: "original",
-        uri: storage.uri,
-        mimeType,
-        storageProvider: storage.provider,
-      }],
-    };
     try {
       if (this.useSyncProcessing) {
         const activation = await this.catalogService.activateAudioReplacement({
@@ -241,12 +261,6 @@ export class IngestionService {
         if (!activation.applied) {
           throw new ConflictException(activation.reason || "This audio replacement is no longer active");
         }
-      } else {
-        await this.stemsQueue.add("process-stems", {
-          releaseId,
-          artistId: release.artistId,
-          tracks: [replacementTrack],
-        }, { jobId: `replace_${audioRevision}` });
       }
     } catch (error) {
       await prisma.track.updateMany({
@@ -959,7 +973,23 @@ export class IngestionService {
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {
     if (Buffer.isBuffer(file.buffer)) return file.buffer;
     if (typeof file.path === "string" && file.path.length > 0) {
-      return readFile(file.path);
+      const tempRoot = resolve(getIngestionMultipartTempRoot());
+      const directory = typeof file.destination === "string"
+        ? resolveContainedPath(tempRoot, file.destination)
+        : null;
+      const filename = typeof file.filename === "string" ? file.filename : "";
+      if (
+        !directory || dirname(directory) !== tempRoot ||
+        !/^request-[A-Za-z0-9_-]+$/.test(basename(directory)) ||
+        !/^audio-[1-9][0-9]*\.upload$/.test(filename)
+      ) {
+        throw new BadRequestException("Uploaded audio file has no readable content");
+      }
+      const ownedPath = join(directory, filename);
+      if (file.path !== ownedPath) {
+        throw new BadRequestException("Uploaded audio file has no readable content");
+      }
+      return readFile(ownedPath);
     }
     throw new BadRequestException("Uploaded audio file has no readable content");
   }

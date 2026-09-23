@@ -4,6 +4,7 @@ import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
+  ApiRequestError,
   getRelease,
   getReleaseManagementAccess,
   replaceTrackAudio,
@@ -76,6 +77,12 @@ import {
   normalizeRightsVerificationState,
 } from "../../../lib/verificationSemantics";
 import { buildReleaseRightsOnboardingContext } from "../../../lib/rightsOnboarding";
+import {
+  classifyAudioReplacementTrack,
+  isAudioReplacementActive,
+  safeAudioReplacementFailureMessage,
+  withAudioRevision,
+} from "../../../lib/audioReplacement";
 import "../../../styles/license-badges.css";
 
 // Helper to get duration from track's first stem
@@ -108,9 +115,6 @@ const getTrackArtistCredit = (track: Track, release?: Release | null) => {
 };
 
 const MIXER_STEM_TYPES = ["vocals", "drums", "bass", "piano", "guitar", "other"] as const;
-
-const isAudioReplacementActive = (status?: AudioReplacementStatus | null) =>
-  status != null && status !== "complete" && status !== "failed";
 
 const audioReplacementStatusLabel = (status: AudioReplacementStatus) => {
   switch (status) {
@@ -449,7 +453,16 @@ export default function ReleaseDetails() {
   const trackAudioInputRef = useRef<HTMLInputElement>(null);
   const selectedTrackForAudioReplacementRef = useRef<string | null>(null);
   const audioReplacementStatusesRef = useRef(new Map<string, AudioReplacementStatus | null>());
-  const ownerScopedTrackUrlsRef = useRef<Record<string, string>>({});
+  const ownerScopedTrackUrlsRef = useRef<Record<string, { audioRevision: string | null; url: string }>>({});
+  const completedAudioRevisionsRef = useRef(new Map<string, string>());
+  const [completedAudioRevisionTick, setCompletedAudioRevisionTick] = useState(0);
+  const rememberCompletedAudioRevision = useCallback((trackId: string, audioRevision: string) => {
+    const cached = ownerScopedTrackUrlsRef.current[trackId];
+    if (cached?.url.startsWith("blob:")) URL.revokeObjectURL(cached.url);
+    delete ownerScopedTrackUrlsRef.current[trackId];
+    completedAudioRevisionsRef.current.set(trackId, audioRevision);
+    setCompletedAudioRevisionTick((current) => current + 1);
+  }, []);
   const rightsUpgradeStatusRef = useRef<string | null>(null);
   const [recentlyCompletedTracks, setRecentlyCompletedTracks] = useState<Set<string>>(new Set());
   const [confirmDialog, setConfirmDialog] = useState<{ title: string; message: string; variant: "danger" | "warning" | "default"; confirmLabel: string; onConfirm: () => Promise<void> } | null>(null);
@@ -523,6 +536,7 @@ export default function ReleaseDetails() {
       if (!active) return;
 
       if (latestRelease) {
+        const completedRevisions: Array<{ trackId: string; audioRevision: string }> = [];
         for (const track of latestRelease.tracks ?? []) {
           const previousStatus = audioReplacementStatusesRef.current.get(track.id);
           const status = track.audioReplacementStatus ?? null;
@@ -532,17 +546,25 @@ export default function ReleaseDetails() {
               title: "Audio replaced",
               message: `Replacement audio for ${track.title} is ready.`,
             });
+            if (track.activeAudioRevision) {
+              completedRevisions.push({ trackId: track.id, audioRevision: track.activeAudioRevision });
+            }
           } else if (isAudioReplacementActive(previousStatus) && status === "failed") {
             addToast({
               type: "error",
               title: "Audio replacement failed",
-              message: track.audioReplacementError || "The existing audio remains active. You can try again.",
+              message: safeAudioReplacementFailureMessage(track.audioReplacementError),
             });
           }
           audioReplacementStatusesRef.current.set(track.id, status);
         }
 
         setRelease(latestRelease);
+        for (const completed of completedRevisions) {
+          // The active revision changed; invalidate the old owner-scoped blob and
+          // let the player reload it after this release state is committed.
+          rememberCompletedAudioRevision(completed.trackId, completed.audioRevision);
+        }
         if (!latestRelease.tracks?.some((track) => isAudioReplacementActive(track.audioReplacementStatus))) {
           return;
         }
@@ -564,7 +586,7 @@ export default function ReleaseDetails() {
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [addToast, hasActiveAudioReplacement, id, token]);
+  }, [addToast, hasActiveAudioReplacement, id, rememberCompletedAudioRevision, token]);
   const hasFailedProcessing = release?.status === "failed" || release?.tracks?.some(t => t.processingStatus === "failed");
   const isProcessingRelease = release?.status === "processing";
   const hasUnprocessedTracks = release?.tracks?.some(t => !t.stems || t.stems.length <= 1);
@@ -783,7 +805,13 @@ export default function ReleaseDetails() {
         return;
       }
 
-      setRelease((previous) => previous ? {
+      let latestRelease: Release | null = null;
+      try {
+        latestRelease = await getRelease(release.id, token);
+      } catch {
+        // The API already confirmed completion; a later page load can refresh details.
+      }
+      setRelease((previous) => latestRelease ?? (previous ? {
         ...previous,
         tracks: previous.tracks?.map((track) => track.id === trackId ? {
           ...track,
@@ -792,24 +820,54 @@ export default function ReleaseDetails() {
           audioReplacementStatus: "complete",
           audioReplacementError: null,
         } : track),
-      } : previous);
-      try {
-        const latestRelease = await getRelease(release.id, token);
-        if (latestRelease) setRelease(latestRelease);
-      } catch {
-        // The API already confirmed completion; a later page load can refresh details.
-      }
+      } : previous));
+      rememberCompletedAudioRevision(trackId, result.audioRevision);
       addToast({ type: "success", title: "Audio replaced", message: "The replacement audio is ready." });
     } catch (reason) {
+      let latestRelease: Release | null = null;
+      try {
+        latestRelease = await getRelease(release.id, token);
+      } catch {
+        // A network error can happen after the server accepted the upload.
+      }
+
+      const latestTrack = latestRelease?.tracks?.find((track) => track.id === trackId);
+      const reconciledState = classifyAudioReplacementTrack(latestTrack);
+      if (latestRelease) setRelease(latestRelease);
+      if (reconciledState.state === "processing") {
+        addToast({
+          type: "info",
+          title: "Audio replacement is processing",
+          message: "The current audio remains playable while the replacement is processed.",
+        });
+        return;
+      }
+      if (reconciledState.state === "complete") {
+        rememberCompletedAudioRevision(trackId, reconciledState.audioRevision);
+        addToast({ type: "success", title: "Audio replaced", message: "The replacement audio is ready." });
+        return;
+      }
+      if (reconciledState.state === "failed") {
+        addToast({
+          type: "error",
+          title: "Audio replacement failed",
+          message: reconciledState.message,
+        });
+        return;
+      }
+
+      const ambiguous = !(reason instanceof ApiRequestError) || reason.status >= 500;
       addToast({
         type: "error",
-        title: "Audio replacement failed",
-        message: reason instanceof Error ? reason.message : "The existing audio remains active. Try again.",
+        title: ambiguous ? "Could not confirm audio upload" : "Audio replacement failed",
+        message: ambiguous
+          ? "The upload may still be processing. Refresh this release to confirm before trying again."
+          : reason instanceof Error ? reason.message : "The existing audio remains active. You can try again.",
       });
     } finally {
       setUploadingTrackAudioId(null);
     }
-  }, [addToast, release?.id, token]);
+  }, [addToast, rememberCompletedAudioRevision, release?.id, token]);
 
   const chooseTrackAudioFile = useCallback((trackId: string) => {
     if (!trackAudioInputRef.current || uploadingTrackAudioId) return;
@@ -1139,7 +1197,7 @@ export default function ReleaseDetails() {
 
   useEffect(() => {
     return () => {
-      Object.values(ownerScopedTrackUrlsRef.current).forEach((url) => {
+      Object.values(ownerScopedTrackUrlsRef.current).forEach(({ url }) => {
         if (url.startsWith("blob:")) {
           URL.revokeObjectURL(url);
         }
@@ -1149,18 +1207,18 @@ export default function ReleaseDetails() {
   }, []);
 
   const resolveTrackPlaybackUrl = useCallback(
-    async (trackId: string, fallbackStemUri?: string | null) => {
+    async (trackId: string, fallbackStemUri?: string | null, audioRevision?: string | null) => {
       if (!release?.id) {
         return undefined;
       }
 
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-      const publicUrl = buildTrackStreamUrl({
+      const publicUrl = withAudioRevision(buildTrackStreamUrl({
         releaseId: release.id,
         trackId,
         stemUri: fallbackStemUri,
         apiBase,
-      });
+      }), audioRevision);
 
       if (
         (!isOwner && !canReadCatalog) ||
@@ -1171,17 +1229,18 @@ export default function ReleaseDetails() {
       }
 
       const cached = ownerScopedTrackUrlsRef.current[trackId];
-      if (cached) {
-        return cached;
+      if (cached?.audioRevision === (audioRevision ?? null)) {
+        return cached.url;
       }
+      if (cached?.url.startsWith("blob:")) URL.revokeObjectURL(cached.url);
+      delete ownerScopedTrackUrlsRef.current[trackId];
 
-      const ownerScopedUrl = await getOwnerScopedTrackStreamObjectUrl(
-        release.id,
-        trackId,
-        token,
-      );
+      const ownerScopedUrl = await getOwnerScopedTrackStreamObjectUrl(release.id, trackId, token);
       if (ownerScopedUrl) {
-        ownerScopedTrackUrlsRef.current[trackId] = ownerScopedUrl;
+        ownerScopedTrackUrlsRef.current[trackId] = {
+          audioRevision: audioRevision ?? null,
+          url: ownerScopedUrl,
+        };
         return ownerScopedUrl;
       }
 
@@ -1191,15 +1250,20 @@ export default function ReleaseDetails() {
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handlePlayTrack = async (trackIndex: number, _specificStem?: string) => {
+  const handlePlayTrack = useCallback(async (trackIndex: number, _specificStem?: string) => {
     if (!release?.tracks) return;
+    for (const track of release.tracks) {
+      if (completedAudioRevisionsRef.current.get(track.id) === track.activeAudioRevision) {
+        completedAudioRevisionsRef.current.delete(track.id);
+      }
+    }
     const playableTracks: LocalTrack[] = await Promise.all((release.tracks || []).map(async (t) => {
       // Use ORIGINAL stem for uploaded tracks, or 'master' for AI-generated tracks
       const originalStem = t.stems?.find(s => s.type?.toUpperCase() === 'ORIGINAL')
         || t.stems?.find(s => s.type === 'master')
         || t.stems?.[0]; // fallback to first stem
 
-      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri);
+      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri, t.activeAudioRevision);
 
       return {
         id: t.id,
@@ -1220,7 +1284,21 @@ export default function ReleaseDetails() {
       };
     }));
     void playQueue(playableTracks, trackIndex);
-  };
+  }, [playQueue, release, resolveTrackPlaybackUrl]);
+
+  useEffect(() => {
+    const trackId = currentTrack?.catalogTrackId || currentTrack?.id;
+    if (!isPlaying || !trackId || !release?.tracks) return;
+
+    const completedRevision = completedAudioRevisionsRef.current.get(trackId);
+    if (!completedRevision) return;
+    const trackIndex = release.tracks.findIndex((track) =>
+      track.id === trackId && track.activeAudioRevision === completedRevision,
+    );
+    if (trackIndex < 0) return;
+
+    void handlePlayTrack(trackIndex);
+  }, [completedAudioRevisionTick, currentTrack?.catalogTrackId, currentTrack?.id, handlePlayTrack, isPlaying, release?.tracks]);
 
   const handleStemChange = (trackId: string, trackIndex: number, type: string) => {
     setTrackStems(prev => ({ ...prev, [trackId]: type }));
@@ -1285,12 +1363,12 @@ export default function ReleaseDetails() {
       (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
     );
     const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-    const streamUrl = buildTrackStreamUrl({
+    const streamUrl = withAudioRevision(buildTrackStreamUrl({
       releaseId: release?.id,
       trackId: t.id,
       stemUri: originalStem?.uri,
       apiBase,
-    });
+    }), t.activeAudioRevision);
     return {
       id: t.id,
       title: t.title,
@@ -1316,7 +1394,7 @@ export default function ReleaseDetails() {
       const originalStem = t.stems?.find(
         (s: { type?: string }) => s.type?.toUpperCase() === "ORIGINAL",
       );
-      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri);
+      const streamUrl = await resolveTrackPlaybackUrl(t.id, originalStem?.uri, t.activeAudioRevision);
       return mapToLocalTrack(t, streamUrl);
     },
     [mapToLocalTrack, resolveTrackPlaybackUrl],
@@ -2531,6 +2609,9 @@ export default function ReleaseDetails() {
                           style={{ fontSize: 11, color: track.audioReplacementStatus === "failed" ? "#f87171" : "#93c5fd" }}
                         >
                           {audioReplacementStatusLabel(track.audioReplacementStatus)}
+                          {track.audioReplacementStatus === "failed" && track.audioReplacementError && <span style={{ display: "block", marginTop: 3 }}>
+                            {safeAudioReplacementFailureMessage(track.audioReplacementError)}
+                          </span>}
                         </span>}
                         {canReplaceTrackAudio && release.status === "ready" && <button
                           type="button"

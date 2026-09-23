@@ -1131,7 +1131,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "On a ready release that has not been published yet, the owner or an accepted manager with Replace track audio permission can choose one audio file for a track. Supported formats are MP3, WAV, FLAC, AIFF (.aif or .aiff), M4A, AAC, and OGG; files can be up to 100 MiB. The existing audio stays playable while the replacement is processed; if it fails, the existing audio remains active. After a successful replacement, earlier stems remain available to purchases and remix projects that already use them.",
+            text: "On a ready release that has not been published yet, the owner or an accepted manager with Replace track audio permission can choose one audio file for a track, unless a current stem has already been minted. Supported formats are MP3, WAV, FLAC, AIFF (.aif or .aiff), M4A, AAC, and OGG; files can be up to 100 MiB. The existing audio stays playable while the replacement is processed; if it fails, the existing audio remains active. After a successful replacement, earlier stems remain available to purchases and remix projects that already use them.",
           },
           {
             kind: "paragraph",

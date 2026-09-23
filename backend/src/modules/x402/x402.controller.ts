@@ -216,28 +216,6 @@ export class X402Controller {
     }
 
     try {
-      const stem = await prisma.stem.findUnique({
-        where: { id: stemId },
-        select: { isCurrent: true },
-      });
-      if (stem?.isCurrent === false) {
-        const existingSettlement =
-          body.txHash && TX_HASH_PATTERN.test(body.txHash)
-            ? await prisma.x402Settlement.findFirst({
-                where: { paymentTransactionHash: body.txHash },
-                select: { stemId: true },
-              })
-            : null;
-        if (existingSettlement?.stemId !== stemId) {
-          res.status(HttpStatus.CONFLICT).json({
-            error: 'Stem no longer available for purchase',
-            message:
-              'Historical stems cannot receive a new purchase entitlement. If this payment transaction was already submitted, this request will not record a download entitlement.',
-          });
-          return;
-        }
-      }
-
       const verified = await this.verifySmartAccountPayment(stemId, body);
       return this.servePaidStemDownload({
         stemId,
@@ -369,8 +347,24 @@ export class X402Controller {
       });
       const amountUsd = paymentTerms.amountUsd;
       const buyerAddress = this.resolveBuyerAddress(req, input.payer);
+      // The facilitator (or smart-account transaction) has already paid by
+      // this point. Recheck as late as possible before a marketplace contract
+      // buy, so a stem that became historical during verification does not
+      // trigger a new listing purchase. We still grant the exact paid-stem
+      // download below so that an in-flight payment is not stranded.
+      const stemBeforeContractSettlement = await prisma.stem.findUnique({
+        where: { id: stem.id },
+        select: { isCurrent: true },
+      });
+      const stemIsCurrent = stemBeforeContractSettlement?.isCurrent === true;
+      const settlementListing = stemIsCurrent ? activeListing : null;
+      if (activeListing && !settlementListing) {
+        this.logger.warn(
+          `x402 payment settled while stem ${stem.id} was no longer current or available; skipping new marketplace settlement and granting exact-stem download access`,
+        );
+      }
       const contractSettlement = await this.resolveContractSettlement({
-        listing: activeListing,
+        listing: settlementListing,
         buyerAddress,
         assetInfo,
       });
@@ -534,8 +528,11 @@ export class X402Controller {
         settlement: contractSettlement,
       });
 
-      await prisma.$transaction([
-        prisma.x402Settlement.create({
+      await prisma.$transaction(async (tx) => {
+        // Keep settlement and provenance atomic. Current-state checks happen
+        // before external marketplace settlement; a later race still grants
+        // this already-paid exact-stem entitlement.
+        await tx.x402Settlement.create({
           data: {
             stemId: stem.id,
             listingId: activeListing?.id ?? null,
@@ -566,8 +563,8 @@ export class X402Controller {
             canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
             purchasedAt: input.purchasedAt,
           },
-        }),
-        prisma.contractEvent.create({
+        });
+        await tx.contractEvent.create({
           data: {
             eventName: 'x402.purchase',
             chainId: getX402ChainId(this.x402Config.network),
@@ -603,8 +600,8 @@ export class X402Controller {
             },
             processedAt: input.purchasedAt,
           },
-        }),
-      ]);
+        });
+      });
 
       this.eventBus?.publish({
         eventName: 'x402.purchase',

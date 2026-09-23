@@ -769,23 +769,7 @@ def pubsub_consumer_loop():
             except Exception as e:
                 logger.error(f"[PubSub] Processing failed for job {data.get('jobId')}: {e}")
                 # Publish failure result
-                published_failure = False
-                try:
-                    publisher = pubsub_v1.PublisherClient()
-                    topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
-                    fail_msg = {
-                        "jobId": data.get("jobId", "unknown"),
-                        "releaseId": data.get("releaseId", ""),
-                        "artistId": data.get("artistId", ""),
-                        "trackId": data.get("trackId", ""),
-                        "status": "failed",
-                        "error": str(e),
-                    }
-                    add_audio_revision(fail_msg, data.get("audioRevision"))
-                    publisher.publish(topic_path, json.dumps(fail_msg).encode("utf-8"))
-                    published_failure = True
-                except Exception as pub_err:
-                    logger.error(f"[PubSub] Failed to publish failure result: {pub_err}")
+                published_failure = publish_failure_result(data, e)
                 if published_failure:
                     message.ack()
                     logger.info(f"[PubSub] Acked failed message for job {data.get('jobId')} after publishing failure result")
