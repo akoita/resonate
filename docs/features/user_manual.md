@@ -63,7 +63,12 @@ Illustrations live in `web/public/help/screenshots/` and are captured with
 - **Public pass** (normally from staging; a local public preview is acceptable
   before a new route is first deployed): Discover, Catalog, Shows, a Shows
   campaign, the Marketplace, the Drops gallery (`/drops` → `drops.png`), the
-  Player, the Wallet, and the connect wall.
+  Player, the Wallet, and the connect wall. Discover is captured at 1440x1200
+  with reduced motion so the Recently Added covers show and the hero stops
+  rotating; the script features the first campaign whose title doesn't look
+  like QA data (`TEST …`, `QA …`). Review every public shot before committing:
+  staging data can put test records in view, and an older screenshot beats one
+  that shows a throwaway record or an expired campaign.
 - **Signed-in pass** (from a local instance): the screens behind the connect
   wall — Upload, Create, Settings, AI DJ, Sonic Radar, Library, and the Dispute
   Center. The script injects the same mock-auth `localStorage` the E2E tests use
