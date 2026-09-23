@@ -86,7 +86,15 @@ const AUTH_TARGETS = [
   ["/settings", "settings.png"],
   ["/agent", "ai-dj.png"],
   ["/sonic-radar", "sonic-radar.png"],
-  ["/library", "library.png"],
+  ["/library", "library.png", {
+    mockLibrary: true,
+    selectors: [".library-item:not(.library-item-header)"],
+    prepare: async (page) => {
+      await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+      await page.locator(".library-item:not(.library-item-header) .track-action-menu-trigger").first().click();
+      await page.getByRole("button", { name: "Remove from library" }).waitFor({ state: "visible" });
+    },
+  }],
   ["/disputes", "disputes.png"],
   ["/artist/management", "artist-management.png", {
     selectors: ["section[aria-labelledby='owned-heading']"],
@@ -193,6 +201,15 @@ async function waitForRouteReady(page, route, ready) {
 async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
+    if (ready?.mockLibrary) {
+      const createdAt = "2026-09-01T12:00:00.000Z";
+      await page.route("**/library/tracks", (request) => request.fulfill({
+        json: [
+          { id: "guide-song-1", userId: "guide-listener", source: "remote", title: "Golden Hour", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 213, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
+          { id: "guide-song-2", userId: "guide-listener", source: "remote", title: "After the Rain", artist: "Felicia Angels", albumArtist: "Felicia Angels", album: "First Light", duration: 189, remoteArtworkUrl: "/shows/felicia-angels-cover.webp", createdAt },
+        ],
+      }));
+    }
     if (ready?.mockManagement) {
       await page.route("**/management/me", (request) => request.fulfill({
         json: {

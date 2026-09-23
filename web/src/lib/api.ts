@@ -5381,6 +5381,14 @@ export async function deleteLibraryTrackAPI(id: string, token: string) {
   return apiRequest<void>(`/library/tracks/${id}`, { method: "DELETE" }, token);
 }
 
+export async function deleteLibraryTracksAPI(ids: string[], token: string) {
+  return apiRequest<{ count: number }>(
+    "/library/tracks/batch",
+    { method: "DELETE", body: JSON.stringify({ ids }) },
+    token
+  );
+}
+
 export async function clearLocalLibraryAPI(token: string) {
   return apiRequest<void>("/library/tracks/local", { method: "DELETE" }, token);
 }

@@ -28,11 +28,6 @@ export class LibraryController {
         return this.libraryService.getTrack((req as any).user.userId, id);
     }
 
-    @Delete("tracks/:id")
-    deleteTrack(@Req() req: Request, @Param("id") id: string) {
-        return this.libraryService.deleteTrack((req as any).user.userId, id);
-    }
-
     @Delete("tracks/batch")
     @HttpCode(200)
     deleteTracks(@Req() req: Request, @Body() body: { ids: string[] }) {
@@ -43,5 +38,10 @@ export class LibraryController {
     @HttpCode(200)
     clearLocalTracks(@Req() req: Request) {
         return this.libraryService.clearLocalTracks((req as any).user.userId);
+    }
+
+    @Delete("tracks/:id")
+    deleteTrack(@Req() req: Request, @Param("id") id: string) {
+        return this.libraryService.deleteTrack((req as any).user.userId, id);
     }
 }

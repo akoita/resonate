@@ -194,9 +194,14 @@ export default function SettingsPage() {
     };
 
     const handleClearAll = async () => {
-        await clearLibrarySourceHandles();
-        await clearLibrary();
-        await loadState();
+        try {
+            await clearLibrary();
+            await clearLibrarySourceHandles();
+            await loadState();
+        } catch {
+            addToast({ type: "error", title: "Could not finish clearing", message: "Reload to check your library, then try again." });
+            return;
+        }
         void recordProductAnalytics(token, "settings.updated", {
             source: "settings",
             subjectType: "library_settings",
@@ -209,7 +214,7 @@ export default function SettingsPage() {
         addToast({
             type: "info",
             title: "Cleared",
-            message: "All library sources and indexed tracks have been removed.",
+            message: "Local library sources and indexed local tracks have been removed.",
         });
     };
 

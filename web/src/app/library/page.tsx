@@ -8,6 +8,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
     listTracks,
     deleteTrack,
+    deleteTracks,
     getArtworkUrl,
     saveTracksMetadata,
     LocalTrack,
@@ -54,7 +55,9 @@ import { PlaylistTab } from "../../components/library/PlaylistTab";
 import { PlaylistDetail } from "../../components/library/PlaylistDetail";
 import { ContextMenu, ContextMenuItem } from "../../components/ui/ContextMenu";
 import { TrackActionMenu } from "../../components/ui/TrackActionMenu";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { MarqueeText } from "../../components/ui/MarqueeText";
+import { recordProductAnalytics } from "../../lib/productAnalytics";
 import Link from "next/link";
 import {
     libraryAlbumHref,
@@ -82,7 +85,7 @@ function getRelativeTime(dateStr: string): string {
 export default function LibraryPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { playQueue, stop: handleStop, currentTrack } = usePlayer();
+    const { playQueue, queue, removeFromQueue, currentTrack } = usePlayer();
     const queueActions = useQueueActions();
     const [tracks, setTracks] = useState<LocalTrack[]>([]);
     const [loading, setLoading] = useState(true);
@@ -107,6 +110,7 @@ export default function LibraryPage() {
     const { setTracksToAddToPlaylist, setResaleModal } = useUIStore();
     const [selectedTrackId, setSelectedTrackId] = useState<string | null>(null);
     const [selectedTrackIds, setSelectedTrackIds] = useState<Set<string>>(new Set());
+    const [removalRequest, setRemovalRequest] = useState<{ tracks: LocalTrack[]; title: string; message: string } | null>(null);
     const lastClickedTrackIdRef = useRef<string | null>(null);
     const { address, token, smartAccountAddress } = useAuth();
     useZeroDev();
@@ -423,11 +427,50 @@ export default function LibraryPage() {
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [selectedTrackId, tracks, handlePlay]);
 
-    const handleDelete = async (id: string) => {
-        if (currentTrack?.id === id) handleStop();
-        await deleteTrack(id);
-        addToast({ type: "success", title: "Deleted", message: "Track removed from library" });
-        loadTracks();
+    const requestRemoval = (candidates: LocalTrack[], label: string) => {
+        const removable = candidates.filter(track => !track.isOwned);
+        if (removable.length === 0) {
+            addToast({ type: "info", title: "Owned stems stay", message: "Owned stems stay in your library while you hold them." });
+            return;
+        }
+        const count = removable.length;
+        setRemovalRequest({
+            tracks: removable,
+            title: count === 1 ? "Remove from library?" : `Remove ${count} tracks?`,
+            message: `Remove ${label} from your library? ${count} track${count === 1 ? "" : "s"} will be removed. Any owned stems stay in your library. This does not change purchases or playlists.`,
+        });
+    };
+
+    const confirmRemoval = async () => {
+        if (!removalRequest) return;
+        const ids = [...new Set(removalRequest.tracks.map(track => track.id))];
+        try {
+            if (ids.length === 1) await deleteTrack(ids[0], removalRequest.tracks[0]);
+            else await deleteTracks(ids, removalRequest.tracks);
+            const removed = new Set(ids);
+            setTracks(previous => previous.filter(track => !removed.has(track.id)));
+            setSelectedTrackIds(previous => new Set([...previous].filter(id => !removed.has(id))));
+            setArtworkUrls(previous => new Map([...previous].filter(([id]) => !removed.has(id))));
+            if (selectedAlbum && !filteredTracks.some(track =>
+                !removed.has(track.id) && (selectedAlbum.releaseId
+                    ? track.releaseId === selectedAlbum.releaseId
+                    : (track.album || "Unknown Album") === selectedAlbum.name &&
+                      (track.albumArtist || track.artist || "Unknown Artist") === selectedAlbum.artist)
+            )) setSelectedAlbum(null);
+            for (let index = queue.length - 1; index >= 0; index--) {
+                if (removed.has(queue[index].id)) removeFromQueue(index);
+            }
+            setRemovalRequest(null);
+            addToast({ type: "success", title: "Removed from library", message: `${ids.length} track${ids.length === 1 ? "" : "s"} removed.` });
+            void recordProductAnalytics(token, "library.removed", {
+                source: "library",
+                subjectType: "library",
+                payload: { removedCount: ids.length, surface: "library" },
+            });
+        } catch {
+            setRemovalRequest(null);
+            addToast({ type: "error", title: "Could not remove", message: "Your library was not changed. Please try again." });
+        }
     };
 
     const handleStemDownload = async (stem: LocalTrack) => {
@@ -486,13 +529,7 @@ export default function LibraryPage() {
     /* Shared by the right-click menus and the cards' overflow menus so both
      * queue exactly the same set. */
     const tracksForArtist = (artistName: string) =>
-        tracks.filter(t => (t.artist || "Unknown Artist") === artistName);
-
-    const tracksForAlbum = (albumName: string, artistName: string) =>
-        tracks.filter(t =>
-            (t.album || "Unknown Album") === albumName &&
-            (t.artist || "Unknown Artist") === artistName
-        );
+        filteredTracks.filter(t => (t.artist || "Unknown Artist") === artistName);
 
     const handleArtistContextMenu = (e: React.MouseEvent, artistName: string) => {
         e.preventDefault();
@@ -505,13 +542,13 @@ export default function LibraryPage() {
                 ...queueActions.contextMenuItems(artistTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(artistTracks) },
+                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(artistTracks, artistName) },
             ]
         });
     };
 
-    const handleAlbumContextMenu = (e: React.MouseEvent, albumName: string, artistName: string) => {
+    const handleAlbumContextMenu = (e: React.MouseEvent, albumName: string, artistName: string, albumTracks: LocalTrack[]) => {
         e.preventDefault();
-        const albumTracks = tracksForAlbum(albumName, artistName);
         setContextMenu({
             x: e.clientX,
             y: e.clientY,
@@ -520,6 +557,7 @@ export default function LibraryPage() {
                 ...queueActions.contextMenuItems(albumTracks),
                 { separator: true, label: "", onClick: () => { } },
                 { label: "Add to Playlist", icon: "🎵", onClick: () => setTracksToAddToPlaylist(albumTracks) },
+                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(albumTracks, `${albumName} by ${artistName}`) },
             ]
         });
     };
@@ -560,26 +598,38 @@ export default function LibraryPage() {
                     })
                 });
             }
-        } else {
-             items.push(
-                { separator: true, label: "", onClick: () => { } },
-                { label: "Delete from Library", icon: "🗑️", variant: "destructive", onClick: () => handleDelete(track.id) },
-             );
         }
+
+        items.push(track.isOwned
+            ? { label: "Why can't I remove this?", icon: "ℹ️", onClick: () => requestRemoval([track], track.title) }
+            : { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval([track], track.title) });
 
         return items;
     };
 
-    const renderTrackList = (trackList: LocalTrack[]) => (
+    const renderTrackList = (trackList: LocalTrack[]) => {
+        const removableTracks = trackList.filter(track => !track.isOwned);
+        const selectedRemovable = removableTracks.filter(track => selectedTrackIds.has(track.id));
+        return (
         <div className="library-list">
+            {selectedRemovable.length > 0 && (
+                <div className="library-selection-bar">
+                    <span>{selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"} selected</span>
+                    <button type="button" onClick={() => requestRemoval(selectedRemovable, `${selectedRemovable.length} selected track${selectedRemovable.length === 1 ? "" : "s"}`)}>
+                        Remove {selectedRemovable.length} track{selectedRemovable.length === 1 ? "" : "s"}
+                    </button>
+                    <button type="button" onClick={() => setSelectedTrackIds(new Set())}>Clear selection</button>
+                </div>
+            )}
             <div className="library-item library-item-header">
                 <div style={{ width: 28, flexShrink: 0 }}>
                     <input
                         type="checkbox"
-                        checked={selectedTrackIds.size === trackList.length && trackList.length > 0}
+                        checked={removableTracks.length > 0 && removableTracks.every(track => selectedTrackIds.has(track.id))}
+                        disabled={removableTracks.length === 0}
                         onChange={(e) => {
                             if (e.target.checked) {
-                                setSelectedTrackIds(new Set(trackList.map(t => t.id)));
+                                setSelectedTrackIds(new Set(removableTracks.map(track => track.id)));
                             } else {
                                 setSelectedTrackIds(new Set());
                             }
@@ -620,7 +670,7 @@ export default function LibraryPage() {
                                 setSelectedTrackIds(prev => {
                                     const next = new Set(prev);
                                     for (let i = start; i <= end; i++) {
-                                        next.add(trackList[i].id);
+                                        if (!trackList[i].isOwned) next.add(trackList[i].id);
                                     }
                                     return next;
                                 });
@@ -629,7 +679,7 @@ export default function LibraryPage() {
                                 setSelectedTrackIds(prev => {
                                     const next = new Set(prev);
                                     if (next.has(track.id)) next.delete(track.id);
-                                    else next.add(track.id);
+                                    else if (!track.isOwned) next.add(track.id);
                                     return next;
                                 });
                             } else {
@@ -668,11 +718,13 @@ export default function LibraryPage() {
                             <input
                                 type="checkbox"
                                 checked={isMultiSelected}
+                                disabled={track.isOwned}
+                                title={track.isOwned ? "Owned stems stay in your library while you hold them" : "Select track"}
                                 onChange={() => {
                                     setSelectedTrackIds(prev => {
                                         const next = new Set(prev);
                                         if (next.has(track.id)) next.delete(track.id);
-                                        else next.add(track.id);
+                                        else if (!track.isOwned) next.add(track.id);
                                         return next;
                                     });
                                 }}
@@ -781,6 +833,9 @@ export default function LibraryPage() {
                                             onClick: () => router.push(`/stem/${track.tokenId}`),
                                         }]
                                         : []),
+                                    track.isOwned
+                                        ? { label: "Why can't I remove this?", icon: "ℹ️", onClick: () => requestRemoval([track], track.title) }
+                                        : { label: "Remove from library", icon: "🗑️", variant: "destructive" as const, onClick: () => requestRemoval([track], track.title) },
                                 ]}
                             />
                         </div>
@@ -789,6 +844,7 @@ export default function LibraryPage() {
             })}
         </div>
     );
+    };
 
     const renderArtists = () => (
         <div className="library-grid-view">
@@ -827,7 +883,10 @@ export default function LibraryPage() {
                         {/* Queueing a whole artist was right-click only, so most
                           * people never found it. */}
                         <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
-                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForArtist(artist.name))} />
+                            <TrackActionMenu actions={[
+                                ...queueActions.actionMenuItems(tracksForArtist(artist.name)),
+                                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(tracksForArtist(artist.name), artist.name) },
+                            ]} />
                         </div>
                     </div>
                 );
@@ -854,7 +913,7 @@ export default function LibraryPage() {
                             album.artist,
                             sharedLibraryReleaseId(album.tracks),
                         ))}
-                        onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist)}
+                        onContextMenu={(e) => handleAlbumContextMenu(e, album.name, album.artist, album.tracks)}
                         draggable
                         onDragStart={(e) => {
                             const albumTracks = filteredTracks.filter(t =>
@@ -887,7 +946,10 @@ export default function LibraryPage() {
                             {album.trackCount} track{album.trackCount !== 1 ? "s" : ""}
                         </div>
                         <div className="library-card-actions" onClick={(e) => e.stopPropagation()}>
-                            <TrackActionMenu actions={queueActions.actionMenuItems(tracksForAlbum(album.name, album.artist))} />
+                            <TrackActionMenu actions={[
+                                ...queueActions.actionMenuItems(album.tracks),
+                                { label: "Remove from library", icon: "🗑️", variant: "destructive", onClick: () => requestRemoval(album.tracks, `${album.name} by ${album.artist}`) },
+                            ]} />
                         </div>
                     </div>
                 );
@@ -1297,6 +1359,16 @@ export default function LibraryPage() {
                         onClose={() => setContextMenu(null)}
                     />
                 )}
+
+                <ConfirmDialog
+                    isOpen={removalRequest !== null}
+                    title={removalRequest?.title ?? "Remove from library?"}
+                    message={removalRequest?.message ?? ""}
+                    confirmLabel="Remove from library"
+                    variant="danger"
+                    onConfirm={confirmRemoval}
+                    onCancel={() => setRemovalRequest(null)}
+                />
 
                 {/* Artwork Preview Modal */}
                 {hoveredArtwork && (

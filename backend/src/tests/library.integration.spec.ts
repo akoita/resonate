@@ -21,6 +21,29 @@ describe('LibraryService (integration)', () => {
   const staleUrlTrackId = `${TEST_PREFIX}stale_url_library_track`;
   const liveUrlTrackId = `${TEST_PREFIX}live_url_library_track`;
 
+  it('persists batch removal for one listener without deleting another listener’s copy', async () => {
+    const otherUserId = `${TEST_PREFIX}other_user`;
+    const removedIds = [`${TEST_PREFIX}remove_1`, `${TEST_PREFIX}remove_2`];
+    await prisma.user.create({ data: { id: otherUserId, email: `${otherUserId}@test.resonate` } });
+    try {
+      await prisma.libraryTrack.createMany({
+        data: [
+          ...removedIds.map(id => ({ id, userId, source: 'local', title: id })),
+          { id: `${TEST_PREFIX}other_copy`, userId: otherUserId, source: 'local', title: 'Other listener copy' },
+        ],
+      });
+
+      await expect(service.deleteTracks(userId, [...removedIds, `${TEST_PREFIX}other_copy`])).resolves.toMatchObject({ count: 2 });
+      const remaining = await service.listTracks(userId);
+      for (const id of removedIds) expect(remaining.map(track => track.id)).not.toContain(id);
+      expect(await prisma.libraryTrack.findUnique({ where: { id: `${TEST_PREFIX}other_copy` } })).not.toBeNull();
+    } finally {
+      await prisma.libraryTrack.deleteMany({ where: { userId: { in: [userId, otherUserId] }, id: { startsWith: `${TEST_PREFIX}remove_` } } });
+      await prisma.libraryTrack.deleteMany({ where: { userId: otherUserId } });
+      await prisma.user.delete({ where: { id: otherUserId } });
+    }
+  });
+
   beforeAll(async () => {
     await prisma.user.create({
       data: { id: userId, email: `${userId}@test.resonate` },
