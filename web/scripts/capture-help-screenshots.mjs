@@ -125,7 +125,7 @@ const AUTH_TARGETS = [
     prepare: async (page) => {
       await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
       await page.getByRole("button", { name: "Edit profile" }).click();
-      await page.getByRole("button", { name: "Suggest profile info with AI" }).click();
+      await page.getByRole("button", { name: "Find suggestions" }).click();
       await page.getByRole("radio").first().check();
       await page.getByRole("button", { name: "Review suggestions" }).click();
       await page.getByRole("checkbox", { name: /Bio/ }).check();

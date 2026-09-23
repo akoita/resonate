@@ -197,7 +197,7 @@ describe("ArtistEnrichmentService", () => {
         expect(result.suggestions).toEqual([
             expect.objectContaining({ field: "website", value: "https://ada.example/" }),
         ]);
-        expect(result.warnings).toContain("AI bio suggestions are unavailable because GOOGLE_AI_API_KEY is not configured.");
+        expect(result.warnings).toContain("AI bio drafts are not available right now; link suggestions remain available.");
         expect(mockGenerateContent).not.toHaveBeenCalled();
     });
 

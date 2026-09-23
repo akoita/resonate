@@ -28,6 +28,7 @@ describe("applyArtistEnrichmentSuggestions (#1763)", () => {
     expect(result.form.summary).toBe("Original bio");
     expect(result.form.website).toBe("https://example.com");
     expect(result.skipped).toEqual(["summary"]);
+    expect(result.applied).toEqual(["website"]);
     expect(existing.website).toBe("");
   });
 
@@ -38,6 +39,7 @@ describe("applyArtistEnrichmentSuggestions (#1763)", () => {
     expect(result.form.summary).toBe("Suggested bio");
     expect(result.form.x).toBe("");
     expect(result.skipped).toEqual(["x"]);
+    expect(result.applied).toEqual(["summary"]);
   });
 
   it("rejects a social suggestion hosted on the wrong platform", () => {
@@ -46,6 +48,7 @@ describe("applyArtistEnrichmentSuggestions (#1763)", () => {
     ], new Set(["instagram"]), new Set());
     expect(result.form.instagram).toBe("");
     expect(result.skipped).toEqual(["instagram"]);
+    expect(result.applied).toEqual([]);
   });
 });
 

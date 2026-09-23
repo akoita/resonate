@@ -55,25 +55,29 @@ test("manager chooses an exact public identity and saves only approved suggestio
   await page.getByRole("button", { name: "Edit profile" }).click();
   expect(searches).toBe(0);
   expect(suggestions).toBe(0);
-  await page.getByRole("button", { name: "Suggest profile info with AI" }).click();
+  await page.getByRole("button", { name: "Find suggestions" }).click();
   await expect(page.getByRole("radio")).toHaveCount(2);
   await page.getByRole("radio").first().check();
   await page.getByRole("button", { name: "Review suggestions" }).click();
   await page.getByRole("checkbox", { name: /Bio/ }).check();
   await page.getByRole("checkbox", { name: /Website/ }).check();
-  await page.getByRole("button", { name: "Add selected fields to form" }).click();
+  await page.getByRole("button", { name: /Add \d+ fields? to form/ }).click();
   await expect(page.locator(".artist-enrichment-error")).toContainText("Bio");
   await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Original bio");
   expect(writes).toBe(0);
 
   await page.getByRole("checkbox", { name: "Replace my existing bio" }).check();
-  await page.getByRole("button", { name: "Add selected fields to form" }).click();
+  await page.getByRole("button", { name: /Add \d+ fields? to form/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Added 2 fields to your form" })).toBeVisible();
   await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Source-backed draft bio");
+  await expect(page.getByLabel("Bio", { exact: true })).toHaveAccessibleDescription("Suggested");
+  await expect(page.locator(".artist-profile-edit-field.is-suggested").filter({ has: page.getByLabel("Bio", { exact: true }) })).toContainText("Suggested");
   await expect(page.getByLabel("Website", { exact: true })).toHaveValue("https://ayalune.example");
+  await page.getByRole("button", { name: "Back to suggestions" }).click();
   await page.getByLabel("Suggested Bio").fill("Revised source-backed bio");
   await expect(page.getByText("Your latest suggestion edits are not in the form yet.", { exact: false })).toBeVisible();
   await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Source-backed draft bio");
-  await page.getByRole("button", { name: "Add selected fields to form" }).click();
+  await page.getByRole("button", { name: /Add \d+ fields? to form/ }).click();
   await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Revised source-backed bio");
   expect(writes).toBe(0);
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -88,7 +92,7 @@ test("non-manager never sees the enrichment action", async ({ authenticatedPage:
   await page.goto(`/artist/${ARTIST_ID}`);
   await expect(page.getByRole("heading", { name: "Aya Lune" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit profile" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Suggest profile info with AI" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Find suggestions" })).toHaveCount(0);
 });
 
 test("rate-limited candidate search can be retried without changing the profile", async ({ authenticatedPage: page }) => {
@@ -112,10 +116,10 @@ test("rate-limited candidate search can be retried without changing the profile"
 
   await page.goto(`/artist/${ARTIST_ID}`);
   await page.getByRole("button", { name: "Edit profile" }).click();
-  await page.getByRole("button", { name: "Suggest profile info with AI" }).click();
+  await page.getByRole("button", { name: "Find suggestions" }).click();
   await expect(page.locator(".artist-enrichment-error")).toContainText("try again");
-  await page.getByRole("button", { name: "Try search again" }).click();
-  await expect(page.getByText("No matching public profiles found.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Try again" }).click();
+  await expect(page.getByText("No public profiles matched this artist name.", { exact: false })).toBeVisible();
   expect(searches).toBe(2);
   expect(writes).toBe(0);
 });

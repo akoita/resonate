@@ -205,7 +205,7 @@ export class ArtistEnrichmentService {
 
         const apiKey = process.env.GOOGLE_AI_API_KEY?.trim();
         if (!apiKey) {
-            warnings.push("AI bio suggestions are unavailable because GOOGLE_AI_API_KEY is not configured.");
+            warnings.push("AI bio drafts are not available right now; link suggestions remain available.");
         } else {
             const facts = buildBiographyFacts(artist, wikidata);
             if (!hasBiographyFacts(facts)) {

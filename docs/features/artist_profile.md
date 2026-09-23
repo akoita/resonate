@@ -53,16 +53,20 @@ authority.
 
 ### Artist (optional AI suggestions)
 
-In **Edit profile**, choose **Suggest profile info with AI** to search public
-MusicBrainz artist identities. Pick the exact artist after checking the
-disambiguation, location, and source page. A shared name alone never chooses
-an identity. A second request retrieves source-linked suggestions for the
-selected identity. You may edit and select individual fields. Replacing a
-non-empty field requires a separate explicit choice. **Add selected fields to
-form** only stages values locally; **Save changes** is still required to
-publish them. If a suggestion is edited after staging, it must be added to
-the form again before that edit is saved. Closing the panel or canceling the
-editor changes nothing.
+In **Edit profile**, choose **Find suggestions** to search public MusicBrainz
+artist identities. A three-step indicator (choose artist, review fields, save
+profile) shows progress. Pick the exact artist after checking the
+disambiguation, location, match score, and source page, then choose **Review
+suggestions**. A shared name alone never chooses an identity; **None of these
+match** leaves the profile untouched. A second request retrieves source-linked
+suggestions for the selected identity. Each field shows its confidence and
+source, the bio is labelled **AI draft**, and image suggestions show a preview.
+You may edit and select individual fields. When a field already has a value,
+its current value is shown and replacing it requires a separate explicit
+choice. **Add N fields to form** only stages values locally and marks them
+**Suggested** in the editor; **Save changes** is still required to publish
+them. If a suggestion is edited after staging, it must be added to the form
+again before that edit is saved. Closing the panel or canceling the editor changes nothing.
 
 MusicBrainz identity and official-link relationships are the source for
 candidates, website, and social links. The short bio is AI-written only from

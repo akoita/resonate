@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { ArtistProfile } from "../../lib/api";
+import type { ArtistEnrichmentField, ArtistProfile } from "../../lib/api";
 import { updateArtistProfile } from "../../lib/api";
 import {
   ARTIST_SOCIAL_LINK_FIELDS,
@@ -15,6 +15,26 @@ import { useToast } from "../ui/Toast";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { ArtistEnrichmentPanel } from "./ArtistEnrichmentPanel";
+
+type EditableField = keyof ArtistProfileFormState;
+
+/**
+ * Label row for an edit-form field. The "Suggested" marker sits outside the
+ * <label> so the field's accessible name stays exactly its label ("Bio"), and
+ * is linked to the control through aria-describedby instead.
+ */
+function FieldLabel({ htmlFor, label, suggested }: { htmlFor: string; label: string; suggested: boolean }) {
+  return (
+    <div className="artist-profile-edit-label-row">
+      <label htmlFor={htmlFor}>{label}</label>
+      {suggested && (
+        <span id={`${htmlFor}-suggested`} className="artist-profile-edit-suggested-pill">
+          Suggested
+        </span>
+      )}
+    </div>
+  );
+}
 
 type ArtistProfileEditorProps = {
   artist: ArtistProfile;
@@ -34,13 +54,44 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
   const [form, setForm] = useState<ArtistProfileFormState>(() =>
     artistProfileFormStateFromProfile(artist),
   );
+  // Fields most recently filled from profile suggestions; cleared as the
+  // manager edits them, and on open/cancel/save.
+  const [suggested, setSuggested] = useState<ReadonlySet<EditableField>>(() => new Set());
 
   if (!isOwner) return null;
 
   const startEditing = () => {
     setForm(artistProfileFormStateFromProfile(artist));
+    setSuggested(new Set());
     setIsEditing(true);
   };
+
+  const cancelEditing = () => {
+    setSuggested(new Set());
+    setIsEditing(false);
+  };
+
+  const updateField = (field: EditableField, value: string) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    if (suggested.has(field)) {
+      setSuggested((prev) => {
+        const next = new Set(prev);
+        next.delete(field);
+        return next;
+      });
+    }
+  };
+
+  const applySuggestions = (next: ArtistProfileFormState, appliedFields: ArtistEnrichmentField[]) => {
+    setForm(next);
+    setSuggested((prev) => new Set([...prev, ...appliedFields]));
+  };
+
+  const fieldClass = (field: EditableField) =>
+    suggested.has(field) ? "artist-profile-edit-field is-suggested" : "artist-profile-edit-field";
+
+  const describedBy = (field: EditableField, id: string) =>
+    suggested.has(field) ? `${id}-suggested` : undefined;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,6 +107,7 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
     try {
       const updated = await updateArtistProfile(token, artist.id, payload.body);
       onSaved(updated);
+      setSuggested(new Set());
       setIsEditing(false);
       addToast({
         type: "success",
@@ -99,39 +151,42 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
           artistId={artist.id}
           token={token}
           form={form}
-          onApply={setForm}
+          onApply={applySuggestions}
         />
       )}
 
-      <div className="artist-profile-edit-field">
-        <label htmlFor="artist-edit-imageUrl">Image URL</label>
+      <div className={fieldClass("imageUrl")}>
+        <FieldLabel htmlFor="artist-edit-imageUrl" label="Image URL" suggested={suggested.has("imageUrl")} />
         <Input
           id="artist-edit-imageUrl"
+          aria-describedby={describedBy("imageUrl", "artist-edit-imageUrl")}
           value={form.imageUrl}
-          onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+          onChange={(e) => updateField("imageUrl", e.target.value)}
           placeholder="https://..."
           maxLength={2048}
         />
       </div>
 
-      <div className="artist-profile-edit-field">
-        <label htmlFor="artist-edit-summary">Bio</label>
+      <div className={fieldClass("summary")}>
+        <FieldLabel htmlFor="artist-edit-summary" label="Bio" suggested={suggested.has("summary")} />
         <textarea
           id="artist-edit-summary"
+          aria-describedby={describedBy("summary", "artist-edit-summary")}
           className="ui-input artist-profile-edit-textarea"
           value={form.summary}
-          onChange={(e) => setForm({ ...form, summary: e.target.value })}
+          onChange={(e) => updateField("summary", e.target.value)}
           maxLength={2000}
           rows={4}
         />
       </div>
 
-      <div className="artist-profile-edit-field">
-        <label htmlFor="artist-edit-website">Website</label>
+      <div className={fieldClass("website")}>
+        <FieldLabel htmlFor="artist-edit-website" label="Website" suggested={suggested.has("website")} />
         <Input
           id="artist-edit-website"
+          aria-describedby={describedBy("website", "artist-edit-website")}
           value={form.website}
-          onChange={(e) => setForm({ ...form, website: e.target.value })}
+          onChange={(e) => updateField("website", e.target.value)}
           placeholder="https://..."
           maxLength={2048}
         />
@@ -139,12 +194,17 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
 
       <div className="artist-profile-edit-socials">
         {ARTIST_SOCIAL_LINK_FIELDS.map((field) => (
-          <div className="artist-profile-edit-field" key={field}>
-            <label htmlFor={`artist-edit-social-${field}`}>{ARTIST_SOCIAL_LINK_LABELS[field]}</label>
+          <div className={fieldClass(field)} key={field}>
+            <FieldLabel
+              htmlFor={`artist-edit-social-${field}`}
+              label={ARTIST_SOCIAL_LINK_LABELS[field]}
+              suggested={suggested.has(field)}
+            />
             <Input
               id={`artist-edit-social-${field}`}
+              aria-describedby={describedBy(field, `artist-edit-social-${field}`)}
               value={form[field]}
-              onChange={(e) => setForm({ ...form, [field]: e.target.value })}
+              onChange={(e) => updateField(field, e.target.value)}
               placeholder="https://..."
               maxLength={2048}
             />
@@ -160,7 +220,7 @@ export function ArtistProfileEditor({ artist, isOwner, onSaved }: ArtistProfileE
           type="button"
           variant="ghost"
           disabled={saving}
-          onClick={() => setIsEditing(false)}
+          onClick={cancelEditing}
         >
           Cancel
         </Button>

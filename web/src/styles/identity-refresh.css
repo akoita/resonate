@@ -968,8 +968,12 @@ button:focus-visible,
 .artist-edit-profile-btn {
   font-size: 13px;
 }
+/* The hero info column is content-sized; while editing, let it take the row so
+ * the form keeps its full 640px instead of shrinking to its shortest content. */
+.artist-info:has(.artist-profile-edit-form) { flex: 1 1 auto; }
 .artist-profile-edit-form {
   margin-top: 16px;
+  width: 100%;
   max-width: 640px;
   display: flex;
   flex-direction: column;
@@ -1007,45 +1011,579 @@ button:focus-visible,
   gap: 10px;
 }
 
-.artist-enrichment {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid rgba(162, 138, 255, 0.4);
-  border-radius: 12px;
-  background: rgba(113, 86, 221, 0.08);
+/* Edit-form fields filled from profile suggestions (#1763). */
+.artist-profile-edit-label-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 20px;
 }
-.artist-enrichment p { margin: 4px 0; }
-.artist-enrichment-heading,
-.artist-enrichment-actions {
+.artist-profile-edit-suggested-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-radius-full);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--r-secondary-soft);
+  background: rgba(124, 92, 255, 0.18);
+  border: 1px solid rgba(124, 92, 255, 0.45);
+}
+.artist-profile-edit-field.is-suggested .ui-input {
+  border-color: rgba(124, 92, 255, 0.6);
+  box-shadow: inset 3px 0 0 var(--r-primary);
+  background: rgba(124, 92, 255, 0.06);
+}
+
+/* Opt-in artist profile suggestions panel (#1763). */
+.artist-enrichment-invite {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: var(--r-radius-md);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.14), rgba(124, 92, 255, 0.04));
+}
+.artist-enrichment-invite-main {
+  flex: 1 1 300px;
+  min-width: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 12px;
 }
-.artist-enrichment-heading { flex-wrap: nowrap; }
-.artist-enrichment-heading > div { flex: 1; min-width: 0; }
-.artist-enrichment-candidates,
-.artist-enrichment-review { display: grid; gap: 12px; }
-.artist-enrichment-candidate,
-.artist-enrichment-suggestion {
+.artist-enrichment-invite-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-radius-sm);
+  color: var(--r-secondary-soft);
+  background: rgba(124, 92, 255, 0.22);
+}
+.artist-enrichment-invite-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.artist-enrichment-invite-text strong {
+  font-size: 14px;
+  color: var(--r-on-surface);
+}
+.artist-enrichment-invite-text p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface-variant);
+}
+.artist-enrichment-invite-btn {
+  flex: 0 0 auto;
+  padding: 10px 18px;
+  min-height: 40px;
+}
+
+.artist-enrichment {
+  container: artist-enrichment / inline-size;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(124, 92, 255, 0.4);
+  border-radius: var(--r-radius-md);
+  background: rgba(124, 92, 255, 0.07);
+}
+.artist-enrichment p { margin: 0; }
+.artist-enrichment-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.artist-enrichment-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--r-on-surface);
+}
+.artist-enrichment-title .artist-enrichment-icon { color: var(--r-primary-soft); }
+.artist-enrichment-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  border-radius: var(--r-radius-sm);
+  background: transparent;
+  color: var(--r-on-surface-variant);
+  cursor: pointer;
+}
+.artist-enrichment-close:hover {
+  background: var(--r-chrome-hover);
+  color: var(--r-on-surface);
+}
+
+/* Progress: Choose artist -> Review fields -> Save profile. */
+.artist-enrichment-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.artist-enrichment-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--r-on-surface-muted);
+}
+.artist-enrichment-step + .artist-enrichment-step::before {
+  content: "";
+  width: 16px;
+  height: 1px;
+  margin-right: 2px;
+  background: var(--r-outline);
+}
+.artist-enrichment-step-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--r-radius-full);
+  border: 1px solid var(--r-outline);
+  font-size: 11px;
+  font-weight: 700;
+}
+.artist-enrichment-step.is-current { color: var(--r-on-surface); }
+.artist-enrichment-step.is-current .artist-enrichment-step-marker {
+  border-color: var(--r-primary);
+  background: var(--r-primary);
+  color: var(--r-on-primary);
+  box-shadow: 0 0 0 3px var(--r-primary-glow);
+}
+.artist-enrichment-step.is-done { color: var(--r-on-surface-variant); }
+.artist-enrichment-step.is-done .artist-enrichment-step-marker {
+  border-color: rgba(124, 92, 255, 0.55);
+  color: var(--r-primary-soft);
+}
+
+.artist-enrichment-hint,
+.artist-enrichment-meta,
+.artist-enrichment-count,
+.artist-enrichment-counter {
+  font-size: 13px;
+  color: var(--r-on-surface-muted);
+}
+.artist-enrichment-live {
+  font-size: 12px;
+  color: var(--r-on-surface-variant);
+}
+.artist-enrichment-live:empty { display: none; }
+
+/* Status boxes: error alert, warning notice, success. */
+.artist-enrichment-alert,
+.artist-enrichment-notice,
+.artist-enrichment-success {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid;
+}
+.artist-enrichment-alert {
+  border-color: rgba(255, 107, 107, 0.45);
+  background: rgba(255, 107, 107, 0.08);
+}
+.artist-enrichment-notice {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.07);
+}
+.artist-enrichment-success {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: rgba(52, 211, 153, 0.07);
+}
+.artist-enrichment-status-icon { flex: 0 0 auto; margin-top: 1px; }
+.artist-enrichment-status-icon.is-error { color: var(--r-error); }
+.artist-enrichment-status-icon.is-warning { color: var(--r-warning); }
+.artist-enrichment-status-icon.is-success { color: var(--r-success); }
+.artist-enrichment-error {
+  grid-column: 2 / -1;
+  align-self: center;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface);
+}
+.artist-enrichment-alert:has(.artist-enrichment-compact-btn) .artist-enrichment-error { grid-column: 2; }
+.artist-enrichment-alert .artist-enrichment-compact-btn { grid-column: 3; }
+.artist-enrichment-notice > p {
+  grid-column: 2 / -1;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface);
+}
+.artist-enrichment-notice ul {
+  grid-column: 2 / -1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.artist-enrichment-warning {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface);
+}
+.artist-enrichment-success-text {
+  grid-column: 2 / -1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.artist-enrichment-success-text strong { color: var(--r-on-surface); }
+.artist-enrichment-success-text p { color: var(--r-on-surface-variant); }
+.artist-enrichment-success > .artist-enrichment-actions { grid-column: 2 / -1; }
+
+/* Loading skeletons. */
+.artist-enrichment-skeletons { display: grid; gap: 10px; }
+.artist-enrichment-skeleton {
   display: grid;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
+  padding: 14px;
+  border: 1px solid var(--r-chrome-border);
+  border-radius: var(--r-radius-sm);
   background: rgba(0, 0, 0, 0.15);
 }
-.artist-enrichment-candidate { grid-template-columns: auto 1fr; cursor: pointer; }
-.artist-enrichment-candidate span { display: grid; gap: 4px; }
-.artist-enrichment-candidate small,
-.artist-enrichment-suggestion small { color: var(--r-on-surface-muted); }
-.artist-enrichment-select,
-.artist-enrichment-replace { display: flex; align-items: center; gap: 8px; }
-.artist-enrichment-select span { color: var(--r-on-surface-muted); font-size: 12px; }
-.artist-enrichment-error { color: #ffb4ab; }
-.artist-enrichment-warning { color: #ffdb8a; }
+.artist-enrichment-skeleton-line {
+  position: relative;
+  overflow: hidden;
+  display: block;
+  height: 10px;
+  border-radius: var(--r-radius-full);
+  background: rgba(255, 255, 255, 0.07);
+}
+.artist-enrichment-skeleton-line.is-title { width: 45%; height: 12px; }
+.artist-enrichment-skeleton-line.is-body { width: 80%; }
+.artist-enrichment-skeleton-line.is-short { width: 30%; }
+.artist-enrichment-skeleton-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(196, 181, 253, 0.14), transparent);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .artist-enrichment-skeleton-line::after { animation: none; display: none; }
+}
+
+/* Empty states. */
+.artist-enrichment-empty {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: var(--r-radius-sm);
+  background: rgba(0, 0, 0, 0.12);
+}
+.artist-enrichment-empty-title { font-size: 14px; color: var(--r-on-surface); }
+.artist-enrichment-empty p {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--r-on-surface-variant);
+}
+.artist-enrichment-empty .artist-enrichment-actions { margin-top: 6px; }
+
+/* Actions. */
+.artist-enrichment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.artist-enrichment-actions .ui-btn,
+.artist-enrichment-compact-btn {
+  min-height: 40px;
+  padding: 9px 18px;
+}
+.artist-enrichment-compact-btn { font-size: 13px; }
+.artist-enrichment-apply-bar {
+  padding-top: 12px;
+  border-top: 1px solid var(--r-chrome-border);
+}
+.artist-enrichment-text-btn {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--r-radius-xs);
+  background: transparent;
+  color: var(--r-primary-soft);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.artist-enrichment-text-btn:hover { background: rgba(124, 92, 255, 0.12); color: var(--r-secondary-soft); }
+.artist-enrichment-close:focus-visible,
+.artist-enrichment-text-btn:focus-visible,
+.artist-enrichment-source:focus-visible {
+  outline: 2px solid rgba(167, 139, 250, 0.7);
+  outline-offset: 2px;
+}
+
+/* Source links. */
+.artist-enrichment-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--r-primary-soft);
+  border-radius: var(--r-radius-xs);
+  overflow-wrap: anywhere;
+}
+.artist-enrichment-source:hover { color: var(--r-secondary-soft); text-decoration: underline; }
+.artist-enrichment-external-icon { flex: 0 0 auto; }
+
+/* Pills. */
+.artist-enrichment-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--r-radius-full);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  color: var(--r-on-surface-variant);
+}
+.artist-enrichment-pill.is-match,
+.artist-enrichment-pill.is-ai {
+  color: var(--r-secondary-soft);
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.16);
+}
+.artist-enrichment-pill.is-high {
+  color: var(--r-success);
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+}
+.artist-enrichment-pill.is-medium {
+  color: var(--r-info);
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+}
+.artist-enrichment-pill.is-low {
+  color: var(--r-warning);
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+/* Candidate cards. */
+.artist-enrichment-candidates,
+.artist-enrichment-review { display: grid; gap: 12px; min-width: 0; }
+.artist-enrichment-candidate-list { display: grid; gap: 8px; }
+.artist-enrichment-candidate,
+.artist-enrichment-suggestion {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.artist-enrichment-candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.artist-enrichment-candidate:hover,
+.artist-enrichment-suggestion:hover { border-color: rgba(255, 255, 255, 0.24); }
+.artist-enrichment-candidate:has(input:checked),
+.artist-enrichment-suggestion.is-selected {
+  border-color: var(--r-primary);
+  background: rgba(124, 92, 255, 0.12);
+}
+.artist-enrichment-candidate:has(input:focus-visible),
+.artist-enrichment-suggestion:has(.artist-enrichment-select input:focus-visible) {
+  box-shadow: 0 0 0 3px var(--r-primary-glow);
+}
+.artist-enrichment-candidate input,
+.artist-enrichment-select input,
+.artist-enrichment-replace input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: var(--r-primary);
+  cursor: pointer;
+}
+.artist-enrichment-candidate-body { display: grid; gap: 4px; min-width: 0; }
+.artist-enrichment-candidate-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.artist-enrichment-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--r-on-surface);
+  overflow-wrap: anywhere;
+}
+
+/* Selected artist bar on the review step. */
+.artist-enrichment-selected {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--r-radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+}
+.artist-enrichment-selected-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.artist-enrichment-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--r-on-surface-muted);
+}
+
+/* Suggestion cards. */
+.artist-enrichment-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.artist-enrichment-suggestions {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.artist-enrichment-suggestion {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.artist-enrichment-select {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.artist-enrichment-field-name { font-size: 14px; color: var(--r-on-surface); }
+.artist-enrichment-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+  min-width: 0;
+}
+.artist-enrichment-value > .ui-input,
+.artist-enrichment-textarea-wrap {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.artist-enrichment-textarea-wrap { display: grid; gap: 4px; }
+.artist-enrichment-counter { justify-self: end; font-size: 12px; font-variant-numeric: tabular-nums; }
+.artist-enrichment-thumb {
+  flex: 0 0 72px;
+  width: 72px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--r-surface-high);
+}
+.artist-enrichment-current {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--r-on-surface-muted);
+}
+.artist-enrichment-replace {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--r-radius-xs);
+  background: rgba(251, 191, 36, 0.07);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  font-size: 13px;
+  color: var(--r-on-surface);
+  cursor: pointer;
+}
+.artist-enrichment-footnotes {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--r-on-surface-muted);
+  overflow-wrap: anywhere;
+}
+.artist-enrichment-footnotes .artist-enrichment-source { display: inline-flex; }
+
+/* Narrow panels (phones, or the edit form inside a tight hero column). */
+@container artist-enrichment (max-width: 440px) {
+  .artist-enrichment-step + .artist-enrichment-step::before { width: 10px; }
+  .artist-enrichment-step:not(.is-current) .artist-enrichment-step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .artist-enrichment-alert .artist-enrichment-compact-btn,
+  .artist-enrichment-alert:has(.artist-enrichment-compact-btn) .artist-enrichment-error { grid-column: 2 / -1; }
+  .artist-enrichment-alert .artist-enrichment-compact-btn { justify-self: start; }
+  .artist-enrichment-success > .artist-enrichment-actions { grid-column: 1 / -1; }
+  .artist-enrichment-actions .ui-btn { flex: 1 1 100%; }
+  .artist-enrichment-candidate,
+  .artist-enrichment-suggestion,
+  .artist-enrichment-selected { padding: 12px; }
+}
 
 /* Unclaimed public-artist badge + claim callout (#1492). Neutral, compact,
  * collapsed by default; sits below the listener actions. */

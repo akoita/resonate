@@ -1,4 +1,4 @@
-import type { ArtistEnrichmentSuggestion, ArtistSocialLinks } from "./api";
+import type { ArtistEnrichmentField, ArtistEnrichmentSuggestion, ArtistSocialLinks } from "./api";
 
 /** Ownership check for the "Edit profile" affordance on `/artist/[id]` (#1419). */
 export function isArtistProfileOwner(
@@ -112,9 +112,10 @@ export function applyArtistEnrichmentSuggestions(
   suggestions: ArtistEnrichmentSuggestion[],
   selected: ReadonlySet<string>,
   replacements: ReadonlySet<string>,
-): { form: ArtistProfileFormState; skipped: string[] } {
+): { form: ArtistProfileFormState; skipped: string[]; applied: ArtistEnrichmentField[] } {
   const next = { ...form };
   const skipped: string[] = [];
+  const applied: ArtistEnrichmentField[] = [];
   for (const suggestion of suggestions) {
     const field = suggestion.field;
     if (!selected.has(field)) continue;
@@ -133,8 +134,9 @@ export function applyArtistEnrichmentSuggestions(
       continue;
     }
     next[field] = value;
+    applied.push(field);
   }
-  return { form: next, skipped };
+  return { form: next, skipped, applied };
 }
 
 /**

@@ -1106,14 +1106,14 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "While editing a profile you manage, choose \"Suggest profile info with AI\". Pick the exact artist from the public search results; artists with the same name can have separate profiles. Review each proposed field, its source, and its confidence. You can change the suggested text and select only the fields you want. If a field already contains information, confirm that you want to replace it. Adding suggestions fills the edit form; choose \"Save changes\" to publish them. If you edit a suggestion after adding it, add it to the form again before saving. Closing the panel before adding suggestions changes nothing. Canceling the editor discards staged changes.",
+            text: "While editing a profile you manage, choose \"Find suggestions\" to look up your artist in public music databases (MusicBrainz and Wikidata). Pick the exact artist from the results and choose \"Review suggestions\"; artists with the same name can have separate profiles, so check the details and source link first. Each proposed field shows its source and confidence, and the bio is marked \"AI draft\" because it is written by AI from public facts. Edit any suggested text and select only the fields you want. If a field already contains information, you'll see its current value and must confirm that you want to replace it. Choose \"Add … to form\" to fill the edit form; added fields are marked \"Suggested\" until you edit them. If you change a suggestion after adding it, add it to the form again before saving. Nothing is published until you choose \"Save changes\". Closing the panel before adding suggestions changes nothing, and canceling the editor discards staged changes.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/artist-enrichment.png`,
-              alt: "Artist profile editor showing source-linked AI suggestions with a selected bio field.",
-              caption: "Check the selected artist, source, and fields before adding suggestions to the form.",
+              alt: "Profile suggestions panel on the review step, showing the selected artist and a selected AI-drafted bio with its source.",
+              caption: "Check the selected artist, each source, and the fields you select before adding them to the form.",
               width: 1440,
               height: 1200,
               source: LOCAL,
@@ -1123,7 +1123,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "tip",
             title: "Check sources before saving",
-            text: "Suggestions can be incomplete or mistaken. Open the linked sources and check the artist identity, links, and any image-use details. If no result matches, continue editing manually or search again. A temporary source or AI error will not change your existing profile.",
+            text: "Suggestions can be incomplete or mistaken. Open the linked sources and check the artist identity, links, and any image-use details. If no result matches, choose \"None of these match\" and keep editing by hand, or search again. A temporary source or AI error will not change your existing profile.",
           },
         ],
       },
