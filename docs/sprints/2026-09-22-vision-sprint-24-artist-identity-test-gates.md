@@ -1,10 +1,57 @@
 # Vision Sprint 24: Stable artist identity, trustworthy test gates
 
-**Status:** in progress.
+**Status:** completed 2026-09-23 (5/5 issues closed: the 4 admitted issues plus #1838, admitted mid-sprint).
 **Milestone:** [26](https://github.com/akoita/resonate/milestone/26).
 **Goal:** Give every credited artist a stable, claimable identity across the
 catalog, Library, profiles, and rankings, while ensuring CI and mutation
 testing reliably validate those changes.
+
+## Outcome
+
+Credited artists now have one stable identity across the catalog, Library,
+profiles, and Top Artists, and the test gates that guard those changes are
+reliable again.
+
+- [#1827](https://github.com/akoita/resonate/issues/1827) — [PR #1832](https://github.com/akoita/resonate/pull/1832)
+  sharded the oversized Gambit campaigns; a complete run scored all five
+  targets inside the job boundary.
+- [#1765](https://github.com/akoita/resonate/issues/1765) — [PR #1833](https://github.com/akoita/resonate/pull/1833)
+  derives Gambit remappings from Foundry, so the five configs no longer
+  duplicate them.
+- [#1783](https://github.com/akoita/resonate/issues/1783) — [PR #1834](https://github.com/akoita/resonate/pull/1834)
+  selects related backend and web tests in CI and runs the web Vitest suite;
+  the merge-queue and nightly full-graph gates are unchanged.
+- [#1492](https://github.com/akoita/resonate/issues/1492) — [PR #1835](https://github.com/akoita/resonate/pull/1835)
+  keys release credits and Top Artists engagement by the credited public
+  artist ID, flags legacy collisions and mismatches as ambiguous instead of
+  auto-merging them, lets operators resolve an ambiguous credit to an exact
+  artist, and adds evidence-based profile claims that grant public-profile
+  editing only. The upload picker requires an explicit choice when several
+  artists share a name.
+- [#1838](https://github.com/akoita/resonate/issues/1838), admitted
+  mid-sprint at the owner's request — [PR #1840](https://github.com/akoita/resonate/pull/1840)
+  and [PR #1841](https://github.com/akoita/resonate/pull/1841) redesigned the
+  public catalog and the home Recently Added snapshot around shared
+  artwork-first release, artist, stem-track, and playlist cards, and
+  refreshed the User Guide catalog screenshot.
+
+### Carry-over and follow-ups
+
+- [#1450](https://github.com/akoita/resonate/issues/1450) (analytics marts)
+  and [#1762](https://github.com/akoita/resonate/issues/1762) (delegated
+  management and transfer) were `open-outside` on #1492. That dependency is
+  now satisfied, so both are candidates for the next sprint; the
+  artist-identity feature page stays `partial` until the marts adopt the
+  credited-artist key.
+- Two listener/artist defects were filed during the sprint and are not
+  milestoned: [#1836](https://github.com/akoita/resonate/issues/1836) (the
+  artist catalog does not refresh release status after processing) and
+  [#1837](https://github.com/akoita/resonate/issues/1837) (removing tracks,
+  artists and albums from My Library is not properly supported).
+- The deferred candidates below are otherwise unchanged. Deployment evidence
+  is tracked privately in `resonate-iac`.
+
+The next milestone is not yet selected.
 
 ## Capacity and sequencing
 
