@@ -1,6 +1,6 @@
 # Vision Sprint 26: Safer artist profile claims
 
-**Status:** Implementation complete; release closeout in progress.
+**Status:** Implementation complete; release evidence recorded.
 **Milestone:** [28](https://github.com/akoita/resonate/milestone/28).
 **Goal:** Keep public artist pages focused on music while artists and
 representatives request exact-profile access through an operator-reviewed path.
@@ -26,10 +26,11 @@ payouts, or private analytics.
 The exact merged SHA passed [main CI](https://github.com/akoita/resonate/actions/runs/35885616588).
 The PR also passed focused backend integration, HTTP, web unit, E2E, lint,
 build, and security checks. The [release preview](https://github.com/akoita/resonate/actions/runs/35895295819)
-validated the same SHA and its CI run. The staging image publication and
-deployment handoff are tracked by [Release Deployment](https://github.com/akoita/resonate/actions/runs/35895355884);
-private infrastructure reconciliation and live deployment evidence belong in
-`resonate-iac` [#250](https://github.com/akoita/resonate-iac/issues/250).
+validated the same SHA and its CI run. [Release Deployment](https://github.com/akoita/resonate/actions/runs/35895355884)
+published immutable backend, frontend, and Demucs images and completed its
+manifest handoff. Private infrastructure reconciliation and live deployment
+evidence are retained in `resonate-iac`
+[#250](https://github.com/akoita/resonate-iac/issues/250).
 
 This sprint changelog is separate from a SemVer software release. It does not
 claim a production deployment.

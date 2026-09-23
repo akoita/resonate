@@ -48,7 +48,7 @@ Every sprint plan passes the **Business Model Conformance** check in
 ## Sprint index
 
 Current: [Vision Sprint 26 — Safer artist profile claims](2026-09-23-vision-sprint-26-safer-artist-claims.md),
-implementation complete; release closeout in progress. Vision Sprint 25 closed 3/3.
+implementation and release evidence complete. Vision Sprint 25 closed 3/3.
 
 | Sprint | Theme | Outcome |
 | --- | --- | --- |
@@ -78,4 +78,4 @@ implementation complete; release closeout in progress. Vision Sprint 25 closed 3
 | [2026-09-16](2026-09-16-vision-sprint-23-data-rights.md) | Vision Sprint 23 — data rights the app can actually honor | ✅ Closed 2026-09-20 — 8/8; staging legal surface, consent, export and retryable warehouse erasure, durable generation refunds, and scheduled-automation reporting delivered |
 | [2026-09-22](2026-09-22-vision-sprint-24-artist-identity-test-gates.md) | Vision Sprint 24 — stable artist identity, trustworthy test gates | ✅ Closed 2026-09-23 — 5/5; stable credited-artist IDs with ambiguity review and profile claims, complete mutation scoring, related-test CI selection, and an artwork-first public catalog |
 | [2026-09-23](2026-09-23-vision-sprint-25-artist-management.md) | Vision Sprint 25 — artist management with reliable catalog status | ✅ Closed 2026-09-23 — 3/3; catalog status refresh, scoped artist management, and listener library removal |
-| [2026-09-23](2026-09-23-vision-sprint-26-safer-artist-claims.md) | Vision Sprint 26 — safer artist profile claims | Implementation complete — #1856 merged; release closeout in progress |
+| [2026-09-23](2026-09-23-vision-sprint-26-safer-artist-claims.md) | Vision Sprint 26 — safer artist profile claims | Implementation and release evidence complete — #1856 merged; closeout PR pending |
