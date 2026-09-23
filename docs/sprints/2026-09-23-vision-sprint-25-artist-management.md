@@ -1,6 +1,6 @@
 # Vision Sprint 25: Artist management with reliable catalog status
 
-**Status:** All three admitted issues merged; milestone changelog pending.
+**Status:** Implementation complete; release evidence recorded.
 **Milestone:** [27](https://github.com/akoita/resonate/milestone/27).
 **Goal:** An artist or authorized manager can see when an upload finishes and
 manage the credited artist profile and catalog through explicit permissions.
@@ -63,6 +63,6 @@ validated that exact SHA and CI run. The
 [publish and handoff run](https://github.com/akoita/resonate/actions/runs/35866549637)
 succeeded and retained a deploy manifest plus image evidence for frontend,
 backend, and Demucs. Private infrastructure reconciliation and live deployment
-evidence are tracked in resonate-iac#249. A next milestone has not yet
-been selected. #1450, #1763, #1663,
-#1667, and #1583 remain outside Sprint 25 with their existing owners and gates.
+evidence are tracked in resonate-iac#249. A next milestone has not yet been
+selected. #1450, #1763, #1663, #1667, and #1583 remain outside Sprint 25 with
+their existing owners and gates.
