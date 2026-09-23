@@ -11,6 +11,7 @@ import {
   getReleaseManagementAccess,
   inviteManager,
   inviteManagementTransfer,
+  narrowManagementGrant,
   respondToManagementGrant,
   respondToManagementTransfer,
   type ManagementScope,
@@ -36,6 +37,10 @@ export default function ArtistManagementPage() {
   const [recipientEmail, setRecipientEmail] = useState("");
   const [scopes, setScopes] = useState<ManagementScope[]>(["CATALOG_READ", "CATALOG_METADATA"]);
   const [allReleases, setAllReleases] = useState(false);
+  const [inviteExpiresAt, setInviteExpiresAt] = useState("");
+  const [editingGrantId, setEditingGrantId] = useState<string | null>(null);
+  const [editedScopes, setEditedScopes] = useState<ManagementScope[]>([]);
+  const [editedExpiresAt, setEditedExpiresAt] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +99,7 @@ export default function ArtistManagementPage() {
           : getReleaseManagementAccess(token, selected.id)).catch(() => null);
         setAccess(nextAccess);
       }
+      setEditingGrantId(null);
       addToast({ type: "success", title: success });
     } catch (reason) {
       addToast({
@@ -115,7 +121,31 @@ export default function ArtistManagementPage() {
       recipientEmail: recipientEmail.trim(),
       ...(selected.kind === "artist" ? { artistId: selected.id } : { releaseId: selected.id }),
       scopes: chosenScopes,
+      ...(inviteExpiresAt ? { expiresAt: new Date(inviteExpiresAt).toISOString() } : {}),
     }), "Invitation sent");
+  };
+
+  const editGrant = (grant: ResourceManagementAccess["grants"][number]) => {
+    setEditingGrantId(grant.id);
+    setEditedScopes(grant.scopes);
+    setEditedExpiresAt(grant.expiresAt ? toLocalDateTime(grant.expiresAt) : "");
+  };
+
+  const saveGrant = (event: React.FormEvent, grant: ResourceManagementAccess["grants"][number]) => {
+    event.preventDefault();
+    if (!token || editedScopes.length === 0) return;
+    const scopeChanged = editedScopes.length !== grant.scopes.length
+      || editedScopes.some((scope) => !grant.scopes.includes(scope));
+    const expiryChanged = editedExpiresAt !== (grant.expiresAt ? toLocalDateTime(grant.expiresAt) : "");
+    if (!scopeChanged && !expiryChanged) return;
+    if (expiryChanged && !editedExpiresAt) {
+      addToast({ type: "error", title: "Choose an expiry", message: "Access can only be shortened here." });
+      return;
+    }
+    void run(() => narrowManagementGrant(token, grant.id, {
+      ...(scopeChanged ? { scopes: editedScopes } : {}),
+      ...(expiryChanged ? { expiresAt: new Date(editedExpiresAt).toISOString() } : {}),
+    }), "Access updated");
   };
 
   const transfer = () => {
@@ -187,6 +217,9 @@ export default function ArtistManagementPage() {
                     {scope.label}
                   </label>)}
                 </fieldset>}
+                <label className="artist-management-field">Access expires (optional)
+                  <input type="datetime-local" value={inviteExpiresAt} onChange={(event) => setInviteExpiresAt(event.target.value)} min={toLocalDateTime(new Date().toISOString())} />
+                </label>
                 <button type="submit" disabled={busy || (selected.kind === "release" && scopes.length === 0)}>Send invitation</button>
               </form>
 
@@ -203,10 +236,25 @@ export default function ArtistManagementPage() {
               {access?.currentUserAccess.isOwner && <div className="artist-management-grants">
                 <h3>Access history for {selected.name}</h3>
                 {access.grants.length === 0 && <p className="analytics-muted">No invitations yet.</p>}
-                {access.grants.map((grant) => <div key={grant.id} className="artist-management-row">
-                  <div><strong>{grant.granteeEmail ?? "Invited account"}</strong><p className="analytics-muted">{grant.status} · {grant.scopes.map(scopeLabel).join(", ")}</p></div>
-                  {(grant.status === "pending" || grant.status === "active") && <button type="button" disabled={busy} onClick={() => token && void run(() => respondToManagementGrant(token, grant.id, "revoke"), "Access revoked")}>Revoke</button>}
-                </div>)}
+                {access.grants.map((grant) => {
+                  const expired = !!grant.expiresAt && new Date(grant.expiresAt).getTime() <= Date.now();
+                  return <div key={grant.id} className="artist-management-row">
+                  <div><strong>{grant.granteeEmail ?? "Invited account"}</strong><p className="analytics-muted">{expired && grant.status === "active" ? "expired" : grant.status} · {grant.scopes.map(scopeLabel).join(", ")}{grant.expiresAt ? ` · Expires ${new Date(grant.expiresAt).toLocaleString()}` : " · No expiry"}</p>
+                    {editingGrantId === grant.id && <form className="artist-management-form" onSubmit={(event) => saveGrant(event, grant)}>
+                      <fieldset><legend>Keep permissions</legend>
+                        {(selected.kind === "artist" ? [{ value: "PROFILE_EDIT" as ManagementScope, label: "Profile details" }] : RELEASE_SCOPES)
+                          .filter((scope) => grant.scopes.includes(scope.value))
+                          .map((scope) => <label key={scope.value} className="artist-management-checkbox"><input type="checkbox" checked={editedScopes.includes(scope.value)} onChange={(event) => setEditedScopes((previous) => event.target.checked ? [...previous, scope.value] : previous.filter((item) => item !== scope.value))} />{scope.label}</label>)}
+                      </fieldset>
+                      <label className="artist-management-field">End access on or before current expiry
+                        <input type="datetime-local" value={editedExpiresAt} onChange={(event) => setEditedExpiresAt(event.target.value)} min={toLocalDateTime(new Date().toISOString())} max={grant.expiresAt ? toLocalDateTime(grant.expiresAt) : undefined} />
+                      </label>
+                      <p className="analytics-muted">Pending invitations for this manager and resource will end. To add permissions or extend access, send a new invitation. To remove all access, revoke it.</p>
+                      <div className="artist-management-actions"><button type="submit" disabled={busy || editedScopes.length === 0}>Save access</button><button type="button" onClick={() => setEditingGrantId(null)}>Cancel</button></div>
+                    </form>}
+                  </div>
+                  {(grant.status === "pending" || grant.status === "active") && <div className="artist-management-actions">{grant.status === "active" && !expired && <button type="button" disabled={busy} onClick={() => editGrant(grant)}>Edit access</button>}<button type="button" disabled={busy} onClick={() => token && void run(() => respondToManagementGrant(token, grant.id, "revoke"), "Access revoked")}>Revoke</button></div>}
+                </div>;})}
               </div>}
             </>}
           </section>
@@ -227,6 +275,7 @@ export default function ArtistManagementPage() {
         </>}
         <style jsx>{`
           .artist-management-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; border-top: 1px solid rgba(255,255,255,.1); padding: 16px 0; }
+          .artist-management-grants .artist-management-row { align-items: flex-start; }
           .artist-management-row p { margin: 4px 0 0; }
           .artist-management-resource-list { max-height: 160px; overflow-y: auto; margin: 6px 0; padding-left: 20px; }
           .artist-management-actions { display: flex; gap: 8px; }
@@ -255,4 +304,10 @@ function scopeLabel(scope: ManagementScope) {
     CATALOG_MEDIA: "Replace artwork",
     TRACK_METADATA: "Edit track details",
   }[scope];
+}
+
+function toLocalDateTime(value: string): string {
+  const date = new Date(value);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }

@@ -101,6 +101,13 @@ async function createRelease(artistId: string, suffix: string) {
 }
 
 describe("ManagementService lifecycle integration", () => {
+  it("rejects malformed grant update bodies", async () => {
+    for (const body of [undefined, null, "invalid", 5, []]) {
+      await expect(service.updateGrant(USERS.owner, "missing-grant", body as never))
+        .rejects.toBeInstanceOf(BadRequestException);
+    }
+  });
+
   it("rejects oversized crafted recipient emails early and accepts a normal address", async () => {
     const craftedAddress = `user@${".".repeat(10_000)} `;
     await expect(service.createTransfer("missing-user", { recipientEmail: craftedAddress }))
@@ -150,6 +157,172 @@ describe("ManagementService lifecycle integration", () => {
     expect(revoked.status).toBe(ManagementGrantStatus.revoked);
     expect(revoked.revokedAt).toBeInstanceOf(Date);
     await expect(service.getArtistAccess(USERS.manager, artist.id)).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it("narrows an active grant by replacing it and preserves its audit history", async () => {
+    const { releases } = await createFixture(1);
+    const originalExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const grant = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA, ManagementScope.TRACK_METADATA],
+      expiresAt: originalExpiry.toISOString(),
+    });
+    const accepted = await service.acceptGrant(USERS.manager, grant.id);
+    const pendingExpansion = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA, ManagementScope.TRACK_METADATA],
+    });
+    const shortenedExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const narrowed = await service.updateGrant(USERS.owner, grant.id, {
+      scopes: [ManagementScope.CATALOG_READ],
+      expiresAt: shortenedExpiry.toISOString(),
+    });
+
+    expect(narrowed.id).not.toBe(grant.id);
+    expect(narrowed).toMatchObject({
+      artistId: null,
+      releaseId: releases[0].id,
+      granteeUserId: USERS.manager,
+      inviterUserId: USERS.owner,
+      scopes: [ManagementScope.CATALOG_READ],
+      status: ManagementGrantStatus.active,
+      acceptedAt: accepted.acceptedAt,
+      expiresAt: shortenedExpiry,
+    });
+    const [oldGrant, currentGrant] = await Promise.all([
+      prisma.managementGrant.findUniqueOrThrow({ where: { id: grant.id } }),
+      prisma.managementGrant.findUniqueOrThrow({ where: { id: narrowed.id } }),
+    ]);
+    expect(oldGrant).toMatchObject({
+      status: ManagementGrantStatus.revoked,
+      acceptedAt: accepted.acceptedAt,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA, ManagementScope.TRACK_METADATA],
+    });
+    expect(oldGrant.revokedAt).toBeInstanceOf(Date);
+    expect(currentGrant.acceptedAt).toEqual(oldGrant.acceptedAt);
+    expect(currentGrant.revokedAt).toBeNull();
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: pendingExpansion.id } })).status)
+      .toBe(ManagementGrantStatus.revoked);
+    await expect(service.acceptGrant(USERS.manager, pendingExpansion.id))
+      .rejects.toBeInstanceOf(ConflictException);
+    expect(await service.getReleaseAccess(USERS.manager, releases[0].id)).toMatchObject({
+      currentUserAccess: { isOwner: false, scopes: [ManagementScope.CATALOG_READ] },
+    });
+    await expect(service.updateGrant(USERS.owner, grant.id, { scopes: [ManagementScope.CATALOG_READ] }))
+      .rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("lets an unbounded active grant become finite", async () => {
+    const { releases } = await createFixture(1);
+    const invite = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ],
+    });
+    await service.acceptGrant(USERS.manager, invite.id);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const narrowed = await service.updateGrant(USERS.owner, invite.id, { expiresAt: expiresAt.toISOString() });
+
+    expect(narrowed).toMatchObject({
+      scopes: [ManagementScope.CATALOG_READ],
+      status: ManagementGrantStatus.active,
+      expiresAt,
+    });
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: invite.id } })).status)
+      .toBe(ManagementGrantStatus.revoked);
+  });
+
+  it("accepts a narrower scope when the request repeats the current expiry", async () => {
+    const { releases } = await createFixture(1);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invite = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA],
+      expiresAt: expiresAt.toISOString(),
+    });
+    await service.acceptGrant(USERS.manager, invite.id);
+
+    const narrowed = await service.updateGrant(USERS.owner, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ],
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    expect(narrowed).toMatchObject({
+      scopes: [ManagementScope.CATALOG_READ],
+      expiresAt,
+      status: ManagementGrantStatus.active,
+    });
+  });
+
+  it("rejects scope widening, expiry removal or extension, and unchanged edits", async () => {
+    const { releases } = await createFixture(1);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invite = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA],
+      expiresAt: expiresAt.toISOString(),
+    });
+    await expect(service.updateGrant(USERS.owner, invite.id, { scopes: [ManagementScope.CATALOG_READ] }))
+      .rejects.toBeInstanceOf(ConflictException);
+    await service.acceptGrant(USERS.manager, invite.id);
+
+    await expect(service.updateGrant(USERS.owner, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA, ManagementScope.TRACK_METADATA],
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateGrant(USERS.owner, invite.id, { expiresAt: null }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateGrant(USERS.owner, invite.id, {
+      expiresAt: new Date(expiresAt.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateGrant(USERS.owner, invite.id, {
+      expiresAt: new Date(expiresAt.getTime() - 24 * 60 * 60 * 1000).toUTCString(),
+    })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.updateGrant(USERS.owner, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA],
+    }))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    await prisma.managementGrant.update({
+      where: { id: invite.id },
+      data: { expiresAt: new Date(Date.now() - 1) },
+    });
+    await expect(service.updateGrant(USERS.owner, invite.id, { scopes: [ManagementScope.CATALOG_READ] }))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    expect(await prisma.managementGrant.count({ where: { releaseId: releases[0].id } })).toBe(1);
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: invite.id } })).status)
+      .toBe(ManagementGrantStatus.active);
+  });
+
+  it("allows grant narrowing only to the current owner before and after ownership transfer", async () => {
+    const { releases } = await createFixture(1);
+    const invite = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA],
+    });
+    await service.acceptGrant(USERS.manager, invite.id);
+
+    await expect(service.updateGrant(USERS.outsider, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ],
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    const transfer = await service.createTransfer(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.otherOwner],
+      releaseIds: [releases[0].id],
+    });
+    await service.acceptTransfer(USERS.otherOwner, transfer.id);
+
+    await expect(service.updateGrant(USERS.owner, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ],
+    })).rejects.toBeInstanceOf(ForbiddenException);
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: invite.id } })).status)
+      .toBe(ManagementGrantStatus.revoked);
   });
 
   it("keeps profile and exact-release scopes separate and exposes approved claims as edit-only", async () => {

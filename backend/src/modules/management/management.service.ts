@@ -60,6 +60,11 @@ export interface CreateManagementGrantInput {
   expiresAt?: unknown;
 }
 
+export interface UpdateManagementGrantInput {
+  scopes?: unknown;
+  expiresAt?: unknown;
+}
+
 export interface CreateManagementTransferInput {
   recipientEmail?: unknown;
   artistId?: unknown;
@@ -411,6 +416,103 @@ export class ManagementService {
           scopes,
           status: ManagementGrantStatus.pending,
           expiresAt,
+        },
+      });
+    });
+  }
+
+  async updateGrant(userId: string, grantId: string, input: UpdateManagementGrantInput) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new BadRequestException("Grant update body must be an object");
+    }
+    return prisma.$transaction(async (tx) => {
+      const initial = await tx.managementGrant.findUnique({ where: { id: grantId } });
+      if (!initial) throw new NotFoundException("Management grant not found");
+
+      const initialHasArtist = Boolean(initial.artistId);
+      const initialHasRelease = Boolean(initial.releaseId);
+      if (initialHasArtist === initialHasRelease) {
+        throw new ConflictException("The grant no longer references exactly one managed resource");
+      }
+      if (initial.artistId) await this.lockArtist(tx, initial.artistId);
+      else await this.lockRelease(tx, initial.releaseId!);
+
+      await tx.$queryRaw`SELECT "id" FROM "ManagementGrant" WHERE "id" = ${grantId} FOR UPDATE`;
+      const grant = await tx.managementGrant.findUnique({ where: { id: grantId } });
+      if (!grant) throw new NotFoundException("Management grant not found");
+      if (grant.artistId !== initial.artistId || grant.releaseId !== initial.releaseId) {
+        throw new ConflictException("The grant's managed resource changed during the update");
+      }
+
+      await this.assertOpenUser(tx, userId);
+      const isCurrentOwner = grant.artistId
+        ? await hasArtistManagementAccess(userId, grant.artistId, "profile_owner", tx)
+        : grant.releaseId
+          ? await hasReleaseManagementAccess(userId, grant.releaseId, "catalog_owner", tx)
+          : false;
+      if (!isCurrentOwner) {
+        throw new ForbiddenException("Only the current owner can update a management grant");
+      }
+      if (grant.status !== ManagementGrantStatus.active) {
+        throw new ConflictException("Only active grants can be narrowed");
+      }
+
+      const resourceType = grant.artistId
+        ? ManagementResourceType.artist_profile
+        : ManagementResourceType.release;
+      const scopes = input.scopes === undefined
+        ? grant.scopes
+        : this.readGrantScopes(input.scopes, resourceType);
+      if (scopes.some((scope) => !grant.scopes.includes(scope))) {
+        throw new BadRequestException("Grant scopes can only be narrowed");
+      }
+
+      const expiresAt = input.expiresAt === undefined
+        ? grant.expiresAt
+        : parseFutureIsoExpiry(input.expiresAt);
+      const changedAt = new Date();
+      if (expiresAt && expiresAt.getTime() <= changedAt.getTime()) {
+        throw new BadRequestException("expiresAt must be in the future");
+      }
+      if (
+        input.expiresAt !== undefined &&
+        grant.expiresAt &&
+        expiresAt!.getTime() > grant.expiresAt.getTime()
+      ) {
+        throw new BadRequestException("expiresAt can only be shortened");
+      }
+
+      const scopesChanged = scopes.length !== grant.scopes.length ||
+        grant.scopes.some((scope) => !scopes.includes(scope));
+      const expiryChanged = (expiresAt?.getTime() ?? null) !== (grant.expiresAt?.getTime() ?? null);
+      if (!scopesChanged && !expiryChanged) {
+        throw new BadRequestException("The grant update must narrow scopes or shorten expiry");
+      }
+
+      await tx.managementGrant.update({
+        where: { id: grant.id },
+        data: { status: ManagementGrantStatus.revoked, revokedAt: changedAt },
+      });
+      // A pending invitation for the same manager could otherwise restore
+      // broader access after this narrowing when the recipient accepts it.
+      await tx.managementGrant.updateMany({
+        where: {
+          ...(grant.artistId ? { artistId: grant.artistId } : { releaseId: grant.releaseId }),
+          granteeUserId: equalsUserId(grant.granteeUserId),
+          status: ManagementGrantStatus.pending,
+        },
+        data: { status: ManagementGrantStatus.revoked, revokedAt: changedAt },
+      });
+      return tx.managementGrant.create({
+        data: {
+          artistId: grant.artistId,
+          releaseId: grant.releaseId,
+          granteeUserId: grant.granteeUserId,
+          inviterUserId: userId,
+          scopes,
+          status: ManagementGrantStatus.active,
+          expiresAt,
+          acceptedAt: grant.acceptedAt,
         },
       });
     });
@@ -901,6 +1003,21 @@ function parseFutureExpiry(value: unknown): Date | null {
   if (value === undefined || value === null) return null;
   const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
   if (!date || !Number.isFinite(date.getTime())) throw new BadRequestException("expiresAt must be a valid timestamp");
+  if (date.getTime() <= Date.now()) throw new BadRequestException("expiresAt must be in the future");
+  return date;
+}
+
+function parseFutureIsoExpiry(value: unknown): Date {
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  ) {
+    throw new BadRequestException("expiresAt must be a future ISO timestamp");
+  }
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new BadRequestException("expiresAt must be a future ISO timestamp");
+  }
   if (date.getTime() <= Date.now()) throw new BadRequestException("expiresAt must be in the future");
   return date;
 }
