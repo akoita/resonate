@@ -28,19 +28,25 @@ import {
   type Track,
   type TrendingTrackItem,
 } from "../lib/api";
-import { artistProfileHref, catalogArtistHref } from "../lib/artistRoutes";
+import { artistProfileHref } from "../lib/artistRoutes";
 import {
   filterPublicPlaylists,
   flattenCatalogStems,
+  formatCount,
   getArtistName,
   getCatalogSortTime,
   getTrackArtistName,
+  groupCatalogStemsByTrack,
   summarizeCreditedArtists,
   summarizeManagedArtists,
   type CatalogArtistSummary,
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
+import { catalogArtistPlaybackTracks } from "../lib/catalogArtistPlayback";
+import { CatalogArtistCard } from "../components/catalog/CatalogArtistCard";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
+import { CatalogReleaseCard } from "../components/catalog/CatalogReleaseCard";
+import { CatalogStemTrackRow } from "../components/catalog/CatalogStemTrackRow";
 import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
@@ -89,7 +95,17 @@ type FilterOption = {
 };
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
+const HOME_RELEASE_SNAPSHOT_LIMIT = 12;
+const HOME_ARTIST_SNAPSHOT_LIMIT = 12;
+const HOME_STEM_TRACK_SNAPSHOT_LIMIT = 6;
 const HOME_PLAYLIST_SNAPSHOT_LIMIT = 12;
+/** Snapshot window unit per view; the stems view lists one row per track. */
+const CATALOG_SNAPSHOT_UNITS: Record<CatalogView, string> = {
+  releases: "release",
+  artists: "artist",
+  stems: "track",
+  playlists: "playlist",
+};
 
 type HomeRecommendation = {
   key: string;
@@ -568,9 +584,24 @@ export default function Home() {
     () => filterPublicPlaylists(publicPlaylists, normalizedSearch),
     [publicPlaylists, normalizedSearch],
   );
-  const browseReleases = useMemo(() => catalogFilteredReleases.slice(0, 18), [catalogFilteredReleases]);
-  const browseArtists = useMemo(() => catalogFilteredArtists.slice(0, 12), [catalogFilteredArtists]);
-  const browseStems = useMemo(() => catalogFilteredStems.slice(0, 12), [catalogFilteredStems]);
+  const catalogFilteredStemTracks = useMemo(
+    () => groupCatalogStemsByTrack(catalogFilteredStems),
+    [catalogFilteredStems],
+  );
+  const browseReleases = useMemo(
+    () => catalogFilteredReleases.slice(0, HOME_RELEASE_SNAPSHOT_LIMIT),
+    [catalogFilteredReleases],
+  );
+  const browseArtists = useMemo(
+    () => catalogFilteredArtists.slice(0, HOME_ARTIST_SNAPSHOT_LIMIT),
+    [catalogFilteredArtists],
+  );
+  const browseStemTracks = useMemo(
+    () => catalogFilteredStemTracks.slice(0, HOME_STEM_TRACK_SNAPSHOT_LIMIT),
+    [catalogFilteredStemTracks],
+  );
+  // Analytics keeps counting individual stems shown, not grouped track rows.
+  const browseStemCount = browseStemTracks.reduce((total, group) => total + group.stemCount, 0);
   const browsePlaylists = useMemo(
     () => catalogFilteredPlaylists.slice(0, HOME_PLAYLIST_SNAPSHOT_LIMIT),
     [catalogFilteredPlaylists],
@@ -581,7 +612,7 @@ export default function Home() {
       : catalogView === "artists"
         ? browseArtists.length
         : catalogView === "stems"
-          ? browseStems.length
+          ? browseStemTracks.length
           : browsePlaylists.length;
   const catalogTotalCount =
     catalogView === "releases"
@@ -589,7 +620,7 @@ export default function Home() {
       : catalogView === "artists"
         ? catalogFilteredArtists.length
         : catalogView === "stems"
-          ? catalogFilteredStems.length
+          ? catalogFilteredStemTracks.length
           : catalogFilteredPlaylists.length;
   // #1454 WS-7: feed items adapted to the legacy HomeRecommendation shape so
   // the AI DJ session seeding and vibe-queue building keep working unchanged.
@@ -650,16 +681,16 @@ export default function Home() {
           activeFilter,
           releaseResultCount: browseReleases.length,
           artistResultCount: browseArtists.length,
-          stemResultCount: browseStems.length,
+          stemResultCount: browseStemCount,
           playlistResultCount: browsePlaylists.length,
         },
       });
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [activeFilter, browseArtists.length, browsePlaylists.length, browseReleases.length, browseStems.length, catalogSearch, catalogView, token]);
+  }, [activeFilter, browseArtists.length, browsePlaylists.length, browseReleases.length, browseStemCount, catalogSearch, catalogView, token]);
 
   const recordCatalogSearchResultClick = (
-    resultType: "release" | "artist" | "stem" | "playlist",
+    resultType: "release" | "artist" | "track" | "playlist",
     subjectId: string,
     resultRank: number,
   ) => {
@@ -802,6 +833,11 @@ export default function Home() {
   };
 
   const getReleaseActionTracks = (release: Release) => mapReleaseToLocalTracks(release);
+
+  const handlePlayCatalogRelease = (release: Release) => {
+    const tracks = catalogArtistPlaybackTracks([release]);
+    if (tracks.length > 0) void playQueue(tracks, 0);
+  };
 
   const handleAddReleaseToPlaylist = (release: Release) => {
     const tracks = getReleaseActionTracks(release);
@@ -1030,25 +1066,6 @@ export default function Home() {
               </div>
             </header>
 
-            <div className="ng-catalog-stats" aria-label="Catalog totals">
-              <div>
-                <strong>{displayReleases.length}</strong>
-                <span>Releases</span>
-              </div>
-              <div>
-                <strong>{catalogArtists.length}</strong>
-                <span>Artists</span>
-              </div>
-              <div>
-                <strong>{catalogStems.length}</strong>
-                <span>Stems</span>
-              </div>
-              <div>
-                <strong>{publicPlaylists.length}</strong>
-                <span>Playlists</span>
-              </div>
-            </div>
-
             <div className="ng-segmented" role="tablist" aria-label="Catalog view">
               {(["releases", "artists", "stems", "playlists"] as const).map((view) => (
                 <button
@@ -1064,163 +1081,102 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="ng-catalog-window" aria-live="polite">
-              {catalogTotalCount === 0
-                ? `No ${catalogView} yet`
-                : catalogVisibleCount < catalogTotalCount
-                  ? `Showing ${catalogVisibleCount} of ${catalogTotalCount} ${catalogView} · newest first`
-                  : `${catalogTotalCount} ${catalogView} · newest first`}
-            </div>
+            {catalogVisibleCount < catalogTotalCount && (
+              <p className="ng-cat-summary" aria-live="polite">
+                Showing {catalogVisibleCount} of {formatCount(catalogTotalCount, CATALOG_SNAPSHOT_UNITS[catalogView])}
+              </p>
+            )}
 
             {catalogView === "releases" && (
-              <div className="ng-resource-grid ng-resource-grid--releases">
-                {browseReleases.length > 0 ? (
-                  browseReleases.map((release, index) => (
-                    <article
+              browseReleases.length > 0 ? (
+                <div className="ng-cat-grid">
+                  {browseReleases.map((release, index) => (
+                    <CatalogReleaseCard
                       key={release.id}
-                      className="ng-resource-card"
-                    >
-                      <Link
-                        href={`/release/${release.id}`}
-                        className="ng-resource-card__link"
-                        onClick={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
-                      >
-                        <ReleaseThumb release={release} />
-                        <div className="ng-resource-card__body">
-                          <h4>{release.title}</h4>
-                          <AiDisclosureBadge disclosure={release.aiDisclosure} />
-                          <p>{getArtistName(release)}</p>
-                          <div className="ng-resource-card__meta">
-                            <span>{release.type || "Release"}</span>
-                            <span>{release.genre || "Uncategorized"}</span>
-                          </div>
-                        </div>
-                      </Link>
-                      <div className="ng-resource-card__actions">
-                        <button
-                          type="button"
-                          className="ng-resource-card__action"
-                          onClick={() => handleAddReleaseToPlaylist(release)}
-                          disabled={!release.tracks?.length}
-                          aria-label={`Add ${release.title} to playlist`}
-                          title="Add to playlist"
-                        >
-                          <span className="ms-icon" aria-hidden>playlist_add</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="ng-resource-card__action"
-                          onClick={() => void handleSaveReleaseToLibrary(release)}
-                          disabled={!release.tracks?.length || savingReleaseId === release.id}
-                          aria-label={`Save ${release.title} to library`}
-                          title="Save to library"
-                        >
-                          <span className="ms-icon" data-fill={savingReleaseId === release.id ? "1" : undefined} aria-hidden>
-                            {savingReleaseId === release.id ? "progress_activity" : "library_add"}
-                          </span>
-                        </button>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <div className="ng-empty-state">
-                    <span className="ms-icon" aria-hidden>album</span>
-                    <p>No releases in the global catalog.</p>
-                  </div>
-                )}
-              </div>
+                      release={release}
+                      onSelect={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
+                      onPlay={handlePlayCatalogRelease}
+                      actions={[
+                        {
+                          icon: "playlist_add",
+                          label: `Add ${release.title} to playlist`,
+                          onClick: () => handleAddReleaseToPlaylist(release),
+                          disabled: !release.tracks?.length,
+                        },
+                        {
+                          icon: "library_add",
+                          label: `Save ${release.title} to library`,
+                          onClick: () => void handleSaveReleaseToLibrary(release),
+                          disabled: !release.tracks?.length,
+                          busy: savingReleaseId === release.id,
+                        },
+                      ]}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="ng-empty-state">
+                  <span className="ms-icon" aria-hidden>album</span>
+                  <p>{normalizedSearch ? "No releases match your search." : "No releases in the global catalog."}</p>
+                </div>
+              )
             )}
 
             {catalogView === "artists" && (
-              <div className="ng-artist-browser">
-                {browseArtists.length > 0 ? (
-                  browseArtists.map((artist, index) => {
-                    const rowContent = (
-                      <>
-                        <span className="ng-artist-row__avatar" aria-hidden>
-                          {artist.name[0]?.toUpperCase() ?? "?"}
-                        </span>
-                        <span className="ng-artist-row__main">
-                          <strong>{artist.name}</strong>
-                          <small>{artist.latestRelease?.title ?? "No recent release"}</small>
-                        </span>
-                        <span className="ng-artist-row__metric">
-                          {artist.releaseCount}
-                          <small>releases</small>
-                        </span>
-                        <span className="ng-artist-row__metric">
-                          {artist.stemCount}
-                          <small>stems</small>
-                        </span>
-                      </>
-                    );
-
-                    return (
-                      <Link
-                        key={artist.key}
-                        href={artist.artistId ? artistProfileHref(artist.artistId) : catalogArtistHref(artist.name)}
-                        className="ng-artist-row"
-                        onClick={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
-                      >
-                        {rowContent}
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <div className="ng-empty-state">
-                    <span className="ms-icon" aria-hidden>person_search</span>
-                    <p>No artists in the global catalog.</p>
-                  </div>
-                )}
-              </div>
+              browseArtists.length > 0 ? (
+                <div className="ng-cat-grid">
+                  {browseArtists.map((artist, index) => (
+                    <CatalogArtistCard
+                      key={artist.key}
+                      artist={artist}
+                      onSelect={() => recordCatalogSearchResultClick("artist", artist.artistId ?? artist.key, index + 1)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="ng-empty-state">
+                  <span className="ms-icon" aria-hidden>person_search</span>
+                  <p>{normalizedSearch ? "No artists match your search." : "No artists in the global catalog."}</p>
+                </div>
+              )
             )}
 
             {catalogView === "stems" && (
-              <div className="ng-stem-browser">
-                {browseStems.length > 0 ? (
-                  browseStems.map((stem, index) => (
-                    <Link
-                      key={stem.id}
-                      href={`/release/${stem.releaseId}?mixer=true`}
-                      className="ng-stem-row"
-                      onClick={() => recordCatalogSearchResultClick("stem", stem.id, index + 1)}
-                    >
-                      <span className="ng-stem-row__icon" aria-hidden>
-                        <span className="ms-icon">graphic_eq</span>
-                      </span>
-                      <span className="ng-stem-row__main">
-                        <strong>{stem.title}</strong>
-                        <small>{stem.releaseTitle} · {stem.artistName}</small>
-                      </span>
-                      <span className="ng-stem-row__type">{stem.type}</span>
-                    </Link>
-                  ))
-                ) : (
-                  <div className="ng-empty-state">
-                    <span className="ms-icon" aria-hidden>graphic_eq</span>
-                    <p>No stems are exposed in this catalog slice yet.</p>
-                  </div>
-                )}
-              </div>
+              browseStemTracks.length > 0 ? (
+                <div className="ng-cat-stem-list">
+                  {browseStemTracks.map((group, index) => (
+                    <CatalogStemTrackRow
+                      key={group.key}
+                      group={group}
+                      onSelect={() => recordCatalogSearchResultClick("track", group.trackId, index + 1)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="ng-empty-state">
+                  <span className="ms-icon" aria-hidden>graphic_eq</span>
+                  <p>{normalizedSearch ? "No stems match your search." : "No stems are exposed in this catalog slice yet."}</p>
+                </div>
+              )
             )}
 
             {catalogView === "playlists" && (
-              <div className="ng-resource-grid ng-resource-grid--releases">
-                {browsePlaylists.length > 0 ? (
-                  browsePlaylists.map((playlist, index) => (
+              browsePlaylists.length > 0 ? (
+                <div className="ng-cat-grid">
+                  {browsePlaylists.map((playlist, index) => (
                     <CatalogPlaylistCard
                       key={playlist.id}
                       playlist={playlist}
                       onSelect={() => recordCatalogSearchResultClick("playlist", playlist.id, index + 1)}
                     />
-                  ))
-                ) : (
-                  <div className="ng-empty-state">
-                    <span className="ms-icon" aria-hidden>queue_music</span>
-                    <p>No public playlists in the global catalog yet.</p>
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="ng-empty-state">
+                  <span className="ms-icon" aria-hidden>queue_music</span>
+                  <p>{normalizedSearch ? "No playlists match your search." : "No public playlists in the global catalog yet."}</p>
+                </div>
+              )
             )}
 
             <div className="ng-catalog-footer">
@@ -1580,6 +1536,7 @@ function filterStems(stems: CatalogStemSummary[], query: string) {
   return stems.filter((stem) =>
     [
       stem.title,
+      stem.trackTitle,
       stem.type,
       stem.releaseTitle,
       stem.artistName,

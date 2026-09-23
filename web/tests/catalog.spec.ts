@@ -96,9 +96,9 @@ test.describe("Catalog & Home Page", () => {
 
     test("HOME-09b: Release cards expose library and playlist actions", async ({ page }) => {
         await page.goto("/");
-        await expect(page.locator(".ng-resource-card").first()).toBeVisible({ timeout: 15000 });
-        await expect(page.locator(".ng-resource-card__action[aria-label^='Add']").first()).toBeVisible();
-        await expect(page.locator(".ng-resource-card__action[aria-label^='Save']").first()).toBeVisible();
+        await expect(page.locator(".ng-cat-card").first()).toBeVisible({ timeout: 15000 });
+        await expect(page.locator(".ng-cat-card__action[aria-label^='Add']").first()).toBeVisible();
+        await expect(page.locator(".ng-cat-card__action[aria-label^='Save']").first()).toBeVisible();
     });
 
     test("HOME-10: Managed catalog panel is separate from Library", async ({ page }) => {

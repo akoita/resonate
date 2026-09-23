@@ -52,8 +52,8 @@ edits propagate and a source that goes private or is deleted surfaces as
 Public playlists are a first-class content type in the catalog, alongside
 releases, artists, and stems. The catalog page (`/catalog`) and the home "Global
 catalog snapshot" each have a **Playlists** tab that lists public playlists as
-cards (a 2×2 cover mosaic, the curator's name, and a track count) linking to the
-public viewer.
+artwork-first cards (a large 2×2 cover mosaic, the curator's name, and a track
+count) linking to the public viewer.
 
 Discovery deliberately surfaces **only playable public playlists** — a playlist
 must be `public` *and* contain at least one catalog-backed (streamable) track to
