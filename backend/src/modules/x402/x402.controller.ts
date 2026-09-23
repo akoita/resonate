@@ -528,11 +528,10 @@ export class X402Controller {
         settlement: contractSettlement,
       });
 
-      await prisma.$transaction(async (tx) => {
-        // Keep settlement and provenance atomic. Current-state checks happen
-        // before external marketplace settlement; a later race still grants
-        // this already-paid exact-stem entitlement.
-        await tx.x402Settlement.create({
+      // Current-state checks happen before external marketplace settlement;
+      // a later race still grants this already-paid exact-stem entitlement.
+      await prisma.$transaction([
+        prisma.x402Settlement.create({
           data: {
             stemId: stem.id,
             listingId: activeListing?.id ?? null,
@@ -563,8 +562,8 @@ export class X402Controller {
             canonicalAmountUsd: receipt.payment.canonicalAmountUsd,
             purchasedAt: input.purchasedAt,
           },
-        });
-        await tx.contractEvent.create({
+        }),
+        prisma.contractEvent.create({
           data: {
             eventName: 'x402.purchase',
             chainId: getX402ChainId(this.x402Config.network),
@@ -600,8 +599,8 @@ export class X402Controller {
             },
             processedAt: input.purchasedAt,
           },
-        });
-      });
+        }),
+      ]);
 
       this.eventBus?.publish({
         eventName: 'x402.purchase',

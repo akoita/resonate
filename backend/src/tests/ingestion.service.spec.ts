@@ -31,6 +31,7 @@ describe("IngestionService upload ownership", () => {
   it("reads path-backed audio sequentially without retaining production buffers", async () => {
     const originalNodeEnv = process.env.NODE_ENV;
     const originalSyncProcessing = process.env.USE_SYNC_PROCESSING;
+    const originalTempRoot = process.env.INGESTION_MULTIPART_TEMP_DIR;
     process.env.NODE_ENV = "production";
     process.env.USE_SYNC_PROCESSING = "true";
     const eventBus = new EventBus();
@@ -48,7 +49,10 @@ describe("IngestionService upload ownership", () => {
       { add: jest.fn() } as any,
     );
     const tempDir = await fs.mkdtemp("/tmp/resonate-ingestion-service-");
-    const audioPath = join(tempDir, "track.upload");
+    process.env.INGESTION_MULTIPART_TEMP_DIR = tempDir;
+    const requestDirectory = await fs.mkdtemp(join(tempDir, "request-"));
+    const filename = "audio-1.upload";
+    const audioPath = join(requestDirectory, filename);
     const audio = Buffer.from("path-backed audio");
     await fs.writeFile(audioPath, audio);
 
@@ -62,6 +66,8 @@ describe("IngestionService upload ownership", () => {
           mimetype: "audio/wav",
           size: audio.length,
           path: audioPath,
+          destination: requestDirectory,
+          filename,
         } as Express.Multer.File],
         metadata: {
           tracks: [{ aiDisclosure: { level: "none", facets: [] } }],
@@ -76,6 +82,8 @@ describe("IngestionService upload ownership", () => {
       else process.env.NODE_ENV = originalNodeEnv;
       if (originalSyncProcessing === undefined) delete process.env.USE_SYNC_PROCESSING;
       else process.env.USE_SYNC_PROCESSING = originalSyncProcessing;
+      if (originalTempRoot === undefined) delete process.env.INGESTION_MULTIPART_TEMP_DIR;
+      else process.env.INGESTION_MULTIPART_TEMP_DIR = originalTempRoot;
       await fs.rm(tempDir, { recursive: true, force: true });
     }
   });
