@@ -782,114 +782,148 @@ export class CatalogService implements OnModuleInit {
       }
 
       try {
-        if (event.tracks?.length) {
-          for (const trackData of event.tracks) {
-            // Ensure track exists (it should from stems.uploaded)
-            await prisma.track.upsert({
-              where: { id: trackData.id },
-              create: {
-                id: trackData.id,
-                releaseId: event.releaseId,
-                title: trackData.title,
-                artist: trackData.artist,
-                position: trackData.position,
-                processingStatus: "complete", // Mark as complete when processed
-                processingError: null,
-                rightsRoute: release.rightsRoute,
-                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
-                rightsReason: release.rightsReason,
-                rightsPolicyVersion: release.rightsPolicyVersion,
-                rightsEvaluatedAt: release.rightsEvaluatedAt,
-              },
-              update: {
-                artist: trackData.artist,
-                position: trackData.position,
-                processingStatus: "complete", // Mark as complete when processed
-                processingError: null,
-                rightsRoute: release.rightsRoute,
-                rightsFlags: (release.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
-                rightsReason: release.rightsReason,
-                rightsPolicyVersion: release.rightsPolicyVersion,
-                rightsEvaluatedAt: release.rightsEvaluatedAt,
-              },
-            });
+        const result = await prisma.$transaction(async (tx) => {
+          // Serialize result application with stems.failed by locking the release
+          // before checking its state or touching any tracks and stems.
+          const lockedReleases = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "Release" WHERE "id" = ${event.releaseId} FOR UPDATE
+          `;
+          if (lockedReleases.length === 0) return { skipped: "missing" as const };
 
-            // Emit track status change event
-            this.eventBus.publish({
-              eventName: "catalog.track_status",
-              eventVersion: 1,
-              occurredAt: new Date().toISOString(),
-              releaseId: event.releaseId,
-              trackId: trackData.id,
-              status: "complete",
-            } as CatalogTrackStatusEvent);
+          const currentRelease = await tx.release.findUnique({
+            where: { id: event.releaseId },
+            select: {
+              status: true,
+              rightsRoute: true,
+              rightsFlags: true,
+              rightsReason: true,
+              rightsPolicyVersion: true,
+              rightsEvaluatedAt: true,
+            },
+          });
+          if (!currentRelease) return { skipped: "missing" as const };
+          if (currentRelease.status === "failed") return { skipped: "failed" as const };
 
-            // Clean up stale separated stems from previous (possibly crashed) runs
-            const newStemIds = trackData.stems.map((s: any) => s.id);
-            const deletedStale = await prisma.stem.deleteMany({
-              where: {
-                trackId: trackData.id,
-                type: { not: "original" },
-                id: { notIn: newStemIds },
-              },
-            });
-            if (deletedStale.count > 0) {
-              console.log(`[Catalog] Cleaned up ${deletedStale.count} stale stems for track ${trackData.id}`);
-            }
-
-            for (const stem of trackData.stems) {
-              console.log(`[Catalog] Upserting stem ${stem.id} for track ${trackData.id}`);
-              await prisma.stem.upsert({
-                where: { id: stem.id },
+          const completedTrackIds: string[] = [];
+          const cleanedStaleStems: Array<{ trackId: string; count: number }> = [];
+          const upsertedStemIds: Array<{ trackId: string; stemId: string }> = [];
+          if (event.tracks?.length) {
+            for (const trackData of event.tracks) {
+              // Ensure track exists (it should from stems.uploaded)
+              await tx.track.upsert({
+                where: { id: trackData.id },
                 create: {
-                  id: stem.id,
-                  trackId: trackData.id,
-                  type: stem.type,
-                  uri: stem.uri,
-                  data: stem.data, // Present in sync/test mode, undefined in production (fetched from storage URI)
-                  mimeType: stem.mimeType,
-                  durationSeconds: stem.durationSeconds,
-                  // Sanitized worker measurements (#1184); undefined (old
-                  // payloads) leaves the column untouched.
-                  audioFeatures:
-                    (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
-                  isEncrypted: stem.isEncrypted ?? false,
-                  encryptionMetadata: stem.encryptionMetadata,
-                  storageProvider: stem.storageProvider ?? "local",
+                  id: trackData.id,
+                  releaseId: event.releaseId,
+                  title: trackData.title,
+                  artist: trackData.artist,
+                  position: trackData.position,
+                  processingStatus: "complete", // Mark as complete when processed
+                  processingError: null,
+                  rightsRoute: currentRelease.rightsRoute,
+                  rightsFlags: (currentRelease.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                  rightsReason: currentRelease.rightsReason,
+                  rightsPolicyVersion: currentRelease.rightsPolicyVersion,
+                  rightsEvaluatedAt: currentRelease.rightsEvaluatedAt,
                 },
                 update: {
-                  type: stem.type,
-                  uri: stem.uri,
-                  data: stem.data, // Present in sync/test mode, undefined in production
-                  mimeType: stem.mimeType,
-                  durationSeconds: stem.durationSeconds,
-                  audioFeatures:
-                    (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
-                  isEncrypted: stem.isEncrypted ?? false,
-                  encryptionMetadata: stem.encryptionMetadata,
-                  storageProvider: stem.storageProvider ?? "local",
+                  artist: trackData.artist,
+                  position: trackData.position,
+                  processingStatus: "complete", // Mark as complete when processed
+                  processingError: null,
+                  rightsRoute: currentRelease.rightsRoute,
+                  rightsFlags: (currentRelease.rightsFlags ?? undefined) as Prisma.InputJsonValue | undefined,
+                  rightsReason: currentRelease.rightsReason,
+                  rightsPolicyVersion: currentRelease.rightsPolicyVersion,
+                  rightsEvaluatedAt: currentRelease.rightsEvaluatedAt,
                 },
               });
+              completedTrackIds.push(trackData.id);
+
+              // Clean up stale separated stems from previous (possibly crashed) runs
+              const newStemIds = trackData.stems.map((s: any) => s.id);
+              const deletedStale = await tx.stem.deleteMany({
+                where: {
+                  trackId: trackData.id,
+                  type: { not: "original" },
+                  id: { notIn: newStemIds },
+                },
+              });
+              if (deletedStale.count > 0) {
+                cleanedStaleStems.push({ trackId: trackData.id, count: deletedStale.count });
+              }
+
+              for (const stem of trackData.stems) {
+                await tx.stem.upsert({
+                  where: { id: stem.id },
+                  create: {
+                    id: stem.id,
+                    trackId: trackData.id,
+                    type: stem.type,
+                    uri: stem.uri,
+                    data: stem.data, // Present in sync/test mode, undefined in production (fetched from storage URI)
+                    mimeType: stem.mimeType,
+                    durationSeconds: stem.durationSeconds,
+                    // Sanitized worker measurements (#1184); undefined (old
+                    // payloads) leaves the column untouched.
+                    audioFeatures:
+                      (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
+                    isEncrypted: stem.isEncrypted ?? false,
+                    encryptionMetadata: stem.encryptionMetadata,
+                    storageProvider: stem.storageProvider ?? "local",
+                  },
+                  update: {
+                    type: stem.type,
+                    uri: stem.uri,
+                    data: stem.data, // Present in sync/test mode, undefined in production
+                    mimeType: stem.mimeType,
+                    durationSeconds: stem.durationSeconds,
+                    audioFeatures:
+                      (stem.audioFeatures as Prisma.InputJsonValue | null | undefined) ?? undefined,
+                    isEncrypted: stem.isEncrypted ?? false,
+                    encryptionMetadata: stem.encryptionMetadata,
+                    storageProvider: stem.storageProvider ?? "local",
+                  },
+                });
+                upsertedStemIds.push({ trackId: trackData.id, stemId: stem.id });
+              }
             }
           }
+
+          await tx.release.update({
+            where: { id: event.releaseId },
+            data: { status: "ready", processingError: null },
+          });
+          return { skipped: null, completedTrackIds, cleanedStaleStems, upsertedStemIds };
+        }, { timeout: 30_000 });
+
+        if (result.skipped === "missing") {
+          console.warn(`[Catalog] Release ${event.releaseId} disappeared before stems.processed could be applied`);
+          return;
         }
-
-        const latestRelease = await prisma.release.findUnique({
-          where: { id: event.releaseId },
-          select: { status: true },
-        });
-
-        if (latestRelease?.status === "failed") {
+        if (result.skipped === "failed") {
           console.warn(
-            `[Catalog] Release ${event.releaseId} is already failed; skipping ready transition for late stems.processed`,
+            `[Catalog] Release ${event.releaseId} is already failed; skipping late stems.processed result`,
           );
           return;
         }
 
-        await prisma.release.update({
-          where: { id: event.releaseId },
-          data: { status: "ready", processingError: null },
-        });
+        for (const { trackId, count } of result.cleanedStaleStems) {
+          console.log(`[Catalog] Cleaned up ${count} stale stems for track ${trackId}`);
+        }
+        for (const { trackId, stemId } of result.upsertedStemIds) {
+          console.log(`[Catalog] Upserted stem ${stemId} for track ${trackId}`);
+        }
+        for (const trackId of result.completedTrackIds) {
+          this.eventBus.publish({
+            eventName: "catalog.track_status",
+            eventVersion: 1,
+            occurredAt: new Date().toISOString(),
+            releaseId: event.releaseId,
+            trackId,
+            status: "complete",
+          } as CatalogTrackStatusEvent);
+        }
         console.log(`[Catalog] Release ${event.releaseId} updated to ready`);
 
         this.eventBus.publish({

@@ -88,6 +88,7 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   or AI-publication replacement increments the revision atomically. The legacy
   unversioned read remains available for older clients and rollback, but it
   resolves the current cover rather than preserving historical bytes.
+- Track audio replacement remains planned under [#1762](https://github.com/akoita/resonate/issues/1762). A failed release now ignores late separation results without changing its track or stem records. The [audio replacement design](../architecture/track_audio_replacement.md) covers the versioned pipeline, historical references, and unpublished-only control required before this becomes a user action.
 
 ## Actions
 
