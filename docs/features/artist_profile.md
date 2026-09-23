@@ -2,7 +2,7 @@
 title: "Artist Profile (editable) + reliable artist links"
 status: implemented
 audiences: [artists, listeners, frontend/backend developers]
-issues: ["https://github.com/akoita/resonate/issues/1419"]
+issues: ["https://github.com/akoita/resonate/issues/1419", "https://github.com/akoita/resonate/issues/1762"]
 ---
 
 # Artist Profile (editable) + reliable artist links
@@ -40,6 +40,14 @@ Open your artist page (`/artist/[id]`) while signed in with profile access →
 edits their own profile; an approved claimant can edit an unclaimed public
 artist page after operator review. Other visitors see the page read-only.
 
+The profile management owner can invite another registered account to edit
+public profile details from `/artist/management`. The recipient must accept.
+Revocation or expiry removes that access. A separate accepted transfer changes
+who owns profile management; the original `Artist.userId` remains as a legacy
+account association and does not regain edit access. A verified claim still
+grants profile editing only, not delegation, release control, rights, or payout
+authority.
+
 ### Developer / API
 
 - `PATCH /artists/:id` (JWT, manager owner or approved public-profile claimant) — body
@@ -50,6 +58,9 @@ artist page after operator review. Other visitors see the page read-only.
   profile. `PATCH /artists/:id/settings` (remixConsent) is unchanged.
 - `GET /artists/:id` returns public profile fields including `website` and
   `socialLinks`, without account ownership, payout data, or private claim proof.
+- `GET /management/artists/:id/access` (JWT) reports the caller's profile
+  scope; the current management owner alone sees invitation history. Grant and
+  transfer endpoints require the current owner and recipient to act separately.
 
 ## Data model
 

@@ -1,5 +1,11 @@
 import { EventBus } from "../modules/shared/event_bus";
 import { IngestionService } from "../modules/ingestion/ingestion.service";
+import { hasReleaseManagementAccess } from "../modules/management/management-access";
+
+jest.mock("../modules/management/management-access", () => ({
+  hasReleaseManagementAccess: jest.fn(),
+}));
+const mockHasReleaseManagementAccess = jest.mocked(hasReleaseManagementAccess);
 
 // Mock dependencies
 const mockStorageProvider = { upload: jest.fn(), delete: jest.fn() };
@@ -10,6 +16,7 @@ const mockQueue = { add: jest.fn() };
 describe("IngestionService metadata", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockHasReleaseManagementAccess.mockResolvedValue(true);
   });
 
   it("publishes metadata on stems.uploaded", () => {
@@ -279,6 +286,7 @@ describe("IngestionService metadata", () => {
   });
 
   it("rejects retry attempts from non-owners", async () => {
+    mockHasReleaseManagementAccess.mockResolvedValueOnce(false);
     const eventBus = new EventBus();
     const queue = { add: jest.fn() };
     const mockCatalogService = {

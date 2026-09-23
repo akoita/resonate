@@ -8,6 +8,7 @@
  */
 
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { ManagementGrantStatus, ManagementScope } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
 import { EventBus } from '../modules/shared/event_bus';
@@ -665,6 +666,46 @@ describe('CatalogService (integration)', () => {
     });
     expect(updated.title).toBe('After Update');
     expect(updated.status).toBe('published');
+  });
+
+  it('limits a release manager to the invited catalog scope and honors an ownership transfer', async () => {
+    const delegateId = `${TEST_PREFIX}catalog_delegate`;
+    const successorId = `${TEST_PREFIX}catalog_successor`;
+    await prisma.user.createMany({
+      data: [delegateId, successorId].map((id) => ({ id, email: `${id}@test.resonate` })),
+    });
+    const release = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Delegation Before',
+      tracks: [{ title: 'T', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    await prisma.managementGrant.create({
+      data: {
+        releaseId: release.id,
+        granteeUserId: delegateId,
+        inviterUserId: `${TEST_PREFIX}user`,
+        scopes: [ManagementScope.CATALOG_METADATA],
+        status: ManagementGrantStatus.active,
+        acceptedAt: new Date(),
+      },
+    });
+
+    expect((await catalog.listByUserId(delegateId)).map((item) => item.id)).toContain(release.id);
+    await catalog.updateRelease(release.id, delegateId, { title: 'Delegation After' });
+    await expect(catalog.updateRelease(release.id, delegateId, { status: 'published' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await expect(catalog.updateRelease(release.id, delegateId, { primaryArtist: 'Other artist' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+
+    await prisma.release.update({
+      where: { id: release.id },
+      data: { managementOwnerUserId: successorId },
+    });
+    await expect(catalog.updateRelease(release.id, `${TEST_PREFIX}user`, { title: 'Former owner edit' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await catalog.updateRelease(release.id, successorId, { title: 'Successor edit' });
+    expect((await catalog.listByUserId(`${TEST_PREFIX}user`)).map((item) => item.id)).not.toContain(release.id);
+    expect((await catalog.listByUserId(successorId)).map((item) => item.id)).toContain(release.id);
   });
 
   it('does not let an owner reopen a published release to bypass disclosure locking', async () => {

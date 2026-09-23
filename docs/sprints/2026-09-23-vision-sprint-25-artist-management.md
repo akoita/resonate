@@ -14,10 +14,10 @@ then the larger management and transfer model. If the design of #1762 exposes
 work that cannot meet its full acceptance criteria in this window, re-plan the
 scope explicitly rather than closing a partial parent issue.
 
-| Order | Issue | Prerequisite state | Observable exit |
-| --- | --- | --- | --- |
-| 1 | [#1836](https://github.com/akoita/resonate/issues/1836) — refresh catalog status | None declared | Release and track processing or failure status updates without reload; a bounded fallback stops once processing ends; search, tab, scroll, and dialogs persist. |
-| 2 | [#1762](https://github.com/akoita/resonate/issues/1762) — delegated management and transfer | [#1492](https://github.com/akoita/resonate/issues/1492) is closed/satisfied by [PR #1835](https://github.com/akoita/resonate/pull/1835) | A documented authority model, scoped grants and transfers, migration path, UI/API states, and focused authorization tests meet the issue's full acceptance criteria. |
+| Order | Issue | State | Prerequisite state | Observable exit |
+| --- | --- | --- | --- | --- |
+| 1 | [#1836](https://github.com/akoita/resonate/issues/1836) — refresh catalog status | Implemented in [PR #1843](https://github.com/akoita/resonate/pull/1843); merged | None declared | Release and track processing or failure status updates without reload; a bounded fallback stops once processing ends; search, tab, scroll, and dialogs persist. |
+| 2 | [#1762](https://github.com/akoita/resonate/issues/1762) — delegated management and transfer | In progress | [#1492](https://github.com/akoita/resonate/issues/1492) is closed/satisfied by [PR #1835](https://github.com/akoita/resonate/pull/1835) | A documented authority model, scoped grants and transfers, migration path, UI/API states, and focused authorization tests meet the issue's full acceptance criteria. |
 
 There is no dependency cycle. #1836 precedes #1762 to clear the smaller
 artist-facing defect before the larger authorization work; it is not a product

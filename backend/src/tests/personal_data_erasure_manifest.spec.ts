@@ -423,6 +423,14 @@ describe("personal data erasure manifest", () => {
       expect(ERASURE_RULES_BY_MODEL.User.disposition).toBe("anonymize");
     });
 
+    it("retains management audit rows while revoking active authority", () => {
+      for (const model of ["ManagementGrant", "ManagementTransfer"]) {
+        expect(ERASURE_RULES_BY_MODEL[model].disposition).toBe("retain");
+      }
+      expect(ERASURE_RULES_BY_MODEL.ManagementGrant.reason).toContain("grantee or inviter");
+      expect(ERASURE_RULES_BY_MODEL.ManagementTransfer.reason).toContain("proposer or recipient");
+    });
+
     it("deletes every credential and address-to-account mapping", () => {
       for (const model of [
         "Wallet",
@@ -440,6 +448,8 @@ describe("personal data erasure manifest", () => {
       expect(ERASURE_RULES_BY_MODEL.Release.disposition).toBe("detach");
       // Nullable by design — this is what makes detaching possible at all.
       expect(fieldOf("Artist", "userId")?.isRequired).toBe(false);
+      expect(ERASURE_RULES_BY_MODEL.Artist.note).toContain("managementOwnerUserId");
+      expect(ERASURE_RULES_BY_MODEL.Release.note).toContain("managementOwnerUserId");
     });
 
     it("leaves analytics to the governance service", () => {

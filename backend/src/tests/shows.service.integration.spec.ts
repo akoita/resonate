@@ -489,6 +489,31 @@ describe("ShowsService integration", () => {
       },
     )).rejects.toThrow("Campaign artist identity must be in your managed catalog");
 
+    // A legacy text field with the same name is not authority over that
+    // profile; only an exact, resolved credit can establish the association.
+    await prisma.release.update({
+      where: { id: creditedReleaseId },
+      data: { primaryArtist: `${TEST_PREFIX}Other Artist` },
+    });
+    try {
+      await expect(service.createDraftCampaign(
+        { userId, role: "artist" },
+        {
+          artistId: otherArtistId,
+          artistDisplayName: `${TEST_PREFIX}Other Artist`,
+          city: "Toronto",
+          country: "CA",
+          deadline: futureIso(30),
+          goalAmountUnits: "2500000",
+        },
+      )).rejects.toThrow("Campaign artist identity must be in your managed catalog");
+    } finally {
+      await prisma.release.update({
+        where: { id: creditedReleaseId },
+        data: { primaryArtist: `${TEST_PREFIX}Declared Credit` },
+      });
+    }
+
     const managedCreditDraft = await service.createDraftCampaign(
       { userId, role: "artist" },
       {

@@ -102,8 +102,11 @@ must not infer ownership only from a visible credit.
   should return release credits.
 - `listByArtist(:artistId)` should become a public credited-artist discography
   read using `ReleaseArtistCredit`, not manager ownership.
-- Managed catalog reads should continue using `Release.artistId` and artist
-  `userId` ownership.
+- Managed catalog reads use explicit management authority. Existing rows still
+  fall back to `Release.artistId` and artist `userId`; an accepted grant or
+  transfer can change management without changing a public credit, the
+  uploader profile, rights, or payout authority. See
+  [Artist and release management authority](artist_management_authority.md).
 
 ### Upload UI
 

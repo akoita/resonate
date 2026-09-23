@@ -13,25 +13,26 @@
  * ## The three decisions this file encodes
  *
  * **1. Erasure anonymizes in place and closes the account. It does not delete
- * the `User` row.** 103 foreign keys point at `User.id`, and a person's
- * financial, rights and audit history has to survive under the 7-10 year
- * retention the privacy policy states.
+ * the `User` row.** Its foreign-key references connect the account to
+ * financial, rights, management and audit history that has to survive under
+ * the 7-10 year retention the privacy policy states.
  *
  * **2. The user id is itself personal data, so it is rotated.** For wallet and
  * passkey accounts `User.id` *is* the person's lowercased wallet address:
  * `auth.controller.ts` passes `userId: issuedAddress` and `auth.service.ts`
  * then writes `email: "${userId}@wallet.resonate"`. Scrubbing the email while
- * keeping the id would leave the wallet address as the primary key of 43 models
- * and as a foreign key throughout. Erasure therefore replaces `User.id` with a
- * fresh UUID.
+ * keeping the id would leave the wallet address as the account primary key and
+ * as a foreign key throughout the schema. Erasure therefore replaces
+ * `User.id` with a fresh UUID.
  *
- * That is mechanically possible because every foreign key in this database is
- * `ON UPDATE CASCADE` — 103 of 103 across the whole migration history, no
- * exceptions — so the rotation propagates to every relation-linked model for
- * free. The columns that hold a user id *without* a declared relation do not
- * cascade, and are listed in `DANGLING_PERSON_COLUMNS` below. That list is the
- * single most dangerous part of this work: a dangling column nobody listed
- * keeps the wallet address forever and nothing fails loudly.
+ * That is mechanically possible because every foreign key in the schema uses
+ * `ON UPDATE CASCADE`, so the rotation propagates to every relation-linked
+ * model. This includes management-owner overrides: they must keep pointing to
+ * the rotated, closed account so the legacy `Artist.userId` fallback cannot
+ * reauthorize a former owner. Columns that hold a user id *without* a declared
+ * relation do not cascade, and are listed in `DANGLING_PERSON_COLUMNS` below.
+ * A dangling column nobody listed keeps the wallet address forever and nothing
+ * fails loudly.
  *
  * **3. Financial and audit rows keep their wallet address; the link is
  * severed.** The `Wallet` row, the `PasskeyIdentity` rows and the
@@ -60,9 +61,8 @@
  *
  * Refined from the vocabulary in the slice plan by one addition: `untouched`.
  * Folding "catalogue rows that name nobody" into `retain` would have said "we
- * keep this despite it being the person's data", which is false for 17 of the
- * 95 models and would have made the retain list look like a much bigger
- * retention claim than it is.
+ * keep this despite it being the person's data", which would have made the
+ * retain list look like a much bigger retention claim than it is.
  */
 export type ErasureDisposition =
   /** The row has no value once the person is gone, and is deleted outright. */
@@ -114,7 +114,7 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     model: "User",
     disposition: "anonymize",
     reason:
-      "The account row is kept so 103 foreign keys and the retained financial history stay valid; "
+      "The account row is kept so its foreign-key references and retained financial history stay valid; "
       + "`id` is rotated to a fresh UUID because for wallet accounts it is the person's wallet address.",
     scrub: ["email"],
     matchOn: "id",
@@ -140,6 +140,22 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
     matchOn: "claimantUserId",
     note:
       "If the erased person was the reviewer instead, only their review note is scrubbed; if they were an approved claimant, the grant is revoked before the user id rotates.",
+  },
+  {
+    model: "ManagementGrant",
+    disposition: "retain",
+    reason:
+      "The grant is kept as an audit row; pending and active grants involving this person as grantee or inviter are revoked before their user id rotates.",
+    note:
+      "Both user foreign keys cascade to the rotated id, so the record remains pseudonymous and no longer grants management access.",
+  },
+  {
+    model: "ManagementTransfer",
+    disposition: "retain",
+    reason:
+      "The transfer is kept as an audit row; pending transfers involving this person as proposer or recipient are cancelled before their user id rotates.",
+    note:
+      "Both user foreign keys cascade to the rotated id, while `resourceIds` remains the resource snapshot recorded for the transfer.",
   },
 
   // ---------------------------------------------------------------------
@@ -615,20 +631,23 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
   },
 
   // ---------------------------------------------------------------------
-  // Detach — the artist survives, unowned. The catalogue was bought by
-  // other people and cannot be taken from them (#1793).
+  // Detach — legacy artist ownership is cleared; the catalogue survives for
+  // the people who bought it and cannot be taken from them (#1793).
   // ---------------------------------------------------------------------
   {
     model: "Artist",
     disposition: "detach",
     reason:
-      "`Artist.userId` is nullable by design: the profile is set adrift from the person while the "
-      + "catalogue published under it survives for the people who bought it.",
+      "`Artist.userId` is nullable by design: the legacy owner link is cleared while the profile and "
+      + "catalogue survive for the people who bought them.",
     scrub: ["payoutAddress"],
     matchOn: "userId",
     note:
       "`displayName`, `summary` and `website` are deliberately kept — the released catalogue is "
-      + "published under them. `payoutAddress` goes so no later payout routes to the erased person's wallet.",
+      + "published under them. `payoutAddress` goes so no later payout routes to the erased person's wallet. "
+      + "`managementOwnerUserId` is not cleared; if it names the erased person it follows the User "
+      + "foreign-key cascade to the rotated, closed id so legacy-owner fallback cannot reauthorize "
+      + "another account.",
   },
   {
     model: "Release",
@@ -642,7 +661,10 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "authorizes from `Artist.userId`, which this erasure has just set to null, and "
       + "it writes through the global client so it cannot join the erasure transaction. "
       + "It copies #1793's semantics exactly — withdrawable statuses only, per-row "
-      + "`statusBeforeWithdrawal` — and the two must be kept in step by hand.",
+      + "`statusBeforeWithdrawal` — and the two must be kept in step by hand. "
+      + "`managementOwnerUserId` is not cleared; if it names the erased person it follows the User "
+      + "foreign-key cascade to the rotated, closed id so legacy-owner fallback cannot reauthorize "
+      + "another account.",
   },
   {
     model: "ReleaseArtistCredit",

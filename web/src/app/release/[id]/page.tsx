@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   getRelease,
+  getReleaseManagementAccess,
   Release,
+  type ResourceManagementAccess,
   type Track,
   getLatestReleaseRightsUpgradeRequest,
   type ReleaseRightsUpgradeRequestRecord,
@@ -389,6 +391,10 @@ export default function ReleaseDetails() {
     setRightsMonitorCardOpen(!isPhone);
   }, [isPhone]);
   const [release, setRelease] = useState<Release | null>(null);
+  const [catalogAccess, setCatalogAccess] = useState<ResourceManagementAccess | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
   const [isReleaseSaved, setIsReleaseSaved] = useState(false);
   // Release-level Punchline summary reported up by the collect module, driving
   // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
@@ -442,6 +448,23 @@ export default function ReleaseDetails() {
     ? release?.rightsFlags?.filter((flag) => flag !== "NEEDS_PROOF_OF_CONTROL")
     : release?.rightsFlags;
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
+  const canReadCatalog = catalogAccess?.resourceId === release?.id;
+  const isCatalogOwner = catalogAccess?.resourceId === release?.id && catalogAccess?.currentUserAccess.isOwner;
+  const canEditTitle = catalogAccess?.resourceId === release?.id
+    && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_METADATA");
+  const canEditArtwork = catalogAccess?.resourceId === release?.id
+    && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_MEDIA");
+  useEffect(() => {
+    if (!token || !release?.id) {
+      setCatalogAccess(null);
+      return;
+    }
+    let active = true;
+    getReleaseManagementAccess(token, release.id)
+      .then((access) => { if (active) setCatalogAccess(access); })
+      .catch(() => { if (active) setCatalogAccess(null); });
+    return () => { active = false; };
+  }, [token, release?.id]);
   const hasFailedProcessing = release?.status === "failed" || release?.tracks?.some(t => t.processingStatus === "failed");
   const isProcessingRelease = release?.status === "processing";
   const hasUnprocessedTracks = release?.tracks?.some(t => !t.stems || t.stems.length <= 1);
@@ -581,7 +604,7 @@ export default function ReleaseDetails() {
   const requestedListingPriceWei = DEFAULT_MARKETPLACE_LISTING_PRICE_WEI;
 
   const handleRetryProcessing = useCallback(async () => {
-    if (!token || !release?.id) return;
+    if (!token || !release?.id || !isCatalogOwner) return;
 
     try {
       const { retryRelease } = await import("../../../lib/api");
@@ -601,10 +624,10 @@ export default function ReleaseDetails() {
       console.error(e);
       addToast({ type: "error", title: "Retry failed", message: "Could not restart processing." });
     }
-  }, [addToast, release?.id, token]);
+  }, [addToast, isCatalogOwner, release?.id, token]);
 
   const handleProduceStems = useCallback(async () => {
-    if (!token || !release?.id) return;
+    if (!token || !release?.id || !isCatalogOwner) return;
 
     try {
       const { retryRelease } = await import("../../../lib/api");
@@ -624,7 +647,7 @@ export default function ReleaseDetails() {
       console.error(e);
       addToast({ type: "error", title: "Failed", message: "Could not start stem production." });
     }
-  }, [addToast, release?.id, token]);
+  }, [addToast, isCatalogOwner, release?.id, token]);
 
   // Handle real-time track progress updates via WebSocket
   const handleProgressUpdate = useCallback((data: ReleaseProgressUpdate) => {
@@ -970,7 +993,11 @@ export default function ReleaseDetails() {
         apiBase,
       });
 
-      if (!isOwner || !token || isPublicReleaseRoute(release.rightsRoute)) {
+      if (
+        (!isOwner && !canReadCatalog) ||
+        !token ||
+        (release.status !== "withdrawn" && isPublicReleaseRoute(release.rightsRoute))
+      ) {
         return publicUrl;
       }
 
@@ -991,7 +1018,7 @@ export default function ReleaseDetails() {
 
       return publicUrl;
     },
-    [isOwner, release, token],
+    [canReadCatalog, isOwner, release, token],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1300,9 +1327,29 @@ export default function ReleaseDetails() {
     await completeAttestationForMinting();
   }, [completeAttestationForMinting]);
 
+  const handleSaveTitle = async () => {
+    if (!release || !token || !canEditTitle || isSavingTitle) return;
+    const title = titleDraft.trim();
+    if (!title) {
+      addToast({ type: "error", title: "Enter a release title" });
+      return;
+    }
+    setIsSavingTitle(true);
+    try {
+      const updated = await updateRelease(token, release.id, { title });
+      setRelease((previous) => previous ? { ...previous, title: updated.title } : previous);
+      setIsEditingTitle(false);
+      addToast({ type: "success", title: "Release title updated" });
+    } catch (error) {
+      addToast({ type: "error", title: "Could not update title", message: error instanceof Error ? error.message : "Please try again." });
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   const handleArtworkChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !release || !token) return;
+    if (!file || !release || !token || !canEditArtwork) return;
 
     // Optional: local preview for instant feedback
     const previewUrl = URL.createObjectURL(file);
@@ -1352,7 +1399,7 @@ export default function ReleaseDetails() {
   // releases whose primaryArtist was laundered from the manager account name
   // at upload time.
   const handleSaveCreditedArtist = async () => {
-    if (!release?.id || !token) return;
+    if (!release?.id || !token || !isCatalogOwner) return;
     const name = creditedArtistDraft.trim();
     if (!name) {
       addToast({
@@ -1406,7 +1453,7 @@ export default function ReleaseDetails() {
 
       <header className="release-header">
         <div
-          className={`header-artwork-container draggable-album ${isOwner ? 'editable' : ''}`}
+          className={`header-artwork-container draggable-album ${canEditArtwork ? 'editable' : ''}`}
           draggable="true"
           onDragStart={(e) => {
             e.stopPropagation();
@@ -1428,8 +1475,8 @@ export default function ReleaseDetails() {
             const target = e.currentTarget as HTMLElement;
             e.dataTransfer.setDragImage(target, 75, 75);
           }}
-          onClick={() => isOwner && artworkInputRef.current?.click()}
-          title={isOwner ? "Click to change artwork, drag to add to playlist" : `Drag to add this ${releaseNoun} to a playlist`}
+          onClick={() => canEditArtwork && artworkInputRef.current?.click()}
+          title={canEditArtwork ? "Click to change artwork, drag to add to playlist" : `Drag to add this ${releaseNoun} to a playlist`}
         >
           {release.artworkUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
@@ -1442,7 +1489,7 @@ export default function ReleaseDetails() {
           ) : (
             <div className="header-artwork-placeholder">🎵</div>
           )}
-          {isOwner && (
+          {canEditArtwork && (
             <div className="edit-artwork-overlay">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
@@ -1451,7 +1498,7 @@ export default function ReleaseDetails() {
               <span>{isUpdatingArtwork ? 'Uploading...' : 'Change Cover'}</span>
             </div>
           )}
-          {isOwner && !isUpdatingArtwork && (
+          {canEditArtwork && !isUpdatingArtwork && (
             <div className="edit-badge">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -1477,7 +1524,30 @@ export default function ReleaseDetails() {
               Resonate Catalog · {release.releaseDate ? new Date(release.releaseDate).getFullYear() : '2026'}
             </span>
           </div>
-          <h1 className="release-title-lg text-gradient">{release.title}</h1>
+          {canEditTitle && isEditingTitle ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <input
+                type="text"
+                aria-label="Release title"
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void handleSaveTitle();
+                  if (event.key === "Escape") setIsEditingTitle(false);
+                }}
+                maxLength={200}
+                disabled={isSavingTitle}
+                style={{ minWidth: 220, maxWidth: "100%", padding: "8px 12px", borderRadius: 8 }}
+              />
+              <Button onClick={() => void handleSaveTitle()} disabled={isSavingTitle}>Save</Button>
+              <Button variant="ghost" onClick={() => setIsEditingTitle(false)} disabled={isSavingTitle}>Cancel</Button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h1 className="release-title-lg text-gradient">{release.title}</h1>
+              {canEditTitle && <button type="button" aria-label="Edit release title" title="Edit release title" onClick={() => { setTitleDraft(release.title); setIsEditingTitle(true); }}>✎</button>}
+            </div>
+          )}
           <AiDisclosureBadge disclosure={release.aiDisclosure} showHumanMade />
           <div className="release-artist-row">
             <div className="artist-avatar" />
@@ -1486,7 +1556,7 @@ export default function ReleaseDetails() {
                 release.primaryArtist || release.artist?.displayName || "Unknown Artist";
               // #1492: owners can correct the credited artist inline — fixes
               // releases whose credit was laundered from the account name.
-              if (isOwner && isEditingCreditedArtist) {
+              if (isCatalogOwner && isEditingCreditedArtist) {
                 return (
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <input
@@ -1544,7 +1614,7 @@ export default function ReleaseDetails() {
               return (
                 <>
                   {name}
-                  {isOwner && (
+                  {isCatalogOwner && (
                     <button
                       type="button"
                       aria-label="Edit credited artist"
@@ -1719,7 +1789,7 @@ export default function ReleaseDetails() {
                 )}
             </div>
 
-            {isOwner && (
+            {isCatalogOwner && (
               <div className="header-action-group header-action-group--owner">
                 {(hasFailedProcessing || isProcessingRelease) && (
                   <Button
@@ -2106,7 +2176,7 @@ export default function ReleaseDetails() {
       {release.status === "failed" && release.processingError && (
         <ProcessingFailureCallout
           error={release.processingError}
-          canRetry={isOwner}
+          canRetry={Boolean(isCatalogOwner)}
           onRetry={handleRetryProcessing}
           onViewDiagnostics={() => setErrorDetails({
             title: "Processing diagnostics",

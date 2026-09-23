@@ -1078,7 +1078,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "claim", "evidence", "manager", "invite", "transfer"],
     sections: [
       {
         id: "edit",
@@ -1111,6 +1111,31 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "management",
+        heading: "Sharing management access",
+        blocks: [
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-management.png`,
+              alt: "Artist management page showing owned artist profiles and releases, invitation controls, and transfer options.",
+              caption: "Artist management: choose a profile or release before inviting a manager or transferring management.",
+              width: 1440,
+              height: 1100,
+              source: LOCAL,
+            },
+          },
+          {
+            kind: "paragraph",
+            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose exactly which release permissions they need. The invitation appears in their Artist management page and gives them no access until they accept it. You can revoke a pending or active invitation there.",
+          },
+          {
+            kind: "paragraph",
+            text: "To hand over management, send a transfer invitation for a profile, a selected release, or all releases you currently manage. The recipient must accept before your management access ends. Existing manager invitations for transferred resources end too, so the new owner can choose whom to invite. Profile and release management transfer separately; credits, rights, and payouts do not move with either transfer.",
+          },
+        ],
+      },
+      {
         id: "links",
         heading: "Your name links to your page",
         blocks: [
@@ -1123,6 +1148,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
     appLinks: [
       { label: "Your catalog", href: "/artist/catalog", description: "Open your releases; your artist page is linked from your name." },
+      { label: "Artist management", href: "/artist/management", description: "Review invitations, delegate access, or transfer management." },
     ],
     related: ["upload-music", "artist-analytics", "getting-started"],
   },

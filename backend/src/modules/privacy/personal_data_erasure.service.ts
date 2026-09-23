@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { AccountClosureRequest, Prisma } from "@prisma/client";
+import {
+  AccountClosureRequest,
+  ManagementGrantStatus,
+  ManagementTransferStatus,
+  Prisma,
+} from "@prisma/client";
 import { randomUUID } from "crypto";
 import { prisma } from "../../db/prisma";
 import { AnalyticsGovernanceService } from "../analytics/analytics_governance.service";
@@ -752,11 +757,30 @@ export class PersonalDataErasureService {
     });
     anonymized["ReleaseArtistCredit.identityReview"] = creditReviewsScrubbed.count;
 
+    // Revoke management authority before rotating the id. Keep each audit row,
+    // and let the User foreign-key cascade replace either party's old id with
+    // the closed account id. Clearing owner overrides would expose the legacy
+    // Artist.userId fallback and could reauthorize a former owner.
+    await tx.managementGrant.updateMany({
+      where: {
+        status: { in: [ManagementGrantStatus.pending, ManagementGrantStatus.active] },
+        OR: [{ granteeUserId: oldUserId }, { inviterUserId: oldUserId }],
+      },
+      data: { status: ManagementGrantStatus.revoked, revokedAt: erasedAt },
+    });
+    await tx.managementTransfer.updateMany({
+      where: {
+        status: ManagementTransferStatus.pending,
+        OR: [{ proposerUserId: oldUserId }, { recipientUserId: oldUserId }],
+      },
+      data: { status: ManagementTransferStatus.cancelled, cancelledAt: erasedAt },
+    });
+
     // --- rotate the id, then chase what the cascade cannot reach ------------
     // For a wallet or passkey account `User.id` *is* the person's wallet
-    // address, so it is itself personal data. Every foreign key is
-    // `ON UPDATE CASCADE` (103 of 103), so this one write reaches every
-    // relation-linked table.
+    // address, so it is itself personal data. Every declared foreign key uses
+    // `ON UPDATE CASCADE`, so this write reaches every relation-linked table,
+    // including the retained management audit rows and owner overrides.
     await delegateFor(tx, "User").update({
       where: { id: oldUserId },
       data: {

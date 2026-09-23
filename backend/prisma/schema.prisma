@@ -60,6 +60,12 @@ model User {
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
   accountClosureRequests      AccountClosureRequest[]
+  managementOwnedArtists       Artist[]                       @relation("ArtistManagementOwner")
+  managementOwnedReleases      Release[]                      @relation("ReleaseManagementOwner")
+  managementGrantsReceived     ManagementGrant[]              @relation("ManagementGrantGrantee")
+  managementGrantsSent         ManagementGrant[]              @relation("ManagementGrantInviter")
+  managementTransfersProposed  ManagementTransfer[]           @relation("ManagementTransferProposer")
+  managementTransfersReceived  ManagementTransfer[]           @relation("ManagementTransferRecipient")
 }
 
 // #1771 slice 3. A request to close an account and erase the person from it.
@@ -544,6 +550,7 @@ model PasskeyIdentity {
 model Artist {
   id                        String                        @id @default(uuid())
   userId                    String?                       @unique
+  managementOwnerUserId     String?
   displayName               String
   payoutAddress             String?
   profileType               String                        @default("manager")
@@ -556,6 +563,7 @@ model Artist {
   createdAt                 DateTime                      @default(now())
   updatedAt                 DateTime                      @updatedAt
   user                      User?                         @relation(fields: [userId], references: [id])
+  managementOwner           User?                         @relation("ArtistManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
   releases                  Release[]
   releaseCredits            ReleaseArtistCredit[]
   claimRequests              ArtistClaimRequest[]
@@ -568,9 +576,11 @@ model Artist {
   discordBridge             CommunityDiscordBridge?
   trustedSourceLinks        TrustedSourceArtistLink[]
   trustedSourceLinkRequests TrustedSourceLinkRequest[]
+  managementGrants          ManagementGrant[]
 
   @@index([displayName])
   @@index([profileType, claimStatus])
+  @@index([managementOwnerUserId])
 }
 
 enum ArtistClaimRequestStatus {
@@ -578,6 +588,32 @@ enum ArtistClaimRequestStatus {
   approved
   rejected
   revoked
+}
+
+enum ManagementScope {
+  PROFILE_EDIT
+  CATALOG_READ
+  CATALOG_METADATA
+  CATALOG_MEDIA
+}
+
+enum ManagementGrantStatus {
+  pending
+  active
+  declined
+  revoked
+}
+
+enum ManagementResourceType {
+  artist_profile
+  release
+}
+
+enum ManagementTransferStatus {
+  pending
+  accepted
+  declined
+  cancelled
 }
 
 model ArtistClaimRequest {
@@ -603,6 +639,7 @@ model ArtistClaimRequest {
 model Release {
   id                     String                        @id @default(uuid())
   artistId               String
+  managementOwnerUserId  String?
   title                  String
   status                 String                        @default("processing")
   processingError        String?                       @db.Text
@@ -633,13 +670,62 @@ model Release {
   rightsSourceType       String?
   rightsEvaluatedAt      DateTime?
   artist                 Artist                        @relation(fields: [artistId], references: [id])
+  managementOwner        User?                         @relation("ReleaseManagementOwner", fields: [managementOwnerUserId], references: [id], onDelete: Restrict)
   artistCredits          ReleaseArtistCredit[]
   tracks                 Track[]
+  managementGrants       ManagementGrant[]
   rightsUpgradeRequests  ReleaseRightsUpgradeRequest[]
   rightsReassessments    RightsRouteReassessment[]
   publishedRemixProject  RemixProject?                 @relation("RemixProjectPublishedRelease")
 
   @@index([rightsRoute])
+  @@index([artistId])
+  @@index([managementOwnerUserId])
+}
+
+model ManagementGrant {
+  id            String                @id @default(uuid())
+  artistId      String?
+  releaseId     String?
+  granteeUserId String
+  inviterUserId String
+  scopes        ManagementScope[]
+  status        ManagementGrantStatus @default(pending)
+  expiresAt     DateTime?
+  acceptedAt    DateTime?
+  revokedAt     DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  artist        Artist?               @relation(fields: [artistId], references: [id], onDelete: Cascade)
+  release       Release?              @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+  grantee       User                  @relation("ManagementGrantGrantee", fields: [granteeUserId], references: [id], onDelete: Restrict)
+  inviter       User                  @relation("ManagementGrantInviter", fields: [inviterUserId], references: [id], onDelete: Restrict)
+
+  @@index([artistId, status])
+  @@index([releaseId, status])
+  @@index([granteeUserId, status, expiresAt])
+  @@index([inviterUserId, createdAt])
+  @@index([scopes], type: Gin)
+}
+
+model ManagementTransfer {
+  id              String                  @id @default(uuid())
+  proposerUserId  String
+  recipientUserId String
+  resourceType    ManagementResourceType
+  resourceIds     String[]
+  status          ManagementTransferStatus @default(pending)
+  expiresAt       DateTime?
+  acceptedAt      DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  proposer        User                    @relation("ManagementTransferProposer", fields: [proposerUserId], references: [id], onDelete: Restrict)
+  recipient       User                    @relation("ManagementTransferRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+
+  @@index([proposerUserId, status, createdAt])
+  @@index([recipientUserId, status, createdAt])
+  @@index([resourceType, createdAt])
 }
 
 model ReleaseArtistCredit {

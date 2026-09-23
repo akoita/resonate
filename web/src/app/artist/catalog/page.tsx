@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AuthGate from "../../../components/auth/AuthGate";
 import { useAuth } from "../../../components/auth/AuthProvider";
-import { getArtistMe, listMyReleases, type ArtistProfile, type Release, type Track } from "../../../lib/api";
+import { getArtistMe, getMyManagement, listMyReleases, type ArtistProfile, type Release, type Track } from "../../../lib/api";
 import { useWebSockets, type ReleaseStatusUpdate, type TrackStatusUpdate } from "../../../hooks/useWebSockets";
 import { AiDisclosureBadge } from "../../../components/content/AiDisclosureBadge";
 import { ConfirmDialog } from "../../../components/ui/ConfirmDialog";
@@ -30,7 +30,7 @@ import {
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; artist: ArtistProfile; releases: Release[] }
+  | { status: "ready"; artist: ArtistProfile | null; releases: Release[] }
   | { status: "no-artist" }
   | { status: "error"; message: string };
 
@@ -53,6 +53,7 @@ export default function ArtistCatalogPage() {
   // request is in flight (#1793).
   const [pendingWithdrawal, setPendingWithdrawal] = useState<Release | null>(null);
   const [busyReleaseId, setBusyReleaseId] = useState<string | null>(null);
+  const [ownerReleaseIds, setOwnerReleaseIds] = useState<Set<string>>(new Set());
   const [requestGate] = useState(createCatalogRequestGate);
   const loadedTokenRef = useRef<string | null>(null);
   const releasesRef = useRef<Release[]>([]);
@@ -86,10 +87,15 @@ export default function ArtistCatalogPage() {
 
     const requestId = requestGate.begin();
     try {
-      const releases = sortReleases(await listMyReleases(token));
+      const [listed, management] = await Promise.all([
+        listMyReleases(token),
+        getMyManagement(token).catch(() => null),
+      ]);
+      const releases = sortReleases(listed);
       if (!requestGate.isCurrent(requestId) || loadedTokenRef.current !== token) return;
 
       releasesRef.current = releases;
+      if (management) setOwnerReleaseIds(new Set(management.ownedReleases.map((release) => release.id)));
       setState((previous) =>
         previous.status === "ready" ? { ...previous, releases } : previous,
       );
@@ -147,19 +153,22 @@ export default function ArtistCatalogPage() {
         !cancelled && requestGate.isCurrent(requestId);
 
       try {
-        const artist = await getArtistMe(token);
+        const [artist, management] = await Promise.all([
+          getArtistMe(token),
+          getMyManagement(token).catch(() => null),
+        ]);
         if (!isCurrentRequest()) return;
-        if (!artist) {
+        const releases = await listMyReleases(token);
+        if (!isCurrentRequest()) return;
+        if (!artist && releases.length === 0) {
           setState({ status: "no-artist" });
           return;
         }
 
-        const releases = await listMyReleases(token);
-        if (!isCurrentRequest()) return;
-
         const sortedReleases = sortReleases(releases);
         loadedTokenRef.current = token;
         releasesRef.current = sortedReleases;
+        setOwnerReleaseIds(new Set(management?.ownedReleases.map((release) => release.id) ?? []));
         setState({ status: "ready", artist, releases: sortedReleases });
       } catch (error) {
         if (isCurrentRequest()) {
@@ -215,10 +224,13 @@ export default function ArtistCatalogPage() {
                 Artist Catalog
               </p>
               <h1 style={{ margin: 0 }}>
-                {state.status === "ready" ? state.artist.displayName : "Managed Catalog"}
+                {state.status === "ready" ? state.artist?.displayName ?? "Managed Catalog" : "Managed Catalog"}
               </h1>
             </div>
             <div className="artist-catalog-actions" style={{ display: "flex", gap: "12px" }}>
+              <Link href="/artist/management" className="wallet-connect-btn" style={{ padding: "8px 20px" }}>
+                Manage access
+              </Link>
               <Link href="/artist/upload" className="wallet-connect-btn" style={{ padding: "8px 20px" }}>
                 Upload
               </Link>
@@ -244,6 +256,7 @@ export default function ArtistCatalogPage() {
         {state.status === "ready" ? (
           <ReadyCatalog
             releases={state.releases}
+            ownerReleaseIds={ownerReleaseIds}
             query={query}
             onQueryChange={setQuery}
             tab={tab}
@@ -277,6 +290,7 @@ export default function ArtistCatalogPage() {
 
 function ReadyCatalog({
   releases,
+  ownerReleaseIds,
   query,
   onQueryChange,
   tab,
@@ -286,6 +300,7 @@ function ReadyCatalog({
   onRestore,
 }: {
   releases: Release[];
+  ownerReleaseIds: Set<string>;
   query: string;
   onQueryChange: (query: string) => void;
   tab: CatalogTab;
@@ -345,6 +360,7 @@ function ReadyCatalog({
           </div>
           <ReleaseInventory
             releases={filteredReleases}
+            ownerReleaseIds={ownerReleaseIds}
             busyReleaseId={busyReleaseId}
             onWithdraw={onWithdraw}
             onRestore={onRestore}
@@ -430,11 +446,13 @@ function ArtworkThumbnail({ src, title, fallbackChar }: { src?: string | null; t
 
 function ReleaseInventory({
   releases,
+  ownerReleaseIds,
   busyReleaseId,
   onWithdraw,
   onRestore,
 }: {
   releases: Release[];
+  ownerReleaseIds: Set<string>;
   busyReleaseId: string | null;
   onWithdraw: (release: Release) => void;
   onRestore: (release: Release) => void;
@@ -482,12 +500,12 @@ function ReleaseInventory({
             <td><RightsBadge route={release.rightsRoute} /></td>
             <td className="premium-table-cell-mono">{formatRelativeDate(releaseTime(release))}</td>
             <td>
-              <ReleaseAvailabilityActions
+              {ownerReleaseIds.has(release.id) ? <ReleaseAvailabilityActions
                 release={release}
                 busy={busyReleaseId === release.id}
                 onWithdraw={onWithdraw}
                 onRestore={onRestore}
-              />
+              /> : <span className="analytics-muted">View only</span>}
             </td>
           </tr>
         ))}

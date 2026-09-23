@@ -77,6 +77,12 @@ const AUTH_TARGETS = [
   ["/sonic-radar", "sonic-radar.png"],
   ["/library", "library.png"],
   ["/disputes", "disputes.png"],
+  ["/artist/management", "artist-management.png", {
+    selectors: ["section[aria-labelledby='owned-heading']"],
+    viewportHeight: 1100,
+    mockManagement: true,
+    selectManagementRelease: true,
+  }],
 ];
 
 const OWNER_TARGETS = [
@@ -134,6 +140,27 @@ async function waitForRouteReady(page, route, ready) {
 async function capture(page, targets, passName) {
   for (const [route, file, ready] of targets) {
     if (process.env.CAPTURE_ONLY && file !== process.env.CAPTURE_ONLY) continue;
+    if (ready?.mockManagement) {
+      await page.route("**/management/me", (request) => request.fulfill({
+        json: {
+          ownedArtists: [{ id: "guide-artist", name: "Test Artist" }],
+          managedArtists: [],
+          ownedReleases: [{ id: "guide-release", title: "Test Release", artistId: "guide-artist" }],
+          managedReleases: [],
+          pendingGrants: [],
+          pendingTransfers: [],
+          outgoingTransfers: [],
+        },
+      }));
+      await page.route("**/management/releases/guide-release/access", (request) => request.fulfill({
+        json: {
+          resourceType: "release",
+          resourceId: "guide-release",
+          currentUserAccess: { isOwner: true, scopes: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA"] },
+          grants: [],
+        },
+      }));
+    }
     if (ready?.viewportHeight) {
       await page.setViewportSize({ width: 1440, height: ready.viewportHeight });
     }
@@ -143,6 +170,10 @@ async function capture(page, targets, passName) {
       console.warn(`! ${route}: ${String(err).slice(0, 80)}`);
     }
     await waitForRouteReady(page, route, ready);
+    if (ready?.selectManagementRelease) {
+      await page.getByLabel("Choose a resource").selectOption("release:guide-release");
+      await page.getByText("Transfer management").waitFor({ state: "visible" });
+    }
     // Let fonts, artwork, and async client data settle before the shot.
     await page.waitForTimeout(3200);
     await page.screenshot({ path: path.join(OUT_DIR, file) });
