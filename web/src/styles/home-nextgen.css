@@ -2402,13 +2402,12 @@
 }
 
 /* The disclosure label must stay fully readable (docs/features/
-   ai_music_integrity.md): on two-column phone cards it wraps rather than
-   truncating. `!important` overrides the badge's inline nowrap. */
-@media (max-width: 640px) {
-  .home-ng .ng-cat-card__ai {
-    white-space: normal !important;
-    border-radius: 10px !important;
-  }
+   ai_music_integrity.md): whenever a card is narrower than the label, it
+   wraps rather than truncating or overflowing. `!important` overrides the
+   badge's inline nowrap. */
+.home-ng .ng-cat-card__ai {
+  white-space: normal !important;
+  border-radius: 10px !important;
 }
 
 /* ---------- Genre chips ---------------------------------------------- */
