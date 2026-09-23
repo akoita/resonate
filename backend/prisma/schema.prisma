@@ -595,6 +595,7 @@ enum ManagementScope {
   CATALOG_READ
   CATALOG_METADATA
   CATALOG_MEDIA
+  TRACK_METADATA
 }
 
 enum ManagementGrantStatus {

@@ -4470,6 +4470,20 @@ export async function updateRelease(
   );
 }
 
+/** Edit display metadata for one track in a managed release. */
+export async function updateTrackMetadata(
+  token: string,
+  releaseId: string,
+  trackId: string,
+  input: { title?: string; explicit?: boolean },
+) {
+  return apiRequest<Track>(
+    `/catalog/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/metadata`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  );
+}
+
 /** What the withdraw/restore routes answer with (#1793). */
 export type ReleaseWithdrawalState = {
   releaseId: string;
@@ -5968,7 +5982,8 @@ export type ManagementScope =
   | "PROFILE_EDIT"
   | "CATALOG_READ"
   | "CATALOG_METADATA"
-  | "CATALOG_MEDIA";
+  | "CATALOG_MEDIA"
+  | "TRACK_METADATA";
 
 export type ManagementGrant = {
   id: string;

@@ -24,6 +24,7 @@ const RELEASE_SCOPES: { value: ManagementScope; label: string }[] = [
   { value: "CATALOG_READ", label: "View managed release" },
   { value: "CATALOG_METADATA", label: "Edit release title" },
   { value: "CATALOG_MEDIA", label: "Replace release artwork" },
+  { value: "TRACK_METADATA", label: "Edit track titles and explicit labels" },
 ];
 
 export default function ArtistManagementPage() {
@@ -252,5 +253,6 @@ function scopeLabel(scope: ManagementScope) {
     CATALOG_READ: "View release",
     CATALOG_METADATA: "Edit release title",
     CATALOG_MEDIA: "Replace artwork",
+    TRACK_METADATA: "Edit track details",
   }[scope];
 }

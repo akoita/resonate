@@ -29,6 +29,7 @@ const mockCatalogService = {
   getTrack: jest.fn(),
   getPlayerTrackActions: jest.fn(),
   updateRelease: jest.fn().mockResolvedValue({ id: 'rel-1' }),
+  updateTrackMetadata: jest.fn().mockResolvedValue({ id: 'trk-1', title: 'Edited Track', explicit: true }),
   withdrawRelease: jest.fn(),
   restoreRelease: jest.fn(),
   deleteRelease: jest.fn().mockResolvedValue({ deleted: true }),
@@ -160,6 +161,36 @@ describe('CatalogController (e2e)', () => {
     expect(mockCatalogService.reviewCreditIdentity).toHaveBeenCalledWith(
       'credit-1', 'operator-1', 'operator', 'artist-2', body.note,
     );
+  });
+
+  it('PATCH /catalog/releases/:releaseId/tracks/:trackId/metadata requires JWT and forwards the target and editable fields', async () => {
+    const body = { title: 'Edited Track', explicit: true };
+    await request(app.getHttpServer())
+      .patch('/catalog/releases/rel-1/tracks/trk-1/metadata')
+      .send(body)
+      .expect(401);
+
+    const res = await request(app.getHttpServer())
+      .patch('/catalog/releases/rel-1/tracks/trk-1/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send(body)
+      .expect(200);
+
+    expect(res.body).toMatchObject({ id: 'trk-1', title: 'Edited Track', explicit: true });
+    expect(mockCatalogService.updateTrackMetadata).toHaveBeenCalledWith(
+      'rel-1', 'trk-1', 'user-1', body,
+    );
+  });
+
+  it('PATCH /catalog/releases/:releaseId/tracks/:trackId/metadata returns service authorization denials', async () => {
+    mockCatalogService.updateTrackMetadata.mockRejectedValueOnce(
+      new ForbiddenException('Not authorized to manage this release'),
+    );
+    await request(app.getHttpServer())
+      .patch('/catalog/releases/rel-1/tracks/trk-1/metadata')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ title: 'Denied' })
+      .expect(403);
   });
 
   it('GET /catalog/me → 200 with JWT', async () => {

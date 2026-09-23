@@ -12,6 +12,7 @@ import {
   getLatestReleaseRightsUpgradeRequest,
   type ReleaseRightsUpgradeRequestRecord,
   updateRelease,
+  updateTrackMetadata,
   updateReleaseArtwork,
   getReleaseArtworkUrl,
   getOwnerScopedTrackStreamObjectUrl,
@@ -395,6 +396,10 @@ export default function ReleaseDetails() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [trackTitleDraft, setTrackTitleDraft] = useState("");
+  const [trackExplicitDraft, setTrackExplicitDraft] = useState(false);
+  const [isSavingTrack, setIsSavingTrack] = useState(false);
   const [isReleaseSaved, setIsReleaseSaved] = useState(false);
   // Release-level Punchline summary reported up by the collect module, driving
   // the above-the-fold discovery affordances (hero CTA + overview-strip cell).
@@ -454,6 +459,8 @@ export default function ReleaseDetails() {
     && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_METADATA");
   const canEditArtwork = catalogAccess?.resourceId === release?.id
     && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_MEDIA");
+  const canEditTrackMetadata = catalogAccess?.resourceId === release?.id
+    && catalogAccess?.currentUserAccess.scopes.includes("TRACK_METADATA");
   useEffect(() => {
     if (!token || !release?.id) {
       setCatalogAccess(null);
@@ -1344,6 +1351,34 @@ export default function ReleaseDetails() {
       addToast({ type: "error", title: "Could not update title", message: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setIsSavingTitle(false);
+    }
+  };
+
+  const handleSaveTrackMetadata = async () => {
+    if (!release || !token || !canEditTrackMetadata || !editingTrackId || isSavingTrack) return;
+    const title = trackTitleDraft.trim();
+    if (!title) {
+      addToast({ type: "error", title: "Enter a track title" });
+      return;
+    }
+    setIsSavingTrack(true);
+    try {
+      const updated = await updateTrackMetadata(token, release.id, editingTrackId, {
+        title,
+        explicit: trackExplicitDraft,
+      });
+      setRelease((previous) => previous ? {
+        ...previous,
+        tracks: previous.tracks?.map((track) => track.id === editingTrackId
+          ? { ...track, title: updated.title, explicit: updated.explicit }
+          : track),
+      } : previous);
+      setEditingTrackId(null);
+      addToast({ type: "success", title: "Track details updated" });
+    } catch (error) {
+      addToast({ type: "error", title: "Could not update track", message: error instanceof Error ? error.message : "Please try again." });
+    } finally {
+      setIsSavingTrack(false);
     }
   };
 
@@ -2271,11 +2306,36 @@ export default function ReleaseDetails() {
                     </td>
                     <td className="track-num">{idx + 1}</td>
                     <td className="track-title-cell">
-                      <div className="track-title-info">
-                        <span className="track-title-name">{track.title}</span>
-                        {track.explicit && <span className="explicit-tag">E</span>}
-                        <AiDisclosureBadge disclosure={track.aiDisclosure} />
-                      </div>
+                      {canEditTrackMetadata && editingTrackId === track.id ? (
+                        <form
+                          className="track-metadata-editor"
+                          onClick={(event) => event.stopPropagation()}
+                          onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void handleSaveTrackMetadata(); }}
+                        >
+                          <input
+                            aria-label="Track title"
+                            value={trackTitleDraft}
+                            onChange={(event) => setTrackTitleDraft(event.target.value)}
+                            maxLength={200}
+                            disabled={isSavingTrack}
+                            required
+                          />
+                          <label><input type="checkbox" checked={trackExplicitDraft} onChange={(event) => setTrackExplicitDraft(event.target.checked)} disabled={isSavingTrack} /> Explicit</label>
+                          <button type="submit" disabled={isSavingTrack}>Save</button>
+                          <button type="button" disabled={isSavingTrack} onClick={() => setEditingTrackId(null)}>Cancel</button>
+                        </form>
+                      ) : (
+                        <div className="track-title-info">
+                          <span className="track-title-name">{track.title}</span>
+                          {track.explicit && <span className="explicit-tag">E</span>}
+                          <AiDisclosureBadge disclosure={track.aiDisclosure} />
+                          {canEditTrackMetadata && <button
+                            type="button"
+                            aria-label={`Edit details for ${track.title}`}
+                            onClick={(event) => { event.stopPropagation(); setEditingTrackId(track.id); setTrackTitleDraft(track.title); setTrackExplicitDraft(track.explicit); }}
+                          >✎</button>}
+                        </div>
+                      )}
 
                       {canUseMixerPreview && track.stems && track.stems.length > 1 && (
                         <div className="stem-selector" onClick={(e) => e.stopPropagation()}>
@@ -3169,6 +3229,27 @@ export default function ReleaseDetails() {
         .track-title-name {
           font-weight: 700;
           color: #fff;
+        }
+
+        .track-metadata-editor {
+          display: flex;
+          align-items: center;
+          flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        .track-metadata-editor input:not([type="checkbox"]) {
+          min-width: 160px;
+          max-width: 240px;
+          padding: 7px 9px;
+          border-radius: 6px;
+        }
+
+        .track-metadata-editor label {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          white-space: nowrap;
         }
 
         .explicit-tag {

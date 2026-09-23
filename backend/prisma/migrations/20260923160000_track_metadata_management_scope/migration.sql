@@ -1,0 +1,1 @@
+ALTER TYPE "ManagementScope" ADD VALUE 'TRACK_METADATA';

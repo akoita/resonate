@@ -11,12 +11,14 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { ManagementGrantStatus, ManagementScope } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
+import { ManagementService } from '../modules/management/management.service';
 import { EventBus } from '../modules/shared/event_bus';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 import { EncryptionService } from '../modules/encryption/encryption.service';
 import { AesEncryptionProvider } from '../modules/encryption/providers/aes_encryption_provider';
 import { ConfigService } from '@nestjs/config';
 import { UploadRightsRoutingService } from '../modules/rights/upload-rights-routing.service';
+import type { StemsProcessedEvent } from '../events/event_types';
 
 const TEST_PREFIX = `cat_${Date.now()}_`;
 const NO_AI_DISCLOSURE = { level: 'none' as const, facets: [] as string[] };
@@ -59,6 +61,14 @@ describe('CatalogService (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.managementTransfer.deleteMany({
+      where: {
+        OR: [
+          { proposerUserId: { startsWith: TEST_PREFIX } },
+          { recipientUserId: { startsWith: TEST_PREFIX } },
+        ],
+      },
+    });
     await prisma.stemPurchase.deleteMany({
       where: { listing: { stem: { is: { track: { release: { artistId: `${TEST_PREFIX}artist` } } } } } },
     });
@@ -101,6 +111,49 @@ describe('CatalogService (integration)', () => {
       source: 'artist',
     });
     expect(result.artworkRevision).toBe(1);
+  });
+
+  it('preserves an edited track title when stems processing completes', async () => {
+    const sourceTitle = 'Original Track Title';
+    const editedTitle = 'Artist Edited Track Title';
+    const release = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Track Title Race',
+      tracks: [{ title: sourceTitle, position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const track = release.tracks[0];
+
+    await catalog.updateTrackMetadata(release.id, track.id, `${TEST_PREFIX}user`, {
+      title: editedTitle,
+    });
+
+    const processedEvent: StemsProcessedEvent = {
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: release.id,
+      artistId: `${TEST_PREFIX}artist`,
+      modelVersion: 'integration-test',
+      tracks: [{
+        id: track.id,
+        title: sourceTitle,
+        position: track.position,
+        stems: [],
+      }],
+    };
+    eventBus.publish(processedEvent);
+
+    let processedTrack: { title: string; processingStatus: string } | null = null;
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      processedTrack = await prisma.track.findUnique({
+        where: { id: track.id },
+        select: { title: true, processingStatus: true },
+      });
+      if (processedTrack?.processingStatus === 'complete') break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    expect(processedTrack).toEqual({ title: editedTitle, processingStatus: 'complete' });
   });
 
   it('increments release artworkRevision atomically and returns the versioned URL', async () => {
@@ -706,6 +759,149 @@ describe('CatalogService (integration)', () => {
     await catalog.updateRelease(release.id, successorId, { title: 'Successor edit' });
     expect((await catalog.listByUserId(`${TEST_PREFIX}user`)).map((item) => item.id)).not.toContain(release.id);
     expect((await catalog.listByUserId(successorId)).map((item) => item.id)).toContain(release.id);
+  });
+
+  it('edits only track title and explicit with the track metadata scope', async () => {
+    const delegateId = `${TEST_PREFIX}track_metadata_delegate`;
+    const metadataManagerId = `${TEST_PREFIX}release_metadata_manager`;
+    const successorId = `${TEST_PREFIX}track_metadata_successor`;
+    await prisma.user.createMany({
+      data: [delegateId, metadataManagerId, successorId]
+        .map((id) => ({ id, email: `${id}@test.resonate` })),
+    });
+
+    const release = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Track Metadata Release',
+      primaryArtist: 'Immutable credited artist',
+      tracks: [{ title: 'Original Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const trackId = release.tracks[0].id;
+    await prisma.track.update({
+      where: { id: trackId },
+      data: {
+        isrc: 'USAAA1234567',
+        artist: 'Immutable credited artist',
+        aiDisclosureLevel: 'ALL',
+        aiContributionFacets: ['production'],
+        aiDisclosureSource: 'artist',
+        aiDisclosureVersion: 'test-version',
+        rightsRoute: 'STANDARD_ESCROW',
+        rightsFlags: { publishing: 'reviewed' },
+        rightsReason: 'Reviewed before track metadata correction',
+        rightsPolicyVersion: 'test-policy',
+        rightsEvaluatedAt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    });
+    const immutableTrackFields = {
+      releaseId: true,
+      isrc: true,
+      artist: true,
+      position: true,
+      aiDisclosureLevel: true,
+      aiContributionFacets: true,
+      aiDisclosureSource: true,
+      aiDisclosureVersion: true,
+      aiDeclaredAt: true,
+      rightsRoute: true,
+      rightsFlags: true,
+      rightsReason: true,
+      rightsPolicyVersion: true,
+      rightsEvaluatedAt: true,
+    } as const;
+    const beforeTrack = await prisma.track.findUniqueOrThrow({
+      where: { id: trackId },
+      select: immutableTrackFields,
+    });
+    const beforeRelease = await prisma.release.findUniqueOrThrow({
+      where: { id: release.id },
+      select: { artistId: true, title: true, primaryArtist: true, artistCredits: { select: { artistId: true, displayName: true, role: true } } },
+    });
+
+    const ownerUpdate = await catalog.updateTrackMetadata(release.id, trackId, `${TEST_PREFIX}user`, {
+      title: '  Owner Edited Track  ',
+      explicit: true,
+    });
+    expect(ownerUpdate).toMatchObject({ title: 'Owner Edited Track', explicit: true });
+
+    await prisma.managementGrant.create({
+      data: {
+        releaseId: release.id,
+        granteeUserId: delegateId,
+        inviterUserId: `${TEST_PREFIX}user`,
+        scopes: [ManagementScope.TRACK_METADATA],
+        status: ManagementGrantStatus.active,
+        acceptedAt: new Date(),
+      },
+    });
+    await prisma.managementGrant.create({
+      data: {
+        releaseId: release.id,
+        granteeUserId: metadataManagerId,
+        inviterUserId: `${TEST_PREFIX}user`,
+        scopes: [ManagementScope.CATALOG_METADATA],
+        status: ManagementGrantStatus.active,
+        acceptedAt: new Date(),
+      },
+    });
+
+    const delegatedUpdate = await catalog.updateTrackMetadata(release.id, trackId, delegateId, {
+      title: 'Delegated Track Name',
+      explicit: false,
+    });
+    expect(delegatedUpdate).toMatchObject({ title: 'Delegated Track Name', explicit: false });
+    const explicitOnlyUpdate = await catalog.updateTrackMetadata(release.id, trackId, delegateId, {
+      explicit: true,
+    });
+    expect(explicitOnlyUpdate).toMatchObject({ title: 'Delegated Track Name', explicit: true });
+    await expect(catalog.updateRelease(release.id, delegateId, { title: 'Release edit denied' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, metadataManagerId, { explicit: true }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, `${TEST_PREFIX}outsider`, { title: 'Denied' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, {}))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, { title: '  ' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, { title: 'x'.repeat(201) }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, { explicit: 'yes' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, { title: 'Name', isrc: 'mutable?' }))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    const otherRelease = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Other Track Metadata Release',
+      tracks: [{ title: 'Other Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    await expect(catalog.updateTrackMetadata(release.id, otherRelease.tracks[0].id, `${TEST_PREFIX}user`, {
+      title: 'Wrong parent',
+    })).rejects.toThrow('Track not found for this release');
+
+    const afterTrack = await prisma.track.findUniqueOrThrow({
+      where: { id: trackId },
+      select: immutableTrackFields,
+    });
+    const afterRelease = await prisma.release.findUniqueOrThrow({
+      where: { id: release.id },
+      select: { artistId: true, title: true, primaryArtist: true, artistCredits: { select: { artistId: true, displayName: true, role: true } } },
+    });
+    expect(afterTrack).toEqual(beforeTrack);
+    expect(afterRelease).toEqual(beforeRelease);
+    expect((await prisma.track.findUniqueOrThrow({ where: { id: trackId } })).title)
+      .toBe('Delegated Track Name');
+
+    const management = new ManagementService();
+    const transfer = await management.createTransfer(`${TEST_PREFIX}user`, {
+      recipientEmail: `${successorId}@test.resonate`,
+      releaseIds: [release.id],
+    });
+    await management.acceptTransfer(successorId, transfer.id);
+    await expect(catalog.updateTrackMetadata(release.id, trackId, delegateId, { title: 'After transfer' }))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    await catalog.updateTrackMetadata(release.id, trackId, successorId, { title: 'Successor Track Name' });
   });
 
   it('does not let an owner reopen a published release to bypass disclosure locking', async () => {
