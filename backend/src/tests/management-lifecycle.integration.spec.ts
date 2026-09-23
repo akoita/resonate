@@ -201,6 +201,55 @@ describe("ManagementService lifecycle integration", () => {
     await expect(service.getReleaseAccess(USERS.recipient, releases[1].id)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
+  it("inventories track metadata access and revokes it when release ownership transfers", async () => {
+    const { releases } = await createFixture(1);
+    const grant = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.TRACK_METADATA],
+    });
+    await service.acceptGrant(USERS.manager, grant.id);
+
+    expect((await service.getMe(USERS.manager)).managedReleases).toEqual([
+      expect.objectContaining({
+        id: releases[0].id,
+        grantId: grant.id,
+        scopes: [ManagementScope.TRACK_METADATA],
+      }),
+    ]);
+    expect(await service.getReleaseAccess(USERS.manager, releases[0].id)).toMatchObject({
+      currentUserAccess: { isOwner: false, scopes: [ManagementScope.TRACK_METADATA] },
+    });
+    expect(await service.getReleaseAccess(USERS.owner, releases[0].id)).toMatchObject({
+      currentUserAccess: {
+        isOwner: true,
+        scopes: [
+          ManagementScope.CATALOG_READ,
+          ManagementScope.CATALOG_METADATA,
+          ManagementScope.CATALOG_MEDIA,
+          ManagementScope.TRACK_METADATA,
+        ],
+      },
+    });
+
+    const transfer = await service.createTransfer(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.recipient],
+      releaseIds: [releases[0].id],
+    });
+    await service.acceptTransfer(USERS.recipient, transfer.id);
+
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: grant.id } })).status)
+      .toBe(ManagementGrantStatus.revoked);
+    await expect(service.getReleaseAccess(USERS.manager, releases[0].id))
+      .rejects.toBeInstanceOf(ForbiddenException);
+    expect(await service.getReleaseAccess(USERS.recipient, releases[0].id)).toMatchObject({
+      currentUserAccess: {
+        isOwner: true,
+        scopes: expect.arrayContaining([ManagementScope.TRACK_METADATA]),
+      },
+    });
+  });
+
   it("transfers only selected releases and changes the effective owner without rewriting legacy attribution", async () => {
     const { artist, releases } = await createFixture(2);
     const activeGrant = await service.createGrant(USERS.owner, {

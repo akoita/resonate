@@ -1127,7 +1127,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose exactly which release permissions they need. The invitation appears in their Artist management page and gives them no access until they accept it. You can revoke a pending or active invitation there.",
+            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose exactly which release permissions they need, including a separate option to edit track titles and explicit labels. The invitation appears in their Artist management page and gives them no access until they accept it. You can revoke a pending or active invitation there.",
           },
           {
             kind: "paragraph",

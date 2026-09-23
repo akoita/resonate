@@ -433,6 +433,17 @@ export class CatalogController {
   }
 
   @UseGuards(AuthGuard("jwt"))
+  @Patch("releases/:releaseId/tracks/:trackId/metadata")
+  updateTrackMetadata(
+    @Param("releaseId") releaseId: string,
+    @Param("trackId") trackId: string,
+    @Body() body: unknown,
+    @Request() req: any,
+  ) {
+    return this.catalogService.updateTrackMetadata(releaseId, trackId, req.user.userId, body);
+  }
+
+  @UseGuards(AuthGuard("jwt"))
   @Delete("releases/:releaseId")
   deleteRelease(
     @Param("releaseId") releaseId: string,

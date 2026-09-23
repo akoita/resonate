@@ -23,6 +23,7 @@ const CATALOG_SCOPES = [
   ManagementScope.CATALOG_READ,
   ManagementScope.CATALOG_METADATA,
   ManagementScope.CATALOG_MEDIA,
+  ManagementScope.TRACK_METADATA,
 ] as const;
 const OWNER_CATALOG_SCOPES = [...CATALOG_SCOPES];
 const MAX_RECIPIENT_EMAIL_LENGTH = 254;
@@ -707,7 +708,7 @@ export class ManagementService {
       throw new BadRequestException(
         resourceType === ManagementResourceType.artist_profile
           ? "Artist profile grants support only PROFILE_EDIT"
-          : "Release grants support only CATALOG_READ, CATALOG_METADATA, and CATALOG_MEDIA",
+          : "Release grants support only CATALOG_READ, CATALOG_METADATA, CATALOG_MEDIA, and TRACK_METADATA",
       );
     }
     return scopes as ManagementScope[];
@@ -910,6 +911,7 @@ function uniqueScopes(scopes: ManagementScope[]): ManagementScope[] {
     [ManagementScope.CATALOG_READ, 1],
     [ManagementScope.CATALOG_METADATA, 2],
     [ManagementScope.CATALOG_MEDIA, 3],
+    [ManagementScope.TRACK_METADATA, 4],
   ]);
   return [...new Set(scopes)].sort((a, b) => (priority.get(a) ?? 99) - (priority.get(b) ?? 99));
 }

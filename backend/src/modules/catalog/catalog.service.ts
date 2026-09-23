@@ -180,6 +180,40 @@ function toWithdrawalState(
 }
 
 const WITHDRAWAL_REASON_MAX_LENGTH = 1000;
+const TRACK_TITLE_MAX_LENGTH = 200;
+
+function normalizeTrackMetadataInput(value: unknown): { title?: string; explicit?: boolean } {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new BadRequestException("Track metadata must be an object containing title and/or explicit only.");
+  }
+
+  const input = value as Record<string, unknown>;
+  const keys = Object.keys(input);
+  if (keys.length === 0 || keys.some((key) => key !== "title" && key !== "explicit")) {
+    throw new BadRequestException("Track metadata must contain title and/or explicit only.");
+  }
+
+  const normalized: { title?: string; explicit?: boolean } = {};
+  if (Object.prototype.hasOwnProperty.call(input, "title")) {
+    if (typeof input.title !== "string") {
+      throw new BadRequestException("title must be a non-empty string.");
+    }
+    const title = input.title.trim();
+    if (!title) throw new BadRequestException("title must be a non-empty string.");
+    if (title.length > TRACK_TITLE_MAX_LENGTH) {
+      throw new BadRequestException(`title must be at most ${TRACK_TITLE_MAX_LENGTH} characters.`);
+    }
+    normalized.title = title;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, "explicit")) {
+    if (typeof input.explicit !== "boolean") {
+      throw new BadRequestException("explicit must be a boolean.");
+    }
+    normalized.explicit = input.explicit;
+  }
+
+  return normalized;
+}
 
 function normalizeWithdrawalReason(value?: string | null): string | null {
   if (value === undefined || value === null) return null;
@@ -1947,7 +1981,7 @@ export class CatalogService implements OnModuleInit {
               granteeUserId: userId,
               status: "active",
               OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-              scopes: { hasSome: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA"] },
+              scopes: { hasSome: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA", "TRACK_METADATA"] },
             },
           },
         },
@@ -2091,6 +2125,27 @@ export class CatalogService implements OnModuleInit {
     return withReleaseAiDisclosure(updated);
   }
 
+  /** Update only the editable title and explicit flag on one managed track. */
+  async updateTrackMetadata(
+    releaseId: string,
+    trackId: string,
+    userId: string,
+    input: unknown,
+  ) {
+    const data = normalizeTrackMetadataInput(input);
+    const updated = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "track_metadata");
+      const track = await tx.track.findFirst({
+        where: { id: trackId, releaseId },
+        select: { id: true },
+      });
+      if (!track) throw new NotFoundException("Track not found for this release.");
+      return tx.track.update({ where: { id: track.id }, data });
+    });
+    this.clearCache();
+    return updated;
+  }
+
   /**
    * Withdraw a release from streaming (#1793).
    *
@@ -2180,7 +2235,7 @@ export class CatalogService implements OnModuleInit {
     tx: Prisma.TransactionClient,
     releaseId: string,
     userId: string,
-    action: "catalog_owner" | "catalog_metadata" | "catalog_media",
+    action: "catalog_owner" | "catalog_metadata" | "catalog_media" | "track_metadata",
   ) {
     await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
     if (!(await hasReleaseManagementAccess(userId, releaseId, action, tx))) {

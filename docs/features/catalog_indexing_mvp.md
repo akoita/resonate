@@ -67,7 +67,9 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   named release to a manager's inventory. `/artist/management` shows pending
   invitations, exact release scopes, and selected or complete-catalog transfer
   invitations. `CATALOG_METADATA` enables title editing on the release page;
-  `CATALOG_MEDIA` enables artwork replacement there. Publication status,
+  `CATALOG_MEDIA` enables artwork replacement there. `TRACK_METADATA` permits
+  editing track titles and explicit labels on that release without giving the
+  manager release-title, rights, or financial controls. Publication status,
   credited-artist correction, processing controls, and deletion remain with the
   management owner. Accepting a transfer ends existing release invitations.
   Release transfers change management authority without rewriting

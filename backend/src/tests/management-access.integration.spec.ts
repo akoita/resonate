@@ -23,6 +23,7 @@ const IDS = {
   grantArtist: `${TEST_PREFIX}grant_artist`,
   grantRelease: `${TEST_PREFIX}grant_release`,
   grantReleaseOther: `${TEST_PREFIX}grant_release_other`,
+  trackMetadataRelease: `${TEST_PREFIX}track_metadata_release`,
   mediaRelease: `${TEST_PREFIX}media_release`,
   profileGrantArtist: `${TEST_PREFIX}profile_grant_artist`,
   profileGrantRelease: `${TEST_PREFIX}profile_grant_release`,
@@ -95,6 +96,7 @@ beforeAll(async () => {
   await createArtist(IDS.grantArtist);
   await createRelease(IDS.grantRelease, IDS.grantArtist);
   await createRelease(IDS.grantReleaseOther, IDS.grantArtist);
+  await createRelease(IDS.trackMetadataRelease, IDS.grantArtist);
   await createRelease(IDS.mediaRelease, IDS.grantArtist);
   await createRelease(IDS.pendingRelease, IDS.grantArtist);
   await createRelease(IDS.expiredRelease, IDS.grantArtist);
@@ -132,6 +134,12 @@ beforeAll(async () => {
     granteeUserId: DELEGATE,
     releaseId: IDS.grantReleaseOther,
     scopes: [ManagementScope.CATALOG_READ],
+  });
+  await createGrant({
+    id: `${TEST_PREFIX}release_track_metadata`,
+    granteeUserId: DELEGATE,
+    releaseId: IDS.trackMetadataRelease,
+    scopes: [ManagementScope.TRACK_METADATA],
   });
   await createGrant({
     id: `${TEST_PREFIX}release_media`,
@@ -243,6 +251,18 @@ describe("management access resolver (integration)", () => {
     await expect(
       hasReleaseManagementAccess(DELEGATE, IDS.mediaRelease, "catalog_media"),
     ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "track_metadata"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "catalog_read"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "catalog_metadata"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.trackMetadataRelease, "catalog_media"),
+    ).resolves.toBe(false);
     await expect(
       hasArtistManagementAccess(DELEGATE, IDS.grantArtist, "profile_edit"),
     ).resolves.toBe(false);
