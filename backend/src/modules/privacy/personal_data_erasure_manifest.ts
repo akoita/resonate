@@ -142,6 +142,16 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       "If the erased person was the reviewer instead, only their review note is scrubbed; if they were an approved claimant, the grant is revoked before the user id rotates.",
   },
   {
+    model: "ArtistClaimDecisionEvent",
+    disposition: "retain",
+    reason:
+      "The decision and timestamp remain as internal audit history while private free-text notes are scrubbed on claimant or actor erasure.",
+    scrub: ["note"],
+    matchOn: "actorUserId",
+    note:
+      "The actor relation cascades to the rotated pseudonymous user id. Claimant-owned event notes are scrubbed through the related ArtistClaimRequest erasure rule.",
+  },
+  {
     model: "ManagementGrant",
     disposition: "retain",
     reason:
@@ -842,6 +852,8 @@ export const ERASURE_RULES_BY_MODEL: Readonly<Record<string, ErasureRule>> = Obj
  * rather than quietly allowed.
  */
 export const RETAINED_BUT_NOT_EXPORTED: Readonly<Record<string, string>> = {
+  ArtistClaimDecisionEvent:
+    "Retained as internal operator audit history, but not exported: `actorUserId` identifies a reviewer whose actions may concern another claimant, and the claimant's current request and decision remain in the ArtistClaimRequest export.",
   ContractEvent:
     "Retained as an indexed copy of a public ledger, but not exported: a person's address appears only inside the untyped `args` JSON, so there is no column to query them by. Their transactions reach the export through the typed mirrors instead.",
   ShowCampaignEscrowEvent:

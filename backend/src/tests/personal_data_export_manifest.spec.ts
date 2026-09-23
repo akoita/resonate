@@ -83,6 +83,13 @@ describe("personal data export manifest", () => {
       expect(REDACTED_FIELDS.ManagementTransferRecoveryRequest).toHaveProperty("reviewerUserId");
     });
 
+    it("keeps operator claim-decision history out of personal exports", () => {
+      expect(NOT_EXPORTED_MODELS.ArtistClaimDecisionEvent).toContain(
+        "historical free-text review notes are not exposed through an operator's personal export",
+      );
+      expect(EXPORTED_MODELS.find((entry) => entry.model === "ArtistClaimRequest")).toBeDefined();
+    });
+
     it("lists each exported model only once", () => {
       const exported = EXPORTED_MODELS.map((entry) => entry.model);
       expect(exported.length).toBe(new Set(exported).size);

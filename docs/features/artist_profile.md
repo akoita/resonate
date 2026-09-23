@@ -2,7 +2,7 @@
 title: "Artist Profile (editable) + reliable artist links"
 status: implemented
 audiences: [artists, listeners, frontend/backend developers]
-issues: ["https://github.com/akoita/resonate/issues/1419", "https://github.com/akoita/resonate/issues/1762"]
+issues: ["https://github.com/akoita/resonate/issues/1419", "https://github.com/akoita/resonate/issues/1762", "https://github.com/akoita/resonate/issues/1856"]
 ---
 
 # Artist Profile (editable) + reliable artist links
@@ -14,6 +14,9 @@ impact):
    social links.
 2. A resolved release credit links to its `/artist/[id]` page; an ambiguous
    credit stays on the name-based catalog route.
+
+The #1856 claim-entry and audit changes are vision-neutral identity and UX
+quality under ADR-BM-6. They do not change money, rights, or payouts.
 
 ## Status
 
@@ -55,6 +58,28 @@ still manages the exact transferred resources and no later accepted transfer
 has involved them. The decision remains in the management audit history;
 rights, credits, and payouts are unchanged.
 
+### Artist or representative (request public profile access)
+
+Sign in and open `/artist/management`. Search for a credited artist, select the
+exact profile, and compare its public catalog with the artist you represent.
+Same-name results remain separate profiles. Submit 20–4,000 characters of
+evidence for an operator to review. The request is private, and the workspace
+shows your latest pending, approved, rejected, or revoked status for each
+profile. Rejected or revoked requesters can submit new evidence while the exact
+profile remains eligible; a profile already claimed by someone else no longer
+offers a retry. Profiles without a confirmed main credit likewise do not offer
+an evidence form. Public artist pages have no claim prompt or claimability badge.
+
+Only an approved request permits editing that public profile. The server checks
+the exact artist ID and non-ambiguous release credit at submission and review;
+it does not derive authority from name matching, release uploads, or client
+state. Approval never transfers release management, rights, payouts, or private
+analytics. Claim submission is rate-limited per account. Operators retain the
+evidence and decision route; listeners and other requesters cannot read them.
+Every approval, rejection, and revocation appends an internal decision event.
+Account erasure removes private free-text evidence and notes from retained
+review history.
+
 ### Developer / API
 
 - `PATCH /artists/:id` (JWT, manager owner or approved public-profile claimant) — body
@@ -64,7 +89,15 @@ rights, credits, and payouts are unchanged.
   and length-capped; the bio is capped at 2000 chars. Returns the updated
   profile. `PATCH /artists/:id/settings` (remixConsent) is unchanged.
 - `GET /artists/:id` returns public profile fields including `website` and
-  `socialLinks`, without account ownership, payout data, or private claim proof.
+  `socialLinks`, without account ownership, payout data, claimability status,
+  or private claim proof.
+- `GET /artists/claims/me` (JWT) returns only the caller's latest status per
+  exact artist, with the artist name, image, and current request eligibility.
+  Authenticated `GET /artists/search` includes that eligibility for exact-profile
+  selection. `POST /artists/:id/claims`
+  (JWT) accepts bounded evidence for an eligible, credited public artist;
+  operator-only claim review records the decision. These endpoints never grant
+  release-level management by implication.
 - `GET /management/artists/:id/access` (JWT) reports the caller's profile
   scope; the current management owner alone sees invitation history. Grant and
   transfer endpoints require the current owner and recipient to act separately.
@@ -79,6 +112,9 @@ rights, credits, and payouts are unchanged.
 
 `Artist.imageUrl`, `summary`, `socialLinks` (JSON) already existed;
 `website String?` added by migration `20260710000000_artist_profile_website`.
+`ArtistClaimDecisionEvent` records the sequence of operator decisions for a
+claim while `ArtistClaimRequest` carries its current state. The event is
+internal audit history, not a public API response.
 
 ## Link behavior
 
@@ -100,7 +136,8 @@ polish slice (tracked in #1419's follow-up notes).
   `artist.service.ts` (`updateProfile` + URL normalization),
   `backend/src/tests/artist-profile.integration.spec.ts`.
 - Frontend: `web/src/components/artist/ArtistProfileEditor.tsx`,
-  `ArtistSocialLinksRow.tsx`, `web/src/lib/artistProfileForm.ts`,
+  `ArtistSocialLinksRow.tsx`, `ArtistClaimCenter.tsx`,
+  `ArtistClaimRequestPanel.tsx`, `web/src/lib/artistProfileForm.ts`,
   `web/src/lib/artistRoutes.ts` (`trackArtistCreditHref`),
   `web/src/app/artist/[id]/page.tsx`. Tests: `web/src/lib/artistProfileForm.test.ts`,
   `artistRoutes.test.ts`, `web/src/components/artist/ArtistProfileEditor.test.tsx`.

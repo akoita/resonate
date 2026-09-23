@@ -660,6 +660,8 @@ export const NOT_EXPORTED_MODELS: Readonly<Record<string, string>> = {
     "A takedown notice keyed by trackId whose personal content — claimant name and email — belongs to the reporter, not to the person exporting.",
 
   // Operator and indexer infrastructure.
+  ArtistClaimDecisionEvent:
+    "Internal artist-claim audit history; `actorUserId` identifies a reviewer whose decisions may concern another claimant, so historical free-text review notes are not exposed through an operator's personal export. The claimant's own current request and decision remain in the ArtistClaimRequest export.",
   IndexerState: "Per-chain block cursor for the indexer; operator infrastructure with no personal column.",
   ShowEscrowIndexerState:
     "Per-chain escrow indexer cursor and worker lease; `feeRecipient` is the platform's address and `leaseOwnerId` is a worker process id, not a person.",

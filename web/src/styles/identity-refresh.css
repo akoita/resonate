@@ -1062,6 +1062,86 @@ button:focus-visible,
   padding: 3px 9px;
   line-height: 1.2;
 }
+.artist-claim--approved .artist-claim__status {
+  color: var(--r-success, #93e2b0);
+  background: rgba(79, 190, 127, 0.12);
+  border-color: rgba(79, 190, 127, 0.3);
+}
+.artist-claim-center {
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.artist-claim-center h2,
+.artist-claim-center h3 { margin-top: 0; }
+.artist-claim-center__layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 20px;
+}
+.artist-claim-center__search { display: grid; gap: 8px; font-weight: 600; }
+.artist-claim-center__search input {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 10px;
+  color: var(--r-on-surface);
+  background: var(--r-surface-container, #252430);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font: inherit;
+}
+.artist-claim-center__results,
+.artist-claim-center__history,
+.artist-claim-center__releases {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.artist-claim-center__results,
+.artist-claim-center__history { display: grid; gap: 8px; }
+.artist-claim-center__results button,
+.artist-claim-center__history button {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-container, #252430);
+  color: var(--r-on-surface);
+  cursor: pointer;
+}
+.artist-claim-center__results button:hover,
+.artist-claim-center__results button.is-selected,
+.artist-claim-center__history button:hover {
+  border-color: var(--r-primary, #9c83ff);
+}
+.artist-claim-center__results button span,
+.artist-claim-center__history button span {
+  color: var(--r-on-surface-variant);
+  font-size: 12px;
+}
+.artist-claim-center__selection {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.13);
+}
+.artist-claim-center__releases { display: flex; flex-wrap: wrap; gap: 8px; }
+.artist-claim-center__releases li {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--r-surface-container, #252430);
+  color: var(--r-on-surface-variant);
+  font-size: 12px;
+}
+@media (max-width: 720px) {
+  .artist-claim-center { padding: 18px; }
+  .artist-claim-center__layout { grid-template-columns: 1fr; }
+}
 .artist-claim__actions {
   display: flex;
   flex-wrap: wrap;

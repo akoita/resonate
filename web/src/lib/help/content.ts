@@ -1078,7 +1078,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "artist-profile",
     title: "Your artist page",
     summary:
-      "Edit your public profile after it is yours, or submit evidence to claim an unclaimed artist page.",
+      "Edit a profile you manage, or request access to a credited artist profile from Artist management.",
     category: "artists",
     audiences: ["artist", "operator"],
     status: "available",
@@ -1106,7 +1106,18 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "An unclaimed public artist page shows an \"Are you …?\" prompt with a \"Claim this profile\" button below the play buttons. Sign in, then share evidence that you represent the artist — for example a distributor or label reference, a rights document, or an official account that links to the page. An operator reviews it for that exact page; a matching name alone does not grant access. While you wait, the page shows \"Pending review\". If a claim isn't approved, you can submit new evidence.",
+            text: "Sign in and open Artist management, then search for the credited artist. Select the exact profile and check its releases, especially when artists share a name. Eligible profiles let you submit evidence that you represent the artist — for example a distributor or label reference, a rights document, or an official account that links to the page. An operator reviews each request; a matching name, release credit, or upload does not grant access. Your requests and their pending, approved, rejected, or revoked status appear in Artist management. After rejection or revocation, you can submit new evidence if the profile still accepts requests.",
+          },
+          {
+            kind: "figure",
+            figure: {
+              src: `${SHOT}/artist-claim-request.png`,
+              alt: "Artist management page with a credited-profile search, selected catalog, and evidence request step.",
+              caption: "Choose the exact credited profile and review its catalog before requesting access.",
+              width: 1440,
+              height: 1100,
+              source: LOCAL,
+            },
           },
           {
             kind: "paragraph",

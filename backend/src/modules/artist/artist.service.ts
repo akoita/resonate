@@ -19,6 +19,7 @@ export type ArtistSearchResult = {
     imageUrl: string | null;
     profileType: string | null;
     claimStatus: string | null;
+    canRequestClaim: boolean;
 };
 
 // Rank suggestions without collapsing distinct same-name identities.
@@ -67,10 +68,23 @@ const MAX_URL_LENGTH = 2048;
 const MIN_ARTIST_CLAIM_EVIDENCE_LENGTH = 20;
 const MAX_ARTIST_CLAIM_EVIDENCE_LENGTH = 4000;
 const MAIN_ARTIST_CREDIT_ROLES = ["main", "primary"];
+const AUTO_CLAIM_REJECTION_NOTE = "Another claim for this artist was approved.";
 // Only http(s) URLs are ever persisted — this is the primary XSS/open-redirect
 // guard for values that get rendered back as anchors/img src on the profile
 // page (rejects `javascript:`, `data:`, `vbscript:`, bare `//host`, etc).
 const ALLOWED_URL_SCHEMES = ["http:", "https:"];
+
+function isClaimRequestEligible(artist: {
+    userId: string | null;
+    profileType: string | null;
+    claimStatus: string | null;
+    releaseCredits: Array<{ id: string }>;
+}): boolean {
+    return artist.userId === null
+        && artist.profileType === "public_artist"
+        && artist.claimStatus === "unclaimed"
+        && artist.releaseCredits.length > 0;
+}
 
 export type UpdateArtistProfileInput = {
     imageUrl?: unknown;
@@ -226,6 +240,9 @@ export class ArtistService {
         const evidence = normalizeArtistClaimEvidence(evidenceInput);
         try {
             return await prisma.$transaction(async (tx) => {
+            // Serialize submissions from one claimant so the pending-claim cap
+            // remains correct when several requests arrive at once.
+            await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`);
             await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Artist" WHERE "id" = ${artistId} FOR UPDATE`);
 
             const artist = await tx.artist.findUnique({
@@ -246,12 +263,7 @@ export class ArtistService {
                 },
             });
             if (!artist) throw new NotFoundException("Artist not found");
-            if (
-                artist.userId !== null
-                || artist.profileType !== "public_artist"
-                || artist.claimStatus !== "unclaimed"
-                || artist.releaseCredits.length === 0
-            ) {
+            if (!isClaimRequestEligible(artist)) {
                 throw new ConflictException("Artist profile is not eligible for a claim");
             }
 
@@ -260,6 +272,13 @@ export class ArtistService {
                 select: { id: true },
             });
             if (existing) throw new ConflictException("A pending claim already exists for this artist");
+
+            const pendingClaimCount = await tx.artistClaimRequest.count({
+                where: { claimantUserId: userId, status: "pending" },
+            });
+            if (pendingClaimCount >= 5) {
+                throw new ConflictException("A claimant may have at most 5 pending artist claims");
+            }
 
                 return tx.artistClaimRequest.create({
                     data: { artistId, claimantUserId: userId, evidence },
@@ -294,6 +313,61 @@ export class ArtistService {
                 reviewedAt: true,
             },
         });
+    }
+
+    async getMyClaims(userId: string) {
+        const claims = await prisma.artistClaimRequest.findMany({
+            where: { claimantUserId: userId },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            select: {
+                artistId: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true,
+                reviewedAt: true,
+                artist: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        imageUrl: true,
+                        userId: true,
+                        profileType: true,
+                        claimStatus: true,
+                        releaseCredits: {
+                            where: {
+                                role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                                identityStatus: { not: "ambiguous" },
+                            },
+                            select: { id: true },
+                            take: 1,
+                        },
+                    },
+                },
+            },
+        });
+
+        // Claims are ordered newest first, so the first row for each exact
+        // artist ID is that artist's latest claim. Names are not identities:
+        // same-name profiles stay separate in this response.
+        const latestByArtist = new Map<string, (typeof claims)[number]>();
+        for (const claim of claims) {
+            if (!latestByArtist.has(claim.artistId)) {
+                latestByArtist.set(claim.artistId, claim);
+            }
+        }
+
+        return Array.from(latestByArtist.values(), (claim) => ({
+            status: claim.status,
+            createdAt: claim.createdAt,
+            updatedAt: claim.updatedAt,
+            reviewedAt: claim.reviewedAt,
+            artist: {
+                id: claim.artist.id,
+                displayName: claim.artist.displayName,
+                imageUrl: claim.artist.imageUrl,
+                canRequestClaim: isClaimRequestEligible(claim.artist),
+            },
+        }));
     }
 
     async listPendingClaims(actorRole: unknown) {
@@ -403,21 +477,53 @@ export class ArtistService {
                 if (updated.count !== 1) throw new ConflictException("Artist claim is no longer pending");
 
                 if (decision === "approve") {
-                    await tx.artistClaimRequest.updateMany({
+                    const competingClaims = await tx.artistClaimRequest.findMany({
                         where: {
                             artistId: claim.artistId,
                             status: "pending",
                             id: { not: claimId },
                         },
-                        data: {
-                            status: "rejected",
-                            reviewerUserId,
-                            reviewNote: "Another claim for this artist was approved.",
-                            reviewedAt: now,
-                        },
+                        select: { id: true },
                     });
+                    if (competingClaims.length > 0) {
+                        const autoRejected = await tx.artistClaimRequest.updateMany({
+                            where: {
+                                artistId: claim.artistId,
+                                status: "pending",
+                                id: { not: claimId },
+                            },
+                            data: {
+                                status: "rejected",
+                                reviewerUserId,
+                                reviewNote: AUTO_CLAIM_REJECTION_NOTE,
+                                reviewedAt: now,
+                            },
+                        });
+                        if (autoRejected.count !== competingClaims.length) {
+                            throw new ConflictException("A competing claim changed during review");
+                        }
+                        await tx.artistClaimDecisionEvent.createMany({
+                            data: competingClaims.map(({ id }) => ({
+                                claimId: id,
+                                actorUserId: reviewerUserId,
+                                decision: "reject",
+                                note: AUTO_CLAIM_REJECTION_NOTE,
+                                createdAt: now,
+                            })),
+                        });
+                    }
                 }
             }
+
+            await tx.artistClaimDecisionEvent.create({
+                data: {
+                    claimId,
+                    actorUserId: reviewerUserId,
+                    decision,
+                    note: reviewNote,
+                    createdAt: now,
+                },
+            });
 
             return tx.artistClaimRequest.findUnique({
                 where: { id: claimId },
@@ -466,13 +572,30 @@ export class ArtistService {
                 id: true,
                 displayName: true,
                 imageUrl: true,
+                userId: true,
                 profileType: true,
                 claimStatus: true,
+                releaseCredits: {
+                    where: {
+                        role: { in: MAIN_ARTIST_CREDIT_ROLES },
+                        identityStatus: { not: "ambiguous" },
+                    },
+                    select: { id: true },
+                    take: 1,
+                },
             },
         });
 
         const lowerQuery = normalized.toLowerCase();
         return matches
+            .map((artist) => ({
+                id: artist.id,
+                displayName: artist.displayName,
+                imageUrl: artist.imageUrl,
+                profileType: artist.profileType,
+                claimStatus: artist.claimStatus,
+                canRequestClaim: isClaimRequestEligible(artist),
+            }))
             .sort((a, b) => artistRelevanceScore(b, lowerQuery) - artistRelevanceScore(a, lowerQuery)
                 || a.displayName.localeCompare(b.displayName)
                 || a.id.localeCompare(b.id))

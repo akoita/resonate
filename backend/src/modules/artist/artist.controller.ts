@@ -11,8 +11,10 @@ import {
     NotFoundException,
 } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { Throttle } from "@nestjs/throttler";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
+import { hours } from "../shared/rate_limits";
 import { ArtistService } from "./artist.service";
 
 @Controller("artists")
@@ -35,6 +37,12 @@ export class ArtistController {
             q ?? "",
             parsedLimit !== undefined && Number.isFinite(parsedLimit) ? parsedLimit : undefined,
         );
+    }
+
+    @UseGuards(AuthGuard("jwt"))
+    @Get("claims/me")
+    getMyClaims(@Request() req: any) {
+        return this.artistService.getMyClaims(req.user.userId);
     }
 
     @UseGuards(AuthGuard("jwt"))
@@ -69,6 +77,13 @@ export class ArtistController {
         return this.artistService.updateProfile(req.user.userId, id, body);
     }
 
+    @Throttle({
+        default: {
+            limit: 5,
+            ttl: hours(1),
+            getTracker: (req: Record<string, any>) => req.user?.userId ?? req.ip,
+        },
+    })
     @UseGuards(AuthGuard("jwt"))
     @Post(":id/claims")
     submitClaim(
@@ -119,7 +134,6 @@ export class ArtistController {
             id: artist.id,
             displayName: artist.displayName,
             profileType: artist.profileType,
-            claimStatus: artist.claimStatus,
             imageUrl: artist.imageUrl,
             summary: artist.summary,
             socialLinks: artist.socialLinks,

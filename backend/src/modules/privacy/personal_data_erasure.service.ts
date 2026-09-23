@@ -720,6 +720,21 @@ export class PersonalDataErasureService {
         });
         affected += reviewerNotes.count;
 
+        // The event retains its decision, timestamp and pseudonymous actor,
+        // but free-text notes belong to either the claimant or the reviewer.
+        // Scrub notes in both roles before User.id rotates through the FK.
+        const decisionEventNotes = await tx.artistClaimDecisionEvent.updateMany({
+          where: {
+            note: { not: null },
+            OR: [
+              { actorUserId: oldUserId },
+              { claim: { is: { claimantUserId: oldUserId } } },
+            ],
+          },
+          data: { note: null },
+        });
+        anonymized["ArtistClaimDecisionEvent.note"] = decisionEventNotes.count;
+
         // An erased claimant must lose the edit grant as well as the private
         // evidence. Keep the review row and its final status as revoked.
         const approvedClaims = await delegateFor(tx, rule.model).findMany({

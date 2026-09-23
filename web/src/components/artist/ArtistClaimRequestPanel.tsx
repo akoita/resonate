@@ -8,13 +8,12 @@ import { Button } from "../ui/Button";
 export const CLAIM_EVIDENCE_MIN = 20;
 export const CLAIM_EVIDENCE_MAX = 4000;
 
-type ArtistClaimCalloutProps = {
+type ArtistClaimRequestPanelProps = {
   artistId: string;
   artistName: string;
-  token: string | null | undefined;
+  token: string;
   /** The viewer's latest claim, already filtered to this artist. */
-  claim: ArtistClaim | null;
-  onSignIn: () => void;
+  claim: Pick<ArtistClaim, "status" | "createdAt"> | null;
   onSubmitted: (claim: ArtistClaim) => void;
 };
 
@@ -34,6 +33,9 @@ export function claimSubmitErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError) {
     switch (error.status) {
       case 409:
+        if (apiErrorText(error).includes("at most 5 pending artist claims")) {
+          return "You can have up to five profile requests under review at once. Wait for a decision before sending another.";
+        }
         return apiErrorText(error).includes("pending")
           ? "You already have a claim under review for this profile."
           : "This profile can't be claimed right now. It may already be claimed, or it has no confirmed releases yet.";
@@ -44,7 +46,7 @@ export function claimSubmitErrorMessage(error: unknown): string {
       case 404:
         return "This artist profile no longer exists.";
       case 429:
-        return "Too many attempts. Wait a few minutes and try again.";
+        return "Too many requests. Wait up to an hour before trying again.";
       default:
         break;
     }
@@ -59,19 +61,14 @@ function formatClaimDate(value: string | undefined): string | null {
   return date.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-/**
- * Compact, collapsed-by-default "Are you {artist}?" callout shown on an
- * unclaimed public artist page (#1492). Sits below the listener actions so it
- * never pushes Play all down for ordinary visitors.
- */
-export function ArtistClaimCallout({
+/** Evidence request for an explicitly selected profile in the signed-in workspace. */
+export function ArtistClaimRequestPanel({
   artistId,
   artistName,
   token,
   claim,
-  onSignIn,
   onSubmitted,
-}: ArtistClaimCalloutProps) {
+}: ArtistClaimRequestPanelProps) {
   const { addToast } = useToast();
   const baseId = useId();
   const headingId = `${baseId}-heading`;
@@ -98,9 +95,21 @@ export function ArtistClaimCallout({
           <span className="artist-claim__status">Pending review</span>
         </div>
         <p className="artist-claim__text">
-          We received your claim{submittedOn ? ` on ${submittedOn}` : ""}. An operator will review your
-          evidence — nothing on this page changes until it&apos;s approved.
+          We received your request{submittedOn ? ` on ${submittedOn}` : ""}. An operator will review your
+          evidence. Profile access begins only after approval.
         </p>
+      </section>
+    );
+  }
+
+  if (claim?.status === "approved") {
+    return (
+      <section className="artist-claim artist-claim--approved" aria-labelledby={headingId}>
+        <div className="artist-claim__header">
+          <h2 id={headingId} className="artist-claim__title">Your request for {artistName}</h2>
+          <span className="artist-claim__status">Approved</span>
+        </div>
+        <p className="artist-claim__text">You can edit this public artist profile. Release management, rights, payouts, and private analytics remain separate.</p>
       </section>
     );
   }
@@ -126,8 +135,8 @@ export function ArtistClaimCallout({
       setExpanded(false);
       addToast({
         type: "success",
-        title: "Claim submitted",
-        message: "An operator will review your evidence. Nothing on this page changes until it's approved.",
+        title: "Request submitted",
+        message: "An operator will review your evidence before profile access begins.",
       });
     } catch (err) {
       setError(claimSubmitErrorMessage(err));
@@ -139,29 +148,23 @@ export function ArtistClaimCallout({
   return (
     <section className="artist-claim" aria-labelledby={headingId}>
       <div className="artist-claim__header">
-        <h2 id={headingId} className="artist-claim__title">Are you {artistName}?</h2>
+        <h2 id={headingId} className="artist-claim__title">Request access to {artistName}</h2>
       </div>
       <p className="artist-claim__text">
-        This profile was created from release credits and hasn&apos;t been claimed yet.
+        This public profile was created from release credits. Confirm the catalog above before submitting evidence.
       </p>
       {claim?.status === "rejected" ? (
         <p className="artist-claim__text artist-claim__text--notice">
-          Your previous claim wasn&apos;t approved. You can submit new evidence.
+          Your previous request wasn&apos;t approved. You can submit new evidence.
         </p>
       ) : null}
       {claim?.status === "revoked" ? (
         <p className="artist-claim__text artist-claim__text--notice">
-          Your earlier access to this profile was revoked. You can submit new evidence.
+          Your earlier access to this profile was revoked. You can submit new evidence for operator review.
         </p>
       ) : null}
 
-      {!token ? (
-        <div className="artist-claim__actions">
-          <Button type="button" variant="ghost" className="artist-claim__cta" onClick={onSignIn}>
-            Sign in to claim
-          </Button>
-        </div>
-      ) : !expanded ? (
+      {!expanded ? (
         <div className="artist-claim__actions">
           <Button
             type="button"
@@ -170,7 +173,7 @@ export function ArtistClaimCallout({
             aria-expanded={false}
             onClick={() => setExpanded(true)}
           >
-            {retry ? "Submit new evidence" : "Claim this profile"}
+            {retry ? "Submit new evidence" : "Continue to evidence"}
           </Button>
         </div>
       ) : (

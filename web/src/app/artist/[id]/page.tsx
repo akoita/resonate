@@ -3,14 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, getArtistManagementAccess, getMyArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim, type ResourceManagementAccess } from "../../../lib/api";
+import { getArtistPublic, getArtistManagementAccess, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ResourceManagementAccess } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
 import { ArtistCommunityTab } from "../../../components/community/ArtistCommunityTab";
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
-import { ArtistClaimCallout } from "../../../components/artist/ArtistClaimCallout";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
 import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
@@ -25,13 +24,12 @@ type ArtistTab = "discography" | "community";
 export default function ArtistPage() {
     const params = useParams();
     const router = useRouter();
-    const { token, login } = useAuth();
+    const { token } = useAuth();
     const { playQueue } = usePlayer();
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
     const [managementAccess, setManagementAccess] = useState<ResourceManagementAccess | null>(null);
-    const [claim, setClaim] = useState<ArtistClaim | null>(null);
     const [placeholderName, setPlaceholderName] = useState<string>("");
 
     const [releases, setReleases] = useState<Release[]>([]);
@@ -142,24 +140,9 @@ export default function ArtistPage() {
         };
     }, [token, artistId]);
 
-    useEffect(() => {
-        if (!token || !artistId) {
-            setClaim(null);
-            return;
-        }
-        let cancelled = false;
-        getMyArtistClaim(token, artistId)
-            .then((request) => { if (!cancelled) setClaim(request); })
-            .catch(() => { if (!cancelled) setClaim(null); });
-        return () => { cancelled = true; };
-    }, [token, artistId]);
-
     const handleBack = () => {
         router.push("/catalog?view=artists");
     };
-
-    const isUnclaimedPublicArtist =
-        artist?.profileType === "public_artist" && artist.claimStatus === "unclaimed";
 
     const coverArt = artist?.imageUrl || releases.find((r) => r.artworkUrl)?.artworkUrl || null;
     const trackCount = releases.reduce((sum, r) => sum + (r.tracks?.length ?? 0), 0);
@@ -204,13 +187,7 @@ export default function ArtistPage() {
                     <div className="artist-info">
                         <div className="flex items-center gap-3 mb-3">
                             <span className="artist-label mb-0">Artist</span>
-                            {artist ? (
-                                isUnclaimedPublicArtist ? (
-                                    <span className="artist-verified-badge artist-verified-badge--unclaimed">Unclaimed profile</span>
-                                ) : (
-                                    <span className="artist-verified-badge">RESONATE PROFILE</span>
-                                )
-                            ) : null}
+                            {artist ? <span className="artist-verified-badge">RESONATE PROFILE</span> : null}
                         </div>
                         <h1 className="artist-name-lg text-gradient">
                             {artist?.displayName || placeholderName || "Unknown Artist"}
@@ -274,16 +251,6 @@ export default function ArtistPage() {
                         ) : null}
                         {artist && managementAccess?.resourceId === artist.id && managementAccess.currentUserAccess.isOwner ? (
                             <Link href="/artist/management" className="artist-profile-management-link">Manage access</Link>
-                        ) : null}
-                        {artist && isUnclaimedPublicArtist && !canEditProfile ? (
-                            <ArtistClaimCallout
-                                artistId={artist.id}
-                                artistName={artist.displayName}
-                                token={token}
-                                claim={claim?.artistId === artist.id ? claim : null}
-                                onSignIn={() => void login?.()}
-                                onSubmitted={setClaim}
-                            />
                         ) : null}
                     </div>
                 </div>

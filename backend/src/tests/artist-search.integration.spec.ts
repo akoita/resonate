@@ -85,7 +85,7 @@ describe('ArtistService.searchByName (integration)', () => {
     expect(results.length).toBeLessThanOrEqual(2);
     for (const r of results) {
       expect(Object.keys(r).sort()).toEqual(
-        ['claimStatus', 'displayName', 'id', 'imageUrl', 'profileType'].sort(),
+        ['canRequestClaim', 'claimStatus', 'displayName', 'id', 'imageUrl', 'profileType'].sort(),
       );
     }
   });

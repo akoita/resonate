@@ -44,6 +44,15 @@ const mockArtistService = {
   searchByName: jest.fn().mockResolvedValue([
     { id: "artist-1", displayName: "Bouba", imageUrl: null, profileType: "manager", claimStatus: "claimed" },
   ]),
+  getMyClaims: jest.fn().mockResolvedValue([
+    {
+      status: "pending",
+      createdAt: new Date("2026-06-11T19:30:00.000Z"),
+      updatedAt: new Date("2026-06-11T19:30:00.000Z"),
+      reviewedAt: null,
+      artist: { id: "artist-1", displayName: "Bouba", imageUrl: null },
+    },
+  ]),
   submitClaim: jest.fn().mockResolvedValue({ id: "claim-1", artistId: "artist-1", status: "pending" }),
   getMyClaim: jest.fn().mockResolvedValue({ id: "claim-1", artistId: "artist-1", status: "pending" }),
   listPendingClaims: jest.fn().mockResolvedValue([
@@ -127,6 +136,7 @@ describe("ArtistController (e2e)", () => {
 
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0].displayName).toBe("Bouba");
+    expect(res.body[0].claimStatus).toBe("claimed");
     // "search" must hit searchByName, never the :id getById handler.
     expect(mockArtistService.searchByName).toHaveBeenCalledWith("bou", 5);
     expect(mockArtistService.findById).not.toHaveBeenCalled();
@@ -147,6 +157,32 @@ describe("ArtistController (e2e)", () => {
       .post("/artists/artist-1/claims")
       .send({ evidence: "A sufficiently detailed claim statement." })
       .expect(401);
+  });
+
+  it("GET /artists/claims/me -> requires JWT and returns the caller's latest claim summaries", async () => {
+    await request(app.getHttpServer()).get("/artists/claims/me").expect(401);
+
+    const res = await request(app.getHttpServer())
+      .get("/artists/claims/me?userId=attacker")
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body).toEqual([
+      {
+        status: "pending",
+        createdAt: "2026-06-11T19:30:00.000Z",
+        updatedAt: "2026-06-11T19:30:00.000Z",
+        reviewedAt: null,
+        artist: { id: "artist-1", displayName: "Bouba", imageUrl: null },
+      },
+    ]);
+    expect(res.body[0]).not.toHaveProperty("evidence");
+    expect(res.body[0]).not.toHaveProperty("claimantUserId");
+    expect(res.body[0]).not.toHaveProperty("reviewerUserId");
+    expect(res.body[0]).not.toHaveProperty("reviewNote");
+    expect(mockArtistService.getMyClaims).toHaveBeenCalledWith("user-1");
+    // The literal collection route must not be captured by GET /:id.
+    expect(mockArtistService.findById).not.toHaveBeenCalled();
   });
 
   it("POST /artists/:id/claims -> derives claimant identity from JWT", async () => {
@@ -219,5 +255,6 @@ describe("ArtistController (e2e)", () => {
     expect(res.body).not.toHaveProperty("userId");
     expect(res.body).not.toHaveProperty("payoutAddress");
     expect(res.body).not.toHaveProperty("claimRequests");
+    expect(res.body).not.toHaveProperty("claimStatus");
   });
 });
