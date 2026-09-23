@@ -6,6 +6,8 @@ import {
   requireArtistManagementAccess,
   requireReleaseManagementAccess,
 } from "../modules/management/management-access";
+import { ArtistService } from "../modules/artist/artist.service";
+import { EventBus } from "../modules/shared/event_bus";
 
 const TEST_PREFIX = `management_access_${Date.now()}_`;
 const OWNER = `${TEST_PREFIX}owner`;
@@ -20,6 +22,7 @@ const USER_IDS = [OWNER, DELEGATE, PROFILE_EDITOR, CLAIMANT, SUCCESSOR, TRANSFER
 const IDS = {
   legacyArtist: `${TEST_PREFIX}legacy_artist`,
   legacyRelease: `${TEST_PREFIX}legacy_release`,
+  creditedRelease: `${TEST_PREFIX}credited_release`,
   grantArtist: `${TEST_PREFIX}grant_artist`,
   grantRelease: `${TEST_PREFIX}grant_release`,
   grantReleaseOther: `${TEST_PREFIX}grant_release_other`,
@@ -113,6 +116,17 @@ beforeAll(async () => {
 
   await createArtist(IDS.claimArtist, { profileType: "public_artist", claimStatus: "claimed" });
   await createRelease(IDS.claimRelease, IDS.claimArtist);
+  await createRelease(IDS.creditedRelease, IDS.legacyArtist);
+  await prisma.releaseArtistCredit.create({
+    data: {
+      id: `${TEST_PREFIX}different_artist_credit`,
+      artistId: IDS.claimArtist,
+      releaseId: IDS.creditedRelease,
+      role: "main",
+      displayName: IDS.claimArtist,
+      identityStatus: "selected",
+    },
+  });
   await prisma.artistClaimRequest.create({
     data: {
       id: `${TEST_PREFIX}approved_claim`,
@@ -166,6 +180,12 @@ beforeAll(async () => {
     scopes: [ManagementScope.PROFILE_EDIT],
   });
   await createGrant({
+    id: `${TEST_PREFIX}credited_release_metadata`,
+    granteeUserId: DELEGATE,
+    releaseId: IDS.creditedRelease,
+    scopes: [ManagementScope.CATALOG_METADATA],
+  });
+  await createGrant({
     id: `${TEST_PREFIX}pending_read`,
     granteeUserId: DELEGATE,
     releaseId: IDS.pendingRelease,
@@ -214,6 +234,7 @@ afterAll(async () => {
     },
   });
   await prisma.artistClaimRequest.deleteMany({ where: { artistId: { startsWith: TEST_PREFIX } } });
+  await prisma.releaseArtistCredit.deleteMany({ where: { releaseId: { startsWith: TEST_PREFIX } } });
   await prisma.release.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   await prisma.artist.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
   await prisma.user.deleteMany({ where: { id: { startsWith: TEST_PREFIX } } });
@@ -368,6 +389,101 @@ describe("management access resolver (integration)", () => {
     await expect(
       hasArtistManagementAccess(CLAIMANT, IDS.unrelatedArtist, "profile_edit"),
     ).resolves.toBe(false);
+  });
+
+  it("keeps uploader, credited-profile, and exact-release management authority separate", async () => {
+    const credit = await prisma.releaseArtistCredit.findUniqueOrThrow({
+      where: { id: `${TEST_PREFIX}different_artist_credit` },
+    });
+    expect(credit).toMatchObject({ artistId: IDS.claimArtist, releaseId: IDS.creditedRelease });
+
+    // The uploader manages this exact release, not the different artist named
+    // by its public credit.
+    await expect(
+      hasReleaseManagementAccess(OWNER, IDS.creditedRelease, "catalog_owner"),
+    ).resolves.toBe(true);
+    await expect(
+      hasArtistManagementAccess(OWNER, IDS.claimArtist, "profile_edit"),
+    ).resolves.toBe(false);
+
+    // The approved claimant can edit the credited profile, but the credit does
+    // not grant access to the uploader's release.
+    await expect(
+      hasArtistManagementAccess(CLAIMANT, IDS.claimArtist, "profile_edit"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(CLAIMANT, IDS.creditedRelease, "catalog_read"),
+    ).resolves.toBe(false);
+
+    // A scoped delegate can edit release metadata but gains neither ownership
+    // of the release nor authority over the credited profile.
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.creditedRelease, "catalog_metadata"),
+    ).resolves.toBe(true);
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.creditedRelease, "catalog_owner"),
+    ).resolves.toBe(false);
+    await expect(
+      hasArtistManagementAccess(DELEGATE, IDS.claimArtist, "profile_edit"),
+    ).resolves.toBe(false);
+
+    const originalPayoutAddress = `0x${"A".repeat(40)}`;
+    await prisma.artist.update({
+      where: { id: IDS.claimArtist },
+      data: { payoutAddress: originalPayoutAddress, remixConsent: "allowed" },
+    });
+    const eventBus = new EventBus();
+    const artistService = new ArtistService(eventBus);
+    try {
+      // Release ownership, an approved profile claim, and a catalog grant do
+      // not authorize the profile's owner-only remix-consent setting.
+      await expect(
+        artistService.updateSettings(OWNER, IDS.claimArtist, { remixConsent: "disabled" }),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        artistService.updateSettings(CLAIMANT, IDS.claimArtist, { remixConsent: "disabled" }),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        artistService.updateSettings(DELEGATE, IDS.claimArtist, { remixConsent: "disabled" }),
+      ).rejects.toMatchObject({ status: 404 });
+    } finally {
+      eventBus.destroy();
+    }
+    await expect(
+      prisma.artist.findUniqueOrThrow({ where: { id: IDS.claimArtist } }),
+    ).resolves.toMatchObject({ payoutAddress: originalPayoutAddress, remixConsent: "allowed" });
+
+    // Model the post-transfer state, including the grant revocation performed
+    // by the transfer flow. The credit itself remains attached to the release.
+    await prisma.$transaction(async (tx) => {
+      await tx.release.update({
+        where: { id: IDS.creditedRelease },
+        data: { managementOwnerUserId: SUCCESSOR },
+      });
+      await tx.managementGrant.updateMany({
+        where: { releaseId: IDS.creditedRelease, status: ManagementGrantStatus.active },
+        data: { status: ManagementGrantStatus.revoked, revokedAt: new Date() },
+      });
+
+      await expect(
+        hasReleaseManagementAccess(OWNER, IDS.creditedRelease, "catalog_owner", tx),
+      ).resolves.toBe(false);
+      await expect(
+        hasReleaseManagementAccess(SUCCESSOR, IDS.creditedRelease, "catalog_owner", tx),
+      ).resolves.toBe(true);
+      await expect(
+        hasArtistManagementAccess(SUCCESSOR, IDS.claimArtist, "profile_edit", tx),
+      ).resolves.toBe(false);
+    });
+
+    await expect(
+      hasReleaseManagementAccess(DELEGATE, IDS.creditedRelease, "catalog_metadata"),
+    ).resolves.toBe(false);
+    await expect(
+      prisma.releaseArtistCredit.findUniqueOrThrow({
+        where: { id: `${TEST_PREFIX}different_artist_credit` },
+      }),
+    ).resolves.toMatchObject({ artistId: IDS.claimArtist, releaseId: IDS.creditedRelease });
   });
 
   it("applies owner overrides and removes former-owner access transactionally", async () => {

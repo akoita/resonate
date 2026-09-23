@@ -7,7 +7,7 @@ issues: ["https://github.com/akoita/resonate/issues/1762"]
 # Track audio replacement
 
 The track audio replacement slice of [artist and release management](artist_management_authority.md)
-is implemented. The broader #1762 management issue remains open for other workflows.
+is implemented.
 Owners and accepted release managers with `TRACK_AUDIO` can replace one track's
 audio on a ready, unpublished release. The backend checks authority and release
 state when it accepts the upload and again before activation.
@@ -47,10 +47,10 @@ purchases and saved remix projects. A payment that was already settled while
 activation made a stem historical still grants access to that exact paid stem;
 new purchases against a known historical stem are rejected.
 
-## Scope in #1762
+## Validation scope
 
 This audio replacement flow, its `TRACK_AUDIO` permission, release-page upload
 control, status feedback, User Guide entry, and local synchronous and worker-path
-coverage are implemented. The broader #1762 issue remains in progress for other
-management work, including invite notifications and transfer recovery. Live
-cloud Pub/Sub end-to-end validation remains an operational follow-up.
+coverage are implemented. Invite notifications and transfer recovery are
+documented in the management authority design. Live cloud Pub/Sub end-to-end
+validation remains an operational follow-up.

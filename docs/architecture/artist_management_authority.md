@@ -1,6 +1,6 @@
 ---
 title: "Artist and release management authority"
-status: in-progress
+status: implemented
 issues: ["https://github.com/akoita/resonate/issues/1762"]
 ---
 
@@ -118,7 +118,7 @@ also prove that profile claims and catalog grants do not authorize rights or
 financial actions. API responses and the artist UI must show pending versus
 active grants and distinguish a public credit from a manageable resource.
 
-## Remaining scope in #1762
+## Implemented management flows
 
 The current implementation covers profile details, release inventory, release
 title and artwork, track titles and explicit labels, invitation acceptance and
@@ -140,5 +140,6 @@ transfer while the original recipient still manages the exact transferred
 resources and no later accepted transfer has involved them. Approval restores
 only the explicit management-owner override and ends existing grants and
 pending transfers for those resources. The artist and operator surfaces show
-the request and decision state. #1762 remains the parent tracking issue for
-the broader management model and its acceptance criteria.
+the request and decision state. The authorization suite covers a release
+credited to an artist other than its uploader, including scoped delegation,
+claim-only profile access, and release management transfer.
