@@ -804,14 +804,59 @@ export class CatalogService implements OnModuleInit {
           if (!currentRelease) return { skipped: "missing" as const };
           if (currentRelease.status === "failed") return { skipped: "failed" as const };
 
+          const tracks = event.tracks ?? [];
+          const trackIds = tracks.map((track) => track.id);
+          if (new Set(trackIds).size !== trackIds.length) {
+            throw new Error(`Rejecting stems.processed for release ${event.releaseId}: duplicate track ID`);
+          }
+
+          const expectedStemTrackIds = new Map<string, string>();
+          for (const track of tracks) {
+            for (const stem of track.stems) {
+              const existingTrackId = expectedStemTrackIds.get(stem.id);
+              if (existingTrackId && existingTrackId !== track.id) {
+                throw new Error(
+                  `Rejecting stems.processed for release ${event.releaseId}: stem ${stem.id} is assigned to multiple tracks`,
+                );
+              }
+              expectedStemTrackIds.set(stem.id, track.id);
+            }
+          }
+
+          // Validate every existing reference in batches before the first write.
+          // Missing IDs remain eligible for the existing create/upsert path.
+          const existingTracks = await tx.track.findMany({
+            where: { id: { in: trackIds } },
+            select: { id: true, releaseId: true },
+          });
+          for (const track of existingTracks) {
+            if (track.releaseId !== event.releaseId) {
+              throw new Error(
+                `Rejecting stems.processed for release ${event.releaseId}: track ${track.id} belongs to another release`,
+              );
+            }
+          }
+
+          const existingStems = await tx.stem.findMany({
+            where: { id: { in: Array.from(expectedStemTrackIds.keys()) } },
+            select: { id: true, trackId: true },
+          });
+          for (const stem of existingStems) {
+            if (stem.trackId !== expectedStemTrackIds.get(stem.id)) {
+              throw new Error(
+                `Rejecting stems.processed for release ${event.releaseId}: stem ${stem.id} belongs to another track`,
+              );
+            }
+          }
+
           const completedTrackIds: string[] = [];
           const cleanedStaleStems: Array<{ trackId: string; count: number }> = [];
           const upsertedStemIds: Array<{ trackId: string; stemId: string }> = [];
-          if (event.tracks?.length) {
-            for (const trackData of event.tracks) {
+          if (tracks.length) {
+            for (const trackData of tracks) {
               // Ensure track exists (it should from stems.uploaded)
               await tx.track.upsert({
-                where: { id: trackData.id },
+                where: { id: trackData.id, releaseId: event.releaseId },
                 create: {
                   id: trackData.id,
                   releaseId: event.releaseId,
@@ -855,7 +900,7 @@ export class CatalogService implements OnModuleInit {
 
               for (const stem of trackData.stems) {
                 await tx.stem.upsert({
-                  where: { id: stem.id },
+                  where: { id: stem.id, trackId: trackData.id },
                   create: {
                     id: stem.id,
                     trackId: trackData.id,

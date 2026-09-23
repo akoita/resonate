@@ -274,4 +274,209 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
     await prisma.track.deleteMany({ where: { id: lateTrackId } }).catch(() => {});
     await prisma.release.delete({ where: { id: lateReleaseId } }).catch(() => {});
   }, 15000);
+
+  it('rejects malformed processed results before they mutate tracks or stems', async () => {
+    const senderReleaseId = `${P}ownership_sender_release`;
+    const otherReleaseId = `${P}ownership_other_release`;
+    const senderTrackId = `${P}ownership_sender_track`;
+    const secondSenderTrackId = `${P}ownership_second_sender_track`;
+    const otherTrackId = `${P}ownership_other_track`;
+    const senderStemId = `${P}ownership_sender_stem`;
+    const secondSenderStemId = `${P}ownership_second_sender_stem`;
+    const otherStemId = `${P}ownership_other_stem`;
+    const newStemForForeignTrackId = `${P}ownership_new_foreign_track_stem`;
+    const duplicateTrackStemId1 = `${P}ownership_duplicate_track_stem_1`;
+    const duplicateTrackStemId2 = `${P}ownership_duplicate_track_stem_2`;
+    const sharedStemId = `${P}ownership_shared_stem`;
+    const trackStatusEvents = eventSpy(eventBus, 'catalog.track_status');
+    const releaseReadyEvents = eventSpy(eventBus, 'catalog.release_ready');
+
+    await prisma.release.createMany({
+      data: [
+        { id: senderReleaseId, artistId, title: 'Ownership Sender', status: 'processing' },
+        { id: otherReleaseId, artistId, title: 'Ownership Other', status: 'processing' },
+      ],
+    });
+    await prisma.track.createMany({
+      data: [
+        {
+          id: senderTrackId,
+          releaseId: senderReleaseId,
+          title: 'Sender Track',
+          position: 1,
+          processingStatus: 'separating',
+          artist: 'Sender Artist',
+        },
+        {
+          id: secondSenderTrackId,
+          releaseId: senderReleaseId,
+          title: 'Second Sender Track',
+          position: 2,
+          processingStatus: 'separating',
+          artist: 'Second Sender Artist',
+        },
+        {
+          id: otherTrackId,
+          releaseId: otherReleaseId,
+          title: 'Other Track',
+          position: 7,
+          processingStatus: 'separating',
+          artist: 'Other Artist',
+        },
+      ],
+    });
+    await prisma.stem.createMany({
+      data: [
+        { id: senderStemId, trackId: senderTrackId, type: 'vocals', uri: '/catalog/stems/sender-original.mp3' },
+        { id: secondSenderStemId, trackId: secondSenderTrackId, type: 'drums', uri: '/catalog/stems/second-sender-original.mp3' },
+        { id: otherStemId, trackId: otherTrackId, type: 'drums', uri: '/catalog/stems/other-original.mp3' },
+      ],
+    });
+
+    // A foreign track ID must be rejected even when its stem IDs are new.
+    eventBus.publish({
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: senderReleaseId,
+      artistId,
+      modelVersion: 'htdemucs_6s',
+      tracks: [{
+        id: otherTrackId,
+        title: 'Mutated Other Track',
+        artist: 'Mutated Artist',
+        position: 99,
+        stems: [{
+          id: newStemForForeignTrackId,
+          uri: '/catalog/stems/should-not-exist.mp3',
+          type: 'vocals',
+        }],
+      }],
+    } as StemsProcessedEvent);
+    await wait(1000);
+
+    // A sender-owned track still cannot claim a stem owned by the other release.
+    eventBus.publish({
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: senderReleaseId,
+      artistId,
+      modelVersion: 'htdemucs_6s',
+      tracks: [{
+        id: senderTrackId,
+        title: 'Mutated Sender Track',
+        artist: 'Mutated Artist',
+        position: 99,
+        stems: [{
+          id: otherStemId,
+          uri: '/catalog/stems/should-not-overwrite.mp3',
+          type: 'vocals',
+        }],
+      }],
+    } as StemsProcessedEvent);
+    await wait(1000);
+
+    // Duplicate track IDs must be rejected before an upsert can complete a track.
+    eventBus.publish({
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: senderReleaseId,
+      artistId,
+      modelVersion: 'htdemucs_6s',
+      tracks: [
+        {
+          id: senderTrackId,
+          title: 'Duplicate Sender Track',
+          artist: 'Mutated Artist',
+          position: 99,
+          stems: [{ id: duplicateTrackStemId1, uri: '/catalog/stems/should-not-exist-1.mp3', type: 'vocals' }],
+        },
+        {
+          id: senderTrackId,
+          title: 'Duplicate Sender Track',
+          artist: 'Mutated Artist',
+          position: 100,
+          stems: [{ id: duplicateTrackStemId2, uri: '/catalog/stems/should-not-exist-2.mp3', type: 'drums' }],
+        },
+      ],
+    } as StemsProcessedEvent);
+    await wait(1000);
+
+    // A new stem ID cannot be assigned to two tracks in the same event.
+    eventBus.publish({
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: senderReleaseId,
+      artistId,
+      modelVersion: 'htdemucs_6s',
+      tracks: [
+        {
+          id: senderTrackId,
+          title: 'Sender Track',
+          artist: 'Mutated Artist',
+          position: 99,
+          stems: [{ id: sharedStemId, uri: '/catalog/stems/should-not-exist-shared.mp3', type: 'vocals' }],
+        },
+        {
+          id: secondSenderTrackId,
+          title: 'Second Sender Track',
+          artist: 'Mutated Artist',
+          position: 100,
+          stems: [{ id: sharedStemId, uri: '/catalog/stems/should-not-exist-shared.mp3', type: 'vocals' }],
+        },
+      ],
+    } as StemsProcessedEvent);
+    await wait(1000);
+
+    const [senderRelease, otherRelease] = await Promise.all([
+      prisma.release.findUnique({ where: { id: senderReleaseId } }),
+      prisma.release.findUnique({ where: { id: otherReleaseId } }),
+    ]);
+    expect(senderRelease!.status).toBe('processing');
+    expect(otherRelease!.status).toBe('processing');
+
+    const [senderTrack, secondSenderTrack, otherTrack] = await Promise.all([
+      prisma.track.findUnique({ where: { id: senderTrackId } }),
+      prisma.track.findUnique({ where: { id: secondSenderTrackId } }),
+      prisma.track.findUnique({ where: { id: otherTrackId } }),
+    ]);
+    expect(senderTrack).toEqual(expect.objectContaining({
+      processingStatus: 'separating',
+      artist: 'Sender Artist',
+      position: 1,
+    }));
+    expect(secondSenderTrack).toEqual(expect.objectContaining({
+      processingStatus: 'separating',
+      artist: 'Second Sender Artist',
+      position: 2,
+    }));
+    expect(otherTrack).toEqual(expect.objectContaining({
+      releaseId: otherReleaseId,
+      processingStatus: 'separating',
+      artist: 'Other Artist',
+      position: 7,
+    }));
+
+    const stems = await prisma.stem.findMany({
+      where: { trackId: { in: [senderTrackId, secondSenderTrackId, otherTrackId] } },
+      orderBy: { id: 'asc' },
+    });
+    expect(stems).toHaveLength(3);
+    expect(stems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: senderStemId, trackId: senderTrackId, uri: '/catalog/stems/sender-original.mp3' }),
+      expect.objectContaining({ id: secondSenderStemId, trackId: secondSenderTrackId, uri: '/catalog/stems/second-sender-original.mp3' }),
+      expect.objectContaining({ id: otherStemId, trackId: otherTrackId, uri: '/catalog/stems/other-original.mp3' }),
+    ]));
+    expect(trackStatusEvents.filter(
+      (event) => event.eventName === 'catalog.track_status' && event.status === 'complete',
+    )).toHaveLength(0);
+    expect(releaseReadyEvents).toHaveLength(0);
+
+    await prisma.stem.deleteMany({ where: { trackId: { in: [senderTrackId, secondSenderTrackId, otherTrackId] } } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { id: { in: [senderTrackId, secondSenderTrackId, otherTrackId] } } }).catch(() => {});
+    await prisma.release.deleteMany({ where: { id: { in: [senderReleaseId, otherReleaseId] } } }).catch(() => {});
+  }, 15000);
 });
