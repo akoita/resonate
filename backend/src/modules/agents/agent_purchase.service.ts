@@ -58,6 +58,42 @@ export class AgentPurchaseService {
       };
     }
 
+    // Revalidate the off-chain listing after any session-key work and
+    // immediately before spending budget. On-chain listings can outlive an
+    // off-chain stem revision, so both listing activity and stem currency are
+    // required for a new purchase.
+    const listing = await prisma.stemListing.findFirst({
+      where: {
+        listingId: input.listingId,
+        tokenId: input.tokenId,
+      },
+      select: {
+        status: true,
+        amount: true,
+        expiresAt: true,
+        stem: { select: { isCurrent: true } },
+      },
+    });
+    if (
+      !listing ||
+      listing.status !== "active" ||
+      listing.amount < input.amount ||
+      listing.expiresAt <= new Date()
+    ) {
+      return {
+        success: false,
+        reason: "listing_unavailable",
+        message: "The marketplace listing is no longer active.",
+      };
+    }
+    if (!listing.stem?.isCurrent) {
+      return {
+        success: false,
+        reason: "stem_historical",
+        message: "Historical stems cannot receive new purchases.",
+      };
+    }
+
     // 2. Check budget
     const spendResult = await this.walletService.spend(
       input.userId,

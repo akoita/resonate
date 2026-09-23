@@ -1,32 +1,56 @@
 ---
 title: "Track audio replacement"
-status: planned
+status: implemented
 issues: ["https://github.com/akoita/resonate/issues/1762"]
 ---
 
 # Track audio replacement
 
-Track audio replacement is a remaining part of [artist and release management](artist_management_authority.md). It is restricted to unpublished releases. The current ingestion pipeline has no audio revision: jobs, worker callbacks, storage paths, and result events identify a track only by release and track IDs. A late result can therefore be mistaken for a newer attempt. This page defines the contract required before an upload control becomes available.
+The track audio replacement slice of [artist and release management](artist_management_authority.md)
+is implemented. The broader #1762 management issue remains open for other workflows.
+Owners and accepted release managers with `TRACK_AUDIO` can replace one track's
+audio on a ready, unpublished release. The backend checks authority and release
+state when it accepts the upload and again before activation.
+Replacement is rejected when a current stem has already been minted. The
+activation check repeats this guard in case a mint completes during processing;
+the existing audio remains active and the attempt fails.
 
-The first safety change prevents `stems.processed` from modifying tracks or stems after a release has failed. It does not enable replacement or protect two overlapping attempts on the same nonfailed release.
+The authenticated `POST /ingestion/releases/:releaseId/tracks/:trackId/audio`
+endpoint accepts one `file` up to 100 MiB. Supported extensions are MP3, WAV,
+FLAC, AIFF (`.aif` or `.aiff`), M4A, AAC, and OGG. The backend derives the
+stored MIME type from the extension and ignores the client MIME type.
 
-## Identity and authority
+## Versioned processing
 
-Keep the existing release and track IDs. The management owner or an accepted release manager with a dedicated audio-replacement scope may request replacement; metadata and artwork scopes do not imply it. Recheck both authority and unpublished status when the request is accepted and when the new audio is activated. If publication begins during processing, reject activation and retain the existing audio. Rights, pricing, licensing, and payouts remain under their separate controls. This is ADR-BM-6 vision-neutral catalog quality work.
-
-Each request gets a server-generated, immutable audio revision or attempt ID. Persist the pending revision on the track and carry it through the queue job, Pub/Sub request, Demucs progress and fingerprint callbacks, worker result, internal events, and status updates. An old attempt may finish or fail, but it cannot change the state of a newer attempt. Every worker input and output object key must include the attempt ID; a database check alone cannot prevent old workers from overwriting shared object paths.
+The endpoint creates a server-generated audio revision and stores it as the
+track's pending revision. The revision follows the request through synchronous
+processing or the queued worker path, progress and fingerprint updates, result
+messages, stem storage keys, and activation. Conditional status and result
+updates discard stale revisions. `Release.status` stays `ready` during
+replacement; the track reports `audioReplacementStatus` and
+`audioReplacementError` while the current revision remains playable.
+The queue job is accepted before the pending revision commits, so a queue
+failure rolls back the attempt. Queued replacement processing starts after a
+short delay that exceeds the transaction timeout, ensuring the worker sees the
+committed revision. The worker waits for result publication before
+acknowledging a failed input message.
 
 ## Activation and history
 
-Preserve the currently playable audio while separation, encryption, storage, and validation run. Store replacement stems under new IDs and revision-specific object keys. In one database transaction, lock the release and track, verify unpublished status and the matching pending attempt, mark old stems historical, mark new stems current, and change the active revision. No read should observe a mixture of old and new stems. Failure leaves the previous revision active, records an actionable processing error, and permits an authorized retry with a new attempt ID. Repeated, duplicate, and out-of-order results must be idempotent or rejected before destructive writes.
+Before activation, the backend locks the release and track and verifies the
+release remains ready and the result matches the pending revision. In one
+transaction it marks old stems historical, marks the replacement stems current,
+and advances `activeAudioRevision`. A failed or stale attempt leaves the current
+audio active. Current catalog, playback, preview, pricing, and new remix paths
+use current stems; exact historical stem IDs remain resolvable for existing
+purchases and saved remix projects. A payment that was already settled while
+activation made a stem historical still grants access to that exact paid stem;
+new purchases against a known historical stem are rejected.
 
-Existing `Stem` IDs are durable references. Purchases, listings, settlements, token metadata, and saved remix projects must continue to resolve their exact historical stem IDs and bytes. Replacement must not delete or repurpose those rows. Current catalog, playback, stream selection, preview creation, new pricing, and new remix eligibility should use only active stems. DMCA, audit, and deletion flows should inspect every revision. Historical listing discoverability and new purchases against superseded stems require an explicit product decision before launch.
+## Scope in #1762
 
-## Implementation sequence and verification
-
-1. Add the track attempt and active-audio revision fields, a stem revision/current marker, migration, and server-side attempt validation. Backfill existing tracks and stems as the active revision.
-2. Thread the attempt through synchronous ingestion, BullMQ, Pub/Sub, Demucs callbacks and results, fingerprinting, failure handling, progress, and versioned storage keys. Reject stale callbacks before they mutate status or fingerprints, and compare the attempt again inside the final database transaction.
-3. Audit every track-to-stems and direct-stem query. Apply current-only filtering to discovery and playback paths while retaining exact-ID access for historical purchases and remix projects. Remove the current result handler's unconditional deletion of separated stems.
-4. Add the authenticated replacement endpoint and upload UI with file validation, processing state, failure/retry feedback, and a clear unpublished-only restriction. Update the in-app User Guide and feature documentation when this surface ships.
-
-Integration coverage must exercise failure after a usable prior revision, concurrent attempts finishing in either order, stale progress/fingerprint/success/failure callbacks, publication during processing, duplicate results, preserved purchases and saved remixes, and current-only catalog/playback responses. Test both synchronous and Pub/Sub worker paths. The upload control stays unavailable until these checks and the storage-key isolation are implemented.
+This audio replacement flow, its `TRACK_AUDIO` permission, release-page upload
+control, status feedback, User Guide entry, and local synchronous and worker-path
+coverage are implemented. The broader #1762 issue remains in progress for other
+management work, including invite notifications and transfer recovery. Live
+cloud Pub/Sub end-to-end validation remains an operational follow-up.

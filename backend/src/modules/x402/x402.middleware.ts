@@ -55,6 +55,44 @@ export class X402Middleware implements NestMiddleware {
       return next();
     }
 
+    // AgentCash/x402 v2 retries with PAYMENT-SIGNATURE, while older flows may
+    // still use X-PAYMENT. Accept both so the protected route works with the
+    // current client stack.
+    const paymentHeader =
+      (req.headers['payment-signature'] as string | undefined) ??
+      (req.headers['x-payment'] as string | undefined);
+
+    if (paymentHeader) {
+      const existingSettlement = await this.findExistingSettlement(paymentHeader);
+      if (existingSettlement) {
+        if (existingSettlement.stemId !== stemId) {
+          this.logX402Event(req, "x402.payment.replay_rejected", "x402 payment replay rejected", {
+            stemId,
+            statusCode: 409,
+            reason: "different_stem",
+          });
+          return res.status(409).json({
+            error: 'Payment already redeemed',
+            message: 'This x402 payment proof has already been redeemed for a different stem.',
+          });
+        }
+        this.logger.log(`x402 payment replay accepted for stem ${stemId}`);
+        this.logX402Event(req, "x402.payment.replay_accepted", "x402 payment replay accepted", {
+          stemId,
+        });
+        return next();
+      }
+    }
+
+    // Historical stems remain downloadable through an already-settled exact
+    // payment proof, but must not receive a new challenge or settlement.
+    if (!stem.isCurrent) {
+      return res.status(409).json({
+        error: 'Stem no longer available for purchase',
+        message: 'Historical stems can only be downloaded with an existing purchase.',
+      });
+    }
+
     const listedSettlementCheck = await this.validateListedStemSettlementRequest(req, stemId);
     if (!listedSettlementCheck.ok) {
       return res.status(listedSettlementCheck.status).json({
@@ -63,13 +101,7 @@ export class X402Middleware implements NestMiddleware {
       });
     }
 
-    // AgentCash/x402 v2 retries with PAYMENT-SIGNATURE, while older flows may
-    // still use X-PAYMENT. Accept both so the protected route works with the
-    // current client stack.
-    const paymentHeader =
-      (req.headers['payment-signature'] as string | undefined) ??
-      (req.headers['x-payment'] as string | undefined);
-
+    // Payment header present — verify with facilitator
     if (!paymentHeader) {
       // No payment — return 402 with payment instructions
       this.logX402Event(req, "x402.challenge.issued", "x402 payment challenge issued", {
@@ -79,27 +111,6 @@ export class X402Middleware implements NestMiddleware {
       return this.send402(res, stemId, stem.mimeType);
     }
 
-    const existingSettlement = await this.findExistingSettlement(paymentHeader);
-    if (existingSettlement) {
-      if (existingSettlement.stemId !== stemId) {
-        this.logX402Event(req, "x402.payment.replay_rejected", "x402 payment replay rejected", {
-          stemId,
-          statusCode: 409,
-          reason: "different_stem",
-        });
-        return res.status(409).json({
-          error: 'Payment already redeemed',
-          message: 'This x402 payment proof has already been redeemed for a different stem.',
-        });
-      }
-      this.logger.log(`x402 payment replay accepted for stem ${stemId}`);
-      this.logX402Event(req, "x402.payment.replay_accepted", "x402 payment replay accepted", {
-        stemId,
-      });
-      return next();
-    }
-
-    // Payment header present — verify with facilitator
     try {
       const challenge = await this.paymentService.buildPaymentChallenge(
         this.httpStemResource(stemId, stem.mimeType),
@@ -180,6 +191,7 @@ export class X402Middleware implements NestMiddleware {
         id: true,
         uri: true,
         mimeType: true,
+        isCurrent: true,
       },
     });
   }

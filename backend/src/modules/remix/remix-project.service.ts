@@ -614,6 +614,7 @@ export class RemixProjectService {
         userId,
         trackId: project.sourceTrackId,
         stemIds: project.stems.map((stem) => stem.stemId),
+        allowHistoricalStemIds: true,
       }),
     ]);
 
@@ -949,6 +950,7 @@ export class RemixProjectService {
       userId,
       trackId: project.sourceTrackId,
       stemIds,
+      allowHistoricalStemIds: true,
     });
     if (!eligibility.allowed) {
       this.publishDenialEvents(
@@ -1188,6 +1190,7 @@ export class RemixProjectService {
         userId: data.userId,
         trackId: project.sourceTrackId,
         stemIds: project.stems.map((stem) => stem.stemId),
+        allowHistoricalStemIds: true,
       });
       if (!renderEligibility.allowed) {
         if (encryptedActiveStemCount > 0) {
@@ -1642,6 +1645,7 @@ export class RemixProjectService {
       userId,
       trackId: project.sourceTrackId,
       stemIds,
+      allowHistoricalStemIds: true,
     });
     if (!eligibility.allowed) {
       this.publishDenialEvents(
@@ -1893,6 +1897,7 @@ export class RemixProjectService {
       userId,
       trackId: project.sourceTrackId,
       stemIds,
+      allowHistoricalStemIds: true,
     });
     if (!eligibility.allowed) {
       this.publishDenialEvents(
@@ -2077,7 +2082,7 @@ export class RemixProjectService {
       if (!trackEligibility.allowed) return [];
       const excluded = new Set(excludeStemIds);
       const stems = await prisma.stem.findMany({
-        where: { trackId },
+        where: { trackId, isCurrent: true },
         select: { id: true, type: true },
       });
       const typeById = new Map(stems.map((stem) => [stem.id, stem.type]));
@@ -2116,7 +2121,7 @@ export class RemixProjectService {
       );
       const inProject = new Set(project.stems.map((stem) => stem.stemId));
       const stems = await prisma.stem.findMany({
-        where: { trackId: project.sourceTrackId },
+        where: { trackId: project.sourceTrackId, isCurrent: true },
         select: {
           id: true,
           type: true,

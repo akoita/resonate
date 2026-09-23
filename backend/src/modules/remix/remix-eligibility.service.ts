@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -48,6 +49,7 @@ export class RemixEligibilityService {
     userId: string;
     trackId: string;
     stemIds?: string[];
+    allowHistoricalStemIds?: boolean;
   }): Promise<RemixEligibilityResult> {
     const track = await prisma.track.findUnique({
       where: { id: input.trackId },
@@ -62,8 +64,12 @@ export class RemixEligibilityService {
           },
         },
         stems: {
+          where: input.stemIds?.length
+            ? { id: { in: input.stemIds } }
+            : { isCurrent: true },
           select: {
             id: true,
+            isCurrent: true,
             nftMint: { select: { remixable: true } },
           },
         },
@@ -83,6 +89,14 @@ export class RemixEligibilityService {
     if (unknownStemIds.length > 0) {
       throw new BadRequestException(
         `Stems do not belong to track ${input.trackId}: ${unknownStemIds.join(", ")}`,
+      );
+    }
+    const historicalStemIds = requestedStemIds.filter(
+      (stemId) => trackStemsById.get(stemId)?.isCurrent === false,
+    );
+    if (!input.allowHistoricalStemIds && historicalStemIds.length > 0) {
+      throw new ConflictException(
+        `Historical stems cannot be used for new remix eligibility: ${historicalStemIds.join(", ")}`,
       );
     }
 

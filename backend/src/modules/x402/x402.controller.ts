@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Inject, Optional, Param, Post, Req, Res, Logger, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpStatus,
+  Inject,
+  Logger,
+  Optional,
+  Param,
+  Post,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
@@ -334,8 +347,24 @@ export class X402Controller {
       });
       const amountUsd = paymentTerms.amountUsd;
       const buyerAddress = this.resolveBuyerAddress(req, input.payer);
+      // The facilitator (or smart-account transaction) has already paid by
+      // this point. Recheck as late as possible before a marketplace contract
+      // buy, so a stem that became historical during verification does not
+      // trigger a new listing purchase. We still grant the exact paid-stem
+      // download below so that an in-flight payment is not stranded.
+      const stemBeforeContractSettlement = await prisma.stem.findUnique({
+        where: { id: stem.id },
+        select: { isCurrent: true },
+      });
+      const stemIsCurrent = stemBeforeContractSettlement?.isCurrent === true;
+      const settlementListing = stemIsCurrent ? activeListing : null;
+      if (activeListing && !settlementListing) {
+        this.logger.warn(
+          `x402 payment settled while stem ${stem.id} was no longer current or available; skipping new marketplace settlement and granting exact-stem download access`,
+        );
+      }
       const contractSettlement = await this.resolveContractSettlement({
-        listing: activeListing,
+        listing: settlementListing,
         buyerAddress,
         assetInfo,
       });
@@ -499,6 +528,8 @@ export class X402Controller {
         settlement: contractSettlement,
       });
 
+      // Current-state checks happen before external marketplace settlement;
+      // a later race still grants this already-paid exact-stem entitlement.
       await prisma.$transaction([
         prisma.x402Settlement.create({
           data: {
@@ -1242,6 +1273,7 @@ export class X402Controller {
         track: {
           include: {
             stems: {
+              where: { isCurrent: true },
               select: { id: true, type: true },
               orderBy: { type: 'asc' },
             },
@@ -1256,6 +1288,12 @@ export class X402Controller {
 
     if (!stem) {
       return { error: 'Stem not found' };
+    }
+    if (stem.isCurrent === false) {
+      throw new ConflictException({
+        code: 'stem_no_longer_available_for_purchase',
+        message: 'Historical stems do not accept new purchases.',
+      });
     }
 
     const listing = await this.findActiveListing(stem.id);

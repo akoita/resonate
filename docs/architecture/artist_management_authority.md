@@ -15,9 +15,10 @@ Neither a credit, a matching display name, nor an upload establishes authority
 over the credited profile.
 
 Management authority is resource-specific. A profile manager can edit public
-profile metadata. A release manager can read, rename, replace artwork, or edit
-track titles and explicit labels on the exact managed release within the granted
-scope. Track AI disclosures and other
+profile metadata. A release manager can read, rename, replace artwork, edit
+track titles and explicit labels, or replace track audio on the exact managed
+release within the granted scope. Track audio replacement requires its own
+scope and is limited to unpublished releases. Track AI disclosures and other
 protected corrections remain owner-only. Profile grants do not
 inherit catalog access, and release grants do not extend to later uploads or
 other releases credited to the same artist. Rights evidence, licensing,
@@ -26,14 +27,14 @@ management grant or transfer. An approved claim under #1492 is an operator-
 reviewed grant to edit one public profile; it is not a management ownership
 transfer.
 
-| Actor or relationship | Profile metadata | Release inventory and metadata | Catalog media | Delegate or transfer | Rights and money |
-| --- | --- | --- | --- | --- | --- |
-| Legacy account linked by `Artist.userId` | Own profile, unless transferred | Releases whose `Release.artistId` points to that profile, unless transferred | Same releases, unless transferred | Own resources only | Existing independent rules |
-| Approved public-profile claimant | Claimed profile only | None by claim alone | None | None | None by claim |
-| Active profile grant | Named profile with `PROFILE_EDIT` | None | None | None | None |
-| Active release grant | None | Named release with `CATALOG_READ` or `CATALOG_METADATA`; `TRACK_METADATA` edits only track titles and explicit labels; editing also permits read | Named release with `CATALOG_MEDIA` | None | None |
-| Recipient after accepted transfer | Named profile, release, or release set | Only transferred releases | Only transferred releases | New management owner | Existing rights and money rules remain separate |
-| Pending, declined, revoked, or expired grant | None | None | None | None | None |
+| Actor or relationship | Profile metadata | Release inventory and metadata | Catalog media | Track audio | Delegate or transfer | Rights and money |
+| --- | --- | --- | --- | --- | --- | --- |
+| Legacy account linked by `Artist.userId` | Own profile, unless transferred | Releases whose `Release.artistId` points to that profile, unless transferred | Same releases, unless transferred | Same unpublished releases, unless transferred | Own resources only | Existing independent rules |
+| Approved public-profile claimant | Claimed profile only | None by claim alone | None | None | None | None by claim |
+| Active profile grant | Named profile with `PROFILE_EDIT` | None | None | None | None | None |
+| Active release grant | None | Named release with `CATALOG_READ` or `CATALOG_METADATA`; `TRACK_METADATA` edits only track titles and explicit labels; editing also permits read | Named release with `CATALOG_MEDIA` | Named unpublished release with `TRACK_AUDIO` | None | None |
+| Recipient after accepted transfer | Named profile, release, or release set | Only transferred releases | Only transferred releases | Only transferred releases, while unpublished | New management owner | Existing rights and money rules remain separate |
+| Pending, declined, revoked, or expired grant | None | None | None | None | None | None |
 
 The explicit `managementOwnerUserId` on a profile or release overrides the
 legacy association. Null means the legacy association still supplies the
@@ -97,13 +98,14 @@ active grants and distinguish a public credit from a manageable resource.
 The current implementation covers profile details, release inventory, release
 title and artwork, track titles and explicit labels, invitation acceptance and
 revocation, direct grant narrowing and expiry shortening, and profile or
-catalog management transfers. Track audio replacement still needs a versioned
-processing path and a dedicated scope and UI; it must
-remain unavailable for published releases and preserve existing purchases and
-remix references. The [audio replacement design](track_audio_replacement.md)
-records the versioning and reference-preservation requirements. Owners can widen
-a manager's scopes or extend an expiry through a fresh invite. Invite
-notifications and transfer recovery remain
-to be designed and delivered.
+catalog management transfers. Track audio replacement is implemented as a
+separately scoped slice: owners and accepted `TRACK_AUDIO` managers can replace
+audio on ready, unpublished releases. Versioned processing activates each
+replacement atomically, keeps the current audio playable during processing, and
+preserves historical stem references for existing purchases and saved remix
+projects. See the [audio replacement design](track_audio_replacement.md) for
+the request and activation contract. The broader #1762 management work remains
+in progress; invite notifications and transfer recovery remain to be designed
+and delivered.
 Keep #1762 open until those workflows and their denied-access tests are
 explicitly completed or separately tracked.

@@ -12,6 +12,8 @@ export interface StemSeparateMessage {
   releaseId: string;
   artistId: string;
   trackId: string;
+  /** Identifies a same-track replacement attempt; omitted for legacy ingestion. */
+  audioRevision?: string;
   trackTitle?: string;
   trackPosition?: number;
   originalStemUri: string;
@@ -23,6 +25,7 @@ export interface StemSeparateMessage {
     id?: string;
     uri?: string;
     durationSeconds?: number;
+    mimeType?: string;
     storageProvider?: string;
   };
 }
@@ -36,9 +39,11 @@ export interface StemResultMessage {
   releaseId: string;
   artistId: string;
   trackId: string;
+  /** Passed through from the separation job when replacing an existing track. */
+  audioRevision?: string;
   trackTitle?: string;
   trackPosition?: number;
-  status: "completed" | "failed";
+  status: "completed" | "quarantined" | "failed";
   /** GCS URIs for each separated stem type */
   stems?: Record<string, string>;
   /**
@@ -48,11 +53,13 @@ export interface StemResultMessage {
    */
   stemFeatures?: Record<string, unknown | null>;
   error?: string;
+  reason?: string;
   /** Passed through from the original job */
   originalStemMeta?: {
     id?: string;
     uri?: string;
     durationSeconds?: number;
+    mimeType?: string;
     storageProvider?: string;
   };
 }

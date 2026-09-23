@@ -15,6 +15,7 @@ export type ManagementAction =
   | "catalog_metadata"
   | "catalog_media"
   | "track_metadata"
+  | "track_audio"
   | "catalog_owner";
 
 type ManagementAccessDb = PrismaClient | Prisma.TransactionClient;
@@ -26,10 +27,12 @@ const CATALOG_SCOPES_BY_ACTION: Partial<Record<ManagementAction, ManagementScope
     ManagementScope.CATALOG_METADATA,
     ManagementScope.CATALOG_MEDIA,
     ManagementScope.TRACK_METADATA,
+    ManagementScope.TRACK_AUDIO,
   ],
   catalog_metadata: [ManagementScope.CATALOG_METADATA],
   catalog_media: [ManagementScope.CATALOG_MEDIA],
   track_metadata: [ManagementScope.TRACK_METADATA],
+  track_audio: [ManagementScope.TRACK_AUDIO],
 };
 
 const isProfileAction = (action: ManagementAction): boolean =>

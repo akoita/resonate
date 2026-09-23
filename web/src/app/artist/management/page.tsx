@@ -26,6 +26,7 @@ const RELEASE_SCOPES: { value: ManagementScope; label: string }[] = [
   { value: "CATALOG_METADATA", label: "Edit release title" },
   { value: "CATALOG_MEDIA", label: "Replace release artwork" },
   { value: "TRACK_METADATA", label: "Edit track titles and explicit labels" },
+  { value: "TRACK_AUDIO", label: "Replace track audio" },
 ];
 
 export default function ArtistManagementPage() {
@@ -303,6 +304,7 @@ function scopeLabel(scope: ManagementScope) {
     CATALOG_METADATA: "Edit release title",
     CATALOG_MEDIA: "Replace artwork",
     TRACK_METADATA: "Edit track details",
+    TRACK_AUDIO: "Replace track audio",
   }[scope];
 }
 

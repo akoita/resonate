@@ -25,6 +25,9 @@ const mockEventBus = {
 // Mock prisma
 jest.mock("../../db/prisma", () => ({
   prisma: {
+    stemListing: {
+      findFirst: jest.fn(),
+    },
     agentTransaction: {
       create: jest.fn(),
       update: jest.fn(),
@@ -49,6 +52,12 @@ function createService(): AgentPurchaseService {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (prisma.stemListing.findFirst as jest.Mock).mockResolvedValue({
+    status: "active",
+    amount: 1n,
+    expiresAt: new Date(Date.now() + 60_000),
+    stem: { isCurrent: true },
+  });
 });
 
 describe("AgentPurchaseService", () => {

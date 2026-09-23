@@ -473,6 +473,38 @@ export type Release = {
   remix?: RemixReleaseProvenance | null;
 };
 
+export type AudioReplacementStatus =
+  | "processing"
+  | "separating"
+  | "encrypting"
+  | "storing"
+  | "complete"
+  | "failed";
+
+export const TRACK_AUDIO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+export const TRACK_AUDIO_SUPPORTED_EXTENSIONS = [
+  ".mp3",
+  ".wav",
+  ".flac",
+  ".aif",
+  ".aiff",
+  ".m4a",
+  ".aac",
+  ".ogg",
+] as const;
+export const TRACK_AUDIO_FILE_ACCEPT = TRACK_AUDIO_SUPPORTED_EXTENSIONS.join(",");
+
+export function getTrackAudioFileValidationError(file: Pick<File, "name" | "size">): string | null {
+  const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  if (!TRACK_AUDIO_SUPPORTED_EXTENSIONS.includes(extension as (typeof TRACK_AUDIO_SUPPORTED_EXTENSIONS)[number])) {
+    return "Choose an MP3, WAV, FLAC, AIFF, M4A, AAC, or OGG audio file.";
+  }
+  if (file.size > TRACK_AUDIO_MAX_FILE_SIZE_BYTES) {
+    return "Audio files must be 100 MiB or smaller.";
+  }
+  return null;
+}
+
 /** Source attribution + AI provenance for a published remix release (#1196). */
 export type RemixReleaseProvenance = {
   attribution: string;
@@ -521,6 +553,10 @@ export type Track = {
   artworkMimeType?: string | null;
   processingStatus?: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed";
   processingError?: string | null;
+  activeAudioRevision?: string | null;
+  pendingAudioRevision?: string | null;
+  audioReplacementStatus?: AudioReplacementStatus | null;
+  audioReplacementError?: string | null;
   contentStatus?: string | null;
   rightsRoute?: string | null;
   rightsFlags?: string[] | null;
@@ -4415,6 +4451,29 @@ export async function uploadStems(
   );
 }
 
+export async function replaceTrackAudio(
+  token: string,
+  releaseId: string,
+  trackId: string,
+  file: File,
+) {
+  const validationError = getTrackAudioFileValidationError(file);
+  if (validationError) throw new Error(validationError);
+
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiRequest<{
+    releaseId: string;
+    trackId: string;
+    audioRevision: string;
+    status: "processing" | "complete";
+  }>(
+    `/ingestion/releases/${encodeURIComponent(releaseId)}/tracks/${encodeURIComponent(trackId)}/audio`,
+    { method: "POST", body: formData },
+    token,
+  );
+}
+
 export async function updateReleaseArtwork(
   token: string,
   releaseId: string,
@@ -5983,7 +6042,8 @@ export type ManagementScope =
   | "CATALOG_READ"
   | "CATALOG_METADATA"
   | "CATALOG_MEDIA"
-  | "TRACK_METADATA";
+  | "TRACK_METADATA"
+  | "TRACK_AUDIO";
 
 export type ManagementGrant = {
   id: string;

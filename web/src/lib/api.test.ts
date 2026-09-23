@@ -85,6 +85,65 @@ describe('API Client', () => {
     });
   });
 
+  describe('replaceTrackAudio', () => {
+    it.each(['song.mp3', 'song.WAV', 'song.flac', 'song.aif', 'song.aiff', 'song.m4a', 'song.aac', 'song.ogg'])(
+      'accepts the supported audio extension %s within the size limit',
+      (name) => {
+        expect(api.getTrackAudioFileValidationError({
+          name,
+          size: api.TRACK_AUDIO_MAX_FILE_SIZE_BYTES,
+        })).toBeNull();
+      },
+    );
+
+    it('rejects unsupported extensions and files over 100 MiB before sending a request', async () => {
+      expect(api.getTrackAudioFileValidationError({ name: 'song.mp4', size: 1 })).toContain('MP3, WAV, FLAC');
+      expect(api.getTrackAudioFileValidationError({
+        name: 'song.mp3',
+        size: api.TRACK_AUDIO_MAX_FILE_SIZE_BYTES + 1,
+      })).toBe('Audio files must be 100 MiB or smaller.');
+
+      const invalidFile = new File([new Uint8Array([1])], 'song.mp4', { type: 'audio/mp4' });
+      await expect(api.replaceTrackAudio('manager-token', 'release-1', 'track-2', invalidFile))
+        .rejects.toThrow('Choose an MP3, WAV, FLAC');
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('sends one audio file to the authenticated release track endpoint as multipart form data', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify({
+          releaseId: 'release 1',
+          trackId: 'track/2',
+          audioRevision: 'revision-3',
+          status: 'processing',
+        }),
+      });
+      const file = new File([new Uint8Array([1, 2, 3])], 'replacement.wav', { type: 'audio/wav' });
+
+      const result = await api.replaceTrackAudio('manager-token', 'release 1', 'track/2', file);
+
+      const [url, options] = mockFetch.mock.calls[0];
+      expect(url).toBe(
+        'http://test-api:3000/ingestion/releases/release%201/tracks/track%2F2/audio',
+      );
+      expect(options.method).toBe('POST');
+      expect(options.headers.get('Authorization')).toBe('Bearer manager-token');
+      expect(options.headers.has('Content-Type')).toBe(false);
+      expect(options.body).toBeInstanceOf(FormData);
+      const uploadedFile = (options.body as FormData).get('file') as File;
+      expect(uploadedFile.name).toBe('replacement.wav');
+      expect(uploadedFile.type).toBe('audio/wav');
+      expect(result).toMatchObject({
+        releaseId: 'release 1',
+        trackId: 'track/2',
+        audioRevision: 'revision-3',
+        status: 'processing',
+      });
+    });
+  });
+
   describe('getArtistAnalyticsDashboard', () => {
     it('fetches the artist dashboard from the authenticated analytics endpoint', async () => {
       mockFetch.mockResolvedValueOnce({

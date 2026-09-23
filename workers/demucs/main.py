@@ -4,6 +4,7 @@ import shutil
 import asyncio
 import subprocess
 import hashlib
+import re
 from pathlib import Path
 import tempfile
 import logging
@@ -45,6 +46,15 @@ DEMUCS_DEVICE = os.getenv("DEMUCS_DEVICE", "auto").strip().lower()
 # on a deployment-protected service. 200 MiB covers multi-minute lossless WAVs.
 MAX_UPLOAD_BYTES = int(os.getenv("WORKER_MAX_UPLOAD_BYTES", str(200 * 1024 * 1024)))
 
+# Revisions become output path segments. Accept only canonical UUID-shaped
+# tokens so message data can never add path separators or traversal segments.
+AUDIO_REVISION_PATTERN = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+    re.IGNORECASE,
+)
+OUTPUT_PATH_SEGMENT_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,128}")
+STEM_FILENAME_PATTERN = re.compile(r"(?:vocals|drums|bass|other|piano|guitar)\.mp3")
+
 # Lazy-loaded GCS client (only imported when needed)
 _gcs_client = None
 
@@ -54,6 +64,93 @@ def internal_service_headers() -> dict:
     if not internal_key:
         return {}
     return {"x-internal-service-key": internal_key}
+
+
+def validate_audio_revision(audio_revision: Optional[str]) -> Optional[str]:
+    """Validate the optional replacement token before using it in a path."""
+    if audio_revision is None:
+        return None
+    if not isinstance(audio_revision, str) or not AUDIO_REVISION_PATTERN.fullmatch(audio_revision):
+        raise ValueError("audioRevision must be a UUID")
+    return audio_revision
+
+
+def validate_output_path_segment(value: str, name: str) -> str:
+    """Reject values that cannot safely be used as one output path segment."""
+    if not isinstance(value, str) or not OUTPUT_PATH_SEGMENT_PATTERN.fullmatch(value):
+        raise ValueError(f"{name} must be a safe path segment")
+    return value
+
+
+def validate_stem_filename(stem_filename: str) -> str:
+    if not isinstance(stem_filename, str) or not STEM_FILENAME_PATTERN.fullmatch(stem_filename):
+        raise ValueError("Invalid stem filename")
+    return stem_filename
+
+
+def output_namespace_parts(
+    release_id: str,
+    track_id: str,
+    audio_revision: Optional[str] = None,
+) -> tuple[str, ...]:
+    """Build track output path segments, retaining legacy paths without a token."""
+    release_id = validate_output_path_segment(release_id, "releaseId")
+    track_id = validate_output_path_segment(track_id, "trackId")
+    validated_revision = validate_audio_revision(audio_revision)
+    parts = [release_id, track_id]
+    if validated_revision is not None:
+        parts.append(validated_revision)
+    return tuple(parts)
+
+
+def local_stem_directory(
+    base_dir: Path,
+    release_id: str,
+    track_id: str,
+    audio_revision: Optional[str] = None,
+) -> Path:
+    return base_dir.joinpath(*output_namespace_parts(release_id, track_id, audio_revision))
+
+
+def local_stem_uri(
+    release_id: str,
+    track_id: str,
+    stem_filename: str,
+    audio_revision: Optional[str] = None,
+) -> str:
+    stem_filename = validate_stem_filename(stem_filename)
+    return str(Path(*output_namespace_parts(release_id, track_id, audio_revision), stem_filename))
+
+
+def gcs_stem_key(
+    release_id: str,
+    track_id: str,
+    stem_filename: str,
+    audio_revision: Optional[str] = None,
+) -> str:
+    stem_filename = validate_stem_filename(stem_filename)
+    return "/".join(("stems", *output_namespace_parts(release_id, track_id, audio_revision), stem_filename))
+
+
+def add_audio_revision(payload: dict, audio_revision: object) -> dict:
+    """Include a string token in a protocol payload without using it as a path."""
+    if isinstance(audio_revision, str):
+        payload["audioRevision"] = audio_revision
+    return payload
+
+
+def audio_file_extension(mime_type: str) -> str:
+    """Choose a harmless local suffix for common source audio MIME types."""
+    media_type = (mime_type or "audio/mpeg").split(";", 1)[0].strip().lower()
+    return {
+        "audio/mpeg": ".mp3",
+        "audio/mp3": ".mp3",
+        "audio/flac": ".flac",
+        "audio/x-flac": ".flac",
+        "audio/wav": ".wav",
+        "audio/x-wav": ".wav",
+        "audio/wave": ".wav",
+    }.get(media_type, ".wav")
 
 
 def gpu_available() -> bool:
@@ -137,8 +234,12 @@ async def run_demucs_attempt(
     release_id: str,
     track_id: str,
     callback_url: Optional[str] = None,
+    audio_revision: Optional[str] = None,
 ) -> Tuple[int, str, Path]:
     """Run one Demucs attempt on a specific device."""
+    release_id = validate_output_path_segment(release_id, "releaseId")
+    track_id = validate_output_path_segment(track_id, "trackId")
+    audio_revision = validate_audio_revision(audio_revision)
     attempt_output_dir = Path(temp_dir) / f"demucs-{device}"
     attempt_output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"Running Demucs on {input_path} with device={device}")
@@ -183,10 +284,12 @@ async def run_demucs_attempt(
                         logger.info(f"Progress: {percentage}%")
                         if callback_url:
                             try:
+                                progress_payload = {"progress": percentage}
+                                add_audio_revision(progress_payload, audio_revision)
                                 async with httpx.AsyncClient() as client:
                                     await client.post(
                                         f"{callback_url}/ingestion/progress/{release_id}/{track_id}",
-                                        json={"progress": percentage},
+                                        json=progress_payload,
                                         headers=internal_service_headers(),
                                     )
                             except Exception as cb_err:
@@ -240,14 +343,17 @@ def generate_fingerprint(audio_path: Path) -> Tuple[float, str, str]:
 
 
 async def submit_fingerprint(callback_url: str, release_id: str, track_id: str,
-                              duration: float, fingerprint: str, fingerprint_hash: str) -> dict:
+                              duration: float, fingerprint: str, fingerprint_hash: str,
+                              audio_revision: Optional[str] = None) -> dict:
     """Submit fingerprint to the backend and check for duplicate/quarantine."""
+    audio_revision = validate_audio_revision(audio_revision)
     url = f"{callback_url}/ingestion/fingerprint/{release_id}/{track_id}"
     payload = {
         "duration": duration,
         "fingerprint": fingerprint,
         "fingerprintHash": fingerprint_hash,
     }
+    add_audio_revision(payload, audio_revision)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, json=payload, headers=internal_service_headers())
@@ -312,17 +418,29 @@ def download_from_gcs(gcs_uri: str, dest_path: Path) -> Path:
     return dest_path
 
 
-async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str, track_id: str, callback_url: Optional[str] = None) -> tuple[dict, dict]:
+async def run_demucs_separation(
+    input_path: Path,
+    temp_dir: str,
+    release_id: str,
+    track_id: str,
+    callback_url: Optional[str] = None,
+    audio_revision: Optional[str] = None,
+) -> tuple[dict, dict]:
     """Run Demucs separation; returns (stems uri map, stemFeatures map).
 
     Both maps are keyed by stem type. Feature extraction failure for one
     stem records None for that stem and never fails separation (#1184).
     """
+    release_id = validate_output_path_segment(release_id, "releaseId")
+    track_id = validate_output_path_segment(track_id, "trackId")
+    audio_revision = validate_audio_revision(audio_revision)
     ensure_output_base_dir()
 
     # Output directory for this specific track
     if STORAGE_MODE == "local":
-        final_output_dir = OUTPUT_BASE_DIR / release_id / track_id
+        final_output_dir = local_stem_directory(
+            OUTPUT_BASE_DIR, release_id, track_id, audio_revision
+        )
         final_output_dir.mkdir(parents=True, exist_ok=True)
     else:
         final_output_dir = Path(temp_dir) / "final"
@@ -340,6 +458,7 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
             release_id=release_id,
             track_id=track_id,
             callback_url=callback_url,
+            audio_revision=audio_revision,
         )
 
         if returncode == 0:
@@ -406,12 +525,16 @@ async def run_demucs_separation(input_path: Path, temp_dir: str, release_id: str
                     stem_features[stem_name] = None
 
                 if STORAGE_MODE == "gcs" and GCS_BUCKET:
-                    gcs_key = f"stems/{release_id}/{track_id}/{mp3_filename}"
+                    gcs_key = gcs_stem_key(
+                        release_id, track_id, mp3_filename, audio_revision
+                    )
                     url = upload_to_gcs(stem_dest_mp3, gcs_key)
                     results[stem_name] = url
                     logger.info(f"Uploaded stem to GCS: {url}")
                 else:
-                    results[stem_name] = str(Path(release_id) / track_id / mp3_filename)
+                    results[stem_name] = local_stem_uri(
+                        release_id, track_id, mp3_filename, audio_revision
+                    )
                     logger.info(f"Generated stem: {stem_dest_mp3}")
             else:
                 logger.warning(f"FFmpeg failed or MP3 missing for {stem}")
@@ -429,7 +552,19 @@ async def separate_audio(
     track_id: str,
     file: UploadFile = File(...),
     callback_url: Optional[str] = Query(None, description="Backend URL for progress reporting"),
+    audio_revision: Optional[str] = Query(
+        None,
+        alias="audioRevision",
+        description="UUID identifying a same-track replacement attempt",
+    ),
 ):
+    try:
+        release_id = validate_output_path_segment(release_id, "releaseId")
+        track_id = validate_output_path_segment(track_id, "trackId")
+        audio_revision = validate_audio_revision(audio_revision)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     logger.info(f"[HTTP] Processing separation for release={release_id}, track={track_id}")
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -439,8 +574,15 @@ async def separate_audio(
         save_upload_capped(file, input_path)
 
         try:
-            results, stem_features = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
-            return {
+            results, stem_features = await run_demucs_separation(
+                input_path,
+                temp_dir,
+                release_id,
+                track_id,
+                callback_url,
+                audio_revision,
+            )
+            response = {
                 "status": "success",
                 "release_id": release_id,
                 "track_id": track_id,
@@ -448,6 +590,8 @@ async def separate_audio(
                 "stems": results,
                 "stemFeatures": stem_features,
             }
+            add_audio_revision(response, audio_revision)
+            return response
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
@@ -507,9 +651,10 @@ async def download_audio(uri: str, dest_path: Path):
 
 async def process_pubsub_message(message_data: dict):
     """Process a single Pub/Sub separation job."""
+    release_id = validate_output_path_segment(message_data["releaseId"], "releaseId")
+    track_id = validate_output_path_segment(message_data["trackId"], "trackId")
+    audio_revision = validate_audio_revision(message_data.get("audioRevision"))
     job_id = message_data.get("jobId", "unknown")
-    release_id = message_data["releaseId"]
-    track_id = message_data["trackId"]
     artist_id = message_data.get("artistId", "")
     original_stem_uri = message_data["originalStemUri"]
     mime_type = message_data.get("mimeType", "audio/mpeg")
@@ -520,7 +665,7 @@ async def process_pubsub_message(message_data: dict):
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Download original audio
-        ext = ".mp3" if "mp3" in mime_type else ".wav"
+        ext = audio_file_extension(mime_type)
         input_path = Path(temp_dir) / f"track_{track_id}{ext}"
         logger.info(f"[PubSub] Downloading audio from {original_stem_uri}")
         await download_audio(original_stem_uri, input_path)
@@ -531,7 +676,8 @@ async def process_pubsub_message(message_data: dict):
             logger.info(f"[PubSub] Submitting fingerprint for {track_id}")
             fp_result = await submit_fingerprint(
                 callback_url, release_id, track_id,
-                duration, fingerprint, fingerprint_hash
+                duration, fingerprint, fingerprint_hash,
+                audio_revision,
             )
             if fp_result.get("quarantined"):
                 logger.warning(f"[PubSub] Track {track_id} QUARANTINED — skipping separation")
@@ -547,6 +693,7 @@ async def process_pubsub_message(message_data: dict):
                     "status": "quarantined",
                     "reason": fp_result.get("reason", "Duplicate fingerprint detected"),
                 }
+                add_audio_revision(quarantine_msg, audio_revision)
                 future = publisher.publish(
                     topic_path,
                     json.dumps(quarantine_msg).encode("utf-8"),
@@ -558,7 +705,14 @@ async def process_pubsub_message(message_data: dict):
                 return  # Skip Demucs entirely
 
         # Run separation (with progress callbacks if callbackUrl provided)
-        results, stem_features = await run_demucs_separation(input_path, temp_dir, release_id, track_id, callback_url)
+        results, stem_features = await run_demucs_separation(
+            input_path,
+            temp_dir,
+            release_id,
+            track_id,
+            callback_url,
+            audio_revision=audio_revision,
+        )
 
         # Publish result to stem-results topic
         from google.cloud import pubsub_v1
@@ -580,6 +734,7 @@ async def process_pubsub_message(message_data: dict):
                 "uri": original_stem_uri,
             },
         }
+        add_audio_revision(result_message, audio_revision)
 
         future = publisher.publish(
             topic_path,
@@ -614,22 +769,7 @@ def pubsub_consumer_loop():
             except Exception as e:
                 logger.error(f"[PubSub] Processing failed for job {data.get('jobId')}: {e}")
                 # Publish failure result
-                published_failure = False
-                try:
-                    publisher = pubsub_v1.PublisherClient()
-                    topic_path = publisher.topic_path(PUBSUB_PROJECT, RESULTS_TOPIC)
-                    fail_msg = {
-                        "jobId": data.get("jobId", "unknown"),
-                        "releaseId": data.get("releaseId", ""),
-                        "artistId": data.get("artistId", ""),
-                        "trackId": data.get("trackId", ""),
-                        "status": "failed",
-                        "error": str(e),
-                    }
-                    publisher.publish(topic_path, json.dumps(fail_msg).encode("utf-8"))
-                    published_failure = True
-                except Exception as pub_err:
-                    logger.error(f"[PubSub] Failed to publish failure result: {pub_err}")
+                published_failure = publish_failure_result(data, e)
                 if published_failure:
                     message.ack()
                     logger.info(f"[PubSub] Acked failed message for job {data.get('jobId')} after publishing failure result")
@@ -692,6 +832,7 @@ def publish_failure_result(message_data: dict, error: Exception) -> bool:
             "status": "failed",
             "error": str(error),
         }
+        add_audio_revision(fail_msg, message_data.get("audioRevision"))
         publisher.publish(topic_path, json.dumps(fail_msg).encode("utf-8")).result()
         return True
     except Exception as pub_err:

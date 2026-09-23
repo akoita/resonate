@@ -36,6 +36,10 @@ In **pubsub** and **pubsub-once** modes, the worker:
 5. Publishes results to `stem-results` topic
 6. POSTs real-time progress callbacks to `{callbackUrl}/ingestion/progress/{releaseId}/{trackId}`
 
+Replacement jobs may include an `audioRevision` UUID. The worker echoes it in progress,
+fingerprint, and result payloads, and stores that attempt under its own output directory.
+Jobs without the token keep the legacy output paths.
+
 Cloud deployments should prefer `pubsub-once` on a Cloud Run Job. The backend
 publishes the Pub/Sub message and then starts one job execution, so GPU capacity
 exists only while a track is being separated.
@@ -374,6 +378,9 @@ The GPU Dockerfile includes several compatibility fixes:
 Separate audio file into stems (HTTP mode only).
 
 **Request:** Multipart form with audio file
+**Optional query:** `audioRevision=<UUID>` identifies a same-track replacement attempt.
+The worker validates the UUID, echoes it in the response, and writes stems under
+`{release_id}/{track_id}/{audioRevision}/`. Omitting it retains the legacy path.
 **Response:**
 
 ```json
@@ -381,16 +388,19 @@ Separate audio file into stems (HTTP mode only).
   "status": "success",
   "release_id": "rel_xxx",
   "track_id": "trk_xxx",
+  "audioRevision": "550e8400-e29b-41d4-a716-446655440000",
   "stems": {
-    "vocals": "rel_xxx/trk_xxx/vocals.mp3",
-    "drums": "rel_xxx/trk_xxx/drums.mp3",
-    "bass": "rel_xxx/trk_xxx/bass.mp3",
-    "guitar": "rel_xxx/trk_xxx/guitar.mp3",
-    "piano": "rel_xxx/trk_xxx/piano.mp3",
-    "other": "rel_xxx/trk_xxx/other.mp3"
+    "vocals": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/vocals.mp3",
+    "drums": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/drums.mp3",
+    "bass": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/bass.mp3",
+    "guitar": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/guitar.mp3",
+    "piano": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/piano.mp3",
+    "other": "rel_xxx/trk_xxx/550e8400-e29b-41d4-a716-446655440000/other.mp3"
   }
 }
 ```
+
+The `audioRevision` field and revision path segment are omitted when the query parameter is absent.
 
 ### GET /health
 
@@ -407,9 +417,21 @@ Health check endpoint. Returns processing mode and storage mode.
   "artistId": "art_zzz",
   "trackId": "trk_yyy",
   "originalStemUri": "gs://bucket/originals/...",
-  "mimeType": "audio/mpeg"
+  "mimeType": "audio/flac",
+  "audioRevision": "550e8400-e29b-41d4-a716-446655440000",
+  "originalStemMeta": {
+    "mimeType": "audio/flac",
+    "storageProvider": "gcs"
+  }
 }
 ```
+
+`audioRevision` is optional and must be a UUID when present. The worker includes it in
+progress and fingerprint callback JSON, then echoes it on completed, quarantined, and
+failed results. The original stem metadata, including `mimeType`, is passed through to
+the result. Tokenized local outputs use `{releaseId}/{trackId}/{audioRevision}/`; GCS
+outputs use `stems/{releaseId}/{trackId}/{audioRevision}/`. Tokenless jobs keep the
+existing paths.
 
 ### Output (stem-results topic)
 
@@ -418,6 +440,7 @@ Health check endpoint. Returns processing mode and storage mode.
   "jobId": "sep_rel_xxx_trk_yyy",
   "releaseId": "rel_xxx",
   "trackId": "trk_yyy",
+  "audioRevision": "550e8400-e29b-41d4-a716-446655440000",
   "status": "completed",
   "stems": {
     "vocals": "https://storage.googleapis.com/bucket/stems/.../vocals.mp3",

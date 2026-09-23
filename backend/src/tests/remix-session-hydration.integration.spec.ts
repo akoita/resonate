@@ -13,7 +13,11 @@
  * Run: npm run test:integration
  */
 
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { EventBus } from "../modules/shared/event_bus";
 import { RemixEligibilityService } from "../modules/remix/remix-eligibility.service";
@@ -38,6 +42,7 @@ const VOCALS_STEM_ID = `${TEST_PREFIX}stem_vocals`;
 const DRUMS_STEM_ID = `${TEST_PREFIX}stem_drums`;
 const LOCKED_STEM_ID = `${TEST_PREFIX}stem_locked`;
 const ORIGINAL_STEM_ID = `${TEST_PREFIX}stem_original`;
+const HISTORICAL_STEM_ID = `${TEST_PREFIX}stem_historical`;
 
 const storageProvider = {
   upload: jest.fn(),
@@ -163,6 +168,13 @@ describe("Remix full-session hydration (#1312, integration)", () => {
         { id: LOCKED_STEM_ID, trackId: TRACK_ID, type: "bass", uri: "local://b" },
         // Full mixdown: never volunteered by hydration or the panel.
         { id: ORIGINAL_STEM_ID, trackId: TRACK_ID, type: "original", uri: "local://o" },
+        {
+          id: HISTORICAL_STEM_ID,
+          trackId: TRACK_ID,
+          type: "keys",
+          uri: "local://old-keys",
+          isCurrent: false,
+        },
       ],
     });
     await mint(VOCALS_STEM_ID, 9101, true);
@@ -234,6 +246,7 @@ describe("Remix full-session hydration (#1312, integration)", () => {
     // Non-remixable mint and the full mixdown are never volunteered.
     expect(byId.has(LOCKED_STEM_ID)).toBe(false);
     expect(byId.has(ORIGINAL_STEM_ID)).toBe(false);
+    expect(byId.has(HISTORICAL_STEM_ID)).toBe(false);
     expect(project.stems).toHaveLength(2);
 
     // Analytics contract: the created event still carries the EXPLICIT
@@ -284,6 +297,67 @@ describe("Remix full-session hydration (#1312, integration)", () => {
     // Already in the project / full mixdown: not listed.
     expect(byId.has(VOCALS_STEM_ID)).toBe(false);
     expect(byId.has(ORIGINAL_STEM_ID)).toBe(false);
+    expect(byId.has(HISTORICAL_STEM_ID)).toBe(false);
+  });
+
+  it("keeps historical stems in persisted projects but out of current eligibility", async () => {
+    const eligibilityService = new RemixEligibilityService();
+    const eligibility = await eligibilityService.checkEligibility({
+      userId: OWNER_ID,
+      trackId: TRACK_ID,
+    });
+    expect(eligibility.stems.map((stem) => stem.stemId)).not.toContain(
+      HISTORICAL_STEM_ID,
+    );
+    await expect(
+      eligibilityService.checkEligibility({
+        userId: OWNER_ID,
+        trackId: TRACK_ID,
+        stemIds: [HISTORICAL_STEM_ID],
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    const persistedEligibility = await eligibilityService.checkEligibility({
+      userId: OWNER_ID,
+      trackId: TRACK_ID,
+      stemIds: [HISTORICAL_STEM_ID],
+      allowHistoricalStemIds: true,
+    });
+    expect(persistedEligibility.stems.map((stem) => stem.stemId)).toContain(
+      HISTORICAL_STEM_ID,
+    );
+    await expect(
+      projectService.createProject({
+        userId: OWNER_ID,
+        sourceTrackId: TRACK_ID,
+        stemIds: [HISTORICAL_STEM_ID],
+        title: "New historical source project",
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    const persistedProject = await prisma.remixProject.create({
+      data: {
+        creatorUserId: OWNER_ID,
+        sourceTrackId: TRACK_ID,
+        title: "Historical source project",
+        mode: "stem_mix",
+        policyVersion: "test",
+        stems: { create: [{ stemId: HISTORICAL_STEM_ID }] },
+      },
+    });
+    const response = (await projectService.getProject(
+      OWNER_ID,
+      persistedProject.id,
+    )) as {
+      stems: Array<{ stemId: string }>;
+      availableStems?: Array<{ stemId: string }>;
+    };
+
+    expect(response.stems.map((stem) => stem.stemId)).toContain(
+      HISTORICAL_STEM_ID,
+    );
+    expect(response.availableStems?.map((stem) => stem.stemId)).not.toContain(
+      HISTORICAL_STEM_ID,
+    );
   });
 
   it("denies adding a stem the user is not licensed for", async () => {

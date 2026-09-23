@@ -125,7 +125,7 @@ export class AgentAudioFeatureService {
       where: { id: trackId },
       include: {
         release: { select: { genre: true, title: true, primaryArtist: true } },
-        stems: { select: { type: true, durationSeconds: true } },
+        stems: { where: { isCurrent: true }, select: { type: true, durationSeconds: true } },
         fingerprint: { select: { duration: true, source: true } },
       },
     });
@@ -138,7 +138,10 @@ export class AgentAudioFeatureService {
       const existing = isRecord(track.generationMetadata)
         ? track.generationMetadata.agentAudioFeatures
         : undefined;
-      if (isAgentAudioFeatures(existing)) {
+      const cachedRevision = isRecord(track.generationMetadata)
+        ? track.generationMetadata.agentAudioRevision
+        : null;
+      if (isAgentAudioFeatures(existing) && (cachedRevision ?? null) === (track.activeAudioRevision ?? null)) {
         return { status: "ok", trackId, features: existing };
       }
 
@@ -161,6 +164,7 @@ export class AgentAudioFeatureService {
           generationMetadata: {
             ...metadata,
             agentAudioFeatures: features as unknown as Prisma.InputJsonObject,
+            agentAudioRevision: track.activeAudioRevision,
           } as unknown as Prisma.InputJsonObject,
         },
       });

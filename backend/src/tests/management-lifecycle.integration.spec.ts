@@ -401,6 +401,7 @@ describe("ManagementService lifecycle integration", () => {
           ManagementScope.CATALOG_METADATA,
           ManagementScope.CATALOG_MEDIA,
           ManagementScope.TRACK_METADATA,
+          ManagementScope.TRACK_AUDIO,
         ],
       },
     });
@@ -419,6 +420,56 @@ describe("ManagementService lifecycle integration", () => {
       currentUserAccess: {
         isOwner: true,
         scopes: expect.arrayContaining([ManagementScope.TRACK_METADATA]),
+      },
+    });
+  });
+
+  it("accepts track audio grants and inventories them as a distinct release scope", async () => {
+    const { releases } = await createFixture(2);
+    const grant = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.TRACK_AUDIO],
+    });
+    await service.acceptGrant(USERS.manager, grant.id);
+    const mixedGrant = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[1].id,
+      scopes: [ManagementScope.TRACK_AUDIO, ManagementScope.TRACK_METADATA, ManagementScope.CATALOG_READ],
+    });
+    await service.acceptGrant(USERS.manager, mixedGrant.id);
+
+    expect((await service.getMe(USERS.manager)).managedReleases).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: releases[0].id,
+        grantId: grant.id,
+        scopes: [ManagementScope.TRACK_AUDIO],
+      }),
+      expect.objectContaining({
+        id: releases[1].id,
+        grantId: mixedGrant.id,
+        scopes: [ManagementScope.TRACK_AUDIO, ManagementScope.TRACK_METADATA, ManagementScope.CATALOG_READ],
+      }),
+    ]));
+    expect(await service.getReleaseAccess(USERS.manager, releases[0].id)).toMatchObject({
+      currentUserAccess: { isOwner: false, scopes: [ManagementScope.TRACK_AUDIO] },
+    });
+    expect(await service.getReleaseAccess(USERS.manager, releases[1].id)).toMatchObject({
+      currentUserAccess: {
+        isOwner: false,
+        scopes: [ManagementScope.CATALOG_READ, ManagementScope.TRACK_METADATA, ManagementScope.TRACK_AUDIO],
+      },
+    });
+    expect(await service.getReleaseAccess(USERS.owner, releases[0].id)).toMatchObject({
+      currentUserAccess: {
+        isOwner: true,
+        scopes: [
+          ManagementScope.CATALOG_READ,
+          ManagementScope.CATALOG_METADATA,
+          ManagementScope.CATALOG_MEDIA,
+          ManagementScope.TRACK_METADATA,
+          ManagementScope.TRACK_AUDIO,
+        ],
       },
     });
   });

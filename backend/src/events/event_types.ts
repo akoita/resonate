@@ -56,6 +56,8 @@ export interface StemsProcessedEvent extends BaseEvent {
   eventName: "stems.processed";
   releaseId: string;
   artistId: string;
+  /** Present for a replacement; legacy ingestion omits it. */
+  audioRevision?: string;
   modelVersion: string;
   metadata?: any;
   tracks: Array<{
@@ -83,6 +85,7 @@ export interface StemsProgressEvent extends BaseEvent {
   eventName: "stems.progress";
   releaseId: string;
   trackId: string;
+  audioRevision?: string;
   progress: number;
 }
 
@@ -90,6 +93,8 @@ export interface StemsFailedEvent extends BaseEvent {
   eventName: "stems.failed";
   releaseId: string;
   artistId: string;
+  trackId?: string;
+  audioRevision?: string;
   error: string;
 }
 

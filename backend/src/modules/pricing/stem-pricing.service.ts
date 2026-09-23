@@ -1,4 +1,10 @@
-import { Injectable, Logger, ForbiddenException, NotFoundException } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  ForbiddenException,
+  NotFoundException,
+} from "@nestjs/common";
 import { prisma } from "../../db/prisma";
 import { calculatePrice, PricingInput } from "../../pricing/pricing";
 
@@ -192,6 +198,7 @@ export class StemPricingService {
    */
   async upsertPricing(stemId: string, userId: string, dto: StemPricingDto) {
     await this.validateOwnership(stemId, userId);
+    await this.validateCurrentStemForPricing(stemId);
 
     const pricing = await prisma.stemPricing.upsert({
       where: { stemId },
@@ -225,7 +232,7 @@ export class StemPricingService {
         tracks: {
           include: {
             stems: {
-              where: { type: { not: "ORIGINAL" } },
+              where: { type: { not: "ORIGINAL" }, isCurrent: true },
             },
           },
         },
@@ -284,7 +291,7 @@ export class StemPricingService {
         tracks: {
           include: {
             stems: {
-              where: { type: { not: "ORIGINAL" } },
+              where: { type: { not: "ORIGINAL" }, isCurrent: true },
             },
           },
         },
@@ -339,6 +346,22 @@ export class StemPricingService {
    */
   getTemplates(): PricingTemplate[] {
     return PRICING_TEMPLATES;
+  }
+
+  private async validateCurrentStemForPricing(stemId: string): Promise<void> {
+    const stem = await prisma.stem.findUnique({
+      where: { id: stemId },
+      select: { isCurrent: true },
+    });
+
+    if (!stem) {
+      throw new NotFoundException(`Stem ${stemId} not found`);
+    }
+    if (!stem.isCurrent) {
+      throw new ConflictException(
+        `Historical stem ${stemId} cannot receive new pricing`,
+      );
+    }
   }
 
   /**

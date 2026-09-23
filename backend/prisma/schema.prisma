@@ -596,6 +596,7 @@ enum ManagementScope {
   CATALOG_METADATA
   CATALOG_MEDIA
   TRACK_METADATA
+  TRACK_AUDIO
 }
 
 enum ManagementGrantStatus {
@@ -762,6 +763,13 @@ model Track {
   artist               String?
   processingStatus     String            @default("pending") // pending, processing, complete, failed
   processingError      String?           @db.Text
+  activeAudioRevision  String?
+  pendingAudioRevision String?
+  audioReplacementStatus String?
+  audioReplacementError String?          @db.Text
+  pendingAudioFingerprint String?        @db.Text
+  pendingAudioFingerprintHash String?
+  pendingAudioFingerprintDuration Float?
   processingStartedAt  DateTime?
   lastProgressAt       DateTime?
   contentStatus        String            @default("clean") // clean, quarantined, dmca_removed
@@ -810,6 +818,8 @@ model TrackEmbedding {
 model Stem {
   id                 String              @id @default(uuid())
   trackId            String
+  audioRevision      String?
+  isCurrent          Boolean             @default(true)
   type               String
   uri                String
   ipnftId            String?
@@ -833,6 +843,8 @@ model Stem {
   qualityRatings     StemQualityRating[]
   remixProjectStems  RemixProjectStem[]
   x402Settlements    X402Settlement[]
+
+  @@index([trackId, isCurrent])
 }
 
 model StemQualityRating {

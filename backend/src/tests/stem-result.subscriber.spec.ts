@@ -90,6 +90,7 @@ describe("StemResultSubscriber", () => {
       mockStorageProvider,
       mockEncryptionService,
       mockArtistService,
+      {} as any,
     );
   });
 
@@ -137,6 +138,7 @@ describe("StemResultSubscriber", () => {
         mockStorageProvider,
         mockEncryptionService,
         mockArtistService,
+        {} as any,
       );
 
       await subscriber.onModuleInit();

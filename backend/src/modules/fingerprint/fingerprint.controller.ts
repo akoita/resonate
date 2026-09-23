@@ -1,4 +1,4 @@
-import { Controller, Post, Param, Body, Logger } from "@nestjs/common";
+import { Controller, Post, Param, Body, Headers, InternalServerErrorException, Logger, UnauthorizedException } from "@nestjs/common";
 import { FingerprintService } from "./fingerprint.service";
 
 @Controller("ingestion")
@@ -20,8 +20,17 @@ export class FingerprintController {
       fingerprint: string;
       fingerprintHash: string;
       duration: number;
+      audioRevision?: string;
     },
+    @Headers("x-internal-service-key") internalServiceKey?: string,
   ) {
+    const configuredInternalKey = process.env.INTERNAL_SERVICE_KEY;
+    if (configuredInternalKey && internalServiceKey !== configuredInternalKey) {
+      throw new UnauthorizedException("Invalid internal service key");
+    }
+    if (!configuredInternalKey && process.env.NODE_ENV === "production") {
+      throw new InternalServerErrorException("INTERNAL_SERVICE_KEY must be set in production");
+    }
     this.logger.log(
       `Fingerprint received for release=${releaseId}, track=${trackId} ` +
       `(hash=${body.fingerprintHash?.slice(0, 16)}...)`,
@@ -33,6 +42,7 @@ export class FingerprintController {
       fingerprint: body.fingerprint,
       fingerprintHash: body.fingerprintHash,
       duration: body.duration,
+      audioRevision: body.audioRevision,
     });
 
     return result;

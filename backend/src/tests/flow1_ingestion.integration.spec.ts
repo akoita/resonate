@@ -479,4 +479,128 @@ describe('Choreography Flow 1: Release Ingestion Pipeline', () => {
     await prisma.track.deleteMany({ where: { id: { in: [senderTrackId, secondSenderTrackId, otherTrackId] } } }).catch(() => {});
     await prisma.release.deleteMany({ where: { id: { in: [senderReleaseId, otherReleaseId] } } }).catch(() => {});
   }, 15000);
+
+  it('ignores tokenless results while a replacement is pending or active', async () => {
+    const guardedReleaseId = `${P}tokenless_guard_release`;
+    const guardedTrackId = `${P}tokenless_guard_track`;
+    const guardedStemId = `${P}tokenless_guard_stem`;
+    const unexpectedStemId = `${P}tokenless_guard_unexpected_stem`;
+    const pendingRevision = `${P}pending_revision`;
+    const activeRevision = `${P}active_revision`;
+    const trackStatusEvents = eventSpy(eventBus, 'catalog.track_status');
+    const releaseReadyEvents = eventSpy(eventBus, 'catalog.release_ready');
+
+    await prisma.release.create({
+      data: { id: guardedReleaseId, artistId, title: 'Tokenless Guard', status: 'ready' },
+    });
+    await prisma.track.create({
+      data: {
+        id: guardedTrackId,
+        releaseId: guardedReleaseId,
+        title: 'Tokenless Guard Track',
+        artist: 'Current Artist',
+        position: 1,
+        processingStatus: 'complete',
+        pendingAudioRevision: pendingRevision,
+        audioReplacementStatus: 'processing',
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: guardedStemId,
+        trackId: guardedTrackId,
+        type: 'original',
+        uri: '/catalog/stems/tokenless-original.mp3',
+        data: Buffer.from('current-audio'),
+      },
+    });
+
+    const tokenlessResult: StemsProcessedEvent = {
+      eventName: 'stems.processed',
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      releaseId: guardedReleaseId,
+      artistId,
+      modelVersion: 'legacy-worker',
+      tracks: [{
+        id: guardedTrackId,
+        title: 'Stale Track Title',
+        artist: 'Stale Artist',
+        position: 99,
+        stems: [
+          { id: guardedStemId, uri: '/catalog/stems/stale-original.mp3', type: 'original' },
+          { id: unexpectedStemId, uri: '/catalog/stems/stale-vocals.mp3', type: 'vocals' },
+        ],
+      }],
+    };
+
+    try {
+      // A late track-scoped failure without a revision must not fail a ready release.
+      eventBus.publish({
+        eventName: 'stems.failed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId: guardedReleaseId,
+        artistId,
+        trackId: guardedTrackId,
+        error: 'Stale initial processing failure',
+      } as StemsFailedEvent);
+      eventBus.publish({
+        eventName: 'stems.failed',
+        eventVersion: 1,
+        occurredAt: new Date().toISOString(),
+        releaseId: guardedReleaseId,
+        artistId,
+        error: 'Stale release-level failure',
+      } as StemsFailedEvent);
+      await wait(500);
+
+      eventBus.publish(tokenlessResult);
+      await wait(750);
+
+      let [releaseAfterPending, trackAfterPending, stemsAfterPending] = await Promise.all([
+        prisma.release.findUnique({ where: { id: guardedReleaseId } }),
+        prisma.track.findUnique({ where: { id: guardedTrackId } }),
+        prisma.stem.findMany({ where: { trackId: guardedTrackId } }),
+      ]);
+      expect(releaseAfterPending!.status).toBe('ready');
+      expect(trackAfterPending).toEqual(expect.objectContaining({
+        pendingAudioRevision: pendingRevision,
+        artist: 'Current Artist',
+        position: 1,
+      }));
+      expect(stemsAfterPending).toHaveLength(1);
+      expect(stemsAfterPending[0].uri).toBe('/catalog/stems/tokenless-original.mp3');
+
+      await prisma.track.update({
+        where: { id: guardedTrackId },
+        data: { pendingAudioRevision: null, activeAudioRevision: activeRevision },
+      });
+      eventBus.publish(tokenlessResult);
+      await wait(750);
+
+      const [releaseAfterActive, trackAfterActive, stemsAfterActive] = await Promise.all([
+        prisma.release.findUnique({ where: { id: guardedReleaseId } }),
+        prisma.track.findUnique({ where: { id: guardedTrackId } }),
+        prisma.stem.findMany({ where: { trackId: guardedTrackId } }),
+      ]);
+      expect(releaseAfterActive!.status).toBe('ready');
+      expect(trackAfterActive).toEqual(expect.objectContaining({
+        activeAudioRevision: activeRevision,
+        pendingAudioRevision: null,
+        artist: 'Current Artist',
+        position: 1,
+      }));
+      expect(stemsAfterActive).toHaveLength(1);
+      expect(stemsAfterActive[0].uri).toBe('/catalog/stems/tokenless-original.mp3');
+      expect(trackStatusEvents.filter(
+        (event) => event.eventName === 'catalog.track_status' && event.status === 'complete',
+      )).toHaveLength(0);
+      expect(releaseReadyEvents).toHaveLength(0);
+    } finally {
+      await prisma.stem.deleteMany({ where: { trackId: guardedTrackId } }).catch(() => {});
+      await prisma.track.deleteMany({ where: { id: guardedTrackId } }).catch(() => {});
+      await prisma.release.delete({ where: { id: guardedReleaseId } }).catch(() => {});
+    }
+  }, 10000);
 });

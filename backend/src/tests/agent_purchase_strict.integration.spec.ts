@@ -13,15 +13,23 @@ import { AgentPurchaseService } from '../modules/agents/agent_purchase.service';
 import { SensitiveBuffer } from '../modules/shared/sensitive_buffer';
 
 const TEST_PREFIX = `agp_${Date.now()}_`;
+const USER_ID = `${TEST_PREFIX}user`;
+const ARTIST_ID = `${TEST_PREFIX}artist`;
+const RELEASE_ID = `${TEST_PREFIX}release`;
+const TRACK_ID = `${TEST_PREFIX}track`;
+const STEM_ID = `${TEST_PREFIX}stem`;
+const LISTING_ID = BigInt(Date.now());
+const TOKEN_ID = LISTING_ID + 1_000n;
+let listingRowId: string;
 
 function makeMockServices() {
   return {
     walletService: {
-      spend: async () => ({ allowed: true, remaining: 50 }),
+      spend: jest.fn(async () => ({ allowed: true, remaining: 50 })),
       getWallet: async () => ({ id: 'w1', userId: `${TEST_PREFIX}user` }),
     },
     agentWalletService: {
-      validateSessionKey: () => true,
+      validateSessionKey: jest.fn(async () => true),
       getAgentKeyData: async () => ({
         agentPrivateKey: new SensitiveBuffer('mock_agent_private_key_hex'),
         approvalData: 'mock_approval_data',
@@ -29,7 +37,7 @@ function makeMockServices() {
       checkAndEmitBudgetAlert: () => {},
     },
     kernelAccountService: {
-      sendSessionKeyTransaction: async () => '0xreal_session_key_tx_hash',
+      sendSessionKeyTransaction: jest.fn(async () => '0xreal_session_key_tx_hash'),
     },
     eventBus: {
       publish: () => {},
@@ -54,28 +62,95 @@ describe('AgentPurchaseService (integration)', () => {
   beforeAll(async () => {
     // Seed: User → Session (AgentTransaction FK requires Session)
     await prisma.user.create({
-      data: { id: `${TEST_PREFIX}user`, email: `${TEST_PREFIX}@test.resonate` },
+      data: { id: USER_ID, email: `${TEST_PREFIX}@test.resonate` },
     });
     const session = await prisma.session.create({
       data: {
-        userId: `${TEST_PREFIX}user`,
+        userId: USER_ID,
         budgetCapUsd: 100,
       },
     });
     sessionId = session.id;
+    await prisma.artist.create({
+      data: {
+        id: ARTIST_ID,
+        userId: USER_ID,
+        displayName: `${TEST_PREFIX}artist`,
+      },
+    });
+    await prisma.release.create({
+      data: {
+        id: RELEASE_ID,
+        artistId: ARTIST_ID,
+        title: `${TEST_PREFIX}release`,
+      },
+    });
+    await prisma.track.create({
+      data: {
+        id: TRACK_ID,
+        releaseId: RELEASE_ID,
+        title: `${TEST_PREFIX}track`,
+      },
+    });
+    await prisma.stem.create({
+      data: {
+        id: STEM_ID,
+        trackId: TRACK_ID,
+        type: 'vocals',
+        uri: '/test/agent-purchase-vocals.mp3',
+      },
+    });
+    const listing = await prisma.stemListing.create({
+      data: {
+        listingId: LISTING_ID,
+        stemId: STEM_ID,
+        tokenId: TOKEN_ID,
+        chainId: 31337,
+        contractAddress: `0x${'c3'.repeat(20)}`,
+        sellerAddress: `0x${'b2'.repeat(20)}`,
+        pricePerUnit: '1000000000000000',
+        amount: BigInt(1),
+        paymentToken: `0x${'00'.repeat(20)}`,
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        transactionHash: `${TEST_PREFIX}listing`,
+        blockNumber: BigInt(1),
+        listedAt: new Date(),
+      },
+    });
+    listingRowId = listing.id;
   });
 
   afterAll(async () => {
     await prisma.agentTransaction.deleteMany({ where: { sessionId } }).catch(() => {});
-    await prisma.session.deleteMany({ where: { userId: `${TEST_PREFIX}user` } }).catch(() => {});
-    await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
+    await prisma.stemListing.deleteMany({ where: { stemId: STEM_ID } }).catch(() => {});
+    await prisma.stem.deleteMany({ where: { trackId: TRACK_ID } }).catch(() => {});
+    await prisma.track.deleteMany({ where: { id: TRACK_ID } }).catch(() => {});
+    await prisma.release.deleteMany({ where: { id: RELEASE_ID } }).catch(() => {});
+    await prisma.artist.deleteMany({ where: { id: ARTIST_ID } }).catch(() => {});
+    await prisma.session.deleteMany({ where: { userId: USER_ID } }).catch(() => {});
+    await prisma.user.delete({ where: { id: USER_ID } }).catch(() => {});
+  });
+
+  beforeEach(async () => {
+    await prisma.stem.update({
+      where: { id: STEM_ID },
+      data: { isCurrent: true },
+    });
+    await prisma.stemListing.update({
+      where: { id: listingRowId },
+      data: {
+        amount: BigInt(1),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        status: 'active',
+      },
+    });
   });
 
   const baseInput = () => ({
     sessionId,
-    userId: `${TEST_PREFIX}user`,
-    listingId: BigInt(1),
-    tokenId: BigInt(100),
+    userId: USER_ID,
+    listingId: LISTING_ID,
+    tokenId: TOKEN_ID,
     amount: BigInt(1),
     totalPriceWei: '1000000000000000',
     priceUsd: 5,
@@ -98,11 +173,71 @@ describe('AgentPurchaseService (integration)', () => {
 
   it('rejects when session key is invalid', async () => {
     const { svc, mocks } = makeService();
-    mocks.agentWalletService.validateSessionKey = () => false;
+    mocks.agentWalletService.validateSessionKey.mockResolvedValue(false);
 
     const result = await svc.purchase(baseInput());
     expect(result.success).toBe(false);
     expect((result as any).reason).toBe('session_key_invalid');
+  });
+
+  it('rejects a historical stem listing before spending or submitting', async () => {
+    const { svc, mocks } = makeService();
+    await prisma.stem.update({
+      where: { id: STEM_ID },
+      data: { isCurrent: false },
+    });
+    const beforeCount = await prisma.agentTransaction.count({
+      where: { sessionId },
+    });
+
+    const result = await svc.purchase(baseInput());
+
+    expect(result.success).toBe(false);
+    expect((result as any).reason).toBe('stem_historical');
+    expect(mocks.walletService.spend).not.toHaveBeenCalled();
+    expect(mocks.kernelAccountService.sendSessionKeyTransaction).not.toHaveBeenCalled();
+    await expect(
+      prisma.agentTransaction.count({ where: { sessionId } }),
+    ).resolves.toBe(beforeCount);
+  });
+
+  it('rechecks stem currency after session-key validation and before budget spend', async () => {
+    const { svc, mocks } = makeService();
+    mocks.agentWalletService.validateSessionKey.mockImplementation(async () => {
+      await prisma.stem.update({
+        where: { id: STEM_ID },
+        data: { isCurrent: false },
+      });
+      return true;
+    });
+    const beforeCount = await prisma.agentTransaction.count({
+      where: { sessionId },
+    });
+
+    const result = await svc.purchase(baseInput());
+
+    expect(result.success).toBe(false);
+    expect((result as any).reason).toBe('stem_historical');
+    expect(mocks.walletService.spend).not.toHaveBeenCalled();
+    expect(mocks.kernelAccountService.sendSessionKeyTransaction).not.toHaveBeenCalled();
+    await expect(
+      prisma.agentTransaction.count({ where: { sessionId } }),
+    ).resolves.toBe(beforeCount);
+  });
+
+  it('rejects an inactive listing before spending or submitting', async () => {
+    const { svc, mocks } = makeService();
+    await prisma.stemListing.update({
+      where: { id: listingRowId },
+      data: { status: 'cancelled' },
+    });
+
+    const result = await svc.purchase(baseInput());
+
+    expect(result.success).toBe(false);
+    expect((result as any).reason).toBe('listing_unavailable');
+    expect(mocks.walletService.spend).not.toHaveBeenCalled();
+    expect(mocks.kernelAccountService.sendSessionKeyTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects when no agent key data is found', async () => {
@@ -124,9 +259,9 @@ describe('AgentPurchaseService (integration)', () => {
 
   it('handles sendSessionKeyTransaction failure gracefully', async () => {
     const { svc, mocks } = makeService();
-    mocks.kernelAccountService.sendSessionKeyTransaction = async () => {
-      throw new Error('Bundler rejected UserOp');
-    };
+    mocks.kernelAccountService.sendSessionKeyTransaction.mockRejectedValue(
+      new Error('Bundler rejected UserOp'),
+    );
 
     const result = await svc.purchase(baseInput());
     expect(result.success).toBe(false);

@@ -15,6 +15,7 @@ import { createControllerTestApp, authToken } from './e2e-helpers';
 
 const mockIngestionService = {
   handleFileUpload: jest.fn().mockResolvedValue({ releaseId: 'rel-1', status: 'queued' }),
+  replaceTrackAudio: jest.fn().mockResolvedValue({ releaseId: 'rel-1', trackId: 'trk-1', status: 'processing' }),
   handleProgress: jest.fn().mockResolvedValue({ ok: true }),
   retryRelease: jest.fn().mockResolvedValue({ ok: true }),
   cancelProcessing: jest.fn().mockResolvedValue({ ok: true }),
@@ -60,6 +61,31 @@ describe('IngestionController (e2e)', () => {
     await request(app.getHttpServer())
       .post('/ingestion/upload')
       .expect(401);
+  });
+
+  it('POST track audio replacement requires JWT and one file', async () => {
+    await request(app.getHttpServer())
+      .post('/ingestion/releases/rel-1/tracks/trk-1/audio')
+      .attach('file', Buffer.from('audio'), 'song.mp3')
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post('/ingestion/releases/rel-1/tracks/trk-1/audio')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+
+    const replacementResponse = await request(app.getHttpServer())
+      .post('/ingestion/releases/rel-1/tracks/trk-1/audio')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from('audio'), 'song.mp3');
+    expect({ status: replacementResponse.status, body: replacementResponse.body }).toEqual({
+      status: 201,
+      body: { releaseId: 'rel-1', trackId: 'trk-1', status: 'processing' },
+    });
+
+    expect(mockIngestionService.replaceTrackAudio).toHaveBeenCalledWith(
+      'rel-1', 'trk-1', 'user-1', expect.objectContaining({ originalname: 'song.mp3' }),
+    );
   });
 
   it('POST /ingestion/retry/:releaseId → 401 without JWT', async () => {

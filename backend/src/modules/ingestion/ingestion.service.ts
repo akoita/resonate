@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from "@nestjs/common";
-import { join } from "path";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { randomUUID } from "crypto";
+import { basename, dirname, join, resolve } from "path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "fs";
 import { readFile, readdir } from "fs/promises";
 import { Queue } from "bullmq";
@@ -7,6 +8,7 @@ import { InjectQueue } from "@nestjs/bullmq";
 import { Agent } from "undici";
 import { EventBus } from "../shared/event_bus";
 import { resolveContainedPath } from "../storage/path_containment";
+import { getIngestionMultipartTempRoot } from "./ingestion-multipart.config";
 import { StorageProvider } from "../storage/storage_provider";
 import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
@@ -104,6 +106,177 @@ export class IngestionService {
   ) {
     // In test mode, process synchronously instead of through BullMQ queue
     this.useSyncProcessing = process.env.NODE_ENV === "test" || process.env.USE_SYNC_PROCESSING === "true";
+  }
+
+  /** Start a new audio revision while the existing revision remains playable. */
+  async replaceTrackAudio(
+    releaseId: string,
+    trackId: string,
+    userId: string | undefined,
+    file: Express.Multer.File,
+  ) {
+    if (!userId) throw new UnauthorizedException();
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "track_audio"))) {
+      throw new ForbiddenException("You do not have access to replace this release's audio");
+    }
+
+    const extension = file.originalname.split(".").pop()?.toLowerCase();
+    const audioMimeTypes: Record<string, string> = {
+      mp3: "audio/mpeg", wav: "audio/wav", flac: "audio/flac",
+      aiff: "audio/aiff", aif: "audio/aiff", m4a: "audio/mp4",
+      aac: "audio/aac", ogg: "audio/ogg",
+    };
+    const mimeType = extension ? audioMimeTypes[extension] : undefined;
+    if (!mimeType) {
+      throw new BadRequestException("Upload an MP3, WAV, FLAC, AIFF, M4A, AAC, or OGG audio file");
+    }
+    const audioRevision = randomUUID();
+    const stemId = this.generateId("stem");
+    const fileBuffer = await this.readUploadBuffer(file);
+    if (fileBuffer.length === 0) throw new BadRequestException("The audio file is empty");
+
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: { id: true, artistId: true, status: true },
+    });
+    if (!release) throw new NotFoundException("Release not found");
+    if (release.status !== "ready") {
+      throw new ConflictException("Audio can be replaced only before publication, when the release is ready");
+    }
+    const track = await prisma.track.findUnique({
+      where: { id: trackId, releaseId },
+      select: { id: true, title: true, position: true },
+    });
+    if (!track) throw new NotFoundException("Track not found in this release");
+
+    const storage = await this.storageProvider.upload(
+      fileBuffer,
+      `original_${stemId}_${audioRevision}.${extension}`,
+      mimeType,
+    );
+    const replacementTrack = {
+      id: trackId,
+      title: track.title,
+      position: track.position,
+      audioRevision,
+      stems: [{
+        id: stemId,
+        type: "original",
+        uri: storage.uri,
+        mimeType,
+        storageProvider: storage.provider,
+      }],
+    };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
+        const current = await tx.release.findUnique({ where: { id: releaseId }, select: { status: true } });
+        if (current?.status !== "ready") {
+          throw new ConflictException("This release is no longer available for audio replacement");
+        }
+        if (!(await hasReleaseManagementAccess(userId, releaseId, "track_audio", tx))) {
+          throw new ForbiddenException("You do not have access to replace this release's audio");
+        }
+        const currentTrack = await tx.track.findUnique({
+          where: { id: trackId, releaseId },
+          select: { pendingAudioRevision: true },
+        });
+        if (!currentTrack) throw new NotFoundException("Track not found in this release");
+        if (currentTrack.pendingAudioRevision) {
+          throw new ConflictException("An audio replacement is already processing for this track");
+        }
+        const mintedStem = await tx.stem.findFirst({
+          where: { trackId, isCurrent: true, nftMint: { isNot: null } },
+          select: { id: true },
+        });
+        if (mintedStem) {
+          throw new ConflictException("Audio cannot be replaced after a stem has been minted");
+        }
+        await tx.track.update({
+          where: { id: trackId, releaseId },
+          data: {
+            pendingAudioRevision: audioRevision,
+            audioReplacementStatus: "processing",
+            audioReplacementError: null,
+            pendingAudioFingerprint: null,
+            pendingAudioFingerprintHash: null,
+            pendingAudioFingerprintDuration: null,
+          },
+        });
+        await tx.stem.create({
+          data: {
+            id: stemId,
+            trackId,
+            type: "original",
+            uri: storage.uri,
+            storageProvider: storage.provider,
+            mimeType,
+            audioRevision,
+            isCurrent: false,
+          },
+        });
+        // Queue before committing the pending revision. A crash can leave an
+        // orphan job, which the revision guard discards, but cannot leave a
+        // committed pending attempt with no job to process it.
+        if (!this.useSyncProcessing) {
+          // The delay exceeds the transaction timeout, so the worker cannot
+          // publish a result before the pending revision commits or rolls back.
+          await this.stemsQueue.add("process-stems", {
+            releaseId,
+            artistId: release.artistId,
+            tracks: [replacementTrack],
+          }, { jobId: `replace_${audioRevision}`, delay: 15_000 });
+        }
+      }, { timeout: 10_000 });
+    } catch (error) {
+      await this.storageProvider.delete(storage.uri).catch(() => undefined);
+      throw error;
+    }
+
+    try {
+      if (this.useSyncProcessing) {
+        const activation = await this.catalogService.activateAudioReplacement({
+          eventName: "stems.processed",
+          eventVersion: 1,
+          occurredAt: new Date().toISOString(),
+          releaseId,
+          artistId: release.artistId,
+          audioRevision,
+          modelVersion: "test-mock-v1",
+          tracks: [{
+            ...replacementTrack,
+            stems: [
+              ...replacementTrack.stems,
+              {
+                id: this.generateId("stem"),
+                type: "vocals",
+                uri: storage.uri,
+                mimeType,
+                storageProvider: storage.provider,
+              },
+            ],
+          }],
+        });
+        if (!activation.applied) {
+          throw new ConflictException(activation.reason || "This audio replacement is no longer active");
+        }
+      }
+    } catch (error) {
+      await prisma.track.updateMany({
+        where: { id: trackId, pendingAudioRevision: audioRevision },
+        data: {
+          pendingAudioRevision: null,
+          audioReplacementStatus: "failed",
+          audioReplacementError: "Could not queue audio processing. Try again.",
+          pendingAudioFingerprint: null,
+          pendingAudioFingerprintHash: null,
+          pendingAudioFingerprintDuration: null,
+        },
+      });
+      throw error;
+    }
+    return { releaseId, trackId, audioRevision, status: this.useSyncProcessing ? "complete" : "processing" };
   }
 
   async handleFileUpload(input: {
@@ -427,13 +600,15 @@ export class IngestionService {
     return { releaseId, status: "processing" };
   }
 
-  async handleProgress(releaseId: string, trackId: string, progress: number) {
+  async handleProgress(releaseId: string, trackId: string, progress: number, audioRevision?: string) {
+    const replacement = !!audioRevision;
     const heartbeatUpdate = await prisma.track.updateMany({
       where: {
         id: trackId,
         releaseId,
-        processingStatus: { in: [...ACTIVE_PROCESSING_STAGES] },
-        release: { status: "processing" },
+        ...(replacement
+          ? { pendingAudioRevision: audioRevision, audioReplacementStatus: { in: [...ACTIVE_PROCESSING_STAGES, "processing"] }, release: { status: "ready" } }
+          : { processingStatus: { in: [...ACTIVE_PROCESSING_STAGES] }, release: { status: "processing" } }),
       },
       data: { lastProgressAt: new Date() },
     }).catch((err) => {
@@ -454,6 +629,7 @@ export class IngestionService {
       occurredAt: new Date().toISOString(),
       releaseId,
       trackId,
+      audioRevision,
       progress,
     });
     console.log(`[Ingestion] Progress for ${trackId}: ${progress}%`);
@@ -467,7 +643,8 @@ export class IngestionService {
     const currentRelease = await this.catalogService.getRelease(input.releaseId, {
       includeRestricted: true,
     });
-    if (currentRelease && currentRelease.status === 'ready') {
+    const isReplacement = input.tracks.some((track) => !!track.audioRevision);
+    if (currentRelease && currentRelease.status === 'ready' && !isReplacement) {
       console.log(`[Ingestion] Release ${input.releaseId} is already ready, skipping stem processing`);
       return;
     }
@@ -486,7 +663,16 @@ export class IngestionService {
 
       // Guard: skip tracks that already have processed stems (more than just the original)
       const existingTrack = currentRelease?.tracks?.find((t: any) => t.id === track.id);
-      if (existingTrack?.stems && existingTrack.stems.length > 1) {
+      if (track.audioRevision) {
+        const pending = await prisma.track.findUnique({
+          where: { id: track.id, releaseId: input.releaseId },
+          select: { pendingAudioRevision: true, release: { select: { status: true } } },
+        });
+        if (!pending || pending.pendingAudioRevision !== track.audioRevision || pending.release.status !== "ready") {
+          console.warn(`[Ingestion] Ignoring stale audio revision for track ${track.id}`);
+          continue;
+        }
+      } else if (existingTrack?.stems && existingTrack.stems.length > 1) {
         console.log(`[Ingestion] Track ${track.id} already has ${existingTrack.stems.length} stems, skipping`);
         continue;
       }
@@ -495,7 +681,7 @@ export class IngestionService {
       let lastError = null;
 
       // Emit 'separating' stage when starting to process this track
-      await this.emitTrackStage(input.releaseId, track.id, 'separating');
+      await this.emitTrackStage(input.releaseId, track.id, 'separating', undefined, track.audioRevision);
 
       while (attempt < MAX_RETRIES) {
         try {
@@ -541,7 +727,8 @@ export class IngestionService {
           const demucsBaseUrl = process.env.DEMUCS_WORKER_URL || 'http://localhost:8000';
           // Pass callback_url so the worker POSTs progress updates to /ingestion/progress/{releaseId}/{trackId}
           const callbackUrl = process.env.BACKEND_URL || 'http://host.docker.internal:3000';
-          const separateUrl = `${demucsBaseUrl}/separate/${input.releaseId}/${track.id}?callback_url=${encodeURIComponent(callbackUrl)}`;
+          const separateUrl = `${demucsBaseUrl}/separate/${input.releaseId}/${track.id}?callback_url=${encodeURIComponent(callbackUrl)}`
+            + (track.audioRevision ? `&audioRevision=${encodeURIComponent(track.audioRevision)}` : "");
           const response = await fetch(separateUrl, {
             method: "POST",
             body: formData,
@@ -554,7 +741,10 @@ export class IngestionService {
             throw new Error(`Demucs worker returned ${response.status}`);
           }
 
-          const result = await response.json() as { stems: Record<string, string> };
+          const result = await response.json() as { stems: Record<string, string>; audioRevision?: string };
+          if (track.audioRevision && result.audioRevision !== track.audioRevision) {
+            throw new Error("Demucs returned an audio revision that does not match this replacement");
+          }
           const stems = [];
 
           // 1. Process and upload the Original Stem first
@@ -564,7 +754,11 @@ export class IngestionService {
 
           if (originalStem.data && (!originalStem.uri || originalStem.uri.includes('localhost:3000'))) {
             // Re-upload only if we have the buffer (sync/test mode) AND the URI is a local placeholder
-            const originalStorage = await this.storageProvider.upload(originalStem.data, `original_${track.id}.mp3`, originalStem.mimeType);
+            const originalStorage = await this.storageProvider.upload(
+              originalStem.data,
+              `original_${track.id}_${track.audioRevision || "initial"}.mp3`,
+              originalStem.mimeType,
+            );
             finalOriginalUri = originalStorage.uri;
             finalOriginalProvider = originalStorage.provider;
           }
@@ -578,7 +772,7 @@ export class IngestionService {
           });
 
           // Emit 'encrypting' stage before processing AI-generated stems
-          await this.emitTrackStage(input.releaseId, track.id, 'encrypting');
+          await this.emitTrackStage(input.releaseId, track.id, 'encrypting', undefined, track.audioRevision);
 
           // 2. Process, Encrypt, and Upload the AI-generated Stems
           for (const [type, relativePath] of Object.entries(result.stems)) {
@@ -640,7 +834,9 @@ export class IngestionService {
           });
 
           // Emit 'complete' stage for this track
-          await this.emitTrackStage(input.releaseId, track.id, 'complete');
+          if (!track.audioRevision) {
+            await this.emitTrackStage(input.releaseId, track.id, 'complete');
+          }
 
           break; // Success
         } catch (err) {
@@ -658,20 +854,31 @@ export class IngestionService {
       // Final yield before publishing large event
       await new Promise(resolve => setImmediate(resolve));
 
-      this.eventBus.publish({
+      const processedEvent = {
         eventName: "stems.processed",
         eventVersion: 1,
         occurredAt: new Date().toISOString(),
         releaseId: input.releaseId,
         artistId: input.artistId,
+        audioRevision: input.tracks[0]?.audioRevision,
         modelVersion: "demucs-htdemucs-6s",
         tracks: processedTracks as any,
-      });
+      } as const;
+      if (isReplacement) {
+        await this.catalogService.activateAudioReplacement(processedEvent);
+      } else {
+        this.eventBus.publish(processedEvent);
+      }
     } else {
       const errorMsg = `Failed to process any tracks for release ${input.releaseId}`;
       console.error(`[Ingestion] ${errorMsg}`);
 
-      this.markReleaseFailed(input.releaseId, input.artistId, errorMsg);
+      if (isReplacement) {
+        const track = input.tracks[0];
+        await this.failAudioReplacement(input.releaseId, track.id, track.audioRevision, errorMsg);
+      } else {
+        this.markReleaseFailed(input.releaseId, input.artistId, errorMsg);
+      }
 
       throw new Error(errorMsg);
     }
@@ -766,7 +973,23 @@ export class IngestionService {
   private async readUploadBuffer(file: Express.Multer.File): Promise<Buffer> {
     if (Buffer.isBuffer(file.buffer)) return file.buffer;
     if (typeof file.path === "string" && file.path.length > 0) {
-      return readFile(file.path);
+      const tempRoot = resolve(getIngestionMultipartTempRoot());
+      const directory = typeof file.destination === "string"
+        ? resolveContainedPath(tempRoot, file.destination)
+        : null;
+      const filename = typeof file.filename === "string" ? file.filename : "";
+      if (
+        !directory || dirname(directory) !== tempRoot ||
+        !/^request-[A-Za-z0-9_-]+$/.test(basename(directory)) ||
+        !/^audio-[1-9][0-9]*\.upload$/.test(filename)
+      ) {
+        throw new BadRequestException("Uploaded audio file has no readable content");
+      }
+      const ownedPath = join(directory, filename);
+      if (file.path !== ownedPath) {
+        throw new BadRequestException("Uploaded audio file has no readable content");
+      }
+      return readFile(ownedPath);
     }
     throw new BadRequestException("Uploaded audio file has no readable content");
   }
@@ -822,6 +1045,7 @@ export class IngestionService {
     trackId: string,
     stage: 'pending' | 'separating' | 'encrypting' | 'storing' | 'complete' | 'failed',
     error?: string | null,
+    audioRevision?: string,
   ) {
     // Persist the status to database so it's available on page load
     // Retry logic to handle race condition where Track record may not exist yet
@@ -831,6 +1055,25 @@ export class IngestionService {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
+        if (audioRevision) {
+          const result = await prisma.track.updateMany({
+            where: {
+              id: trackId,
+              releaseId,
+              pendingAudioRevision: audioRevision,
+              release: { status: "ready" },
+            },
+            data: {
+              audioReplacementStatus: stage,
+              audioReplacementError: stage === "failed" ? (error || "Processing failed") : null,
+              lastProgressAt: ACTIVE_PROCESSING_STAGES.has(stage) ? now : undefined,
+            },
+          });
+          if (result.count === 0) {
+            console.warn(`[Ingestion] Ignoring stale ${stage} update for audio revision ${audioRevision}`);
+          }
+          return;
+        }
         const result = await prisma.track.updateMany({
           where: { id: trackId },
           data: {
@@ -869,6 +1112,21 @@ export class IngestionService {
       ...(stage === "failed" && error ? { error } : {}),
     } as any);
     console.log(`[Ingestion] Track ${trackId} stage: ${stage}`);
+  }
+
+  async failAudioReplacement(releaseId: string, trackId: string, audioRevision: string, error: string) {
+    console.error(`[Ingestion] Audio replacement failed for ${trackId}: ${error}`);
+    await prisma.track.updateMany({
+      where: { id: trackId, releaseId, pendingAudioRevision: audioRevision },
+      data: {
+        pendingAudioRevision: null,
+        audioReplacementStatus: "failed",
+        audioReplacementError: "Audio processing failed. The existing audio remains available.",
+        pendingAudioFingerprint: null,
+        pendingAudioFingerprintHash: null,
+        pendingAudioFingerprintDuration: null,
+      },
+    });
   }
 
   async retryRelease(releaseId: string, requesterUserId: string) {

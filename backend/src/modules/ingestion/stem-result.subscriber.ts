@@ -9,6 +9,7 @@ import type { StemResultMessage } from "./stem-pubsub.publisher";
 import { sanitizeStemAudioFeatures } from "./stem-audio-features";
 import { resolveContainedPath } from "../storage/path_containment";
 import { resolvePubSubRuntimeConfig } from "./pubsub-runtime";
+import { CatalogService } from "../catalog/catalog.service";
 
 const TOPIC_RESULTS = "stem-results";
 const SUBSCRIPTION_RESULTS = "stem-results-backend";
@@ -26,6 +27,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     private readonly storageProvider: StorageProvider,
     private readonly encryptionService: EncryptionService,
     private readonly artistService: ArtistService,
+    private readonly catalogService: CatalogService,
   ) {}
 
   async onModuleInit() {
@@ -105,9 +107,63 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     );
 
     try {
+      if (result.audioRevision) {
+        const replacementResultState = await prisma.$transaction(async (tx) => {
+          // Match the release-before-track lock order used by activation and
+          // replacement failure handling so publication cannot race this gate.
+          const lockedRelease = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "Release" WHERE "id" = ${result.releaseId} FOR UPDATE
+          `;
+          if (lockedRelease.length === 0) return "stale" as const;
+
+          const lockedTrack = await tx.$queryRaw<Array<{ id: string }>>`
+            SELECT "id" FROM "Track" WHERE "id" = ${result.trackId} AND "releaseId" = ${result.releaseId} FOR UPDATE
+          `;
+          if (lockedTrack.length === 0) return "stale" as const;
+
+          const [release, track] = await Promise.all([
+            tx.release.findUnique({
+              where: { id: result.releaseId },
+              select: { status: true },
+            }),
+            tx.track.findUnique({
+              where: { id: result.trackId },
+              select: { pendingAudioRevision: true },
+            }),
+          ]);
+          if (!release || track?.pendingAudioRevision !== result.audioRevision) {
+            return "stale" as const;
+          }
+          if (release.status !== "ready") {
+            await tx.track.update({
+              where: { id: result.trackId },
+              data: {
+                pendingAudioRevision: null,
+                audioReplacementStatus: "failed",
+                audioReplacementError: "The release is no longer ready for audio replacement.",
+                pendingAudioFingerprint: null,
+                pendingAudioFingerprintHash: null,
+                pendingAudioFingerprintDuration: null,
+              },
+            });
+            return "failed" as const;
+          }
+          return "continue" as const;
+        });
+
+        if (replacementResultState !== "continue") {
+          this.logger.warn(
+            replacementResultState === "failed"
+              ? `Failed replacement result for track ${result.trackId}: release is no longer ready`
+              : `Ignoring stale replacement result for track ${result.trackId}`,
+          );
+          message.ack();
+          return;
+        }
+      }
       if (result.status === "completed" && result.stems) {
         await this.processCompletedSeparation(result);
-      } else if (result.status === "failed") {
+      } else if (result.status === "failed" || result.status === "quarantined") {
         await this.processFailedSeparation(result);
       }
       message.ack();
@@ -143,7 +199,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
         id: result.originalStemMeta.id,
         uri: result.originalStemMeta.uri,
         type: "original",
-        mimeType: "audio/mpeg",
+        mimeType: result.originalStemMeta.mimeType || "audio/mpeg",
         durationSeconds: result.originalStemMeta.durationSeconds,
         isEncrypted: false,
         storageProvider: result.originalStemMeta.storageProvider || "gcs",
@@ -151,7 +207,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     }
 
     // Emit 'encrypting' stage — visible in UI as "🟠 Encrypting..."
-    await this.emitTrackStage(result.releaseId, result.trackId, "encrypting");
+    await this.emitTrackStage(result.releaseId, result.trackId, "encrypting", undefined, result.audioRevision);
 
     let encryptedCount = 0;
     const totalStems = Object.keys(result.stems!).length;
@@ -232,7 +288,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
         // Emit 'storing' stage on first stem upload — visible in UI as "🟢 Storing..."
         encryptedCount++;
         if (encryptedCount === 1) {
-          await this.emitTrackStage(result.releaseId, result.trackId, "storing");
+          await this.emitTrackStage(result.releaseId, result.trackId, "storing", undefined, result.audioRevision);
         }
 
         // Upload encrypted stem
@@ -256,17 +312,24 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     }
 
     // Emit 'complete' stage
-    await this.emitTrackStage(result.releaseId, result.trackId, "complete");
+    if (result.audioRevision && !stems.some((stem) => stem.type !== "original")) {
+      await this.processFailedSeparation({ ...result, status: "failed", error: "No separated stems were produced" });
+      return;
+    }
+    if (!result.audioRevision) {
+      await this.emitTrackStage(result.releaseId, result.trackId, "complete");
+    }
 
     // Publish stems.processed event
     // IMPORTANT: Do NOT include raw `data` buffers — they cause OOM.
     // In pubsub mode, stems are already uploaded to GCS; only URIs are needed.
-    this.eventBus.publish({
+    const processedEvent = {
       eventName: "stems.processed",
       eventVersion: 1,
       occurredAt: new Date().toISOString(),
       releaseId: result.releaseId,
       artistId: result.artistId,
+      audioRevision: result.audioRevision,
       modelVersion: "demucs-htdemucs-6s",
       tracks: [
         {
@@ -276,7 +339,12 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
           stems: stems.map(({ data, ...rest }) => rest),
         },
       ] as any,
-    });
+    } as const;
+    if (result.audioRevision) {
+      await this.catalogService.activateAudioReplacement(processedEvent);
+    } else {
+      this.eventBus.publish(processedEvent);
+    }
 
     this.logger.log(`Published stems.processed for release ${result.releaseId}`);
   }
@@ -286,7 +354,21 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       `Separation failed for job ${result.jobId}: ${result.error}`
     );
 
-    const failureReason = result.error || "Unknown worker error";
+    const failureReason = result.error || result.reason || "Unknown worker error";
+    if (result.audioRevision) {
+      await prisma.track.updateMany({
+        where: { id: result.trackId, releaseId: result.releaseId, pendingAudioRevision: result.audioRevision },
+        data: {
+          pendingAudioRevision: null,
+          audioReplacementStatus: "failed",
+          audioReplacementError: "Audio processing failed. The existing audio remains available.",
+          pendingAudioFingerprint: null,
+          pendingAudioFingerprintHash: null,
+          pendingAudioFingerprintDuration: null,
+        },
+      });
+      return;
+    }
     await this.emitTrackStage(result.releaseId, result.trackId, "failed", failureReason);
 
     const releaseExists = await prisma.release.findUnique({
@@ -306,6 +388,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
       occurredAt: new Date().toISOString(),
       releaseId: result.releaseId,
       artistId: result.artistId,
+      trackId: result.trackId,
       error: failureReason,
     });
   }
@@ -315,6 +398,7 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
     trackId: string,
     stage: "pending" | "separating" | "encrypting" | "storing" | "complete" | "failed",
     error?: string | null,
+    audioRevision?: string,
   ) {
     const MAX_RETRIES = 5;
     const RETRY_DELAY = 500;
@@ -322,6 +406,23 @@ export class StemResultSubscriber implements OnModuleInit, OnModuleDestroy {
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
+        if (audioRevision) {
+          const update = await prisma.track.updateMany({
+            where: {
+              id: trackId,
+              releaseId,
+              pendingAudioRevision: audioRevision,
+              release: { status: "ready" },
+            },
+            data: {
+              audioReplacementStatus: stage,
+              audioReplacementError: stage === "failed" ? (error || "Processing failed") : null,
+              lastProgressAt: ACTIVE_PROCESSING_STAGES.has(stage) ? now : undefined,
+            },
+          });
+          if (update.count === 0) this.logger.warn(`Ignoring stale audio revision ${audioRevision}`);
+          return;
+        }
         const result = await prisma.track.updateMany({
           where: { id: trackId },
           data: {
