@@ -84,6 +84,8 @@ describe("ArtistEnrichmentService", () => {
                         { type: "official homepage", url: { resource: "http://legacy.ada.example/" } },
                         { type: "official homepage", url: { resource: "https://ada.example/" } },
                         { type: "official homepage", url: { resource: "javascript:alert(1)" } },
+                        { type: "official homepage", url: { resource: "data:text/html,<script>bad()</script>" } },
+                        { type: "official homepage", url: { resource: "vbscript:msgbox(1)" } },
                         { type: "social network", url: { resource: "https://x.com/ada" } },
                         { type: "social network", url: { resource: "https://instagram.com.attacker.example/ada" } },
                         { type: "social network", url: { resource: "https://www.youtube.com/@ada" } },
@@ -161,7 +163,9 @@ describe("ArtistEnrichmentService", () => {
         ]));
         expect(result.suggestions.some(({ field }) => field === "instagram")).toBe(false);
         expect(result.suggestions.some(({ field }) => field === "soundcloud")).toBe(false);
-        expect(result.suggestions.every(({ value }) => !value.startsWith("javascript:"))).toBe(true);
+        expect(result.suggestions
+            .filter(({ field }) => field !== "summary")
+            .every(({ value }) => /^https?:\/\//i.test(value))).toBe(true);
         expect(result.warnings).toEqual([]);
 
         const modelPrompt = mockGenerateContent.mock.calls[0][0] as string;
@@ -291,6 +295,49 @@ describe("ArtistEnrichmentService", () => {
         expect(results[2].warnings).toContain("AI bio suggestions are temporarily unavailable or busy; verified link suggestions remain available.");
         expect(mockGenerateContent).toHaveBeenCalledTimes(2);
     }, 8_000);
+
+    it("aborts timed-out model requests and reclaims their concurrency slots", async () => {
+        process.env.GOOGLE_AI_API_KEY = "test-key";
+        const signals: AbortSignal[] = [];
+        const hangUntilAborted = (_prompt: string, options?: { signal?: AbortSignal }) => {
+            const signal = options?.signal;
+            if (!signal) return new Promise(() => undefined);
+            signals.push(signal);
+            return new Promise((_resolve, reject) => {
+                const rejectOnAbort = () => reject(new Error("model request aborted"));
+                if (signal.aborted) rejectOnAbort();
+                else signal.addEventListener("abort", rejectOnAbort, { once: true });
+            });
+        };
+        mockGenerateContent
+            .mockImplementationOnce(hangUntilAborted)
+            .mockImplementationOnce(hangUntilAborted)
+            .mockResolvedValueOnce({
+                response: { text: () => JSON.stringify({ summary: "Ada is a French artist." }) },
+            });
+        fetchMock.mockImplementation(async (input: string | URL | Request) => {
+            const url = new URL(input.toString());
+            if (url.origin !== "https://musicbrainz.org") throw new Error(`Unexpected provider origin: ${url.origin}`);
+            return jsonResponse({ id: MBID, name: "Ada Example", type: "Person", area: { name: "France" } });
+        });
+
+        const firstRequests = await Promise.all([
+            new ArtistEnrichmentService().buildSuggestions(MBID),
+            new ArtistEnrichmentService().buildSuggestions(MBID),
+        ]);
+
+        expect(signals).toHaveLength(2);
+        expect(signals.every((signal) => signal.aborted)).toBe(true);
+        expect(firstRequests.every(({ warnings }) => warnings.some((warning) => warning.includes("temporarily unavailable or busy")))).toBe(true);
+
+        const recoveredRequest = await new ArtistEnrichmentService().buildSuggestions(MBID);
+
+        expect(mockGenerateContent).toHaveBeenCalledTimes(3);
+        expect(recoveredRequest.suggestions).toContainEqual(expect.objectContaining({
+            field: "summary",
+            value: "Ada is a French artist.",
+        }));
+    }, 15_000);
 
     it("omits Commons images unless the returned metadata names CC0 or Public Domain", async () => {
         fetchMock.mockImplementation(async (input: string | URL | Request) => {

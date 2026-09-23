@@ -16,10 +16,13 @@ test("manager chooses an exact public identity and saves only approved suggestio
   let searches = 0;
   let suggestions = 0;
   let writes = 0;
+  let savedSummary: string | null = null;
   await page.route(`**/artists/${ARTIST_ID}`, (route) => {
     if (route.request().method() === "PATCH") {
       writes += 1;
-      return route.fulfill({ json: { ...profile, ...route.request().postDataJSON() } });
+      const body = route.request().postDataJSON();
+      savedSummary = body.summary;
+      return route.fulfill({ json: { ...profile, ...body } });
     }
     return route.fulfill({ json: profile });
   });
@@ -67,9 +70,15 @@ test("manager chooses an exact public identity and saves only approved suggestio
   await page.getByRole("button", { name: "Add selected fields to form" }).click();
   await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Source-backed draft bio");
   await expect(page.getByLabel("Website", { exact: true })).toHaveValue("https://ayalune.example");
+  await page.getByLabel("Suggested Bio").fill("Revised source-backed bio");
+  await expect(page.getByText("Your latest suggestion edits are not in the form yet.", { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Source-backed draft bio");
+  await page.getByRole("button", { name: "Add selected fields to form" }).click();
+  await expect(page.getByLabel("Bio", { exact: true })).toHaveValue("Revised source-backed bio");
   expect(writes).toBe(0);
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect.poll(() => writes).toBe(1);
+  expect(savedSummary).toBe("Revised source-backed bio");
 });
 
 test("non-manager never sees the enrichment action", async ({ authenticatedPage: page }) => {

@@ -60,7 +60,9 @@ an identity. A second request retrieves source-linked suggestions for the
 selected identity. You may edit and select individual fields. Replacing a
 non-empty field requires a separate explicit choice. **Add selected fields to
 form** only stages values locally; **Save changes** is still required to
-publish them. Closing the panel or canceling the editor changes nothing.
+publish them. If a suggestion is edited after staging, it must be added to
+the form again before that edit is saved. Closing the panel or canceling the
+editor changes nothing.
 
 MusicBrainz identity and official-link relationships are the source for
 candidates, website, and social links. The short bio is AI-written only from

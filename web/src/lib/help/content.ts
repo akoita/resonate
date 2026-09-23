@@ -1106,7 +1106,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "While editing a profile you manage, choose \"Suggest profile info with AI\". Pick the exact artist from the public search results; artists with the same name can have separate profiles. Review each proposed field, its source, and its confidence. You can change the suggested text and select only the fields you want. If a field already contains information, confirm that you want to replace it. Adding suggestions fills the edit form; choose \"Save changes\" to publish them. Closing the panel before adding suggestions changes nothing. Canceling the editor discards staged changes.",
+            text: "While editing a profile you manage, choose \"Suggest profile info with AI\". Pick the exact artist from the public search results; artists with the same name can have separate profiles. Review each proposed field, its source, and its confidence. You can change the suggested text and select only the fields you want. If a field already contains information, confirm that you want to replace it. Adding suggestions fills the edit form; choose \"Save changes\" to publish them. If you edit a suggestion after adding it, add it to the form again before saving. Closing the panel before adding suggestions changes nothing. Canceling the editor discards staged changes.",
           },
           {
             kind: "figure",

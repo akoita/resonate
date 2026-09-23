@@ -15,6 +15,7 @@ const WIKIDATA_ORIGIN = "https://www.wikidata.org";
 const COMMONS_ORIGIN = "https://commons.wikimedia.org";
 const UPLOADS_ORIGIN = "https://upload.wikimedia.org";
 const PROVIDER_HEADERS = { "User-Agent": "Resonate/0.1 (https://github.com/akoita/resonate)" };
+const TRUSTED_PROVIDER_ORIGINS = new Set([MUSICBRAINZ_ORIGIN, WIKIDATA_ORIGIN, COMMONS_ORIGIN]);
 const MUSICBRAINZ_MIN_INTERVAL_MS = 1_000;
 const MBID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WIKIDATA_ID_PATTERN = /^Q[1-9][0-9]{0,11}$/;
@@ -106,14 +107,15 @@ export class ArtistEnrichmentService {
         const name = boundedProviderText(displayName, 200);
         if (!name) return [];
 
-        const url = new URL("/ws/2/artist/", MUSICBRAINZ_ORIGIN);
-        url.searchParams.set("query", `artist:${quoteMusicBrainzTerm(name)}`);
-        url.searchParams.set("fmt", "json");
-        url.searchParams.set("limit", String(MAX_CANDIDATES));
+        const encodedQuery = encodeURIComponent(`artist:${quoteMusicBrainzTerm(name)}`);
+        const url = new URL(
+            `/ws/2/artist/?query=${encodedQuery}&fmt=json&limit=${MAX_CANDIDATES}`,
+            MUSICBRAINZ_ORIGIN,
+        );
 
         let response: JsonRecord;
         try {
-            response = await requestMusicBrainz(() => fetchJson(url.toString(), MUSICBRAINZ_ORIGIN, PROVIDER_HEADERS));
+            response = await requestMusicBrainz(() => fetchJson(url, PROVIDER_HEADERS));
         } catch (error) {
             throw musicBrainzUnavailable(error);
         }
@@ -141,13 +143,13 @@ export class ArtistEnrichmentService {
         }
         const candidateId = candidateIdInput.trim().toLowerCase();
         const musicBrainzUrl = musicBrainzArtistUrl(candidateId);
-        const url = new URL(`/ws/2/artist/${candidateId}`, MUSICBRAINZ_ORIGIN);
+        const url = new URL(`/ws/2/artist/${encodeURIComponent(candidateId)}`, MUSICBRAINZ_ORIGIN);
         url.searchParams.set("fmt", "json");
         url.searchParams.set("inc", "url-rels");
 
         let artist: JsonRecord;
         try {
-            artist = await requestMusicBrainz(() => fetchJson(url.toString(), MUSICBRAINZ_ORIGIN, PROVIDER_HEADERS));
+            artist = await requestMusicBrainz(() => fetchJson(url, PROVIDER_HEADERS));
         } catch (error) {
             throw musicBrainzUnavailable(error);
         }
@@ -357,7 +359,7 @@ async function loadWikidataContext(wikidataId: string): Promise<WikidataContext>
     url.searchParams.set("props", "claims");
     url.searchParams.set("format", "json");
 
-    const data = await fetchJson(url.toString(), WIKIDATA_ORIGIN, PROVIDER_HEADERS);
+    const data = await fetchJson(url, PROVIDER_HEADERS);
     const entity = data.entities?.[wikidataId];
     if (!isRecord(entity)) throw new ProviderError("Wikidata artist entity was missing");
     const claims = isRecord(entity.claims) ? entity.claims : {};
@@ -385,7 +387,7 @@ async function loadWikidataLabels(ids: string[]): Promise<Record<string, string>
     url.searchParams.set("languages", "en");
     url.searchParams.set("format", "json");
 
-    const data = await fetchJson(url.toString(), WIKIDATA_ORIGIN, PROVIDER_HEADERS);
+    const data = await fetchJson(url, PROVIDER_HEADERS);
     const labels: Record<string, string> = {};
     if (!isRecord(data.entities)) return labels;
     for (const [id, entity] of Object.entries(data.entities)) {
@@ -494,7 +496,10 @@ async function summarizeBiography(apiKey: string, facts: BiographyFacts): Promis
     });
 
     const response = await runBoundedModelCall(
-        () => model.generateContent(JSON.stringify({ structuredArtistFacts: facts })),
+        (signal) => model.generateContent(
+            JSON.stringify({ structuredArtistFacts: facts }),
+            { signal, timeout: MAX_PROVIDER_TIMEOUT_MS },
+        ),
         MAX_PROVIDER_TIMEOUT_MS,
     );
     const raw = response?.response?.text?.();
@@ -524,7 +529,7 @@ async function loadReusableCommonsImage(fileNameInput: string) {
     url.searchParams.set("prop", "imageinfo");
     url.searchParams.set("iiprop", "url|extmetadata");
 
-    const data = await fetchJson(url.toString(), COMMONS_ORIGIN, PROVIDER_HEADERS);
+    const data = await fetchJson(url, PROVIDER_HEADERS);
     const page = Array.isArray(data.query?.pages) ? data.query.pages[0] : null;
     const imageInfo = Array.isArray(page?.imageinfo) ? page.imageinfo[0] : null;
     if (!isRecord(imageInfo) || !isRecord(imageInfo.extmetadata)) return null;
@@ -577,9 +582,10 @@ function plainMetadataText(input: unknown, maximum: number): string {
     return boundedProviderText(input.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&"), maximum);
 }
 
-async function fetchJson(url: string, expectedOrigin: string, headers: Record<string, string> = {}): Promise<JsonRecord> {
-    const parsedUrl = new URL(url);
-    if (parsedUrl.origin !== expectedOrigin) throw new ProviderError("Provider URL origin was not allowed");
+async function fetchJson(url: URL, headers: Record<string, string> = {}): Promise<JsonRecord> {
+    if (!TRUSTED_PROVIDER_ORIGINS.has(url.origin)) {
+        throw new ProviderError("Provider URL origin was not allowed");
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), MAX_PROVIDER_TIMEOUT_MS);
@@ -693,39 +699,29 @@ function delay(milliseconds: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function withTimeout<T>(promise: Promise<T>, milliseconds: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("AI request timed out")), milliseconds);
-        promise.then(
-            (value) => {
-                clearTimeout(timeout);
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timeout);
-                reject(error);
-            },
-        );
-    });
-}
-
-function runBoundedModelCall<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
+function runBoundedModelCall<T>(operation: (signal: AbortSignal) => Promise<T>, timeoutMs: number): Promise<T> {
     if (activeModelCalls >= MAX_ACTIVE_MODEL_CALLS) {
         return Promise.reject(new ModelConcurrencyLimitError());
     }
 
     activeModelCalls += 1;
-    let released = false;
-    const release = () => {
-        if (released) return;
-        released = true;
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const generation = Promise.resolve().then(() => operation(controller.signal));
+    const deadline = new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+            // The Gemini SDK forwards this signal to fetch. Aborting the
+            // request before releasing its slot keeps the process cap useful
+            // while ensuring a hung client request cannot reserve it forever.
+            controller.abort();
+            reject(new Error("AI request timed out"));
+        }, timeoutMs);
+    });
+
+    return Promise.race([generation, deadline]).finally(() => {
+        if (timeout) clearTimeout(timeout);
         activeModelCalls = Math.max(0, activeModelCalls - 1);
-    };
-    const generation = Promise.resolve().then(operation);
-    // If the caller times out while the provider request is still running,
-    // keep the slot reserved until that request actually settles.
-    generation.then(release, release);
-    return withTimeout(generation, timeoutMs);
+    });
 }
 
 function boundedProviderText(input: unknown, maximum: number): string {

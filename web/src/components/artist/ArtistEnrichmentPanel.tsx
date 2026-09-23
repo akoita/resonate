@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   getArtistEnrichmentCandidates,
   getArtistEnrichmentSuggestions,
@@ -48,6 +48,8 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [replacements, setReplacements] = useState<Set<string>>(new Set());
   const [applied, setApplied] = useState(false);
+  const [needsReapply, setNeedsReapply] = useState(false);
+  const lastAppliedValues = useRef<Partial<Record<ArtistEnrichmentField, string>>>({});
 
   const search = async () => {
     setBusy(true);
@@ -55,6 +57,8 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
     setResult(null);
     setCandidateId("");
     setApplied(false);
+    setNeedsReapply(false);
+    lastAppliedValues.current = {};
     try {
       setCandidates(await getArtistEnrichmentCandidates(token, artistId));
     } catch (cause) {
@@ -75,6 +79,8 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
     setBusy(true);
     setError(null);
     setApplied(false);
+    setNeedsReapply(false);
+    lastAppliedValues.current = {};
     try {
       const suggestions = await getArtistEnrichmentSuggestions(token, artistId, candidateId);
       setResult(suggestions);
@@ -93,20 +99,36 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
     if (next.has(field)) next.delete(field);
     else next.add(field);
     setter(next);
+    if (applied) setNeedsReapply(true);
+    setApplied(false);
+  };
+
+  const editValue = (field: ArtistEnrichmentField, value: string) => {
+    setValues((current) => ({ ...current, [field]: value }));
+    if (applied) setNeedsReapply(true);
     setApplied(false);
   };
 
   const apply = () => {
     if (!result) return;
     const edited = result.suggestions.map((item) => ({ ...item, value: values[item.field] ?? "" }));
-    const next = applyArtistEnrichmentSuggestions(form, edited, selected, replacements);
+    const confirmedReplacements = new Set(replacements);
+    for (const item of edited) {
+      const lastApplied = lastAppliedValues.current[item.field];
+      if (lastApplied && form[item.field].trim() === lastApplied) confirmedReplacements.add(item.field);
+    }
+    const next = applyArtistEnrichmentSuggestions(form, edited, selected, confirmedReplacements);
     if (next.skipped.length) {
       setError(`Review the selected ${next.skipped.map((field) => FIELD_LABELS[field as ArtistEnrichmentField]).join(", ")} before applying.`);
       return;
     }
     setError(null);
     onApply(next.form);
+    for (const item of edited) {
+      if (selected.has(item.field)) lastAppliedValues.current[item.field] = next.form[item.field].trim();
+    }
     setApplied(true);
+    setNeedsReapply(false);
   };
 
   if (!open) {
@@ -182,7 +204,8 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
           {result.suggestions.length === 0 && <p>No usable suggestions were found. Your profile is unchanged.</p>}
           {result.suggestions.map((item: ArtistEnrichmentSuggestion) => {
             const field = item.field;
-            const replacesExisting = Boolean(form[field].trim());
+            const replacesExisting = Boolean(form[field].trim())
+              && form[field].trim() !== lastAppliedValues.current[field];
             return (
               <div className="artist-enrichment-suggestion" key={field}>
                 <label className="artist-enrichment-select">
@@ -197,7 +220,7 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
                     value={values[field] ?? ""}
                     maxLength={2000}
                     rows={4}
-                    onChange={(event) => setValues({ ...values, [field]: event.target.value })}
+                    onChange={(event) => editValue(field, event.target.value)}
                   />
                 ) : (
                   <input
@@ -205,7 +228,7 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
                     className="ui-input"
                     value={values[field] ?? ""}
                     maxLength={2048}
-                    onChange={(event) => setValues({ ...values, [field]: event.target.value })}
+                    onChange={(event) => editValue(field, event.target.value)}
                   />
                 )}
                 {safeSourceUrl(item.sourceUrl) && <a href={item.sourceUrl} target="_blank" rel="noreferrer noopener">Source: {item.sourceLabel}</a>}
@@ -225,6 +248,7 @@ export function ArtistEnrichmentPanel({ artistId, token, form, onApply }: Props)
             <Button type="button" variant="ghost" onClick={() => { setResult(null); setSelected(new Set()); }} disabled={busy}>Choose a different artist</Button>
           </div>
           {applied && <p role="status">Added to the form. Review the fields above, then choose Save changes to publish them.</p>}
+          {needsReapply && <p role="status">Your latest suggestion edits are not in the form yet. Choose Add selected fields to form again to include them.</p>}
         </div>
       )}
     </section>
