@@ -448,6 +448,7 @@ export default function ReleaseDetails() {
     ? release?.rightsFlags?.filter((flag) => flag !== "NEEDS_PROOF_OF_CONTROL")
     : release?.rightsFlags;
   const isOwner = release?.artist?.userId?.toLowerCase() === userId?.toLowerCase();
+  const canReadCatalog = catalogAccess?.resourceId === release?.id;
   const isCatalogOwner = catalogAccess?.resourceId === release?.id && catalogAccess?.currentUserAccess.isOwner;
   const canEditTitle = catalogAccess?.resourceId === release?.id
     && catalogAccess?.currentUserAccess.scopes.includes("CATALOG_METADATA");
@@ -992,7 +993,11 @@ export default function ReleaseDetails() {
         apiBase,
       });
 
-      if (!isOwner || !token || isPublicReleaseRoute(release.rightsRoute)) {
+      if (
+        (!isOwner && !canReadCatalog) ||
+        !token ||
+        (release.status !== "withdrawn" && isPublicReleaseRoute(release.rightsRoute))
+      ) {
         return publicUrl;
       }
 
@@ -1013,7 +1018,7 @@ export default function ReleaseDetails() {
 
       return publicUrl;
     },
-    [isOwner, release, token],
+    [canReadCatalog, isOwner, release, token],
   );
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

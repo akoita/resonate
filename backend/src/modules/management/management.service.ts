@@ -25,7 +25,31 @@ const CATALOG_SCOPES = [
   ManagementScope.CATALOG_MEDIA,
 ] as const;
 const OWNER_CATALOG_SCOPES = [...CATALOG_SCOPES];
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_RECIPIENT_EMAIL_LENGTH = 254;
+
+function isValidRecipientEmail(email: string): boolean {
+  let atIndex = -1;
+  let hasDomainDot = false;
+
+  for (let index = 0; index < email.length; index += 1) {
+    const character = email[index];
+    if (/\s/.test(character)) return false;
+
+    if (character === "@") {
+      if (atIndex !== -1) return false;
+      atIndex = index;
+    } else if (
+      character === "." &&
+      atIndex >= 0 &&
+      index > atIndex + 1 &&
+      index < email.length - 1
+    ) {
+      hasDomainDot = true;
+    }
+  }
+
+  return atIndex > 0 && atIndex < email.length - 1 && hasDomainDot;
+}
 
 export interface CreateManagementGrantInput {
   recipientEmail?: unknown;
@@ -335,13 +359,14 @@ export class ManagementService {
   }
 
   async createGrant(userId: string, input: CreateManagementGrantInput) {
+    const recipientEmail = this.readRecipientEmail(input.recipientEmail);
     await this.assertOpenUser(prisma, userId);
     const resource = this.readGrantResource(input);
     const ownsResource = resource.resourceType === ManagementResourceType.artist_profile
       ? await hasArtistManagementAccess(userId, resource.id, "profile_owner")
       : await hasReleaseManagementAccess(userId, resource.id, "catalog_owner");
     if (!ownsResource) throw new ForbiddenException("Only the current management owner can invite a manager");
-    const recipient = await this.findOpenRecipient(input.recipientEmail, userId);
+    const recipient = await this.findOpenRecipient(recipientEmail, userId);
     const scopes = this.readGrantScopes(input.scopes, resource.resourceType);
     const expiresAt = parseFutureExpiry(input.expiresAt);
 
@@ -485,9 +510,10 @@ export class ManagementService {
   }
 
   async createTransfer(userId: string, input: CreateManagementTransferInput) {
+    const recipientEmail = this.readRecipientEmail(input.recipientEmail);
     await this.assertOpenUser(prisma, userId);
     const resource = await this.readTransferResource(userId, input);
-    const recipient = await this.findOpenRecipient(input.recipientEmail, userId);
+    const recipient = await this.findOpenRecipient(recipientEmail, userId);
     const expiresAt = parseFutureExpiry(input.expiresAt);
 
     return prisma.$transaction(async (tx) => {
@@ -687,10 +713,19 @@ export class ManagementService {
     return scopes as ManagementScope[];
   }
 
-  private async findOpenRecipient(emailValue: unknown, inviterUserId: string) {
+  private readRecipientEmail(emailValue: unknown): string {
     if (typeof emailValue !== "string") throw new BadRequestException("recipientEmail is required");
+    if (emailValue.length > MAX_RECIPIENT_EMAIL_LENGTH) {
+      throw new BadRequestException("recipientEmail must be a valid email address");
+    }
     const email = emailValue.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(email)) throw new BadRequestException("recipientEmail must be a valid email address");
+    if (email.length > MAX_RECIPIENT_EMAIL_LENGTH || !isValidRecipientEmail(email)) {
+      throw new BadRequestException("recipientEmail must be a valid email address");
+    }
+    return email;
+  }
+
+  private async findOpenRecipient(email: string, inviterUserId: string) {
     const recipient = await prisma.user.findFirst({
       where: { email: { equals: email, mode: "insensitive" }, closedAt: null, erasedAt: null },
       select: { id: true, email: true },

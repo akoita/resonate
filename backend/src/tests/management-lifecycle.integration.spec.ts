@@ -101,6 +101,21 @@ async function createRelease(artistId: string, suffix: string) {
 }
 
 describe("ManagementService lifecycle integration", () => {
+  it("rejects oversized crafted recipient emails early and accepts a normal address", async () => {
+    const craftedAddress = `user@${".".repeat(10_000)} `;
+    await expect(service.createTransfer("missing-user", { recipientEmail: craftedAddress }))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    const { artist } = await createFixture(0, { publicArtist: true });
+    const grant = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      artistId: artist.id,
+      scopes: [ManagementScope.PROFILE_EDIT],
+    });
+
+    expect(grant.granteeUserId).toBe(USERS.manager);
+  });
+
   it("keeps profile invites pending until the recipient accepts and lets the owner revoke access", async () => {
     const { artist } = await createFixture(0, { publicArtist: true });
     const invite = await service.createGrant(USERS.owner, {
