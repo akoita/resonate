@@ -1,6 +1,6 @@
 # Vision Sprint 27: Trustworthy artist profile enrichment
 
-**Status:** Issue complete and staging release verified; milestone closeout pending.
+**Status:** Closed 2026-09-23; [milestone changelog](https://github.com/akoita/resonate/releases/tag/milestone-29-vision-sprint-27-artist-enrichment) published.
 **Milestone:** [29](https://github.com/akoita/resonate/milestone/29).
 **Goal:** An authorized artist or manager can choose the correct public artist
 identity, review source-backed AI suggestions, and approve exactly which
@@ -57,6 +57,11 @@ reconciliation and successful staging deployment evidence are retained in
 This is a milestone release, separate from a SemVer software release. It does
 not claim a production deployment. All admitted Sprint 27 work is complete;
 the next milestone has not yet been selected.
+
+[Closeout PR #1860](https://github.com/akoita/resonate/pull/1860) merged at
+`3e94ba45ee461aace6993098c4af41f73d253055`; its
+[main CI](https://github.com/akoita/resonate/actions/runs/35933738777) passed,
+and milestone 29 is closed.
 
 ## Exit and boundaries
 
