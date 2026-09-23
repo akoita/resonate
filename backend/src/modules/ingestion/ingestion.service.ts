@@ -12,6 +12,7 @@ import { EncryptionService } from "../encryption/encryption.service";
 import { ArtistService } from "../artist/artist.service";
 import { CatalogService } from "../catalog/catalog.service";
 import { prisma } from "../../db/prisma";
+import { hasReleaseManagementAccess } from "../management/management-access";
 import {
   AiDisclosureValidationError,
   normalizeAiDisclosureInput,
@@ -880,7 +881,7 @@ export class IngestionService {
     if (!release) {
       throw new Error(`Release ${releaseId} not found`);
     }
-    if (!requesterUserId || release.artist?.userId !== requesterUserId) {
+    if (!requesterUserId || !(await hasReleaseManagementAccess(requesterUserId, releaseId, "catalog_owner"))) {
       throw new UnauthorizedException("Not authorized to retry this release");
     }
 
@@ -985,7 +986,19 @@ export class IngestionService {
     return { success: true, releaseId };
   }
 
-  async cancelProcessing(releaseId: string) {
+  async cancelProcessing(releaseId: string, requesterUserId: string) {
+    // Check before touching the queue or publishing a failure event. A JWT
+    // alone does not authorize cancellation of another account's upload.
+    if (!requesterUserId || !(await hasReleaseManagementAccess(requesterUserId, releaseId, "catalog_owner"))) {
+      throw new UnauthorizedException("Not authorized to cancel this release");
+    }
+    const release = await prisma.release.findUnique({
+      where: { id: releaseId },
+      select: { artistId: true, status: true },
+    });
+    if (!release || release.status !== "processing") {
+      throw new BadRequestException("Only a processing release can be cancelled");
+    }
     console.log(`[Ingestion] Cancelling processing for release ${releaseId}`);
 
     // 1. Remove any waiting/delayed jobs for this release from the BullMQ queue
@@ -1003,7 +1016,7 @@ export class IngestionService {
     }
 
     // 2. Emit stems.failed event so catalog service updates DB status
-    this.markReleaseFailed(releaseId, "cancelled", "Processing cancelled by user");
+    this.markReleaseFailed(releaseId, release.artistId, "Processing cancelled by user");
 
     return { success: true, message: "Processing cancelled" };
   }

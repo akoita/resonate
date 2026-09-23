@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getArtistPublic, getArtistMe, getMyArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim } from "../../../lib/api";
+import { getArtistPublic, getArtistManagementAccess, getMyArtistClaim, listArtistReleases, listPublishedReleases, Release, ArtistProfile, type ArtistClaim, type ResourceManagementAccess } from "../../../lib/api";
 import { Card } from "../../../components/ui/Card";
 import { Button } from "../../../components/ui/Button";
 import { Tabs } from "../../../components/ui/Tabs";
@@ -10,7 +11,6 @@ import { ArtistCommunityTab } from "../../../components/community/ArtistCommunit
 import { ArtistSocialLinksRow } from "../../../components/artist/ArtistSocialLinksRow";
 import { ArtistProfileEditor } from "../../../components/artist/ArtistProfileEditor";
 import { ArtistClaimCallout } from "../../../components/artist/ArtistClaimCallout";
-import { isArtistProfileOwner } from "../../../lib/artistProfileForm";
 import { useAuth } from "../../../components/auth/AuthProvider";
 import { legacyArtistAliasDestination, legacyArtistAliasSearchName, libraryArtistHref, publicReleaseHref } from "../../../lib/artistRoutes";
 import { summarizeCreditedArtists } from "../../../lib/catalogDisplay";
@@ -30,7 +30,7 @@ export default function ArtistPage() {
     const artistId = typeof params.id === 'string' ? decodeURIComponent(params.id) : null;
 
     const [artist, setArtist] = useState<ArtistProfile | null>(null);
-    const [me, setMe] = useState<ArtistProfile | null>(null);
+    const [managementAccess, setManagementAccess] = useState<ResourceManagementAccess | null>(null);
     const [claim, setClaim] = useState<ArtistClaim | null>(null);
     const [placeholderName, setPlaceholderName] = useState<string>("");
 
@@ -39,8 +39,8 @@ export default function ArtistPage() {
     const [notFound, setNotFound] = useState(false);
     const [libraryArtistName, setLibraryArtistName] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ArtistTab>("discography");
-    const isOwner = isArtistProfileOwner(me, artist);
-    const canEditProfile = isOwner || (claim?.artistId === artist?.id && claim?.status === "approved");
+    const canEditProfile = managementAccess?.resourceId === artist?.id
+        && managementAccess?.currentUserAccess.scopes.includes("PROFILE_EDIT") === true;
     const playbackTracks = useMemo(() => catalogArtistPlaybackTracks(releases), [releases]);
 
     useEffect(() => {
@@ -122,25 +122,25 @@ export default function ArtistPage() {
         };
     }, [artist?.id, token]);
 
-    // Owner detection (#1419): only fetched when signed in, and only used to
-    // gate the "Edit profile" affordance below — never blocks the public view.
+    // Server-resolved access replaces local Artist.userId inference, which would
+    // incorrectly keep showing edit controls after a management transfer.
     useEffect(() => {
-        if (!token) {
-            setMe(null);
+        if (!token || !artistId) {
+            setManagementAccess(null);
             return;
         }
         let cancelled = false;
-        getArtistMe(token)
-            .then((profile) => {
-                if (!cancelled) setMe(profile);
+        getArtistManagementAccess(token, artistId)
+            .then((access) => {
+                if (!cancelled) setManagementAccess(access);
             })
             .catch(() => {
-                if (!cancelled) setMe(null);
+                if (!cancelled) setManagementAccess(null);
             });
         return () => {
             cancelled = true;
         };
-    }, [token]);
+    }, [token, artistId]);
 
     useEffect(() => {
         if (!token || !artistId) {
@@ -271,6 +271,9 @@ export default function ArtistPage() {
                                 isOwner={canEditProfile}
                                 onSaved={(updated) => setArtist(updated)}
                             />
+                        ) : null}
+                        {artist && managementAccess?.resourceId === artist.id && managementAccess.currentUserAccess.isOwner ? (
+                            <Link href="/artist/management" className="artist-profile-management-link">Manage access</Link>
                         ) : null}
                         {artist && isUnclaimedPublicArtist && !canEditProfile ? (
                             <ArtistClaimCallout

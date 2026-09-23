@@ -56,6 +56,26 @@ describe("personal data export manifest", () => {
       expect(classifiedTwice).toEqual([]);
     });
 
+    it("exports management grants and transfers for either user party", () => {
+      const grant = EXPORTED_MODELS.find((entry) => entry.model === "ManagementGrant");
+      expect(grant).toMatchObject({
+        primaryKey: "id",
+        keys: [
+          { kind: "userId", column: "granteeUserId" },
+          { kind: "userId", column: "inviterUserId" },
+        ],
+      });
+
+      const transfer = EXPORTED_MODELS.find((entry) => entry.model === "ManagementTransfer");
+      expect(transfer).toMatchObject({
+        primaryKey: "id",
+        keys: [
+          { kind: "userId", column: "proposerUserId" },
+          { kind: "userId", column: "recipientUserId" },
+        ],
+      });
+    });
+
     it("lists each exported model only once", () => {
       const exported = EXPORTED_MODELS.map((entry) => entry.model);
       expect(exported.length).toBe(new Set(exported).size);

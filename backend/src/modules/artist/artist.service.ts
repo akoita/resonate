@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
+import { hasArtistManagementAccess } from "../management/management-access";
 import { EventBus } from "../shared/event_bus";
 
 export const ARTIST_REMIX_CONSENTS = ["allowed", "disabled"] as const;
@@ -577,20 +578,7 @@ export class ArtistService {
     private async requireProfileEditor(userId: string, artistId: string) {
         const artist = await prisma.artist.findUnique({ where: { id: artistId } });
         if (!artist) throw new NotFoundException("Artist profile not found");
-        if (artist.userId === userId) return artist;
-
-        if (
-            artist.userId === null
-            && artist.profileType === "public_artist"
-            && artist.claimStatus === "claimed"
-        ) {
-            const approvedClaim = await prisma.artistClaimRequest.findFirst({
-                where: { artistId, claimantUserId: userId, status: "approved" },
-                select: { id: true },
-            });
-            if (approvedClaim) return artist;
-        }
-
+        if (await hasArtistManagementAccess(userId, artistId, "profile_edit")) return artist;
         throw new ForbiddenException("You do not manage this artist profile");
     }
 }

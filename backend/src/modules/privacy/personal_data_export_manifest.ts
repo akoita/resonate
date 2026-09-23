@@ -188,6 +188,24 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     note: "A claim this person submitted, including their evidence and the decision recorded for it.",
   },
   {
+    model: "ManagementGrant",
+    primaryKey: "id",
+    keys: [
+      { kind: "userId", column: "granteeUserId" },
+      { kind: "userId", column: "inviterUserId" },
+    ],
+    note: "Management grants this person received or issued, including their retained status and scope audit.",
+  },
+  {
+    model: "ManagementTransfer",
+    primaryKey: "id",
+    keys: [
+      { kind: "userId", column: "proposerUserId" },
+      { kind: "userId", column: "recipientUserId" },
+    ],
+    note: "Ownership transfers this person proposed or received, including the recorded resource ID snapshot.",
+  },
+  {
     model: "StemQualityRating",
     primaryKey: "id",
     // Not `userId`: the curator column is `curatorUserId`.

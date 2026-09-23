@@ -12,7 +12,13 @@
  * the id is rotated, and it makes "the address appears nowhere it should not"
  * a searchable assertion rather than a hopeful one.
  */
-import { AccountClosureStatus } from "@prisma/client";
+import {
+  AccountClosureStatus,
+  ManagementGrantStatus,
+  ManagementResourceType,
+  ManagementScope,
+  ManagementTransferStatus,
+} from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { pseudonymousAnalyticsActorId } from "../modules/analytics/analytics_identity";
 import { AnalyticsGovernanceService } from "../modules/analytics/analytics_governance.service";
@@ -20,6 +26,10 @@ import { PersonalDataResolverService } from "../modules/identity/personal_data_r
 import { AccountClosureService } from "../modules/privacy/account_closure.service";
 import { PersonalDataErasureService } from "../modules/privacy/personal_data_erasure.service";
 import { ERASED_EMAIL_DOMAIN } from "../modules/privacy/personal_data_erasure_manifest";
+import {
+  hasArtistManagementAccess,
+  hasReleaseManagementAccess,
+} from "../modules/management/management-access";
 
 const RUN = Date.now().toString(16);
 const TEST_PREFIX = `erasure_${RUN}_`;
@@ -362,6 +372,90 @@ async function seed(person: Seed) {
  * decide whether `matchOn` is honoured.
  */
 async function seedShared() {
+  // Simulate a transfer from B's legacy owner to A. If erasure clears the
+  // explicit override, the access helper falls back to B's legacy ownership.
+  await prisma.artist.update({
+    where: { id: id("artist", "b") },
+    data: { managementOwnerUserId: USER_A },
+  });
+  await prisma.release.update({
+    where: { id: id("release", "b") },
+    data: { managementOwnerUserId: USER_A },
+  });
+
+  await prisma.managementGrant.create({
+    data: {
+      id: id("management_grant", "a_is_grantee"),
+      releaseId: id("release", "a"),
+      granteeUserId: USER_A,
+      inviterUserId: USER_B,
+      scopes: [ManagementScope.CATALOG_READ],
+      status: ManagementGrantStatus.pending,
+    },
+  });
+  await prisma.managementGrant.create({
+    data: {
+      id: id("management_grant", "a_is_inviter"),
+      releaseId: id("release", "b"),
+      granteeUserId: USER_B,
+      inviterUserId: USER_A,
+      scopes: [ManagementScope.CATALOG_METADATA],
+      status: ManagementGrantStatus.active,
+      acceptedAt: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.managementGrant.create({
+    data: {
+      id: id("management_grant", "unrelated"),
+      releaseId: id("release", "a"),
+      granteeUserId: USER_B,
+      inviterUserId: USER_B,
+      scopes: [ManagementScope.CATALOG_READ],
+      status: ManagementGrantStatus.active,
+      acceptedAt: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  });
+  await prisma.managementGrant.create({
+    data: {
+      id: id("management_grant", "already_declined"),
+      releaseId: id("release", "b"),
+      granteeUserId: USER_B,
+      inviterUserId: USER_A,
+      scopes: [ManagementScope.CATALOG_MEDIA],
+      status: ManagementGrantStatus.declined,
+    },
+  });
+
+  await prisma.managementTransfer.create({
+    data: {
+      id: id("management_transfer", "a_is_proposer"),
+      proposerUserId: USER_A,
+      recipientUserId: USER_B,
+      resourceType: ManagementResourceType.artist_profile,
+      resourceIds: [id("artist", "a")],
+    },
+  });
+  await prisma.managementTransfer.create({
+    data: {
+      id: id("management_transfer", "a_is_recipient"),
+      proposerUserId: USER_B,
+      recipientUserId: USER_A,
+      resourceType: ManagementResourceType.release,
+      resourceIds: [id("release", "a")],
+    },
+  });
+  await prisma.managementTransfer.create({
+    data: {
+      id: id("management_transfer", "already_accepted"),
+      proposerUserId: USER_A,
+      recipientUserId: USER_B,
+      resourceType: ManagementResourceType.release,
+      resourceIds: [id("release", "b")],
+      status: ManagementTransferStatus.accepted,
+      acceptedAt: new Date("2026-09-01T00:00:00.000Z"),
+    },
+  });
+
   await prisma.stemPurchase.create({
     data: {
       id: id("purchase", "b_buys_a"),
@@ -436,6 +530,8 @@ async function cleanup() {
 
   await prisma.showCampaignDispute.deleteMany({ where });
   await prisma.showCampaign.deleteMany({ where });
+  await prisma.managementTransfer.deleteMany({ where });
+  await prisma.managementGrant.deleteMany({ where });
   await prisma.stemPurchase.deleteMany({ where });
   await prisma.stemListing.deleteMany({ where });
   await prisma.stem.deleteMany({ where });
@@ -630,6 +726,89 @@ describe("PersonalDataErasureService integration", () => {
     });
     expect(purchase?.buyerAddress).toBe(B_WALLET_CHECKSUMMED);
     expect(purchase?.listing.stem?.track.id).toBe(id("track", "a"));
+  });
+
+  it("revokes grants and cancels transfers while preserving pseudonymous management audit", async () => {
+    const granteeGrant = await prisma.managementGrant.findUnique({
+      where: { id: id("management_grant", "a_is_grantee") },
+    });
+    expect(granteeGrant?.status).toBe(ManagementGrantStatus.revoked);
+    expect(granteeGrant?.revokedAt).toBeTruthy();
+    expect(granteeGrant?.granteeUserId).toBe(newUserId);
+    expect(granteeGrant?.inviterUserId).toBe(USER_B);
+
+    const inviterGrant = await prisma.managementGrant.findUnique({
+      where: { id: id("management_grant", "a_is_inviter") },
+    });
+    expect(inviterGrant?.status).toBe(ManagementGrantStatus.revoked);
+    expect(inviterGrant?.revokedAt).toBeTruthy();
+    expect(inviterGrant?.granteeUserId).toBe(USER_B);
+    expect(inviterGrant?.inviterUserId).toBe(newUserId);
+
+    const unrelatedGrant = await prisma.managementGrant.findUnique({
+      where: { id: id("management_grant", "unrelated") },
+    });
+    expect(unrelatedGrant?.status).toBe(ManagementGrantStatus.active);
+    expect(unrelatedGrant?.granteeUserId).toBe(USER_B);
+    expect(unrelatedGrant?.inviterUserId).toBe(USER_B);
+
+    const declinedGrant = await prisma.managementGrant.findUnique({
+      where: { id: id("management_grant", "already_declined") },
+    });
+    expect(declinedGrant?.status).toBe(ManagementGrantStatus.declined);
+    expect(declinedGrant?.revokedAt).toBeNull();
+    expect(declinedGrant?.inviterUserId).toBe(newUserId);
+
+    const proposerTransfer = await prisma.managementTransfer.findUnique({
+      where: { id: id("management_transfer", "a_is_proposer") },
+    });
+    expect(proposerTransfer?.status).toBe(ManagementTransferStatus.cancelled);
+    expect(proposerTransfer?.cancelledAt).toBeTruthy();
+    expect(proposerTransfer?.proposerUserId).toBe(newUserId);
+    expect(proposerTransfer?.recipientUserId).toBe(USER_B);
+
+    const recipientTransfer = await prisma.managementTransfer.findUnique({
+      where: { id: id("management_transfer", "a_is_recipient") },
+    });
+    expect(recipientTransfer?.status).toBe(ManagementTransferStatus.cancelled);
+    expect(recipientTransfer?.cancelledAt).toBeTruthy();
+    expect(recipientTransfer?.proposerUserId).toBe(USER_B);
+    expect(recipientTransfer?.recipientUserId).toBe(newUserId);
+
+    const acceptedTransfer = await prisma.managementTransfer.findUnique({
+      where: { id: id("management_transfer", "already_accepted") },
+    });
+    expect(acceptedTransfer?.status).toBe(ManagementTransferStatus.accepted);
+    expect(acceptedTransfer?.cancelledAt).toBeNull();
+    expect(acceptedTransfer?.proposerUserId).toBe(newUserId);
+  });
+
+  it("keeps transferred owner overrides on the closed id and blocks legacy-owner fallback", async () => {
+    const rotatedAccount = await prisma.user.findUnique({
+      where: { id: newUserId },
+      select: { closedAt: true, erasedAt: true },
+    });
+    expect(rotatedAccount?.closedAt).toBeTruthy();
+    expect(rotatedAccount?.erasedAt).toBeTruthy();
+
+    const artist = await prisma.artist.findUnique({ where: { id: id("artist", "b") } });
+    expect(artist?.userId).toBe(USER_B);
+    expect(artist?.managementOwnerUserId).toBe(newUserId);
+    await expect(
+      hasArtistManagementAccess(USER_A, id("artist", "b"), "profile_owner"),
+    ).resolves.toBe(false);
+    await expect(
+      hasArtistManagementAccess(USER_B, id("artist", "b"), "profile_owner"),
+    ).resolves.toBe(false);
+
+    const release = await prisma.release.findUnique({ where: { id: id("release", "b") } });
+    expect(release?.managementOwnerUserId).toBe(newUserId);
+    await expect(
+      hasReleaseManagementAccess(USER_A, id("release", "b"), "catalog_owner"),
+    ).resolves.toBe(false);
+    await expect(
+      hasReleaseManagementAccess(USER_B, id("release", "b"), "catalog_owner"),
+    ).resolves.toBe(false);
   });
 
   it("empties the scrubbed columns and keeps the rows around them", async () => {

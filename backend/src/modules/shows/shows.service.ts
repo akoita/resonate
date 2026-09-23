@@ -3411,10 +3411,10 @@ export class ShowsService {
               some: {
                 artistId: artist.id,
                 role: { in: ["main", "primary"] },
+                identityStatus: { not: "ambiguous" },
               },
             },
           },
-          { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
         ],
       },
       select: { id: true },
@@ -3452,6 +3452,7 @@ export class ShowsService {
               some: {
                 artistId: artist.id,
                 role: { in: ["main", "primary"] },
+                identityStatus: { not: "ambiguous" },
               },
             },
           },
@@ -3462,11 +3463,11 @@ export class ShowsService {
                 OR: [
                   { primaryArtist: null },
                   { primaryArtist: "" },
+                  { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
                 ],
               },
             ],
           },
-          { primaryArtist: { equals: artist.displayName, mode: "insensitive" } },
         ],
       },
       select: { id: true },

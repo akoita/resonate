@@ -98,8 +98,8 @@ export class IngestionController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("cancel/:releaseId")
-  cancel(@Param("releaseId") releaseId: string) {
-    return this.ingestionService.cancelProcessing(releaseId);
+  cancel(@Param("releaseId") releaseId: string, @Request() req: any) {
+    return this.ingestionService.cancelProcessing(releaseId, req.user?.userId);
   }
 
   @UseGuards(AuthGuard("jwt"))

@@ -5963,3 +5963,133 @@ export async function getRemixProject(token: string, projectId: string) {
 export async function listRemixProjects(token: string) {
   return apiRequest<RemixProject[]>("/remix/projects", {}, token);
 }
+
+export type ManagementScope =
+  | "PROFILE_EDIT"
+  | "CATALOG_READ"
+  | "CATALOG_METADATA"
+  | "CATALOG_MEDIA";
+
+export type ManagementGrant = {
+  id: string;
+  artistId: string | null;
+  releaseId: string | null;
+  scopes: ManagementScope[];
+  status: "pending" | "active" | "declined" | "revoked";
+  expiresAt: string | null;
+  acceptedAt?: string | null;
+  revokedAt?: string | null;
+  granteeUserId?: string;
+  granteeEmail?: string;
+  resourceName?: string;
+};
+
+export type ManagementTransfer = {
+  id: string;
+  resourceType: "artist_profile" | "release";
+  resourceIds: string[];
+  resources?: { id: string; name: string }[];
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  expiresAt: string | null;
+};
+
+export type ManagedArtistSummary = {
+  id: string;
+  name: string;
+  grantId?: string | null;
+  scopes?: ManagementScope[];
+  source?: "grant" | "approved_claim";
+};
+
+export type ManagedReleaseSummary = {
+  id: string;
+  title: string;
+  artistId: string;
+  grantId?: string;
+  scopes?: ManagementScope[];
+};
+
+export type MyManagement = {
+  ownedArtists: ManagedArtistSummary[];
+  managedArtists: ManagedArtistSummary[];
+  ownedReleases: ManagedReleaseSummary[];
+  managedReleases: ManagedReleaseSummary[];
+  pendingGrants: ManagementGrant[];
+  pendingTransfers: ManagementTransfer[];
+  outgoingTransfers: (ManagementTransfer & { recipientEmail?: string })[];
+};
+
+export type ResourceManagementAccess = {
+  resourceType: "artist_profile" | "release";
+  resourceId: string;
+  currentUserAccess: { isOwner: boolean; scopes: ManagementScope[] };
+  grants: ManagementGrant[];
+};
+
+export function getMyManagement(token: string) {
+  return apiRequest<MyManagement>("/management/me", {}, token);
+}
+
+export function getArtistManagementAccess(token: string, artistId: string) {
+  return apiRequest<ResourceManagementAccess>(
+    `/management/artists/${encodeURIComponent(artistId)}/access`, {}, token,
+  );
+}
+
+export function getReleaseManagementAccess(token: string, releaseId: string) {
+  return apiRequest<ResourceManagementAccess>(
+    `/management/releases/${encodeURIComponent(releaseId)}/access`, {}, token,
+  );
+}
+
+export function inviteManager(
+  token: string,
+  input: {
+    recipientEmail: string;
+    artistId?: string;
+    releaseId?: string;
+    scopes: ManagementScope[];
+    expiresAt?: string;
+  },
+) {
+  return apiRequest<ManagementGrant>(
+    "/management/grants", { method: "POST", body: JSON.stringify(input) }, token,
+  );
+}
+
+export function respondToManagementGrant(
+  token: string,
+  grantId: string,
+  action: "accept" | "decline" | "revoke",
+) {
+  return apiRequest<ManagementGrant>(
+    `/management/grants/${encodeURIComponent(grantId)}/${action}`,
+    { method: "POST" }, token,
+  );
+}
+
+export function inviteManagementTransfer(
+  token: string,
+  input: {
+    recipientEmail: string;
+    artistId?: string;
+    releaseIds?: string[];
+    allManagedReleases?: boolean;
+    expiresAt?: string;
+  },
+) {
+  return apiRequest<ManagementTransfer>(
+    "/management/transfers", { method: "POST", body: JSON.stringify(input) }, token,
+  );
+}
+
+export function respondToManagementTransfer(
+  token: string,
+  transferId: string,
+  action: "accept" | "decline" | "cancel",
+) {
+  return apiRequest<ManagementTransfer>(
+    `/management/transfers/${encodeURIComponent(transferId)}/${action}`,
+    { method: "POST" }, token,
+  );
+}

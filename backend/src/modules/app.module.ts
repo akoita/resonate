@@ -42,6 +42,7 @@ import { CreditsModule } from "./credits/credits.module";
 import { UsageModule } from "./usage/usage.module";
 import { PunchlineModule } from "./punchline/punchline.module";
 import { PrivacyModule } from "./privacy/privacy.module";
+import { ManagementModule } from "./management/management.module";
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { PrivacyModule } from "./privacy/privacy.module";
     UsageModule,
     PunchlineModule,
     PrivacyModule,
+    ManagementModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

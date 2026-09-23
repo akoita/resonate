@@ -3,6 +3,7 @@ import { LicenseType, Prisma, type AiDisclosureLevel, type Artist, type ShowArti
 import { EventBus } from "../shared/event_bus";
 import { validateArtworkUpload } from "../shared/artwork-validation";
 import { prisma } from "../../db/prisma";
+import { hasReleaseManagementAccess } from "../management/management-access";
 import { EncryptionService } from "../encryption/encryption.service";
 import { StorageProvider } from "../storage/storage_provider";
 import {
@@ -193,10 +194,6 @@ function normalizeWithdrawalReason(value?: string | null): string | null {
     );
   }
   return trimmed;
-}
-
-function sameUserId(left?: string | null, right?: string | null) {
-  return !!left && !!right && left.toLowerCase() === right.toLowerCase();
 }
 
 function normalizeMoodTags(value?: string[] | null) {
@@ -1815,12 +1812,15 @@ export class CatalogService implements OnModuleInit {
   }
 
   async getReleaseForUser(releaseId: string, userId: string) {
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "catalog_read"))) {
+      return null;
+    }
     const release = await this.getRelease(releaseId, { includeRestricted: true });
     if (!release) {
       return null;
     }
 
-    return sameUserId(release.artist?.userId, userId) ? release : null;
+    return release;
   }
 
   async listByArtist(
@@ -1858,11 +1858,15 @@ export class CatalogService implements OnModuleInit {
           },
         };
 
+    return this.listManagedReleaseRows({
+      ...ownershipFilter,
+      ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+    });
+  }
+
+  private async listManagedReleaseRows(where: Prisma.ReleaseWhereInput) {
     const releases = await prisma.release.findMany({
-      where: {
-        ...ownershipFilter,
-        ...(andFilters.length > 0 ? { AND: andFilters } : {}),
-      },
+      where,
       select: {
         id: true,
         artistId: true,
@@ -1929,13 +1933,25 @@ export class CatalogService implements OnModuleInit {
   }
 
   async listByUserId(userId: string) {
-    const artist = await prisma.artist.findFirst({
-      where: { userId: { equals: userId, mode: "insensitive" } },
-    });
-    if (!artist) return [];
-    return this.listByArtist(artist.id, {
-      includeRestricted: true,
-      includeManagedCredits: true,
+    const now = new Date();
+    return this.listManagedReleaseRows({
+      OR: [
+        { managementOwnerUserId: userId },
+        {
+          managementOwnerUserId: null,
+          artist: { userId: { equals: userId, mode: "insensitive" } },
+        },
+        {
+          managementGrants: {
+            some: {
+              granteeUserId: userId,
+              status: "active",
+              OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+              scopes: { hasSome: ["CATALOG_READ", "CATALOG_METADATA", "CATALOG_MEDIA"] },
+            },
+          },
+        },
+      ],
     });
   }
 
@@ -1962,7 +1978,14 @@ export class CatalogService implements OnModuleInit {
     if (!release) {
       throw new NotFoundException("Release not found");
     }
-    if (!sameUserId(release.artist?.userId, userId)) {
+    const protectedCorrection = input.status !== undefined
+      || input.primaryArtist !== undefined
+      || (input.tracks?.length ?? 0) > 0;
+    if (!(await hasReleaseManagementAccess(
+      userId,
+      releaseId,
+      protectedCorrection ? "catalog_owner" : "catalog_metadata",
+    ))) {
       throw new ForbiddenException("Not authorized to update this release");
     }
 
@@ -2034,6 +2057,7 @@ export class CatalogService implements OnModuleInit {
     this.clearCache();
     const declaredAt = new Date();
     const updated = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, protectedCorrection ? "catalog_owner" : "catalog_metadata");
       for (const correction of disclosureCorrections) {
         await tx.track.update({
           where: { id: correction.id },
@@ -2083,37 +2107,32 @@ export class CatalogService implements OnModuleInit {
     userId: string,
     input?: { reason?: string | null },
   ): Promise<ReleaseWithdrawalState> {
-    const release = await this.findOwnedReleaseForWithdrawal(
-      releaseId,
-      userId,
-      "withdraw",
-    );
-
-    if (release.status === RELEASE_STATUS_WITHDRAWN) {
-      // Idempotent: withdrawing an already-withdrawn release changes nothing and
-      // is not an error (a retried request must not fail).
-      return toWithdrawalState(release, { alreadyInState: true });
-    }
-
-    if (!(WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(release.status)) {
-      throw new BadRequestException(
-        "Only a ready or published release can be withdrawn from streaming.",
-      );
-    }
-
     const reason = normalizeWithdrawalReason(input?.reason);
-    this.clearCache();
-    const updated = await prisma.release.update({
-      where: { id: releaseId },
-      data: {
-        status: RELEASE_STATUS_WITHDRAWN,
-        statusBeforeWithdrawal: release.status,
-        withdrawnAt: new Date(),
-        withdrawalReason: reason,
-      },
-      select: RELEASE_WITHDRAWAL_SELECT,
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
+      const release = await tx.release.findUniqueOrThrow({
+        where: { id: releaseId }, select: RELEASE_WITHDRAWAL_SELECT,
+      });
+      if (release.status === RELEASE_STATUS_WITHDRAWN) {
+        return toWithdrawalState(release, { alreadyInState: true });
+      }
+      if (!(WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(release.status)) {
+        throw new BadRequestException("Only a ready or published release can be withdrawn from streaming.");
+      }
+      const updated = await tx.release.update({
+        where: { id: releaseId },
+        data: {
+          status: RELEASE_STATUS_WITHDRAWN,
+          statusBeforeWithdrawal: release.status,
+          withdrawnAt: new Date(),
+          withdrawalReason: reason,
+        },
+        select: RELEASE_WITHDRAWAL_SELECT,
+      });
+      return toWithdrawalState(updated, { alreadyInState: false });
     });
-    return toWithdrawalState(updated, { alreadyInState: false });
+    this.clearCache();
+    return result;
   }
 
   /**
@@ -2127,63 +2146,46 @@ export class CatalogService implements OnModuleInit {
     releaseId: string,
     userId: string,
   ): Promise<ReleaseWithdrawalState> {
-    const release = await this.findOwnedReleaseForWithdrawal(
-      releaseId,
-      userId,
-      "restore",
-    );
-
-    if (release.status !== RELEASE_STATUS_WITHDRAWN) {
-      throw new BadRequestException(
-        "Only a withdrawn release can be restored to streaming.",
-      );
-    }
-
-    // A row withdrawn before this field existed has no recorded origin; "ready"
-    // is the conservative fallback (visible to its artist, not force-published).
-    const restoredTo = (WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(
-      release.statusBeforeWithdrawal ?? "",
-    )
-      ? (release.statusBeforeWithdrawal as string)
-      : "ready";
-
-    this.clearCache();
-    const updated = await prisma.release.update({
-      where: { id: releaseId },
-      data: {
-        status: restoredTo,
-        statusBeforeWithdrawal: null,
-        withdrawnAt: null,
-        withdrawalReason: null,
-      },
-      select: RELEASE_WITHDRAWAL_SELECT,
+    const result = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
+      const release = await tx.release.findUniqueOrThrow({
+        where: { id: releaseId }, select: RELEASE_WITHDRAWAL_SELECT,
+      });
+      if (release.status !== RELEASE_STATUS_WITHDRAWN) {
+        throw new BadRequestException("Only a withdrawn release can be restored to streaming.");
+      }
+      // A row withdrawn before this field existed has no recorded origin;
+      // "ready" is the conservative fallback, not a forced publication.
+      const restoredTo = (WITHDRAWABLE_RELEASE_STATUSES as readonly string[]).includes(
+        release.statusBeforeWithdrawal ?? "",
+      ) ? (release.statusBeforeWithdrawal as string) : "ready";
+      const updated = await tx.release.update({
+        where: { id: releaseId },
+        data: {
+          status: restoredTo,
+          statusBeforeWithdrawal: null,
+          withdrawnAt: null,
+          withdrawalReason: null,
+        },
+        select: RELEASE_WITHDRAWAL_SELECT,
+      });
+      return toWithdrawalState(updated, { alreadyInState: false });
     });
-    return toWithdrawalState(updated, { alreadyInState: false });
+    this.clearCache();
+    return result;
   }
 
-  /**
-   * Resolve a release the caller's artist account owns. Ownership comes from the
-   * authenticated user id through Artist — never from the request body.
-   */
-  private async findOwnedReleaseForWithdrawal(
+  /** Serialize catalog edits with management transfers before rechecking authority. */
+  private async lockManagedRelease(
+    tx: Prisma.TransactionClient,
     releaseId: string,
     userId: string,
-    action: "withdraw" | "restore",
+    action: "catalog_owner" | "catalog_metadata" | "catalog_media",
   ) {
-    const release = await prisma.release.findUnique({
-      where: { id: releaseId },
-      select: {
-        ...RELEASE_WITHDRAWAL_SELECT,
-        artist: { select: { userId: true } },
-      },
-    });
-    if (!release) {
-      throw new NotFoundException("Release not found");
+    await tx.$queryRaw`SELECT "id" FROM "Release" WHERE "id" = ${releaseId} FOR UPDATE`;
+    if (!(await hasReleaseManagementAccess(userId, releaseId, action, tx))) {
+      throw new ForbiddenException("Not authorized to manage this release");
     }
-    if (!sameUserId(release.artist?.userId, userId)) {
-      throw new ForbiddenException(`Not authorized to ${action} this release`);
-    }
-    return release;
   }
 
   async deleteRelease(releaseId: string, userId: string) {
@@ -2202,7 +2204,7 @@ export class CatalogService implements OnModuleInit {
       throw new NotFoundException("Release not found");
     }
 
-    if (!sameUserId(release.artist?.userId, userId)) {
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "catalog_owner"))) {
       throw new BadRequestException("Not authorized to delete this release");
     }
 
@@ -2216,6 +2218,7 @@ export class CatalogService implements OnModuleInit {
     const rightsUpgradeRequestIds = rightsUpgradeRequests.map((request) => request.id);
 
     await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
       if (rightsUpgradeRequestIds.length > 0) {
         const evidenceBundles = await tx.rightsEvidenceBundle.findMany({
           where: { rightsUpgradeRequestId: { in: rightsUpgradeRequestIds } },
@@ -2308,20 +2311,23 @@ export class CatalogService implements OnModuleInit {
     });
 
     if (!release) throw new BadRequestException("Release not found");
-    if (!sameUserId(release.artist?.userId, userId)) {
+    if (!(await hasReleaseManagementAccess(userId, releaseId, "catalog_media"))) {
       throw new BadRequestException("Not authorized to update this release");
     }
 
     const validatedArtwork = validateArtworkUpload(artwork, { field: "Artwork" });
 
-    const updated = await prisma.release.update({
-      where: { id: releaseId },
-      data: {
-        artworkData: artwork.buffer,
-        artworkMimeType: validatedArtwork.mimeType,
-        artworkRevision: { increment: 1 },
-      },
-      select: { id: true, artworkMimeType: true, artworkRevision: true }
+    const updated = await prisma.$transaction(async (tx) => {
+      await this.lockManagedRelease(tx, releaseId, userId, "catalog_media");
+      return tx.release.update({
+        where: { id: releaseId },
+        data: {
+          artworkData: artwork.buffer,
+          artworkMimeType: validatedArtwork.mimeType,
+          artworkRevision: { increment: 1 },
+        },
+        select: { id: true, artworkMimeType: true, artworkRevision: true },
+      });
     });
 
     this.clearCache();
@@ -2619,7 +2625,7 @@ export class CatalogService implements OnModuleInit {
       },
     });
 
-    if (!release || !release.artworkData || !sameUserId(release.artist?.userId, userId)) {
+    if (!release || !release.artworkData || !(await hasReleaseManagementAccess(userId, releaseId, "catalog_read"))) {
       return null;
     }
 
@@ -2663,7 +2669,7 @@ export class CatalogService implements OnModuleInit {
     if (
       !track ||
       track.releaseId !== releaseId ||
-      !sameUserId(track.release.artist?.userId, userId)
+      !(await hasReleaseManagementAccess(userId, releaseId, "catalog_read"))
     ) {
       return null;
     }
