@@ -169,6 +169,11 @@ describe("ManagementService lifecycle integration", () => {
       expiresAt: originalExpiry.toISOString(),
     });
     const accepted = await service.acceptGrant(USERS.manager, grant.id);
+    const pendingExpansion = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA, ManagementScope.TRACK_METADATA],
+    });
     const shortenedExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     const narrowed = await service.updateGrant(USERS.owner, grant.id, {
@@ -199,6 +204,10 @@ describe("ManagementService lifecycle integration", () => {
     expect(oldGrant.revokedAt).toBeInstanceOf(Date);
     expect(currentGrant.acceptedAt).toEqual(oldGrant.acceptedAt);
     expect(currentGrant.revokedAt).toBeNull();
+    expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: pendingExpansion.id } })).status)
+      .toBe(ManagementGrantStatus.revoked);
+    await expect(service.acceptGrant(USERS.manager, pendingExpansion.id))
+      .rejects.toBeInstanceOf(ConflictException);
     expect(await service.getReleaseAccess(USERS.manager, releases[0].id)).toMatchObject({
       currentUserAccess: { isOwner: false, scopes: [ManagementScope.CATALOG_READ] },
     });
@@ -225,6 +234,29 @@ describe("ManagementService lifecycle integration", () => {
     });
     expect((await prisma.managementGrant.findUniqueOrThrow({ where: { id: invite.id } })).status)
       .toBe(ManagementGrantStatus.revoked);
+  });
+
+  it("accepts a narrower scope when the request repeats the current expiry", async () => {
+    const { releases } = await createFixture(1);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invite = await service.createGrant(USERS.owner, {
+      recipientEmail: USER_EMAILS[USERS.manager],
+      releaseId: releases[0].id,
+      scopes: [ManagementScope.CATALOG_READ, ManagementScope.CATALOG_MEDIA],
+      expiresAt: expiresAt.toISOString(),
+    });
+    await service.acceptGrant(USERS.manager, invite.id);
+
+    const narrowed = await service.updateGrant(USERS.owner, invite.id, {
+      scopes: [ManagementScope.CATALOG_READ],
+      expiresAt: expiresAt.toISOString(),
+    });
+
+    expect(narrowed).toMatchObject({
+      scopes: [ManagementScope.CATALOG_READ],
+      expiresAt,
+      status: ManagementGrantStatus.active,
+    });
   });
 
   it("rejects scope widening, expiry removal or extension, and unchanged edits", async () => {

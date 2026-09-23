@@ -477,7 +477,7 @@ export class ManagementService {
       if (
         input.expiresAt !== undefined &&
         grant.expiresAt &&
-        expiresAt!.getTime() >= grant.expiresAt.getTime()
+        expiresAt!.getTime() > grant.expiresAt.getTime()
       ) {
         throw new BadRequestException("expiresAt can only be shortened");
       }
@@ -493,12 +493,22 @@ export class ManagementService {
         where: { id: grant.id },
         data: { status: ManagementGrantStatus.revoked, revokedAt: changedAt },
       });
+      // A pending invitation for the same manager could otherwise restore
+      // broader access after this narrowing when the recipient accepts it.
+      await tx.managementGrant.updateMany({
+        where: {
+          ...(grant.artistId ? { artistId: grant.artistId } : { releaseId: grant.releaseId }),
+          granteeUserId: equalsUserId(grant.granteeUserId),
+          status: ManagementGrantStatus.pending,
+        },
+        data: { status: ManagementGrantStatus.revoked, revokedAt: changedAt },
+      });
       return tx.managementGrant.create({
         data: {
           artistId: grant.artistId,
           releaseId: grant.releaseId,
           granteeUserId: grant.granteeUserId,
-          inviterUserId: grant.inviterUserId,
+          inviterUserId: userId,
           scopes,
           status: ManagementGrantStatus.active,
           expiresAt,

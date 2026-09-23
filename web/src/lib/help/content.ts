@@ -1127,7 +1127,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose the permissions they need and an optional expiry date. The invitation gives them no access until they accept it. You can later remove permissions or shorten their access, or revoke it entirely. To add permissions or extend access, send a new invitation for them to accept.",
+            text: "Open Artist management from Your catalog to invite a registered account to help with one profile or release. Choose the permissions they need and an optional expiry date. The invitation gives them no access until they accept it. You can later remove permissions or shorten their access, or revoke it entirely. Reducing access ends other pending invitations for that manager and resource. To add permissions or extend access, send a new invitation for them to accept.",
           },
           {
             kind: "paragraph",

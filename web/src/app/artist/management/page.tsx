@@ -249,7 +249,7 @@ export default function ArtistManagementPage() {
                       <label className="artist-management-field">End access on or before current expiry
                         <input type="datetime-local" value={editedExpiresAt} onChange={(event) => setEditedExpiresAt(event.target.value)} min={toLocalDateTime(new Date().toISOString())} max={grant.expiresAt ? toLocalDateTime(grant.expiresAt) : undefined} />
                       </label>
-                      <p className="analytics-muted">To add permissions or extend access, send a new invitation. To remove all access, revoke it.</p>
+                      <p className="analytics-muted">Pending invitations for this manager and resource will end. To add permissions or extend access, send a new invitation. To remove all access, revoke it.</p>
                       <div className="artist-management-actions"><button type="submit" disabled={busy || editedScopes.length === 0}>Save access</button><button type="button" onClick={() => setEditingGrantId(null)}>Cancel</button></div>
                     </form>}
                   </div>

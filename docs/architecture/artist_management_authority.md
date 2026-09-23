@@ -51,6 +51,8 @@ stop working immediately when revoked or expired. A scope expansion requires
 recipient acceptance. The owner may narrow an accepted grant or shorten its
 expiry immediately. That change revokes the prior row and creates a new active
 row with the reduced authority, retaining both records in resource history.
+It also revokes pending invitations for the same manager and resource so an
+older invitation cannot restore broader authority.
 Replacing a grant through a fresh invitation also leaves its previous record
 in history while the resource exists. Deleting a resource removes its grant
 records; the transfer snapshot remains available for audit.

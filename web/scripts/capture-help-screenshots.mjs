@@ -195,7 +195,7 @@ async function capture(page, targets, passName) {
             granteeEmail: "manager@example.com",
             scopes: ["CATALOG_READ", "CATALOG_METADATA"],
             status: "active",
-            expiresAt: "2099-12-31T12:00:00.000Z",
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
           }],
         },
       }));
