@@ -269,6 +269,95 @@ export class ManagementService {
     };
   }
 
+  async getPendingInvitations(userId: string) {
+    await this.assertOpenUser(prisma, userId);
+    const now = new Date();
+    const [grants, transfers] = await Promise.all([
+      prisma.managementGrant.findMany({
+        where: {
+          granteeUserId: equalsUserId(userId),
+          status: ManagementGrantStatus.pending,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          // A grant invitation has exactly one target resource. Malformed
+          // rows are excluded before their target details are loaded.
+          AND: {
+            OR: [
+              { artistId: { not: null }, releaseId: null },
+              { artistId: null, releaseId: { not: null } },
+            ],
+          },
+        },
+        select: {
+          id: true,
+          artistId: true,
+          releaseId: true,
+          scopes: true,
+          expiresAt: true,
+          artist: { select: { displayName: true } },
+          release: { select: { title: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.managementTransfer.findMany({
+        where: {
+          recipientUserId: equalsUserId(userId),
+          status: ManagementTransferStatus.pending,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        },
+        select: {
+          id: true,
+          resourceType: true,
+          resourceIds: true,
+          expiresAt: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
+
+    const artistIds = [...new Set(transfers
+      .filter((transfer) => transfer.resourceType === ManagementResourceType.artist_profile)
+      .flatMap((transfer) => transfer.resourceIds))];
+    const releaseIds = [...new Set(transfers
+      .filter((transfer) => transfer.resourceType === ManagementResourceType.release)
+      .flatMap((transfer) => transfer.resourceIds))];
+    const [artists, releases] = await Promise.all([
+      artistIds.length
+        ? prisma.artist.findMany({ where: { id: { in: artistIds } }, select: { id: true, displayName: true } })
+        : Promise.resolve([]),
+      releaseIds.length
+        ? prisma.release.findMany({ where: { id: { in: releaseIds } }, select: { id: true, title: true } })
+        : Promise.resolve([]),
+    ]);
+    const artistNames = new Map(artists.map((artist) => [artist.id, artist.displayName]));
+    const releaseNames = new Map(releases.map((release) => [release.id, release.title]));
+
+    return {
+      grants: grants
+        .filter((grant) => Boolean(grant.artistId) !== Boolean(grant.releaseId))
+        .map((grant) => ({
+          id: grant.id,
+          artistId: grant.artistId,
+          releaseId: grant.releaseId,
+          resourceName: grant.artist?.displayName ?? grant.release?.title ?? null,
+          scopes: grant.scopes,
+          expiresAt: grant.expiresAt,
+        }))
+        .filter((grant) => grant.resourceName !== null),
+      transfers: transfers.map((transfer) => ({
+        id: transfer.id,
+        resourceType: transfer.resourceType,
+        resources: transfer.resourceIds.map((id) => ({
+          id,
+          name: transfer.resourceType === ManagementResourceType.artist_profile
+            ? artistNames.get(id) ?? "Deleted profile"
+            : releaseNames.get(id) ?? "Deleted release",
+        })),
+        expiresAt: transfer.expiresAt,
+      })),
+    };
+  }
+
   async getArtistAccess(userId: string, artistId: string) {
     await this.assertOpenUser(prisma, userId);
     const artist = await prisma.artist.findUnique({ where: { id: artistId }, select: { id: true } });

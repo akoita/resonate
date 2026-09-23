@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   normalizeIncomingNotification,
+  getVisibleWalletNotificationSnapshot,
+  isWalletNotificationSnapshotCurrent,
+  prependWalletNotification,
   registerDisputeNotificationSocketHandlers,
   type DisputeNotification,
   type DisputeStatusUpdate,
@@ -14,6 +17,49 @@ type TestSocket = {
 };
 
 describe("useDisputeNotifications helpers", () => {
+  it("hides wallet notices after an address switch and ignores late events from the prior wallet", () => {
+    const firstWalletNotification: DisputeNotification = {
+      id: "notif-old",
+      type: "dispute_filed",
+      title: "Old account notice",
+      message: "Private to the previous wallet",
+      read: false,
+      createdAt: "2026-04-07T10:00:00.000Z",
+    };
+    const currentWalletNotification: DisputeNotification = {
+      id: "notif-current",
+      type: "dispute_resolved",
+      title: "Current account notice",
+      message: "Private to the current wallet",
+      read: false,
+      createdAt: "2026-04-07T11:00:00.000Z",
+    };
+    const currentSnapshot = {
+      walletAddress: "0xbbb",
+      notifications: [currentWalletNotification],
+      unreadCount: 1,
+    };
+    const priorSessionScope = Symbol("prior-session");
+    const currentSessionScope = Symbol("current-session");
+
+    expect(getVisibleWalletNotificationSnapshot({
+      walletAddress: "0xaaa",
+      notifications: [firstWalletNotification],
+      unreadCount: 1,
+    }, "0xBBB")).toEqual({ notifications: [], unreadCount: 0 });
+    expect(getVisibleWalletNotificationSnapshot(currentSnapshot, null)).toEqual({ notifications: [], unreadCount: 0 });
+    expect(isWalletNotificationSnapshotCurrent("0xbbb", "0xBBB")).toBe(true);
+    expect(prependWalletNotification(currentSnapshot, "0xaaa", firstWalletNotification)).toBe(currentSnapshot);
+    expect(getVisibleWalletNotificationSnapshot({
+      walletAddress: "0xbbb",
+      sessionScope: priorSessionScope,
+      notifications: [firstWalletNotification],
+      unreadCount: 1,
+    }, "0xbbb", currentSessionScope)).toEqual({ notifications: [], unreadCount: 0 });
+    expect(prependWalletNotification({ ...currentSnapshot, sessionScope: currentSessionScope }, "0xbbb",
+      firstWalletNotification, priorSessionScope)).toMatchObject({ notifications: [currentWalletNotification] });
+  });
+
   it("normalizes realtime notifications using the server timestamp", () => {
     const notification = normalizeIncomingNotification({
       id: "notif-1",

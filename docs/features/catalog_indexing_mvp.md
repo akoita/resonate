@@ -66,7 +66,9 @@ Expose a minimal catalog service to store, index, and query tracks and stems.
   the artist returns to the tab. Accepted, active release grants add only the
   named release to a manager's inventory. `/artist/management` shows pending
   invitations, exact release scopes, and selected or complete-catalog transfer
-  invitations. `CATALOG_METADATA` enables title editing on the release page;
+  invitations. Recipients also see pending grant and transfer invitations in
+  the signed-in notification bell, with a link to the management page to
+  respond. `CATALOG_METADATA` enables title editing on the release page;
   `CATALOG_MEDIA` enables artwork replacement there. `TRACK_METADATA` permits
   editing track titles and explicit labels on that release without giving the
   manager release-title, rights, or financial controls. Publication status,
