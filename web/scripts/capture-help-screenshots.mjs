@@ -63,7 +63,7 @@ const PUBLIC_TARGETS = [
     "/",
     "discover-home.png",
     {
-      selectors: [".ng-hero__campaign-rail", ".ng-chips"],
+      selectors: [".ng-hero__campaign-rail", ".ng-tuner"],
       text: ["Recently Added"],
       viewportHeight: 1200,
       reducedMotion: true,

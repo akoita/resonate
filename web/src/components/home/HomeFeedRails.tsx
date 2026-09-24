@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import {
   type HomeFeedItem,
   type HomeFeedRail,
   type HomeFeedResponse,
 } from "../../lib/api";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
-import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
+import { HomeShelf, type ShelfTone } from "./HomeShelf";
+import { HomeTile } from "./HomeTile";
 
 /*
  * Home feed v2 (#1454 WS-7) — multi-rail personalized feed.
@@ -21,12 +21,12 @@ import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
  *     fabricates a reason.
  */
 
-const RAIL_KICKERS: Record<HomeFeedRail["kind"], { label: string; className: string }> = {
-  because_genre: { label: "Personalized picks", className: "ng-kicker--violet" },
-  new_from_artists: { label: "Your artists", className: "ng-kicker--violet" },
-  trending_genre: { label: "What listeners play", className: "ng-kicker--tertiary" },
-  exploration: { label: "Exploration", className: "ng-kicker--tertiary" },
-  catalog_signal: { label: "Catalog signal", className: "ng-kicker--tertiary" },
+const RAIL_KICKERS: Record<HomeFeedRail["kind"], { label: string; tone: ShelfTone }> = {
+  because_genre: { label: "Personalized picks", tone: "violet" },
+  new_from_artists: { label: "Your artists", tone: "violet" },
+  trending_genre: { label: "What listeners play", tone: "tertiary" },
+  exploration: { label: "Exploration", tone: "tertiary" },
+  catalog_signal: { label: "Catalog signal", tone: "tertiary" },
 };
 
 function reasonLabel(item: HomeFeedItem): string {
@@ -64,17 +64,17 @@ export function HomeFeedRails({
 
   if (feed.rails.length === 0) {
     return (
-      <section className="ng-section" data-testid="home-feed-empty">
-        <header className="ng-section-header">
-          <div>
+      <section className="ng-section ng-shelf" data-testid="home-feed-empty">
+        <header className="ng-shelf__header">
+          <div className="ng-shelf__heading">
             <span className="ng-kicker ng-kicker--violet">Personalized picks</span>
             <h3 className="ng-section-title">Your feed is warming up</h3>
+            <p className="ng-shelf__description">
+              Nothing to rank honestly yet — play a few tracks or save a genre and
+              this page starts working for you.
+            </p>
           </div>
         </header>
-        <p className="ng-play-card__artist" style={{ opacity: 0.75 }}>
-          Nothing to rank honestly yet — play a few tracks or save a genre and
-          this page starts working for you.
-        </p>
       </section>
     );
   }
@@ -84,77 +84,65 @@ export function HomeFeedRails({
       {feed.rails.map((rail) => {
         const kicker = RAIL_KICKERS[rail.kind] ?? RAIL_KICKERS.catalog_signal;
         return (
-          <section className="ng-section" key={rail.id} data-rail-kind={rail.kind}>
-            <header className="ng-section-header">
-              <div>
-                <span className={`ng-kicker ${kicker.className}`}>{kicker.label}</span>
-                <h3 className="ng-section-title">{rail.title}</h3>
-                <p
-                  className="ng-play-card__artist"
-                  style={{ opacity: 0.7, marginTop: 4, maxWidth: 560 }}
-                >
-                  {rail.explanation}
-                </p>
-              </div>
-              {rail.kind === "because_genre" && (
-                <Link href="/agent" className="ng-section-link">
-                  Open AI DJ
-                  <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-                </Link>
-              )}
-            </header>
-            <div className="ng-recommendation-grid">
-              {rail.items.map((item, position) => {
-                const seedKey = item.id;
-                return (
-                  <article key={item.id} className="ng-recommendation-card ng-glass">
-                    <Link
-                      href={`/release/${item.releaseId}`}
-                      className="ng-recommendation-card__art"
-                      aria-label={`Open ${item.title}`}
-                      onClick={() => onOpen?.(item, rail.id, position)}
-                    >
-                      {item.artworkMimeType ? (
-                        <HomeReleaseArtwork
-                          releaseId={item.releaseId}
-                          mimeType={item.artworkMimeType}
-                          artworkRevision={item.artworkRevision}
-                          alt=""
-                          sizes="(max-width: 767px) 96px, 112px"
-                        />
-                      ) : (
-                        <span className="ng-monogram" aria-hidden>
-                          {(item.title[0] ?? "?").toUpperCase()}
+          <HomeShelf
+            key={rail.id}
+            kicker={kicker.label}
+            kickerTone={kicker.tone}
+            title={rail.title}
+            description={rail.explanation}
+            action={rail.kind === "because_genre" ? { href: "/agent", label: "Open AI DJ" } : undefined}
+            railKind={rail.kind}
+            itemWidth={196}
+          >
+            {rail.items.map((item, position) => {
+              const seedKey = item.id;
+              const starting = startingSeed === seedKey;
+              return (
+                <HomeTile
+                  key={item.id}
+                  href={`/release/${item.releaseId}`}
+                  onOpen={() => onOpen?.(item, rail.id, position)}
+                  art={
+                    item.artworkMimeType ? (
+                      <HomeReleaseArtwork
+                        releaseId={item.releaseId}
+                        mimeType={item.artworkMimeType}
+                        artworkRevision={item.artworkRevision}
+                        alt=""
+                        sizes="(max-width: 767px) 160px, 196px"
+                      />
+                    ) : (
+                      <span className="ng-monogram" aria-hidden>
+                        {(item.title[0] ?? "?").toUpperCase()}
+                      </span>
+                    )
+                  }
+                  title={item.title}
+                  subtitle={item.artist ?? "Unknown Artist"}
+                  meta={item.genre || "Discovery"}
+                  // A chip that only repeats the rail's own kicker adds noise.
+                  badge={reasonLabel(item) === kicker.label ? undefined : reasonLabel(item)}
+                  aiDisclosure={item.aiDisclosure}
+                  action={
+                    onStartSession ? (
+                      <button
+                        type="button"
+                        className="ng-tile__action"
+                        aria-label={`Start session from ${item.title}`}
+                        title="Start an AI DJ session seeded by this track"
+                        onClick={() => onStartSession(item, rail.id, position)}
+                        disabled={starting}
+                      >
+                        <span className="ms-icon" data-fill="1" aria-hidden>
+                          {starting ? "hourglass_top" : "auto_awesome"}
                         </span>
-                      )}
-                    </Link>
-                    <div className="ng-recommendation-card__body">
-                      <h4>{item.title}</h4>
-                      <AiDisclosureBadge disclosure={item.aiDisclosure} />
-                      <p>{item.artist ?? "Unknown Artist"}</p>
-                      <div className="ng-recommendation-card__meta">
-                        <span>{item.genre || "Discovery"}</span>
-                        <span>{reasonLabel(item)}</span>
-                      </div>
-                      {onStartSession && (
-                        <button
-                          type="button"
-                          className="ng-recommendation-card__action"
-                          onClick={() => onStartSession(item, rail.id, position)}
-                          disabled={startingSeed === seedKey}
-                        >
-                          <span className="ms-icon" data-fill="1" aria-hidden>
-                            {startingSeed === seedKey ? "hourglass_top" : "play_arrow"}
-                          </span>
-                          {startingSeed === seedKey ? "Starting" : "Start session"}
-                        </button>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          </section>
+                      </button>
+                    ) : undefined
+                  }
+                />
+              );
+            })}
+          </HomeShelf>
         );
       })}
     </>

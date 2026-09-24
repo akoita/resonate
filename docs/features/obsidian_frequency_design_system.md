@@ -47,7 +47,7 @@ Supporting tokens: `--r-secondary` `#C4B5FD` (lavender, secondary text/accents),
 | View | Key Elements |
 |---|---|
 | Global shell | Sidebar (logo mark + violet active state), topbar, player bar (coral play button), canvas aurora + grain, scrollbars, focus rings |
-| Home | Hero mesh + glow title, coral "Listen Now", recommendation/catalog cards, filter chips |
+| Home | Approved campaign hero, then the "Home v3" shelf system: one `HomeShelf` chrome (kicker, title, one-line description, action, scroll arrows shown only when a row overflows) and one `HomeTile` for feed / Trending Now / Top Artists; a glass Tuner with a coral energy meter; Stem Lab channel strips (per-stem accent colours); ticket-style live-event cards with a coral funding bar; violet AI DJ action circles on feed tiles |
 | Player console | Compact action chips + lock-chips, flex-grown queue, no-track empty state |
 | Library | Onboarding empty state, mono durations, violet "now playing" row |
 | Artist page | Cinematic release-art backdrop, real avatar/bio/genres, community rooms with live presence pulses |
@@ -67,7 +67,8 @@ Supporting tokens: `--r-secondary` `#C4B5FD` (lavender, secondary text/accents),
 | `web/src/components/shows/CampaignGallery.tsx` | Immersive gallery lightbox (slideshow + filmstrip) |
 | `web/src/app/globals.css` | Base styles: mesh backdrop, sidebar, buttons, app shell |
 | `web/src/app/layout.tsx` | JetBrains Mono font import and `--font-mono` variable injection |
-| `web/src/styles/home-nextgen.css` | Home page components |
+| `web/src/styles/home-nextgen.css` | Home page components (hero, catalog snapshot, studio panels; shared with `/catalog`) |
+| `web/src/styles/home-v3.css` | Home v3 shelf system — `HomeShelf`, `HomeTile`, Tuner, Stem Lab, ticket cards, studio desk (scoped under `.home-ng`, new class names only) |
 | `web/src/styles/stem-pricing.css` | Stem pricing dashboard |
 | `web/src/app/aid-1.css` | AI DJ layout, orb, command bar, cards |
 | `web/src/app/aid-2.css` | AI DJ finance, taste, history, shared buttons |

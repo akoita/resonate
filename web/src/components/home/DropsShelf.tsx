@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchFeaturedDrops, type FeaturedDrop, type PunchlineMoment } from "../../lib/api";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
-import Link from "next/link";
 import { DropDiscoveryCard, discoveryMoment } from "../drops/DropDiscoveryCard";
+import { HomeShelf } from "./HomeShelf";
 
 /*
  * Home "Drops" shelf (#1479) — first-class discovery surface for drops.
@@ -80,27 +80,17 @@ export function DropsShelfView({ drops }: { drops: FeaturedDrop[] }) {
   if (drops.length === 0) return null;
 
   return (
-    <section className="ng-section" data-testid="drops-shelf">
-      <header className="ng-section-header">
-        <div>
-          <span className="ng-kicker ng-kicker--violet">Own a piece of the hook</span>
-          <h3 className="ng-section-title">Drops</h3>
-        </div>
-        <Link href="/drops" className="ng-section-link">
-          Browse all →
-        </Link>
-      </header>
-      <div className="ng-grid-3" style={{ alignItems: "stretch" }}>
-        {drops.map((drop) => {
-          return (
-            <DropDiscoveryCard
-              key={drop.id}
-              drop={drop}
-              testId="drops-shelf-card"
-            />
-          );
-        })}
-      </div>
-    </section>
+    <HomeShelf
+      kicker="Own a piece of the hook"
+      kickerTone="violet"
+      title="Drops"
+      action={{ href: "/drops", label: "Browse all" }}
+      itemWidth={280}
+      testId="drops-shelf"
+    >
+      {drops.map((drop) => (
+        <DropDiscoveryCard key={drop.id} drop={drop} testId="drops-shelf-card" />
+      ))}
+    </HomeShelf>
   );
 }
