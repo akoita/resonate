@@ -29,135 +29,6 @@
   font-weight: 700;
 }
 
-.drops-filter-shell {
-  margin: 0 var(--ds-margin) 36px;
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.drops-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 14px;
-}
-
-.drops-filters label:not(.drops-checkbox):not(.drops-kind-chip),
-.drops-kind-filter {
-  display: grid;
-  flex: 1 1 150px;
-  gap: 7px;
-  min-width: 0;
-  color: var(--ds-on-surface-variant);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.drops-kind-filter {
-  min-width: 190px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.drops-kind-filter legend {
-  margin-bottom: 7px;
-  padding: 0;
-}
-
-.drops-kind-options {
-  display: flex;
-  gap: 8px;
-}
-
-.drops-kind-chip {
-  position: relative;
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 999px;
-  color: var(--ds-on-surface-variant);
-  cursor: pointer;
-}
-
-.drops-kind-chip input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
-.drops-kind-chip:has(input:checked) {
-  border-color: var(--ds-primary);
-  background: color-mix(in srgb, var(--ds-primary) 18%, transparent);
-  color: #fff;
-}
-
-.drops-kind-chip:has(input:focus-visible) {
-  outline: 3px solid var(--ds-primary);
-  outline-offset: 3px;
-}
-
-.drops-filters select,
-.drops-filters button,
-.drops-clear-link,
-.drops-checkbox {
-  min-height: 44px;
-  border-radius: 12px;
-}
-
-.drops-filters select {
-  width: 100%;
-  padding: 0 38px 0 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: var(--ds-surface-container, #18171d);
-  color: #fff;
-  font: 500 14px var(--ds-font-body);
-}
-
-.drops-checkbox {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  padding: 0 4px;
-  color: var(--ds-on-surface);
-  white-space: nowrap;
-}
-
-.drops-checkbox input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--ds-primary);
-}
-
-.drops-filters button,
-.drops-clear-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 18px;
-  border: 0;
-  font: 700 14px var(--ds-font-body);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.drops-filters button {
-  background: var(--ds-primary);
-  color: #100f14;
-}
-
-.drops-clear-link {
-  color: var(--ds-on-surface-variant);
-}
-
 .drops-results-heading {
   display: flex;
   align-items: baseline;
@@ -171,7 +42,13 @@
   color: var(--ds-on-surface-variant);
 }
 
-.drops-grid { align-items: stretch; }
+/* Fill the row with cards of a steady width, so a short result set doesn't
+ * stretch into a few oversized cards. Overrides the shared 3-column grid at
+ * every breakpoint. */
+.drops-page .drops-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  align-items: stretch;
+}
 
 .drops-page .ng-drops-card {
   display: flex;
@@ -290,7 +167,7 @@
 
 .drops-skeleton-title { width: min(580px, 85%); height: 68px; margin-top: 14px; }
 .drops-skeleton-copy { width: min(680px, 95%); height: 50px; margin-top: 18px; }
-.drops-skeleton-filters { height: 80px; margin: 0 var(--ds-margin) 36px; }
+.drops-skeleton-filters { height: 196px; margin: 0 var(--ds-margin) 32px; border-radius: 22px; }
 .drops-skeleton-card { min-height: 440px; }
 
 @keyframes drops-shimmer { to { background-position-x: -220%; } }
@@ -300,10 +177,14 @@
 }
 
 @media (max-width: 640px) {
-  .drops-filters > * { flex-basis: 100%; }
-  .drops-checkbox { width: 100%; }
-  .drops-filters button, .drops-clear-link { width: 100%; }
   .drops-pagination { grid-template-columns: 1fr 1fr; }
   .drops-pagination > span:nth-child(2) { grid-column: 1 / -1; grid-row: 1; text-align: center; }
   .drops-card-preview__button { width: 100%; }
+}
+
+/* Phone: align the hero copy with the filter deck and gallery heading. */
+@media (max-width: 767px) {
+  .drops-hero {
+    padding-inline: 16px;
+  }
 }

@@ -103,6 +103,8 @@
 
 .home-ng .ng-shelf__nav:focus-visible,
 .home-ng .ng-tuner .ng-chip:focus-visible,
+.home-ng .ng-filter-deck .ng-chip:focus-visible,
+.home-ng .ng-filter-deck__clear:focus-visible,
 .home-ng .ng-tuner__action:focus-visible,
 .home-ng .ng-tile__title:focus-visible,
 .home-ng .ng-tile__action:focus-visible,
@@ -505,7 +507,8 @@
   min-width: 0;
 }
 
-.home-ng .ng-tuner .ng-chip {
+.home-ng .ng-tuner .ng-chip,
+.home-ng .ng-filter-deck .ng-chip {
   display: inline-flex;
   align-items: center;
   height: 34px;
@@ -517,7 +520,9 @@
 }
 
 .home-ng .ng-tuner .ng-chip--active,
-.home-ng .ng-tuner .ng-chip--active:hover {
+.home-ng .ng-tuner .ng-chip--active:hover,
+.home-ng .ng-filter-deck .ng-chip--active,
+.home-ng .ng-filter-deck .ng-chip--active:hover {
   /* Hover must not wash out the selected chip's fill. */
   background: linear-gradient(135deg, #7C5CFF, #A085FF);
   border-color: #7C5CFF;
@@ -602,6 +607,44 @@
   opacity: 0.75;
   cursor: progress;
   transform: none;
+}
+
+/* ---------- Filter deck (Drops gallery) ----------------------------- */
+
+/* The Tuner's glass panel and chip rows, as a stack of link-chip filters.
+ * Chips are plain links to canonical filtered URLs, so they need link
+ * resets on top of the shared `.ng-chip` look. */
+.home-ng .ng-filter-deck {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 var(--ds-margin) 32px;
+  padding: 20px 24px;
+  border-radius: 22px;
+  background:
+    var(--r-sheen),
+    radial-gradient(90% 140% at 0% 0%, rgba(124, 92, 255, 0.24), transparent 60%),
+    rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: var(--r-elev-1);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+}
+
+/* Room for the longest row label ("Availability"). */
+.home-ng .ng-filter-deck .ng-tuner__label { flex-basis: 104px; }
+
+.home-ng .ng-filter-deck .ng-chip {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.home-ng .ng-filter-deck__clear {
+  align-self: flex-end;
+  margin-top: 4px;
 }
 
 /* ---------- Stem Lab ------------------------------------------------- */
@@ -845,35 +888,8 @@
 
 .home-ng .ng-ticket:hover .ng-ticket__image { transform: scale(1.04); }
 
-/* No image: a typographic poster over a violet → coral mesh, hue-shifted
- * deterministically per campaign (kept inside the brand bands). */
-.home-ng .ng-ticket__art--poster {
-  --poster-hue: 0;
-  background:
-    radial-gradient(120% 95% at 0% 0%, hsl(calc(235 + var(--poster-hue) / 12) 85% 64% / 0.62), transparent 62%),
-    radial-gradient(110% 100% at 100% 100%, hsl(calc(8 + var(--poster-hue) / 24) 100% 64% / 0.6), transparent 62%),
-    linear-gradient(135deg, #2a1f6b, #120f24);
-}
-
-.home-ng .ng-ticket__poster {
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  bottom: 12px;
-  color: rgba(255, 255, 255, 0.94);
-  font-family: var(--font-display);
-  font-size: 44px;
-  font-size: 15cqw;
-  font-weight: 700;
-  line-height: 0.92;
-  letter-spacing: -0.04em;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-shadow: 0 2px 18px rgba(8, 8, 15, 0.35);
-}
+/* No image: the shared typographic `.campaign-poster` (shows.css) fills the
+ * art frame. */
 
 .home-ng .ng-ticket__shade {
   position: absolute;
@@ -1035,6 +1051,7 @@
 
 @media (max-width: 1023px) {
   .home-ng .ng-tuner { margin: 0 24px 48px; }
+  .home-ng .ng-filter-deck { margin: 0 24px 32px; }
 }
 
 @media (max-width: 767px) {
@@ -1081,7 +1098,23 @@
 
   .home-ng .ng-tuner__chips::-webkit-scrollbar { display: none; }
 
-  .home-ng .ng-tuner .ng-chip { flex: 0 0 auto; }
+  .home-ng .ng-tuner .ng-chip,
+  .home-ng .ng-filter-deck .ng-chip { flex: 0 0 auto; }
+
+  .home-ng .ng-filter-deck {
+    margin: 0 16px 28px;
+    padding: 16px;
+    border-radius: 18px;
+    gap: 14px;
+  }
+
+  .home-ng .ng-filter-deck .ng-tuner__label { flex-basis: auto; }
+
+  .home-ng .ng-filter-deck__clear {
+    align-self: flex-start;
+    min-height: 44px;
+    margin-top: 0;
+  }
 
   .home-ng .ng-tuner__deck {
     width: auto;

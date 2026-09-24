@@ -1488,13 +1488,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
           },
           {
             kind: "paragraph",
-            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Filter by drop kind, genre, or free and paid moments; turn on Include sold out when you want to see completed editions too. Your filters and page stay in the web address, so you can share the view. Use the play button to preview a Drop without leaving the gallery, or tap the rest of the card to open that release's collect section. The Home page also shows a smaller shelf of available Drops.",
+            text: "You don't have to know which release has a drop: open Drops from the sidebar to browse the full collection gallery. Drops are ranked by collecting momentum, so recent collects and nearly-gone editions float to the top. Tap the filter chips above the gallery to narrow it by drop kind, genre, or free and paid moments; choose Include sold out when you want to see completed editions too. Each chip applies straight away and takes you back to the first page, and Clear filters returns to the full gallery. Your filters and page stay in the web address, so you can share the view. Use the play button to preview a Drop without leaving the gallery, or tap the rest of the card to open that release's collect section. The Home page also shows a smaller shelf of available Drops.",
           },
           {
             kind: "figure",
             figure: {
               src: `${SHOT}/drops.png`,
-              alt: "The Drops collection gallery with kind, genre, price, and sold-out filters above three collectible moment cards.",
+              alt: "The Drops collection gallery with kind, genre, price, and availability filter chips above the collectible moment cards.",
               caption: "Browse collectible moments by kind, genre, price, and availability.",
               width: 1440,
               height: 900,
