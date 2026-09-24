@@ -257,6 +257,39 @@ describe("Remix full-session hydration (#1312, integration)", () => {
     expect(created?.stemIds).toEqual([VOCALS_STEM_ID]);
   });
 
+  it("mutes the full-mix stem when the explicit selection also has a separated stem", async () => {
+    const project = await projectService.createProject({
+      userId: OWNER_ID,
+      sourceTrackId: TRACK_ID,
+      stemIds: [ORIGINAL_STEM_ID, VOCALS_STEM_ID],
+      title: "Owner full-mix + separated session",
+    });
+
+    const byId = new Map(project.stems.map((stem) => [stem.stemId, stem]));
+    // The full mixdown already sums the separated stems: kept as a muted A/B
+    // reference rather than doubling the audio.
+    expect(byId.get(ORIGINAL_STEM_ID)?.muted).toBe(true);
+    expect(byId.get(VOCALS_STEM_ID)?.muted).toBe(false);
+
+    // The created event still carries the raw explicit selection.
+    const created = projectEvents.find(
+      (event) => event.remixProjectId === project.id,
+    );
+    expect(created?.stemIds).toEqual([ORIGINAL_STEM_ID, VOCALS_STEM_ID]);
+  });
+
+  it("keeps the full-mix stem unmuted when it is the only explicit stem", async () => {
+    const project = await projectService.createProject({
+      userId: OWNER_ID,
+      sourceTrackId: TRACK_ID,
+      stemIds: [ORIGINAL_STEM_ID],
+      title: "Owner full-mix-only session",
+    });
+
+    const byId = new Map(project.stems.map((stem) => [stem.stemId, stem]));
+    expect(byId.get(ORIGINAL_STEM_ID)?.muted).toBe(false);
+  });
+
   it("hydrates only stems the creator is licensed for", async () => {
     const project = await projectService.createProject({
       userId: BUYER_ID,

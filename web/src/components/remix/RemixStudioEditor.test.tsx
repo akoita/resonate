@@ -18,7 +18,12 @@ import {
   clampGainDb,
   classifyProjectLoadError,
   describeSourceRights,
+  doublingReferenceStemIds,
   initialEdits,
+  isFullMixStemType,
+  previewMeterDb,
+  projectMusicalSummary,
+  referenceStemIds,
   RemixGenerationAttributionBadge,
   RemixSellCta,
   RemixStudioEditor,
@@ -29,7 +34,6 @@ import {
   saveStatusLabel,
   stemPreviewStates,
   stemDisplayName,
-  stemFeatureChips,
 } from "./RemixStudioEditor";
 import type { RemixEligibilityResponse } from "../../lib/api";
 import {
@@ -970,38 +974,237 @@ describe("describeAvailableStemAction (#1312)", () => {
   });
 });
 
-describe("stemFeatureChips (#1312/#1318)", () => {
-  it("renders confident tempo and key as compact chips", () => {
+describe("projectMusicalSummary (Phase 0)", () => {
+  const grid = {
+    kind: "bars" as const,
+    sections: [
+      { startSec: 0, endSec: 16 },
+      { startSec: 16, endSec: 32 },
+    ],
+    sectionSeconds: 16,
+    durationSeconds: 32,
+    bpm: 107.7,
+  };
+
+  it("takes tempo from the bar grid only", () => {
+    expect(projectMusicalSummary(project({ sectionGrid: grid })).bpm).toBe(108);
     expect(
-      stemFeatureChips({
-        tempoBpm: 92.5,
-        tempoConfidence: 0.8,
-        key: { tonic: "G", mode: "minor", confidence: 0.7 },
-      }),
-    ).toEqual(["93 BPM", "G minor"]);
+      projectMusicalSummary(
+        project({ sectionGrid: { ...grid, kind: "time", bpm: 107.7 } }),
+      ).bpm,
+    ).toBeNull();
+    expect(
+      projectMusicalSummary(project({ sectionGrid: { ...grid, bpm: null } })).bpm,
+    ).toBeNull();
+    // A per-stem tempo artifact never becomes the project tempo.
+    const noGrid = project();
+    noGrid.stems[0].audioFeatures = { tempoBpm: 157, tempoConfidence: 0.9 };
+    expect(projectMusicalSummary(noGrid).bpm).toBeNull();
   });
 
-  it("hides low-confidence tempo artifacts unless they agree with the grid (#1318)", () => {
-    const sparseBass = {
-      tempoBpm: 185,
-      tempoConfidence: 0.3,
-      key: { tonic: "E", mode: "minor" as const, confidence: 0.6 },
+  it("votes the key across pitched stems, weighted by confidence", () => {
+    const p = project();
+    p.stems = [
+      {
+        ...p.stems[0],
+        stemId: "v",
+        type: "vocals",
+        audioFeatures: { key: { tonic: "C", mode: "minor", confidence: 0.4 } },
+      },
+      {
+        ...p.stems[0],
+        stemId: "b",
+        type: "bass",
+        audioFeatures: { key: { tonic: "C", mode: "minor", confidence: 0.3 } },
+      },
+      {
+        ...p.stems[0],
+        stemId: "g",
+        type: "guitar",
+        audioFeatures: { key: { tonic: "G", mode: "major", confidence: 0.6 } },
+      },
+      {
+        // Drums carry no reliable key and must not vote, however confident.
+        ...p.stems[0],
+        stemId: "d",
+        type: "drums",
+        audioFeatures: { key: { tonic: "A#", mode: "minor", confidence: 0.99 } },
+      },
+    ];
+    expect(projectMusicalSummary(p).key).toBe("C minor"); // 0.7 > 0.6
+
+    p.stems[2].audioFeatures = {
+      key: { tonic: "G", mode: "major", confidence: 0.9 },
     };
-    // Librosa harmonic artifact on a 98 BPM song: BPM hidden, key kept.
-    expect(stemFeatureChips(sparseBass, 98)).toEqual(["E minor"]);
-    // No grid reference either: still hidden.
-    expect(stemFeatureChips(sparseBass)).toEqual(["E minor"]);
-    // Low confidence but matching the grid tempo: trustworthy, shown.
-    expect(
-      stemFeatureChips({ tempoBpm: 97.6, tempoConfidence: 0.3 }, 98),
-    ).toEqual(["98 BPM"]);
+    expect(projectMusicalSummary(p).key).toBe("G major"); // 0.9 > 0.7
   });
 
-  it("makes no musical claims for missing or invalid measurements", () => {
-    expect(stemFeatureChips(null)).toEqual([]);
-    expect(stemFeatureChips(undefined)).toEqual([]);
-    expect(stemFeatureChips({ tempoBpm: 0, key: null })).toEqual([]);
-    expect(stemFeatureChips({ tempoBpm: Number.NaN })).toEqual([]);
+  it("defaults a missing confidence to 0.5 and breaks exact ties by first seen", () => {
+    const p = project();
+    p.stems = [
+      {
+        ...p.stems[0],
+        stemId: "a",
+        type: "vocals",
+        audioFeatures: { key: { tonic: "E", mode: "minor", confidence: null } },
+      },
+      {
+        ...p.stems[0],
+        stemId: "b",
+        type: "piano",
+        audioFeatures: { key: { tonic: "G", mode: "major", confidence: 0.5 } },
+      },
+    ];
+    expect(projectMusicalSummary(p).key).toBe("E minor");
+  });
+
+  it("makes no claim when nothing is measured", () => {
+    expect(projectMusicalSummary(project())).toEqual({ bpm: null, key: null });
+  });
+});
+
+describe("full-mix reference stems (Phase 0)", () => {
+  function withOriginal(originalMuted: boolean, separatedMuted?: boolean) {
+    const p = project();
+    const stems = p.stems.map((stem) =>
+      separatedMuted === undefined ? stem : { ...stem, muted: separatedMuted },
+    );
+    p.stems = [
+      {
+        stemId: "stem-original",
+        type: "original",
+        title: null,
+        role: null,
+        gainDb: null,
+        muted: originalMuted,
+        arrangement: null,
+      },
+      ...stems,
+    ];
+    return p;
+  }
+
+  it("recognizes full-mix stem types", () => {
+    expect(isFullMixStemType("original")).toBe(true);
+    expect(isFullMixStemType(" Master ")).toBe(true);
+    expect(isFullMixStemType("vocals")).toBe(false);
+    expect(isFullMixStemType("")).toBe(false);
+  });
+
+  it("treats a full mix as a reference only next to separated stems", () => {
+    expect([...referenceStemIds(withOriginal(true).stems)]).toEqual([
+      "stem-original",
+    ]);
+    // A lone original stays a normal mixer channel.
+    expect(
+      referenceStemIds([{ stemId: "o", type: "original" }]).size,
+    ).toBe(0);
+    expect(referenceStemIds(project().stems).size).toBe(0);
+  });
+
+  it("flags doubling only when a separated stem is audible alongside the unmuted original", () => {
+    // Fixture: vocals unmuted, drums muted → doubled.
+    const doubled = withOriginal(false);
+    expect([
+      ...doublingReferenceStemIds(doubled.stems, initialEdits(doubled)),
+    ]).toEqual(["stem-original"]);
+    // Stem-page entry from the original: every sibling muted → plays once.
+    const single = withOriginal(false, true);
+    expect(
+      doublingReferenceStemIds(single.stems, initialEdits(single)).size,
+    ).toBe(0);
+    // Unmuting a sibling in the local edits makes it doubled.
+    const edits = initialEdits(single);
+    edits.stems["stem-1"] = { ...edits.stems["stem-1"], muted: false };
+    expect(doublingReferenceStemIds(single.stems, edits).size).toBe(1);
+    // A muted reference never doubles.
+    const muted = withOriginal(true);
+    expect(
+      doublingReferenceStemIds(muted.stems, initialEdits(muted)).size,
+    ).toBe(0);
+  });
+
+  it("section-gates a reference only while it is an unmuted channel", () => {
+    const p = withOriginal(true);
+    p.sectionGrid = {
+      kind: "bars",
+      sections: [
+        { startSec: 0, endSec: 16 },
+        { startSec: 16, endSec: 32 },
+      ],
+      sectionSeconds: 16,
+      durationSeconds: 32,
+      bpm: 120,
+    };
+    const edits = initialEdits(p);
+    edits.stems["stem-original"] = {
+      ...edits.stems["stem-original"],
+      sections: [false, true],
+    };
+    const states = stemPreviewStates(p, edits);
+    expect(states[0].stemId).toBe("stem-original");
+    // Muted reference: out of the render, so the A/B plays it whole.
+    expect(states[0].activeIntervals).toBeUndefined();
+    expect(states[1].activeIntervals).toBeNull(); // separated stems still gate
+    // Unmuted (legacy) reference is a real channel: gate it like the render.
+    edits.stems["stem-original"] = {
+      ...edits.stems["stem-original"],
+      muted: false,
+    };
+    expect(stemPreviewStates(p, edits)[0].activeIntervals).toEqual([
+      { startSec: 16, endSec: 32 },
+    ]);
+  });
+
+  it("warns about a doubled mix with a one-click fix", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={withOriginal(false)} />,
+    );
+    expect(html).toContain("is the full mix of the track");
+    expect(html).toContain("your mix is doubled");
+    expect(html).toContain("Use as reference only");
+    // Still visible and editable while unmuted.
+    expect(html).toContain('aria-label="Original gain in decibels"');
+  });
+
+  it("stays quiet while the original plays alone", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={withOriginal(false, true)} />,
+    );
+    expect(html).not.toContain("your mix is doubled");
+  });
+
+  it("hides a muted reference from the mixer and offers A/B compare", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={withOriginal(true)} />,
+    );
+    expect(html).not.toContain('aria-label="Original gain in decibels"');
+    expect(html).not.toContain("your mix is doubled");
+    expect(html).toContain("Compare with original");
+    expect(html).toMatch(
+      /<button[^>]*aria-pressed="false"[^>]*remix-compare-original-btn/,
+    );
+    // The muted reference does not trigger the "start muted" hint on its own.
+    const allOn = withOriginal(true, false);
+    expect(
+      renderToStaticMarkup(<RemixStudioEditor project={allOn} />),
+    ).not.toContain("start muted");
+  });
+
+  it("offers no compare toggle without a reference", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).not.toContain("Compare with original");
+  });
+});
+
+describe("preview level meter (Phase 0)", () => {
+  it("maps peak to dBFS over the -48..0 meter range", () => {
+    expect(previewMeterDb(1)).toBe(0);
+    expect(previewMeterDb(2)).toBe(0);
+    expect(previewMeterDb(0.5)).toBeCloseTo(-6.02, 2);
+    expect(previewMeterDb(0)).toBe(-48);
+    expect(previewMeterDb(0.0001)).toBe(-48);
+    expect(previewMeterDb(Number.NaN)).toBe(-48);
   });
 });
 
@@ -1054,18 +1257,30 @@ describe("Also on this track panel (#1312)", () => {
     expect(html).not.toContain("Also on this track");
   });
 
-  it("shows measured tempo/key chips on session stem rows", () => {
-    const withFeatures = project();
+  it("shows one project-level musical summary, not per-stem chips", () => {
+    const withFeatures = project({
+      sectionGrid: {
+        kind: "bars",
+        sections: [
+          { startSec: 0, endSec: 16 },
+          { startSec: 16, endSec: 32 },
+        ],
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        bpm: 108,
+      },
+    });
     withFeatures.stems[0].audioFeatures = {
-      tempoBpm: 120,
+      tempoBpm: 157,
       tempoConfidence: 0.9,
       key: { tonic: "A", mode: "major", confidence: 0.9 },
     };
     const html = renderToStaticMarkup(
       <RemixStudioEditor project={withFeatures} />,
     );
-    expect(html).toContain("120 BPM");
-    expect(html).toContain("A major");
+    expect(html).toContain("108 BPM · A major");
+    expect(html).toContain('title="Measured from the stem audio"');
+    expect(html).not.toContain("157 BPM");
   });
 });
 

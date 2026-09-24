@@ -507,6 +507,29 @@ export class RemixProjectService {
       input.sourceTrackId,
       stemIds,
     );
+
+    // Explicit selections from the release-page "Remix" entry point send
+    // every licensed stem, which can include a full-mix stem (original/master)
+    // alongside separated stems (vocals, drums, ...). The full mix already
+    // sums the separated layers, so playing both doubles the audio in
+    // previews and renders. When the explicit selection mixes a full-mix
+    // stem with at least one separated stem, store the full-mix stem muted
+    // — kept in the project as an A/B reference, same as hydration's own
+    // exclusion, but not auto-played. A selection made only of full-mix
+    // stems (a track whose only stem is the original) still plays unmuted.
+    const explicitStemTypes = stemIds.length
+      ? await prisma.stem.findMany({
+          where: { id: { in: stemIds } },
+          select: { id: true, type: true },
+        })
+      : [];
+    const explicitTypeById = new Map(
+      explicitStemTypes.map((stem) => [stem.id, stem.type]),
+    );
+    const hasSeparatedStem = stemIds.some(
+      (stemId) => !isFullMixStemType(explicitTypeById.get(stemId)),
+    );
+
     const project = await prisma.remixProject.create({
       data: {
         creatorUserId: input.userId,
@@ -517,7 +540,11 @@ export class RemixProjectService {
         policyVersion: eligibility.policyVersion,
         stems: {
           create: [
-            ...stemIds.map((stemId) => ({ stemId })),
+            ...stemIds.map((stemId) =>
+              hasSeparatedStem && isFullMixStemType(explicitTypeById.get(stemId))
+                ? { stemId, muted: true }
+                : { stemId },
+            ),
             ...hydratedStemIds.map((stemId) => ({ stemId, muted: true })),
           ],
         },

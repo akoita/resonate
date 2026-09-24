@@ -906,7 +906,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "list",
             items: [
               "Your session opens with every stem of the track you're licensed for — the one you started from plays, and the rest wait muted until you bring them in.",
-              "Mute, solo, and set the level of each stem; measured tempo and key show on stems that have them.",
+              "Mute, solo, and set the level of each stem. The track's measured tempo and key show once, next to the title.",
+              "If the track's full original mix is in your session, it stays out of the mix (it already contains every part) — use \"Compare with original\" to switch between your remix and the original while you listen.",
+              "The preview runs through a limiter so stacking many stems doesn't distort, and a small meter shows when it's working. Starting a preview pauses the main player.",
               "Use the Arrangement grid to switch stems on or off per section of the song \u2014 drop the drums out for a verse, bring them back for the chorus.",
               "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "Write a prompt describing the direction you want.",
