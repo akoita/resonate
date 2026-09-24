@@ -2134,6 +2134,14 @@ export type ArtistClaim = {
   reviewedAt?: string | null;
 };
 
+export type PendingArtistClaim = ArtistClaim & {
+  claimantUserId: string;
+  evidence: string;
+  artist: { id: string; displayName: string };
+};
+
+export type ArtistClaimDecision = "approve" | "reject";
+
 export type MyArtistClaim = Pick<ArtistClaim, "status" | "createdAt" | "reviewedAt"> & {
   updatedAt: string;
   artist: { id: string; displayName: string; imageUrl?: string | null; canRequestClaim: boolean };
@@ -2157,6 +2165,26 @@ export async function submitArtistClaim(token: string, artistId: string, evidenc
     { method: "POST", body: JSON.stringify({ evidence }) },
     token,
   );
+}
+
+export function getPendingArtistClaims(token: string) {
+  return apiRequest<PendingArtistClaim[]>(
+    "/artists/claims/pending",
+    { cache: "no-store" },
+    token,
+  );
+}
+
+export function reviewArtistClaim(
+  token: string,
+  claimId: string,
+  input: { decision: ArtistClaimDecision; note: string },
+) {
+  return apiRequest<unknown>(
+    `/artists/claims/${encodeURIComponent(claimId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+    token,
+  ).then(() => undefined);
 }
 
 export async function getCuratorProfile(address: string) {

@@ -1082,7 +1082,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "artists",
     audiences: ["artist", "operator"],
     status: "available",
-    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
+    keywords: ["artist", "profile", "page", "bio", "image", "avatar", "social", "links", "website", "edit", "AI suggestions", "MusicBrainz", "claim", "claim review", "evidence", "manager", "invite", "notification", "transfer", "recovery", "replace audio", "track audio", "audio replacement"],
     sections: [
       {
         id: "edit",
@@ -1222,6 +1222,16 @@ export const HELP_ARTICLES: HelpArticle[] = [
         ],
       },
       {
+        id: "review-artist-claims",
+        heading: "Reviewing an artist profile claim",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Operators and administrators can open Artist Claims from the admin navigation to review pending public-profile requests. Check the exact artist page and releases, requester, and private evidence before recording a review note and approving or rejecting. The requester cannot decide their own claim, even if they are also an administrator or operator; a different operator must review it. Approval grants public-profile editing only, not release management, rights, payouts, or private analytics. Transfer Recovery is a separate queue for management-transfer recovery requests.",
+          },
+        ],
+      },
+      {
         id: "review-management-recovery",
         heading: "Reviewing a transfer recovery request",
         blocks: [
@@ -1235,6 +1245,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     appLinks: [
       { label: "Your catalog", href: "/artist/catalog", description: "Open your releases; your artist page is linked from your name." },
       { label: "Artist management", href: "/artist/management", description: "Review invitations, delegate access, or transfer management." },
+      { label: "Artist claim reviews", href: "/admin/artist-claims", description: "Review pending public-profile claims (operators and administrators)." },
       { label: "Recovery reviews", href: "/admin/management-recovery", description: "Review accepted transfer recovery requests (operators and administrators)." },
     ],
     related: ["upload-music", "artist-analytics", "getting-started"],

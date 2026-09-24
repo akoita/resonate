@@ -112,6 +112,17 @@ Every approval, rejection, and revocation appends an internal decision event.
 Account erasure removes private free-text evidence and notes from retained
 review history.
 
+### Operator (review a public profile claim)
+
+Open **Artist Claims** in the admin navigation (`/admin/artist-claims`) to see
+pending public-profile requests. Inspect the exact artist page and catalog,
+the requester's identity, and their private evidence before entering a review
+note and approving or rejecting. The queue is separate from **Transfer
+Recovery**, which lists accepted management-transfer recovery requests. A
+request remains pending until an operator other than its requester reviews it;
+administrators and operators cannot decide their own claims. Approval grants
+only public-profile editing access.
+
 ### Developer / API
 
 - `PATCH /artists/:id` (JWT, manager owner or approved public-profile claimant) — body
@@ -136,6 +147,9 @@ review history.
   (JWT) accepts bounded evidence for an eligible, credited public artist;
   operator-only claim review records the decision. These endpoints never grant
   release-level management by implication.
+- `GET /artists/claims/pending` and `PATCH /artists/claims/:claimId` require an
+  admin or operator JWT. The reviewer must be a different account from the
+  claimant, including when the claimant also has an operator role.
 - `GET /management/artists/:id/access` (JWT) reports the caller's profile
   scope; the current management owner alone sees invitation history. Grant and
   transfer endpoints require the current owner and recipient to act separately.
@@ -177,7 +191,8 @@ polish slice (tracked in #1419's follow-up notes).
 - Frontend: `web/src/components/artist/ArtistProfileEditor.tsx`,
   `ArtistEnrichmentPanel.tsx`,
   `ArtistSocialLinksRow.tsx`, `ArtistClaimCenter.tsx`,
-  `ArtistClaimRequestPanel.tsx`, `web/src/lib/artistProfileForm.ts`,
+  `ArtistClaimRequestPanel.tsx`, `web/src/app/admin/artist-claims/page.tsx`,
+  `web/src/lib/artistProfileForm.ts`,
   `web/src/lib/artistRoutes.ts` (`trackArtistCreditHref`),
   `web/src/app/artist/[id]/page.tsx`. Tests: `web/src/lib/artistProfileForm.test.ts`,
   `artistRoutes.test.ts`, `web/src/components/artist/ArtistProfileEditor.test.tsx`.
