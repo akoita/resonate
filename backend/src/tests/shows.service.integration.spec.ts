@@ -2090,10 +2090,22 @@ describe("ShowsService integration", () => {
     });
 
     it("rejects create when bookingDeadline <= funding deadline", async () => {
+      // One clock read for both fields: two futureIso(30) calls can straddle a
+      // millisecond tick and produce a (valid) booking deadline 1ms later.
+      const sameIso = futureIso(30);
       await expect(
         service.createDraftCampaign(
           { userId, role: "artist" },
-          { ...validDraftInput("Lyon1356a"), deadline: futureIso(30), bookingDeadline: futureIso(30) },
+          { ...validDraftInput("Lyon1356a"), deadline: sameIso, bookingDeadline: sameIso },
+        ),
+      ).rejects.toThrow("bookingDeadline must be after the funding deadline");
+    });
+
+    it("rejects create when bookingDeadline is before the funding deadline", async () => {
+      await expect(
+        service.createDraftCampaign(
+          { userId, role: "artist" },
+          { ...validDraftInput("Lyon1356a2"), deadline: futureIso(30), bookingDeadline: futureIso(29) },
         ),
       ).rejects.toThrow("bookingDeadline must be after the funding deadline");
     });
@@ -2130,11 +2142,19 @@ describe("ShowsService integration", () => {
         { userId, role: "artist" },
         validDraftInput("Lyon1356e"),
       );
+      const sameIso = futureIso(30);
       await expect(
         service.updateDraftCampaign(
           { userId, role: "artist" },
           draft.id,
-          { ...validDraftInput("Lyon1356e"), deadline: futureIso(30), bookingDeadline: futureIso(30) },
+          { ...validDraftInput("Lyon1356e"), deadline: sameIso, bookingDeadline: sameIso },
+        ),
+      ).rejects.toThrow("bookingDeadline must be after the funding deadline");
+      await expect(
+        service.updateDraftCampaign(
+          { userId, role: "artist" },
+          draft.id,
+          { ...validDraftInput("Lyon1356e"), deadline: futureIso(30), bookingDeadline: futureIso(29) },
         ),
       ).rejects.toThrow("bookingDeadline must be after the funding deadline");
     });
