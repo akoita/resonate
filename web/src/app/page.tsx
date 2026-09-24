@@ -49,15 +49,18 @@ import { CatalogReleaseCard } from "../components/catalog/CatalogReleaseCard";
 import { CatalogStemTrackRow } from "../components/catalog/CatalogStemTrackRow";
 import { AiDisclosureBadge } from "../components/content/AiDisclosureBadge";
 import { HomeFeedRails } from "../components/home/HomeFeedRails";
+import type { ArtistCoverFallback } from "../components/home/PopularityRails";
 import { HomeCampaignVisual } from "../components/home/HomeCampaignVisual";
 import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
+import { HomeTuner } from "../components/home/HomeTuner";
+import { LiveEventRail } from "../components/home/LiveEventRail";
+import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
 import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
 import {
-  campaignDisplayInitial,
   campaignDisplayTitle,
   filterActionableCampaigns,
   listCampaigns,
@@ -70,18 +73,22 @@ import {
 import { recordProductAnalytics } from "../lib/productAnalytics";
 
 /*
- * Home page — Next-Gen Music Platform (Stitch design applied, 2026-04).
+ * Home page — "Home v3" (Resonance v3 visual system, 2026-09).
  *
- * Layout (top to bottom):
- *   1. Hero — featured campaign or release, glass card with CTA pair
- *   2. Filter chips — genre/mood quick-filters (client-side filter)
- *   3. Resume Playing — 4 square release cards with hover play overlay
- *   4. Trending Stems — 3 waveform-visualized stem cards
- *   5. Upcoming Live Events — 2 wide 16:9 campaign cards (Shows surface)
- *   6. AI DJ session presets — intent-led mix modes
- *   7. Top Artists — horizontal pill row derived from catalog
+ * Layout (top to bottom) — the listening experience leads and every section
+ * below the hero uses the same shelf chrome (HomeShelf + HomeTile):
+ *   1. Hero — featured campaign with the campaign rail (user-approved; frozen)
+ *   2. Tuner — genre/mood filter, energy meter, one-tap vibe session / AI DJ
+ *   3. Personalized feed — multi-rail shelves (#1454 WS-7)
+ *   4. Trending Now — engagement-ranked tracks (#1451)
+ *   5. Top Artists — engagement-ranked round portraits (#1451)
+ *   6. Stem Lab — real mixer stems, each channel solos in the release mixer
+ *   7. Upcoming Live Events — ticket-style campaign cards with funding progress
+ *   8. Drops — collectible moments shelf (#1479)
+ *   9. Recently Added — global catalog snapshot browser
+ *  10. AI DJ session presets — intent-led mix modes
+ *  11. Your studio — Managed Catalog + Your Releases panels
  *
- * Source: Stitch project 8644925846196383098 "Next-Gen Music Platform - Home Page".
  * Icons use Material Symbols (loaded in app/layout.tsx).
  */
 
@@ -143,117 +150,114 @@ const FILTERS: FilterOption[] = [
  * real section so deferring the chunk does not collapse the box (no CLS).
  * ------------------------------------------------------------------------- */
 
-/** Header skeleton — same DOM/typography as the real `ng-section-header`. */
-function SectionHeaderSkeleton({
-  kickerClass,
+/**
+ * Shelf skeleton — same DOM/typography as the real `HomeShelf` (header + one
+ * scroll-snapped row of tiles at the shelf's item width), so the reserved box
+ * matches the loaded section at every breakpoint (no CLS, #1491).
+ */
+function ShelfSkeleton({
+  kickerTone,
   kicker,
   title,
+  meta,
+  itemWidth,
+  count,
+  variant,
 }: {
-  kickerClass: string;
+  kickerTone: "primary" | "tertiary" | "violet";
   kicker: string;
   title: string;
+  meta?: string;
+  itemWidth: number;
+  count: number;
+  variant: "tile" | "round" | "drop";
 }) {
+  const style = {
+    "--shelf-item": `${itemWidth}px`,
+    "--shelf-item-phone": `${Math.max(148, Math.round(itemWidth * 0.78))}px`,
+  } as CSSProperties;
   return (
-    <header className="ng-section-header">
-      <div>
-        <span className={`ng-kicker ${kickerClass}`}>{kicker}</span>
-        <h3 className="ng-section-title">{title}</h3>
+    <section className="ng-section ng-shelf ng-shelf--skeleton" aria-hidden style={style}>
+      <header className="ng-shelf__header">
+        <div className="ng-shelf__heading">
+          <span className={`ng-kicker ng-kicker--${kickerTone}`}>{kicker}</span>
+          <h3 className="ng-section-title">{title}</h3>
+        </div>
+        {meta ? (
+          <div className="ng-shelf__aside">
+            <span className="ng-shelf__meta">{meta}</span>
+          </div>
+        ) : null}
+      </header>
+      <div className="ng-shelf__track">
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="ng-shelf__item">
+            {variant === "drop" ? (
+              <div className="ng-shelf-skeleton__drop" />
+            ) : (
+              <article className={`ng-tile ng-tile--${variant === "round" ? "round" : "square"}`}>
+                <div className="ng-tile__art" />
+                <div className="ng-tile__body">
+                  <span className="ng-tile__title">&nbsp;</span>
+                  {variant === "tile" ? <p className="ng-tile__subtitle">&nbsp;</p> : null}
+                  <p className="ng-tile__meta">&nbsp;</p>
+                </div>
+              </article>
+            )}
+          </div>
+        ))}
       </div>
-    </header>
+    </section>
   );
 }
 
 /**
- * Trending Now placeholder: header + one `ng-grid-4` row of play cards. The
- * card art is `aspect-ratio: 1`, so the reserved height tracks the real rail
- * exactly at every breakpoint. The rail requests `limit: 8` (up to two desktop
- * rows); one row is the reserve because the rail is only mounted once its data
- * has resolved (see the call site), and short catalogs return fewer than four.
+ * Trending Now placeholder: header (with the "Last 7 days" pill) + one row of
+ * square tiles at the real 196px item width. The rail is only mounted once its
+ * data has resolved (see the call site), so one row is the right reserve.
  */
 function TrendingNowRailSkeleton() {
   return (
-    <section className="ng-section" aria-hidden>
-      <SectionHeaderSkeleton
-        kickerClass="ng-kicker--tertiary"
-        kicker="What listeners play"
-        title="Trending Now"
-      />
-      <div className="ng-grid-4">
-        {[0, 1, 2, 3].map((i) => (
-          <div key={i} className="ng-play-card ng-glass" style={{ borderRadius: 20 }}>
-            <div className="ng-play-card__art" />
-            <h4 className="ng-play-card__title">&nbsp;</h4>
-            <p className="ng-play-card__artist">&nbsp;</p>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ShelfSkeleton
+      kickerTone="tertiary"
+      kicker="What listeners play"
+      title="Trending Now"
+      meta="Last 7 days"
+      itemWidth={196}
+      count={6}
+      variant="tile"
+    />
   );
 }
 
-/**
- * Top Artists placeholder: header + a row of pill blanks. A real
- * `.ng-artist-pill` is 50px tall (40px avatar + 4px padding + 1px border), so
- * the blanks reserve the exact row height; six of them approximate the
- * `limit: 8` pill row before it wraps.
- */
+/** Top Artists placeholder: header + one row of round portrait tiles (148px). */
 function TopArtistsRailSkeleton() {
   return (
-    <section className="ng-section" aria-hidden>
-      <SectionHeaderSkeleton
-        kickerClass="ng-kicker--violet"
-        kicker="Most listened, last 7 days"
-        title="Top Artists"
-      />
-      <div className="ng-artist-pills">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <span
-            key={i}
-            style={{
-              width: 150,
-              height: 50,
-              borderRadius: 999,
-              background: "rgba(255, 255, 255, 0.06)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-            }}
-          />
-        ))}
-      </div>
-    </section>
+    <ShelfSkeleton
+      kickerTone="violet"
+      kicker="Most listened, last 7 days"
+      title="Top Artists"
+      itemWidth={148}
+      count={8}
+      variant="round"
+    />
   );
 }
 
 /**
- * Drops placeholder: header + one `ng-grid-3` row of collectible-card blanks.
- * A shelf card is a 14px-padded `ng-glass` tile wrapping the square collectible
- * art plus a body/footer strip, which is what the blank mirrors.
+ * Drops placeholder: header + one row of 280px collectible-card blanks (square
+ * collectible art plus the body/footer strip the real card carries).
  */
 function DropsShelfSkeleton() {
   return (
-    <section className="ng-section" aria-hidden>
-      <SectionHeaderSkeleton
-        kickerClass="ng-kicker--violet"
-        kicker="Own a piece of the hook"
-        title="Drops"
-      />
-      <div className="ng-grid-3" style={{ alignItems: "stretch" }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="ng-glass" style={{ borderRadius: 20, padding: 14 }}>
-            <div
-              style={{
-                aspectRatio: "1 / 1",
-                borderRadius: 14,
-                background: "rgba(255, 255, 255, 0.04)",
-              }}
-            />
-            <div style={{ height: 96, marginTop: 8 }} />
-            <p className="ng-play-card__artist" style={{ marginTop: 10 }}>
-              &nbsp;
-            </p>
-          </div>
-        ))}
-      </div>
-    </section>
+    <ShelfSkeleton
+      kickerTone="violet"
+      kicker="Own a piece of the hook"
+      title="Drops"
+      itemWidth={280}
+      count={4}
+      variant="drop"
+    />
   );
 }
 
@@ -345,10 +349,6 @@ export default function Home() {
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => listCampaignsSync());
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
-  // "Upcoming Live Events" shows 2 of N campaigns. With no priority signal, the
-  // window rotates so every campaign gets fair main-page visibility over time.
-  const [eventRowOffset, setEventRowOffset] = useState(0);
-  const [eventRowPaused, setEventRowPaused] = useState(false);
   const [heroPaused, setHeroPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
   const { status, token, userId } = useAuth();
@@ -426,18 +426,6 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
-
-  // Fairly rotate the 2-card "Upcoming Live Events" window across actionable
-  // campaigns so none stay hidden when there is no priority signal. Pauses
-  // while hovered and honors prefers-reduced-motion.
-  useEffect(() => {
-    if (actionableCampaigns.length <= 2 || eventRowPaused) return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const timer = window.setInterval(() => {
-      setEventRowOffset((offset) => (offset + 1) % actionableCampaigns.length);
-    }, 8000);
-    return () => window.clearInterval(timer);
-  }, [actionableCampaigns.length, eventRowPaused]);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) {
@@ -530,9 +518,11 @@ export default function Home() {
     return displayReleases.filter((release) => releaseMatchesFilter(release, activeFilterConfig));
   }, [activeFilterConfig, displayReleases]);
 
-  // Row data derivation.
-  const resumeRow = filteredReleases.slice(0, 4);
-  const stemRow = filteredReleases.slice(0, 3);
+  // Stem Lab: real mixer stems only, from the tuned catalog slice.
+  const stemLabEntries = useMemo(
+    () => selectStemLabEntries(filteredReleases, 3, renderStemLabArt),
+    [filteredReleases],
+  );
   const heroCampaigns = useMemo(() => selectHomeHeroCampaigns(actionableCampaigns), [actionableCampaigns]);
   const activeHeroCampaign = useMemo(
     () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
@@ -553,11 +543,6 @@ export default function Home() {
     }, 9000);
     return () => window.clearInterval(timer);
   }, [heroCampaigns, heroPaused]);
-  const eventRow: Campaign[] = useMemo(() => {
-    if (actionableCampaigns.length <= 2) return actionableCampaigns.slice(0, 2);
-    const start = eventRowOffset % actionableCampaigns.length;
-    return [actionableCampaigns[start], actionableCampaigns[(start + 1) % actionableCampaigns.length]];
-  }, [actionableCampaigns, eventRowOffset]);
   const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
   const catalogStems = useMemo<CatalogStemSummary[]>(
     () => flattenCatalogStems(displayReleases),
@@ -712,6 +697,22 @@ export default function Home() {
   // no recency fallback. `null` = still loading (hide the rail), `[]` = the
   // catalog is below the minimum-audience threshold (honest empty state).
   const topArtists = rankedTopArtists;
+  // Most artists have no portrait yet; their newest credited release cover
+  // stands in so the Top Artists shelf shows real art instead of initials.
+  // Keyed by credited-artist id — the id the popularity tables rank by.
+  const artistCoverFallbacks = useMemo(() => {
+    const covers: Record<string, ArtistCoverFallback> = {};
+    for (const artist of catalogArtists) {
+      const release = artist.latestRelease;
+      if (!artist.artistId || !release?.artworkMimeType) continue;
+      covers[artist.artistId] = {
+        releaseId: release.id,
+        mimeType: release.artworkMimeType,
+        artworkRevision: release.artworkRevision,
+      };
+    }
+    return covers;
+  }, [catalogArtists]);
 
   const handleStartRecommendedSession = async (recommendation: HomeRecommendation) => {
     const seedGenre = recommendation.moods?.[0] || recommendation.genre || recommendation.reasons[0]?.replace(/^(genre|mood|cohort):/, "") || "Discovery";
@@ -885,7 +886,7 @@ export default function Home() {
 
   return (
     <div className="home-ng">
-      <main className="ng-main">
+      <main className="ng-main ng-main--v3">
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
           <div
@@ -983,42 +984,18 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 2. FILTER CHIPS ———————————————————————————————————————— */}
-        <div className="ng-chips" role="tablist" aria-label="Filter trending">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              role="tab"
-              aria-selected={activeFilter === f.id}
-              onClick={() => setActiveFilter(f.id)}
-              className={`ng-chip ${activeFilter === f.id ? "ng-chip--active" : ""}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        {activeFilterConfig.kind !== "all" && (
-          <div className="ng-vibe-session-strip ng-glass">
-            <div>
-              <span className="ng-kicker ng-kicker--tertiary">Vibe session</span>
-              <strong>{activeFilterConfig.label}</strong>
-              <p>
-                {filteredReleases.length} catalog match{filteredReleases.length === 1 ? "" : "es"} ready for this {activeFilterConfig.kind}.
-              </p>
-            </div>
-            <button
-              type="button"
-              className="ng-btn ng-btn--primary"
-              onClick={() => void handleStartVibeSession(activeFilterConfig)}
-              disabled={startingVibe === activeFilterConfig.id}
-            >
-              <span className="ms-icon" data-fill="1" aria-hidden>
-                {startingVibe === activeFilterConfig.id ? "hourglass_top" : "play_arrow"}
-              </span>
-              {startingVibe === activeFilterConfig.id ? "Starting" : "Start Vibe Session"}
-            </button>
-          </div>
-        )}
+        {/* 2. TUNER — genre/mood filter + vibe session ——————————— */}
+        <HomeTuner
+          filters={FILTERS}
+          activeId={activeFilter}
+          onSelect={(id) => {
+            const next = FILTERS.find((filter) => filter.id === id);
+            if (next) setActiveFilter(next.id);
+          }}
+          matchCount={filteredReleases.length}
+          starting={startingVibe === activeFilter}
+          onStartSession={() => void handleStartVibeSession(activeFilterConfig)}
+        />
 
         {/* 3. PERSONALIZED FEED — multi-rail (#1454 WS-7) ————————— */}
         <HomeFeedRails
@@ -1031,7 +1008,34 @@ export default function Home() {
           }}
         />
 
-        {/* 3. CATALOG BROWSER ——————————————————————————————————— */}
+        {/* 4. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
+        {/* The rail itself renders null while `items === null`, so gating the
+            lazy mount on resolved data is behaviour-identical — it just keeps
+            the loading skeleton from reserving a box the rail would not fill
+            yet (#1491). */}
+        {trendingTracks !== null && (
+          <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
+        )}
+
+        {/* 5. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
+        {topArtists !== null && (
+          <TopArtistsRail
+            items={topArtists}
+            genreLabel={popularityGenre}
+            coverFallbacks={artistCoverFallbacks}
+          />
+        )}
+
+        {/* 6. STEM LAB — real stems, one-tap solo in the mixer ———— */}
+        <StemLab entries={stemLabEntries} />
+
+        {/* 7. UPCOMING LIVE EVENTS — ticket-style campaign cards ——— */}
+        <LiveEventRail campaigns={actionableCampaigns} />
+
+        {/* 8. DROPS — collectible moments shelf (#1479) ——————————— */}
+        <DropsShelf token={token} />
+
+        {/* 9. CATALOG BROWSER — "Recently Added" snapshot ——————————— */}
         <section className="ng-section">
           <div className="ng-catalog-shell ng-glass">
             <header className="ng-catalog-header">
@@ -1188,8 +1192,19 @@ export default function Home() {
           </div>
         </section>
 
-        {/* 4. UPLOAD OPERATIONS ——————————————————————————————— */}
-        <section className="ng-section">
+        {/* 10. AI DJ SESSION PRESETS ———————————————————————————— */}
+        <section className="ng-section ng-section--presets">
+          <AgentSessionPresets compact />
+        </section>
+
+        {/* 11. YOUR STUDIO — upload operations ——————————————————— */}
+        <section className="ng-section ng-studio">
+          <header className="ng-shelf__header">
+            <div className="ng-shelf__heading">
+              <span className="ng-kicker ng-kicker--primary">For artists</span>
+              <h3 className="ng-section-title">Your studio</h3>
+            </div>
+          </header>
           <div className="ng-ops-grid">
             <article className="ng-ops-panel ng-glass">
               <header className="ng-ops-panel__header">
@@ -1295,122 +1310,6 @@ export default function Home() {
             </article>
           </div>
         </section>
-
-        {/* 5. RESUME PLAYING ———————————————————————————————————— */}
-        {resumeRow.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--violet">Continue your journey</span>
-                <h3 className="ng-section-title">Resume Playing</h3>
-              </div>
-              <Link href="/library" className="ng-section-link">
-                View history
-                <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-              </Link>
-            </header>
-            <div className="ng-grid-4">
-              {resumeRow.map((r) => (
-                <Link
-                  key={r.id}
-                  href={`/release/${r.id}`}
-                  className="ng-play-card ng-glass"
-                  style={{ borderRadius: 20 }}
-                >
-                  <div className="ng-play-card__art">
-                    {r.artworkUrl ? (
-                      <HomeReleaseArtwork
-                        releaseId={r.id}
-                        mimeType={r.artworkMimeType ?? ""}
-                        artworkRevision={r.artworkRevision}
-                        alt={r.title}
-                        sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
-                      />
-                    ) : (
-                      <span className="ng-monogram" aria-hidden>
-                        {(r.title?.[0] ?? "?").toUpperCase()}
-                      </span>
-                    )}
-                    <div className="ng-play-card__overlay">
-                      <span className="ms-icon" data-fill="1" aria-hidden>play_circle</span>
-                    </div>
-                  </div>
-                  <h4 className="ng-play-card__title">{r.title}</h4>
-                  <AiDisclosureBadge disclosure={r.aiDisclosure} />
-                  <p className="ng-play-card__artist">
-                    Artist: {r.primaryArtist || r.artist?.displayName || "Unknown"}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 5b. TRENDING NOW — engagement-ranked tracks (#1451) ————— */}
-        {/* The rail itself renders null while `items === null`, so gating the
-            lazy mount on resolved data is behaviour-identical — it just keeps
-            the loading skeleton from reserving a box the rail would not fill
-            yet (#1491). */}
-        {trendingTracks !== null && (
-          <TrendingNowRail items={trendingTracks} genreLabel={popularityGenre} />
-        )}
-
-        {/* 6. TRENDING STEMS ———————————————————————————————————— */}
-        {stemRow.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--tertiary">Granular breakdowns</span>
-                <h3 className="ng-section-title">Trending Stems</h3>
-              </div>
-            </header>
-            <div className="ng-grid-3">
-              {stemRow.map((r, i) => (
-                <StemCard key={`${r.id}-stem`} release={r} variantIndex={i} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 6b. DROPS — collectible moments shelf (#1479) ——————————— */}
-        <DropsShelf token={token} />
-
-        {/* 7. UPCOMING LIVE EVENTS ————————————————————————————— */}
-        {eventRow.length > 0 && (
-          <section className="ng-section">
-            <header className="ng-section-header">
-              <div>
-                <span className="ng-kicker ng-kicker--tertiary">Real-time performance</span>
-                <h3 className="ng-section-title">Upcoming Live Events</h3>
-              </div>
-              <Link href="/shows" className="ng-section-link">
-                Browse all
-                <span className="ms-icon" aria-hidden style={{ fontSize: 14 }}>arrow_forward</span>
-              </Link>
-            </header>
-            <div
-              className="ng-grid-2"
-              onMouseEnter={() => setEventRowPaused(true)}
-              onMouseLeave={() => setEventRowPaused(false)}
-              onFocusCapture={() => setEventRowPaused(true)}
-              onBlurCapture={() => setEventRowPaused(false)}
-            >
-              {eventRow.map((c, idx) => (
-                <EventCard key={c.id} campaign={c} variant={idx === 0 ? "live" : "upcoming"} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* 8. AI DJ SESSION PRESETS ————————————————————————————— */}
-        <section className="ng-section ng-section--presets">
-          <AgentSessionPresets compact />
-        </section>
-
-        {/* 9. TOP ARTISTS — engagement-ranked (#1451) ——————————— */}
-        {topArtists !== null && (
-          <TopArtistsRail items={topArtists} genreLabel={popularityGenre} />
-        )}
       </main>
       <AddToPlaylistModal
         tracks={tracksToAddToPlaylist}
@@ -1629,258 +1528,19 @@ function formatRelativeTime(time: number) {
   });
 }
 
-/* ----------- Trending-stem card (deterministic waveform) --------- */
-
-const STEM_TONES = ["primary", "tertiary", "secondary"] as const;
-const STEM_TAGS = ["Drums", "Vocals", "Synth"] as const;
-type StemTag = (typeof STEM_TAGS)[number];
-const STEM_ACCENTS: Record<(typeof STEM_TONES)[number], string> = {
-  primary: "var(--ds-primary-container)",
-  tertiary: "var(--ds-tertiary)",
-  secondary: "var(--ds-primary)",
-};
-
-// Maps the cosmetic card tag to a real mixer stem type from
-// MIXER_STEM_TYPES (release/[id]/page.tsx:60). Tags that don't match
-// any mixer channel (e.g. "Synth") return null so we fall back to
-// "mixer-on, all stems audible" instead of soloing-to-silence.
-const STEM_TAG_TO_MIXER: Record<StemTag, string | null> = {
-  Drums: "drums",
-  Vocals: "vocals",
-  Synth: null,
-};
-
-function buildMixerHref(releaseId: string, tag: StemTag): string {
-  const stem = STEM_TAG_TO_MIXER[tag];
-  return stem
-    ? `/release/${releaseId}?mixer=true&stem=${stem}`
-    : `/release/${releaseId}?mixer=true`;
-}
-
-// Each stem sounds different, so its waveform should *look* different.
-// Drums = sparse 4-on-the-floor kicks with ghost notes between.
-// Vocals = smooth sinusoidal phrasing (rises and falls of a melody).
-// Synth = staircase / saw-style oscillation (electronic, geometric).
-const STEM_BAR_COUNT: Record<StemTag, number> = {
-  Drums: 14,
-  Vocals: 28,
-  Synth: 18,
-};
-
-function shapeStemBars(tag: StemTag, base: number[]): number[] {
-  if (tag === "Drums") {
-    return base.map((v, i) => {
-      const onBeat = i % 4 === 0;
-      const offBeat = i % 4 === 2;
-      if (onBeat) return 86 + (v % 14);
-      if (offBeat) return 32 + (v % 22);
-      return 14 + (v % 18);
-    });
-  }
-  if (tag === "Vocals") {
-    return base.map((v, i) => {
-      const t = base.length > 1 ? i / (base.length - 1) : 0;
-      const phrase = Math.sin(t * Math.PI * 2) * 0.4 + 0.6;
-      const env = phrase * 70 + 18;
-      const jitter = (v % 10) - 5;
-      return Math.max(15, Math.min(95, env + jitter));
-    });
-  }
-  // Synth — three-phase staircase (peak / mid / valley) with light drift.
-  const heights = [85, 50, 28];
-  return base.map((v, i) => {
-    const phase = i % heights.length;
-    const drift = (v % 12) - 6;
-    return Math.max(20, Math.min(95, heights[phase] + drift));
-  });
-}
-
-const STEM_ICONS: Record<StemTag, React.ReactNode> = {
-  // Kick-drum: concentric circles read as a "drumhead" without leaning
-  // on emoji or a skeuomorphic kit illustration.
-  Drums: (
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden>
-      <circle cx="12" cy="12" r="9" opacity="0.35" />
-      <circle cx="12" cy="12" r="6" opacity="0.65" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  ),
-  Vocals: (
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="9" y="2" width="6" height="12" rx="3" />
-      <path d="M5 11v1a7 7 0 0 0 14 0v-1" />
-      <line x1="12" y1="19" x2="12" y2="23" />
-    </svg>
-  ),
-  // Oscilloscope envelope — reads as "synth signal" via shape alone.
-  Synth: (
-    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M3 12h3l2-7 4 14 2-7 2 4h5" />
-    </svg>
-  ),
-};
-
-function StemCard({ release, variantIndex }: { release: Release; variantIndex: number }) {
-  const tone = STEM_TONES[variantIndex % STEM_TONES.length];
-  const tag = STEM_TAGS[variantIndex % STEM_TAGS.length];
-  const stemKey = tag.toLowerCase();
-  const mixerHref = buildMixerHref(release.id, tag);
-  const artistName = getArtistName(release);
-  // Deterministic bars seeded by release id so rerenders don't jitter,
-  // shaped per-stem so each card has its own rhythmic fingerprint.
-  const bars = useMemo(() => {
-    const count = STEM_BAR_COUNT[tag];
-    const base = pseudoRandomBars(release.id, count);
-    return shapeStemBars(tag, base);
-  }, [release.id, tag]);
-  const peakIdx = bars.indexOf(Math.max(...bars));
-
-  return (
-    <article
-      className="ng-stem-card"
-      data-tone={tone}
-      data-stem={stemKey}
-      style={{ "--stem-tone": STEM_ACCENTS[tone] } as CSSProperties}
-    >
-      <Link
-        href={mixerHref}
-        className="ng-stem-card__art"
-        aria-label={`Open ${release.title} in the mixer`}
-      >
-        {release.artworkUrl ? (
-          <HomeReleaseArtwork
-            releaseId={release.id}
-            mimeType={release.artworkMimeType ?? ""}
-            artworkRevision={release.artworkRevision}
-            alt=""
-            className="ng-stem-card__image"
-            sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 64px), (max-width: 1279px) calc(33vw - 64px), calc((100vw - 460px) / 3)"
-          />
-        ) : (
-          <span className="ng-monogram" aria-hidden>
-            {(release.title?.[0] ?? "?").toUpperCase()}
-          </span>
-        )}
-        <span className="ng-stem-card__shade" aria-hidden />
-        <span className="ng-stem-card__motif" aria-hidden />
-        <span className="ng-stem-card__tag">
-          <span className="ng-stem-card__tag-icon" aria-hidden>{STEM_ICONS[tag]}</span>
-          {tag}
-        </span>
-        <span className="ng-stem-card__play" aria-hidden>
-          <span className="ms-icon" data-fill="1">play_arrow</span>
-        </span>
-        <span className="ng-stem-waveform" aria-hidden>
-          {bars.map((h, i) => (
-            <span
-              key={i}
-              className="ng-stem-waveform__bar"
-              data-peak={i === peakIdx ? "true" : undefined}
-              style={
-                {
-                  height: `${h}%`,
-                  "--bar-opacity": `${20 + ((h * 70) / 100)}%`,
-                  "--bar-index": i,
-                } as CSSProperties
-              }
-            />
-          ))}
-        </span>
-      </Link>
-      <div className="ng-stem-card__body">
-        <h5 className="ng-stem-card__title">{release.title}</h5>
-        <AiDisclosureBadge disclosure={release.aiDisclosure} />
-        <p className="ng-stem-card__from">From: {artistName}</p>
-        <div className="ng-stem-card__meta">
-          <span>Stem layer</span>
-          <span>Ready for mixer</span>
-        </div>
-        <div className="ng-stem-card__actions">
-          <Link
-            href={mixerHref}
-            className="ng-stem-card__action ng-stem-card__action--flex"
-            style={{ textAlign: "center" }}
-          >
-            Open Mixer
-          </Link>
-          <Link
-            href={mixerHref}
-            className="ng-stem-card__action ng-stem-card__action--icon"
-            aria-label={
-              STEM_TAG_TO_MIXER[tag]
-                ? `Solo ${tag.toLowerCase()} in the mixer`
-                : "Open in mixer"
-            }
-          >
-            <span className="ms-icon" aria-hidden style={{ fontSize: 16 }}>graphic_eq</span>
-          </Link>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function pseudoRandomBars(seed: string, count: number): number[] {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
-  }
-  const out: number[] = [];
-  for (let i = 0; i < count; i++) {
-    hash = (hash * 1103515245 + 12345) | 0;
-    const abs = Math.abs(hash);
-    out.push(10 + (abs % 90));
-  }
-  return out;
-}
-
-/* ----------- Event card (campaign) ------------------------------- */
-
-function EventCard({ campaign, variant }: { campaign: Campaign; variant: "live" | "upcoming" }) {
-  const days = daysUntil(campaign.deadline);
-  const title = campaignDisplayTitle(campaign);
-  const initial = campaignDisplayInitial(campaign);
-  const badge = variant === "live"
-    ? `Ends in ${days}d`
-    : new Date(campaign.targetDate).toLocaleDateString("en-GB", { month: "short", day: "numeric" });
-  const visualImage = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
-  const hasImage = Boolean(visualImage);
-
-  return (
-    <Link href={`/shows/${campaign.id}`} className="ng-event-card">
-      <div
-        className={`ng-event-card__art ${hasImage ? "ng-event-card__art--image" : ""}`}
-        aria-hidden
-      >
-        {hasImage ? (
-          <HomeCampaignVisual
-            src={visualImage}
-            sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(50vw - 36px), calc((100vw - 368px) / 2)"
-            className="ng-event-card__image"
-          />
-        ) : (
-          <span className="ng-monogram" style={{ fontSize: 72 }}>
-            {initial}
-          </span>
-        )}
-      </div>
-      <span
-        className={`ng-event-card__badge ${
-          variant === "live" ? "ng-event-card__badge--live" : "ng-event-card__badge--date"
-        }`}
-      >
-        {badge}
-      </span>
-      <div className="ng-event-card__overlay">
-        <div>
-          <h4 className="ng-event-card__title">
-            {title}
-          </h4>
-          <p className="ng-event-card__sub">
-            {campaign.venue ? `${campaign.venue}` : `${campaign.backerCount} backers`}
-          </p>
-        </div>
-      </div>
-    </Link>
+/** Stem Lab artwork: optimized release art, or the title monogram. */
+function renderStemLabArt(release: Release) {
+  return release.artworkUrl ? (
+    <HomeReleaseArtwork
+      releaseId={release.id}
+      mimeType={release.artworkMimeType ?? ""}
+      artworkRevision={release.artworkRevision}
+      alt=""
+      sizes="88px"
+    />
+  ) : (
+    <span className="ng-monogram" aria-hidden>
+      {(release.title?.[0] ?? "?").toUpperCase()}
+    </span>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
+import type { ReactNode } from "react";
 import { type TopArtistItem, type TrendingTrackItem } from "../../lib/api";
 import { artistProfileHref, catalogArtistHref, publicReleaseHref } from "../../lib/artistRoutes";
 import { HomeReleaseArtwork } from "./HomeReleaseArtwork";
-import { AiDisclosureBadge } from "../content/AiDisclosureBadge";
+import { HomeShelf, type ShelfTone } from "./HomeShelf";
+import { HomeTile } from "./HomeTile";
 
 /*
  * Home popularity rails (#1451 WS-4) — engagement-ranked Trending Now and
@@ -28,6 +29,38 @@ function LowDataNotice({ subject, genreLabel }: { subject: string; genreLabel?: 
   );
 }
 
+/** Header-only section used for the honest low-data state (no empty shelf). */
+function LowDataSection({
+  kicker,
+  kickerTone,
+  title,
+  meta,
+  children,
+}: {
+  kicker: string;
+  kickerTone: ShelfTone;
+  title: string;
+  meta?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="ng-section ng-shelf">
+      <header className="ng-shelf__header">
+        <div className="ng-shelf__heading">
+          <span className={`ng-kicker ng-kicker--${kickerTone}`}>{kicker}</span>
+          <h3 className="ng-section-title">{title}</h3>
+        </div>
+        {meta ? <div className="ng-shelf__aside">{meta}</div> : null}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  return <span aria-label={`Rank ${rank}`}>#{rank}</span>;
+}
+
 export function TrendingNowRail({
   items,
   genreLabel,
@@ -36,130 +69,122 @@ export function TrendingNowRail({
   genreLabel?: string;
 }) {
   if (items === null) return null;
-  return (
-    <section className="ng-section">
-      <header className="ng-section-header">
-        <div>
-          <span className="ng-kicker ng-kicker--tertiary">What listeners play</span>
-          <h3 className="ng-section-title">Trending Now</h3>
-        </div>
-        <span className="ng-section-link" style={{ cursor: "default", opacity: 0.7 }}>
-          Last 7 days
-        </span>
-      </header>
-      {items.length > 0 ? (
-        <div className="ng-grid-4">
-          {items.slice(0, 8).map((item) => (
-            <Link
-              key={item.trackId}
-              href={publicReleaseHref(item.releaseId)}
-              className="ng-play-card ng-glass"
-              style={{ borderRadius: 20, position: "relative" }}
-            >
-              <div className="ng-play-card__art">
-                {item.artworkMimeType ? (
-                  <HomeReleaseArtwork
-                    releaseId={item.releaseId}
-                    mimeType={item.artworkMimeType}
-                    artworkRevision={item.artworkRevision}
-                    alt={item.title}
-                    sizes="(max-width: 767px) calc(100vw - 64px), (max-width: 1023px) calc(50vw - 48px), (max-width: 1279px) calc(33vw - 32px), 280px"
-                  />
-                ) : item.artworkUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- URL-only legacy artwork is not trusted by the optimizer
-                  <img src={item.artworkUrl} alt={item.title} />
-                ) : (
-                  <span className="ng-monogram" aria-hidden>
-                    {(item.title?.[0] ?? "?").toUpperCase()}
-                  </span>
-                )}
-                <div className="ng-play-card__overlay">
-                  <span className="ms-icon" data-fill="1" aria-hidden>play_circle</span>
-                </div>
-                <span
-                  aria-label={`Rank ${item.rank}`}
-                  style={{
-                    position: "absolute",
-                    top: 10,
-                    left: 10,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    letterSpacing: "0.04em",
-                    padding: "2px 9px",
-                    borderRadius: 999,
-                    background: "rgba(10, 10, 18, 0.72)",
-                    border: "1px solid rgba(255, 255, 255, 0.18)",
-                    backdropFilter: "blur(6px)",
-                  }}
-                >
-                  #{item.rank}
-                </span>
-              </div>
-              <h4 className="ng-play-card__title">{item.title}</h4>
-              <AiDisclosureBadge disclosure={item.aiDisclosure} />
-              <p className="ng-play-card__artist">
-                {item.artist ?? "Unknown"} · {listenersLabel(item.uniqueListeners)}
-              </p>
-            </Link>
-          ))}
-        </div>
-      ) : (
+  const meta = <span className="ng-shelf__meta">Last 7 days</span>;
+  if (items.length === 0) {
+    return (
+      <LowDataSection kicker="What listeners play" kickerTone="tertiary" title="Trending Now" meta={meta}>
         <LowDataNotice subject="tracks" genreLabel={genreLabel} />
-      )}
-    </section>
+      </LowDataSection>
+    );
+  }
+  return (
+    <HomeShelf
+      kicker="What listeners play"
+      kickerTone="tertiary"
+      title="Trending Now"
+      meta={meta}
+      itemWidth={196}
+    >
+      {items.slice(0, 8).map((item) => (
+        <HomeTile
+          key={item.trackId}
+          href={publicReleaseHref(item.releaseId)}
+          art={
+            item.artworkMimeType ? (
+              <HomeReleaseArtwork
+                releaseId={item.releaseId}
+                mimeType={item.artworkMimeType}
+                artworkRevision={item.artworkRevision}
+                alt={item.title}
+                sizes="(max-width: 767px) 160px, 196px"
+              />
+            ) : item.artworkUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- URL-only legacy artwork is not trusted by the optimizer
+              <img src={item.artworkUrl} alt={item.title} />
+            ) : (
+              <span className="ng-monogram" aria-hidden>
+                {(item.title?.[0] ?? "?").toUpperCase()}
+              </span>
+            )
+          }
+          title={item.title}
+          subtitle={item.artist ?? "Unknown"}
+          meta={listenersLabel(item.uniqueListeners)}
+          badge={<RankBadge rank={item.rank} />}
+          aiDisclosure={item.aiDisclosure}
+        />
+      ))}
+    </HomeShelf>
   );
 }
+
+/** Cover art shown in place of a missing artist portrait. */
+export type ArtistCoverFallback = {
+  releaseId: string;
+  mimeType: string;
+  artworkRevision?: number | null;
+};
 
 export function TopArtistsRail({
   items,
   genreLabel,
+  coverFallbacks,
 }: {
   items: TopArtistItem[] | null;
   genreLabel?: string;
+  /** Newest release cover per artist id, used when `imageUrl` is missing. */
+  coverFallbacks?: Record<string, ArtistCoverFallback>;
 }) {
   if (items === null) return null;
-  return (
-    <section className="ng-section">
-      <header className="ng-section-header">
-        <div>
-          <span className="ng-kicker ng-kicker--violet">Most listened, last 7 days</span>
-          <h3 className="ng-section-title">Top Artists</h3>
-        </div>
-      </header>
-      {items.length > 0 ? (
-        <div className="ng-artist-pills">
-          {items.map((a) => (
-            <Link
-              key={a.artistId ?? a.name}
-              href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
-              className="ng-artist-pill"
-              title={`#${a.rank} · ${listenersLabel(a.uniqueListeners)}`}
-            >
-              <span className="ng-artist-pill__avatar" aria-hidden>
-                <span className="ng-artist-pill__initial">
-                  {a.name[0]?.toUpperCase() ?? "?"}
-                </span>
-                {a.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={a.imageUrl}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.style.display = "none";
-                    }}
-                  />
-                ) : null}
-              </span>
-              <span>
-                <span style={{ opacity: 0.6, fontWeight: 800, marginRight: 6 }}>#{a.rank}</span>
-                {a.name}
-              </span>
-            </Link>
-          ))}
-        </div>
-      ) : (
+  if (items.length === 0) {
+    return (
+      <LowDataSection kicker="Most listened, last 7 days" kickerTone="violet" title="Top Artists">
         <LowDataNotice subject="artists" genreLabel={genreLabel} />
-      )}
-    </section>
+      </LowDataSection>
+    );
+  }
+  return (
+    <HomeShelf
+      kicker="Most listened, last 7 days"
+      kickerTone="violet"
+      title="Top Artists"
+      itemWidth={148}
+    >
+      {items.map((a) => (
+        <HomeTile
+          key={a.artistId ?? a.name}
+          shape="round"
+          showAiDisclosure={false}
+          href={a.artistId ? artistProfileHref(a.artistId) : catalogArtistHref(a.name)}
+          ariaLabel={`Open ${a.name}`}
+          art={
+            <span className="ng-tile__portrait" aria-hidden>
+              <span className="ng-tile__initial">{a.name[0]?.toUpperCase() ?? "?"}</span>
+              {a.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={a.imageUrl}
+                  alt=""
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : a.artistId && coverFallbacks?.[a.artistId] ? (
+                <HomeReleaseArtwork
+                  releaseId={coverFallbacks[a.artistId].releaseId}
+                  mimeType={coverFallbacks[a.artistId].mimeType}
+                  artworkRevision={coverFallbacks[a.artistId].artworkRevision}
+                  alt=""
+                  sizes="132px"
+                />
+              ) : null}
+            </span>
+          }
+          title={a.name}
+          meta={listenersLabel(a.uniqueListeners)}
+          badge={<RankBadge rank={a.rank} />}
+        />
+      ))}
+    </HomeShelf>
   );
 }

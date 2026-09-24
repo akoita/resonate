@@ -112,14 +112,14 @@ describe("HomeFeedRails", () => {
     const html = renderToStaticMarkup(<HomeFeedRails feed={feed([])} />);
     expect(html).toContain("Your feed is warming up");
     expect(html).toContain("Nothing to rank honestly yet");
-    expect(html).not.toContain("ng-recommendation-card");
+    expect(html).not.toContain("ng-tile");
   });
 
   it("renders a working session action per item when a handler is provided", () => {
     const html = renderToStaticMarkup(
       <HomeFeedRails feed={feed([rail()])} onStartSession={() => undefined} />,
     );
-    expect(html).toContain("Start session");
+    expect(html).toContain('aria-label="Start session from Groove 1"');
     const withoutHandler = renderToStaticMarkup(<HomeFeedRails feed={feed([rail()])} />);
     expect(withoutHandler).not.toContain("Start session"); // no dead buttons
   });

@@ -31,10 +31,12 @@ Available in this branch:
   `GET /recommendations/:userId` (since Sprint 8 backed by the unified
   `DiscoveryRankingService` shared with the AI DJ — see
   [agent_taste_intelligence.md](agent_taste_intelligence.md) §Unified Ranking Core).
-- Home exposes a vibe session action for active mood or genre chips. It queues
-  matching tracks, updates the listener AI DJ config, starts an agent session,
-  and records an `agent.track_selected` signal with `source:
-  "home_vibe_session"` metadata.
+- The Home Tuner groups the genre and mood chips (with a match count and an
+  energy meter) and exposes the vibe session action for the active mood or
+  genre chip. It queues matching tracks, updates the listener AI DJ config,
+  starts an agent session, and records an `agent.track_selected` signal with
+  `source: "home_vibe_session"` metadata. With "All Trending" selected, the
+  same slot links to `/agent` instead.
 - Artist upload exposes mood tags and forwards them through ingestion metadata.
 - Catalog releases persist `moods` as normalized string arrays and include them
   in published, owner, release-detail, artist, and MCP catalog search results.
@@ -51,9 +53,10 @@ Known follow-up work:
 ## End-User Flow
 
 1. Open Home (`/`).
-2. Select a mood chip such as Focus, Hype, Chill, or Late Night.
-3. Review the personalized recommendation row and matching catalog rows.
-4. Start the vibe session to queue tracks and continue in `/agent`.
+2. In the Tuner, select a mood chip such as Focus, Hype, Chill, or Late Night
+   (or a genre chip).
+3. Review the personalized shelves, Trending Now, and the retuned Stem Lab.
+4. Press **Start {mood} session** to queue tracks and continue in `/agent`.
 
 ## Artist Flow
 

@@ -235,7 +235,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     category: "discover",
     audiences: ["listener"],
     status: "partial",
-    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
+    keywords: ["discover", "home", "browse", "catalog", "trending", "top artists", "charts", "mood", "vibe", "search", "recommended", "feed", "personalized", "explore", "exploration", "genre", "playlists", "stems", "recently added", "cover art", "ai-assisted", "ai-generated", "ai disclosure", "badge", "tuner", "energy", "stem lab", "mixer", "solo", "live events", "shows", "studio"],
     sections: [
       {
         id: "home",
@@ -243,7 +243,11 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by trending and mood chips, then your personalized feed — several themed rows like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each row says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
+            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by the Tuner — genre and mood chips with a small energy meter — then your personalized feed as a set of shelves like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each shelf says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
+          },
+          {
+            kind: "paragraph",
+            text: "Every section below the top banner is a shelf: swipe it sideways on a phone, or use the arrow buttons that appear on a computer when there's more to see. On a personalized pick, the round AI DJ button starts a session seeded by that track (on a phone it's always shown; on a computer it appears when you point at the cover).",
           },
           {
             kind: "paragraph",
@@ -286,7 +290,25 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Tap a mood chip (Focus, Hype, Chill, Late Night, and more) to reshape your recommendations and start a vibe session that keeps a consistent feel as you listen. Genre chips also re-rank Trending Now and Top Artists for that genre.",
+            text: "Use the Tuner near the top of Home: tap a genre chip (Electronic, Hip-Hop, Jazz, and more) or a mood chip (Focus, Hype, Chill, Late Night, and more). The Tuner tells you how many catalog releases match, its energy meter shows the pace of that pick, and the Start session button begins a vibe session that queues matching tracks and hands off to your AI DJ. With \"All Trending\" selected, the same spot opens the AI DJ instead. Genre chips also re-rank Trending Now and Top Artists for that genre, and the shelves below retune to your pick.",
+          },
+        ],
+      },
+      {
+        id: "home-sections",
+        heading: "Stem Lab, live events & your studio",
+        blocks: [
+          {
+            kind: "paragraph",
+            text: "Stem Lab shows real releases whose tracks have been split into separate layers. Each release has a small channel strip — Vocals, Drums, Bass, and so on, only the layers that actually exist. Select a channel to open the release in the mixer with just that layer playing, or choose Open mixer to hear everything and balance it yourself. The mixer needs a connected wallet; signed out, the link opens the release page.",
+          },
+          {
+            kind: "paragraph",
+            text: "Upcoming Live Events lists fan-funded shows as ticket-style cards: the show date, the venue or city, a funding bar with the percentage raised, the number of backers, and the days left to pledge. Selecting a card opens the campaign page, where you can review the terms before backing it. Pledges are held in escrow and refunded if the goal isn't met.",
+          },
+          {
+            kind: "paragraph",
+            text: "Further down, Recently Added lets you browse and search the newest catalog releases, artists, stems, and playlists, and Your studio shows the artists and releases you manage once your wallet is connected.",
           },
         ],
       },

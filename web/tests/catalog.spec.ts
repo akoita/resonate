@@ -5,11 +5,12 @@
  * No mocks. The database is seeded by global-setup.ts before the suite starts.
  * Seeded test data includes a published release with track and stems.
  *
- * The home page was rebuilt on the Stitch "Next-Gen Music Platform" design in
- * #646. Sections are now: Hero, Filter Chips, Resume Playing, Trending Stems,
- * Catalog Browser, Upload Operations, Upcoming Live Events, Agentic Mixes, Top
- * Artists. Old "Latest Masterings / Good Evening / Featured Stems" rows no
- * longer exist — the assertions below map onto the new rows instead.
+ * The home page uses the "Home v3" shelf system. Sections are: Hero, Tuner
+ * (genre/mood filter + vibe session), personalized feed shelves, Trending Now,
+ * Top Artists, Stem Lab, Upcoming Live Events, Drops, Recently Added (catalog
+ * browser), AI DJ presets, and Your studio (Managed Catalog + Your Releases).
+ * The old "Resume Playing" row and cosmetic "Trending Stems" cards no longer
+ * exist — the assertions below map onto the current sections instead.
  *
  * @requires Postgres running with seeded data
  * @requires Backend on :3000, Frontend on :3001 (auto-started by playwright.config)
@@ -25,22 +26,23 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.locator(".logo-text")).toContainText("Resonate");
     });
 
-    test("HOME-03: Resume Playing section exists", async ({ page }) => {
+    test("HOME-03: Tuner exposes the genre and mood filter group", async ({ page }) => {
         await page.goto("/");
         // `.first()` guards against StrictMode-in-dev / hydration-window
-        // double-render: Playwright occasionally sees two h3s in the DOM
-        // before the pre-hydrate copy is replaced. The visible semantic
-        // heading is what we care about.
-        await expect(
-            page.getByRole("heading", { name: "Resume Playing" }).first(),
-        ).toBeVisible();
+        // double-render before the pre-hydrate copy is replaced.
+        const filters = page.getByRole("group", { name: "Filter trending" }).first();
+        await expect(filters).toBeVisible();
+        await expect(filters.getByRole("button", { name: "All Trending" })).toHaveAttribute("aria-pressed", "true");
+        await expect(page.getByRole("link", { name: "Open AI DJ" }).first()).toHaveAttribute("href", "/agent");
     });
 
     test("HOME-04: Hero actions are visible", async ({ page }) => {
         await page.goto("/");
         // Campaign hero exposes "Back This Show" (campaign detail) + "All Campaigns" (list).
-        await expect(page.getByRole("link", { name: /Back This Show/i })).toBeVisible({ timeout: 15000 });
-        await expect(page.getByRole("link", { name: /All Campaigns/i })).toBeVisible();
+        // Scoped to the hero: the live-event ticket cards also read "Back this show".
+        const hero = page.locator(".ng-hero").first();
+        await expect(hero.getByRole("link", { name: /Back This Show/i })).toBeVisible({ timeout: 15000 });
+        await expect(hero.getByRole("link", { name: /All Campaigns/i })).toBeVisible();
     });
 
     test("HOME-05: Upcoming Live Events section exists", async ({ page }) => {
@@ -56,22 +58,23 @@ test.describe("Catalog & Home Page", () => {
         await expect(page).toHaveURL(/\/artist\/upload/);
     });
 
-    test("HOME-07: Trending Stems section exists", async ({ page }) => {
+    test("HOME-07: Stem Lab section exists", async ({ page }) => {
         await page.goto("/");
         await expect(
-            page.getByRole("heading", { name: "Trending Stems" }).first(),
-        ).toBeVisible();
+            page.getByRole("heading", { name: "Stem Lab" }).first(),
+        ).toBeVisible({ timeout: 15000 });
     });
 
-    test("HOME-08: Stem cards display a type tag", async ({ page }) => {
+    test("HOME-08: Stem Lab channels solo real stems in the mixer", async ({ page }) => {
         await page.goto("/");
-        const firstStemCard = page.locator(".ng-stem-card").first();
-        await expect(firstStemCard).toBeVisible({ timeout: 15000 });
-        // Stem cards rotate through Drums / Vocals / Synth tags; at least
-        // one should be present on the page.
-        await expect(
-            page.locator(".ng-stem-card__tag").filter({ hasText: /Drums|Vocals|Synth/i }).first(),
-        ).toBeVisible();
+        // Seeded releases carry real vocals + drums stems; each channel links
+        // to the release mixer with that stem soloed.
+        const channel = page
+            .locator(".ng-stemlab-channel")
+            .filter({ hasText: /Vocals|Drums|Bass|Piano|Guitar|Other/ })
+            .first();
+        await expect(channel).toBeVisible({ timeout: 15000 });
+        await expect(channel).toHaveAttribute("href", /\/release\/[^?]+\?mixer=true&stem=(vocals|drums|bass|piano|guitar|other)$/);
     });
 
     test("HOME-09: Global catalog snapshot exposes releases, artists, stems, and recent catalog navigation", async ({ page }) => {
@@ -81,7 +84,10 @@ test.describe("Catalog & Home Page", () => {
         await expect(page.getByRole("tab", { name: "artists" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "stems" })).toBeVisible();
         await expect(page.getByLabel("Search catalog snapshot")).toBeVisible();
-        await expect(page.getByRole("link", { name: /Browse catalog/i })).toHaveAttribute("href", "/catalog");
+        // Scoped to the snapshot footer: the Stem Lab shelf also links to /catalog.
+        await expect(
+            page.locator(".ng-catalog-footer").getByRole("link", { name: /Browse catalog/i }),
+        ).toHaveAttribute("href", "/catalog");
     });
 
     test("CATALOG-01: Recent catalog page exposes the larger recent browse window", async ({ page }) => {

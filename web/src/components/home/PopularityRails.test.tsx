@@ -63,12 +63,16 @@ describe("TrendingNowRail", () => {
     expect(html).toContain("4 listeners");
     expect(html).toContain("3 listeners");
     expect(html).toContain('href="/release/rel_1"');
+    // Rank chips keep an accessible label on the shelf tiles.
+    expect(html).toContain('aria-label="Rank 1"');
+    expect(html).toContain('aria-label="Rank 2"');
   });
 
   it("shows the honest low-data state instead of a recency fallback", () => {
     const html = renderToStaticMarkup(<TrendingNowRail items={[]} genreLabel="Jazz" />);
     expect(html).toContain("Not enough listening yet in Jazz");
-    expect(html).not.toContain("ng-play-card__title");
+    expect(html).toContain("Trending Now");
+    expect(html).not.toContain("ng-tile");
   });
 
   it("uses the canonical optimized source instead of a supplied artwork URL", () => {
@@ -157,7 +161,7 @@ describe("TopArtistsRail", () => {
         items={[artistItem({ name: "Felicia Farerre", imageUrl: "https://api.example.test/portrait" })]}
       />,
     );
-    expect(html).toContain('class="ng-artist-pill__initial">F</span>');
+    expect(html).toContain('class="ng-tile__initial">F</span>');
     expect(html).toContain('src="https://api.example.test/portrait"');
   });
 
@@ -183,6 +187,6 @@ describe("TopArtistsRail", () => {
   it("shows the honest low-data state for a quiet genre", () => {
     const html = renderToStaticMarkup(<TopArtistsRail items={[]} genreLabel="Jazz" />);
     expect(html).toContain("Not enough listening yet in Jazz");
-    expect(html).not.toContain("ng-artist-pill\"");
+    expect(html).not.toContain("ng-tile__portrait");
   });
 });
