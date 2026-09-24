@@ -105,7 +105,7 @@ before it can be shared (the Share toggle is disabled until then).
 | Public controllers | `PublicPlaylistController` + `OptionalJwtAuthGuard`; `PublicPlaylistDiscoveryController` (`GET /catalog/playlists`). Both live in `PlaylistModule` — the discovery controller is mounted under the `catalog/playlists` path but kept in `PlaylistModule` so `CatalogModule` does not import `PlaylistModule` (which would close a NestJS module cycle via `SharedModule`). |
 | Data model | `Playlist.visibility`, `SavedPlaylist` (`backend/prisma/schema.prisma`) |
 | Domain events | `playlist.visibility_changed`, `playlist.saved_to_library`, `playlist.removed_from_library` |
-| Product analytics | `playlist.visibility_changed`, `playlist.shared`, `playlist.saved`, `playlist.removed_from_library`; `search.result_clicked` (`resultType: "playlist"`) from home catalog |
+| Product analytics | `playlist.visibility_changed`, `playlist.shared`, `playlist.saved`, `playlist.removed_from_library`; `search.result_clicked` (`resultType: "playlist"`) from home catalog. The backend accepts `playlist.shared` (strict `{ playlistId, channel: "copy_link" }` payload); `playlist.visibility_changed`, `playlist.saved`, and `playlist.removed_from_library` are emitted by the web client but not yet on the backend product-event allowlist, so they are rejected with 400 |
 | Tests | `backend/src/tests/playlist-public.integration.spec.ts`, `backend/src/tests/playlist-discovery.integration.spec.ts`, `web/src/components/catalog/CatalogPlaylistCard.test.tsx`, `web/src/lib/publicPlaylists.test.ts` |
 
 ## Remaining / deferred

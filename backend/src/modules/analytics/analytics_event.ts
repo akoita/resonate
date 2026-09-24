@@ -392,6 +392,16 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["trackId", "releaseId", "artistId", "channel", "source"],
   },
   {
+    // A listener copied a public playlist link from the owner share control or
+    // the public playlist page. No free text: channel is an enum (copy_link)
+    // and the playlist id is the only identifier — never the title or URL.
+    eventName: "playlist.shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["playlistId", "channel", "source"],
+  },
+  {
     eventName: "recommendation.generated",
     eventVersion: 1,
     producer: "recommendations-service",
