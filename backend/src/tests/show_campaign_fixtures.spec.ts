@@ -23,10 +23,10 @@ describe("sample show campaign fixtures", () => {
       .filter((file) => /\.(?:jpe?g|png|webp)$/i.test(file))
       .sort();
 
-  it("defines four distinct, sourced campaigns", () => {
-    expect(SHOW_CAMPAIGN_FIXTURES).toHaveLength(4);
-    expect(new Set(SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.id)).size).toBe(4);
-    expect(new Set(SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.slug)).size).toBe(4);
+  it("defines five distinct, sourced campaigns", () => {
+    expect(SHOW_CAMPAIGN_FIXTURES).toHaveLength(5);
+    expect(new Set(SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.id)).size).toBe(5);
+    expect(new Set(SHOW_CAMPAIGN_FIXTURES.map((fixture) => fixture.campaign.slug)).size).toBe(5);
     expect(SHOW_CAMPAIGN_FIXTURES.every((fixture) => fixture.sources.length >= 2)).toBe(true);
   });
 

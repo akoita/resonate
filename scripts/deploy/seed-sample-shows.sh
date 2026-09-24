@@ -10,7 +10,7 @@
 # new backend *code* does not re-upload them. Run this AFTER `deploy-backend`
 # whenever the Show fixtures (artist photos, bios, hero/gallery assets) change.
 #
-# The seed is idempotent: it upserts the four sample artists/campaigns and
+# The seed is idempotent: it upserts the five sample artists/campaigns and
 # re-uploads + replaces only the fixture-owned tiers and visuals.
 #
 # Nothing here is hardcoded — every environment-specific value comes from env.

@@ -324,6 +324,96 @@ export const SHOW_CAMPAIGN_FIXTURES: ShowCampaignFixture[] = [
       { label: "Wikipedia overview", url: "https://en.wikipedia.org/wiki/Aya_Nakamura" },
     ],
   },
+  {
+    artist: {
+      id: "sample-artist-tiken-jah-fakoly",
+      displayName: "Tiken Jah Fakoly",
+      summary: "Born Doumbia Moussa Fakoly in Odienné, Côte d'Ivoire, in 1968, Tiken Jah Fakoly formed his first reggae group, Les Djelys, in 1987 and became one of Africa's most outspoken reggae voices, writing to \"wake up consciences\" with pan-African calls for political and economic renewal. Albums including Mangercratie, Cours d'histoire and Françafrique — winner of the 2003 Victoires de la Musique reggae/world album award — carried that message to Europe. After death threats over his lyrics he settled in Bamako, Mali, in 2003, and went on to release L'Africain, African Revolution, Dernier appel and Braquage de pouvoir, receive the inaugural Freemuse Award in 2008, and fund schools through his 'Un concert, une école' campaign.",
+      socialLinks: {
+        instagram: "https://www.instagram.com/tikenjahfakolyofficiel/",
+        youtube: "https://www.youtube.com/channel/UCsoDvAurMPGyvSb84PSkc_Q",
+      },
+      portraitKey: "portrait",
+    },
+    campaign: {
+      id: "sample-show-tiken-jah-fakoly-brooklyn",
+      slug: "tiken-jah-fakoly-brooklyn",
+      title: "Tiken Jah Fakoly in Brooklyn",
+      city: "New York",
+      country: "US",
+      venueTarget: "Kings Theatre",
+      deadlineDays: 24,
+      targetDays: 150,
+      bookingDeadlineDays: 56,
+      goalAmountUnits: "110000000000",
+      raisedAmountUnits: "58300000000",
+      minimumBackers: 600,
+      confirmedPledgeCount: 262,
+      currency: "USD",
+      description: "Brooklyn already answers this music: West African diaspora, roots-reggae crews and a crowd ready to sing every refrain back. This fan-created concept imagines Tiken Jah Fakoly's conscious, pan-African reggae filling the gilded Kings Theatre in Flatbush—turning New York demand into one visible, refundable signal.",
+      heroAsset: "tiken-jah-fakoly-brooklyn-hero.webp",
+      heroCredit: "VerwimpBruno, CC0 (Wikimedia Commons) — cropped/composited from a live photo at Ancienne Belgique, Brussels, 2023",
+    },
+    gallery: [
+      {
+        key: "portrait",
+        file: "tiken-jah-fakoly-portrait.webp",
+        caption: "Tiken Jah Fakoly at the Eurockéennes de Belfort (2011).",
+        credit: "Photograph by Rama, CC BY-SA 2.0 FR (Wikimedia Commons)",
+      },
+      {
+        key: "live",
+        file: "tiken-jah-fakoly-live.webp",
+        caption: "Tiken Jah Fakoly performing live (Ancienne Belgique, Brussels, 2023).",
+        credit: "Peter Verwimp, CC0 (Wikimedia Commons)",
+      },
+      {
+        key: "stage",
+        file: "tiken-jah-fakoly-stage.webp",
+        caption: "Tiken Jah Fakoly on stage (Eurockéennes de Belfort, 2011).",
+        credit: "Photograph by Rama, CC BY-SA 2.0 FR (Wikimedia Commons)",
+      },
+      {
+        key: "venue",
+        file: "tiken-jah-fakoly-brooklyn-venue.webp",
+        caption: "Kings Theatre, Brooklyn — the proposed setting for this fictional campaign.",
+        credit: "Dewalt718, CC BY-SA 4.0 (Wikimedia Commons)",
+      },
+    ],
+    // The concept's four price points ($15 / $45 / $95 / $250) do not fit the
+    // three-tier standard set, so this sample defines its own ladder in the same
+    // voice.
+    tiers: [
+      {
+        id: "sample-tiken-jah-fakoly-brooklyn-fan-signal",
+        title: "Fan signal",
+        description: "Refundable support signal and campaign receipt.",
+        amountUnits: "15000000",
+      },
+      {
+        id: "sample-tiken-jah-fakoly-brooklyn-ticket-intent",
+        title: "Ticket intent",
+        description: "Priority allocation if the concept advances to a confirmed show.",
+        amountUnits: "45000000",
+      },
+      {
+        id: "sample-tiken-jah-fakoly-brooklyn-orchestra-intent",
+        title: "Orchestra intent",
+        description: "Priority orchestra-level allocation if the concept advances to a confirmed show.",
+        amountUnits: "95000000",
+      },
+      {
+        id: "sample-tiken-jah-fakoly-brooklyn-patron-circle",
+        title: "Patron circle",
+        description: "Premium campaign receipt and patron allocation.",
+        amountUnits: "250000000",
+      },
+    ],
+    sources: [
+      { label: "MusicBrainz artist record", url: "https://musicbrainz.org/artist/edef3cfa-4e5e-4d64-8bd8-20f9dc1d8cad" },
+      { label: "Wikipedia overview", url: "https://en.wikipedia.org/wiki/Tiken_Jah_Fakoly" },
+    ],
+  },
 ];
 
 /**

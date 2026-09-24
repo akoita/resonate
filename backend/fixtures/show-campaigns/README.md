@@ -1,7 +1,7 @@
 # Sample Show Campaign Fixtures
 
 This directory contains the media used by `npm run fixtures:shows`. The command
-creates four stable, idempotent demo campaigns and refreshes their dates so they
+creates five stable, idempotent demo campaigns and refreshes their dates so they
 remain useful in local demos.
 
 These are **fictional fan-created campaign concepts**. They do not represent
@@ -36,8 +36,9 @@ copy are stored separately.
 Each campaign gallery mixes three kinds of image:
 
 - **Project-owned generated artwork** — the cinematic hero of each campaign.
-- **Openly licensed real photos** (Creative Commons from Wikimedia Commons) —
-  the venue and city images.
+- **Openly licensed real photos** (Creative Commons or CC0 from Wikimedia
+  Commons) — the venue and city images, plus every Tiken Jah Fakoly image
+  (artist photos and the hero composed from one of them).
 - **Real artist photos used for demo only** — each artist's portrait/live shot
   is a recent press, official, or editorial-stock photo of the artist. These
   are **© the artist/label/photographer/agency, all rights reserved**, included
@@ -45,7 +46,9 @@ Each campaign gallery mixes three kinds of image:
   (Aya Nakamura, Leona Lewis) are **Getty Images editorial stock** — using
   those beyond a local demo requires a Getty license. Replace every artist
   photo with approved/licensed assets (or remove it) before any public or
-  commercial use. Each is a one-file swap; the manifest references them by
+  commercial use. The Tiken Jah Fakoly photos are the exception: they are
+  openly licensed (CC0 / CC BY-SA), so they may be reused with the attribution
+  and share-alike terms recorded below. Each is a one-file swap; the manifest references them by
   filename.
 
 ## Asset provenance
@@ -72,7 +75,14 @@ Each campaign gallery mixes three kinds of image:
 | `aya-nakamura-live.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-stage.webp` | Getty Images | All rights reserved — licensed stock, demo use only | Editorial concert photo, OVO Arena Wembley 2023 ([Getty Images](https://www.gettyimages.fr/)) |
 | `aya-nakamura-montreal-city.webp` | Mathieu Landretti | CC BY-SA 4.0 | [Montréal skyline at night](https://commons.wikimedia.org/wiki/File:Montreal_Skyline_at_Night.jpg) |
+| `tiken-jah-fakoly-brooklyn-hero.webp` | VerwimpBruno | CC0 1.0 (public domain dedication) | Wide hero cropped/composited (blurred-fill background + feathered photo) from [Tiken Jah Fakoly 2023-03-12](https://commons.wikimedia.org/wiki/File:Tiken_Jah_Fakoly_2023-03-12.jpg), Ancienne Belgique, Brussels |
+| `tiken-jah-fakoly-portrait.webp` | Rama | CC BY-SA 2.0 FR | [Tiken Jah Fakoly at the Eurockéennes de Belfort 2011](https://commons.wikimedia.org/wiki/File:Tiken_Jah_Fakoly-IMG_5342.jpg) (resized/cropped) |
+| `tiken-jah-fakoly-live.webp` | Peter Verwimp | CC0 1.0 (public domain dedication) | [Tiken Jah Fakoly live in Ancienne Belgique, 2023](https://commons.wikimedia.org/wiki/File:Tiken_Jah_Fakoly_live_in_Ancienne_Belgique,_Brussels,_Belgium,_2023.jpg) (resized) |
+| `tiken-jah-fakoly-stage.webp` | Rama | CC BY-SA 2.0 FR | [Tiken Jah Fakoly at the Eurockéennes de Belfort 2011](https://commons.wikimedia.org/wiki/File:Tiken_Jah_Fakoly-IMG_5370.jpg) (resized/cropped) |
+| `tiken-jah-fakoly-brooklyn-venue.webp` | Dewalt718 | CC BY-SA 4.0 | [Kings Theatre (Brooklyn)](https://commons.wikimedia.org/wiki/File:Kings_Theatre_(Brooklyn).jpg) (resized) |
 
 CC venue/city assets retrieved from Wikimedia Commons; real artist photos
-retrieved from public press/official sources on 2026-06-24. Preserve this table
+retrieved from public press/official sources on 2026-06-24. The Tiken Jah
+Fakoly images (all from Wikimedia Commons, author and license confirmed on each
+file page) were retrieved on 2026-09-24. Preserve this table
 whenever an asset is replaced, and keep the rights status accurate.

@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
  * existing responsive.spec.ts already covers no-horizontal-overflow
  * across all three viewport projects.
  *
- * Campaigns come from the real backend: global-setup loads the four sample
+ * Campaigns come from the real backend: global-setup loads the five sample
  * show fixtures (backend `fixtures:shows`) so these specs exercise the API
  * path — the web app no longer substitutes sample data for an empty list.
  */
@@ -71,12 +71,12 @@ test("sidebar exposes a Shows nav entry with a NEW pill", async ({ page }) => {
   await expect(showsLink).toHaveAttribute("href", "/shows");
 });
 
-test("/shows explorer renders all four campaign cards", async ({ page }) => {
+test("/shows explorer renders all five campaign cards", async ({ page }) => {
   await page.goto("/shows");
   await page.waitForLoadState("domcontentloaded");
 
   await expect(page.getByRole("heading", { name: /Fans bring the show/i })).toBeVisible();
-  await expect(page.locator(".campaign-card")).toHaveCount(4);
+  await expect(page.locator(".campaign-card")).toHaveCount(5);
 });
 
 test("/shows/sennarin-paris detail renders pledge-module hero + how-it-works + escrow notice", async ({ page }) => {
