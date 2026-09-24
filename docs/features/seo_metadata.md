@@ -23,6 +23,13 @@ profile, and curator routes follow this rule. A failed public lookup falls back
 to generic metadata and must not expose an exception, authenticated response,
 wallet ownership, support history, moderation state, or hidden profile data.
 
+Release pages are the landing page for listening shares from the player, so
+their description is persuasive but bounded to honest claims: it is built by
+`releaseShareDescription` in `web/src/lib/listeningShare.ts`, states that the
+artist keeps at least 85% of every sale, and mentions remixing the stems only
+when the release has mixer stems. See
+[Player Action Layer](player_action_layer.md#listening-share-broadcast-signal).
+
 `NEXT_PUBLIC_SITE_URL` defines the deployed canonical origin. Local development
 falls back to `http://localhost:3001`; deployments should always set the real
 HTTPS origin.

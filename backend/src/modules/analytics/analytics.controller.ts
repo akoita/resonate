@@ -71,6 +71,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "playlist.played",
   "library.saved",
   "library.removed",
+  "player.track_shared",
   "search.submitted",
   "search.result_clicked",
   "marketplace.listing_viewed",
@@ -456,7 +457,9 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     geo: normalizeAnalyticsGeoDimension(body.geo),
     payload: playerAction
       ? normalizePlayerActionPayload(eventName, body.payload)
-      : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
+      : eventName === "player.track_shared"
+        ? normalizeTrackSharePayload(sanitizeProductPayload(body.payload))
+        : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -557,6 +560,19 @@ function normalizePlayerActionPayload(eventName: string, value: unknown): Record
     throw new BadRequestException("Invalid player action impression");
   }
   return { actionKeys, actionStatuses, source: "player" };
+}
+
+const TRACK_SHARE_CHANNELS = new Set(["x", "facebook", "reddit", "native", "copy"]);
+
+/** `player.track_shared` carries identifiers and an enum channel only — no free text. */
+function normalizeTrackSharePayload(payload: Record<string, unknown>) {
+  if (typeof payload.channel !== "string" || !TRACK_SHARE_CHANNELS.has(payload.channel)) {
+    throw new BadRequestException("Invalid share channel");
+  }
+  const allowed = new Set(["channel", "trackId", "releaseId"]);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => allowed.has(key) && typeof value === "string"),
+  );
 }
 
 function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {

@@ -388,7 +388,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "Play any track and use the Now Playing console to manage a fair persistent queue, mute or go immersive, save tracks, inspect stems, and take available actions.",
     category: "discover",
     audiences: ["listener"],
-    keywords: ["A–B", "passage", "finite repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge"],
+    keywords: ["A–B", "passage", "finite repeats", "save queue", "play", "player", "now playing", "queue", "shuffle", "mute", "fullscreen", "immersive", "controls", "keyboard", "screen reader", "accessibility", "stem", "listen", "playback", "saved", "live sync", "shows", "campaign", "support a show", "ai-assisted", "ai-generated", "ai disclosure", "badge", "share", "broadcast signal"],
     sections: [
       {
         id: "playing",
@@ -455,6 +455,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Check the AI-contribution badge without leaving the player.",
               "Open licensing actions when a stem is available to collect or license in the Marketplace.",
               "Support a show when the playing artist has a live campaign; the chip opens the campaign page so you can review the details before pledging.",
+              "Share what you are playing from Broadcast Signal. The link opens the track's release page, with its cover in the preview. Only tracks published on Resonate can be shared; files from your device cannot.",
             ],
           },
           {

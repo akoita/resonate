@@ -506,6 +506,22 @@ describe("AnalyticsController (HTTP)", () => {
       .send({ eventName: `player.segment_loop_${action}`, payload: { startMs: 1000, endMs: 5000, segmentDurationMs: 4000, title: 'private title' } }).expect(201);
     expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({ payload: { startMs: 1000, endMs: 5000, segmentDurationMs: 4000 } }));
   });
+  it('accepts track shares with an enum channel and drops free-form fields', async () => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'player.track_shared', source: 'player', subjectType: 'track', subjectId: 'track-1',
+        payload: { channel: 'x', trackId: 'track-1', releaseId: 'release-1', text: 'private message', artistId: 'spoofed' } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'player.track_shared', source: 'player',
+      payload: { channel: 'x', trackId: 'track-1', releaseId: 'release-1' },
+    }));
+  });
+  it.each([{}, { channel: 'email' }, { channel: 7 }])('rejects track shares with an invalid channel (%j)', async payload => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'player.track_shared', subjectType: 'track', subjectId: 'track-1', payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
   it.each(['set', 'updated', 'cleared'])('accepts finite repeat %s actions', async action => {
     await request(app.getHttpServer()).post('/analytics/product/event')
       .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
