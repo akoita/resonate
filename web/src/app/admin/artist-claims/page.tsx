@@ -13,6 +13,7 @@ import {
 import ArtistClaimsQueueView, { reviewerIsClaimant, type ArtistClaimsQueueState } from "./QueueView";
 
 type ScopedValue<T> = { scope: symbol | null; value: T };
+type ReviewInFlight = { claimId: string; decision: ArtistClaimDecision };
 
 export default function ArtistClaimsAdminPage() {
   const { token, role, userId } = useAuth();
@@ -27,8 +28,9 @@ export default function ArtistClaimsAdminPage() {
   });
   const [reviewNotesSnapshot, setReviewNotesSnapshot] = useState<ScopedValue<Record<string, string>>>({ scope: null, value: {} });
   const [reviewErrorsSnapshot, setReviewErrorsSnapshot] = useState<ScopedValue<Record<string, string>>>({ scope: null, value: {} });
-  const [reviewingSnapshot, setReviewingSnapshot] = useState<ScopedValue<string | null>>({ scope: null, value: null });
+  const [reviewingSnapshot, setReviewingSnapshot] = useState<ScopedValue<ReviewInFlight | null>>({ scope: null, value: null });
   const [approvalSnapshot, setApprovalSnapshot] = useState<ScopedValue<PendingArtistClaim | null>>({ scope: null, value: null });
+  const [rejectionSnapshot, setRejectionSnapshot] = useState<ScopedValue<PendingArtistClaim | null>>({ scope: null, value: null });
   const [successSnapshot, setSuccessSnapshot] = useState<ScopedValue<string | null>>({ scope: null, value: null });
   const loadSequenceRef = useRef(0);
   const currentScopeRef = useRef(sessionScope);
@@ -45,8 +47,11 @@ export default function ArtistClaimsAdminPage() {
       : { status: "loading" };
   const reviewNotes = sessionScope && reviewNotesSnapshot.scope === sessionScope ? reviewNotesSnapshot.value : {};
   const reviewErrors = sessionScope && reviewErrorsSnapshot.scope === sessionScope ? reviewErrorsSnapshot.value : {};
-  const reviewingClaimId = sessionScope && reviewingSnapshot.scope === sessionScope ? reviewingSnapshot.value : null;
+  const reviewInFlight = sessionScope && reviewingSnapshot.scope === sessionScope ? reviewingSnapshot.value : null;
+  const reviewingClaimId = reviewInFlight?.claimId ?? null;
+  const reviewingDecision = reviewInFlight?.decision ?? null;
   const approvalClaim = sessionScope && approvalSnapshot.scope === sessionScope ? approvalSnapshot.value : null;
+  const rejectionClaim = sessionScope && rejectionSnapshot.scope === sessionScope ? rejectionSnapshot.value : null;
   const successMessage = sessionScope && successSnapshot.scope === sessionScope ? successSnapshot.value : null;
 
   const updateReviewNotes = (update: (current: Record<string, string>) => Record<string, string>) => {
@@ -113,13 +118,14 @@ export default function ArtistClaimsAdminPage() {
       return;
     }
 
-    setReviewingSnapshot({ scope: requestScope, value: claim.id });
+    setReviewingSnapshot({ scope: requestScope, value: { claimId: claim.id, decision } });
     updateReviewErrors((previous) => ({ ...previous, [claim.id]: "" }));
     try {
       await reviewArtistClaim(token, claim.id, { decision, note });
       if (currentScopeRef.current !== requestScope) return;
       updateReviewNotes((previous) => ({ ...previous, [claim.id]: "" }));
       setApprovalSnapshot({ scope: requestScope, value: null });
+      setRejectionSnapshot({ scope: requestScope, value: null });
       setSuccessSnapshot({
         scope: requestScope,
         value: decision === "approve" ? "Artist claim approved." : "Artist claim rejected.",
@@ -135,23 +141,34 @@ export default function ArtistClaimsAdminPage() {
       const message = reason instanceof Error ? reason.message : "Unable to record the review decision.";
       updateReviewErrors((previous) => ({ ...previous, [claim.id]: message }));
       setApprovalSnapshot({ scope: requestScope, value: null });
+      setRejectionSnapshot({ scope: requestScope, value: null });
       addToast({ type: "error", title: "Review decision failed", message });
     } finally {
       if (currentScopeRef.current === requestScope) setReviewingSnapshot({ scope: requestScope, value: null });
     }
   };
 
-  const requestApproval = (claim: PendingArtistClaim) => {
-    if (!sessionScope || currentScopeRef.current !== sessionScope) return;
+  const canRequestDecision = (claim: PendingArtistClaim) => {
+    if (!sessionScope || currentScopeRef.current !== sessionScope) return false;
     if (reviewerIsClaimant(userId, claim.claimantUserId)) {
       updateReviewErrors((previous) => ({ ...previous, [claim.id]: "An independent operator must review this claim." }));
-      return;
+      return false;
     }
     if (!(reviewNotes[claim.id] ?? "").trim()) {
       updateReviewErrors((previous) => ({ ...previous, [claim.id]: "Add a review note before recording a decision." }));
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const requestApproval = (claim: PendingArtistClaim) => {
+    if (!canRequestDecision(claim)) return;
     setApprovalSnapshot({ scope: sessionScope, value: claim });
+  };
+
+  const requestRejection = (claim: PendingArtistClaim) => {
+    if (!canRequestDecision(claim)) return;
+    setRejectionSnapshot({ scope: sessionScope, value: claim });
   };
 
   return (
@@ -162,7 +179,9 @@ export default function ArtistClaimsAdminPage() {
         reviewNotes={reviewNotes}
         reviewErrors={reviewErrors}
         reviewingClaimId={reviewingClaimId}
+        reviewingDecision={reviewingDecision}
         approvalClaim={approvalClaim}
+        rejectionClaim={rejectionClaim}
         successMessage={successMessage}
         onRetry={() => void load()}
         onReviewNoteChange={(claimId, value) => {
@@ -170,10 +189,14 @@ export default function ArtistClaimsAdminPage() {
           updateReviewErrors((previous) => ({ ...previous, [claimId]: "" }));
         }}
         onRequestApproval={requestApproval}
-        onReject={(claim) => void review(claim, "reject")}
+        onRequestRejection={requestRejection}
         onCancelApproval={() => setApprovalSnapshot({ scope: sessionScope, value: null })}
         onConfirmApproval={async () => {
           if (approvalClaim) await review(approvalClaim, "approve");
+        }}
+        onCancelRejection={() => setRejectionSnapshot({ scope: sessionScope, value: null })}
+        onConfirmRejection={async () => {
+          if (rejectionClaim) await review(rejectionClaim, "reject");
         }}
       />
     </AuthGate>

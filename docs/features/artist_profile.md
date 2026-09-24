@@ -121,7 +121,9 @@ note and approving or rejecting. The queue is separate from **Transfer
 Recovery**, which lists accepted management-transfer recovery requests. A
 request remains pending until an operator other than its requester reviews it;
 administrators and operators cannot decide their own claims. Approval grants
-only public-profile editing access.
+only public-profile editing access. Both approval and rejection ask for
+confirmation. When several pending claims target the same profile, the queue
+flags them, because approving one automatically rejects the others.
 
 ### Developer / API
 

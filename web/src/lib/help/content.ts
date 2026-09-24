@@ -1227,7 +1227,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Operators and administrators can open Artist Claims from the admin navigation to review pending public-profile requests. Check the exact artist page and releases, requester, and private evidence before recording a review note and approving or rejecting. The requester cannot decide their own claim, even if they are also an administrator or operator; a different operator must review it. Approval grants public-profile editing only, not release management, rights, payouts, or private analytics. Transfer Recovery is a separate queue for management-transfer recovery requests.",
+            text: "Operators and administrators can open Artist Claims from the admin navigation to review pending public-profile requests. Check the exact artist page and releases, requester, and private evidence before recording a review note and approving or rejecting. The requester cannot decide their own claim, even if they are also an administrator or operator; a different operator must review it. Approval grants public-profile editing only, not release management, rights, payouts, or private analytics. Both approving and rejecting ask you to confirm. When more than one pending claim targets the same artist profile, the queue flags it: approving one of them automatically rejects the others. Transfer Recovery is a separate queue for management-transfer recovery requests.",
           },
         ],
       },
