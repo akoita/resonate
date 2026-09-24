@@ -1620,3 +1620,8 @@ export function usePlayer() {
     }
     return context;
 }
+
+// For surfaces that may render outside the provider (e.g. tests): null instead of throwing.
+export function useOptionalPlayer(): PlayerContextType | null {
+    return useContext(PlayerContext) ?? null;
+}

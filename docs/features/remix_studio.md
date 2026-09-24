@@ -326,11 +326,10 @@ from the JWT, never the request body.
   `tokenId`), rendered as the studio's "Also on this track" panel: licensed
   siblings join via `PATCH /remix/projects/:id` `addStemIds` (strict per-stem
   eligibility re-check; published projects stay locked), unlicensed ones link
-  to `/stem/[tokenId]` for the remix-tier purchase (#1141/#1306). Stem rows
-  show measured tempo/key chips from `audioFeatures` (#1184); the BPM chip is
-  confidence-gated (#1318: shown when `tempoConfidence >= 0.5` or the value
-  agrees with the section-grid tempo) so librosa double/harmonic artifacts on
-  sparse stems never mislead, and the stems panel explains that hydrated
+  to `/stem/[tokenId]` for the remix-tier purchase (#1141/#1306). Measured
+  tempo/key from `audioFeatures` (#1184) is shown once per project (see the
+  studio audio correctness bullet below; this replaced the per-stem chips of
+  #1318), and the stems panel explains that hydrated
   siblings start muted. The stem-scoped
   Remix CTA reuses any draft **containing** the requested stems (containment,
   not exact-set, so hydrated supersets don't mint duplicate projects). The
@@ -393,6 +392,33 @@ from the JWT, never the request body.
   the current draft only; archived versions never publish.
   Tests: `backend/src/tests/remix-draft-versions.spec.ts`,
   `backend/src/tests/remix-draft-versions.integration.spec.ts`,
+  `web/src/components/remix/RemixStudioEditor.test.tsx`.
+- Studio audio correctness (phase 0 of the studio ergonomics pass):
+  - **Full-mix reference, not a channel.** A track-default entry (the
+    release-page Remix button) used to add the full-mix `original`/`master`
+    stem unmuted next to the separated stems, which doubled every part in
+    previews and renders. Project creation now stores full-mix stems **muted**
+    whenever the selection also has separated stems. A lone full mix (a track
+    with no separated stems) stays a normal unmuted channel. The studio treats
+    such a full-mix stem as a **reference**: it is hidden from the mixer and
+    arrangement rows while muted, and a "Compare with original" toggle plays it
+    alone at unity for A/B listening. Legacy projects that still have it
+    unmuted show a doubling warning with a one-click "Use as reference only"
+    fix, saved through the normal Save flow. The fix is never applied silently.
+  - **One musical summary.** Per-stem tempo/key chips contradicted each other
+    (a vocal tempo artifact next to the grid tempo, a "key" on drums). The
+    header now shows one project-level chip: the section-grid tempo (bar grids
+    only) and a confidence-weighted key vote that excludes drums and
+    percussion.
+  - **Preview master bus.** The WebAudio preview now runs through a limiter
+    with a small level meter that flags limiting, so summing many stems no
+    longer clips. Final renders still use the loudness policy above.
+  - **Cached preview audio.** Stems are downloaded and decoded once per studio
+    session and reused on every Play; a failed load retries on the next Play.
+  - **One audio source at a time.** Starting a studio preview or draft pauses
+    the site player, and starting the site player stops studio audio.
+  Tests: `backend/src/tests/remix-session-hydration.integration.spec.ts`,
+  `web/src/lib/remixAudioPreview.test.ts`,
   `web/src/components/remix/RemixStudioEditor.test.tsx`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
