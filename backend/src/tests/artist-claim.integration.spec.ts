@@ -17,6 +17,7 @@ import { EventBus } from "../modules/shared/event_bus";
 const TEST_PREFIX = `artist_claim_${Date.now()}_`;
 const CLAIMANT_A = `${TEST_PREFIX}claimant_a`;
 const CLAIMANT_B = `${TEST_PREFIX}claimant_b`;
+const CASE_CLAIMANT = `0x${Date.now().toString(16).padStart(40, "0")}`;
 const REVIEWER = `${TEST_PREFIX}reviewer`;
 const ADMIN = `${TEST_PREFIX}admin`;
 const CAP_CLAIMANT = `${TEST_PREFIX}cap_claimant`;
@@ -26,6 +27,7 @@ const CASCADE_CLAIMANT = `${TEST_PREFIX}cascade_claimant`;
 const USER_IDS = [
   CLAIMANT_A,
   CLAIMANT_B,
+  CASE_CLAIMANT,
   REVIEWER,
   ADMIN,
   CAP_CLAIMANT,
@@ -370,6 +372,43 @@ describe("ArtistService claim lifecycle (integration)", () => {
       note: "This release credit does not substantiate the claim.",
     });
     expect(decisionEvent?.createdAt).toBeInstanceOf(Date);
+  });
+
+  it("prevents admins and operators from deciding their own claims, ignoring wallet case", async () => {
+    const artist = await createArtist("self_review", "Self Review Artist");
+    const claim = await service.submitClaim(
+      CASE_CLAIMANT,
+      artist.id,
+      "Evidence for a claim that its claimant must not review.",
+    );
+
+    await expect(service.reviewClaim(
+      CASE_CLAIMANT.toUpperCase(),
+      "operator",
+      claim.id,
+      "reject",
+    )).rejects.toMatchObject({ status: 403 });
+    await expect(service.reviewClaim(
+      CASE_CLAIMANT,
+      "admin",
+      claim.id,
+      "approve",
+    )).rejects.toMatchObject({ status: 403 });
+    expect(await prisma.artistClaimRequest.findUnique({ where: { id: claim.id } }))
+      .toMatchObject({ status: "pending", reviewerUserId: null });
+    expect(await prisma.artistClaimDecisionEvent.count({ where: { claimId: claim.id } })).toBe(0);
+
+    const approved = await service.reviewClaim(REVIEWER, "operator", claim.id, "approve");
+    expect(approved?.status).toBe("approved");
+    await expect(service.reviewClaim(
+      CASE_CLAIMANT.toUpperCase(),
+      "admin",
+      claim.id,
+      "revoke",
+    )).rejects.toMatchObject({ status: 403 });
+    expect(await prisma.artistClaimRequest.findUnique({ where: { id: claim.id } }))
+      .toMatchObject({ status: "approved", reviewerUserId: REVIEWER });
+    expect(await prisma.artistClaimDecisionEvent.count({ where: { claimId: claim.id } })).toBe(1);
   });
 
   it("approves one competing claim, rejects the rest, and limits the claimant to public profile edits", async () => {

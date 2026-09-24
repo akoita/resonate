@@ -404,21 +404,38 @@ export default function Sidebar() {
           </>
         ) : null}
         {showManagementRecoveryLink ? (
-          <Link
-            href="/admin/management-recovery"
-            prefetch={false}
-            className={`sidebar-link ${pathname === "/admin/management-recovery" ? 'active' : ''}`}
-            aria-current={pathname === "/admin/management-recovery" ? "page" : undefined}
-          >
-            <span className="link-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 3v6" />
-                <path d="M8 7H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3" />
-                <path d="m9 13 2 2 4-4" />
-              </svg>
-            </span>
-            <span className="link-text">Transfer Recovery</span>
-          </Link>
+          <>
+            <Link
+              href="/admin/artist-claims"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/artist-claims" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/artist-claims" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="9" cy="8" r="4" />
+                  <path d="M3 21v-2a6 6 0 0 1 12 0v2" />
+                  <path d="m16 11 2 2 4-4" />
+                </svg>
+              </span>
+              <span className="link-text">Artist Claims</span>
+            </Link>
+            <Link
+              href="/admin/management-recovery"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/management-recovery" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/management-recovery" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v6" />
+                  <path d="M8 7H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3" />
+                  <path d="m9 13 2 2 4-4" />
+                </svg>
+              </span>
+              <span className="link-text">Transfer Recovery</span>
+            </Link>
+          </>
         ) : null}
         <button
           type="button"

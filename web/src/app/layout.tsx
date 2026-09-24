@@ -9,6 +9,7 @@ import "../styles/identity-refresh.css";
 // Last so it wins over the base `.ui-btn` / `.queue-item` rules it refines.
 import "../styles/player-console.css";
 import "../styles/legal.css";
+import "../styles/review-queue.css";
 import AppShell from "../components/layout/AppShell";
 import AuthProvider from "../components/auth/AuthProvider";
 import ZeroDevProviderClient from "../components/auth/ZeroDevProviderClient";

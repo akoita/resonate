@@ -130,6 +130,10 @@ function assertArtistClaimOperator(role: unknown): void {
     }
 }
 
+function sameUserId(left?: string | null, right?: string | null): boolean {
+    return !!left && !!right && left.toLowerCase() === right.toLowerCase();
+}
+
 function isUniqueConstraintViolation(error: unknown): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
@@ -412,6 +416,9 @@ export class ArtistService {
                 include: { artist: { select: { id: true, userId: true, profileType: true, claimStatus: true } } },
             });
             if (!claim) throw new NotFoundException("Artist claim not found");
+            if (sameUserId(reviewerUserId, claim.claimantUserId)) {
+                throw new ForbiddenException("A claimant cannot review their own artist claim");
+            }
 
             const now = new Date();
             if (decision === "revoke") {

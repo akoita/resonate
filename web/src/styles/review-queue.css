@@ -1,0 +1,395 @@
+/*
+ * Operator review queues (artist claims, management transfer recovery).
+ * Shared by the building blocks in
+ * `src/components/admin/review-queue/ReviewQueue.tsx`. Class prefix:
+ * `review-queue-`. Uses the Obsidian Frequency `--r-*` tokens.
+ */
+
+/* ---------- Header ---------- */
+
+.review-queue-header h1 { margin: 0; }
+.review-queue-intro { margin: 0; max-width: 820px; line-height: 1.6; }
+.review-queue-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.review-queue-summary__oldest { color: var(--r-on-surface-muted); font-size: 14px; }
+.review-queue-summary__oldest time { color: var(--r-on-surface); }
+.review-queue-summary .review-queue-refresh { margin-left: auto; min-height: 44px; padding: 10px 18px; }
+
+/* ---------- Pills ---------- */
+
+.review-queue-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+.review-queue-pill--count {
+  border-color: rgba(124, 92, 255, 0.45);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--r-on-surface);
+  font-size: 13px;
+}
+.review-queue-pill--pending {
+  border-color: rgba(124, 92, 255, 0.4);
+  background: rgba(124, 92, 255, 0.1);
+  color: var(--r-on-surface-variant);
+}
+.review-queue-pill--warning {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.1);
+  color: var(--r-warning);
+}
+.review-queue-pill--required {
+  min-height: 22px;
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--r-on-surface-variant);
+  background: var(--r-surface-highest);
+}
+
+/* ---------- Success banner ---------- */
+
+.review-queue-success {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px;
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  border-radius: var(--r-radius-sm);
+  background: rgba(52, 211, 153, 0.1);
+  color: var(--r-on-surface);
+}
+.review-queue-success svg { flex: none; color: var(--r-success); }
+
+/* ---------- Cards ---------- */
+
+.review-queue-list { display: grid; gap: 20px; min-width: 0; }
+
+.review-queue-card {
+  min-width: 0;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-md);
+  background: linear-gradient(180deg, var(--r-surface-high), var(--r-surface-mid));
+  overflow: hidden;
+}
+.review-queue-card__header,
+.review-queue-details,
+.review-queue-resources,
+.review-queue-evidence { margin-left: 24px; margin-right: 24px; }
+.review-queue-card h2 { margin: 0; font-family: var(--font-display); font-size: 20px; line-height: 1.3; }
+.review-queue-card h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--r-on-surface-variant); }
+
+.review-queue-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 22px;
+}
+.review-queue-card__title { min-width: 0; }
+.review-queue-card__time { margin: 4px 0 0; color: var(--r-on-surface-muted); font-size: 13px; }
+.review-queue-card__time time { color: var(--r-on-surface-variant); }
+.review-queue-card__badges { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Label style shared by detail terms and resource list headings. */
+.review-queue-details dt,
+.review-queue-resources .review-queue-resources__label {
+  color: var(--r-on-surface-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.review-queue-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 24px;
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+.review-queue-details__item { min-width: 0; }
+.review-queue-details dd { display: grid; gap: 6px; justify-items: start; margin: 6px 0 0; min-width: 0; }
+.review-queue-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--r-primary-soft);
+  font-weight: 600;
+  text-decoration: none;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.review-queue-link:hover { text-decoration: underline; }
+.review-queue-link:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.review-queue-value-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; max-width: 100%; }
+.review-queue-mono {
+  min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  color: var(--r-on-surface);
+  overflow-wrap: anywhere;
+}
+.review-queue-mono--muted { color: var(--r-on-surface-muted); font-size: 12px; }
+.review-queue-text { min-width: 0; color: var(--r-on-surface); overflow-wrap: anywhere; }
+.review-queue-text--muted { display: inline-flex; align-items: center; min-height: 32px; color: var(--r-on-surface-muted); font-style: italic; }
+
+/* Linked resources (e.g. releases or profiles affected by a decision). */
+.review-queue-resources { margin-top: 18px; }
+.review-queue-resources .review-queue-resources__label { margin: 0; }
+.review-queue-resources ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.review-queue-resources li { min-width: 0; max-width: 100%; }
+.review-queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  border-radius: var(--r-radius-full);
+  background: rgba(124, 92, 255, 0.08);
+  color: var(--r-on-surface);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.review-queue-chip svg { flex: none; color: var(--r-primary-soft); }
+.review-queue-chip:hover {
+  border-color: var(--r-primary-soft);
+  background: rgba(124, 92, 255, 0.16);
+}
+.review-queue-chip:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+.review-queue-evidence {
+  margin-top: 18px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  background: rgba(8, 8, 15, 0.35);
+}
+.review-queue-evidence p {
+  margin: 0;
+  max-width: 860px;
+  color: var(--r-on-surface);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* ---------- Copy control ---------- */
+
+.review-queue-copy {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-full);
+  background: transparent;
+  color: var(--r-on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.review-queue-copy:hover {
+  border-color: var(--r-primary-soft);
+  background: rgba(124, 92, 255, 0.12);
+  color: var(--r-on-surface);
+}
+.review-queue-copy:focus-visible {
+  outline: 2px solid var(--r-primary-soft);
+  outline-offset: 2px;
+}
+
+/* ---------- Decision footer ---------- */
+
+.review-queue-decision {
+  display: grid;
+  gap: 14px;
+  padding: 18px 24px 22px;
+  border-top: 1px solid var(--r-outline);
+  background: rgba(8, 8, 15, 0.3);
+}
+.review-queue-self-review,
+.review-queue-notice,
+.review-queue-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  line-height: 1.5;
+}
+.review-queue-self-review svg,
+.review-queue-notice svg,
+.review-queue-error svg { flex: none; margin-top: 2px; }
+.review-queue-self-review {
+  padding: 12px 14px;
+  border: 1px solid rgba(96, 165, 250, 0.35);
+  border-radius: var(--r-radius-sm);
+  background: rgba(96, 165, 250, 0.08);
+  color: var(--r-on-surface);
+}
+.review-queue-self-review svg { color: var(--r-info); }
+.review-queue-notice {
+  padding: 10px 14px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: var(--r-radius-sm);
+  background: rgba(251, 191, 36, 0.08);
+  color: var(--r-on-surface);
+  font-size: 14px;
+}
+.review-queue-notice--warning svg { color: var(--r-warning); }
+.review-queue-notice--info {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(96, 165, 250, 0.08);
+}
+.review-queue-notice--info svg { color: var(--r-info); }
+
+.review-queue-note { display: grid; gap: 8px; max-width: 760px; min-width: 0; }
+.review-queue-note__label-row { display: flex; align-items: center; gap: 8px; }
+.review-queue-note__label-row label { font-weight: 600; }
+.review-queue-note textarea {
+  width: 100%;
+  min-height: 104px;
+  padding: 12px 14px;
+  border: 1px solid var(--r-outline);
+  border-radius: var(--r-radius-sm);
+  background: var(--r-surface-lowest);
+  color: var(--r-on-surface);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.review-queue-note textarea:hover { border-color: rgba(152, 128, 255, 0.45); }
+.review-queue-note textarea:focus-visible {
+  outline: none;
+  border-color: var(--r-primary-soft);
+  box-shadow: 0 0 0 3px rgba(124, 92, 255, 0.3);
+}
+.review-queue-note textarea[aria-invalid="true"] { border-color: rgba(255, 107, 107, 0.7); }
+.review-queue-note__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  color: var(--r-on-surface-muted);
+  font-size: 13px;
+}
+.review-queue-note__meta p { margin: 0; }
+.review-queue-note__count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.review-queue-error { color: var(--r-error); font-size: 14px; }
+
+.review-queue-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.review-queue-actions .ui-btn { min-height: 44px; padding: 10px 20px; }
+.review-queue-actions .review-queue-reject:hover:not(:disabled) {
+  color: var(--r-error);
+  border-color: rgba(255, 107, 107, 0.55);
+  background: rgba(255, 107, 107, 0.1);
+}
+.review-queue-actions .review-queue-reject:focus-visible { outline-color: rgba(255, 107, 107, 0.7); }
+
+/* ---------- State panels ---------- */
+
+.review-queue-state {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 28px 24px;
+}
+.review-queue-state h2 { font-size: 18px; }
+.review-queue-state p { margin: 0 0 6px; }
+.review-queue-state .ui-btn { min-height: 44px; padding: 10px 20px; }
+.review-queue-state__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-radius-sm);
+  border: 1px solid rgba(124, 92, 255, 0.35);
+  background: rgba(124, 92, 255, 0.12);
+  color: var(--r-primary-soft);
+}
+.review-queue-state__icon--error {
+  border-color: rgba(255, 107, 107, 0.35);
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--r-error);
+}
+
+/* ---------- Loading skeleton ---------- */
+
+.review-queue-card--skeleton { display: grid; gap: 14px; padding: 24px; }
+.review-queue-skeleton {
+  display: block;
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--r-surface-highest) 0%, rgba(255, 255, 255, 0.08) 50%, var(--r-surface-highest) 100%);
+  background-size: 200% 100%;
+  animation: review-queue-shimmer 1.4s ease-in-out infinite;
+}
+.review-queue-skeleton--title { width: 38%; height: 20px; }
+.review-queue-skeleton--line { width: 60%; }
+.review-queue-skeleton--block { height: 72px; }
+.review-queue-skeleton--short { width: 30%; }
+@keyframes review-queue-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-queue-skeleton { animation: none; }
+}
+
+/* ---------- Touch and small screens ---------- */
+
+@media (max-width: 640px), (pointer: coarse) {
+  .review-queue-copy { min-height: 44px; min-width: 72px; justify-content: center; padding: 4px 16px; border-radius: var(--r-radius-sm); }
+  .review-queue-chip { min-height: 44px; }
+}
+
+@media (max-width: 640px) {
+  .review-queue-card__header,
+  .review-queue-details,
+  .review-queue-resources,
+  .review-queue-evidence { margin-left: 16px; margin-right: 16px; }
+  .review-queue-card__header { padding-top: 16px; }
+  .review-queue-decision { padding: 16px; }
+  .review-queue-evidence { padding: 12px; }
+  .review-queue-state { padding: 20px 16px; }
+  .review-queue-card--skeleton { padding: 16px; }
+  .review-queue-actions { flex-direction: column; }
+  .review-queue-actions .ui-btn { width: 100%; }
+  .review-queue-summary .review-queue-refresh { margin-left: 0; }
+}
