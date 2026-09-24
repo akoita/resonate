@@ -243,7 +243,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Home is your starting point. A featured Shows campaign sits at the top, followed by the Tuner — genre and mood chips with a small energy meter — then your personalized feed as a set of shelves like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each shelf says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
+            text: "Home is your starting point. A featured Shows campaign sits at the top (when none is open for pledges, you'll see an invitation to start one instead), followed by the Tuner — genre and mood chips with a small energy meter — then your personalized feed as a set of shelves like \"Because you save a lot of Afrobeat\", \"New from artists you play\", and \"Trending in your genre\". Each shelf says in plain words why it's there, and the reasons are always about your taste in general (a genre you save, artists you play), never a list of exactly what you played and when.",
           },
           {
             kind: "paragraph",

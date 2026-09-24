@@ -312,6 +312,34 @@
   text-decoration: none;
 }
 
+/* Honest empty state when no campaign matches (#1869): no sample campaigns. */
+.shows-page__empty {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 28px;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.shows-page__empty strong {
+  color: #fff;
+  font-size: 16px;
+}
+
+.shows-page__empty p {
+  margin: 0 0 8px;
+  max-width: 60ch;
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.shows-page__empty .shows-page__create-link {
+  margin-left: 0;
+}
+
 .shows-page__filters {
   display: inline-flex;
   align-items: center;

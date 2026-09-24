@@ -30,7 +30,13 @@ time-lock.
 Surfaces: home campaign hero, `/shows`, `/shows/create`, `/shows/:slug/edit`,
 and the campaign detail page (for example `/shows/sennarin-paris`). The web app
 reads the backend Shows API as the source of truth and keeps seeded sample data
-only as a local/offline fallback. Contract explorer links follow each
+only as a local/offline fallback: the campaign list falls back to it only when
+the API cannot be reached, never when the API answers with an empty list
+(#1869). With no campaign open for pledges, the home hero becomes an honest
+"Fans bring the show." invitation (Start a campaign → `/shows/create`, Browse
+shows → `/shows`) and `/shows` shows an empty state with a Create campaign
+link; while campaigns load, the home hero is a neutral skeleton in the same
+frame. Contract explorer links follow each
 campaign's recorded chain, using its configured explorer when available and
 otherwise the chain's standard explorer. Blockscout links open the contract
 view for verified source code, transactions, and events. Campaigns without a
@@ -53,7 +59,9 @@ attendance history stay off-chain).
   chain, and a "Find on-chain campaign" button discovers the `contractCampaignId`
   by matching the draft's deterministic terms — see the operator controls below;
 - optionally gate or remove the seeded `CAMPAIGNS[]` web fallback for production
-  builds.
+  builds. Since #1869 it only stands in when the Shows API is unreachable (list
+  reads) or a slug is not found (detail reads); an empty campaign list is shown
+  as empty.
 
 Campaign creators can now attach a promotional visual set to draft campaigns:
 a full-width hero image for the public campaign page, a preview/card image for
@@ -324,8 +332,8 @@ settlement is a later protocol slice rather than MVP scope.
 
 | Surface | Status | Notes |
 | --- | --- | --- |
-| Home campaign hero | implemented | Featured campaign card links into the Shows route. |
-| `/shows` | implemented | Campaign explorer reads the backend Shows API and falls back to four researched sample concepts for local/offline demos. The public default list hides refund/terminal campaigns, while admin/operator users get a status filter for Default, All, Active, Funded, Cancelled, Refunds, and Released views. Uploaded campaign preview visuals appear on campaign cards when available (a typographic city poster otherwise), with non-actionable status badges when terminal/refund campaigns are shown. |
+| Home campaign hero | implemented | Featured campaign card links into the Shows route. While campaigns load the hero is a neutral skeleton in the same frame (no text, rail, or actions); when no campaign is open for pledges it is an honest "Fans bring the show." empty state with Start a campaign and Browse shows actions — never sample campaigns (#1869). |
+| `/shows` | implemented | Campaign explorer reads the backend Shows API and falls back to four researched sample concepts only when the API is unreachable (local/offline demos); a successful empty list renders an honest empty state with a Create campaign link (#1869). The public default list hides refund/terminal campaigns, while admin/operator users get a status filter for Default, All, Active, Funded, Cancelled, Refunds, and Released views. Uploaded campaign preview visuals appear on campaign cards when available (a typographic city poster otherwise), with non-actionable status badges when terminal/refund campaigns are shown. |
 | `/shows/create` | implemented | Authenticated artists, admins, and operators can create draft escrow campaigns with campaign terms, evidence references, pledge tiers, a hero visual, a compact preview visual, and an ordered gallery visual set. Active escrow campaign drafts must select a declared catalog artist credit with at least one ready or published release, so the public subject matches the public catalog Artists view instead of the uploader profile. The public campaign title is the fan-facing identity used on cards, heroes, breadcrumbs, and new campaign slugs; for normal artists, platform artist identity and beneficiary wallet are still derived from the artist profile for authority and payout safety. Operators select from catalog artist credits and still need review-gated authority before activation. Creating a campaign already marked `artist_authorized`/`trusted_source_authorized` is operator-only (#946) — a non-operator self-issuing an authorized status is rejected the same way `request-authority` rejects it. |
 | `/shows/:slug/edit` | implemented | Draft campaigns can be edited before activation, including public campaign title/copy, hero/preview visuals, gallery add/replace/delete/reorder controls, campaign terms, authority evidence reference, beneficiary wallet, payment token, and pledge tiers. Once artist authority is approved, the critical fan-risk terms are locked (#946): edits that change goal, deadline, beneficiary, deposit-release %, release policy, dispute window, booking deadline, or tier financials are refused until an operator revokes authority; non-risk fields (copy, visuals) stay editable. |
 | `/shows/sennarin-paris` | implemented | Detail page reads the backend Shows API by slug with seeded fallback, shows funding progress, signal tiers, and how-it-works copy, and uses the uploaded hero visual, gallery mosaic, expanded campaign pitch, dense-title treatment, and campaign image metadata for large social previews when available. Linked escrows expose a chain-aware contract explorer action; configured Blockscout links open the contract tab for verified source, transactions, and events, while campaigns without a linked escrow omit the action. A trust/terms panel (#949) shows the campaign trust state (demand signal / provisional / artist-authorized escrow / authority-revoked / refund-available / cancelled), an artist-authority + masked-beneficiary summary (no sensitive evidence ids), and the immutable terms a fan reads before signing (goal, deadline, minimum backers, payment asset/network, deposit-release %, dispute window, booking deadline, refund policy), with honest copy that funding never guarantees a ticket. The pledge panel renders the full pledge lifecycle state (`pledgeStateLabel`), and gates the pledge form on `campaignPledgeAvailability` (#949): when the campaign isn't open for pledging it shows an honest empty state instead of a live form — awaiting artist authority, not authorized (revoked/rejected/expired), open demand signal (no escrow), or terminal/refund — while still surfacing the refund action for existing backers. Before the wallet signature, a pre-sign confirmation dialog (#1240, `pledgeConfirmSummary` + the shared `ConfirmDialog`) recaps the selected tier amount and the fan-risk terms (payment asset/network, deposit-on-booking %, refund policy, dispute window) with honest no-guaranteed-ticket copy; cancelling aborts before any intent is created. |
@@ -402,7 +410,13 @@ donation. The fan-facing promise is:
 ## Verification
 
 - `web/tests/shows.spec.ts` covers the home hero, sidebar Shows nav, `/shows`
-  explorer, and `/shows/sennarin-paris` detail page.
+  explorer, and `/shows/sennarin-paris` detail page against the real API:
+  `web/tests/global-setup.ts` loads the sample show fixtures
+  (`npm run fixtures:shows`) after the Prisma seed. It also covers the honest
+  empty home hero when the API returns no campaigns (#1869).
+- `web/src/lib/shows.test.ts`, `web/src/components/home/HomeHeroEmpty.test.tsx`,
+  and `web/src/app/shows/page.test.tsx` cover the list fallback (unreachable
+  API only), the home hero skeleton/empty states, and the `/shows` empty state.
 - `web/src/lib/shows.ts` defines the current seeded campaign model and the
   planned async shape for a future backend API.
 - `web/src/styles/shows.css` scopes the Shows presentation layer.
