@@ -55,6 +55,7 @@ import { HomeReleaseArtwork } from "../components/home/HomeReleaseArtwork";
 import { HomeTuner } from "../components/home/HomeTuner";
 import { LiveEventRail } from "../components/home/LiveEventRail";
 import { StemLab, selectStemLabEntries } from "../components/home/StemLab";
+import { HomeHeroEmpty, HomeHeroMotif, HomeHeroSkeleton } from "../components/home/HomeHeroEmpty";
 import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
@@ -64,8 +65,6 @@ import {
   campaignDisplayTitle,
   filterActionableCampaigns,
   listCampaigns,
-  listCampaignsSync,
-  getFeaturedCampaignSync,
   daysUntil,
   progressRatio,
   type Campaign,
@@ -77,7 +76,9 @@ import { recordProductAnalytics } from "../lib/productAnalytics";
  *
  * Layout (top to bottom) — the listening experience leads and every section
  * below the hero uses the same shelf chrome (HomeShelf + HomeTile):
- *   1. Hero — featured campaign with the campaign rail (user-approved; frozen)
+ *   1. Hero — featured campaign with the campaign rail (user-approved; frozen);
+ *      a neutral skeleton while campaigns load and an honest "start a
+ *      campaign" empty state when none is open (#1869) — never sample data
  *   2. Tuner — genre/mood filter, energy meter, one-tap vibe session / AI DJ
  *   3. Personalized feed — multi-rail shelves (#1454 WS-7)
  *   4. Trending Now — engagement-ranked tracks (#1451)
@@ -347,7 +348,9 @@ export default function Home() {
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
   const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
   const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
-  const [campaigns, setCampaigns] = useState<Campaign[]>(() => listCampaignsSync());
+  // #1869: null = not loaded yet (hero skeleton); [] = resolved, none open
+  // (honest empty hero). Never seeded with sample campaigns.
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [activeHeroCampaignId, setActiveHeroCampaignId] = useState("");
   const [heroPaused, setHeroPaused] = useState(false);
   const lastCatalogSearchAnalyticsKeyRef = useRef<string | null>(null);
@@ -358,7 +361,7 @@ export default function Home() {
     () => FILTERS.find((filter) => filter.id === activeFilter) ?? FILTERS[0],
     [activeFilter],
   );
-  const actionableCampaigns = useMemo(() => filterActionableCampaigns(campaigns), [campaigns]);
+  const actionableCampaigns = useMemo(() => filterActionableCampaigns(campaigns ?? []), [campaigns]);
 
   useWebSockets((data: ReleaseStatusUpdate) => {
     // Keep the "Your Releases" panel live without a manual reload. The backend
@@ -419,9 +422,11 @@ export default function Home() {
     let cancelled = false;
     listCampaigns()
       .then((items) => {
-        if (!cancelled && items.length > 0) setCampaigns(items);
+        if (!cancelled) setCampaigns(items);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setCampaigns([]);
+      });
     return () => {
       cancelled = true;
     };
@@ -525,7 +530,7 @@ export default function Home() {
   );
   const heroCampaigns = useMemo(() => selectHomeHeroCampaigns(actionableCampaigns), [actionableCampaigns]);
   const activeHeroCampaign = useMemo(
-    () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? getFeaturedCampaignSync(),
+    () => heroCampaigns.find((campaign) => campaign.id === activeHeroCampaignId) ?? heroCampaigns[0] ?? null,
     [activeHeroCampaignId, heroCampaigns],
   );
   // Auto-rotate the featured campaign hero through the ranked campaigns so each
@@ -543,7 +548,9 @@ export default function Home() {
     }, 9000);
     return () => window.clearInterval(timer);
   }, [heroCampaigns, heroPaused]);
-  const activeHeroCampaignImage = activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url;
+  const activeHeroCampaignImage = activeHeroCampaign
+    ? activeHeroCampaign.heroImage || activeHeroCampaign.cardImage || activeHeroCampaign.visuals[0]?.url
+    : undefined;
   const catalogStems = useMemo<CatalogStemSummary[]>(
     () => flattenCatalogStems(displayReleases),
     [displayReleases],
@@ -889,99 +896,82 @@ export default function Home() {
       <main className="ng-main ng-main--v3">
         {/* 1. HERO ————————————————————————————————————————————————— */}
         <section className="ng-section ng-section--tight">
-          <div
-            className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
-            onMouseEnter={() => setHeroPaused(true)}
-            onMouseLeave={() => setHeroPaused(false)}
-            onFocusCapture={() => setHeroPaused(true)}
-            onBlurCapture={() => setHeroPaused(false)}
-          >
-            {activeHeroCampaignImage ? (
-              <HomeCampaignVisual
-                src={activeHeroCampaignImage}
-                sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(100vw - 48px), calc(100vw - 320px)"
-                className="ng-hero__campaign-image"
-                preload={activeHeroCampaignId === ""}
-              />
-            ) : null}
-            <svg
-              className="ng-hero__motif"
-              viewBox="0 0 600 600"
-              aria-hidden
-              focusable="false"
+          {campaigns === null ? (
+            <HomeHeroSkeleton />
+          ) : !activeHeroCampaign ? (
+            <HomeHeroEmpty />
+          ) : (
+            <div
+              className={`ng-hero ${activeHeroCampaignImage ? "ng-hero--campaign-image" : ""}`}
+              onMouseEnter={() => setHeroPaused(true)}
+              onMouseLeave={() => setHeroPaused(false)}
+              onFocusCapture={() => setHeroPaused(true)}
+              onBlurCapture={() => setHeroPaused(false)}
             >
-              <g fill="none" stroke="currentColor" strokeWidth="1">
-                <circle cx="300" cy="300" r="60" opacity="0.55" />
-                <circle cx="300" cy="300" r="120" opacity="0.40" />
-                <circle cx="300" cy="300" r="190" opacity="0.26" />
-                <circle cx="300" cy="300" r="270" opacity="0.16" />
-                <circle cx="300" cy="300" r="360" opacity="0.08" />
-              </g>
-              <circle
-                className="ng-hero__motif-ping"
-                cx="300"
-                cy="300"
-                r="60"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-              />
-              <circle cx="300" cy="300" r="6" fill="currentColor" opacity="0.9" />
-            </svg>
-            <div className="ng-hero__card">
-              <span className="ng-kicker ng-kicker--primary">Featured Campaign</span>
-              <h2 className="ng-hero__title">
-                {campaignDisplayTitle(activeHeroCampaign)}
-              </h2>
-              <p className="ng-hero__body">
-                {activeHeroCampaign.tagline} Lock funds in a smart contract to
-                bring this show to life — refunded automatically if the
-                threshold isn&apos;t met.
-              </p>
-              <div className="ng-hero__actions">
-                <Link
-                  href={`/shows/${activeHeroCampaign.id}`}
-                  className="ng-btn ng-btn--primary"
-                >
-                  <span className="ms-icon" data-fill="1" aria-hidden>rocket_launch</span>
-                  Back This Show
-                </Link>
-                <Link href="/shows" className="ng-btn ng-btn--glass">
-                  All Campaigns
-                </Link>
+              {activeHeroCampaignImage ? (
+                <HomeCampaignVisual
+                  src={activeHeroCampaignImage}
+                  sizes="(max-width: 767px) calc(100vw - 32px), (max-width: 1023px) calc(100vw - 48px), calc(100vw - 320px)"
+                  className="ng-hero__campaign-image"
+                  preload={activeHeroCampaignId === ""}
+                />
+              ) : null}
+              <HomeHeroMotif />
+              <div className="ng-hero__card">
+                <span className="ng-kicker ng-kicker--primary">Featured Campaign</span>
+                <h2 className="ng-hero__title">
+                  {campaignDisplayTitle(activeHeroCampaign)}
+                </h2>
+                <p className="ng-hero__body">
+                  {activeHeroCampaign.tagline} Lock funds in a smart contract to
+                  bring this show to life — refunded automatically if the
+                  threshold isn&apos;t met.
+                </p>
+                <div className="ng-hero__actions">
+                  <Link
+                    href={`/shows/${activeHeroCampaign.id}`}
+                    className="ng-btn ng-btn--primary"
+                  >
+                    <span className="ms-icon" data-fill="1" aria-hidden>rocket_launch</span>
+                    Back This Show
+                  </Link>
+                  <Link href="/shows" className="ng-btn ng-btn--glass">
+                    All Campaigns
+                  </Link>
+                </div>
               </div>
+              {heroCampaigns.length > 1 ? (
+                <div className="ng-hero__campaign-rail" aria-label="Featured campaigns">
+                  {heroCampaigns.map((campaign, index) => {
+                    const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
+                    const selected = campaign.id === activeHeroCampaign.id;
+                    return (
+                      <button
+                        key={campaign.id}
+                        type="button"
+                        className={`ng-hero__campaign-tab ${selected ? "ng-hero__campaign-tab--active" : ""}`}
+                        onClick={() => setActiveHeroCampaignId(campaign.id)}
+                        aria-pressed={selected}
+                      >
+                        {image ? (
+                          <HomeCampaignVisual
+                            src={image}
+                            sizes="(max-width: 767px) calc(100vw - 72px), (max-width: 1023px) calc(50vw - 48px), 380px"
+                            className="ng-hero__campaign-tab-image"
+                          />
+                        ) : null}
+                        <span className="ng-hero__campaign-index">{String(index + 1).padStart(2, "0")}</span>
+                        <span className="ng-hero__campaign-copy">
+                          <strong>{campaignDisplayTitle(campaign)}</strong>
+                          <span>{campaign.city} · {Math.round(progressRatio(campaign) * 100)}% funded</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
-            {heroCampaigns.length > 1 ? (
-              <div className="ng-hero__campaign-rail" aria-label="Featured campaigns">
-                {heroCampaigns.map((campaign, index) => {
-                  const image = campaign.cardImage || campaign.heroImage || campaign.visuals[0]?.url;
-                  const selected = campaign.id === activeHeroCampaign.id;
-                  return (
-                    <button
-                      key={campaign.id}
-                      type="button"
-                      className={`ng-hero__campaign-tab ${selected ? "ng-hero__campaign-tab--active" : ""}`}
-                      onClick={() => setActiveHeroCampaignId(campaign.id)}
-                      aria-pressed={selected}
-                    >
-                      {image ? (
-                        <HomeCampaignVisual
-                          src={image}
-                          sizes="(max-width: 767px) calc(100vw - 72px), (max-width: 1023px) calc(50vw - 48px), 380px"
-                          className="ng-hero__campaign-tab-image"
-                        />
-                      ) : null}
-                      <span className="ng-hero__campaign-index">{String(index + 1).padStart(2, "0")}</span>
-                      <span className="ng-hero__campaign-copy">
-                        <strong>{campaignDisplayTitle(campaign)}</strong>
-                        <span>{campaign.city} · {Math.round(progressRatio(campaign) * 100)}% funded</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
+          )}
         </section>
 
         {/* 2. TUNER — genre/mood filter + vibe session ——————————— */}

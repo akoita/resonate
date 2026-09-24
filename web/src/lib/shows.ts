@@ -1281,7 +1281,10 @@ export function showsCampaignListPath(options: CampaignListOptions = {}): string
 
 export async function listCampaigns(options: CampaignListOptions = {}): Promise<Campaign[]> {
   const campaigns = await fetchShowsApi<BackendShowCampaign[]>(showsCampaignListPath(options));
-  if (!campaigns?.length) {
+  // Sample campaigns are an offline/dev fallback only: they stand in when the
+  // API is unreachable (`null`). A successful empty list is the truth — no
+  // campaign is open — and must never be dressed up with sample data (#1869).
+  if (campaigns === null) {
     const fallback = options.status
       ? CAMPAIGNS.filter((campaign) => campaign.rawStatus === options.status)
       : CAMPAIGNS;

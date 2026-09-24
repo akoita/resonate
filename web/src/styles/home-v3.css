@@ -1047,6 +1047,67 @@
   border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
+/* ---------- Hero: loading + empty states (#1869) ----------------------
+ * Both reuse the approved `.ng-hero` frame unchanged (same box, geometry and
+ * motif) so there is no layout shift when campaigns resolve. The campaign
+ * state itself is untouched. */
+
+.home-ng .ng-hero__card--skeleton {
+  width: min(560px, 100%);
+  gap: 14px;
+}
+
+.home-ng .ng-hero-skeleton__line,
+.home-ng .ng-hero-skeleton__pill {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.home-ng .ng-hero-skeleton__line::after,
+.home-ng .ng-hero-skeleton__pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 50%,
+    transparent 100%
+  );
+  animation: ng-shimmer 1.4s ease-in-out infinite;
+}
+
+.home-ng .ng-hero-skeleton__line--kicker { width: 32%; height: 12px; }
+.home-ng .ng-hero-skeleton__line--title { width: 88%; height: 44px; margin-top: 6px; }
+.home-ng .ng-hero-skeleton__line--title-short { width: 56%; height: 44px; }
+.home-ng .ng-hero-skeleton__line--body { width: 80%; height: 14px; margin-top: 6px; }
+.home-ng .ng-hero-skeleton__line--body-short { width: 62%; height: 14px; }
+
+.home-ng .ng-hero-skeleton__actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.home-ng .ng-hero-skeleton__pill {
+  width: 168px;
+  height: 48px;
+  border-radius: 999px;
+}
+
+.home-ng .ng-hero-skeleton__pill--secondary { width: 132px; }
+
+/* The empty-state copy is a single honest paragraph; give it room instead of
+ * the campaign teaser clamp so it never cuts mid-sentence. */
+.home-ng .ng-hero--empty .ng-hero__body {
+  -webkit-line-clamp: 6;
+  max-width: 480px;
+}
+
 /* ---------- Responsive ----------------------------------------------- */
 
 @media (max-width: 1023px) {
@@ -1058,6 +1119,11 @@
   .home-ng .ng-main--v3 > .ng-section:not(.ng-section--tight) {
     margin-bottom: 36px;
   }
+
+  .home-ng .ng-hero-skeleton__line--title,
+  .home-ng .ng-hero-skeleton__line--title-short { height: 28px; }
+  .home-ng .ng-hero-skeleton__pill { width: 132px; height: 42px; }
+  .home-ng .ng-hero-skeleton__pill--secondary { width: 104px; }
 
   .home-ng .ng-shelf__track {
     grid-auto-columns: var(--shelf-item-phone, 156px);
@@ -1154,6 +1220,11 @@
 
   .home-ng .ng-stemlab-channel:hover .ng-stemlab-channel__meter span,
   .home-ng .ng-stemlab-channel:focus-visible .ng-stemlab-channel__meter span {
+    animation: none;
+  }
+
+  .home-ng .ng-hero-skeleton__line::after,
+  .home-ng .ng-hero-skeleton__pill::after {
     animation: none;
   }
 

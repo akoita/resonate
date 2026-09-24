@@ -10,7 +10,9 @@ test.beforeEach(async ({ page }) => {
 
 test("home hero renders", async ({ page }) => {
   await page.goto("/");
-  // Post-Stitch home lead section (#646). Pin to a stable visible label.
+  // Post-Stitch home lead section (#646). Pin to a stable visible label from
+  // the real sample show fixtures loaded in global-setup (#1869); SennaRin is
+  // always in the hero (title or campaign rail).
   const hero = page.locator(".ng-hero:visible", { hasText: "SennaRin in Paris" }).first();
   await expect(hero).toBeVisible();
 });

@@ -91,11 +91,28 @@ export default async function ShowsExplorerPage({
             Create campaign
           </Link>
         </div>
-        <div className="campaign-grid">
-          {campaigns.map((c) => (
-            <CampaignCard key={c.id} campaign={c} />
-          ))}
-        </div>
+        {campaigns.length > 0 ? (
+          <div className="campaign-grid">
+            {campaigns.map((c) => (
+              <CampaignCard key={c.id} campaign={c} />
+            ))}
+          </div>
+        ) : (
+          <div className="shows-page__empty" role="status">
+            <strong>
+              {activeFilter === "default"
+                ? "No campaigns are open for pledges right now."
+                : "No campaigns match this filter."}
+            </strong>
+            <p>
+              Propose a show for an artist in your city. Pledges are held in
+              escrow and refunded automatically if the show doesn&apos;t happen.
+            </p>
+            <Link href="/shows/create" className="shows-page__create-link">
+              Create campaign
+            </Link>
+          </div>
+        )}
       </section>
     </main>
   );

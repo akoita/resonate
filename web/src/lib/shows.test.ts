@@ -22,6 +22,7 @@ import {
   showsCampaignListPath,
   validateCampaignDeadlines,
   getCampaign,
+  listCampaigns,
   type Campaign,
 } from "./shows";
 import type { Release } from "./api";
@@ -337,6 +338,76 @@ describe("Shows campaign explorer mapping", () => {
         artworkRevision: 5,
       },
     ]);
+  });
+});
+
+describe("listCampaigns sample fallback (#1869)", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  const backendCampaign = {
+    id: "campaign-1",
+    slug: "real-show",
+    artistDisplayName: "Real Artist",
+    title: "Real Artist in Lyon",
+    city: "Lyon",
+    country: "FR",
+    deadline: "2099-09-01T00:00:00.000Z",
+    goalAmountUnits: "1000000",
+    raisedAmountUnits: "0",
+    currency: "EUR",
+    status: "active",
+  };
+
+  it("returns an empty list — not sample campaigns — when the API answers with no campaigns", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => [],
+    })) as unknown as typeof fetch;
+
+    await expect(listCampaigns()).resolves.toEqual([]);
+    await expect(listCampaigns({ scope: "all" })).resolves.toEqual([]);
+    await expect(listCampaigns({ status: "active" })).resolves.toEqual([]);
+  });
+
+  it("maps the real campaigns the API returns without mixing in samples", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => [backendCampaign],
+    })) as unknown as typeof fetch;
+
+    const campaigns = await listCampaigns();
+
+    expect(campaigns).toHaveLength(1);
+    expect(campaigns[0]).toMatchObject({ id: "real-show", isSample: false });
+  });
+
+  it("falls back to the offline sample campaigns only when the request fails", async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+
+    const offline = await listCampaigns();
+
+    expect(offline.length).toBeGreaterThan(0);
+    expect(offline.every((campaign) => campaign.isSample)).toBe(true);
+  });
+
+  it("falls back to the offline sample campaigns when the API responds with an error status", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+
+    const offline = await listCampaigns();
+
+    expect(offline.length).toBeGreaterThan(0);
+    expect(offline.every((campaign) => campaign.isSample)).toBe(true);
   });
 });
 
