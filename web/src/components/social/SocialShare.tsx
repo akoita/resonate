@@ -41,7 +41,7 @@ export default function SocialShare({ track }: SocialShareProps) {
 
   const recordShare = (channel: ShareChannel) => {
     const trackId = track.catalogTrackId ?? track.trackId ?? undefined;
-    recordProductAnalyticsFromBrowser("track.shared", {
+    recordProductAnalyticsFromBrowser("player.track_shared", {
       source: "player",
       subjectType: trackId ? "track" : undefined,
       subjectId: trackId,

@@ -509,17 +509,17 @@ describe("AnalyticsController (HTTP)", () => {
   it('accepts track shares with an enum channel and drops free-form fields', async () => {
     await request(app.getHttpServer()).post('/analytics/product/event')
       .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
-      .send({ eventName: 'track.shared', source: 'player', subjectType: 'track', subjectId: 'track-1',
+      .send({ eventName: 'player.track_shared', source: 'player', subjectType: 'track', subjectId: 'track-1',
         payload: { channel: 'x', trackId: 'track-1', releaseId: 'release-1', text: 'private message', artistId: 'spoofed' } }).expect(201);
     expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
-      eventName: 'track.shared', source: 'player',
+      eventName: 'player.track_shared', source: 'player',
       payload: { channel: 'x', trackId: 'track-1', releaseId: 'release-1' },
     }));
   });
   it.each([{}, { channel: 'email' }, { channel: 7 }])('rejects track shares with an invalid channel (%j)', async payload => {
     await request(app.getHttpServer()).post('/analytics/product/event')
       .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
-      .send({ eventName: 'track.shared', subjectType: 'track', subjectId: 'track-1', payload }).expect(400);
+      .send({ eventName: 'player.track_shared', subjectType: 'track', subjectId: 'track-1', payload }).expect(400);
     expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
   });
   it.each(['set', 'updated', 'cleared'])('accepts finite repeat %s actions', async action => {

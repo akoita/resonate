@@ -385,7 +385,7 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     // are attributable. No free text: channel is an enum
     // (x|facebook|reddit|native|copy). `artistId` is resolved server-side at
     // ingest from the trackId (#1743) — the client never sends it.
-    eventName: "track.shared",
+    eventName: "player.track_shared",
     eventVersion: 1,
     producer: "web-app",
     privacyTier: "pseudonymous",

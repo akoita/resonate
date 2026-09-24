@@ -60,7 +60,7 @@ authenticated pseudonymous user playback lifecycle events through
 - `recommendation.served` / `recommendation.clicked` (#1449) — Home ranking
   impressions (requestId, railId, trackIds/position, source) at pseudonymous
   tier, correlating with the `requestId` on `GET /recommendations/:userId`.
-- `track.shared` — a listener shared the playing track from the player
+- `player.track_shared` — a listener shared the playing track from the player
   (`channel` enum x/facebook/reddit/native/copy, `trackId`, `releaseId`) at
   pseudonymous tier; no free text. Arrivals from the share link carry
   `utm_campaign=listening_share`.

@@ -50,7 +50,7 @@ available right now?
 - Analytics:
   - `player.action_impression`
   - `player.action_selected`
-  - `track.shared` (listening share, see below)
+  - `player.track_shared` (listening share, see below)
 
 The authenticated `POST /analytics/product/event` endpoint accepts both action
 events with a `track` subject. Impressions carry aligned, unique `actionKeys`
@@ -130,7 +130,7 @@ share and changes no fees, payouts, or monetization mechanics.
   `Listen to "<title>" by <artist> on Resonate — <details>. ...the artist keeps
   at least 85% of every sale.`, adding "Stream it or remix the stems" only
   when the release has mixer stems, within a 200-character budget.
-- **Analytics.** Each completed share action records `track.shared` with a
+- **Analytics.** Each completed share action records `player.track_shared` with a
   `track` subject, source `player`, and a payload of `channel`, `trackId`, and
   `releaseId`. X, Facebook, and Reddit record on click; the share sheet and copy
   record on success. The backend accepts only the enum channel and those

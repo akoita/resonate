@@ -71,7 +71,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "playlist.played",
   "library.saved",
   "library.removed",
-  "track.shared",
+  "player.track_shared",
   "search.submitted",
   "search.result_clicked",
   "marketplace.listing_viewed",
@@ -457,7 +457,7 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     geo: normalizeAnalyticsGeoDimension(body.geo),
     payload: playerAction
       ? normalizePlayerActionPayload(eventName, body.payload)
-      : eventName === "track.shared"
+      : eventName === "player.track_shared"
         ? normalizeTrackSharePayload(sanitizeProductPayload(body.payload))
         : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
@@ -564,7 +564,7 @@ function normalizePlayerActionPayload(eventName: string, value: unknown): Record
 
 const TRACK_SHARE_CHANNELS = new Set(["x", "facebook", "reddit", "native", "copy"]);
 
-/** `track.shared` carries identifiers and an enum channel only — no free text. */
+/** `player.track_shared` carries identifiers and an enum channel only — no free text. */
 function normalizeTrackSharePayload(payload: Record<string, unknown>) {
   if (typeof payload.channel !== "string" || !TRACK_SHARE_CHANNELS.has(payload.channel)) {
     throw new BadRequestException("Invalid share channel");
