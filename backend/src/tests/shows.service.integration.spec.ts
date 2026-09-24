@@ -1808,6 +1808,34 @@ describe("ShowsService integration", () => {
     expect(allList.some((listed) => listed.id === campaign.id)).toBe(true);
   });
 
+  it("hides active campaigns whose pledge deadline has passed from default discovery", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Rennes");
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { deadline: new Date(Date.now() - 60_000) },
+    });
+
+    const defaultList = await service.listCampaigns();
+    expect(defaultList.some((listed) => listed.id === campaign.id)).toBe(false);
+
+    const activeList = await service.listCampaigns({ status: "active" });
+    expect(activeList.some((listed) => listed.id === campaign.id)).toBe(true);
+
+    const allList = await service.listCampaigns({ scope: "all" });
+    expect(allList.some((listed) => listed.id === campaign.id)).toBe(true);
+  });
+
+  it("keeps funded campaigns in default discovery after their pledge deadline", async () => {
+    const { campaign } = await createActiveCampaignWithTier("Nantes");
+    await prisma.showCampaign.update({
+      where: { id: campaign.id },
+      data: { status: "funded", deadline: new Date(Date.now() - 60_000) },
+    });
+
+    const defaultList = await service.listCampaigns();
+    expect(defaultList.some((listed) => listed.id === campaign.id)).toBe(true);
+  });
+
   it("rejects unknown public campaign list status filters", async () => {
     await expect(service.listCampaigns({ status: "failed" })).rejects.toThrow(BadRequestException);
   });

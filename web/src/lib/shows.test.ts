@@ -7,6 +7,7 @@ import {
   campaignStatusBadge,
   campaignRouteCode,
   filterActionableCampaigns,
+  isPledgeWindowClosed,
   campaignTrustState,
   campaignTerms,
   pledgeStateLabel,
@@ -196,6 +197,34 @@ describe("Shows campaign presentation", () => {
       optionId: "profile:public-sennarin",
       releaseCount: 1,
     });
+  });
+});
+
+describe("pledge window deadline", () => {
+  const now = Date.parse("2026-09-24T12:00:00Z");
+  const past = "2026-09-01T00:00:00Z";
+  const future = "2026-10-15T00:00:00Z";
+
+  it("drops active campaigns whose pledge deadline has passed from discovery", () => {
+    const campaigns = [
+      { id: "open", rawStatus: "active", deadline: future },
+      { id: "expired", rawStatus: "active", deadline: past },
+      { id: "funded-after-deadline", rawStatus: "funded", deadline: past },
+      { id: "booked-after-deadline", rawStatus: "booking_confirmed", deadline: past },
+    ];
+    expect(filterActionableCampaigns(campaigns, now).map((campaign) => campaign.id)).toEqual([
+      "open",
+      "funded-after-deadline",
+      "booked-after-deadline",
+    ]);
+  });
+
+  it("only treats the window as closed for active campaigns with a valid past deadline", () => {
+    expect(isPledgeWindowClosed({ rawStatus: "active", deadline: past }, now)).toBe(true);
+    expect(isPledgeWindowClosed({ rawStatus: "active", deadline: future }, now)).toBe(false);
+    expect(isPledgeWindowClosed({ rawStatus: "funded", deadline: past }, now)).toBe(false);
+    expect(isPledgeWindowClosed({ rawStatus: "active" }, now)).toBe(false);
+    expect(isPledgeWindowClosed({ rawStatus: "active", deadline: "not-a-date" }, now)).toBe(false);
   });
 });
 
@@ -447,6 +476,17 @@ describe("campaignPledgeAvailability empty states (#949)", () => {
     contractAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
     contractCampaignId: "1",
   } as unknown as Campaign;
+
+  it("closes pledging once the deadline has passed, but only when the caller supplies the clock", () => {
+    const expired = { ...openCampaign, deadline: "2026-09-01T00:00:00Z" } as Campaign;
+    const now = Date.parse("2026-09-24T12:00:00Z");
+    // Without a clock (server render / hydration) the panel stays deterministic.
+    expect(campaignPledgeAvailability(expired).open).toBe(true);
+    const closed = campaignPledgeAvailability(expired, now);
+    expect(closed.open).toBe(false);
+    expect(closed.key).toBe("deadline_passed");
+    expect(closed.title).toBe("Pledging closed");
+  });
 
   it("opens pledging only when the campaign mirrors the server's pledgeable gate", () => {
     const result = campaignPledgeAvailability(openCampaign);
