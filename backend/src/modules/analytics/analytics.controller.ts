@@ -69,6 +69,7 @@ const PRODUCT_EVENT_NAMES = new Set([
   "playlist.track_added",
   "playlist.track_removed",
   "playlist.played",
+  "playlist.shared",
   "library.saved",
   "library.removed",
   "search.submitted",
@@ -456,7 +457,9 @@ function normalizeProductEventRequest(body: ProductEventRequest): ProductAnalyti
     geo: normalizeAnalyticsGeoDimension(body.geo),
     payload: playerAction
       ? normalizePlayerActionPayload(eventName, body.payload)
-      : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
+      : eventName === "playlist.shared"
+        ? normalizePlaylistSharePayload(sanitizeProductPayload(body.payload))
+        : normalizePlayerControlPayload(eventName, sanitizeProductPayload(body.payload)),
     sourceRefs: clientEventId ? { clientEventId } : undefined,
   };
 }
@@ -557,6 +560,22 @@ function normalizePlayerActionPayload(eventName: string, value: unknown): Record
     throw new BadRequestException("Invalid player action impression");
   }
   return { actionKeys, actionStatuses, source: "player" };
+}
+
+const PLAYLIST_SHARE_CHANNELS = new Set(["copy_link"]);
+// Playlist ids are UUIDs; an id-shaped token keeps prose out of the field.
+const PLAYLIST_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** `playlist.shared` carries the playlist id and an enum channel only — no free text. */
+function normalizePlaylistSharePayload(payload: Record<string, unknown>) {
+  if (typeof payload.channel !== "string" || !PLAYLIST_SHARE_CHANNELS.has(payload.channel)) {
+    throw new BadRequestException("Invalid share channel");
+  }
+  const playlistId = typeof payload.playlistId === "string" ? payload.playlistId.trim() : "";
+  if (!PLAYLIST_ID_PATTERN.test(playlistId)) {
+    throw new BadRequestException("playlistId is required");
+  }
+  return { playlistId, channel: payload.channel };
 }
 
 function normalizePlayerControlPayload(eventName: string, payload: Record<string, unknown>) {

@@ -161,6 +161,14 @@
     }
   },
   {
+    "eventName": "playlist.shared",
+    "payload": {
+      "playlistId": "playlist-1",
+      "channel": "copy_link",
+      "source": "playlist_share_control"
+    }
+  },
+  {
     "eventName": "artist.upload_step_completed",
     "payload": {
       "releaseId": "release-1",

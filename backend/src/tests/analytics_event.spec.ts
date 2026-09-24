@@ -257,6 +257,7 @@ describe("analytics event envelope", () => {
       "punchline.collect_started",
       "punchline.collect_completed",
       "punchline.moment_shared",
+      "playlist.shared",
       "recommendation.generated",
       "recommendation.served",
       "recommendation.clicked",

@@ -519,6 +519,31 @@ describe("AnalyticsController (HTTP)", () => {
     }
     await request(app.getHttpServer()).post('/analytics/product/event').send({ eventName: 'player.repeat_count_set', payload: { target: 'track', configured: 1, remaining: 1 } }).expect(401);
   });
+  it.each(['playlist_share_control', 'public_playlist_view'])('accepts playlist shares from %s and keeps only playlistId and channel', async source => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'playlist.shared', source, subjectType: 'playlist', subjectId: 'playlist-1',
+        payload: { playlistId: 'playlist-1', channel: 'copy_link', title: 'private title', url: 'https://example.test/p', trackIds: ['t1'] } }).expect(201);
+    expect(instrumentationService.recordProductEvent).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'playlist.shared', source, subjectType: 'playlist', subjectId: 'playlist-1',
+      payload: { playlistId: 'playlist-1', channel: 'copy_link' },
+    }));
+  });
+  it.each([
+    { playlistId: 'playlist-1' },
+    { playlistId: 'playlist-1', channel: 'email' },
+    { playlistId: 'playlist-1', channel: 7 },
+    { channel: 'copy_link' },
+    { playlistId: '   ', channel: 'copy_link' },
+    { playlistId: ['playlist-1'], channel: 'copy_link' },
+    { playlistId: 'my secret playlist about my ex', channel: 'copy_link' },
+    { playlistId: 'p'.repeat(65), channel: 'copy_link' },
+  ])('rejects playlist shares with an invalid payload (%j)', async payload => {
+    await request(app.getHttpServer()).post('/analytics/product/event')
+      .set('Authorization', `Bearer ${authToken('listener-1', 'listener')}`)
+      .send({ eventName: 'playlist.shared', subjectType: 'playlist', subjectId: 'playlist-1', payload }).expect(400);
+    expect(instrumentationService.recordProductEvent).not.toHaveBeenCalled();
+  });
 
   it("accepts artist action cockpit product analytics events", async () => {
     await request(app.getHttpServer())
