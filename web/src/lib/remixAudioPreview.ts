@@ -30,6 +30,75 @@ type SchedulableParam = {
   linearRampToValueAtTime(value: number, time: number): unknown;
 };
 
+/** A param whose pending automation can be replaced mid-playback (#1879). */
+type ReschedulableParam = SchedulableParam & {
+  cancelScheduledValues(time: number): unknown;
+};
+
+type SectionInterval = { startSec: number; endSec: number };
+
+type EnvelopeEvent = {
+  kind: "set" | "ramp";
+  value: number;
+  /** Seconds on the stem timeline (0 = start of the source). */
+  atSec: number;
+};
+
+/**
+ * The section envelope as timeline events (after the initial value at 0):
+ * a trapezoid per span with the render's edge fades. Shared by the from-zero
+ * and from-offset schedulers so both produce the same shape.
+ */
+function sectionEnvelopeEvents(
+  intervals: SectionInterval[],
+  fadeSeconds: number,
+): EnvelopeEvent[] {
+  const fade = Math.max(fadeSeconds, 0.001);
+  const events: EnvelopeEvent[] = [];
+  for (const interval of intervals) {
+    if (interval.startSec > 0) {
+      events.push({ kind: "set", value: 0, atSec: interval.startSec });
+      events.push({ kind: "ramp", value: 1, atSec: interval.startSec + fade });
+    }
+    const fadeOutStart = Math.max(
+      interval.endSec - fade,
+      interval.startSec > 0 ? interval.startSec + fade : 0,
+    );
+    events.push({ kind: "set", value: 1, atSec: fadeOutStart });
+    events.push({ kind: "ramp", value: 0, atSec: interval.endSec });
+  }
+  return events;
+}
+
+function applyEnvelopeEvent(
+  param: SchedulableParam,
+  event: EnvelopeEvent,
+  timelineZero: number,
+): void {
+  if (event.kind === "set") {
+    param.setValueAtTime(event.value, timelineZero + event.atSec);
+  } else {
+    param.linearRampToValueAtTime(event.value, timelineZero + event.atSec);
+  }
+}
+
+/**
+ * Section gain at one timeline position, ignoring the edge fades: 1 inside
+ * an active span, 0 outside; null/undefined intervals = whole stem (1),
+ * [] = every section off (0).
+ */
+export function sectionGainAt(
+  intervals: SectionInterval[] | null | undefined,
+  atSec: number,
+): number {
+  if (intervals === null || intervals === undefined) return 1;
+  return intervals.some(
+    (interval) => interval.startSec <= atSec && atSec < interval.endSec,
+  )
+    ? 1
+    : 0;
+}
+
 /**
  * Schedule the section envelope on a dedicated gain param, relative to the
  * preview's start time. Pure over an AudioParam-like interface so it is
@@ -38,7 +107,7 @@ type SchedulableParam = {
  */
 export function scheduleSectionEnvelope(
   param: SchedulableParam,
-  intervals: Array<{ startSec: number; endSec: number }> | null | undefined,
+  intervals: SectionInterval[] | null | undefined,
   startAt: number,
   fadeSeconds: number = PREVIEW_SECTION_FADE_SECONDS,
 ): void {
@@ -50,20 +119,58 @@ export function scheduleSectionEnvelope(
     param.setValueAtTime(0, startAt);
     return;
   }
-  const fade = Math.max(fadeSeconds, 0.001);
   param.setValueAtTime(intervals[0].startSec <= 0 ? 1 : 0, startAt);
-  for (const interval of intervals) {
-    if (interval.startSec > 0) {
-      param.setValueAtTime(0, startAt + interval.startSec);
-      param.linearRampToValueAtTime(1, startAt + interval.startSec + fade);
-    }
-    const fadeOutStart = Math.max(
-      interval.endSec - fade,
-      interval.startSec > 0 ? interval.startSec + fade : 0,
-    );
-    param.setValueAtTime(1, startAt + fadeOutStart);
-    param.linearRampToValueAtTime(0, startAt + interval.endSec);
+  for (const event of sectionEnvelopeEvents(intervals, fadeSeconds)) {
+    applyEnvelopeEvent(param, event, startAt);
   }
+}
+
+/**
+ * (Re)schedule the section envelope from a timeline position (#1879): used
+ * when playback starts at a seek offset and when cells are edited while the
+ * preview runs. Drops pending automation from `now`, pins the value the
+ * envelope has at `fromSec` (fades ignored — a mid-fade restart snaps to the
+ * span's level), then schedules only the boundaries later than `fromSec`,
+ * in context time `timelineZero + t` (`timelineZero` = context time of the
+ * stem's timeline 0).
+ */
+export function scheduleSectionEnvelopeFrom(
+  param: ReschedulableParam,
+  intervals: SectionInterval[] | null | undefined,
+  timelineZero: number,
+  fromSec: number,
+  now: number,
+  fadeSeconds: number = PREVIEW_SECTION_FADE_SECONDS,
+): void {
+  param.cancelScheduledValues(now);
+  param.setValueAtTime(sectionGainAt(intervals, fromSec), now);
+  if (!intervals || intervals.length === 0) return;
+  for (const event of sectionEnvelopeEvents(intervals, fadeSeconds)) {
+    if (event.atSec > fromSec) applyEnvelopeEvent(param, event, timelineZero);
+  }
+}
+
+/** A looped span on the stem timeline, in seconds. */
+export type PreviewLoop = { startSec: number; endSec: number };
+
+/**
+ * Where playback enters a loop (#1879): the requested offset when it lies
+ * inside the loop, otherwise the loop start.
+ */
+export function loopEntryOffset(offsetSec: number, loop: PreviewLoop): number {
+  return offsetSec >= loop.startSec && offsetSec < loop.endSec
+    ? offsetSec
+    : loop.startSec;
+}
+
+/**
+ * Fold a linear play position back into the loop once it passes the loop
+ * end (the source keeps cycling [start, end) after entering it).
+ */
+export function wrapLoopPosition(positionSec: number, loop: PreviewLoop): number {
+  const length = loop.endSec - loop.startSec;
+  if (length <= 0 || positionSec < loop.endSec) return positionSec;
+  return loop.startSec + ((positionSec - loop.startSec) % length);
 }
 
 /** Post-limiter output level for the studio meter. */
@@ -82,15 +189,52 @@ export type StemArrangementPreviewHandle = {
   ): void;
   stop(): void;
   level(): PreviewLevel;
+  /**
+   * Seconds on the source timeline (#1879): wraps inside a loop, clamps to
+   * the duration otherwise, and freezes at the last position after stop.
+   */
+  position(): number;
+  /** Longest decoded buffer among the playing stems, in seconds. */
+  duration(): number;
+  /**
+   * Live section-cell edits (#1879): re-schedule each playing stem's section
+   * envelope from the current position. In loop mode the section gain is a
+   * constant (see `play`), so this only recomputes it.
+   */
+  updateSections(stems: PreviewStemState[]): void;
 };
 
 export type StemPreviewEngine = {
+  /**
+   * Start every stem in sync. `offsetSec` starts mid-timeline (seek);
+   * `loop` cycles one span. Loops are single sections (#1879): while looping,
+   * each stem's section gain is held constant at whether the stem is active
+   * at the loop midpoint instead of following the envelope, and `onEnded`
+   * never fires.
+   */
   play(input: {
     stems: PreviewStemState[];
     soloStemId: string | null;
     referenceStemId?: string | null;
     onEnded?: () => void;
+    offsetSec?: number;
+    loop?: PreviewLoop | null;
   }): Promise<StemArrangementPreviewHandle>;
+  /**
+   * Fetch and decode stems into the cache ahead of play (#1879), e.g. for
+   * waveforms. Creates the AudioContext without resuming it (a suspended
+   * context can decode). Calls `onStemLoaded` per decoded stem, including
+   * already-cached ones; per-stem failures are swallowed. Never rejects.
+   */
+  preload(
+    stemIds: string[],
+    onStemLoaded?: (stemId: string, buffer: AudioBuffer) => void,
+  ): Promise<void>;
+  /**
+   * Longest decoded buffer in the cache (optionally only among `stemIds`),
+   * or null while nothing has decoded yet.
+   */
+  bufferDuration(stemIds?: string[]): number | null;
   dispose(): void;
 };
 
@@ -173,14 +317,20 @@ const INERT_HANDLE: StemArrangementPreviewHandle = {
   update: () => undefined,
   stop: () => undefined,
   level: () => SILENT_LEVEL,
+  position: () => 0,
+  duration: () => 0,
+  updateSections: () => undefined,
 };
+
+/** Shortest loop the engine will cycle; anything shorter plays unlooped. */
+const MIN_LOOP_SECONDS = 0.05;
 
 /**
  * Persistent studio preview engine. One AudioContext (created lazily on the
- * first play, i.e. inside a user gesture) and one master limiter/meter chain
- * live for the editor's lifetime; decoded stem buffers are cached so repeat
- * "Play preview" presses start instantly instead of re-downloading and
- * re-decoding every stem.
+ * first play or preload; resumed only by play, i.e. inside a user gesture)
+ * and one master limiter/meter chain live for the editor's lifetime; decoded
+ * stem buffers are cached so repeat "Play preview" presses start instantly
+ * instead of re-downloading and re-decoding every stem.
  */
 export function createStemPreviewEngine(input: {
   urlForStem: (stemId: string) => string;
@@ -192,6 +342,8 @@ export function createStemPreviewEngine(input: {
   const createContext =
     input.audioContextFactory ?? (() => new (audioContextConstructor())());
   const buffers = new Map<string, Promise<AudioBuffer>>();
+  // Settled buffers, for synchronous duration reads (#1879).
+  const decodedBuffers = new Map<string, AudioBuffer>();
   let context: AudioContext | null = null;
   let master: {
     compressor: DynamicsCompressorNode;
@@ -234,10 +386,15 @@ export function createStemPreviewEngine(input: {
       return audioContext.decodeAudioData(data);
     })();
     buffers.set(stemId, pending);
-    // A failed fetch/decode must not poison the cache: the next play retries.
-    pending.catch(() => {
-      if (buffers.get(stemId) === pending) buffers.delete(stemId);
-    });
+    pending.then(
+      (buffer) => {
+        if (buffers.get(stemId) === pending) decodedBuffers.set(stemId, buffer);
+      },
+      // A failed fetch/decode must not poison the cache: the next play retries.
+      () => {
+        if (buffers.get(stemId) === pending) buffers.delete(stemId);
+      },
+    );
     return pending;
   };
 
@@ -256,6 +413,39 @@ export function createStemPreviewEngine(input: {
       limiting:
         compressorReductionDb(master.compressor) < PREVIEW_LIMITING_REDUCTION_DB,
     };
+  };
+
+  const preload: StemPreviewEngine["preload"] = async (stemIds, onStemLoaded) => {
+    if (disposed) return;
+    let audioContext: AudioContext;
+    try {
+      audioContext = ensureContext();
+    } catch {
+      // No WebAudio here: nothing to preload; play() reports the error.
+      return;
+    }
+    await Promise.all(
+      stemIds.map(async (stemId) => {
+        try {
+          const buffer = await loadBuffer(audioContext, stemId);
+          if (!disposed) onStemLoaded?.(stemId, buffer);
+        } catch {
+          // Swallowed: the cache entry is already dropped for a retry.
+        }
+      }),
+    );
+  };
+
+  const bufferDuration: StemPreviewEngine["bufferDuration"] = (stemIds) => {
+    let longest: number | null = null;
+    const ids = stemIds ?? [...decodedBuffers.keys()];
+    for (const stemId of ids) {
+      const buffer = decodedBuffers.get(stemId);
+      if (buffer && (longest === null || buffer.duration > longest)) {
+        longest = buffer.duration;
+      }
+    }
+    return longest;
   };
 
   const play: StemPreviewEngine["play"] = async (request) => {
@@ -282,17 +472,77 @@ export function createStemPreviewEngine(input: {
       return INERT_HANDLE;
     }
     const output = master.compressor;
+    const duration = decoded.reduce(
+      (longest, buffer) => Math.max(longest, buffer.duration),
+      0,
+    );
+    // Clamp the loop to the audio; a degenerate loop plays unlooped.
+    const requestedLoop = request.loop ?? null;
+    const loop: PreviewLoop | null =
+      requestedLoop &&
+      Math.min(requestedLoop.endSec, duration) - Math.max(requestedLoop.startSec, 0) >=
+        MIN_LOOP_SECONDS
+        ? {
+            startSec: Math.max(requestedLoop.startSec, 0),
+            endSec: Math.min(requestedLoop.endSec, duration),
+          }
+        : null;
+    const requestedOffset = Math.min(
+      Math.max(request.offsetSec ?? 0, 0),
+      duration,
+    );
+    const offset = loop ? loopEntryOffset(requestedOffset, loop) : requestedOffset;
 
     const sources: AudioBufferSourceNode[] = [];
     const gains = new Map<string, GainNode>();
     const sectionGains = new Map<string, GainNode>();
     let stopped = false;
     let endedCount = 0;
+    const startAt = audioContext.currentTime + 0.03;
+    // Context time of timeline 0: position = currentTime - timelineZero.
+    const timelineZero = startAt - offset;
+    let frozenPosition: number | null = null;
+
+    const livePosition = (): number => {
+      const linear =
+        offset + Math.max(0, audioContext.currentTime - startAt);
+      return loop ? wrapLoopPosition(linear, loop) : Math.min(linear, duration);
+    };
 
     const releaseNodes = () => {
       for (const source of sources) source.disconnect();
       for (const gain of gains.values()) gain.disconnect();
       for (const gain of sectionGains.values()) gain.disconnect();
+    };
+
+    const scheduleSections = (stems: PreviewStemState[], now: number) => {
+      for (const stem of stems) {
+        const sectionGain = sectionGains.get(stem.stemId);
+        if (!sectionGain) continue;
+        if (loop) {
+          // Loops are single sections: hold the loop-midpoint gain.
+          const param = sectionGain.gain;
+          param.cancelScheduledValues(now);
+          param.setValueAtTime(
+            sectionGainAt(
+              stem.activeIntervals,
+              (loop.startSec + loop.endSec) / 2,
+            ),
+            now,
+          );
+        } else if (offset === 0 && now === startAt) {
+          // From-zero start: the original envelope, unchanged.
+          scheduleSectionEnvelope(sectionGain.gain, stem.activeIntervals, startAt);
+        } else {
+          scheduleSectionEnvelopeFrom(
+            sectionGain.gain,
+            stem.activeIntervals,
+            timelineZero,
+            now - timelineZero,
+            now,
+          );
+        }
+      }
     };
 
     const handle: StemArrangementPreviewHandle = {
@@ -306,6 +556,7 @@ export function createStemPreviewEngine(input: {
       },
       stop() {
         if (stopped) return;
+        frozenPosition = livePosition();
         stopped = true;
         for (const source of sources) {
           try {
@@ -318,6 +569,12 @@ export function createStemPreviewEngine(input: {
         if (current === handle) current = null;
       },
       level: () => (stopped ? SILENT_LEVEL : level()),
+      position: () => frozenPosition ?? livePosition(),
+      duration: () => duration,
+      updateSections(stems) {
+        if (stopped) return;
+        scheduleSections(stems, Math.max(audioContext.currentTime, startAt));
+      },
     };
 
     request.stems.forEach((stem, index) => {
@@ -327,10 +584,19 @@ export function createStemPreviewEngine(input: {
       // automation and live manual-gain updates never conflict.
       const sectionGain = audioContext.createGain();
       source.buffer = decoded[index];
+      if (loop) {
+        // Stems of one separation share a length; a shorter stem would wrap
+        // at its own end (the browser clamps loopEnd to the buffer).
+        source.loop = true;
+        source.loopStart = loop.startSec;
+        source.loopEnd = loop.endSec;
+      }
       source.connect(gain).connect(sectionGain).connect(output);
       source.onended = () => {
         endedCount += 1;
-        if (!stopped && endedCount >= sources.length) {
+        // A looping preview only ends through stop().
+        if (!loop && !stopped && endedCount >= sources.length) {
+          frozenPosition = livePosition();
           stopped = true;
           releaseNodes();
           if (current === handle) current = null;
@@ -347,17 +613,11 @@ export function createStemPreviewEngine(input: {
       request.soloStemId,
       request.referenceStemId ?? null,
     );
-    const startAt = audioContext.currentTime + 0.03;
-    // Section envelopes are scheduled once at start from the current
-    // arrangement; cell edits during playback apply on the next preview start.
-    for (const stem of request.stems) {
-      const sectionGain = sectionGains.get(stem.stemId);
-      if (sectionGain) {
-        scheduleSectionEnvelope(sectionGain.gain, stem.activeIntervals, startAt);
-      }
-    }
+    // Envelopes follow the arrangement at start; `updateSections` re-schedules
+    // them live when cells change during playback (#1879).
+    scheduleSections(request.stems, startAt);
     for (const source of sources) {
-      source.start(startAt);
+      source.start(startAt, offset);
     }
     current = handle;
     return handle;
@@ -369,6 +629,7 @@ export function createStemPreviewEngine(input: {
     current?.stop();
     current = null;
     buffers.clear();
+    decodedBuffers.clear();
     master?.compressor.disconnect();
     master?.analyser.disconnect();
     master = null;
@@ -378,5 +639,5 @@ export function createStemPreviewEngine(input: {
     void closing?.close().catch(() => undefined);
   };
 
-  return { play, dispose };
+  return { play, preload, bufferDuration, dispose };
 }
