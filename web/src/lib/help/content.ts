@@ -1237,7 +1237,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
         blocks: [
           {
             kind: "paragraph",
-            text: "Operators and administrators can open Management transfer recovery from the admin navigation. Compare the requester's evidence with the accepted transfer and the listed profiles or releases, then record a review note before approving or rejecting. Approval restores management to the original sender only when the recipient still manages every listed resource and no later accepted transfer has involved one. It ends existing manager grants and pending transfers for those resources. A rejection leaves management as it is.",
+            text: "Operators and administrators can open Management transfer recovery from the admin navigation. Compare the requester's evidence with the accepted transfer and the listed profiles or releases, then record a review note before approving or rejecting. Approval restores management to the original sender only when the recipient still manages every listed resource and no later accepted transfer has involved one. It ends existing manager grants and pending transfers for those resources. A rejection leaves management as it is. Each request lists the affected profiles or releases and explains what approval changes, and both approving and rejecting ask you to confirm.",
           },
         ],
       },

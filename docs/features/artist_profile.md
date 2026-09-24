@@ -89,6 +89,9 @@ restore access. An operator can approve recovery only while the recipient
 still manages the exact transferred resources and no later accepted transfer
 has involved them. The decision remains in the management audit history;
 rights, credits, and payouts are unchanged.
+In the **Transfer Recovery** queue, each request lists the affected profiles
+or releases and explains what approval changes; both approval and rejection
+ask the operator to confirm.
 
 ### Artist or representative (request public profile access)
 
