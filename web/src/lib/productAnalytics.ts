@@ -31,6 +31,7 @@ export const PRODUCT_ANALYTICS_EVENT_NAMES = [
   "playlist.removed_from_library",
   "library.saved",
   "library.removed",
+  "player.track_shared",
   "search.submitted",
   "search.result_clicked",
   "marketplace.listing_viewed",

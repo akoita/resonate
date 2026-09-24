@@ -4,6 +4,7 @@ import { ListeningControls } from "../../components/player/ListeningControls";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import SocialShare from "../../components/social/SocialShare";
+import { hasMixerStems, type ShareableTrack } from "../../lib/listeningShare";
 import { usePlayer } from "../../lib/playerContext";
 import { formatDuration } from "../../lib/metadataExtractor";
 import { deleteLibraryTrackAPI, getTrack, getRelease, getPlayerTrackActions, type PlayerTrackAction, type PlayerTrackActionsResponse } from "../../lib/api";
@@ -117,6 +118,21 @@ function PlayerContent() {
   }, [recommendationReasonParam]);
 
   const actionTrackId = currentTrack?.catalogTrackId || null;
+
+  const shareTrack = useMemo<ShareableTrack>(
+    () =>
+      currentTrack
+        ? {
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            releaseId: currentTrack.releaseId,
+            catalogTrackId: currentTrack.catalogTrackId,
+            trackId: currentTrack.id,
+            hasStems: hasMixerStems(currentTrack.stems),
+          }
+        : { title: "No track selected" },
+    [currentTrack],
+  );
 
   useEffect(() => {
     let active = true;
@@ -596,7 +612,7 @@ function PlayerContent() {
 
         <div className="player-share-section" style={{ marginTop: "auto", paddingTop: "var(--space-2)", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
           <div className="studio-label" style={{ marginBottom: "var(--space-2)" }}>Broadcast Signal</div>
-          <SocialShare title={displayTrack.title} artist={displayTrack.artist || "Unknown"} />
+          <SocialShare track={shareTrack} />
         </div>
       </aside>
 

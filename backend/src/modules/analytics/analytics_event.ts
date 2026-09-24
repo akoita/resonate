@@ -380,6 +380,18 @@ export const ANALYTICS_EVENT_SCHEMA_EXAMPLES = [
     payloadFields: ["momentId", "dropId", "artistId", "context", "method"],
   },
   {
+    // A listener shared the playing track from the player. The share link is
+    // the public release page tagged utm_campaign=listening_share, so arrivals
+    // are attributable. No free text: channel is an enum
+    // (x|facebook|reddit|native|copy). `artistId` is resolved server-side at
+    // ingest from the trackId (#1743) — the client never sends it.
+    eventName: "player.track_shared",
+    eventVersion: 1,
+    producer: "web-app",
+    privacyTier: "pseudonymous",
+    payloadFields: ["trackId", "releaseId", "artistId", "channel", "source"],
+  },
+  {
     // A listener copied a public playlist link from the owner share control or
     // the public playlist page. No free text: channel is an enum (copy_link)
     // and the playlist id is the only identifier — never the title or URL.

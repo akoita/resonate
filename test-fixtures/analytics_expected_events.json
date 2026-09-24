@@ -16,6 +16,15 @@
     }
   },
   {
+    "eventName": "player.track_shared",
+    "payload": {
+      "trackId": "track-1",
+      "releaseId": "release-1",
+      "channel": "x",
+      "source": "player"
+    }
+  },
+  {
     "eventName": "player.segment_loop_enabled",
     "payload": {
       "artistId": "artist-1",
