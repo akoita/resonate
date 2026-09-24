@@ -39,8 +39,10 @@ test.describe("Catalog & Home Page", () => {
     test("HOME-04: Hero actions are visible", async ({ page }) => {
         await page.goto("/");
         // Campaign hero exposes "Back This Show" (campaign detail) + "All Campaigns" (list).
-        await expect(page.getByRole("link", { name: /Back This Show/i })).toBeVisible({ timeout: 15000 });
-        await expect(page.getByRole("link", { name: /All Campaigns/i })).toBeVisible();
+        // Scoped to the hero: the live-event ticket cards also read "Back this show".
+        const hero = page.locator(".ng-hero").first();
+        await expect(hero.getByRole("link", { name: /Back This Show/i })).toBeVisible({ timeout: 15000 });
+        await expect(hero.getByRole("link", { name: /All Campaigns/i })).toBeVisible();
     });
 
     test("HOME-05: Upcoming Live Events section exists", async ({ page }) => {
