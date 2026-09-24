@@ -41,7 +41,13 @@ export function PledgeIntentPanel({ campaign, fallbackTiers }: Props) {
     error: refundError,
     txHash: refundTxHash,
   } = useShowRefundExecution();
-  const availability = campaignPledgeAvailability(campaign);
+  // The deadline check needs the real clock, so it joins only after mount to
+  // keep the server render and hydration identical.
+  const [nowMs, setNowMs] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    setNowMs(Date.now());
+  }, []);
+  const availability = campaignPledgeAvailability(campaign, nowMs);
   const pledgingOpen = availability.open;
   const tiers = campaign.tiers.length > 0 ? campaign.tiers : fallbackTiers;
   const [selectedTierId, setSelectedTierId] = useState(tiers[1]?.id ?? tiers[0]?.id ?? "");

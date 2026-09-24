@@ -1038,7 +1038,14 @@ export class ShowsService {
           ? { status }
           : scope === "all"
             ? {}
-            : { status: { notIn: [...PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES] } }),
+            : {
+                status: { notIn: [...PUBLIC_DISCOVERY_EXCLUDED_CAMPAIGN_STATUSES] },
+                // An `active` campaign whose pledge deadline has passed missed
+                // its goal and can no longer take pledges; until its lifecycle
+                // moves it to refunds it must not be offered as backable.
+                // Funded/booked campaigns stay listed after their deadline.
+                NOT: { status: "active", deadline: { lte: new Date() } },
+              }),
         ...(includeSignals ? {} : { campaignLevel: { not: "signal" } }),
       },
       include: {

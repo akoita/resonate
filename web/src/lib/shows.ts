@@ -145,12 +145,32 @@ export const NON_ACTIONABLE_CAMPAIGN_RAW_STATUSES = new Set([
   "released",
 ]);
 
-export function isActionableCampaign(campaign: Pick<Campaign, "rawStatus">): boolean {
-  return !NON_ACTIONABLE_CAMPAIGN_RAW_STATUSES.has(campaign.rawStatus);
+/**
+ * An `active` campaign whose pledge deadline has passed missed its goal and
+ * can no longer take pledges, even before its lifecycle moves it to refunds.
+ * Funded/booked campaigns are unaffected: their deadline passing is success.
+ */
+export function isPledgeWindowClosed(
+  campaign: Pick<Campaign, "rawStatus"> & Partial<Pick<Campaign, "deadline">>,
+  nowMs: number = Date.now(),
+): boolean {
+  if (campaign.rawStatus !== "active" || !campaign.deadline) return false;
+  const deadlineMs = new Date(campaign.deadline).getTime();
+  return Number.isFinite(deadlineMs) && deadlineMs <= nowMs;
 }
 
-export function filterActionableCampaigns<T extends Pick<Campaign, "rawStatus">>(campaigns: T[]): T[] {
-  return campaigns.filter(isActionableCampaign);
+export function isActionableCampaign(
+  campaign: Pick<Campaign, "rawStatus"> & Partial<Pick<Campaign, "deadline">>,
+  nowMs: number = Date.now(),
+): boolean {
+  return !NON_ACTIONABLE_CAMPAIGN_RAW_STATUSES.has(campaign.rawStatus)
+    && !isPledgeWindowClosed(campaign, nowMs);
+}
+
+export function filterActionableCampaigns<
+  T extends Pick<Campaign, "rawStatus"> & Partial<Pick<Campaign, "deadline">>,
+>(campaigns: T[], nowMs: number = Date.now()): T[] {
+  return campaigns.filter((campaign) => isActionableCampaign(campaign, nowMs));
 }
 
 export type CampaignStatusBadge = {
@@ -301,7 +321,8 @@ export type CampaignPledgeAvailability = {
     | "escrow_unavailable"
     | "closed_refund"
     | "cancelled"
-    | "closed";
+    | "closed"
+    | "deadline_passed";
   /** Short heading for the empty state (unused when `open`). */
   title: string;
   /** Honest one-liner explaining why pledging is/ isn't open. */
@@ -313,8 +334,9 @@ export type CampaignPledgeAvailability = {
  * honest empty state instead of a live form that would only error on submit.
  * Order matches the trust ladder: terminal/refund first, then authority
  * problems, then the escrow-readiness gate. Deliberately time-independent
- * (no deadline check) to stay deterministic across SSR/CSR — the server still
- * rejects expired-deadline pledges.
+ * unless the caller passes `nowMs` — callers pass it only after mount so
+ * SSR/CSR stay deterministic. The server always rejects expired-deadline
+ * pledges.
  */
 export function campaignPledgeAvailability(
   campaign: Pick<
@@ -326,7 +348,8 @@ export function campaignPledgeAvailability(
     | "beneficiaryType"
     | "contractAddress"
     | "contractCampaignId"
-  >,
+  > & Partial<Pick<Campaign, "deadline">>,
+  nowMs?: number,
 ): CampaignPledgeAvailability {
   const status = campaign.rawStatus;
   const level = campaign.campaignLevel;
@@ -398,6 +421,14 @@ export function campaignPledgeAvailability(
       key: "closed",
       title: "Pledging closed",
       message: "This campaign isn't accepting new pledges right now.",
+    };
+  }
+  if (nowMs !== undefined && isPledgeWindowClosed(campaign, nowMs)) {
+    return {
+      open: false,
+      key: "deadline_passed",
+      title: "Pledging closed",
+      message: "The pledge window for this campaign has ended, so it can't take new pledges.",
     };
   }
   return { open: true, key: "open", title: "", message: "" };
