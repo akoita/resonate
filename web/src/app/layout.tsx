@@ -5,6 +5,10 @@ import "./globals.css";
 // reliably wins ties over the base chrome / aid / vault rules defined
 // inline in globals.css and the aid-*.css imports.
 import "../styles/identity-refresh.css";
+// Library v3: the Home v3 visual language for /library. Loaded after
+// identity-refresh.css so it wins over the globals.css library rules; every
+// selector is scoped under `.library-v3`.
+import "../styles/library-v3.css";
 // Player console surface (queue rows, icon buttons, gain, split buttons).
 // Last so it wins over the base `.ui-btn` / `.queue-item` rules it refines.
 import "../styles/player-console.css";
@@ -124,7 +128,7 @@ export default function RootLayout({
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=album,arrow_forward,auto_awesome,chevron_left,chevron_right,close,error,graphic_eq,hourglass_top,library_add,library_music,lock,person_add,person_search,play_arrow,playlist_add,progress_activity,public,queue_music,rocket_launch,search,search_off,table_rows,upload_file&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=album,arrow_forward,auto_awesome,chevron_left,chevron_right,close,error,graphic_eq,hourglass_top,library_add,library_music,lock,mic,person_add,person_search,play_arrow,playlist_add,progress_activity,public,queue_music,rocket_launch,search,search_off,table_rows,tune,upload_file&display=swap"
         />
       </head>
       <body className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} ${beVietnamPro.variable} ${jetbrainsMono.variable}`}>

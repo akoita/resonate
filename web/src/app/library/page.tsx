@@ -873,7 +873,7 @@ export default function LibraryPage() {
                             /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={artist.name} className="library-card-artwork" />
                         ) : (
-                            <div className="library-card-icon">🎤</div>
+                            <div className="library-card-icon"><span className="ms-icon" aria-hidden="true">mic</span></div>
                         )}
                         <div className="library-card-title">{artist.name}</div>
                         <div className="library-card-meta">
@@ -935,7 +935,7 @@ export default function LibraryPage() {
                             /* eslint-disable-next-line @next/next/no-img-element */
                             <img src={artUrl} alt={album.name} className="library-card-artwork" />
                         ) : (
-                            <div className="library-card-icon">💿</div>
+                            <div className="library-card-icon"><span className="ms-icon" aria-hidden="true">album</span></div>
                         )}
                         <div className="library-card-title">{album.name}</div>
                         <div className="library-card-meta">
@@ -1039,13 +1039,23 @@ export default function LibraryPage() {
 
     return (
         <AuthGate title="Connect your wallet to view your library.">
-            <main className="library-page-main">
+            <main className="library-page-main library-v3">
                 <Card className="library-page-card">
                     <div className="library-header">
-                        <h1 className="library-title">My Library</h1>
+                        <div className="library-heading">
+                            <span className="library-kicker">Your collection</span>
+                            <h1 className="library-title">My Library</h1>
+                            <p className="library-summary">
+                                {unifiedTracks.length} {unifiedTracks.length === 1 ? "track" : "tracks"}
+                                {" · "}
+                                {artists.length} {artists.length === 1 ? "artist" : "artists"}
+                                {" · "}
+                                {albums.length} {albums.length === 1 ? "album" : "albums"}
+                            </p>
+                        </div>
                         <div className="library-header-actions">
                             <div className="library-search">
-                                <span className="library-search-icon">🔍</span>
+                                <span className="library-search-icon ms-icon" aria-hidden="true">search</span>
                                 <input
                                     type="text"
                                     placeholder={isPhone ? "Search library" : "Search tracks, artists, albums..."}
@@ -1054,13 +1064,19 @@ export default function LibraryPage() {
                                     className="library-search-input"
                                 />
                                 {searchQuery && (
-                                    <button className="library-search-clear" onClick={() => setSearchQuery("")}>
-                                        ✕
+                                    <button
+                                        type="button"
+                                        className="library-search-clear"
+                                        aria-label="Clear search"
+                                        onClick={() => setSearchQuery("")}
+                                    >
+                                        <span className="ms-icon" aria-hidden="true">close</span>
                                     </button>
                                 )}
                             </div>
-                            <Link href="/settings">
-                                <Button variant="primary">Library Settings</Button>
+                            <Link href="/settings" className="library-settings-link">
+                                <span className="ms-icon" aria-hidden="true">tune</span>
+                                Library settings
                             </Link>
                         </div>
                     </div>
@@ -1070,56 +1086,72 @@ export default function LibraryPage() {
                         <div className="library-tabs" ref={tabsRef}>
                             <button
                                 className={`library-tab ${activeTab === "tracks" ? "active" : ""}`}
+                                aria-current={activeTab === "tracks" ? "page" : undefined}
                                 onClick={() => router.push("/library?tab=tracks")}
                             >
-                                Tracks ({unifiedTracks.length})
+                                Tracks{" "}
+                                <span className="library-tab__count">{unifiedTracks.length}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "artists" ? "active" : ""}`}
+                                aria-current={activeTab === "artists" ? "page" : undefined}
                                 onClick={() => router.push(libraryArtistsHref())}
                             >
-                                Artists ({artists.length})
+                                Artists{" "}
+                                <span className="library-tab__count">{artists.length}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "albums" ? "active" : ""}`}
+                                aria-current={activeTab === "albums" ? "page" : undefined}
                                 onClick={() => router.push(libraryAlbumsHref())}
                             >
-                                Albums ({albums.length})
+                                Albums{" "}
+                                <span className="library-tab__count">{albums.length}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "playlists" ? "active" : ""}`}
+                                aria-current={activeTab === "playlists" ? "page" : undefined}
                                 onClick={() => router.push("/library?tab=playlists")}
                             >
-                                Playlists ({playlistCount})
+                                Playlists{" "}
+                                <span className="library-tab__count">{playlistCount}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "stems" ? "active" : ""}`}
+                                aria-current={activeTab === "stems" ? "page" : undefined}
                                 onClick={() => router.push("/library?tab=stems")}
                             >
-                                Stems ({ownedStems.length})
+                                Stems{" "}
+                                <span className="library-tab__count">{ownedStems.length}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "ai_creations" ? "active" : ""}`}
+                                aria-current={activeTab === "ai_creations" ? "page" : undefined}
                                 onClick={() => router.push("/library?tab=ai_creations")}
                             >
-                                ✨ AI Creations ({aiCreations.length})
+                                <span className="ms-icon" aria-hidden="true">auto_awesome</span>
+                                AI Creations{" "}
+                                <span className="library-tab__count">{aiCreations.length}</span>
                             </button>
                             <button
                                 className={`library-tab ${activeTab === "moments" ? "active" : ""}`}
+                                aria-current={activeTab === "moments" ? "page" : undefined}
                                 onClick={() => router.push("/library?tab=moments")}
                             >
-                                🎤 Moments ({ownedMoments.length})
+                                <span className="ms-icon" aria-hidden="true">mic</span>
+                                Moments{" "}
+                                <span className="library-tab__count">{ownedMoments.length}</span>
                             </button>
                         </div>
                         
                         {activeTab === "tracks" && (
                             <div className="library-filter-toggle">
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-400 hover:text-white transition-colors">
+                                <label className="library-switch">
                                     <input 
                                         type="checkbox" 
                                         checked={showStems} 
                                         onChange={(e) => setShowStems(e.target.checked)}
-                                        className="form-checkbox h-4 w-4 text-accent rounded border-gray-600 bg-gray-700 focus:ring-accent"
+                                        className="library-switch__input"
                                     />
                                     Show Stems
                                 </label>
@@ -1228,7 +1260,7 @@ export default function LibraryPage() {
                                                                 className="library-card ai-creation-card"
                                                                 onClick={() => setSelectedGeneration(gen)}
                                                             >
-                                                                <div className="library-card-icon ai-creation-icon">🤖</div>
+                                                                <div className="library-card-icon ai-creation-icon"><span className="ms-icon" aria-hidden="true">auto_awesome</span></div>
                                                                 <div className="library-card-title ai-creation-prompt">
                                                                     {gen.prompt.length > 60 ? gen.prompt.slice(0, 57) + "..." : gen.prompt}
                                                                 </div>
