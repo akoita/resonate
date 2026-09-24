@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getRelease } from "../../../lib/api";
+import { hasMixerStems, releaseShareDescription } from "../../../lib/listeningShare";
 import {
   canonicalPath,
   decodePathSegment,
@@ -26,7 +27,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const type = safeText(release?.type, "Release", 40).toLowerCase();
     const genre = safeText(release?.genre, "", 40);
     const details = [type, genre].filter(Boolean).join(" · ");
-    const description = `${title} by ${artist}${details ? ` — ${details}` : ""}. Discover it on Resonate.`;
+    const description = releaseShareDescription({
+      title,
+      artist,
+      details,
+      hasStems: (release?.tracks ?? []).some((track) => hasMixerStems(track.stems)),
+    });
 
     return publicMetadata({
       title,

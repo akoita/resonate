@@ -50,6 +50,7 @@ available right now?
 - Analytics:
   - `player.action_impression`
   - `player.action_selected`
+  - `track.shared` (listening share, see below)
 
 The authenticated `POST /analytics/product/event` endpoint accepts both action
 events with a `track` subject. Impressions carry aligned, unique `actionKeys`
@@ -98,6 +99,43 @@ The Shows campaign action is part of the implemented conversion feed for revenue
 line (1) Shows campaign fees: active campaigns render as `Support a show` chips
 linking to `/shows/<slug>`. Non-active campaign states stay disabled here
 because player support means pledging is open now.
+
+## Listening Share (Broadcast Signal)
+
+The player's Broadcast Signal panel shares the playing track. The share model
+lives in `web/src/lib/listeningShare.ts`; `SocialShare` renders it. This is
+vision-neutral product quality work: it restates the existing ADR-BM-4 artist
+share and changes no fees, payouts, or monetization mechanics.
+
+- **Deep link.** Shares point to the track's public release page
+  (`/release/<releaseId>`), whose server-rendered metadata provides the cover
+  art and description for the social card. Tracks without a release (device
+  files, private tracks) have no public page, so the panel shows "Sharing is
+  available for tracks published on Resonate." instead of share buttons.
+- **Attribution.** Every link carries
+  `utm_source=<x|facebook|reddit|native|copy>`, `utm_medium=social` (or
+  `share` for the system share sheet and copied links), and
+  `utm_campaign=listening_share`.
+- **Copy.** X posts read `🎧 Now playing: "<title>" by <artist>`, one hook
+  sentence, and `#NowPlaying #Resonate`, truncating title/artist with "…" to
+  stay within 280 characters counting the link as 23. Reddit titles read
+  `"<title>" by <artist> — listen on Resonate (artists keep at least 85% of
+  every sale)`. The system share sheet uses the X text without hashtags;
+  Facebook takes only the link and reads the release page metadata. The hook
+  is chosen deterministically per track from a small set. The only claims
+  allowed are that the artist keeps at least 85% of every sale and, only for
+  tracks with mixer stems (types other than original/master), that the track
+  can be pulled apart stem by stem in the Resonate mixer.
+- **Release card.** The release page description reads
+  `Listen to "<title>" by <artist> on Resonate — <details>. ...the artist keeps
+  at least 85% of every sale.`, adding "Stream it or remix the stems" only
+  when the release has mixer stems, within a 200-character budget.
+- **Analytics.** Each completed share action records `track.shared` with a
+  `track` subject, source `player`, and a payload of `channel`, `trackId`, and
+  `releaseId`. X, Facebook, and Reddit record on click; the share sheet and copy
+  record on success. The backend accepts only the enum channel and those
+  identifiers, drops any other field, and resolves `artistId` from the track at
+  ingest.
 
 ## Action Contract
 
@@ -168,7 +206,7 @@ Frontend:
 
 ```bash
 cd web
-npm run test:unit -- api.test.ts productAnalytics.test.ts PlayerActionPanel.test.tsx
+npm run test:unit -- api.test.ts productAnalytics.test.ts PlayerActionPanel.test.tsx listeningShare.test.ts
 ```
 
 Manual:
@@ -189,6 +227,10 @@ Manual:
    starts another cycle; add and remove entries during the cycle.
 9. Mute and unmute with pointer and keyboard, then enter and exit immersive mode
    with its button and Escape; confirm playback position and queue stay unchanged.
+10. Play a published track and use each Broadcast Signal button; confirm the
+    link opens `/release/<id>` with `utm_campaign=listening_share` and the X
+    and Reddit drafts carry the track copy. Play a device file and confirm the
+    panel shows the published-tracks note instead of buttons.
 
 ## References
 
