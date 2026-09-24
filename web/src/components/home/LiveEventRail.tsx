@@ -1,11 +1,11 @@
 import Link from "next/link";
-import type { CSSProperties } from "react";
 import {
   campaignDisplayTitle,
   daysUntil,
   progressRatio,
   type Campaign,
 } from "../../lib/shows";
+import { CampaignPoster } from "../shows/CampaignPoster";
 import { HomeCampaignVisual } from "./HomeCampaignVisual";
 import { HomeShelf } from "./HomeShelf";
 
@@ -19,15 +19,6 @@ import { HomeShelf } from "./HomeShelf";
  */
 
 const MAX_EVENTS = 8;
-
-/** Deterministic 0..359 hue from the campaign id for the typographic poster. */
-function campaignHue(id: string): number {
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash) % 360;
-}
 
 function formatShowDate(iso: string): string | null {
   const date = new Date(iso);
@@ -45,10 +36,7 @@ function TicketCard({ campaign }: { campaign: Campaign }) {
 
   return (
     <Link href={`/shows/${campaign.id}`} className="ng-ticket">
-      <div
-        className={`ng-ticket__art ${image ? "ng-ticket__art--image" : "ng-ticket__art--poster"}`}
-        style={image ? undefined : ({ "--poster-hue": campaignHue(campaign.id) } as CSSProperties)}
-      >
+      <div className={`ng-ticket__art ${image ? "ng-ticket__art--image" : "ng-ticket__art--poster"}`}>
         {image ? (
           <HomeCampaignVisual
             src={image}
@@ -56,9 +44,7 @@ function TicketCard({ campaign }: { campaign: Campaign }) {
             className="ng-ticket__image"
           />
         ) : (
-          <span className="ng-ticket__poster" aria-hidden>
-            {campaign.city}
-          </span>
+          <CampaignPoster campaign={campaign} />
         )}
         <span className="ng-ticket__shade" aria-hidden />
         {showDate ? <span className="ng-ticket__date">{showDate}</span> : null}
