@@ -97,11 +97,9 @@ describe("DropsBrowseView", () => {
     expect(html).toContain("Own the moments.");
     expect(html).toContain('href="/marketplace"');
     expect(html).toContain("License the ingredients");
-    expect(html).toContain('name="kind"');
-    expect(html).toContain('type="radio"');
-    expect(html).toContain('name="genre"');
-    expect(html).toContain('name="price"');
-    expect(html).toContain('name="includeSoldOut"');
+    expect(html).toContain('class="ng-filter-deck"');
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain("<select");
     expect(html.indexOf("Moment first")).toBeLessThan(html.indexOf("Moment second"));
     expect(html).toContain('href="/release/release-first?focus=moments"');
     expect(html).toContain('aria-label="Play preview of Moment first"');
@@ -111,6 +109,92 @@ describe("DropsBrowseView", () => {
     const releaseLinkEnd = html.indexOf("</a>", releaseLinkStart);
     const previewButtonStart = html.indexOf("<button", releaseLinkStart);
     expect(releaseLinkEnd).toBeLessThan(previewButtonStart);
+  });
+
+  it("renders the filters as instant link chips with canonical hrefs", () => {
+    const html = renderToStaticMarkup(
+      <DropsBrowseView result={response([drop("first")])} query={defaultQuery} />,
+    );
+    expect(html).toContain('aria-labelledby="drops-filter-title"');
+    expect(html).toContain("Filter Drops");
+    for (const label of ["Kind", "Genre", "Price", "Availability"]) {
+      expect(html).toContain(`>${label}</span>`);
+    }
+    expect(html).toContain('href="/drops?kind=punchline"');
+    expect(html).toContain('href="/drops?genre=Electronic"');
+    expect(html).toContain('href="/drops?genre=Hip-hop"');
+    expect(html).toContain('href="/drops?price=free"');
+    expect(html).toContain('href="/drops?price=paid"');
+    expect(html).toContain('href="/drops?includeSoldOut=1"');
+    expect(html).not.toContain("Apply filters");
+    expect(html).not.toContain("aria-pressed=\"true\"");
+  });
+
+  it("marks exactly one active chip per row with aria-current", () => {
+    const defaults = renderToStaticMarkup(
+      <DropsBrowseView result={response([drop("first")])} query={defaultQuery} />,
+    );
+    expect(defaults.match(/aria-current="true"/g)).toHaveLength(4);
+    expect(defaults).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>All genres</);
+    expect(defaults).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Available now</);
+
+    const filtered = renderToStaticMarkup(
+      <DropsBrowseView
+        result={response([drop("first")])}
+        query={parseDropsBrowseQuery({ kind: "punchline", price: "free", genre: "Hip-hop", includeSoldOut: "1" })}
+      />,
+    );
+    expect(filtered.match(/aria-current="true"/g)).toHaveLength(4);
+    expect(filtered).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Punchline</);
+    expect(filtered).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Hip-hop</);
+    expect(filtered).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Free</);
+    expect(filtered).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Include sold out</);
+  });
+
+  it("builds chip links that keep the other filters and reset to the first page", () => {
+    const query = parseDropsBrowseQuery({ page: "3", kind: "punchline", genre: "Hip-hop" });
+    const html = renderToStaticMarkup(
+      <DropsBrowseView
+        result={response([drop("p3")], { page: 3, totalPages: 3, totalCount: 60 })}
+        query={query}
+      />,
+    );
+    expect(html).toContain('href="/drops?kind=punchline&amp;genre=Hip-hop&amp;price=free"');
+    expect(html).toContain('href="/drops?genre=Hip-hop"');
+    expect(html).toContain('href="/drops?kind=punchline"');
+    expect(html).toContain('href="/drops?kind=punchline&amp;genre=Hip-hop&amp;includeSoldOut=1"');
+    const chipHrefs = [...html.matchAll(/<a[^>]*class="ng-chip[^"]*"[^>]*>/g)].map((m) => m[0]);
+    expect(chipHrefs.length).toBeGreaterThan(0);
+    for (const chip of chipHrefs) expect(chip).not.toContain("page=");
+  });
+
+  it("keeps an unknown active genre visible as the active chip", () => {
+    const html = renderToStaticMarkup(
+      <DropsBrowseView
+        result={response([drop("first")])}
+        query={{ ...defaultQuery, genre: "Jazz" }}
+      />,
+    );
+    expect(html).toMatch(/class="ng-chip ng-chip--active" aria-current="true"[^>]*>Jazz</);
+  });
+
+  it("shows Clear filters only when a filter differs from the defaults", () => {
+    const defaults = renderToStaticMarkup(
+      <DropsBrowseView result={response([drop("first")])} query={defaultQuery} />,
+    );
+    expect(defaults).not.toContain("Clear filters");
+
+    for (const query of [
+      { ...defaultQuery, kind: "punchline" as const },
+      { ...defaultQuery, genre: "Hip-hop" },
+      { ...defaultQuery, price: "paid" as const },
+      { ...defaultQuery, includeSoldOut: true },
+    ]) {
+      const html = renderToStaticMarkup(
+        <DropsBrowseView result={response([drop("first")])} query={query} />,
+      );
+      expect(html).toMatch(/<a class="ng-section-link ng-filter-deck__clear" href="\/drops">Clear filters<\/a>/);
+    }
   });
 
   it("renders an honest disabled preview when the selected moment has no clip", () => {

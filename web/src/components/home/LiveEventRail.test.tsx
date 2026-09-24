@@ -81,14 +81,15 @@ describe("LiveEventRail", () => {
   it("uses a typographic city poster instead of a monogram when there is no image", () => {
     const html = renderToStaticMarkup(<LiveEventRail campaigns={[campaign()]} />);
     expect(html).toContain("ng-ticket__art--poster");
-    expect(html).toContain('<span class="ng-ticket__poster" aria-hidden="true">Lisbon</span>');
+    expect(html).toContain('class="campaign-poster"');
+    expect(html).toContain('<span class="campaign-poster__city">Lisbon</span>');
 
     const withImage = renderToStaticMarkup(
       <LiveEventRail campaigns={[campaign({ cardImage: "https://cdn.example.test/card.jpg" })]} />,
     );
     expect(withImage).toContain("ng-ticket__art--image");
     expect(withImage).toContain('src="https://cdn.example.test/card.jpg"');
-    expect(withImage).not.toContain("ng-ticket__poster");
+    expect(withImage).not.toContain("campaign-poster");
   });
 
   it("shows at most eight campaigns in the given order", () => {

@@ -978,26 +978,50 @@
   opacity: 1;
 }
 
-/* ─── Monogram ────────────────────────────────────────────────────── */
+/* ─── Typographic poster (no-image state) ────────────────────────── */
 
-.campaign-card__monogram {
-  position: relative;
-  font-size: 72px;
-  font-weight: 900;
-  letter-spacing: -0.05em;
-  line-height: 1;
-  z-index: 2;
-  background: linear-gradient(180deg, #ffffff, color-mix(in srgb, var(--color-signal) 40%, #ffffff));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 6px 24px color-mix(in srgb, var(--color-signal) 28%, transparent));
-  transition: filter 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+/* Shared by the Shows explorer cards and the Home ticket rail
+ * (CampaignPoster.tsx), so it is global rather than scoped to a surface:
+ * the city set large over a violet → coral mesh, hue-shifted
+ * deterministically per campaign within the brand bands. Fills its
+ * positioned parent; the poster is its own size container so the city type
+ * scales with the card. */
+.campaign-poster {
+  --poster-hue: 0;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  container-type: inline-size;
+  background:
+    radial-gradient(120% 95% at 0% 0%, hsl(calc(235 + var(--poster-hue) / 12) 85% 64% / 0.62), transparent 62%),
+    radial-gradient(110% 100% at 100% 100%, hsl(calc(8 + var(--poster-hue) / 24) 100% 64% / 0.6), transparent 62%),
+    linear-gradient(135deg, #2a1f6b, #120f24);
+  pointer-events: none;
 }
 
-.campaign-card:hover .campaign-card__monogram {
-  filter: drop-shadow(0 8px 36px color-mix(in srgb, var(--color-signal) 48%, transparent));
-  transform: scale(1.05);
+.campaign-poster__city {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  color: rgba(255, 255, 255, 0.94);
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-size: 15cqw;
+  font-weight: 700;
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-shadow: 0 2px 18px rgba(8, 8, 15, 0.35);
+}
+
+/* The decorative waveform strip would stripe across the poster's city type. */
+.campaign-card__art--poster::before {
+  content: none;
 }
 
 /* ─── City Chip ───────────────────────────────────────────────────── */
