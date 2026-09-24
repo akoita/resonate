@@ -1136,6 +1136,7 @@ const PARIS_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/0/0e/L
 const DUBLIN_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/a/a1/Dame_Street_-_The_Olympia_Theatre_%283433685951%29.jpg";
 const LAGOS_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/2/21/Eko_Atlantic_%28Lagos%29_Skyline.jpg";
 const MONTREAL_CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/7/71/Montreal_Skyline_at_Night.jpg";
+const BROOKLYN_VENUE_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/1/1b/Kings_Theatre_%28Brooklyn%29.jpg";
 // Real, recent artist photos — Getty editorial, all rights reserved, demo use only.
 // Committed locally (mirrors the backend fixture assets) instead of hot-linking
 // Getty comp URLs, whose signed tokens expire and 404 in the browser.
@@ -1160,6 +1161,12 @@ const FELICIA_PORTRAIT_IMAGE = "/shows/felicia-farerre-portrait.webp";
 const FELICIA_HERO_IMAGE = "/shows/felicia-farerre-dublin-hero.webp";
 const FELICIA_STUDIO_IMAGE = "/shows/felicia-farerre-studio.webp";
 const FELICIA_ANGELS_IMAGE = "/shows/felicia-angels-cover.webp";
+// Tiken Jah Fakoly — openly licensed Wikimedia Commons photos (CC0 / CC BY-SA 2.0 FR),
+// locally committed; the hero is cropped/composited from a CC0 live photo.
+const TIKEN_PORTRAIT_IMAGE = "/shows/tiken-jah-fakoly-portrait.webp";
+const TIKEN_HERO_IMAGE = "/shows/tiken-jah-fakoly-brooklyn-hero.webp";
+const TIKEN_LIVE_IMAGE = "/shows/tiken-jah-fakoly-live.webp";
+const TIKEN_STAGE_IMAGE = "/shows/tiken-jah-fakoly-stage.webp";
 
 function sampleTiers(prefix: string, currency: "EUR" | "USD"): CampaignTier[] {
   return [
@@ -1265,6 +1272,30 @@ const CAMPAIGNS: Campaign[] = [
     ],
     tagline: "Montréal already speaks the language of this show: francophone hooks, Afrobeats pulse and a crowd ready to answer every line.",
     tiers: sampleTiers("aya-nakamura-montreal", "USD"),
+  },
+  {
+    ...sampleBase,
+    id: "tiken-jah-fakoly-brooklyn", backendId: "tiken-jah-fakoly-brooklyn",
+    artistName: "Tiken Jah Fakoly", artistSlug: "tiken-jah-fakoly", artistImage: TIKEN_PORTRAIT_IMAGE,
+    artistSummary: "Born Doumbia Moussa Fakoly in Odienné, Côte d'Ivoire, in 1968, Tiken Jah Fakoly formed his first reggae group, Les Djelys, in 1987 and became one of Africa's most outspoken reggae voices, writing to \"wake up consciences\" with pan-African calls for political and economic renewal. Albums including Mangercratie, Cours d'histoire and Françafrique — winner of the 2003 Victoires de la Musique reggae/world album award — carried that message to Europe. After death threats over his lyrics he settled in Bamako, Mali, in 2003, and went on to release L'Africain, African Revolution, Dernier appel and Braquage de pouvoir, receive the inaugural Freemuse Award in 2008, and fund schools through his 'Un concert, une école' campaign.",
+    artistLinks: { instagram: "https://www.instagram.com/tikenjahfakolyofficiel/" },
+    title: "Tiken Jah Fakoly in Brooklyn", city: "New York", country: "US", venue: "Kings Theatre",
+    targetDate: addDays(150), deadline: addDays(24), bookingDeadline: addDays(56),
+    goalCents: 11_000_000, raisedCents: 5_830_000, currency: "USD", backerCount: 262, thresholdBackers: 600,
+    heroImage: TIKEN_HERO_IMAGE, cardImage: TIKEN_PORTRAIT_IMAGE,
+    visuals: [
+      { id: "sample-tiken-jah-fakoly-brooklyn-portrait", role: "gallery", url: TIKEN_PORTRAIT_IMAGE, sortOrder: 10, caption: "Tiken Jah Fakoly at the Eurockéennes de Belfort (2011).", credit: "Photograph by Rama, CC BY-SA 2.0 FR" },
+      { id: "sample-tiken-jah-fakoly-brooklyn-live", role: "gallery", url: TIKEN_LIVE_IMAGE, sortOrder: 11, caption: "Tiken Jah Fakoly performing live (Brussels, 2023).", credit: "Peter Verwimp, CC0" },
+      { id: "sample-tiken-jah-fakoly-brooklyn-stage", role: "gallery", url: TIKEN_STAGE_IMAGE, sortOrder: 12, caption: "Tiken Jah Fakoly on stage (Eurockéennes de Belfort, 2011).", credit: "Photograph by Rama, CC BY-SA 2.0 FR" },
+      { id: "sample-tiken-jah-fakoly-brooklyn-venue", role: "gallery", url: BROOKLYN_VENUE_IMAGE, sortOrder: 13, caption: "Kings Theatre, the proposed venue target.", credit: "Dewalt718, CC BY-SA 4.0" },
+    ],
+    tagline: "Brooklyn already answers this music: this fan-created concept imagines conscious, pan-African reggae filling the gilded Kings Theatre in Flatbush.",
+    tiers: [
+      { id: "tiken-jah-fakoly-brooklyn-fan-signal", title: "Fan signal", amountCents: 1_500, currency: "USD", paymentAssetSymbol: "USDC", description: "Refundable support signal and campaign receipt." },
+      { id: "tiken-jah-fakoly-brooklyn-ticket-intent", title: "Ticket intent", amountCents: 4_500, currency: "USD", paymentAssetSymbol: "USDC", description: "Priority allocation if the concept advances to a confirmed show." },
+      { id: "tiken-jah-fakoly-brooklyn-orchestra-intent", title: "Orchestra intent", amountCents: 9_500, currency: "USD", paymentAssetSymbol: "USDC", description: "Priority orchestra-level allocation if the concept advances to a confirmed show." },
+      { id: "tiken-jah-fakoly-brooklyn-patron-circle", title: "Patron circle", amountCents: 25_000, currency: "USD", paymentAssetSymbol: "USDC", description: "Premium campaign receipt and patron allocation." },
+    ],
   },
 ];
 
