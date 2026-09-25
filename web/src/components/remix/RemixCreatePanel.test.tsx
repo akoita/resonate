@@ -62,7 +62,7 @@ describe("RemixCreatePanel — Mix stems", () => {
     expect(html).toMatch(/aria-pressed="false"[^>]*remix-create-switch-ai/);
     expect(html).toContain(STEM_MIX_FREE_NOTE);
     for (const recipe of REMIX_RECIPES) {
-      expect(html).toContain(recipe.label.replace("&", "&amp;"));
+      expect(html).toContain(recipe.label.replaceAll("&", "&amp;"));
     }
     expect(html).toContain("One-click arrangements");
   });
