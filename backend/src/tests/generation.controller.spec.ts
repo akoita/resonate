@@ -11,6 +11,7 @@ import { GenerationController } from '../modules/generation/generation.controlle
 
 const mockGenerationService = {
   createGeneration: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
+  createGenerationForCaller: jest.fn().mockResolvedValue({ jobId: 'job-1' }),
   listUserGenerations: jest.fn().mockResolvedValue([]),
   getAnalytics: jest.fn().mockResolvedValue({}),
   analyzeTrackStems: jest.fn().mockResolvedValue({}),
@@ -34,7 +35,7 @@ describe('GenerationController', () => {
     it('uses req.user.userId when available', async () => {
       const ctrl = makeController();
       await ctrl.create({ prompt: 'test' } as any, { user: { userId: 'u1' } });
-      expect(mockGenerationService.createGeneration).toHaveBeenCalledWith(
+      expect(mockGenerationService.createGenerationForCaller).toHaveBeenCalledWith(
         expect.anything(),
         'u1',
       );
@@ -43,7 +44,7 @@ describe('GenerationController', () => {
     it('falls back to req.user.id when userId is missing', async () => {
       const ctrl = makeController();
       await ctrl.create({ prompt: 'test' } as any, { user: { id: 'u2' } });
-      expect(mockGenerationService.createGeneration).toHaveBeenCalledWith(
+      expect(mockGenerationService.createGenerationForCaller).toHaveBeenCalledWith(
         expect.anything(),
         'u2',
       );
@@ -52,7 +53,7 @@ describe('GenerationController', () => {
     it('falls back to req.user.sub when userId and id are missing', async () => {
       const ctrl = makeController();
       await ctrl.create({ prompt: 'test' } as any, { user: { sub: 'u3' } });
-      expect(mockGenerationService.createGeneration).toHaveBeenCalledWith(
+      expect(mockGenerationService.createGenerationForCaller).toHaveBeenCalledWith(
         expect.anything(),
         'u3',
       );

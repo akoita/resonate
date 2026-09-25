@@ -4,9 +4,11 @@ import { randomUUID } from "crypto";
 import { NestFactory } from "@nestjs/core";
 import { type NextFunction, type Request, type Response } from "express";
 import { AgentWorkerModule } from "./modules/agents/agent_worker.module";
+import { applyGlobalValidation } from "./config/validation";
 
 async function bootstrap() {
   const app = await NestFactory.create(AgentWorkerModule);
+  applyGlobalValidation(app);
 
   app.use((req: Request, res: Response, next: NextFunction) => {
     const incoming = req.headers["x-request-id"];

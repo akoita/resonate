@@ -22,8 +22,9 @@ import {
 import { GenerationCreditsService } from "./generation-credits.service";
 
 /**
- * This app installs no global ValidationPipe, so every credits route that
- * takes a body or query validates its DTO explicitly with this route-scoped pipe.
+ * The global ValidationPipe (#1888) already rejects DTO violations; this
+ * route-scoped pipe additionally whitelists and transforms the credits bodies
+ * and queries (a missing body becomes an empty DTO instance).
  */
 const validate = new ValidationPipe({ whitelist: true, transform: true });
 

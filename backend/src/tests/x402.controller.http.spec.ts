@@ -13,6 +13,7 @@ import { X402Config } from '../modules/x402/x402.config';
 import { X402Controller } from '../modules/x402/x402.controller';
 import { X402Middleware } from '../modules/x402/x402.middleware';
 import { X402PaymentService } from '../modules/x402/x402.payment.service';
+import { applyGlobalValidation } from '../config/validation';
 
 jest.mock('../db/prisma', () => ({
   prisma: {
@@ -94,6 +95,7 @@ describe('X402Controller HTTP contract', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    applyGlobalValidation(app);
     await app.init();
   });
 

@@ -23,7 +23,7 @@ export class GenerationController {
     @Req() req: any,
   ) {
     const userId = req.user?.userId || req.user?.id || req.user?.sub;
-    return this.generationService.createGeneration(dto, userId);
+    return this.generationService.createGenerationForCaller(dto, userId);
   }
 
   /**

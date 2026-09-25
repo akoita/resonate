@@ -4,6 +4,7 @@ import { AppModule } from "../modules/app.module";
 import { INestApplication } from "@nestjs/common";
 import { prisma } from "../db/prisma";
 import { restoreEnv } from "./env-helpers";
+import { applyGlobalValidation } from "../config/validation";
 
 describe("Asset Persistence", () => {
     let app: INestApplication;
@@ -17,6 +18,7 @@ describe("Asset Persistence", () => {
             imports: [AppModule],
         }).compile();
         app = moduleRef.createNestApplication();
+        applyGlobalValidation(app);
         await app.init();
     }, 30000);
 

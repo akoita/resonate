@@ -53,6 +53,28 @@ payout or licensing rules for AI works.
   - `RightsEvidence.kind = "rights_metadata"`
   - `RightsEvidence.verificationStatus = "system_generated"`
 
+## Request Validation And Ownership
+
+Request bodies are class-validator DTOs (`generation.dto.ts`) enforced by the
+backend-wide `ValidationPipe` (#1888, `backend/src/config/validation.ts`). A body
+that violates a declared constraint is rejected with `400 Bad Request` before any
+credit is debited or job enqueued:
+
+- `POST /generation/create`: `prompt` required, at most 1000 characters;
+  `negativePrompt` at most 500; `seed` an integer in `0..2147483647`;
+  `durationSeconds` one of `30`, `60`, `120`, `180` (a JSON number, not a
+  string), matching the durations the credit meter prices.
+- `POST /generation/complementary`: `trackId` and `stemType` required.
+- `PATCH /generation/:trackId/publish` (multipart): `title` and `artist`
+  required, at most 100 characters; `genre` at most 50, `label` at most 100,
+  `featuredArtists` at most 200. The `/create` UI applies matching input limits.
+
+`artistId` on `POST /generation/create` is optional. When present it must be an
+artist profile the caller owns (`hasArtistManagementAccess(..., "profile_owner")`)
+or the request fails with `403` before any debit; when omitted, the job resolves
+the caller's own artist profile. Internal agent flows call the service directly
+and are not subject to this HTTP-boundary check.
+
 ## Realtime Generation Sessions
 
 Interactive Lyria sessions use the Socket.IO transport and require an access

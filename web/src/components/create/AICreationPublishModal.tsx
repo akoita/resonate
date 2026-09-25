@@ -436,6 +436,7 @@ export function AICreationPublishModal({
                 className="form-input"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
+                maxLength={100}
                 required
               />
             </div>
@@ -472,6 +473,7 @@ export function AICreationPublishModal({
                   className="form-input"
                   value={genre}
                   onChange={(e) => setGenre(e.target.value)}
+                  maxLength={50}
                 />
               </div>
               <div className="form-group flex-1">
