@@ -6,10 +6,13 @@ import {
   ContractDisputeFiledEvent,
   ContractDisputeResolvedEvent,
   ContractDisputeAppealedEvent,
+  GenerationCreditsGrantedEvent,
   GenerationCreditsRequestedEvent,
   X402RefundDueStaleEvent,
 } from "../../events/event_types";
 import { parseEnvList } from "../../config/env";
+import { formatUsdCents, notifiableWalletForUserId } from "./notification_format";
+import { SIGNUP_STARTER_REASON } from "../credits/generation-credits.service";
 
 const prisma = new PrismaClient();
 
@@ -36,9 +39,10 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
   onModuleInit() {
     this.subscribeToDisputeEvents();
     this.subscribeToCreditRequests();
+    this.subscribeToCreditGrants();
     this.subscribeToRefundDueAlerts();
     this.logger.log(
-      "Notification service initialized — listening for dispute + credit-request + refund-due events",
+      "Notification service initialized — listening for dispute + credit-request + credit-grant + refund-due events",
     );
   }
 
@@ -138,8 +142,8 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
   private subscribeToCreditRequests() {
     // A user out of generation credits (#1334) → notify every configured
     // operator/admin so they can grant a top-up. Fans out to the same in-app
-    // NotificationBell operators already use; the operator then runs
-    // `make grant-credits` (or POST /credits/grant).
+    // NotificationBell operators already use; the request itself is persisted
+    // in the operator queue (#1885), which the web app opens for this type.
     this.subscriptions.push(
       this.eventBus.subscribe(
         "generation.credits_requested",
@@ -173,8 +177,7 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
           const note = event.note?.trim();
           const message =
             `A user is out of generation credits and asked for a top-up: ${requesterId}.` +
-            (note ? ` Note: "${note}".` : "") +
-            ` Grant with: make grant-credits USER=${requesterId} AMOUNT=<cents>.`;
+            (note ? ` Note: "${note}".` : "");
 
           for (const walletAddress of operators) {
             await this.createNotification({
@@ -185,6 +188,34 @@ export class NotificationService implements OnModuleInit, OnModuleDestroy {
             });
           }
           this.logger.log(`Credit request from ${requesterId} → notified ${operators.length} operator(s)`);
+        },
+      ),
+    );
+  }
+
+  private subscribeToCreditGrants() {
+    // Credits landed on a user's meter (#1885) — from an operator granting a
+    // queued request, or from a CLI/promo grant — → tell the recipient. The
+    // automatic signup starter is not news to the user and is skipped. Only
+    // ids that are wallet addresses have an inbox; others are skipped.
+    this.subscriptions.push(
+      this.eventBus.subscribe(
+        "generation.credits_granted",
+        async (event: GenerationCreditsGrantedEvent) => {
+          if (event.reason === SIGNUP_STARTER_REASON) return;
+          const walletAddress = notifiableWalletForUserId(event.userId);
+          if (!walletAddress) {
+            this.logger.log(
+              `Credit grant for ${event.userId} not notified — user id is not a wallet address`,
+            );
+            return;
+          }
+          await this.createNotification({
+            walletAddress,
+            type: "credits_granted",
+            title: "Generation credits added",
+            message: `You received ${formatUsdCents(event.amountCents)} of generation credits.`,
+          });
         },
       ),
     );

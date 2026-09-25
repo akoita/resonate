@@ -263,6 +263,21 @@ export const ERASURE_RULES: readonly ErasureRule[] = [
       + "(ADR-BM-3); `reason` is an operator-set movement code, not the person's words.",
   },
   {
+    model: "GenerationCreditRequest",
+    disposition: "anonymize",
+    reason:
+      "The request and its outcome stay as the audit trail behind any grant it produced (#1885); "
+      + "the note the person typed and the operator's resolution note about it are private text and are scrubbed.",
+    scrub: ["note", "resolutionNote"],
+    matchOn: "userId",
+    note:
+      "`resolutionNote` is scrubbed on the requester's erasure, as `ArtistClaimRequest.reviewNote` is: it "
+      + "is a note about this person's request, while the money decision survives in `grantedCents` and the "
+      + "ledger. A pending request from an erased account is dismissed by the system (`resolvedBy` null) "
+      + "before its user id rotates, so the operator queue never offers it for a grant. `resolvedBy` holds "
+      + "the operator's user id without a relation and is listed in `DANGLING_PERSON_COLUMNS`.",
+  },
+  {
     model: "GenerationJobOutcome",
     disposition: "retain",
     reason:
@@ -952,6 +967,14 @@ export const DANGLING_PERSON_COLUMNS: readonly DanglingPersonColumn[] = [
     reason:
       "The operator who resolved the dispute. Not in the inventory, and easy to miss because the "
       + "model already has a User relation on `initiatorUserId` — that relation cascades, this column does not.",
+  },
+  {
+    model: "GenerationCreditRequest",
+    column: "resolvedBy",
+    action: "rewrite",
+    reason:
+      "The operator who granted or dismissed a credit request (#1885). It has no User relation, so the "
+      + "cascade that rotates the requester's `userId` never reaches it.",
   },
   {
     model: "CommunityRoom",

@@ -108,6 +108,12 @@ export const EXPORTED_MODELS: readonly ExportedModel[] = [
     keys: [{ kind: "userId", column: "userId" }],
   },
   {
+    model: "GenerationCreditRequest",
+    primaryKey: "id",
+    keys: [{ kind: "userId", column: "userId" }],
+    note: "Added by #1885. The person's requests for an operator credit top-up and how each was resolved.",
+  },
+  {
     model: "GenerationJobOutcome",
     primaryKey: "jobId",
     keys: [{ kind: "userId", column: "userId" }],
@@ -684,6 +690,9 @@ export const REDACTED_FIELDS: Readonly<Record<string, Readonly<Record<string, st
   },
   ManagementTransferRecoveryRequest: {
     reviewerUserId: "Internal operator identity; the requester can export the decision and note without the operator's account id.",
+  },
+  GenerationCreditRequest: {
+    resolvedBy: "Internal operator identity; the requester can export the outcome, amount and note without the operator's account id.",
   },
   SessionKey: {
     agentPrivateKey:

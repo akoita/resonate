@@ -123,13 +123,30 @@ analytics event — use the API endpoint when the grant must show in analytics.
 
 Rather than dead-ending a user at the 0-credit wall, the out-of-credits screen
 offers **Request credits from an operator**. `POST /credits/request` (JWT)
-publishes a `generation.credits_requested` domain event; `NotificationService`
-fans it out to the configured operator/admin wallets (`OPERATOR_ADDRESSES` +
-`ADMIN_ADDRESSES`) as in-app notifications (the same `NotificationBell`
-operators already use), coalescing repeat requests from the same user within a
-10-minute window. Each notification carries the requester and a ready-to-run
-`make grant-credits USER=<id> AMOUNT=<cents>` hint. Delivery is in-app only for
-now; email/Slack fan-out is a future enhancement.
+records a **credit request** (#1885) in `GenerationCreditRequest`. Each user
+has at most one pending request; a repeat request refreshes that one's
+timestamp and note instead of adding a new row. The endpoint then publishes a
+`generation.credits_requested` domain event. `NotificationService` fans it out
+to the configured operator/admin wallets (`OPERATOR_ADDRESSES` +
+`ADMIN_ADDRESSES`) as in-app notifications, coalescing repeats from the same
+user within a 10-minute window. The notification links to the operator queue.
+
+**Operator queue** (`/admin/credit-requests`, admin/operator roles, linked from
+the sidebar and from the notification):
+- The Pending tab lists each request with its note, when it was sent, and the
+  requester's current balance. Operators can grant a quick amount ($1 / $5 /
+  $10) or a custom one, with an optional reason, or dismiss the request with
+  an optional note.
+- A grant is atomic. The request is claimed (only a pending request can be
+  resolved, once) and the ledger `grant` row is written in one transaction, so
+  two operators can never both grant the same request; the second gets
+  `409 request_not_pending`.
+- The Resolved tab shows granted and dismissed requests with who resolved them
+  and when.
+- Every grant, whether from the queue, the API or the CLI, sends the requester
+  an in-app "Generation credits added" notification.
+
+Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
 
 ## Surfaces
 
@@ -139,6 +156,11 @@ now; email/Slack fan-out is a future enhancement.
   - `POST /credits/request` (JWT) — ask an operator for a top-up (fans out to
     operator notifications).
   - `POST /credits/grant` (JWT + `@Roles('admin','operator')`).
+  - `GET /credits/requests?status=pending|resolved|all`,
+    `POST /credits/requests/:id/grant` (`{ amountCents, reason? }`) and
+    `POST /credits/requests/:id/dismiss` (`{ note? }`), all JWT +
+    `@Roles('admin','operator')` (#1885). Resolving a request that is no longer
+    pending returns `409 request_not_pending`.
 - UI: a **reusable `CreditBalanceMeter`**
   ([`web/src/components/credits/CreditBalanceMeter.tsx`](web/src/components/credits/CreditBalanceMeter.tsx),
   #1422) shows remaining capacity as time + 1-min tracks (e.g. "≈ 5 min · 5
