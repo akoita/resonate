@@ -6,7 +6,7 @@ import {
   describeGenerateAvailability,
   describeStemTransform,
   formatDraftCost,
-  previousDraftLabel,
+  draftKindLabel,
   stemTransformForGenerate,
   describePublishAvailability,
   describeExportAvailability,
@@ -443,19 +443,10 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("solo changes playback only and is not saved");
     expect(html).toContain("save automatically");
     expect(html).toContain("Space play/stop · M mute · S solo on the focused row");
-    // Publish is now live (#1196) but honestly gated when no completed draft
-    // exists; export stays unavailable with its honest reason.
-    expect(html).toContain("remix-action-publish");
-    expect(html).toContain("Publish on Resonate");
-    expect(html).toMatch(/remix-action-publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-publish/);
-    // Export is honestly locked with no completed draft: it renders the
-    // unavailable state, not the enabled download button (#1323).
-    expect(html).toContain("remix-action-unavailable--export");
-    expect(html).toContain("Export audio");
-    expect(html).not.toContain("remix-action-export\"");
-    // No completed draft yet, so the gated reasons are shown.
-    expect(html).toContain("wait for it to finish before publishing");
-    expect(html).toContain("wait for it to finish before exporting");
+    // No draft yet: the Drafts empty hint says what to do, and Publish /
+    // Export only appear once a draft exists (#1879).
+    expect(html).not.toContain("remix-action-publish");
+    expect(html).not.toContain("Export audio");
     // stem_mix placeholder invites a render (#1189), not an AI prompt.
     expect(html).toContain("No draft yet. Render your arranged stems");
     expect(html).toContain("Render mix");
@@ -474,9 +465,11 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).toContain("remix-published-banner");
     expect(html).toContain("Published on Resonate");
     expect(html).toContain("/release/rel-published-1");
-    expect(html).toContain("remix-action-view-release");
-    // Publish CTA is replaced, not shown again.
+    expect(html).toContain("remix-published-release-link");
+    // Publish/export and the save status disappear; Create is locked.
     expect(html).not.toContain("remix-action-publish");
+    expect(html).not.toContain("remix-save-status");
+    expect(html).toContain("This remix is published — the studio is locked.");
     // Edits are locked; listening (the transport) still works.
     expect(html).not.toContain("Save changes");
     expect(html).toMatch(/aria-label="Mute Lead Vocal"[^>]*disabled=""/);
@@ -504,12 +497,14 @@ describe("RemixStudioEditor rendering", () => {
       />,
     );
 
-    expect(html).toContain("AI draft recorded");
-    // Honest provenance line (#1181)
+    // Drafts panel card (#1879): kind, chip, expandable honest detail (#1181).
+    expect(html).toContain("remix-current-draft--completed");
+    expect(html).toContain("AI · tempo/key matched");
     expect(html).toContain("matched to the stems&#x27; measured 93 BPM, G minor");
     expect(html).toContain("does not hear the source audio");
-    expect(html).toContain("Play AI draft");
-    expect(html).not.toContain("Playback arrives with audio preview");
+    expect(html).toContain('aria-label="Play draft"');
+    // The transport offers the draft as a source too.
+    expect(html).toMatch(/aria-pressed="false"[^>]*>Draft<\/button>/);
   });
 
   it("shows queued state without draft playback while generation is pending", () => {
@@ -526,10 +521,15 @@ describe("RemixStudioEditor rendering", () => {
       />,
     );
 
-    expect(html).toContain("AI generation queued");
+    expect(html).toContain("remix-current-draft--queued");
+    expect(html).toContain("In progress");
     expect(html).toContain("Queued...");
     expect(html).toContain("Generation is already queued");
-    expect(html).not.toContain("Play AI draft");
+    expect(html).not.toContain('aria-label="Play draft"');
+    // A draft exists but isn't finished: Publish/Export show, honestly gated.
+    expect(html).toMatch(/remix-action-publish[^>]*aria-disabled="true"|aria-disabled="true"[^>]*remix-action-publish/);
+    expect(html).toContain("wait for it to finish before publishing");
+    expect(html).toContain("remix-action-unavailable--export");
   });
 
   it("shows failed state and retry copy", () => {
@@ -550,10 +550,10 @@ describe("RemixStudioEditor rendering", () => {
       />,
     );
 
-    expect(html).toContain("AI generation failed");
+    expect(html).toContain("remix-current-draft--failed");
     expect(html).toContain("The provider timed out.");
     expect(html).toContain("Retry generation");
-    expect(html).not.toContain("Play AI draft");
+    expect(html).not.toContain('aria-label="Play draft"');
   });
 
   it("shows no-output copy when a generation job has no playable draft", () => {
@@ -567,14 +567,14 @@ describe("RemixStudioEditor rendering", () => {
       />,
     );
 
-    expect(html).toContain("This generation has no playable draft output yet");
-    expect(html).not.toContain("Play AI draft");
+    expect(html).toContain("This draft has no playable output yet.");
+    expect(html).not.toContain('aria-label="Play draft"');
   });
 
-  it("disables the prompt box with an explanation in stem mix mode", () => {
+  it("shows the free mix, not a prompt, in stem mix mode (#1879)", () => {
     const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
-    expect(html).toContain("Prompts apply to variation and extension modes");
-    expect(html).toMatch(/<textarea[^>]*\sdisabled=""/);
+    expect(html).toContain("Free — renders your arrangement exactly as you hear it.");
+    expect(html).not.toContain("<textarea");
   });
 
   it("enables the prompt box for variation mode", () => {
@@ -1585,18 +1585,18 @@ describe("per-stem AI transforms (#1316)", () => {
     );
   });
 
-  it("renders the AI target selector in variation mode only", () => {
+  it("renders the AI intents in prompted modes only (#1879)", () => {
     const variation = renderToStaticMarkup(
       <RemixStudioEditor project={project({ mode: "variation" })} />,
     );
-    expect(variation).toContain("AI target");
-    expect(variation).toContain("Whole track");
-    expect(variation).toContain("Replace stem");
+    expect(variation).toContain('aria-label="AI intent"');
+    expect(variation).toContain("Add a new part");
+    expect(variation).toContain("Replace a stem");
 
     const stemMix = renderToStaticMarkup(
       <RemixStudioEditor project={project()} />,
     );
-    expect(stemMix).not.toContain("AI target");
+    expect(stemMix).not.toContain('aria-label="AI intent"');
   });
 
   it("shows the transform note on completed drafts", () => {
@@ -1664,19 +1664,24 @@ describe("draft versions + honest cost (#1320)", () => {
     expect(formatDraftCost(Number.NaN)).toBeNull();
   });
 
-  it("previousDraftLabel describes what, when, and cost", () => {
-    const label = previousDraftLabel(previousDrafts[0]);
-    expect(label).toContain("AI drums replacement");
-    expect(label).toContain("~$0.12");
+  it("draftKindLabel says what a draft is, in a few words (#1879)", () => {
     expect(
-      previousDraftLabel({
-        ...previousDrafts[0],
-        stemTransform: null,
-        grounding: "stem_audio",
-        estimatedCostUsd: 0,
-        completedAt: null,
-      }),
-    ).toBe("Stem mix render");
+      draftKindLabel("stem_plus_ai", { kind: "replace_stem", stemLabel: "drums" }),
+    ).toBe("AI drums replacement");
+    expect(draftKindLabel("stem_plus_ai", { kind: "replace_stem" })).toBe(
+      "AI stem replacement",
+    );
+    expect(draftKindLabel("stem_plus_ai", { kind: "add_layer" })).toBe(
+      "AI layer added",
+    );
+    expect(draftKindLabel("stem_audio", null)).toBe("Stem mix render");
+    expect(draftKindLabel("feature_conditioned", undefined)).toBe("AI draft");
+    expect(draftKindLabel(null, null)).toBe("AI draft");
+    // A queued render has no grounding yet: its mode tells.
+    expect(draftKindLabel(undefined, undefined, "stem_mix")).toBe(
+      "Stem mix render",
+    );
+    expect(draftKindLabel(undefined, undefined, "variation")).toBe("AI draft");
   });
 
   it("renders the versions list and the recorded cost on completed drafts", () => {
@@ -1711,5 +1716,87 @@ describe("draft versions + honest cost (#1320)", () => {
     const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
     expect(html).toContain("unmastered");
     expect(html).toContain("loudness-normalized");
+  });
+});
+
+describe("Create + Drafts panels (#1879)", () => {
+  it("selects Mix stems with the Render mix primary for a stem mix project", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain("remix-create-panel");
+    expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-mix/);
+    expect(html).toMatch(/aria-pressed="false"[^>]*remix-create-switch-ai/);
+    expect(html).toMatch(/remix-generate-btn[^>]*>Render mix<\/button>/);
+  });
+
+  it("checks Reimagine the track for a variation project", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ mode: "variation", prompt: "darker" })} />,
+    );
+    expect(html).toMatch(/aria-pressed="true"[^>]*remix-create-switch-ai/);
+    expect(html).toContain("Reimagine the track");
+    const checked = html.match(/<input[^>]*checked=""[^>]*>/g) ?? [];
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain('value="reimagine"');
+    expect(html).toMatch(/remix-generate-btn[^>]*>Generate AI draft<\/button>/);
+  });
+
+  it("shows the empty drafts hint before any draft", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain("remix-draft-empty");
+    expect(html).toContain("No draft yet. Render your arranged stems into a mix");
+  });
+
+  it("renders a completed stem mix draft with its chip and Publish", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          generationJobId: "rmxgen_stemmix_1",
+          generationProvider: "stem-mix-render",
+          generationMetadata: {
+            status: "completed",
+            mode: "stem_mix",
+            grounding: "stem_audio",
+            output: { outputUri: "local://mix.mp3" },
+          },
+        })}
+      />,
+    );
+    expect(html).toContain("Stem mix render");
+    expect(html).toContain("Your stems only");
+    expect(html).toContain("Publish on Resonate");
+    expect(html).toContain("remix-action-publish");
+    expect(html).toMatch(/remix-generate-btn[^>]*>Re-render mix<\/button>/);
+  });
+
+  it("never renders job ids or the policy version", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          mode: "variation",
+          generationJobId: "rmxgen_secret_job",
+          generationProvider: "stem-plus-ai-layered-render",
+          generationMetadata: {
+            status: "completed",
+            grounding: "stem_plus_ai",
+            previousDrafts: [
+              {
+                jobId: "rmxgen_secret_old",
+                provider: "stem-plus-ai-layered-render",
+                mode: "variation",
+                grounding: "stem_plus_ai",
+                stemTransform: null,
+                estimatedCostUsd: 0.12,
+                completedAt: null,
+                output: { outputUri: "local://old.mp3", mimeType: null },
+              },
+            ],
+            output: { outputUri: "local://new.mp3" },
+          },
+        })}
+      />,
+    );
+    expect(html).not.toContain("rmxgen_secret");
+    expect(html).not.toContain("2026-06-09.v1");
+    expect(html).not.toMatch(/policy/i);
   });
 });

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { isFullMixStemType } from "../components/remix/RemixStudioEditor";
 import {
   applicableRecipes,
   applyRecipe,
@@ -232,14 +231,15 @@ describe("applyRecipe", () => {
     expect(next["s-drums"]).toEqual({ gainDb: null, muted: true, sections: null });
   });
 
-  it("classifies full-mix types exactly like the editor", () => {
+  it("never counts full-mix types (any case or padding) as parts", () => {
+    const fullMix = new Set(["original", " Master ", "MASTER"]);
     for (const type of ["original", " Master ", "MASTER", "other", "", "drums"]) {
       const stems: RecipeStem[] = [
         { stemId: "v", type: "vocals" },
         { stemId: "x", type },
       ];
       // A full-mix stem is not a part, so vocals alone cannot form an acapella.
-      expect(ids(stems, 0).includes("acapella")).toBe(!isFullMixStemType(type));
+      expect(ids(stems, 0).includes("acapella")).toBe(!fullMix.has(type));
     }
   });
 });

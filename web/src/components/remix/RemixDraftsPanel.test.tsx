@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { formatDraftCost } from "./RemixStudioEditor";
 import {
   formatCompletedAt,
-  formatDraftCostUsd,
   gatedClickHandler,
   RemixDraftsPanel,
   type RemixCurrentDraft,
@@ -171,10 +169,16 @@ describe("RemixDraftsPanel — publish and export", () => {
     expect(html).toMatch(/<button[^>]*remix-action-export[^>]*>Export audio<\/button>/);
   });
 
+  it("hides publish and export until a draft exists", () => {
+    const html = render({ current: null });
+    expect(html).not.toContain("remix-action-publish");
+    expect(html).not.toContain("Export audio");
+  });
+
   it("marks unavailable publish aria-disabled with its visible reason", () => {
     const reason = "Render or generate a draft and wait for it to finish before publishing.";
     const html = render({
-      current: null,
+      current: draft({ status: "queued", kindLabel: "AI draft" }),
       publish: {
         enabled: false,
         reason,
@@ -282,12 +286,6 @@ describe("RemixDraftsPanel — no internal identifiers", () => {
 });
 
 describe("formatters", () => {
-  it("formats cost exactly like the editor's formatDraftCost", () => {
-    for (const value of [null, undefined, 0, -1, Number.NaN, 0.004, 0.1, 1.234]) {
-      expect(formatDraftCostUsd(value)).toBe(formatDraftCost(value));
-    }
-  });
-
   it("formats completion times relative within a day, absolute beyond", () => {
     expect(formatCompletedAt(null, NOW)).toBeNull();
     expect(formatCompletedAt("not a date", NOW)).toBeNull();

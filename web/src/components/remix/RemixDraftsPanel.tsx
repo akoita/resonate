@@ -1,6 +1,7 @@
 "use client";
 
 import type { MouseEvent } from "react";
+import { formatDraftCost } from "../../lib/remixFormat";
 import { provenanceChip } from "../../lib/remixIntent";
 import { peaksToSvgPath } from "./RemixSessionLanes";
 
@@ -70,18 +71,6 @@ export type RemixDraftsPanelProps = {
   /** Clock for relative times; defaults to Date.now(). */
   now?: number;
 };
-
-/**
- * Recorded cost for display (#1320): only positive recorded values render.
- * Mirrors formatDraftCost in RemixStudioEditor (kept local to avoid a
- * component import cycle; a parity test guards drift).
- */
-export function formatDraftCostUsd(value: number | null | undefined): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
-  }
-  return `~$${value.toFixed(2)}`;
-}
 
 /**
  * Completion time: relative within the last day ("just now", "5 min ago",
@@ -174,7 +163,7 @@ function CurrentDraftCard({
   now: number | undefined;
 }) {
   const settled = draft.status === "completed" || draft.status === "no_output";
-  const cost = settled ? formatDraftCostUsd(draft.costUsd) : null;
+  const cost = settled ? formatDraftCost(draft.costUsd) : null;
   const when = settled ? formatCompletedAt(draft.completedAt, now) : null;
   return (
     <div
@@ -276,7 +265,9 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
         </p>
       )}
 
-      {!published && (
+      {/* Publish/Export belong to a draft: with none yet, the empty hint
+          already says what to do, so no locked buttons compete with it. */}
+      {!published && current && (
         <div className="mt-4 remix-draft-actions">
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -327,7 +318,7 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
           <div className="text-xs text-zinc-500 mb-2">Previous versions</div>
           <ul className="space-y-2">
             {versions.map((version) => {
-              const cost = formatDraftCostUsd(version.costUsd);
+              const cost = formatDraftCost(version.costUsd);
               const when = formatCompletedAt(version.completedAt, now);
               return (
                 <li

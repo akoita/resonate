@@ -20,7 +20,6 @@ import {
   type RemixProject,
   type RemixProjectAvailableStem,
   type RemixProjectPatch,
-  type RemixPreviousDraft,
   type RemixProjectSource,
   type RemixSectionGrid,
   type RemixStemTransform,
@@ -45,19 +44,28 @@ import {
   parseArrangementSections,
   sectionGridSummaryLabel,
 } from "../../lib/remixArrangement";
+import { isFullMixStemType } from "../../lib/remixStems";
+import {
+  intentFromState,
+  stateForIntent,
+  type RemixIntent,
+} from "../../lib/remixIntent";
+import { applicableRecipes, applyRecipe } from "../../lib/remixRecipes";
 import { RemixSessionLanes, sectionColumnLabels, type LaneStem } from "./RemixSessionLanes";
 import { RemixTransportBar } from "./RemixTransportBar";
+import { RemixCreatePanel } from "./RemixCreatePanel";
+import {
+  RemixDraftsPanel,
+  type RemixCurrentDraft,
+  type RemixDraftVersion,
+} from "./RemixDraftsPanel";
 import { useRemixTransport, type TransportSource } from "./useRemixTransport";
 
-// The gain range moved to lib (#1879) so the session lanes can share it
-// without importing the editor; re-exported for existing callers.
+// Shared helpers moved to lib (#1879) so the lanes, recipes and drafts panel
+// use them without importing the editor; re-exported for existing callers.
 export { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
-
-export const REMIX_MODES = [
-  { value: "stem_mix", label: "Stem mix" },
-  { value: "variation", label: "Variation" },
-  { value: "extension", label: "Extension" },
-] as const;
+export { isFullMixStemType } from "../../lib/remixStems";
+export { formatDraftCost } from "../../lib/remixFormat";
 
 /** Maps apiRequest error messages ("API <status>: ...") to a load state. */
 export function classifyProjectLoadError(
@@ -218,13 +226,6 @@ export function describeAvailableStemAction(
   // Licensed and remixable but the source itself is blocked right now
   // (consent flip, quarantine) — the same state that gates generation.
   return { kind: "blocked", label: "Source is not remixable right now" };
-}
-
-const FULL_MIX_STEM_TYPES = new Set(["original", "master"]);
-
-/** Whether a stem is the track's full mix rather than a separated part. */
-export function isFullMixStemType(type: string | null | undefined): boolean {
-  return FULL_MIX_STEM_TYPES.has((type ?? "").trim().toLowerCase());
 }
 
 /**
@@ -527,36 +528,23 @@ export function describeStemTransform(
 }
 
 /**
- * Recorded generation cost for display (#1320). Only positive recorded
- * values render — $0 renders (stem mix) stay unlabelled rather than noisy.
+ * What a draft is, in a few words (#1320/#1879): the targeted transform when
+ * there is one, a stem-mix render, or an AI draft. A queued job has no
+ * grounding yet, so its mode tells a stem-mix render apart. Cost and time
+ * are rendered separately by the drafts panel.
  */
-export function formatDraftCost(value: number | null | undefined): string | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
-    return null;
+export function draftKindLabel(
+  grounding: string | null | undefined,
+  transform: RemixStemTransform | null | undefined,
+  mode?: string | null,
+): string {
+  if (transform?.kind === "replace_stem") {
+    return `AI ${transform.stemLabel?.trim() || "stem"} replacement`;
   }
-  return `~$${value.toFixed(2)}`;
-}
-
-/** One-line label for an archived draft version (#1320). */
-export function previousDraftLabel(entry: RemixPreviousDraft): string {
-  const what =
-    entry.stemTransform?.kind === "replace_stem"
-      ? `AI ${entry.stemTransform.stemLabel?.trim() || "stem"} replacement`
-      : entry.stemTransform?.kind === "add_layer"
-        ? "AI layer added"
-        : entry.grounding === "stem_audio"
-          ? "Stem mix render"
-          : "AI draft";
-  const when = entry.completedAt
-    ? new Date(entry.completedAt).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-  const cost = formatDraftCost(entry.estimatedCostUsd);
-  return [what, when, cost].filter(Boolean).join(" · ");
+  if (transform?.kind === "add_layer") return "AI layer added";
+  if (grounding === "stem_audio") return "Stem mix render";
+  if (!grounding && mode === "stem_mix") return "Stem mix render";
+  return "AI draft";
 }
 
 /** Toast copy per normalized provider error code (#1162). */
@@ -1061,9 +1049,6 @@ export function RemixStudioEditor({
   const doublingReferenceStems = project.stems.filter((stem) =>
     doublingIds.has(stem.stemId),
   );
-  // Switching back to stem_mix keeps any stored prompt; generation (#896)
-  // must ignore prompts when mode is stem_mix.
-  const promptEnabled = edits.mode !== "stem_mix";
   const titleBlank = edits.title.trim() === "";
   const generationStatus = remixGenerationStatus(project.generationMetadata);
   const generationActive = remixGenerationIsActive(project.generationMetadata);
@@ -1679,10 +1664,134 @@ export function RemixStudioEditor({
     eligibility,
   });
 
+  // Demand signal for gated publish/export clicks (#1143/#1196/#1323).
+  const recordActionUnavailable = (
+    action: "publish" | "export",
+    reasonCode: string,
+  ) => {
+    void recordProductAnalytics(token, "remix.studio_action_unavailable", {
+      source: "remix_studio",
+      subjectType: "remix_project",
+      subjectId: project.id,
+      payload: { projectId: project.id, action, reasonCode },
+    });
+  };
+
+  // Create panel (#1879): one intent picker over mode + AI target.
+  const intent = intentFromState(edits.mode, aiTargetKind);
+  const handleIntentChange = (next: RemixIntent) => {
+    const state = stateForIntent(next);
+    setAiTargetKind(state.aiTargetKind);
+    // The mode is part of the saved project; autosave persists it.
+    setEdits((prev) =>
+      prev.mode === state.mode ? prev : { ...prev, mode: state.mode },
+    );
+  };
+  const sectionCount = sectionGrid?.sections.length ?? 0;
+  const recipes = applicableRecipes(project.stems, sectionCount);
+  const handleApplyRecipe = (recipeId: string) => {
+    setEdits((prev) => ({
+      ...prev,
+      stems: applyRecipe(recipeId, project.stems, prev.stems, sectionCount),
+    }));
+  };
+  const replaceStemOptions = project.stems
+    .filter((stem) => !referenceIds.has(stem.stemId))
+    .map((stem) => ({ stemId: stem.stemId, name: stemDisplayName(stem) }));
+
+  // Generate gating (#1162/#1316/#1422): saved-state and prompt gate, then
+  // an incomplete replace selection, then the credit balance.
+  const baseGenerateAvailability = describeGenerateAvailability({
+    mode: edits.mode,
+    prompt: edits.prompt,
+    saving,
+    dirty,
+    generating,
+    generationActive,
+  });
+  const transformCheck =
+    edits.mode === "variation"
+      ? stemTransformForGenerate(
+          aiTargetKind,
+          aiTargetStemId,
+          project.stems,
+          edits,
+        )
+      : {};
+  const transformGated =
+    baseGenerateAvailability.enabled && transformCheck.problem
+      ? { enabled: false, reason: transformCheck.problem }
+      : baseGenerateAvailability;
+  const generateAvailability =
+    transformGated.enabled && !canAffordDraft
+      ? {
+          enabled: false,
+          reason: "You're out of generation credits — request a top-up below.",
+        }
+      : transformGated;
+  const generateLabel =
+    generating || generationActive
+      ? "Queued..."
+      : generationStatus === "failed"
+        ? edits.mode === "stem_mix"
+          ? "Retry render"
+          : "Retry generation"
+        : project.generationJobId
+          ? edits.mode === "stem_mix"
+            ? "Re-render mix"
+            : "Regenerate draft"
+          : edits.mode === "stem_mix"
+            ? "Render mix"
+            : "Generate AI draft";
+
+  // Drafts panel (#1320/#1879). Job ids are playback keys only, never shown.
+  const generationMetadata = project.generationMetadata;
+  const currentDraft: RemixCurrentDraft | null = project.generationJobId
+    ? {
+        status: generationActive
+          ? "queued"
+          : generationStatus === "failed"
+            ? "failed"
+            : draftOutputUri
+              ? "completed"
+              : "no_output",
+        failureMessage: generationFailure,
+        kindLabel: draftKindLabel(
+          generationMetadata?.grounding,
+          generationMetadata?.stemTransform,
+          generationMetadata?.mode,
+        ),
+        provenance: generationMetadata?.grounding ?? null,
+        groundingDetail: groundingDescription(generationMetadata),
+        transformNote: describeStemTransform(generationMetadata?.stemTransform),
+        costUsd: generationMetadata?.estimatedCostUsd ?? null,
+        completedAt: generationMetadata?.completedAt ?? null,
+        peaks: transport.draftPeaksFor(null),
+        playing: draftTransportState(null) === "playing",
+        loading: draftTransportState(null) === "loading",
+      }
+    : null;
+  const draftVersions: RemixDraftVersion[] = (
+    generationMetadata?.previousDrafts ?? []
+  ).map((entry) => ({
+    jobId: entry.jobId,
+    label: draftKindLabel(entry.grounding, entry.stemTransform, entry.mode),
+    provenance: entry.grounding,
+    costUsd: entry.estimatedCostUsd,
+    completedAt: entry.completedAt,
+    peaks: transport.draftPeaksFor(entry.jobId),
+    playing: draftTransportState(entry.jobId) === "playing",
+    loading: draftTransportState(entry.jobId) === "loading",
+  }));
+  const draftsEmptyHint =
+    edits.mode === "stem_mix"
+      ? "No draft yet. Render your arranged stems into a mix, or choose Add AI to generate one."
+      : "No AI draft yet. Write a prompt and generate one.";
+
   return (
     <div className="min-h-screen bg-black">
       <div className="bg-gradient-to-b from-purple-900/20 to-transparent">
-        <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="text-sm text-zinc-400 mb-2">Remix Studio</div>
           <div className="flex items-center gap-3 flex-wrap">
             <input
@@ -1708,6 +1817,35 @@ export function RemixStudioEditor({
             >
               {project.status}
             </span>
+            {/* Autosave status (#1879): lives with the title it saves. */}
+            {!published && (
+              <span className="flex items-center gap-2">
+                <span
+                  role="status"
+                  className={`text-xs remix-save-status ${
+                    (titleBlank || saveBlocked) && !saving
+                      ? "text-red-400"
+                      : "text-zinc-500"
+                  }`}
+                >
+                  {saveStatusLabel({
+                    saving,
+                    dirty,
+                    titleBlank,
+                    error: saveBlocked,
+                  })}
+                </span>
+                {saveBlocked && !saving && (
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-ghost remix-save-retry"
+                    onClick={() => void handleSave()}
+                  >
+                    Retry
+                  </button>
+                )}
+              </span>
+            )}
           </div>
           <p className="text-zinc-400 mt-2 text-sm remix-studio-attribution">
             Remix of{" "}
@@ -1750,692 +1888,282 @@ export function RemixStudioEditor({
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {published && (
-          <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-5 remix-published-banner">
-            <h2 className="text-base font-semibold text-emerald-200">
-              Published on Resonate
-            </h2>
-            <p className="text-sm text-emerald-100/80 mt-1">
-              This draft is now a public remix release. The studio is locked —
-              edits and re-generation are disabled so the release stays in sync.
-            </p>
-            <div className="flex items-center gap-3 flex-wrap">
-              {project.publishedReleaseId && (
-                <Link
-                  href={`/release/${project.publishedReleaseId}`}
-                  className="ui-btn ui-btn-primary mt-3 inline-flex remix-published-release-link"
-                >
-                  View release page
-                </Link>
-              )}
-              <RemixSellCta commerce={project.commerce} />
-            </div>
-          </section>
-        )}
-
-        {/* Session: transport + one lane per stem (#1879) */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 remix-session">
-          <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <h2 className="text-lg font-semibold text-white">Session</h2>
-              {sectionGrid && (
-                <span className="text-xs text-zinc-500">
-                  {sectionGridSummaryLabel(sectionGrid)}
-                </span>
-              )}
-            </div>
-            {soloStemId && (
-              <button
-                type="button"
-                className="text-xs text-purple-300 hover:text-purple-200"
-                onClick={() => setSoloStemId(null)}
-              >
-                Clear solo
-              </button>
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        {/* Studio layout (#1879): the session on the left; Create and Drafts
+            in a sticky side column on large screens, stacked below it
+            otherwise. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <div className="min-w-0 space-y-6">
+            {published && (
+              <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-5 remix-published-banner">
+                <h2 className="text-base font-semibold text-emerald-200">
+                  Published on Resonate
+                </h2>
+                <p className="text-sm text-emerald-100/80 mt-1">
+                  This draft is now a public remix release. The studio is locked —
+                  edits and re-generation are disabled so the release stays in sync.
+                </p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {project.publishedReleaseId && (
+                    <Link
+                      href={`/release/${project.publishedReleaseId}`}
+                      className="ui-btn ui-btn-primary mt-3 inline-flex remix-published-release-link"
+                    >
+                      View release page
+                    </Link>
+                  )}
+                  <RemixSellCta commerce={project.commerce} />
+                </div>
+              </section>
             )}
-          </div>
-          <p className="text-zinc-500 text-xs mb-4">
-            The preview is unmastered, with a limiter keeping the summed stems
-            from clipping; final renders are loudness-normalized, so they sound
-            louder and more even. Mute, gain, and sections save automatically;
-            solo changes playback only and is not saved.
-            {Object.entries(edits.stems).some(
-              ([stemId, edit]) => edit.muted && !referenceIds.has(stemId),
-            ) && (
-              <>
-                {" "}
-                Stems added from this track start muted — unmute a row to bring
-                it into your remix.
-              </>
-            )}{" "}
-            <span className="hidden text-zinc-400 md:inline remix-shortcut-hint">
-              Space play/stop · M mute · S solo on the focused row · Esc clears
-              the loop
-            </span>
-          </p>
-          {doublingReferenceStems.map((stem) => (
-            <div
-              key={stem.stemId}
-              role="alert"
-              className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 remix-reference-doubling-warning"
-            >
-              <p className="text-xs text-amber-200 flex-1 min-w-[12rem]">
-                “{stemDisplayName(stem)}” is the full mix of the track, so it
-                plays every part your other stems already cover — your mix is
-                doubled. Use it only as a reference to compare against.
-              </p>
-              <button
-                type="button"
-                disabled={published}
-                className="px-2 py-1 rounded text-xs font-medium border bg-amber-500/20 text-amber-100 border-amber-500/40 hover:bg-amber-500/30 remix-use-as-reference-btn"
-                onClick={() => updateStemEdit(stem.stemId, { muted: true })}
-              >
-                Use as reference only
-              </button>
-            </div>
-          ))}
-          <div className="rounded-md border border-zinc-800 overflow-hidden">
-            <RemixTransportBar
-              status={transport.status}
-              getPositionSec={transport.getPositionSec}
-              durationSec={transport.durationSec}
-              source={transportSource}
-              hasOriginal={referenceStemId !== null}
-              hasDraft={Boolean(draftOutputUri)}
-              loopLabel={
-                sectionGrid && transportLoop
-                  ? transportLoopLabel(sectionGrid, transportLoop.sectionIndex)
-                  : null
-              }
-              meter={
-                transport.status === "playing" &&
-                transportSource.kind !== "draft" ? (
-                  <PreviewLevelMeter handle={transport.previewHandle} />
-                ) : null
-              }
-              onToggle={transport.toggle}
-              onSourceChange={transport.setSource}
-              onClearLoop={() => transport.setLoop(null)}
-            />
-            <RemixSessionLanes
-              stems={laneStems}
-              grid={sectionGrid}
-              durationSec={transport.durationSec}
-              getPositionSec={transport.getPositionSec}
-              playing={transport.status === "playing"}
-              loopSectionIndex={transportLoop?.sectionIndex ?? null}
-              disabled={published}
-              onToggleMute={toggleStemMute}
-              onToggleSolo={toggleStemSolo}
-              onGainChange={(stemId, gainDb) =>
-                updateStemEdit(stemId, { gainDb })
-              }
-              onSetSections={(stemId, sections) =>
-                updateStemEdit(stemId, { sections })
-              }
-              onSeek={transport.seek}
-              onLoopSection={loopSection}
-            />
-          </div>
 
-          {/* Sibling stems not in the session yet (#1312) */}
-          {availableStems.length > 0 && (
-            <div className="mt-5 border-t border-zinc-800 pt-4">
-              <h3 className="text-sm font-semibold text-zinc-200 mb-1">
-                Also on this track
-              </h3>
-              <p className="text-zinc-500 text-xs mb-3">
-                Licensed stems join your session instantly; the others link to
-                their license page.
-              </p>
-              <ul className="space-y-2">
-                {availableStems.map((stem) => {
-                  const action = describeAvailableStemAction(stem);
-                  return (
-                    <li
-                      key={stem.stemId}
-                      className="border border-zinc-800 rounded-md px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2"
-                    >
-                      <div className="min-w-[8rem] flex-1">
-                        <div className="text-sm text-zinc-300">
-                          {stemDisplayName(stem)}
-                        </div>
-                        <div className="text-xs text-zinc-500">{stem.type}</div>
-                      </div>
-                      {action.kind === "add" ? (
-                        <button
-                          type="button"
-                          className="ui-btn ui-btn-ghost remix-add-stem-btn"
-                          disabled={
-                            published ||
-                            saving ||
-                            dirty ||
-                            addingStemId !== null
-                          }
-                          title={
-                            dirty || saving
-                              ? SAVING_LATEST_CHANGES_REASON
-                              : `Add ${stemDisplayName(stem)} to this session`
-                          }
-                          onClick={() => void handleAddStem(stem.stemId)}
-                        >
-                          {addingStemId === stem.stemId
-                            ? "Adding..."
-                            : action.label}
-                        </button>
-                      ) : action.kind === "license" && action.href ? (
-                        <Link
-                          href={action.href}
-                          className="ui-btn ui-btn-ghost remix-license-stem-link"
-                        >
-                          {action.label}
-                        </Link>
-                      ) : (
-                        <span
-                          className="text-xs text-zinc-500"
-                          aria-disabled="true"
-                        >
-                          {action.label}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-        </section>
-
-        {/* Mode + prompt */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-white mb-4">Remix mode</h2>
-          <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
-            {REMIX_MODES.map((mode) => (
-              <button
-                key={mode.value}
-                type="button"
-                aria-pressed={edits.mode === mode.value}
-                disabled={published}
-                className={`px-4 py-2 text-sm ${
-                  edits.mode === mode.value
-                    ? "bg-purple-500/25 text-purple-200"
-                    : "bg-zinc-900 text-zinc-400 hover:text-zinc-200"
-                }`}
-                onClick={() =>
-                  setEdits((prev) => ({ ...prev, mode: mode.value }))
-                }
-              >
-                {mode.label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-4">
-            <label className="block text-sm text-zinc-400 mb-1" htmlFor="remix-prompt">
-              Prompt
-            </label>
-            {/* Prompt presets (#1177): transparent templates — clicking fills
-                the editable textarea with the full text, never a hidden
-                augmentation. Only prompted modes have presets. */}
-            {promptEnabled && presetsForMode(edits.mode).length > 0 && (
-              <div
-                className="flex items-center gap-2 flex-wrap mb-2"
-                role="group"
-                aria-label="Prompt presets"
-              >
-                {presetsForMode(edits.mode).map((preset) => {
-                  const active =
-                    activePresetLabel(edits.mode, edits.prompt) === preset.label;
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      disabled={published}
-                      aria-pressed={active}
-                      title={preset.prompt}
-                      className={`px-3 py-1 rounded-full text-xs border transition-colors remix-prompt-preset ${
-                        active
-                          ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
-                          : "border-zinc-700 bg-zinc-950 text-zinc-400 hover:text-zinc-200 hover:border-zinc-500"
-                      }`}
-                      onClick={() =>
-                        setEdits((prev) => ({ ...prev, prompt: preset.prompt }))
-                      }
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            <textarea
-              id="remix-prompt"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-md p-3 text-sm text-zinc-200 disabled:opacity-50"
-              rows={3}
-              placeholder="Describe the variation or extension you want..."
-              value={edits.prompt}
-              disabled={!promptEnabled || published}
-              onChange={(e) =>
-                setEdits((prev) => ({ ...prev, prompt: e.target.value }))
-              }
-            />
-            {edits.mode === "variation" && (
-              <div className="mt-4 remix-ai-target">
-                <div className="text-xs text-zinc-500 mb-2">AI target</div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
-                    {(
-                      [
-                        { value: "whole", label: "Whole track" },
-                        { value: "add_layer", label: "New layer" },
-                        { value: "replace_stem", label: "Replace stem" },
-                      ] as const
-                    ).map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        aria-pressed={aiTargetKind === option.value}
-                        disabled={published}
-                        className={`px-3 py-1.5 text-xs ${
-                          aiTargetKind === option.value
-                            ? "bg-purple-500/20 text-purple-200"
-                            : "bg-zinc-900 text-zinc-400"
-                        }`}
-                        onClick={() => setAiTargetKind(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                  {aiTargetKind === "replace_stem" && (
-                    <select
-                      aria-label="Stem to replace"
-                      className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-xs text-zinc-200"
-                      value={aiTargetStemId ?? ""}
-                      disabled={published}
-                      onChange={(event) =>
-                        setAiTargetStemId(event.target.value || null)
-                      }
-                    >
-                      <option value="">Choose stem…</option>
-                      {project.stems
-                        .filter((stem) => !referenceIds.has(stem.stemId))
-                        .map((stem) => (
-                          <option key={stem.stemId} value={stem.stemId}>
-                            {stemDisplayName(stem)}
-                          </option>
-                        ))}
-                    </select>
+            {/* Session: transport + one lane per stem (#1879) */}
+            <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 remix-session">
+              <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
+                <div className="flex items-baseline gap-3 flex-wrap">
+                  <h2 className="text-lg font-semibold text-white">Session</h2>
+                  {sectionGrid && (
+                    <span className="text-xs text-zinc-500">
+                      {sectionGridSummaryLabel(sectionGrid)}
+                    </span>
                   )}
                 </div>
-                <p className="text-xs text-zinc-500 mt-2">
-                  {aiTargetKind === "replace_stem"
-                    ? "The AI generates an isolated part to take that stem's place; your other stems stay untouched."
-                    : aiTargetKind === "add_layer"
-                      ? "The AI generates one new part that sits on top of your arranged stems."
-                      : "The AI reinterprets the whole arrangement as one generated layer over your stems."}
-                </p>
-              </div>
-            )}
-            {!promptEnabled && (
-              <p className="text-xs text-zinc-500 mt-1">
-                Prompts apply to variation and extension modes. Stem mix uses
-                only your stem settings.
-              </p>
-            )}
-          </div>
-        </section>
-
-        {/* Draft status + AI generation (#1162) */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h2 className="text-lg font-semibold text-white mb-3">Draft status</h2>
-              <div className="text-sm text-zinc-400 space-y-1">
-                <p>
-                  Status: <span className="text-zinc-200">{project.status}</span>
-                  {" · "}Policy:{" "}
-                  <span className="text-zinc-200">{project.policyVersion}</span>
-                </p>
-                <p className="remix-generation-placeholder">
-                  {generationActive && project.generationJobId
-                    ? `AI generation queued — job ${project.generationJobId}.`
-                    : generationStatus === "failed" && project.generationJobId
-                      ? `AI generation failed — job ${project.generationJobId}.`
-                      : project.generationJobId
-                        ? `AI draft recorded — job ${project.generationJobId} (${project.generationProvider ?? "unknown provider"})${
-                            formatDraftCost(
-                              project.generationMetadata?.estimatedCostUsd,
-                            )
-                              ? ` · ${formatDraftCost(project.generationMetadata?.estimatedCostUsd)}`
-                              : ""
-                          }.`
-                        : edits.mode === "stem_mix"
-                          ? "No draft yet. Render your arranged stems into a mix, or switch to a prompted mode for AI generation."
-                          : "No AI draft yet. Write a prompt in variation or extension mode and generate one."}
-                </p>
-                {(() => {
-                  const grounding = groundingDescription(
-                    project.generationMetadata,
-                  );
-                  return (
-                    project.generationJobId &&
-                    grounding && (
-                      <p className="text-zinc-500 text-xs remix-generation-grounding">
-                        {grounding}
-                      </p>
-                    )
-                  );
-                })()}
-                {(() => {
-                  const transformNote = describeStemTransform(
-                    project.generationMetadata?.stemTransform,
-                  );
-                  return (
-                    project.generationJobId &&
-                    transformNote && (
-                      <p className="text-zinc-500 text-xs remix-generation-transform">
-                        {transformNote}
-                      </p>
-                    )
-                  );
-                })()}
-                {generationFailure && (
-                  <p className="text-red-300 remix-generation-error">
-                    {generationFailure}
-                  </p>
+                {soloStemId && (
+                  <button
+                    type="button"
+                    className="text-xs text-purple-300 hover:text-purple-200"
+                    onClick={() => setSoloStemId(null)}
+                  >
+                    Clear solo
+                  </button>
                 )}
-                {/*
-                 * Stability AI Community License §IV(a) attribution (#1342).
-                 * Shown whenever the audio-conditioned Stable Audio 3 provider
-                 * is the active generation backend — the server sets
-                 * generationAttribution and the client displays it verbatim.
-                 * Absent for Lyria / stem-plus-AI, which carry no such notice.
-                 */}
+              </div>
+              <p className="text-zinc-500 text-xs mb-4">
+                The preview is unmastered, with a limiter keeping the summed stems
+                from clipping; final renders are loudness-normalized, so they sound
+                louder and more even. Mute, gain, and sections save automatically;
+                solo changes playback only and is not saved.
+                {Object.entries(edits.stems).some(
+                  ([stemId, edit]) => edit.muted && !referenceIds.has(stemId),
+                ) && (
+                  <>
+                    {" "}
+                    Stems added from this track start muted — unmute a row to bring
+                    it into your remix.
+                  </>
+                )}{" "}
+                <span className="hidden text-zinc-400 md:inline remix-shortcut-hint">
+                  Space play/stop · M mute · S solo on the focused row · Esc clears
+                  the loop
+                </span>
+              </p>
+              {doublingReferenceStems.map((stem) => (
+                <div
+                  key={stem.stemId}
+                  role="alert"
+                  className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 remix-reference-doubling-warning"
+                >
+                  <p className="text-xs text-amber-200 flex-1 min-w-[12rem]">
+                    “{stemDisplayName(stem)}” is the full mix of the track, so it
+                    plays every part your other stems already cover — your mix is
+                    doubled. Use it only as a reference to compare against.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={published}
+                    className="px-2 py-1 rounded text-xs font-medium border bg-amber-500/20 text-amber-100 border-amber-500/40 hover:bg-amber-500/30 remix-use-as-reference-btn"
+                    onClick={() => updateStemEdit(stem.stemId, { muted: true })}
+                  >
+                    Use as reference only
+                  </button>
+                </div>
+              ))}
+              <div className="rounded-md border border-zinc-800 overflow-hidden">
+                <RemixTransportBar
+                  status={transport.status}
+                  getPositionSec={transport.getPositionSec}
+                  durationSec={transport.durationSec}
+                  source={transportSource}
+                  hasOriginal={referenceStemId !== null}
+                  hasDraft={Boolean(draftOutputUri)}
+                  loopLabel={
+                    sectionGrid && transportLoop
+                      ? transportLoopLabel(sectionGrid, transportLoop.sectionIndex)
+                      : null
+                  }
+                  meter={
+                    transport.status === "playing" &&
+                    transportSource.kind !== "draft" ? (
+                      <PreviewLevelMeter handle={transport.previewHandle} />
+                    ) : null
+                  }
+                  onToggle={transport.toggle}
+                  onSourceChange={transport.setSource}
+                  onClearLoop={() => transport.setLoop(null)}
+                />
+                <RemixSessionLanes
+                  stems={laneStems}
+                  grid={sectionGrid}
+                  durationSec={transport.durationSec}
+                  getPositionSec={transport.getPositionSec}
+                  playing={transport.status === "playing"}
+                  loopSectionIndex={transportLoop?.sectionIndex ?? null}
+                  disabled={published}
+                  onToggleMute={toggleStemMute}
+                  onToggleSolo={toggleStemSolo}
+                  onGainChange={(stemId, gainDb) =>
+                    updateStemEdit(stemId, { gainDb })
+                  }
+                  onSetSections={(stemId, sections) =>
+                    updateStemEdit(stemId, { sections })
+                  }
+                  onSeek={transport.seek}
+                  onLoopSection={loopSection}
+                />
+              </div>
+
+              {/* Sibling stems not in the session yet (#1312) */}
+              {availableStems.length > 0 && (
+                <div className="mt-5 border-t border-zinc-800 pt-4">
+                  <h3 className="text-sm font-semibold text-zinc-200 mb-1">
+                    Also on this track
+                  </h3>
+                  <p className="text-zinc-500 text-xs mb-3">
+                    Licensed stems join your session instantly; the others link to
+                    their license page.
+                  </p>
+                  <ul className="space-y-2">
+                    {availableStems.map((stem) => {
+                      const action = describeAvailableStemAction(stem);
+                      return (
+                        <li
+                          key={stem.stemId}
+                          className="border border-zinc-800 rounded-md px-4 py-2 flex flex-wrap items-center gap-x-4 gap-y-2"
+                        >
+                          <div className="min-w-[8rem] flex-1">
+                            <div className="text-sm text-zinc-300">
+                              {stemDisplayName(stem)}
+                            </div>
+                            <div className="text-xs text-zinc-500">{stem.type}</div>
+                          </div>
+                          {action.kind === "add" ? (
+                            <button
+                              type="button"
+                              className="ui-btn ui-btn-ghost remix-add-stem-btn"
+                              disabled={
+                                published ||
+                                saving ||
+                                dirty ||
+                                addingStemId !== null
+                              }
+                              title={
+                                dirty || saving
+                                  ? SAVING_LATEST_CHANGES_REASON
+                                  : `Add ${stemDisplayName(stem)} to this session`
+                              }
+                              onClick={() => void handleAddStem(stem.stemId)}
+                            >
+                              {addingStemId === stem.stemId
+                                ? "Adding..."
+                                : action.label}
+                            </button>
+                          ) : action.kind === "license" && action.href ? (
+                            <Link
+                              href={action.href}
+                              className="ui-btn ui-btn-ghost remix-license-stem-link"
+                            >
+                              {action.label}
+                            </Link>
+                          ) : (
+                            <span
+                              className="text-xs text-zinc-500"
+                              aria-disabled="true"
+                            >
+                              {action.label}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="space-y-6 self-start lg:sticky lg:top-4">
+            <RemixCreatePanel
+              intent={intent}
+              onIntentChange={handleIntentChange}
+              prompt={edits.prompt}
+              onPromptChange={(prompt) =>
+                setEdits((prev) => ({ ...prev, prompt }))
+              }
+              presets={presetsForMode(edits.mode)}
+              activePresetLabel={activePresetLabel(edits.mode, edits.prompt)}
+              replaceStemOptions={replaceStemOptions}
+              replaceStemId={aiTargetStemId}
+              onReplaceStemChange={setAiTargetStemId}
+              recipes={recipes}
+              onApplyRecipe={handleApplyRecipe}
+              pricePer30sCents={credits?.priceCentsPer30s ?? null}
+              primary={{
+                label: generateLabel,
+                enabled: generateAvailability.enabled,
+                reason: generateAvailability.reason,
+                busy: generating || generationActive,
+                onClick: () => void handleGenerate(),
+              }}
+              creditMeter={
+                <CreditBalanceMeter
+                  variant="panel"
+                  balance={credits}
+                  onRequestCredits={handleRequestCredits}
+                  requesting={creditRequestState === "sending"}
+                />
+              }
+              attribution={
+                // Stability AI Community License §IV(a) attribution (#1342):
+                // server-driven, shown only when the active provider needs it.
                 <RemixGenerationAttributionBadge
                   attribution={eligibility?.generationAttribution}
                 />
-              </div>
-            </div>
-            {(() => {
-              const baseAvailability = describeGenerateAvailability({
-                mode: edits.mode,
-                prompt: edits.prompt,
-                saving,
-                dirty,
-                generating,
-                generationActive,
-              });
-              // Targeted transform gating (#1316): an incomplete replace
-              // selection blocks Generate with the concrete reason.
-              const transformCheck =
-                edits.mode === "variation"
-                  ? stemTransformForGenerate(
-                      aiTargetKind,
-                      aiTargetStemId,
-                      project.stems,
-                      edits,
-                    )
-                  : {};
-              const transformGated =
-                baseAvailability.enabled && transformCheck.problem
-                  ? { enabled: false, reason: transformCheck.problem }
-                  : baseAvailability;
-              // Credit gate (#1422): block a run the balance can't fund even at
-              // one 30s block, so the user tops up instead of queuing a job the
-              // worker would reject. Only applies once the balance is known.
-              const availability =
-                transformGated.enabled && !canAffordDraft
-                  ? {
-                      enabled: false,
-                      reason:
-                        "You're out of generation credits — request a top-up below.",
-                    }
-                  : transformGated;
-              return (
-                <div className="text-right">
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn-primary remix-generate-btn"
-                    aria-disabled={!availability.enabled || published || undefined}
-                    title={
-                      published
-                        ? "This remix is published and can no longer be regenerated."
-                        : availability.reason ?? undefined
-                    }
-                    onClick={(e) => {
-                      if (!availability.enabled || published) {
-                        e.preventDefault();
-                        return;
-                      }
-                      void handleGenerate();
-                    }}
-                  >
-                    {generating || generationActive
-                      ? "Queued..."
-                      : generationStatus === "failed"
-                        ? edits.mode === "stem_mix"
-                          ? "Retry render"
-                          : "Retry generation"
-                        : project.generationJobId
-                          ? edits.mode === "stem_mix"
-                            ? "Re-render mix"
-                            : "Regenerate draft"
-                          : edits.mode === "stem_mix"
-                            ? "Render mix"
-                            : "Generate AI draft"}
-                  </button>
-                  {availability.reason && (
-                    <p className="text-xs text-zinc-500 mt-2 max-w-[16rem]">
-                      {availability.reason}
-                    </p>
-                  )}
-                  {formatDraftCost(
-                    project.generationMetadata?.estimatedCostUsd,
-                  ) &&
-                    !generationActive && (
-                      <p className="text-xs text-zinc-500 mt-2 max-w-[16rem] remix-generation-cost">
-                        Last run{" "}
-                        {formatDraftCost(
-                          project.generationMetadata?.estimatedCostUsd,
-                        )}
-                        .
-                      </p>
-                    )}
-                  {draftOutputUri && (
-                    <button
-                      type="button"
-                      className="ui-btn ui-btn-ghost remix-draft-playback-btn mt-3"
-                      onClick={() => handleDraftPlayback(null)}
-                    >
-                      {draftTransportState(null) === "loading"
-                        ? "Loading draft..."
-                        : draftTransportState(null) === "playing"
-                          ? "Stop draft"
-                          : "Play AI draft"}
-                    </button>
-                  )}
-                  {(project.generationMetadata?.previousDrafts?.length ?? 0) >
-                    0 && (
-                    <div className="mt-4 text-left remix-draft-versions">
-                      <div className="text-xs text-zinc-500 mb-1">
-                        Previous versions
-                      </div>
-                      <ul className="space-y-1">
-                        {project.generationMetadata!.previousDrafts!.map(
-                          (entry) => (
-                            <li
-                              key={entry.jobId}
-                              className="flex items-center gap-2 text-xs text-zinc-400"
-                            >
-                              <button
-                                type="button"
-                                className="ui-btn ui-btn-ghost remix-draft-version-btn"
-                                onClick={() => handleDraftPlayback(entry.jobId)}
-                              >
-                                {draftTransportState(entry.jobId) === "loading"
-                                  ? "Loading..."
-                                  : draftTransportState(entry.jobId) === "playing"
-                                    ? "Stop"
-                                    : "Play"}
-                              </button>
-                              <span>{previousDraftLabel(entry)}</span>
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    </div>
-                  )}
-                  {project.generationJobId &&
-                    !draftOutputUri &&
-                    !generationActive &&
-                    generationStatus !== "failed" && (
-                    <p className="text-xs text-zinc-500 mt-3 max-w-[16rem]">
-                      This generation has no playable draft output yet.
-                    </p>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-          {/*
-           * Credit meter (#1422): the remix draft debit runs in a worker, so we
-           * surface the shared generation-credit balance proactively here — when
-           * it's empty/low the operator-request affordance appears without
-           * waiting for a failed job.
-           */}
-          <div className="mt-4">
-            <CreditBalanceMeter
-              variant="panel"
-              balance={credits}
-              onRequestCredits={handleRequestCredits}
-              requesting={creditRequestState === "sending"}
+              }
+              locked={published}
+            />
+            <RemixDraftsPanel
+              current={currentDraft}
+              versions={draftVersions}
+              onPlayCurrent={() => handleDraftPlayback(null)}
+              onPlayVersion={(jobId) => handleDraftPlayback(jobId)}
+              publish={{
+                enabled: publishAvailability.enabled,
+                reason: publishAvailability.reason,
+                busy: publishing,
+                reasonCode: publishAvailability.reasonCode,
+                onClick: () => setConfirmPublishOpen(true),
+                onLockedClick: () =>
+                  recordActionUnavailable(
+                    "publish",
+                    publishAvailability.reasonCode,
+                  ),
+              }}
+              exportAction={{
+                enabled: exportAvailability.enabled,
+                reason: exportAvailability.reason,
+                busy: exporting,
+                onClick: () => void handleExport(),
+                onLockedClick: () =>
+                  recordActionUnavailable(
+                    "export",
+                    exportAvailability.reasonCode,
+                  ),
+              }}
+              published={published}
+              emptyHint={draftsEmptyHint}
             />
           </div>
-        </section>
-
-        {/* Publish + export actions; save status (autosave, #1879) */}
-        <section className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            {published ? (
-              project.publishedReleaseId && (
-                <Link
-                  href={`/release/${project.publishedReleaseId}`}
-                  className="ui-btn ui-btn-primary remix-action-view-release"
-                >
-                  View release
-                </Link>
-              )
-            ) : (
-              <button
-                type="button"
-                className="ui-btn ui-btn-primary remix-action-publish"
-                aria-disabled={!publishAvailability.enabled || undefined}
-                title={publishAvailability.reason ?? undefined}
-                onClick={(e) => {
-                  if (!publishAvailability.enabled) {
-                    e.preventDefault();
-                    // Demand signal for the gated publish flow (#1143/#1196).
-                    void recordProductAnalytics(
-                      token,
-                      "remix.studio_action_unavailable",
-                      {
-                        source: "remix_studio",
-                        subjectType: "remix_project",
-                        subjectId: project.id,
-                        payload: {
-                          projectId: project.id,
-                          action: "publish",
-                          reasonCode: publishAvailability.reasonCode,
-                        },
-                      },
-                    );
-                    return;
-                  }
-                  setConfirmPublishOpen(true);
-                }}
-              >
-                {publishing ? "Publishing..." : "Publish on Resonate"}
-              </button>
-            )}
-            {!published &&
-              (exportAvailability.enabled ? (
-                <button
-                  type="button"
-                  className="ui-btn ui-btn-ghost remix-action-export"
-                  onClick={() => void handleExport()}
-                >
-                  {exporting ? "Exporting..." : "Export audio"}
-                </button>
-              ) : (
-                // Honest locked state (#1323): the button records the demand
-                // signal on click but does not attempt the download. The
-                // export_rights_required reason keeps its stable analytics code.
-                <button
-                  type="button"
-                  aria-disabled="true"
-                  title={exportAvailability.reason ?? undefined}
-                  className="ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--export"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    // Demand signal for locked workflows (#1143/#1323).
-                    void recordProductAnalytics(
-                      token,
-                      "remix.studio_action_unavailable",
-                      {
-                        source: "remix_studio",
-                        subjectType: "remix_project",
-                        subjectId: project.id,
-                        payload: {
-                          projectId: project.id,
-                          action: "export",
-                          reasonCode: exportAvailability.reasonCode,
-                        },
-                      },
-                    );
-                  }}
-                >
-                  Export audio
-                  {exportAvailability.reason && (
-                    <span className="sr-only"> — {exportAvailability.reason}</span>
-                  )}
-                </button>
-              ))}
-          </div>
-          {!published && (
-            <div className="flex items-center gap-3">
-              <span
-                role="status"
-                className={`text-xs remix-save-status ${
-                  (titleBlank || saveBlocked) && !saving
-                    ? "text-red-400"
-                    : "text-zinc-500"
-                }`}
-              >
-                {saveStatusLabel({
-                  saving,
-                  dirty,
-                  titleBlank,
-                  error: saveBlocked,
-                })}
-              </span>
-              {saveBlocked && !saving && (
-                <button
-                  type="button"
-                  className="ui-btn ui-btn-ghost remix-save-retry"
-                  onClick={() => void handleSave()}
-                >
-                  Retry
-                </button>
-              )}
-            </div>
-          )}
-        </section>
-        {!published && publishAvailability.reason && (
-          <p className="text-xs text-zinc-500 remix-publish-reason">
-            {publishAvailability.reason}
-          </p>
-        )}
+        </div>
       </div>
 
       <ConfirmDialog

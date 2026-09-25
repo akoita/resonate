@@ -5,6 +5,8 @@
  * the user's own arrangement, rendered exactly as heard.
  */
 
+import { isFullMixStemType } from "./remixStems";
+
 export type RemixRecipeId =
   | "acapella"
   | "instrumental"
@@ -51,9 +53,6 @@ export const REMIX_RECIPES: readonly RemixRecipe[] = [
   },
 ];
 
-// Mirrors isFullMixStemType in RemixStudioEditor (kept local so this pure
-// module does not import the editor component; a parity test guards drift).
-const FULL_MIX_TYPES = new Set(["original", "master"]);
 const VOCAL_TYPES = new Set(["vocals", "vocal"]);
 const DRUM_TYPES = new Set(["drums", "drum"]);
 const BASS_TYPES = new Set(["bass"]);
@@ -64,7 +63,7 @@ function normalizedType(type: string | null | undefined): string {
 }
 
 function isFullMix(stem: RecipeStem): boolean {
-  return FULL_MIX_TYPES.has(normalizedType(stem.type));
+  return isFullMixStemType(stem.type);
 }
 
 function isVocal(stem: RecipeStem): boolean {
