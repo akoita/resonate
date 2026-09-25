@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createStemPreviewEngine,
   loopEntryOffset,
+  outputTimeIntervals,
+  PREVIEW_WARMTH_INPUT_RANGE,
+  sourcePositionAt,
   PREVIEW_LIMITER_RATIO,
   PREVIEW_LIMITER_THRESHOLD_DB,
   scheduleSectionEnvelopeFrom,
@@ -9,6 +12,12 @@ import {
   stemPreviewGain,
   wrapLoopPosition,
 } from "./remixAudioPreview";
+import {
+  biquadQDb,
+  REMIX_FX_SCHEMA_VERSION,
+  warmthCurve,
+  type RemixFxRecipe,
+} from "./remixFx";
 
 /**
  * Minimal fake WebAudio graph: enough surface for the preview engine to wire
@@ -35,10 +44,15 @@ class FakeParam {
 }
 
 class FakeNode {
+  connections: unknown[] = [];
+  disconnected = false;
   connect<T>(target: T): T {
+    this.connections.push(target);
     return target;
   }
-  disconnect() {}
+  disconnect() {
+    this.disconnected = true;
+  }
 }
 
 class FakeGain extends FakeNode {
@@ -47,6 +61,7 @@ class FakeGain extends FakeNode {
 
 class FakeSource extends FakeNode {
   buffer: unknown = null;
+  playbackRate = new FakeParam();
   onended: (() => void) | null = null;
   loop = false;
   loopStart = 0;
@@ -75,9 +90,75 @@ class FakeAnalyser extends FakeNode {
   }
 }
 
+class FakeBiquad extends FakeNode {
+  type = "lowpass";
+  frequency = new FakeParam();
+  Q = new FakeParam();
+}
+
+class FakeDelay extends FakeNode {
+  delayTime = new FakeParam();
+  constructor(public maxDelayTime: number) {
+    super();
+  }
+}
+
+class FakeConvolver extends FakeNode {
+  normalize = true;
+  buffer: unknown = null;
+}
+
+class FakeWaveShaper extends FakeNode {
+  curve: Float32Array | null = null;
+  oversample = "4x";
+}
+
+class FakeAudioBuffer {
+  channels: Float32Array[] = [];
+  constructor(
+    public numberOfChannels: number,
+    public length: number,
+    public sampleRate: number,
+  ) {}
+  copyToChannel(data: Float32Array, channel: number) {
+    this.channels[channel] = data;
+  }
+}
+
 class FakeAudioContext {
   state: "running" | "suspended" | "closed" = "suspended";
   currentTime = 0;
+  sampleRate = 48000;
+  biquads: FakeBiquad[] = [];
+  delays: FakeDelay[] = [];
+  convolvers: FakeConvolver[] = [];
+  shapers: FakeWaveShaper[] = [];
+  audioBuffers: FakeAudioBuffer[] = [];
+  createBiquadFilter() {
+    const node = new FakeBiquad();
+    this.biquads.push(node);
+    return node;
+  }
+  createDelay(maxDelayTime: number) {
+    const node = new FakeDelay(maxDelayTime);
+    this.delays.push(node);
+    return node;
+  }
+  createConvolver() {
+    const node = new FakeConvolver();
+    this.convolvers.push(node);
+    return node;
+  }
+  createWaveShaper() {
+    const node = new FakeWaveShaper();
+    this.shapers.push(node);
+    return node;
+  }
+  createBuffer(channels: number, length: number, sampleRate: number) {
+    const buffer = new FakeAudioBuffer(channels, length, sampleRate);
+    this.audioBuffers.push(buffer);
+    return buffer;
+  }
   destination = new FakeNode();
   compressor: FakeCompressor | null = null;
   analyser: FakeAnalyser | null = null;
@@ -564,5 +645,358 @@ describe("createStemPreviewEngine decode (#1879)", () => {
     const { engine } = setup();
     engine.dispose();
     await expect(engine.decode(new ArrayBuffer(4))).rejects.toThrow(/disposed/);
+  });
+});
+
+function fxRecipe(recipe: Omit<RemixFxRecipe, "schemaVersion">): RemixFxRecipe {
+  return { schemaVersion: REMIX_FX_SCHEMA_VERSION, ...recipe };
+}
+
+/** source → manual gain → section gain. */
+function sectionGainFromSource(source: FakeSource): FakeGain {
+  const manual = source.connections[0] as FakeGain;
+  return manual.connections[0] as FakeGain;
+}
+
+/** The gain nodes a node feeds, in connection order. */
+function gainTargets(node: FakeNode): FakeGain[] {
+  return node.connections.filter(
+    (target): target is FakeGain => target instanceof FakeGain,
+  );
+}
+
+describe("createStemPreviewEngine effects (#1897)", () => {
+  it("keeps the plain graph when effects are null", async () => {
+    for (const effects of [undefined, null]) {
+      const { engine, contexts } = setup();
+      await engine.play({ stems, soloStemId: null, effects });
+      const context = contexts[0];
+      // Exactly the pre-#1897 nodes: source, manual gain, section gain.
+      expect(context.sources).toHaveLength(2);
+      expect(context.gains).toHaveLength(4);
+      expect(context.biquads).toHaveLength(0);
+      expect(context.delays).toHaveLength(0);
+      expect(context.convolvers).toHaveLength(0);
+      expect(context.shapers).toHaveLength(0);
+      expect(sectionGainOf(context, 0).connections).toEqual([
+        context.compressor,
+      ]);
+      expect(context.sources[0].playbackRate.value).toBe(1);
+    }
+  });
+
+  it("plays at varispeed and maps position back to source time", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      offsetSec: 12,
+      effects: fxRecipe({ master: { speed: 1.25 } }),
+    });
+    const context = contexts[0];
+    for (const source of context.sources) {
+      expect(source.playbackRate.value).toBe(1.25);
+      // The start offset stays in buffer (source) time.
+      expect(source.start).toHaveBeenCalledWith(0.03, 12);
+    }
+    expect(handle.position()).toBe(12);
+    context.currentTime = 0.03 + 4; // 4 output s = 5 source s
+    expect(handle.position()).toBeCloseTo(17);
+    context.currentTime = 1000;
+    expect(handle.position()).toBe(60);
+  });
+
+  it("schedules section envelopes in output time", async () => {
+    const { engine, contexts } = setup();
+    const gated = [
+      {
+        stemId: "vocals",
+        gainDb: 0,
+        muted: false,
+        activeIntervals: [{ startSec: 16, endSec: 32 }],
+      },
+    ];
+    const effects = fxRecipe({ master: { speed: 0.8 } });
+    await engine.play({ stems: gated, soloStemId: null, effects });
+    const context = contexts[0];
+    const fromZero = sectionGainFromSource(context.sources[0]).gain.events;
+    expect(fromZero[0]).toEqual(["set", 0, 0.03]);
+    expect(fromZero[1][0]).toBe("set");
+    expect(fromZero[1][2]).toBeCloseTo(0.03 + 16 / 0.8);
+    // Edge fades stay a fixed output-time length.
+    expect(fromZero[2][2]).toBeCloseTo(0.03 + 16 / 0.8 + 0.05);
+    expect(fromZero[4][2]).toBeCloseTo(0.03 + 32 / 0.8);
+
+    await engine.play({
+      stems: gated,
+      soloStemId: null,
+      offsetSec: 20,
+      effects: fxRecipe({ master: { speed: 0.8 } }),
+    });
+    const events = sectionGainFromSource(context.sources[1]).gain.events;
+    expect(events[0]).toEqual(["cancel", 0, 0.03]);
+    expect(events[1]).toEqual(["set", 1, 0.03]);
+    // Source 32 s plays (32 − 20)/0.8 = 15 output s after the start.
+    expect(events[3][0]).toBe("ramp");
+    expect(events[3][2]).toBeCloseTo(0.03 + 15);
+  });
+
+  it("builds explicit echo taps with the contract's delays and gains", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      bpm: 120,
+      effects: fxRecipe({ stems: { vocals: { echo: 0.5 } } }),
+    });
+    const context = contexts[0];
+    expect(context.delays).toHaveLength(8); // 4 taps per stem
+    const vocalDelays = context.delays.slice(0, 4);
+    expect(vocalDelays.map((delay) => delay.delayTime.value)).toEqual([
+      0.375, 0.75, 1.125, 1.5,
+    ]);
+    const vocalTapGains = vocalDelays.map(
+      (delay) => gainTargets(delay)[0].gain.value,
+    );
+    [0.25, 0.15, 0.09, 0.054].forEach((gain, index) => {
+      expect(vocalTapGains[index]).toBeCloseTo(gain, 12);
+    });
+    for (const delay of context.delays.slice(4)) {
+      expect(gainTargets(delay)[0].gain.value).toBe(0); // drums: no echo
+    }
+  });
+
+  it("feeds a shared, non-normalized convolver through per-stem sends", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems,
+      soloStemId: null,
+      effects: fxRecipe({
+        master: { space: 0.6 },
+        stems: { vocals: { space: 0.3 } },
+      }),
+    });
+    const context = contexts[0];
+    expect(context.convolvers).toHaveLength(1);
+    const convolver = context.convolvers[0];
+    expect(convolver.normalize).toBe(false);
+    const impulse = convolver.buffer as FakeAudioBuffer;
+    expect(impulse.numberOfChannels).toBe(2);
+    expect(impulse.length).toBe(Math.round(2.8 * 48000));
+    expect(impulse.channels[0][960]).toBeCloseTo(-0.003922798, 8);
+    const sends = context.gains.filter((gain) =>
+      gain.connections.includes(convolver),
+    );
+    expect(sends).toHaveLength(2);
+    expect(sends[0].gain.value).toBeCloseTo(0.504, 12); // vocals
+    expect(sends[1].gain.value).toBeCloseTo(0.42, 12); // drums: master only
+    // The reverb returns into the master bus, ahead of master tone.
+    const masterBus = convolver.connections[0] as FakeGain;
+    expect(masterBus).toBeInstanceOf(FakeGain);
+    expect(context.biquads.some((biquad) => masterBus.connections.includes(biquad))).toBe(true);
+
+    // The IR is generated once per context.
+    await engine.play({
+      stems,
+      soloStemId: null,
+      effects: fxRecipe({ master: { space: 0.1 } }),
+    });
+    expect(context.audioBuffers).toHaveLength(1);
+  });
+
+  it("maps tone to biquads with WebAudio's dB Q", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({
+        master: { tone: 0.5 },
+        stems: { vocals: { tone: -0.5 } },
+      }),
+    });
+    const [masterTone, stemTone] = contexts[0].biquads;
+    expect(stemTone.type).toBe("lowpass");
+    expect(stemTone.frequency.value).toBeCloseTo(4000, 9);
+    expect(stemTone.Q.value).toBeCloseTo(biquadQDb(0.7071), 12);
+    expect(masterTone.type).toBe("highpass");
+    expect(masterTone.frequency.value).toBeCloseTo(154.919333848, 8);
+    // Filtered path on, dry path off.
+    expect(gainTargets(stemTone)[0].gain.value).toBe(1);
+  });
+
+  it("shapes the master with the warmth curve, bypassed at 0", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({ master: { warmth: 0.5 } }),
+    });
+    const context = contexts[0];
+    const shaper = context.shapers[0];
+    expect(shaper.oversample).toBe("none");
+    expect(shaper.curve).toEqual(
+      warmthCurve(0.5, 4096, PREVIEW_WARMTH_INPUT_RANGE),
+    );
+    const pre = context.gains.find((gain) => gain.connections.includes(shaper));
+    expect(pre?.gain.value).toBe(1 / PREVIEW_WARMTH_INPUT_RANGE);
+    const wet = gainTargets(shaper)[0];
+    expect(wet.gain.value).toBe(1);
+    expect(wet.connections).toEqual([context.compressor]);
+
+    expect(
+      handle.updateEffects(fxRecipe({ master: { tone: -0.2 } })),
+    ).toBe("applied");
+    expect(wet.gain.value).toBe(0);
+  });
+
+  it("updates tone, echo, space and warmth in place; speed restarts", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({ master: { speed: 0.9 } }),
+    });
+    const context = contexts[0];
+    const created = context.gains.length;
+    expect(
+      handle.updateEffects(
+        fxRecipe({ master: { speed: 0.9, space: 1 }, stems: { vocals: { echo: 1 } } }),
+      ),
+    ).toBe("applied");
+    expect(context.gains).toHaveLength(created); // no new nodes
+    const send = context.gains.find((gain) =>
+      gain.connections.includes(context.convolvers[0]),
+    );
+    expect(send?.gain.value).toBeCloseTo(0.7, 12);
+    expect(gainTargets(context.delays[0])[0].gain.value).toBe(0.5);
+
+    expect(handle.updateEffects(fxRecipe({ master: { speed: 1.1 } }))).toBe(
+      "restart",
+    );
+    expect(
+      handle.updateEffects(fxRecipe({ master: { speed: 0.9 } }), 128),
+    ).toBe("restart");
+
+    // A plain (null) preview needs a restart to gain effects…
+    const plain = await engine.play({ stems: [stems[0]], soloStemId: null });
+    expect(plain.updateEffects(null)).toBe("applied");
+    expect(plain.updateEffects(fxRecipe({ master: { tone: 0.3 } }))).toBe(
+      "restart",
+    );
+    // …while an effects preview at speed 1 clears in place (bypass).
+    const fxHandle = await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      effects: fxRecipe({ master: { tone: 0.3 } }),
+    });
+    expect(fxHandle.updateEffects(null)).toBe("applied");
+  });
+});
+
+describe("createStemPreviewEngine effects tail (#1897)", () => {
+  async function endAll(
+    effects: RemixFxRecipe | null,
+    bpm: number | null = null,
+  ) {
+    const { engine, contexts } = setup();
+    const onEnded = vi.fn();
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      effects,
+      bpm,
+      onEnded,
+    });
+    const context = contexts[0];
+    vi.useFakeTimers();
+    context.currentTime = 100; // past the 60 s buffers
+    for (const source of context.sources) source.onended?.();
+    return { handle, context, onEnded };
+  }
+
+  it("holds the graph for the reverb tail before ending", async () => {
+    try {
+      const { handle, context, onEnded } = await endAll(
+        fxRecipe({ master: { space: 0.3 }, stems: { vocals: { echo: 0.5 } } }),
+        120,
+      );
+      // max(2.8 s reverb, 1.5 s last echo tap) = 2.8 s.
+      expect(onEnded).not.toHaveBeenCalled();
+      expect(context.convolvers[0].disconnected).toBe(false);
+      expect(handle.position()).toBe(60); // clamped at the end
+      vi.advanceTimersByTime(2799);
+      expect(onEnded).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+      expect(context.convolvers[0].disconnected).toBe(true);
+      expect(handle.level()).toEqual({ peak: 0, limiting: false });
+      expect(handle.position()).toBe(60);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("holds only the last echo tap without reverb", async () => {
+    try {
+      const { onEnded } = await endAll(
+        fxRecipe({ stems: { vocals: { echo: 1 } } }),
+      );
+      vi.advanceTimersByTime(1499); // last tap at 4 × 0.375 s
+      expect(onEnded).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("ends immediately with null effects or no tail", async () => {
+    try {
+      const plain = await endAll(null);
+      expect(plain.onEnded).toHaveBeenCalledTimes(1);
+      expect(plain.context.sources[0].disconnected).toBe(true);
+      vi.useRealTimers();
+      const speedOnly = await endAll(fxRecipe({ master: { speed: 0.9 } }));
+      expect(speedOnly.onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases immediately when stopped during the tail", async () => {
+    try {
+      const { handle, context, onEnded } = await endAll(
+        fxRecipe({ master: { space: 0.5 } }),
+      );
+      expect(context.convolvers[0].disconnected).toBe(false);
+      handle.stop();
+      expect(context.convolvers[0].disconnected).toBe(true);
+      expect(handle.position()).toBe(60);
+      vi.advanceTimersByTime(5000);
+      expect(onEnded).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("varispeed helpers (#1897)", () => {
+  it("scales section spans into output time", () => {
+    expect(outputTimeIntervals(null, 0.5)).toBeNull();
+    expect(outputTimeIntervals(undefined, 0.5)).toBeUndefined();
+    const spans = [{ startSec: 8, endSec: 16 }];
+    expect(outputTimeIntervals(spans, 1)).toBe(spans);
+    expect(outputTimeIntervals(spans, 0.8)).toEqual([
+      { startSec: 10, endSec: 20 },
+    ]);
+  });
+
+  it("maps context time to source time", () => {
+    expect(
+      sourcePositionAt({ offsetSec: 10, startAt: 5, now: 4, speed: 0.85 }),
+    ).toBe(10);
+    expect(
+      sourcePositionAt({ offsetSec: 10, startAt: 5, now: 9, speed: 0.85 }),
+    ).toBeCloseTo(13.4);
   });
 });

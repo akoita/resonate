@@ -1,0 +1,371 @@
+{
+  "schemaVersion": "remix-fx/v1",
+  "note": "Parity fixture for #1897: backend (ffmpeg render) and web (WebAudio preview) must reproduce these numbers within 1e-9.",
+  "tone": [
+    {
+      "t": -1,
+      "filter": {
+        "type": "lowpass",
+        "frequencyHz": 800,
+        "q": 0.7071
+      }
+    },
+    {
+      "t": -0.5,
+      "filter": {
+        "type": "lowpass",
+        "frequencyHz": 4000,
+        "q": 0.7071
+      }
+    },
+    {
+      "t": -0.25,
+      "filter": {
+        "type": "lowpass",
+        "frequencyHz": 8944.271909999,
+        "q": 0.7071
+      }
+    },
+    {
+      "t": -0.01,
+      "filter": null
+    },
+    {
+      "t": 0,
+      "filter": null
+    },
+    {
+      "t": 0.01,
+      "filter": null
+    },
+    {
+      "t": 0.25,
+      "filter": {
+        "type": "highpass",
+        "frequencyHz": 55.663153674,
+        "q": 0.7071
+      }
+    },
+    {
+      "t": 0.5,
+      "filter": {
+        "type": "highpass",
+        "frequencyHz": 154.919333848,
+        "q": 0.7071
+      }
+    },
+    {
+      "t": 1,
+      "filter": {
+        "type": "highpass",
+        "frequencyHz": 1200,
+        "q": 0.7071
+      }
+    }
+  ],
+  "echo": [
+    {
+      "e": 0,
+      "bpm": 120,
+      "speed": 1,
+      "taps": []
+    },
+    {
+      "e": 0.5,
+      "bpm": 120,
+      "speed": 1,
+      "taps": [
+        {
+          "delaySec": 0.375,
+          "gain": 0.25
+        },
+        {
+          "delaySec": 0.75,
+          "gain": 0.15
+        },
+        {
+          "delaySec": 1.125,
+          "gain": 0.09
+        },
+        {
+          "delaySec": 1.5,
+          "gain": 0.054
+        }
+      ]
+    },
+    {
+      "e": 1,
+      "bpm": 108,
+      "speed": 0.85,
+      "taps": [
+        {
+          "delaySec": 0.490196078,
+          "gain": 0.5
+        },
+        {
+          "delaySec": 0.980392157,
+          "gain": 0.3
+        },
+        {
+          "delaySec": 1.470588235,
+          "gain": 0.18
+        },
+        {
+          "delaySec": 1.960784314,
+          "gain": 0.108
+        }
+      ]
+    },
+    {
+      "e": 0.35,
+      "bpm": null,
+      "speed": 1.2,
+      "taps": [
+        {
+          "delaySec": 0.3125,
+          "gain": 0.175
+        },
+        {
+          "delaySec": 0.625,
+          "gain": 0.105
+        },
+        {
+          "delaySec": 0.9375,
+          "gain": 0.063
+        },
+        {
+          "delaySec": 1.25,
+          "gain": 0.0378
+        }
+      ]
+    }
+  ],
+  "reverbWet": [
+    {
+      "stemSpace": 0,
+      "masterSpace": 0,
+      "wet": 0
+    },
+    {
+      "stemSpace": 0.5,
+      "masterSpace": 0,
+      "wet": 0.35
+    },
+    {
+      "stemSpace": 0,
+      "masterSpace": 0.45,
+      "wet": 0.315
+    },
+    {
+      "stemSpace": 0.3,
+      "masterSpace": 0.6,
+      "wet": 0.504
+    },
+    {
+      "stemSpace": 1,
+      "masterSpace": 1,
+      "wet": 0.7
+    }
+  ],
+  "warmth": [
+    {
+      "w": 0.25,
+      "k": 2,
+      "curve": [
+        {
+          "x": -1,
+          "y": -1
+        },
+        {
+          "x": -0.5,
+          "y": -0.790012829
+        },
+        {
+          "x": -0.1,
+          "y": -0.204740325
+        },
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0.1,
+          "y": 0.204740325
+        },
+        {
+          "x": 0.5,
+          "y": 0.790012829
+        },
+        {
+          "x": 1,
+          "y": 1
+        }
+      ]
+    },
+    {
+      "w": 0.5,
+      "k": 3,
+      "curve": [
+        {
+          "x": -1,
+          "y": -1
+        },
+        {
+          "x": -0.5,
+          "y": -0.909646681
+        },
+        {
+          "x": -0.1,
+          "y": -0.292760385
+        },
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0.1,
+          "y": 0.292760385
+        },
+        {
+          "x": 0.5,
+          "y": 0.909646681
+        },
+        {
+          "x": 1,
+          "y": 1
+        }
+      ]
+    },
+    {
+      "w": 1,
+      "k": 5,
+      "curve": [
+        {
+          "x": -1,
+          "y": -1
+        },
+        {
+          "x": -0.5,
+          "y": -0.986703887
+        },
+        {
+          "x": -0.1,
+          "y": -0.462159119
+        },
+        {
+          "x": 0,
+          "y": 0
+        },
+        {
+          "x": 0.1,
+          "y": 0.462159119
+        },
+        {
+          "x": 0.5,
+          "y": 0.986703887
+        },
+        {
+          "x": 1,
+          "y": 1
+        }
+      ]
+    }
+  ],
+  "impulse": {
+    "sampleRate": 48000,
+    "lengthSamples": 134400,
+    "predelaySamples": 960,
+    "seeds": {
+      "left": 1896,
+      "right": 1897
+    },
+    "left": {
+      "first": [
+        -0.003922798,
+        -0.001440735,
+        0.013981359,
+        0.00964449,
+        -0.017161375,
+        0.013890001
+      ],
+      "at": {
+        "48000": -0.000192978,
+        "120000": 0.00000493
+      }
+    },
+    "right": {
+      "first": [
+        -0.016051789,
+        0.011061647,
+        -0.000701855,
+        -0.013938873,
+        -0.001470778,
+        -0.017026941
+      ],
+      "at": {
+        "48000": 0.001389987,
+        "120000": -0.00003223
+      }
+    }
+  },
+  "normalize": [
+    {
+      "input": null,
+      "output": null
+    },
+    {
+      "input": {
+        "master": {
+          "speed": 1,
+          "space": 0,
+          "tone": 0,
+          "warmth": 0
+        },
+        "stems": {
+          "a": {
+            "space": 0,
+            "echo": 0,
+            "tone": 0
+          }
+        }
+      },
+      "output": null
+    },
+    {
+      "input": {
+        "master": {
+          "speed": 0.854,
+          "space": 0.4549
+        },
+        "stems": {
+          "a": {
+            "echo": 0.333
+          },
+          "b": {
+            "space": 0
+          }
+        }
+      },
+      "output": {
+        "schemaVersion": "remix-fx/v1",
+        "master": {
+          "speed": 0.85,
+          "space": 0.45
+        },
+        "stems": {
+          "a": {
+            "echo": 0.33
+          }
+        }
+      }
+    },
+    {
+      "input": {
+        "master": {
+          "tone": -0.005
+        }
+      },
+      "output": null
+    }
+  ]
+}

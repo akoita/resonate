@@ -10,6 +10,7 @@ import {
   type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
+import type { RemixRenderFx } from "./remix-fx";
 
 export const REMIX_LAYERED_RENDERER = "REMIX_LAYERED_RENDERER";
 
@@ -18,6 +19,8 @@ export type LayeredRemixRenderInput = {
   stems: StemArrangementEntry[];
   /** Worker-time render grant (#1214) — gates encrypted source decryption. */
   authorization: StemRenderAuthorization;
+  /** Project effects recipe + grid tempo (#1897); absent = no effects. */
+  fx?: RemixRenderFx;
   layer: {
     provider: string;
     jobId: string;
@@ -65,18 +68,28 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
     // One final graph: loading the arranged stems and generated layer together
     // avoids the old source-MP3 intermediate, double normalization, and double
     // lossy encoding (#1210).
-    const mixed = await this.mixer.mixUnmutedStemsWithAudioBuffers(
-      input.stems,
-      [
-        {
-          buffer: layerBytes,
-          mimeType: input.layer.output.mimeType ?? "application/octet-stream",
-          gainDb: 0,
-          label: "generated-layer",
-        },
-      ],
-      input.authorization,
-    );
+    const layerInputs = [
+      {
+        buffer: layerBytes,
+        mimeType: input.layer.output.mimeType ?? "application/octet-stream",
+        gainDb: 0,
+        label: "generated-layer",
+      },
+    ];
+    // Effects (#1897) apply in the same final graph: the layer follows the
+    // varispeed and the master chain, but gets no per-stem fx.
+    const mixed = input.fx
+      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
+          input.stems,
+          layerInputs,
+          input.authorization,
+          input.fx,
+        )
+      : await this.mixer.mixUnmutedStemsWithAudioBuffers(
+          input.stems,
+          layerInputs,
+          input.authorization,
+        );
 
     const jobId = randomUUID();
     const filename = `remix-draft-${input.remixProjectId}-${jobId}.mp3`;

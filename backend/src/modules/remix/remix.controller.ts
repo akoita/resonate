@@ -139,6 +139,8 @@ export class RemixController {
       addStemIds?: string[];
       /** Persisted variation AI target (#1882); validated in the service. */
       aiTarget?: { kind: string; stemId?: string | null } | null;
+      /** Shared effects recipe remix-fx/v1 (#1897); validated in the service. */
+      effects?: unknown;
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);

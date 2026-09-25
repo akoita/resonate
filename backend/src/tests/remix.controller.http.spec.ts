@@ -277,6 +277,27 @@ describe('RemixController (e2e)', () => {
     });
   });
 
+  it('PATCH /remix/projects/:id → passes effects through to the service (#1897)', async () => {
+    const effects = { master: { speed: 0.85, space: 0.45 } };
+    await request(app.getHttpServer())
+      .patch('/remix/projects/proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ effects })
+      .expect(200);
+    expect(mockProjectService.updateProject).toHaveBeenLastCalledWith('user-1', 'proj-1', {
+      effects,
+    });
+
+    await request(app.getHttpServer())
+      .patch('/remix/projects/proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ effects: null })
+      .expect(200);
+    expect(mockProjectService.updateProject).toHaveBeenLastCalledWith('user-1', 'proj-1', {
+      effects: null,
+    });
+  });
+
   // ----- Generation -----
 
   it('POST /remix/projects/:id/generate → 401 without JWT', async () => {

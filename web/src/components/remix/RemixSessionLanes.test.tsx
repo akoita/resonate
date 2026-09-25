@@ -3,12 +3,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
   applyPaint,
+  laneHasFx,
+  LaneFxRow,
   normalizeSections,
   peaksToSvgPath,
   RemixSessionLanes,
   sectionColumnLabels,
   sectionMask,
   timelineSeconds,
+  toggleInSet,
   type LaneStem,
   type RemixSessionLanesProps,
 } from "./RemixSessionLanes";
@@ -247,5 +250,69 @@ describe("RemixSessionLanes", () => {
     expect(html).not.toMatch(/aria-label="Solo Drums"[^>]*disabled/);
     expect(html).toMatch(/aria-label="Drums: section 1 on" disabled/);
     expect(html).not.toMatch(/aria-label="Loop section 1[^"]*"[^>]*disabled/);
+  });
+});
+
+describe("per-lane FX (#1897)", () => {
+  it("shows a collapsed FX toggle only when effects are editable", () => {
+    const html = render({ onFxChange: noop });
+    expect(html).toMatch(
+      /<button[^>]*aria-expanded="false"[^>]*aria-label="Effects for Drums"[^>]*>/,
+    );
+    expect(html).not.toContain("remix-lane-fx-dot");
+    expect(html).not.toContain('class="mt-1 flex flex-col gap-1');
+    expect(render()).not.toContain("remix-lane-fx-toggle");
+  });
+
+  it("marks a stem with non-default fx with a dot", () => {
+    const html = render({
+      onFxChange: noop,
+      stems: [stem({ fx: { space: 0, echo: 0.35, tone: 0 } })],
+    });
+    expect(html).toContain("remix-lane-fx-dot");
+    expect(html).toContain('aria-label="Effects for Drums (on)"');
+    expect(laneHasFx(undefined)).toBe(false);
+    expect(laneHasFx({ space: 0, echo: 0, tone: 0 })).toBe(false);
+    expect(laneHasFx({ tone: -0.2 })).toBe(true);
+  });
+
+  it("disables the FX toggle under the published lock", () => {
+    const html = render({ onFxChange: noop, disabled: true });
+    expect(html).toMatch(/<button[^>]*aria-label="Effects for Drums"[^>]*disabled=""/);
+  });
+
+  it("reveals Space, Echo and Tone sliders with plain labels", () => {
+    const html = renderToStaticMarkup(
+      <LaneFxRow
+        id="fx-row"
+        stem={{ stemId: "stem-vox", name: "Vocals", fx: { echo: 0.35, tone: -0.25 } }}
+        disabled={false}
+        onFxChange={noop}
+      />,
+    );
+    expect(html).toContain('aria-label="Vocals effects"');
+    expect(html).toContain('aria-label="Vocals space (Dry to Roomy)"');
+    expect(html).toContain('aria-label="Vocals echo (None to Lots)"');
+    expect(html).toContain('aria-label="Vocals tone (Darker to Brighter)"');
+    expect(html).toContain('aria-valuetext="35%"');
+    expect(html).toContain('aria-valuetext="Darker 25%"');
+    expect(countMatches(html, /type="range"/g)).toBe(3);
+    expect(html).not.toMatch(/type="range"[^>]*disabled=""/);
+
+    const locked = renderToStaticMarkup(
+      <LaneFxRow
+        id="fx-row"
+        stem={{ stemId: "stem-vox", name: "Vocals" }}
+        disabled
+        onFxChange={noop}
+      />,
+    );
+    expect(countMatches(locked, /type="range"[^>]*disabled=""/g)).toBe(3);
+  });
+
+  it("toggles one stem's FX row open state", () => {
+    const open = toggleInSet(new Set(), "a");
+    expect([...open]).toEqual(["a"]);
+    expect([...toggleInSet(open, "a")]).toEqual([]);
   });
 });

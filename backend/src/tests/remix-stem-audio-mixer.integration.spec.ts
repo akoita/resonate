@@ -420,6 +420,52 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
       // Temp work dir cleaned up after a successful render.
       const after = remixMixTempDirs();
       expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+      // No effects → render metadata carries no fx fields (#1897).
+      expect("effects" in mixed.renderMetadata).toBe(false);
+      expect("effectsDspVersion" in mixed.renderMetadata).toBe(false);
+    });
+
+    it("renders with the effects recipe (reverb IR + AI layer) and records it (#1897)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const effects = {
+        schemaVersion: "remix-fx/v1" as const,
+        master: { speed: 0.85, space: 0.4, warmth: 0.3 },
+        stems: { [E2E_STEM]: { echo: 0.5, tone: -0.4 } },
+      };
+      const before = remixMixTempDirs();
+      const mixed = await mixer.mixUnmutedStemsWithAudioBuffers(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        [
+          {
+            buffer: sineWav(330, 1),
+            mimeType: "audio/wav",
+            gainDb: 0,
+            label: "generated-layer",
+          },
+        ],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        { effects, bpm: 120 },
+      );
+
+      expect(mixed.buffer.length).toBeGreaterThan(0);
+      expect(mixed.inputCount).toBe(2);
+      expect(mixed.renderMetadata).toMatchObject({
+        schemaVersion: "remix-render-policy/v1",
+        inputCount: 2,
+        activeStemCount: 1,
+        effects,
+        effectsDspVersion: "remix-fx-dsp/v1",
+      });
+      // The generated IR lives only in the per-render temp dir.
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
     });
   },
 );

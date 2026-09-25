@@ -3,6 +3,7 @@ import {
   dropStaleCurrentDraftKeys,
   clampSeek,
   draftLoopSeekTarget,
+  engineEffects,
   enginePreviewStems,
   previewSectionsKey,
   resolveDraftCacheKey,
@@ -118,5 +119,17 @@ describe("dropStaleCurrentDraftKeys (#1879)", () => {
     expect(dropStaleCurrentDraftKeys(peaks, null)).toEqual({
       "job:job-0": [0.25],
     });
+  });
+});
+
+describe("engineEffects (#1897)", () => {
+  const effects = {
+    schemaVersion: "remix-fx/v1" as const,
+    master: { speed: 0.85 },
+  };
+  it("applies effects to the arrangement, never to the original", () => {
+    expect(engineEffects(effects, { kind: "arrangement" })).toBe(effects);
+    expect(engineEffects(effects, { kind: "original" })).toBeNull();
+    expect(engineEffects(undefined, { kind: "arrangement" })).toBeNull();
   });
 });

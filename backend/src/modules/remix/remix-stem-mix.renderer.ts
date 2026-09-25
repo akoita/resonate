@@ -5,6 +5,7 @@ import {
   type RemixGenerationJob,
   type StemRenderAuthorization,
 } from "./remix-generation.provider";
+import type { RemixRenderFx } from "./remix-fx";
 import {
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
@@ -22,6 +23,8 @@ export type StemMixRenderInput = {
   stems: StemArrangementEntry[];
   /** Worker-time render grant (#1214) — gates encrypted source decryption. */
   authorization: StemRenderAuthorization;
+  /** Project effects recipe + grid tempo (#1897); absent = no effects. */
+  fx?: RemixRenderFx;
 };
 
 /**
@@ -46,10 +49,13 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
 
   async render(input: StemMixRenderInput): Promise<RemixGenerationJob> {
     const jobId = randomUUID();
-    const mixed = await this.mixer.mixUnmutedStems(
-      input.stems,
-      input.authorization,
-    );
+    const mixed = input.fx
+      ? await this.mixer.mixUnmutedStems(
+          input.stems,
+          input.authorization,
+          input.fx,
+        )
+      : await this.mixer.mixUnmutedStems(input.stems, input.authorization);
 
     // Flat object name (#1162 review precedent): the local storage provider
     // cannot create subdirectories.

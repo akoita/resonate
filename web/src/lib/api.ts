@@ -6,6 +6,7 @@ import type {
   RightsVerificationState,
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
+import type { RemixFxRecipe } from "./remixFx";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -6010,6 +6011,8 @@ export type RemixProject = {
   eligibility?: RemixEligibilityResponse;
   /** Saved Studio AI intent (#1882); null/absent = whole track. */
   aiTarget?: RemixAiTarget | null;
+  /** Effects recipe `remix-fx/v1` (#1897); null/absent = untouched. */
+  effects?: RemixFxRecipe | null;
 };
 
 /** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
@@ -6055,6 +6058,8 @@ export type RemixProjectPatch = {
   addStemIds?: string[];
   /** Saved Studio AI intent (#1882); null (or kind "whole") clears it. */
   aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
+  /** Effects recipe `remix-fx/v1` (#1897); null clears it. */
+  effects?: RemixFxRecipe | null;
 };
 
 export async function updateRemixProject(

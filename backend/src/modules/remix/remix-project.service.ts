@@ -67,6 +67,13 @@ import {
   REMIX_STEM_GAIN_DB_MIN,
 } from "./remix-gain";
 import {
+  normalizeRemixFxInput,
+  readStoredRemixFx,
+  REMIX_FX_DSP_VERSION,
+  type RemixFxRecipe,
+  type RemixRenderFx,
+} from "./remix-fx";
+import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
 } from "../catalog/ai-disclosure.policy";
@@ -710,6 +717,11 @@ export class RemixProjectService {
        * clears it, `{ kind: "whole" }` normalizes to null.
        */
       aiTarget?: { kind: string; stemId?: string | null } | null;
+      /**
+       * Shared effects recipe remix-fx/v1 (#1897): undefined leaves it
+       * unchanged, null clears it, an all-default recipe normalizes to null.
+       */
+      effects?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -754,6 +766,15 @@ export class RemixProjectService {
         throw new BadRequestException(normalized.error);
       }
       aiTarget = normalized.value;
+    }
+
+    let effects: RemixFxRecipe | null | undefined;
+    if (patch.effects !== undefined) {
+      const normalized = normalizeRemixFxInput(patch.effects, projectStemIds);
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      effects = normalized.value;
     }
 
     const stemUpdates = patch.stems ?? [];
@@ -871,6 +892,14 @@ export class RemixProjectService {
                   aiTarget === null
                     ? Prisma.DbNull
                     : (aiTarget as Prisma.JsonObject),
+              }
+            : {}),
+          ...(effects !== undefined
+            ? {
+                effects:
+                  effects === null
+                    ? Prisma.DbNull
+                    : (effects as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1236,6 +1265,16 @@ export class RemixProjectService {
           ...(mask !== null ? { activeIntervals: mask } : {}),
         };
       });
+      // Shared effects recipe (#1897), read live at process time like the
+      // arrangement. Echo timing uses the grid tempo only for bar grids.
+      // Effects are deterministic DSP: grounding is unchanged.
+      const projectEffects = readStoredRemixFx(project.effects);
+      const renderFx: RemixRenderFx | undefined = projectEffects
+        ? {
+            effects: projectEffects,
+            bpm: sectionGrid?.kind === "bars" ? sectionGrid.bpm : null,
+          }
+        : undefined;
       // Per-stem transform (#1316): replace_stem conditions and renders on the
       // BED — every stem except the target — so the generated layer takes the
       // target's place instead of doubling it. add_layer keeps the full bed.
@@ -1341,12 +1380,14 @@ export class RemixProjectService {
               remixProjectId: project.id,
               stems: bedStemArrangement,
               authorization: renderAuthorization,
+              ...(renderFx ? { fx: renderFx } : {}),
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
               generationInput: data.generationInput,
               stems: bedStemArrangement,
               authorization: renderAuthorization,
+              ...(renderFx ? { fx: renderFx } : {}),
             });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
@@ -1363,6 +1404,9 @@ export class RemixProjectService {
           : {}),
         ...(providerJob.renderMetadata
           ? { renderMetadata: providerJob.renderMetadata }
+          : {}),
+        ...(providerJob.conditioningEffects
+          ? { conditioningEffects: providerJob.conditioningEffects }
           : {}),
         completedAt,
         failedAt: null,
@@ -1574,6 +1618,8 @@ export class RemixProjectService {
     generationInput: RemixGenerationJobData["generationInput"];
     stems: Array<{ stemId: string; gainDb: number | null; muted: boolean }>;
     authorization: StemRenderAuthorization;
+    /** Project effects recipe + grid tempo (#1897); absent = no effects. */
+    fx?: RemixRenderFx;
   }) {
     const layerJob = await this.generationProvider.createRemixDraft(
       {
@@ -1582,6 +1628,7 @@ export class RemixProjectService {
         // audio-conditioned generation (#1182 slice 4) conditions on the
         // current mix and #1209 layered rendering keeps source stems current.
         stemArrangement: input.stems,
+        ...(input.fx ? { renderFx: input.fx } : {}),
       },
       input.authorization,
     );
@@ -1600,6 +1647,7 @@ export class RemixProjectService {
       remixProjectId: input.projectId,
       stems: input.stems,
       authorization: input.authorization,
+      ...(input.fx ? { fx: input.fx } : {}),
       layer: {
         provider: layerJob.provider,
         jobId: layerJob.jobId,
@@ -1747,6 +1795,12 @@ export class RemixProjectService {
 
     const metadata = normalizeMetadataObject(project.generationMetadata);
     const output = normalizeMetadataObject(metadata.output);
+    const renderMetadataRecord = normalizeMetadataObject(metadata.renderMetadata);
+    const renderedEffects = readStoredRemixFx(renderMetadataRecord.effects);
+    const conditioningRecord = normalizeMetadataObject(
+      metadata.conditioningEffects,
+    );
+    const conditioningEffects = readStoredRemixFx(conditioningRecord.effects);
     const mimeType =
       draftMimeTypeFromMetadata(project.generationMetadata) ??
       draftMimeTypeFromUri(outputUri);
@@ -1794,6 +1848,30 @@ export class RemixProjectService {
       aiGenerated,
       ...(Array.isArray(metadata.sourceArrangement)
         ? { sourceArrangement: metadata.sourceArrangement }
+        : {}),
+      // #1897: the effects recipe the published draft was rendered with
+      // (from its render metadata, not the possibly-edited live project).
+      ...(renderedEffects
+        ? {
+            effects: renderedEffects,
+            effectsDspVersion:
+              typeof renderMetadataRecord.effectsDspVersion === "string"
+                ? renderMetadataRecord.effectsDspVersion
+                : REMIX_FX_DSP_VERSION,
+          }
+        : {}),
+      // Audio-conditioned drafts (#1897): the recipe that shaped the audio
+      // the model conditioned on.
+      ...(conditioningEffects
+        ? {
+            conditioningEffects: {
+              effects: conditioningEffects,
+              effectsDspVersion:
+                typeof conditioningRecord.effectsDspVersion === "string"
+                  ? conditioningRecord.effectsDspVersion
+                  : REMIX_FX_DSP_VERSION,
+            },
+          }
         : {}),
       ...(Array.isArray(metadata.generatedLayers)
         ? { generatedLayers: metadata.generatedLayers }
@@ -2248,6 +2326,8 @@ export class RemixProjectService {
       exportPolicy: project.exportPolicy,
       // Variation AI target (#1882); null = whole-track default.
       aiTarget: readStoredAiTarget(project.aiTarget),
+      // Shared effects recipe (#1897); null = untouched.
+      effects: readStoredRemixFx(project.effects),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

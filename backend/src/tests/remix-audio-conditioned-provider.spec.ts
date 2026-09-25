@@ -181,6 +181,37 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     expect(mix).not.toHaveBeenCalled();
   });
 
+  it("conditions on the effects-shaped mix when the project has effects (#1897)", async () => {
+    const { provider, mix } = buildProvider();
+    const renderFx = {
+      effects: {
+        schemaVersion: "remix-fx/v1" as const,
+        master: { speed: 0.85, space: 0.4 },
+      },
+      bpm: 120,
+    };
+    const job = await provider.createRemixDraft(
+      generationInput({ renderFx }),
+      AUTH,
+    );
+    expect(mix).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      AUTH,
+      renderFx,
+    );
+    // Provenance: the recipe that shaped the conditioning audio.
+    expect(job.conditioningEffects).toEqual({
+      effects: renderFx.effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+    });
+  });
+
+  it("records no conditioning effects when the project has none (#1897)", async () => {
+    const { provider } = buildProvider();
+    const job = await provider.createRemixDraft(generationInput(), AUTH);
+    expect("conditioningEffects" in job).toBe(false);
+  });
+
   it("mixes the arrangement, calls the worker, stores, and returns job metadata", async () => {
     const { provider, mix, upload } = buildProvider();
     const job = await provider.createRemixDraft(

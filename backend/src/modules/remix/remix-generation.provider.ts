@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
+import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -444,6 +445,17 @@ export type RemixRenderMetadata = {
   outputChannels: number;
   inputCount: number;
   activeStemCount: number;
+  /**
+   * Shared effects recipe (#1897) the artifact was rendered with, plus the
+   * DSP mapping version. Absent when the project had no effects.
+   */
+  effects?: RemixFxRecipe;
+  effectsDspVersion?: string;
+};
+
+export type RemixConditioningEffects = {
+  effects: RemixFxRecipe;
+  effectsDspVersion: string;
 };
 
 export type RemixGenerationInput = {
@@ -465,6 +477,13 @@ export type RemixGenerationInput = {
    * mixed unmuted stems; prompt-only providers (Lyria, stub) ignore it.
    */
   stemArrangement?: StemArrangementEntry[];
+  /**
+   * The project's effects recipe (#1897) + grid tempo at process time, applied
+   * wherever the arranged stems are mixed (the audio-conditioned conditioning
+   * mix). Absent when the project has no effects; prompt-only providers ignore
+   * it.
+   */
+  renderFx?: RemixRenderFx;
   /** Targeted per-stem operation (#1316); absent = whole-track behavior. */
   stemTransform?: RemixStemTransform;
   provenance: RemixGenerationProvenance;
@@ -477,6 +496,12 @@ export type RemixGenerationJob = {
   generatedLayers?: RemixGeneratedLayerMetadata[];
   sourceArrangement?: StemArrangementEntry[];
   renderMetadata?: RemixRenderMetadata;
+  /**
+   * Effects recipe (#1897) that shaped the audio a provider conditioned on
+   * (audio-conditioned generation). Present only when effects applied; the
+   * output itself is provider audio, so this is not render metadata.
+   */
+  conditioningEffects?: RemixConditioningEffects;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

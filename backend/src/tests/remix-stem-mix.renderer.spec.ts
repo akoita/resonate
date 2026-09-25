@@ -131,6 +131,59 @@ describe("FfmpegStemMixRenderer metadata (#1210)", () => {
   });
 });
 
+describe("FfmpegStemMixRenderer effects (#1897)", () => {
+  it("forwards the effects recipe to the mixer and returns its metadata", async () => {
+    const fx = {
+      effects: {
+        schemaVersion: "remix-fx/v1" as const,
+        master: { speed: 0.85 },
+      },
+      bpm: null,
+    };
+    const renderMetadata = {
+      ...REMIX_RENDER_AUDIO_POLICY,
+      inputCount: 1,
+      activeStemCount: 1,
+      effects: fx.effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+    };
+    const mixer = {
+      mixUnmutedStems: jest.fn().mockResolvedValue({
+        buffer: Buffer.from("mix"),
+        mimeType: "audio/mpeg",
+        stemCount: 1,
+        renderMetadata,
+      }),
+    };
+    const storage = {
+      upload: jest.fn().mockResolvedValue({
+        uri: "local://draft.mp3",
+        provider: "local",
+      }),
+    };
+    const renderer = new FfmpegStemMixRenderer(
+      mixer as unknown as StemAudioMixer,
+      storage as unknown as StorageProvider,
+    );
+    const stems = [{ stemId: "active", gainDb: 0, muted: false }];
+    const authorization = {
+      userId: "creator",
+      remixProjectId: "project",
+      authorizedStemIds: new Set(["active"]),
+    };
+
+    const job = await renderer.render({
+      remixProjectId: "project",
+      stems,
+      authorization,
+      fx,
+    });
+
+    expect(mixer.mixUnmutedStems).toHaveBeenCalledWith(stems, authorization, fx);
+    expect(job.renderMetadata).toEqual(renderMetadata);
+  });
+});
+
 /** Minimal 16-bit mono PCM WAV so the smoke test needs no audio deps. */
 function sineWav(
   frequency: number,
