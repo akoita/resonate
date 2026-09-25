@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { formatDraftCost } from "../../lib/remixFormat";
 import { provenanceChip } from "../../lib/remixIntent";
 import { peaksToSvgPath } from "./RemixSessionLanes";
@@ -157,10 +157,13 @@ function CurrentDraftCard({
   draft,
   onPlay,
   now,
+  footer,
 }: {
   draft: RemixCurrentDraft;
   onPlay(): void;
   now: number | undefined;
+  /** Publish/Export row, rendered as the card footer. */
+  footer: ReactNode;
 }) {
   const settled = draft.status === "completed" || draft.status === "no_output";
   const cost = settled ? formatDraftCost(draft.costUsd) : null;
@@ -169,8 +172,9 @@ function CurrentDraftCard({
     <div
       className={`rounded-md border border-zinc-800 bg-zinc-950 p-4 remix-current-draft remix-current-draft--${draft.status}`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      {/* Details on the left, playback on the right (sm+); stacked below. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-zinc-100">{draft.kindLabel}</div>
           {settled && (draft.provenance || cost || when) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
@@ -179,11 +183,45 @@ function CurrentDraftCard({
               {when && <span className="remix-draft-time">{when}</span>}
             </div>
           )}
+
+          {draft.status === "queued" && (
+            <p role="status" className="mt-2 text-sm text-zinc-300 remix-draft-queued">
+              <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-purple-400 align-middle" />
+              In progress — your draft appears here when it&apos;s ready.
+            </p>
+          )}
+          {draft.status === "failed" && (
+            <div className="mt-2 text-sm remix-draft-failed">
+              <p className="text-red-300">
+                {draft.failureMessage ?? "Generation failed. Please try again later."}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">Retry from the Create panel.</p>
+            </div>
+          )}
+          {draft.status === "no_output" && (
+            <p className="mt-2 text-xs text-zinc-500 remix-draft-no-output">
+              This draft has no playable output yet.
+            </p>
+          )}
+
+          {settled && draft.transformNote && (
+            <p className="mt-2 text-xs text-zinc-400 remix-generation-transform">
+              {draft.transformNote}
+            </p>
+          )}
+          {settled && draft.groundingDetail && (
+            <details className="mt-2 text-xs remix-generation-grounding">
+              <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
+                How this draft was made
+              </summary>
+              <p className="mt-1 text-zinc-400">{draft.groundingDetail}</p>
+            </details>
+          )}
         </div>
         {draft.status === "completed" && (
           <button
             type="button"
-            className="ui-btn ui-btn-ghost shrink-0 remix-draft-playback-btn"
+            className="ui-btn ui-btn-ghost shrink-0 self-start remix-draft-playback-btn"
             aria-label={draft.playing ? "Stop draft" : "Play draft"}
             aria-busy={draft.loading || undefined}
             onClick={onPlay}
@@ -193,46 +231,11 @@ function CurrentDraftCard({
         )}
       </div>
 
-      {draft.status === "queued" && (
-        <p role="status" className="mt-2 text-sm text-zinc-300 remix-draft-queued">
-          <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-purple-400 align-middle" />
-          In progress — your draft appears here when it&apos;s ready.
-        </p>
-      )}
-      {draft.status === "failed" && (
-        <div className="mt-2 text-sm remix-draft-failed">
-          <p className="text-red-300">
-            {draft.failureMessage ?? "Generation failed. Please try again later."}
-          </p>
-          <p className="mt-1 text-xs text-zinc-500">Retry from the Create panel.</p>
-        </div>
-      )}
-      {draft.status === "no_output" && (
-        <p className="mt-2 text-xs text-zinc-500 remix-draft-no-output">
-          This draft has no playable output yet.
-        </p>
+      {draft.status === "completed" && (
+        <MiniWaveform peaks={draft.peaks} className="mt-3 h-10 remix-draft-waveform" />
       )}
 
-      {settled && (
-        <>
-          {draft.status === "completed" && (
-            <MiniWaveform peaks={draft.peaks} className="mt-3 h-10 remix-draft-waveform" />
-          )}
-          {draft.transformNote && (
-            <p className="mt-2 text-xs text-zinc-400 remix-generation-transform">
-              {draft.transformNote}
-            </p>
-          )}
-          {draft.groundingDetail && (
-            <details className="mt-2 text-xs remix-generation-grounding">
-              <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">
-                How this draft was made
-              </summary>
-              <p className="mt-1 text-zinc-400">{draft.groundingDetail}</p>
-            </details>
-          )}
-        </>
-      )}
+      {footer}
     </div>
   );
 }
@@ -258,93 +261,105 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
       <h2 className="text-lg font-semibold text-white mb-3">Drafts</h2>
 
       {current ? (
-        <CurrentDraftCard draft={current} onPlay={onPlayCurrent} now={now} />
+        <CurrentDraftCard
+          draft={current}
+          onPlay={onPlayCurrent}
+          now={now}
+          footer={
+            // Publish/Export belong to a draft: with none yet, the empty hint
+            // already says what to do, so no locked buttons compete with it.
+            !published && (
+              <div className="mt-4 border-t border-zinc-800 pt-3 remix-draft-actions">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-primary ui-btn-sm remix-action-publish"
+                    aria-disabled={!publish.enabled || undefined}
+                    aria-busy={publish.busy || undefined}
+                    data-reason-code={publish.enabled ? undefined : publish.reasonCode}
+                    onClick={gatedClickHandler(publish)}
+                  >
+                    {publish.busy ? "Publishing..." : "Publish on Resonate"}
+                  </button>
+                  {exportAction.enabled ? (
+                    <button
+                      type="button"
+                      className="ui-btn ui-btn-ghost ui-btn-sm remix-action-export"
+                      aria-busy={exportAction.busy || undefined}
+                      onClick={gatedClickHandler(exportAction)}
+                    >
+                      {exportAction.busy ? "Exporting..." : "Export audio"}
+                    </button>
+                  ) : (
+                    // Honest locked state (#1323): the click records the demand
+                    // signal but never attempts the download.
+                    <button
+                      type="button"
+                      aria-disabled="true"
+                      aria-busy={exportAction.busy || undefined}
+                      title={exportAction.reason ?? undefined}
+                      className="ui-btn ui-btn-ghost ui-btn-sm opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--export"
+                      onClick={gatedClickHandler(exportAction)}
+                    >
+                      {exportAction.busy ? "Exporting..." : "Export audio"}
+                      {exportAction.reason && (
+                        <span className="sr-only"> — {exportAction.reason}</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+                {!publish.enabled && publish.reason && (
+                  <p className="mt-2 text-xs text-zinc-500 remix-publish-reason">
+                    {publish.reason}
+                  </p>
+                )}
+              </div>
+            )
+          }
+        />
       ) : (
         <p className="rounded-md border border-dashed border-zinc-700 p-4 text-sm text-zinc-500 remix-draft-empty">
           {emptyHint}
         </p>
       )}
 
-      {/* Publish/Export belong to a draft: with none yet, the empty hint
-          already says what to do, so no locked buttons compete with it. */}
-      {!published && current && (
-        <div className="mt-4 remix-draft-actions">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="ui-btn ui-btn-primary remix-action-publish"
-              aria-disabled={!publish.enabled || undefined}
-              aria-busy={publish.busy || undefined}
-              data-reason-code={publish.enabled ? undefined : publish.reasonCode}
-              onClick={gatedClickHandler(publish)}
-            >
-              {publish.busy ? "Publishing..." : "Publish on Resonate"}
-            </button>
-            {exportAction.enabled ? (
-              <button
-                type="button"
-                className="ui-btn ui-btn-ghost remix-action-export"
-                aria-busy={exportAction.busy || undefined}
-                onClick={gatedClickHandler(exportAction)}
-              >
-                {exportAction.busy ? "Exporting..." : "Export audio"}
-              </button>
-            ) : (
-              // Honest locked state (#1323): the click records the demand
-              // signal but never attempts the download.
-              <button
-                type="button"
-                aria-disabled="true"
-                aria-busy={exportAction.busy || undefined}
-                title={exportAction.reason ?? undefined}
-                className="ui-btn ui-btn-ghost opacity-60 cursor-not-allowed remix-action-unavailable remix-action-unavailable--export"
-                onClick={gatedClickHandler(exportAction)}
-              >
-                {exportAction.busy ? "Exporting..." : "Export audio"}
-                {exportAction.reason && (
-                  <span className="sr-only"> — {exportAction.reason}</span>
-                )}
-              </button>
-            )}
-          </div>
-          {!publish.enabled && publish.reason && (
-            <p className="mt-2 text-xs text-zinc-500 remix-publish-reason">{publish.reason}</p>
-          )}
-        </div>
-      )}
-
       {versions.length > 0 && (
         <div className="mt-5 remix-draft-versions">
           <div className="text-xs text-zinc-500 mb-2">Previous versions</div>
-          <ul className="space-y-2">
+          <ul className="space-y-1.5">
             {versions.map((version) => {
               const cost = formatDraftCost(version.costUsd);
               const when = formatCompletedAt(version.completedAt, now);
               return (
                 <li
                   key={version.jobId}
-                  className="rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 remix-draft-version"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-zinc-800 bg-zinc-950 px-3 py-2 remix-draft-version"
                 >
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="ui-btn ui-btn-ghost shrink-0 remix-draft-version-btn"
-                      aria-label={`${version.playing ? "Stop" : "Play"} ${version.label}`}
-                      aria-busy={version.loading || undefined}
-                      onClick={() => onPlayVersion(version.jobId)}
-                    >
-                      {playLabel(version)}
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs text-zinc-300">{version.label}</div>
-                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                        <ProvenanceChip grounding={version.provenance} />
-                        {cost && <span>{cost}</span>}
-                        {when && <span>{when}</span>}
-                      </div>
-                    </div>
+                  <span className="min-w-0 max-w-[14rem] truncate text-xs text-zinc-300">
+                    {version.label}
+                  </span>
+                  {(version.provenance || cost || when) && (
+                    <span className="flex shrink-0 flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <ProvenanceChip grounding={version.provenance} />
+                      {cost && <span>{cost}</span>}
+                      {when && <span>{when}</span>}
+                    </span>
+                  )}
+                  <div className="min-w-16 flex-1">
+                    <MiniWaveform
+                      peaks={version.peaks}
+                      className="h-6 remix-draft-version-waveform"
+                    />
                   </div>
-                  <MiniWaveform peaks={version.peaks} className="mt-2 h-6 remix-draft-version-waveform" />
+                  <button
+                    type="button"
+                    className="ui-btn ui-btn-ghost ui-btn-sm shrink-0 remix-draft-version-btn"
+                    aria-label={`${version.playing ? "Stop" : "Play"} ${version.label}`}
+                    aria-busy={version.loading || undefined}
+                    onClick={() => onPlayVersion(version.jobId)}
+                  >
+                    {playLabel(version)}
+                  </button>
                 </li>
               );
             })}
