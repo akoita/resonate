@@ -130,7 +130,7 @@ describe("CreditRequestsQueueView", () => {
   });
 
   it("locks every action on the operator's own request with a visible reason", () => {
-    const html = renderQueue({ reviewerUserId: pending.userId.toUpperCase().replace("0X", "0x") });
+    const html = renderQueue({ reviewerUserId: pending.userId.toUpperCase().replace(/^0X/, "0x") });
 
     expect(html).toContain(SELF_REQUEST_MESSAGE);
     expect(html).toContain(">Your request</span>");

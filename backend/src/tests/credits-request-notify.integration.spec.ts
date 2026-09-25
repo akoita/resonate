@@ -24,7 +24,7 @@ const OPERATOR = `${PREFIX}operator`.toLowerCase();
 const REQUESTER = `${PREFIX}requester`.toLowerCase();
 // A wallet-address-shaped recipient (unique per run) for the credits_granted inbox.
 const GRANTEE_ADDRESS = `0x${Date.now().toString(16).padStart(40, "a")}`.slice(0, 42);
-const GRANTEE = GRANTEE_ADDRESS.toUpperCase().replace("0X", "0x");
+const GRANTEE = GRANTEE_ADDRESS.toUpperCase().replace(/^0X/, "0x");
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
