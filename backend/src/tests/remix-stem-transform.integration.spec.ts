@@ -275,4 +275,166 @@ describe("Remix per-stem transforms (#1316, integration)", () => {
 
     expect(layerProvider.createRemixDraft).not.toHaveBeenCalled();
   });
+
+  describe("persisted AI target (#1882)", () => {
+    it("PATCH persists, returns, normalizes, and clears aiTarget", async () => {
+      const created = await createVariationProject("Target persist", "prompt");
+      expect(created.aiTarget).toBeNull();
+
+      const saved = await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "replace_stem", stemId: DRUMS_STEM_ID },
+      });
+      expect(saved.aiTarget).toEqual({
+        kind: "replace_stem",
+        stemId: DRUMS_STEM_ID,
+      });
+
+      // Reads (get + list) carry the saved target.
+      const reopened = await projectService.getProject(OWNER_ID, created.id);
+      expect(reopened.aiTarget).toEqual({
+        kind: "replace_stem",
+        stemId: DRUMS_STEM_ID,
+      });
+      const listed = await projectService.listProjects(OWNER_ID);
+      expect(listed.find((p) => p.id === created.id)?.aiTarget).toEqual({
+        kind: "replace_stem",
+        stemId: DRUMS_STEM_ID,
+      });
+
+      // Undefined leaves it unchanged.
+      const renamed = await projectService.updateProject(OWNER_ID, created.id, {
+        title: "Target persist renamed",
+      });
+      expect(renamed.aiTarget).toEqual({
+        kind: "replace_stem",
+        stemId: DRUMS_STEM_ID,
+      });
+
+      // replace_stem without a stem yet is allowed.
+      const noStem = await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "replace_stem" },
+      });
+      expect(noStem.aiTarget).toEqual({ kind: "replace_stem", stemId: null });
+
+      const layer = await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "add_layer", stemId: null },
+      });
+      expect(layer.aiTarget).toEqual({ kind: "add_layer", stemId: null });
+
+      // whole normalizes to null (stored as SQL NULL).
+      const whole = await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "whole" },
+      });
+      expect(whole.aiTarget).toBeNull();
+      const wholeRow = await prisma.remixProject.findUnique({
+        where: { id: created.id },
+        select: { aiTarget: true },
+      });
+      expect(wholeRow?.aiTarget).toBeNull();
+
+      // null clears it.
+      await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "add_layer" },
+      });
+      const cleared = await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: null,
+      });
+      expect(cleared.aiTarget).toBeNull();
+      const clearedRow = await prisma.remixProject.findUnique({
+        where: { id: created.id },
+        select: { aiTarget: true },
+      });
+      expect(clearedRow?.aiTarget).toBeNull();
+    });
+
+    it("PATCH rejects invalid targets with 400", async () => {
+      const created = await createVariationProject("Target invalid", "prompt");
+      await expect(
+        projectService.updateProject(OWNER_ID, created.id, {
+          aiTarget: { kind: "replace_stem", stemId: "not-a-project-stem" },
+        }),
+      ).rejects.toThrow(/not part of this project/);
+      await expect(
+        projectService.updateProject(OWNER_ID, created.id, {
+          aiTarget: { kind: "add_layer", stemId: DRUMS_STEM_ID },
+        }),
+      ).rejects.toThrow(/only applies to replace_stem/);
+      await expect(
+        projectService.updateProject(OWNER_ID, created.id, {
+          aiTarget: { kind: "remix_all" },
+        }),
+      ).rejects.toThrow(BadRequestException);
+
+      const unchanged = await projectService.getProject(OWNER_ID, created.id);
+      expect(unchanged.aiTarget).toBeNull();
+    });
+
+    it("generate falls back to the saved replace_stem target", async () => {
+      const created = await createVariationProject("Saved replace", "halftime");
+      await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "replace_stem", stemId: DRUMS_STEM_ID },
+      });
+
+      const pending = await projectService.generateDraft(OWNER_ID, created.id, {});
+      expect(pending.generationMetadata).toEqual(
+        expect.objectContaining({
+          stemTransform: {
+            kind: "replace_stem",
+            stemId: DRUMS_STEM_ID,
+            stemLabel: "drums",
+          },
+        }),
+      );
+      expect(pending.aiTarget).toEqual({
+        kind: "replace_stem",
+        stemId: DRUMS_STEM_ID,
+      });
+
+      await processQueued();
+      const providerInput =
+        layerProvider.createRemixDraft.mock.calls.at(-1)?.[0];
+      expect(
+        providerInput.stemArrangement.map(
+          (stem: { stemId: string }) => stem.stemId,
+        ),
+      ).toEqual([VOCALS_STEM_ID]);
+    });
+
+    it("an explicit request transform wins over the saved target", async () => {
+      const created = await createVariationProject("Explicit wins", "pad");
+      await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "replace_stem", stemId: DRUMS_STEM_ID },
+      });
+
+      const pending = await projectService.generateDraft(OWNER_ID, created.id, {
+        stemTransform: { kind: "add_layer" },
+      });
+      expect(
+        (pending.generationMetadata as Record<string, unknown>).stemTransform,
+      ).toEqual({ kind: "add_layer" });
+    });
+
+    it("a saved replace_stem without a stem makes generate 400", async () => {
+      const created = await createVariationProject("No stem yet", "prompt");
+      await projectService.updateProject(OWNER_ID, created.id, {
+        aiTarget: { kind: "replace_stem" },
+      });
+      await expect(
+        projectService.generateDraft(OWNER_ID, created.id, {}),
+      ).rejects.toThrow("Pick the stem to replace first");
+      expect(generationQueue.add).not.toHaveBeenCalled();
+    });
+
+    it("a saved replace_stem over a muted bed still fails honestly", async () => {
+      const created = await createVariationProject("Muted bed", "prompt");
+      await projectService.updateProject(OWNER_ID, created.id, {
+        stems: [{ stemId: VOCALS_STEM_ID, muted: true }],
+        aiTarget: { kind: "replace_stem", stemId: DRUMS_STEM_ID },
+      });
+      await expect(
+        projectService.generateDraft(OWNER_ID, created.id, {}),
+      ).rejects.toThrow(/no unmuted stems/);
+      expect(generationQueue.add).not.toHaveBeenCalled();
+    });
+  });
 });

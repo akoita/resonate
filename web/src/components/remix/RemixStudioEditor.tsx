@@ -88,7 +88,41 @@ export type ProjectEdits = {
   prompt: string;
   mode: string;
   stems: Record<string, StemEdit>;
+  /** Studio AI intent (#1882), saved with the project; whole = default. */
+  aiTarget: AiTargetEdit;
 };
+
+export type AiTargetEdit = { kind: AiTargetKind; stemId: string | null };
+
+const AI_TARGET_KINDS: ReadonlySet<string> = new Set([
+  "whole",
+  "add_layer",
+  "replace_stem",
+]);
+
+/**
+ * Normalizes a saved AI target (#1882): absent or unknown kinds become the
+ * whole track, only replace_stem keeps a stem, and a stem that is no longer
+ * in the project is dropped.
+ */
+export function normalizeAiTarget(
+  target: unknown,
+  stems: Array<{ stemId: string }>,
+): AiTargetEdit {
+  if (!target || typeof target !== "object") {
+    return { kind: "whole", stemId: null };
+  }
+  const { kind, stemId } = target as { kind?: unknown; stemId?: unknown };
+  if (typeof kind !== "string" || !AI_TARGET_KINDS.has(kind)) {
+    return { kind: "whole", stemId: null };
+  }
+  if (kind !== "replace_stem") {
+    return { kind: kind as AiTargetKind, stemId: null };
+  }
+  const validStem =
+    typeof stemId === "string" && stems.some((stem) => stem.stemId === stemId);
+  return { kind: "replace_stem", stemId: validStem ? stemId : null };
+}
 
 export function initialEdits(project: RemixProject): ProjectEdits {
   const sectionCount = project.sectionGrid?.sections.length ?? 0;
@@ -108,6 +142,7 @@ export function initialEdits(project: RemixProject): ProjectEdits {
     prompt: project.prompt ?? "",
     mode: project.mode,
     stems,
+    aiTarget: normalizeAiTarget(project.aiTarget, project.stems),
   };
 }
 
@@ -131,6 +166,18 @@ export function buildProjectPatch(
   }
   if (edits.mode !== project.mode) {
     patch.mode = edits.mode;
+  }
+  const savedTarget = normalizeAiTarget(project.aiTarget, project.stems);
+  const editTarget = normalizeAiTarget(edits.aiTarget, project.stems);
+  if (
+    savedTarget.kind !== editTarget.kind ||
+    savedTarget.stemId !== editTarget.stemId
+  ) {
+    // null clears back to the whole-track default server-side (#1882).
+    patch.aiTarget =
+      editTarget.kind === "whole"
+        ? null
+        : { kind: editTarget.kind, stemId: editTarget.stemId };
   }
   const sectionCount = project.sectionGrid?.sections.length ?? 0;
   const stemPatches: NonNullable<RemixProjectPatch["stems"]> = [];
@@ -478,6 +525,23 @@ export function describeGenerateAvailability(input: {
     return { enabled: false, reason: null };
   }
   return { enabled: true, reason: null };
+}
+
+/**
+ * The Mix → Add AI switch always asks for "reimagine" (the panel can't see
+ * the saved target). Coming back from a stem mix, restore the saved variation
+ * target instead (#1882), so "Add a new part" / "Replace a stem" survive a
+ * detour through Mix stems. Any other request passes through unchanged.
+ */
+export function intentReturningFromMix(
+  prevMode: string,
+  savedTarget: { kind: AiTargetKind },
+  requested: RemixIntent,
+): RemixIntent {
+  if (prevMode !== "stem_mix" || requested !== "reimagine") return requested;
+  if (savedTarget.kind === "add_layer") return "add_part";
+  if (savedTarget.kind === "replace_stem") return "replace_stem";
+  return requested;
 }
 
 /** Studio AI-target selection (#1316): whole track, new layer, or replace. */
@@ -977,8 +1041,6 @@ export function RemixStudioEditor({
   );
   const [soloStemId, setSoloStemId] = useState<string | null>(null);
   const [addingStemId, setAddingStemId] = useState<string | null>(null);
-  const [aiTargetKind, setAiTargetKind] = useState<AiTargetKind>("whole");
-  const [aiTargetStemId, setAiTargetStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -1407,8 +1469,8 @@ export function RemixStudioEditor({
       const target =
         edits.mode === "variation"
           ? stemTransformForGenerate(
-              aiTargetKind,
-              aiTargetStemId,
+              edits.aiTarget.kind,
+              edits.aiTarget.stemId,
               project.stems,
               edits,
             )
@@ -1678,13 +1740,30 @@ export function RemixStudioEditor({
   };
 
   // Create panel (#1879): one intent picker over mode + AI target.
-  const intent = intentFromState(edits.mode, aiTargetKind);
-  const handleIntentChange = (next: RemixIntent) => {
-    const state = stateForIntent(next);
-    setAiTargetKind(state.aiTargetKind);
-    // The mode is part of the saved project; autosave persists it.
+  const intent = intentFromState(edits.mode, edits.aiTarget.kind);
+  const handleIntentChange = (requested: RemixIntent) => {
+    // Mode and AI target (#1882) are part of the saved project; autosave
+    // persists them. The AI target only applies to variations, so the mix
+    // and extend intents keep a saved choice instead of clobbering it.
+    setEdits((prev) => {
+      const state = stateForIntent(
+        intentReturningFromMix(prev.mode, prev.aiTarget, requested),
+      );
+      const aiTarget =
+        state.mode !== "variation"
+          ? prev.aiTarget
+          : state.aiTargetKind === prev.aiTarget.kind
+            ? prev.aiTarget
+            : { kind: state.aiTargetKind, stemId: null };
+      if (prev.mode === state.mode && aiTarget === prev.aiTarget) return prev;
+      return { ...prev, mode: state.mode, aiTarget };
+    });
+  };
+  const handleReplaceStemChange = (stemId: string | null) => {
     setEdits((prev) =>
-      prev.mode === state.mode ? prev : { ...prev, mode: state.mode },
+      prev.aiTarget.stemId === stemId
+        ? prev
+        : { ...prev, aiTarget: { ...prev.aiTarget, stemId } },
     );
   };
   const sectionCount = sectionGrid?.sections.length ?? 0;
@@ -1712,8 +1791,8 @@ export function RemixStudioEditor({
   const transformCheck =
     edits.mode === "variation"
       ? stemTransformForGenerate(
-          aiTargetKind,
-          aiTargetStemId,
+          edits.aiTarget.kind,
+          edits.aiTarget.stemId,
           project.stems,
           edits,
         )
@@ -2102,8 +2181,8 @@ export function RemixStudioEditor({
               presets={presetsForMode(edits.mode)}
               activePresetLabel={activePresetLabel(edits.mode, edits.prompt)}
               replaceStemOptions={replaceStemOptions}
-              replaceStemId={aiTargetStemId}
-              onReplaceStemChange={setAiTargetStemId}
+              replaceStemId={edits.aiTarget.stemId}
+              onReplaceStemChange={handleReplaceStemChange}
               recipes={recipes}
               onApplyRecipe={handleApplyRecipe}
               pricePer30sCents={credits?.priceCentsPer30s ?? null}

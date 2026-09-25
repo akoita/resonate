@@ -146,7 +146,17 @@ from the JWT, never the request body.
 - API: `GET /remix/projects` — owner-scoped project list.
 - API: `GET /remix/projects/:id` — owner-only read (403 non-owner, 404 missing).
 - API: `PATCH /remix/projects/:id` — owner-only edits for title, prompt,
-  `draft`/`archived` status, and per-stem role/gain/mute/arrangement controls.
+  `draft`/`archived` status, per-stem role/gain/mute/arrangement controls,
+  and the variation AI target (#1882): `aiTarget` is
+  `{ kind: "whole" | "add_layer" | "replace_stem", stemId }` or `null`
+  (= whole track). A `stemId` is allowed only for `replace_stem`, must be
+  a project stem, and may be null while no stem is picked yet;
+  `{ kind: "whole" }` is stored as null. Project reads return `aiTarget`.
+  `POST /remix/projects/:id/generate` falls back to the saved target when
+  the request carries no `stemTransform` in variation mode (`add_layer`, or
+  `replace_stem` with a stem; a stem-less `replace_stem` returns 400 "Pick the
+  stem to replace first"). The derived transform runs through the same
+  validation as an explicit one, and an explicit `stemTransform` always wins.
 - API (deprecated): `POST /remix/create` and `GET /remix/:remixId` — legacy
   in-memory experiment kept for compatibility until #894+.
 - Data: `RemixProject` and `RemixProjectStem` Prisma models with creator,
@@ -490,6 +500,8 @@ from the JWT, never the request body.
   - Draft waveforms are decoded from the draft audio. The current draft loads
     when the studio opens; archived versions load on their first play. One
     download serves both playback and the waveform.
+  The chosen AI intent, including the stem to replace, is saved with the
+  project (#1882), so a project reopens on the intent it was left on.
   Tests: `web/src/lib/remixIntent.test.ts`, `web/src/lib/remixRecipes.test.ts`,
   `web/src/components/remix/RemixCreatePanel.test.tsx`,
   `web/src/components/remix/RemixDraftsPanel.test.tsx`,

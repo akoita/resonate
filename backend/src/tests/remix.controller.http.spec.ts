@@ -257,6 +257,26 @@ describe('RemixController (e2e)', () => {
     });
   });
 
+  it('PATCH /remix/projects/:id → passes aiTarget through to the service (#1882)', async () => {
+    await request(app.getHttpServer())
+      .patch('/remix/projects/proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ aiTarget: { kind: 'replace_stem', stemId: 'stem-drums' } })
+      .expect(200);
+    expect(mockProjectService.updateProject).toHaveBeenLastCalledWith('user-1', 'proj-1', {
+      aiTarget: { kind: 'replace_stem', stemId: 'stem-drums' },
+    });
+
+    await request(app.getHttpServer())
+      .patch('/remix/projects/proj-1')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ aiTarget: null })
+      .expect(200);
+    expect(mockProjectService.updateProject).toHaveBeenLastCalledWith('user-1', 'proj-1', {
+      aiTarget: null,
+    });
+  });
+
   // ----- Generation -----
 
   it('POST /remix/projects/:id/generate → 401 without JWT', async () => {

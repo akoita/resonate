@@ -5946,6 +5946,16 @@ export type RemixProject = {
   /** Derived section grid (#1314); null when the source has no measured duration. */
   sectionGrid?: RemixSectionGrid | null;
   eligibility?: RemixEligibilityResponse;
+  /** Saved Studio AI intent (#1882); null/absent = whole track. */
+  aiTarget?: RemixAiTarget | null;
+};
+
+/** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
+export type RemixAiTargetKind = "whole" | "add_layer" | "replace_stem";
+
+export type RemixAiTarget = {
+  kind: RemixAiTargetKind;
+  stemId: string | null;
 };
 
 /**
@@ -5981,6 +5991,8 @@ export type RemixProjectPatch = {
   }>;
   /** Eligibility-checked stem additions to the session (#1312). */
   addStemIds?: string[];
+  /** Saved Studio AI intent (#1882); null (or kind "whole") clears it. */
+  aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
 };
 
 export async function updateRemixProject(

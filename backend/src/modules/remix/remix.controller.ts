@@ -137,6 +137,8 @@ export class RemixController {
       stems?: RemixProjectStemUpdate[];
       /** Eligibility-checked stem additions to the session (#1312). */
       addStemIds?: string[];
+      /** Persisted variation AI target (#1882); validated in the service. */
+      aiTarget?: { kind: string; stemId?: string | null } | null;
     },
   ) {
     return this.projectService.updateProject(req.user.userId, id, body);

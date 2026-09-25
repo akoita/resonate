@@ -257,6 +257,105 @@ export function validateStemTransform(
 }
 
 /**
+ * Persisted variation AI target (#1882): what the studio's "AI target" picker
+ * was set to, saved with the project so it reopens on the same target.
+ * `whole` is the default and is stored as null; `replace_stem` may carry a
+ * null stemId while the user has picked the operation but not the stem yet.
+ */
+export const REMIX_AI_TARGET_KINDS = [
+  "whole",
+  "add_layer",
+  "replace_stem",
+] as const;
+export type RemixAiTargetKind = (typeof REMIX_AI_TARGET_KINDS)[number];
+export type RemixAiTarget = {
+  kind: "add_layer" | "replace_stem";
+  stemId: string | null;
+};
+
+/**
+ * Pure validation + normalization of a PATCH `aiTarget` payload. `null` clears
+ * the saved target; `{ kind: "whole" }` normalizes to null (the default).
+ * Callers must skip this for `undefined` (field absent = unchanged).
+ */
+export function normalizeAiTargetInput(
+  value: unknown,
+  projectStemIds: Iterable<string>,
+): { value: RemixAiTarget | null } | { error: string } {
+  if (value === null) return { value: null };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    return { error: "aiTarget must be an object or null" };
+  }
+  const { kind, stemId } = value as { kind?: unknown; stemId?: unknown };
+  if (
+    typeof kind !== "string" ||
+    !REMIX_AI_TARGET_KINDS.includes(kind as RemixAiTargetKind)
+  ) {
+    return {
+      error: `aiTarget.kind must be one of: ${REMIX_AI_TARGET_KINDS.join(", ")}`,
+    };
+  }
+  const hasStemId = stemId !== undefined && stemId !== null;
+  if (hasStemId && kind !== "replace_stem") {
+    return { error: "aiTarget.stemId only applies to replace_stem" };
+  }
+  if (hasStemId && (typeof stemId !== "string" || !stemId)) {
+    return { error: "aiTarget.stemId must be a non-empty stem id or null" };
+  }
+  if (hasStemId && !new Set(projectStemIds).has(stemId as string)) {
+    return { error: "aiTarget.stemId is not part of this project" };
+  }
+  if (kind === "whole") return { value: null };
+  return {
+    value: {
+      kind: kind as RemixAiTarget["kind"],
+      stemId: hasStemId ? (stemId as string) : null,
+    },
+  };
+}
+
+/**
+ * Tolerant read of the stored column: anything malformed (or the whole-track
+ * default) reads as null so a bad row never breaks the project response.
+ */
+export function readStoredAiTarget(stored: unknown): RemixAiTarget | null {
+  if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
+    return null;
+  }
+  const { kind, stemId } = stored as { kind?: unknown; stemId?: unknown };
+  if (kind === "add_layer") return { kind, stemId: null };
+  if (kind === "replace_stem") {
+    return {
+      kind,
+      stemId: typeof stemId === "string" && stemId ? stemId : null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Generate fallback (#1882): derives the per-stem transform from the saved AI
+ * target when the request carries none. Variation mode only; whole/null keep
+ * whole-track generation. The derived transform must still go through
+ * `validateStemTransform` like an explicit one.
+ */
+export function stemTransformFromAiTarget(
+  aiTarget: unknown,
+  mode: string,
+): { transform?: RemixStemTransform; error?: string } {
+  if (mode !== "variation") return {};
+  const target = readStoredAiTarget(aiTarget);
+  if (!target) return {};
+  if (target.kind === "add_layer") {
+    return { transform: { kind: "add_layer" } };
+  }
+  if (!target.stemId) {
+    return { error: "Pick the stem to replace first" };
+  }
+  return { transform: { kind: "replace_stem", stemId: target.stemId } };
+}
+
+/**
  * The transform's lead instruction — replaces the generic variation framing so
  * the model is asked for exactly one targeted output. Pure for testability;
  * used by the Lyria and audio-conditioned providers.
