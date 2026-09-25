@@ -251,8 +251,8 @@ when they follow the privacy and versioning rules above.
 | `marketplace.purchase_intent` | `web-app` | `listing` | auth user | `listingId`, `source` | `licenseType`, `priceUsd`, `rail`, `clientEventId` |
 | `marketplace.listing_notify` | `marketplace-service` | `listing` | seller address | `tokenId`, `sellerAddress`, `amount`, `pricePerUnit` | `listingId`, `paymentToken`, `licenseType`, `stemId`, `transactionHash` |
 | `license.granted` | `sessions-service` | `license` | none/session user | `licenseId`, `type`, `priceUsd`, `sessionId`, `trackId` | `artistId`, `releaseId`, `title` |
-| `payment.initiated` | `payments-service` | `payment` | none/session user | `paymentId`, `amountUsd`, `sessionId` | `trackId`, `artistId`, `releaseId`, `chainId`, `paymentAssetSymbol` |
-| `payment.settled` | `payments-service` | `payment` | none/session user | `paymentId`, `txHash`, `status` | `amountUsd`, `trackId`, `artistId`, `releaseId`, `chainId`, `settlementAmount` |
+| `payment.initiated` | `payments-service` (legacy prototype; no HTTP route emits it since #1890) | `payment` | none/session user | `paymentId`, `amountUsd`, `sessionId` | `trackId`, `artistId`, `releaseId`, `chainId`, `paymentAssetSymbol` |
+| `payment.settled` | `payments-service` (legacy prototype; no HTTP route emits it since #1890) | `payment` | none/session user | `paymentId`, `txHash`, `status` | `amountUsd`, `trackId`, `artistId`, `releaseId`, `chainId`, `settlementAmount` |
 | `commerce.settled` | `payments-service` | `track` when known | none | `paymentId`, `canonicalAmountUsd` | `artistId`, `trackId`, `settlementAsset`, `txHash` |
 | `contract.stem_minted` | `contracts-indexer` | `token` | creator address | `tokenId`, `creatorAddress`, `chainId`, `contractAddress`, `transactionHash` | `parentIds`, `blockNumber` |
 | `contract.stem_listed` | `contracts-indexer` | `listing` | seller address | `listingId`, `sellerAddress`, `tokenId`, `amount`, `pricePerUnit` | `paymentToken`, `expiresAt`, `chainId`, `contractAddress`, `transactionHash`, `blockNumber` |
