@@ -467,9 +467,10 @@ from the JWT, never the request body.
   `web/tests/remix-studio.authenticated.spec.ts` (Playwright, mocked API).
 - Create panel and draft cards (phase 2 of the studio ergonomics pass,
   #1879): the Remix mode, Draft status, and Save/Publish/Export footer
-  sections are replaced by a two-column layout. On wide screens the Session
-  sits on the left and a sticky right column holds **Create** and **Drafts**;
-  small screens stack them.
+  sections are replaced by a two-column layout. On wide screens the left
+  column holds the Session with **Drafts** directly under it, and the right
+  column holds **Create** as a compact sticky panel capped at the viewport
+  height. Small screens stack Session, then Create, then Drafts.
   - **Create** has a two-way switch.
     - **Mix stems** is the free `stem_mix` render. It offers one-click
       arrangements that rewrite mutes and section masks (autosaved):
@@ -480,9 +481,11 @@ from the JWT, never the request body.
       plus the AI-target selector: Reimagine the track (variation, whole), Add
       a new part (variation, add layer), Replace a stem (variation, replace;
       with a stem picker), and Extend the track (extension). It carries the
-      prompt presets and prompt, the existing generation-credit price as a
-      factual line ("$0.10 per 30 s of audio"; no pre-spend estimate), the
-      credit meter, and the provider attribution badge.
+      prompt presets and prompt, a one-row credit meter showing the balance
+      and the existing price ("$0.10 per 30 s"; no pre-spend estimate; the
+      empty note says AI drafts need credits and never implies Mix stems
+      does), and the provider attribution badge. Each intent is one compact
+      line, and only the selected intent's description is shown.
     - One primary button keeps the existing gating and labels.
   - **Drafts** has a current-draft card and compact version cards.
     - The current-draft card shows its status (queued / failed with retry via

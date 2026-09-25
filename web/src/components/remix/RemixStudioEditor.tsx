@@ -1805,7 +1805,7 @@ export function RemixStudioEditor({
     transformGated.enabled && !canAffordDraft
       ? {
           enabled: false,
-          reason: "You're out of generation credits — request a top-up below.",
+          reason: "You're out of generation credits.",
         }
       : transformGated;
   const generateLabel =
@@ -1968,11 +1968,13 @@ export function RemixStudioEditor({
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Studio layout (#1879): the session on the left; Create and Drafts
-            in a sticky side column on large screens, stacked below it
-            otherwise. */}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <div className="min-w-0 space-y-6">
+        {/* Studio layout (#1879): Session then Drafts in the wide left
+            column, Create in a sticky side column spanning both rows on large
+            screens; stacked Session → Create → Drafts otherwise. The
+            `auto 1fr` rows give any extra height from the spanning Create
+            column to row 2, so Drafts sits right under the Session. */}
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[auto_1fr] remix-studio-layout">
+          <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1 remix-studio-session-column">
             {published && (
               <section className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-5 remix-published-banner">
                 <h2 className="text-base font-semibold text-emerald-200">
@@ -2170,7 +2172,7 @@ export function RemixStudioEditor({
             </section>
           </div>
 
-          <div className="space-y-6 self-start lg:sticky lg:top-4">
+          <div className="min-w-0 self-start lg:col-start-2 lg:row-start-1 lg:row-span-2 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto remix-studio-create-column">
             <RemixCreatePanel
               intent={intent}
               onIntentChange={handleIntentChange}
@@ -2185,7 +2187,6 @@ export function RemixStudioEditor({
               onReplaceStemChange={handleReplaceStemChange}
               recipes={recipes}
               onApplyRecipe={handleApplyRecipe}
-              pricePer30sCents={credits?.priceCentsPer30s ?? null}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,
@@ -2195,8 +2196,9 @@ export function RemixStudioEditor({
               }}
               creditMeter={
                 <CreditBalanceMeter
-                  variant="panel"
+                  variant="inline"
                   balance={credits}
+                  priceCentsPer30s={credits?.priceCentsPer30s ?? null}
                   onRequestCredits={handleRequestCredits}
                   requesting={creditRequestState === "sending"}
                 />
@@ -2210,6 +2212,8 @@ export function RemixStudioEditor({
               }
               locked={published}
             />
+          </div>
+          <div className="min-w-0 self-start lg:col-start-1 lg:row-start-2 remix-studio-drafts-column">
             <RemixDraftsPanel
               current={currentDraft}
               versions={draftVersions}

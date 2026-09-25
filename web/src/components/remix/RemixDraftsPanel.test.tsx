@@ -232,6 +232,19 @@ describe("RemixDraftsPanel — publish and export", () => {
     expect(html).toContain("Exporting...");
   });
 
+  it("renders publish and export as a compact row in the draft card footer", () => {
+    const html = render();
+    const card = html.indexOf("remix-current-draft ");
+    const waveform = html.indexOf("remix-draft-waveform");
+    const actions = html.indexOf("remix-draft-actions");
+    expect(card).toBeGreaterThan(-1);
+    expect(actions).toBeGreaterThan(waveform);
+    expect(buttonTag(html, "remix-action-publish")).toContain("ui-btn-sm");
+    expect(buttonTag(html, "remix-action-export")).toContain("ui-btn-sm");
+    // Inside the card: the footer closes before the section does.
+    expect(html).toMatch(/remix-draft-actions[\s\S]*<\/div><\/div><\/div><\/section>$/);
+  });
+
   it("hides publish and export once published", () => {
     const html = render({ published: true });
     expect(html).not.toContain("Publish on Resonate");

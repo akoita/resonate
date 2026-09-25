@@ -573,6 +573,36 @@ describe("RemixStudioEditor rendering", () => {
     expect(html).not.toContain('aria-label="Play draft"');
   });
 
+  it("lays out Session and Drafts on the left with Create spanning both rows", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    const tag = (className: string) =>
+      html.match(new RegExp(`<div class="[^"]*${className}[^"]*"`))?.[0] ?? "";
+    const layout = tag("remix-studio-layout");
+    expect(layout).toContain("lg:grid-cols-[minmax(0,1fr)_22rem]");
+    expect(layout).toContain("lg:grid-rows-[auto_1fr]");
+    const session = tag("remix-studio-session-column");
+    expect(session).toContain("lg:col-start-1");
+    expect(session).toContain("lg:row-start-1");
+    const create = tag("remix-studio-create-column");
+    expect(create).toContain("lg:col-start-2");
+    expect(create).toContain("lg:row-span-2");
+    expect(create).toContain("lg:sticky");
+    expect(create).toContain("lg:max-h-[calc(100vh-2rem)]");
+    expect(create).toContain("lg:overflow-y-auto");
+    const drafts = tag("remix-studio-drafts-column");
+    expect(drafts).toContain("lg:col-start-1");
+    expect(drafts).toContain("lg:row-start-2");
+    // Stacked (mobile) order: Session → Create → Drafts.
+    const sessionAt = html.indexOf("remix-studio-session-column");
+    const createAt = html.indexOf("remix-studio-create-column");
+    const draftsAt = html.indexOf("remix-studio-drafts-column");
+    expect(sessionAt).toBeLessThan(createAt);
+    expect(createAt).toBeLessThan(draftsAt);
+    expect(html.indexOf("remix-create-panel")).toBeGreaterThan(createAt);
+    expect(html.indexOf("remix-create-panel")).toBeLessThan(draftsAt);
+    expect(html.indexOf("remix-drafts-panel")).toBeGreaterThan(draftsAt);
+  });
+
   it("shows the free mix, not a prompt, in stem mix mode (#1879)", () => {
     const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
     expect(html).toContain("Free — renders your arrangement exactly as you hear it.");

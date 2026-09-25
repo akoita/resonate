@@ -39,26 +39,12 @@ export type RemixCreatePanelProps = {
   onReplaceStemChange(stemId: string | null): void;
   recipes: RemixRecipe[];
   onApplyRecipe(id: RemixRecipe["id"]): void;
-  /** Generation price per 30 s block in cents; null when unknown. */
-  pricePer30sCents: number | null;
   primary: RemixCreatePrimaryAction;
   creditMeter: ReactNode;
   attribution: ReactNode;
   /** Published remix: everything is read-only. */
   locked: boolean;
 };
-
-/** "Uses generation credits · $0.10 per 30 s of audio", or null when unknown. */
-export function generationPriceLine(pricePer30sCents: number | null): string | null {
-  if (
-    typeof pricePer30sCents !== "number" ||
-    !Number.isFinite(pricePer30sCents) ||
-    pricePer30sCents < 0
-  ) {
-    return null;
-  }
-  return `Uses generation credits · $${(pricePer30sCents / 100).toFixed(2)} per 30 s of audio`;
-}
 
 /** Whether the primary Create action may run right now. */
 export function primaryActionable(
@@ -101,14 +87,12 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     onReplaceStemChange,
     recipes,
     onApplyRecipe,
-    pricePer30sCents,
     primary,
     creditMeter,
     attribution,
     locked,
   } = props;
   const ai = isAiIntent(intent);
-  const priceLine = ai ? generationPriceLine(pricePer30sCents) : null;
   const actionable = primaryActionable(primary, locked);
   // When locked, the note at the top of the panel is the reason.
   const primaryReason = locked ? null : primary.reason;
@@ -119,6 +103,8 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
   const replaceId = `${id}-replace`;
   const promptId = `${id}-prompt`;
   const reasonId = `${id}-reason`;
+  const intentDescriptionId = `${id}-intent-description`;
+  const activeIntent = REMIX_AI_INTENTS.find((entry) => entry.intent === intent) ?? null;
 
   return (
     <section
@@ -198,22 +184,25 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
         </div>
       ) : (
         <div className="mt-4 remix-create-ai">
+          {/* One compact line per intent; only the selected intent's
+              description is shown, once, as helper text (#1879 layout). */}
           <div
             role="radiogroup"
             aria-label="AI intent"
-            className="space-y-2 remix-intents"
+            aria-describedby={activeIntent ? intentDescriptionId : undefined}
+            className="space-y-1.5 remix-intents"
           >
             {REMIX_AI_INTENTS.map((entry) => {
               const active = entry.intent === intent;
               return (
                 <label
                   key={entry.intent}
-                  className={`block rounded-md border px-3 py-2 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-purple-300 remix-intent remix-intent-${entry.intent} ${
+                  className={`flex min-h-9 items-center rounded-md border px-3 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-purple-300 remix-intent remix-intent-${entry.intent} ${
                     locked ? "cursor-not-allowed opacity-60" : "cursor-pointer"
                   } ${
                     active
-                      ? "border-purple-500/60 bg-purple-500/15"
-                      : "border-zinc-700 bg-zinc-950 hover:border-zinc-500"
+                      ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-zinc-500"
                   }`}
                 >
                   <input
@@ -225,16 +214,19 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
                     disabled={locked}
                     onChange={() => onIntentChange(entry.intent)}
                   />
-                  <span
-                    className={`block text-sm ${active ? "text-purple-200" : "text-zinc-200"}`}
-                  >
-                    {entry.label}
-                  </span>
-                  <span className="block text-xs text-zinc-500">{entry.description}</span>
+                  <span className="truncate">{entry.label}</span>
                 </label>
               );
             })}
           </div>
+          {activeIntent && (
+            <p
+              id={intentDescriptionId}
+              className="mt-2 text-xs text-zinc-500 remix-intent-description"
+            >
+              {activeIntent.description}
+            </p>
+          )}
 
           {intent === "replace_stem" && (
             <div className="mt-3 remix-replace-stem">
@@ -258,7 +250,7 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             </div>
           )}
 
-          <div className="mt-4">
+          <div className="mt-3">
             <label className="block text-sm text-zinc-400 mb-1" htmlFor={promptId}>
               Prompt
             </label>
@@ -303,15 +295,12 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             />
           </div>
 
-          {priceLine && (
-            <p className="mt-2 text-xs text-zinc-400 remix-create-price">{priceLine}</p>
-          )}
-          {creditMeter && <div className="mt-3 remix-create-credits">{creditMeter}</div>}
+          {creditMeter && <div className="mt-2 remix-create-credits">{creditMeter}</div>}
           {attribution}
         </div>
       )}
 
-      <div className="mt-5">
+      <div className="mt-4">
         <button
           type="button"
           className="ui-btn ui-btn-primary w-full remix-generate-btn"
