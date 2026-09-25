@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampSeek,
   draftLoopSeekTarget,
+  enginePreviewStems,
   previewSectionsKey,
   resolveDraftCacheKey,
   transportDurationSec,
@@ -77,5 +78,21 @@ describe("useRemixTransport helpers (#1879)", () => {
     expect(
       previewSectionsKey([stems[0], { ...stems[1], activeIntervals: [] }]),
     ).not.toBe(key);
+  });
+
+  it("plays the reference ungated only on the Original source", () => {
+    const gated = [{ startSec: 0, endSec: 8 }];
+    const stems = [
+      { stemId: "orig", gainDb: 0, muted: false, activeIntervals: gated },
+      { stemId: "vox", gainDb: 0, muted: false, activeIntervals: gated },
+    ];
+    const original = enginePreviewStems(stems, { kind: "original" }, "orig");
+    expect(original[0].activeIntervals).toBeUndefined();
+    expect(original[1].activeIntervals).toBe(gated);
+    // The arrangement keeps the render's gating on every stem.
+    expect(enginePreviewStems(stems, { kind: "arrangement" }, "orig")).toBe(
+      stems,
+    );
+    expect(enginePreviewStems(stems, { kind: "original" }, null)).toBe(stems);
   });
 });

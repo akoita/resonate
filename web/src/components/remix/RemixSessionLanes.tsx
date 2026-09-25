@@ -7,7 +7,7 @@ import {
   sectionGridSummaryLabel,
   sectionStartLabel,
 } from "../../lib/remixArrangement";
-import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "./RemixStudioEditor";
+import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
 
 /**
  * Session view for the Remix Studio (#1879): one row per stem — a channel
@@ -302,8 +302,11 @@ export function RemixSessionLanes({
             <div
               className={`sticky left-0 z-20 ${STRIP_WIDTH} shrink-0 bg-zinc-900 border-r border-zinc-800 px-2 py-1 flex items-end`}
             >
-              <span className="text-[10px] leading-tight text-zinc-500">
-                {sectionGridSummaryLabel(grid)}
+              <span
+                className="text-[10px] uppercase tracking-wide leading-tight text-zinc-500"
+                title={sectionGridSummaryLabel(grid)}
+              >
+                {grid.kind === "bars" ? "Bar · click to loop" : "Time · click to loop"}
               </span>
             </div>
             <div className="relative flex-1 bg-zinc-900" style={timelineStyle}>
@@ -323,7 +326,7 @@ export function RemixSessionLanes({
                       className={`remix-lane-section-header absolute inset-y-0 overflow-hidden whitespace-nowrap text-ellipsis border-l px-1 text-left text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-300 ${
                         looped
                           ? "bg-purple-500/25 text-purple-100 border-purple-400/60"
-                          : "text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
+                          : "bg-transparent text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
                       }`}
                       style={{
                         left: totalSec ? percent(interval.startSec, totalSec) : "0%",
@@ -392,7 +395,7 @@ export function RemixSessionLanes({
                         type="button"
                         disabled={disabled || allOn}
                         title={`Turn every section of ${stem.name} on`}
-                        className="shrink-0 rounded px-1 text-[10px] text-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:hover:text-zinc-400 remix-lane-all-on"
+                        className="shrink-0 rounded border border-zinc-700 bg-transparent px-1.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-40 disabled:hover:border-zinc-700 disabled:hover:text-zinc-400 remix-lane-all-on"
                         onClick={() => onSetSections(stem.stemId, null)}
                       >
                         All on
@@ -401,7 +404,7 @@ export function RemixSessionLanes({
                         type="button"
                         disabled={disabled || allOff}
                         title={`Turn every section of ${stem.name} off`}
-                        className="shrink-0 rounded px-1 text-[10px] text-zinc-400 hover:text-zinc-100 disabled:opacity-40 disabled:hover:text-zinc-400 remix-lane-all-off"
+                        className="shrink-0 rounded border border-zinc-700 bg-transparent px-1.5 text-[10px] text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 disabled:opacity-40 disabled:hover:border-zinc-700 disabled:hover:text-zinc-400 remix-lane-all-off"
                         onClick={() =>
                           onSetSections(
                             stem.stemId,

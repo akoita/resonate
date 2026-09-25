@@ -131,6 +131,25 @@ export function previewSectionsKey(stems: PreviewStemState[]): string {
   );
 }
 
+/**
+ * Stems as the engine should hear them for a source (#1879): on "original"
+ * the reference stem plays whole, never section-gated, even when a legacy
+ * project still has it unmuted as a gated channel — the comparison is always
+ * against the untouched original.
+ */
+export function enginePreviewStems(
+  stems: PreviewStemState[],
+  source: TransportSource,
+  referenceStemId: string | null,
+): PreviewStemState[] {
+  if (source.kind !== "original" || !referenceStemId) return stems;
+  return stems.map((stem) =>
+    stem.stemId === referenceStemId
+      ? { ...stem, activeIntervals: undefined }
+      : stem,
+  );
+}
+
 function sameSource(a: TransportSource, b: TransportSource): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "draft" && b.kind === "draft") return a.jobId === b.jobId;
@@ -277,7 +296,11 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     const latest = inputRef.current;
     try {
       const handle = await engine().play({
-        stems: latest.previewStems,
+        stems: enginePreviewStems(
+          latest.previewStems,
+          next,
+          latest.referenceStemId,
+        ),
         soloStemId: latest.soloStemId,
         referenceStemId:
           next.kind === "original" ? latest.referenceStemId : null,
@@ -555,13 +578,20 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   // Live mixer edits while the engine plays: gains (and the arrangement ↔
   // original reference flip) apply on every change; section envelopes are
   // re-scheduled only when the spans themselves change.
-  const sectionsKey = previewSectionsKey(input.previewStems);
+  const engineStems = enginePreviewStems(
+    input.previewStems,
+    source,
+    input.referenceStemId,
+  );
+  const engineStemsRef = useRef(engineStems);
+  engineStemsRef.current = engineStems;
+  const sectionsKey = previewSectionsKey(engineStems);
   const engineReference =
     source.kind === "original" ? input.referenceStemId : null;
   useEffect(() => {
     if (status !== "playing" || !previewHandle) return;
     previewHandle.update(
-      inputRef.current.previewStems,
+      engineStemsRef.current,
       inputRef.current.soloStemId,
       engineReference,
     );
@@ -574,7 +604,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   ]);
   useEffect(() => {
     if (status !== "playing" || !previewHandle) return;
-    previewHandle.updateSections(inputRef.current.previewStems);
+    previewHandle.updateSections(engineStemsRef.current);
   }, [previewHandle, sectionsKey, status]);
 
   // A new generation replaces the current draft: drop its cached audio so

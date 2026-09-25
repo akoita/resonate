@@ -175,7 +175,7 @@ export function RemixTransportBar({
             type="button"
             aria-label="Clear loop"
             title="Clear loop"
-            className="flex h-4 w-4 items-center justify-center rounded-full text-purple-200 hover:bg-purple-400/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
+            className="flex h-4 w-4 items-center justify-center rounded-full bg-transparent text-purple-200 hover:bg-purple-400/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
             onClick={onClearLoop}
           >
             <span aria-hidden="true">×</span>
