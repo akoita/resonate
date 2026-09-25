@@ -1179,6 +1179,9 @@ model RemixProject {
   generationMetadata Json?
   attribution        String?            @db.Text
   exportPolicy       Json?
+  // Variation AI target (#1882): { kind: "add_layer" | "replace_stem",
+  // stemId: string | null }; null means the whole-track default.
+  aiTarget           Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

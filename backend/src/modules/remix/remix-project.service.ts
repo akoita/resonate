@@ -24,13 +24,17 @@ import {
 } from "./remix-eligibility.service";
 import {
   buildRemixGenerationInput,
+  normalizeAiTargetInput,
+  readStoredAiTarget,
   REMIX_GENERATION_DEFAULT_DURATION_SECONDS,
   REMIX_GENERATION_PROVIDER,
   RemixGenerationProviderError,
   type RemixGenerationConstraints,
   type RemixGenerationProvider,
   type StemRenderAuthorization,
+  stemTransformFromAiTarget,
   validateStemTransform,
+  type RemixAiTarget,
   type RemixStemTransform,
 } from "./remix-generation.provider";
 import { StorageProvider } from "../storage/storage_provider";
@@ -701,6 +705,11 @@ export class RemixProjectService {
        * eligibility rule before it joins the project.
        */
       addStemIds?: string[];
+      /**
+       * Variation AI target (#1882): undefined leaves it unchanged, null
+       * clears it, `{ kind: "whole" }` normalizes to null.
+       */
+      aiTarget?: { kind: string; stemId?: string | null } | null;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -737,6 +746,16 @@ export class RemixProjectService {
     }
 
     const projectStemIds = new Set(project.stems.map((stem) => stem.stemId));
+
+    let aiTarget: RemixAiTarget | null | undefined;
+    if (patch.aiTarget !== undefined) {
+      const normalized = normalizeAiTargetInput(patch.aiTarget, projectStemIds);
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      aiTarget = normalized.value;
+    }
+
     const stemUpdates = patch.stems ?? [];
     const invalidGain = stemUpdates.find(
       (stem) =>
@@ -845,6 +864,15 @@ export class RemixProjectService {
           ...(patch.prompt !== undefined ? { prompt: patch.prompt } : {}),
           ...(patch.status !== undefined ? { status: patch.status } : {}),
           ...(patch.mode !== undefined ? { mode: patch.mode } : {}),
+          ...(aiTarget !== undefined
+            ? {
+                // Json? columns clear via the DbNull sentinel, not JS null.
+                aiTarget:
+                  aiTarget === null
+                    ? Prisma.DbNull
+                    : (aiTarget as Prisma.JsonObject),
+              }
+            : {}),
         },
         include: PROJECT_INCLUDE,
       });
@@ -942,10 +970,26 @@ export class RemixProjectService {
       });
     }
 
+    // Saved AI target fallback (#1882): with no explicit request transform, a
+    // variation project generates against the target the studio persisted.
+    // An explicit stemTransform always wins; the derived one goes through the
+    // same validation and labelling below.
+    let requestedTransform = options.stemTransform;
+    if (!requestedTransform) {
+      const fromSaved = stemTransformFromAiTarget(
+        project.aiTarget,
+        project.mode,
+      );
+      if (fromSaved.error) {
+        throw new BadRequestException(fromSaved.error);
+      }
+      requestedTransform = fromSaved.transform;
+    }
+
     // Per-stem transform (#1316): validated against the live project before
     // any provider work, then labelled with the catalog stem type so prompt
     // framing and metadata speak the user's language ("drums", not an id).
-    const transformProblem = validateStemTransform(options.stemTransform, {
+    const transformProblem = validateStemTransform(requestedTransform, {
       mode: project.mode,
       stems: project.stems.map((stem) => ({
         stemId: stem.stemId,
@@ -955,17 +999,17 @@ export class RemixProjectService {
     if (transformProblem) {
       throw new BadRequestException(transformProblem);
     }
-    const stemTransform: RemixStemTransform | undefined = options.stemTransform
+    const stemTransform: RemixStemTransform | undefined = requestedTransform
       ? {
-          kind: options.stemTransform.kind,
-          ...(options.stemTransform.stemId
-            ? { stemId: options.stemTransform.stemId }
+          kind: requestedTransform.kind,
+          ...(requestedTransform.stemId
+            ? { stemId: requestedTransform.stemId }
             : {}),
-          ...(options.stemTransform.kind === "replace_stem"
+          ...(requestedTransform.kind === "replace_stem"
             ? {
                 stemLabel: stemTransformLabel(
                   project.stems.find(
-                    (stem) => stem.stemId === options.stemTransform?.stemId,
+                    (stem) => stem.stemId === requestedTransform?.stemId,
                   ),
                 ),
               }
@@ -2202,6 +2246,8 @@ export class RemixProjectService {
       generationMetadata: project.generationMetadata,
       attribution: project.attribution,
       exportPolicy: project.exportPolicy,
+      // Variation AI target (#1882); null = whole-track default.
+      aiTarget: readStoredAiTarget(project.aiTarget),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

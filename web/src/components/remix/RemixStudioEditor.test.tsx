@@ -20,7 +20,9 @@ import {
   describeSourceRights,
   doublingReferenceStemIds,
   initialEdits,
+  intentReturningFromMix,
   isFullMixStemType,
+  normalizeAiTarget,
   previewMeterDb,
   projectMusicalSummary,
   referenceStemIds,
@@ -1798,5 +1800,136 @@ describe("Create + Drafts panels (#1879)", () => {
     expect(html).not.toContain("rmxgen_secret");
     expect(html).not.toContain("2026-06-09.v1");
     expect(html).not.toMatch(/policy/i);
+  });
+});
+
+describe("saved AI target (#1882)", () => {
+  it("restores the saved variation target when switching back from Mix", () => {
+    const addLayer = { kind: "add_layer" as const };
+    const replace = { kind: "replace_stem" as const };
+    const whole = { kind: "whole" as const };
+    expect(intentReturningFromMix("stem_mix", addLayer, "reimagine")).toBe("add_part");
+    expect(intentReturningFromMix("stem_mix", replace, "reimagine")).toBe("replace_stem");
+    expect(intentReturningFromMix("stem_mix", whole, "reimagine")).toBe("reimagine");
+    // Explicit picks inside Add AI, and non-mix starting points, pass through.
+    expect(intentReturningFromMix("variation", addLayer, "reimagine")).toBe("reimagine");
+    expect(intentReturningFromMix("stem_mix", addLayer, "extend")).toBe("extend");
+  });
+
+  it("initialEdits restores a saved replace_stem target with its stem", () => {
+    const edits = initialEdits(
+      project({
+        mode: "variation",
+        aiTarget: { kind: "replace_stem", stemId: "stem-2" },
+      }),
+    );
+    expect(edits.aiTarget).toEqual({ kind: "replace_stem", stemId: "stem-2" });
+  });
+
+  it("defaults to the whole track when absent or null", () => {
+    expect(initialEdits(project()).aiTarget).toEqual({
+      kind: "whole",
+      stemId: null,
+    });
+    expect(initialEdits(project({ aiTarget: null })).aiTarget).toEqual({
+      kind: "whole",
+      stemId: null,
+    });
+  });
+
+  it("falls back safely on malformed saved targets", () => {
+    const stems = project().stems;
+    expect(normalizeAiTarget({ kind: "remaster", stemId: "stem-1" }, stems)).toEqual({
+      kind: "whole",
+      stemId: null,
+    });
+    expect(normalizeAiTarget("replace_stem", stems)).toEqual({
+      kind: "whole",
+      stemId: null,
+    });
+    // A stem no longer in the project is dropped, not trusted.
+    expect(
+      normalizeAiTarget({ kind: "replace_stem", stemId: "stem-gone" }, stems),
+    ).toEqual({ kind: "replace_stem", stemId: null });
+    // Only replace_stem carries a stem.
+    expect(
+      normalizeAiTarget({ kind: "add_layer", stemId: "stem-1" }, stems),
+    ).toEqual({ kind: "add_layer", stemId: null });
+    // A malformed persisted target round-trips without a spurious patch.
+    const stale = project({
+      aiTarget: { kind: "replace_stem", stemId: "stem-gone" },
+    });
+    expect(buildProjectPatch(stale, initialEdits(stale))).toEqual({});
+  });
+
+  it("buildProjectPatch emits aiTarget only when it changed", () => {
+    const p = project({ mode: "variation" });
+    expect(buildProjectPatch(p, initialEdits(p))).toEqual({});
+
+    const adding = {
+      ...initialEdits(p),
+      aiTarget: { kind: "add_layer" as const, stemId: null },
+    };
+    expect(buildProjectPatch(p, adding)).toEqual({
+      aiTarget: { kind: "add_layer", stemId: null },
+    });
+
+    // Replace with no stem chosen yet is a valid saved state.
+    const replacing = {
+      ...initialEdits(p),
+      aiTarget: { kind: "replace_stem" as const, stemId: null },
+    };
+    expect(buildProjectPatch(p, replacing)).toEqual({
+      aiTarget: { kind: "replace_stem", stemId: null },
+    });
+
+    // Back to the whole track clears with null.
+    const saved = project({
+      mode: "variation",
+      aiTarget: { kind: "replace_stem", stemId: "stem-1" },
+    });
+    const whole = {
+      ...initialEdits(saved),
+      aiTarget: { kind: "whole" as const, stemId: null },
+    };
+    expect(buildProjectPatch(saved, whole)).toEqual({ aiTarget: null });
+
+    // Whole with a stray stem id is still the whole track.
+    const wholeStray = {
+      ...initialEdits(p),
+      aiTarget: { kind: "whole" as const, stemId: "stem-1" },
+    };
+    expect(buildProjectPatch(p, wholeStray)).toEqual({});
+  });
+
+  it("renders a saved add_layer target as Add a new part", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          mode: "variation",
+          prompt: "darker",
+          aiTarget: { kind: "add_layer", stemId: null },
+        })}
+      />,
+    );
+    const checked = html.match(/<input[^>]*checked=""[^>]*>/g) ?? [];
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain('value="add_part"');
+  });
+
+  it("renders a saved replace_stem target with the stem preselected", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({
+          mode: "variation",
+          prompt: "darker",
+          aiTarget: { kind: "replace_stem", stemId: "stem-2" },
+        })}
+      />,
+    );
+    const checked = html.match(/<input[^>]*checked=""[^>]*>/g) ?? [];
+    expect(checked).toHaveLength(1);
+    expect(checked[0]).toContain('value="replace_stem"');
+    expect(html).toMatch(/<option[^>]*value="stem-2"[^>]*selected=""/);
   });
 });
