@@ -421,6 +421,22 @@ export default function Sidebar() {
               <span className="link-text">Artist Claims</span>
             </Link>
             <Link
+              href="/admin/credit-requests"
+              prefetch={false}
+              className={`sidebar-link ${pathname === "/admin/credit-requests" ? 'active' : ''}`}
+              aria-current={pathname === "/admin/credit-requests" ? "page" : undefined}
+            >
+              <span className="link-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M14.5 9a2.5 2.5 0 0 0-2.5-1.5c-1.4 0-2.5.8-2.5 2s1.1 1.7 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2A2.5 2.5 0 0 1 9.5 15" />
+                  <path d="M12 6v1.5" />
+                  <path d="M12 16.5V18" />
+                </svg>
+              </span>
+              <span className="link-text">Credit Requests</span>
+            </Link>
+            <Link
               href="/admin/management-recovery"
               prefetch={false}
               className={`sidebar-link ${pathname === "/admin/management-recovery" ? 'active' : ''}`}

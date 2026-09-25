@@ -56,6 +56,7 @@ model User {
   reputationFeedbackSubmitted AgentReputationFeedback[]     @relation("AgentReputationFeedbackSubmitter")
   generationCreditAccount     GenerationCreditAccount?
   generationCreditTxns        GenerationCreditTransaction[]
+  generationCreditRequests    GenerationCreditRequest[]
   generationJobOutcomes       GenerationJobOutcome[]
   generationCostRecords       GenerationCostRecord[]
   analyticsConsent            AnalyticsConsent?
@@ -140,6 +141,28 @@ model GenerationCreditTransaction {
 
   @@index([userId, createdAt])
   @@index([jobId])
+}
+
+// Operator credit-request queue (#1885). A user out of generation credits asks
+// an operator for a top-up; at most one `pending` row per user (the service
+// upserts it). An operator resolves it in-app: `granted` (the ledger grant is
+// applied in the same transaction that claims the row) or `dismissed`.
+// `resolvedBy` is the operator's User.id and deliberately carries no relation;
+// the erasure manifest lists it as a dangling person column.
+model GenerationCreditRequest {
+  id             String    @id @default(uuid())
+  userId         String
+  note           String?   @db.Text
+  status         String    @default("pending")
+  requestedAt    DateTime  @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  grantedCents   Int?
+  resolutionNote String?   @db.Text
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, requestedAt])
+  @@index([userId, status])
 }
 
 // Durable lifecycle evidence for each metered catalogue-generation debit.

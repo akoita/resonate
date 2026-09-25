@@ -5562,6 +5562,68 @@ export async function getCreditsBalance(token: string) {
 }
 
 /**
+ * A user's request for more generation credits, as seen by the operator
+ * review queue (#1885). `balanceCents` is the requester's current balance.
+ */
+export type CreditRequest = {
+  id: string;
+  userId: string;
+  note: string | null;
+  status: "pending" | "granted" | "dismissed";
+  requestedAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+  grantedCents: number | null;
+  resolutionNote: string | null;
+  balanceCents: number;
+};
+
+export type CreditRequestStatusFilter = "pending" | "resolved" | "all";
+
+/** Operator/admin: list credit requests (#1885). Defaults to pending. */
+export function getCreditRequests(token: string, status: CreditRequestStatusFilter = "pending") {
+  return apiRequest<CreditRequest[]>(
+    `/credits/requests?status=${encodeURIComponent(status)}`,
+    { cache: "no-store" },
+    token,
+  );
+}
+
+/**
+ * Operator/admin: grant generation credits for a pending request (#1885).
+ * The grant is recorded in the credit ledger. Throws an `ApiRequestError`
+ * with status 409 when the request is no longer pending.
+ */
+export function grantCreditRequest(
+  token: string,
+  requestId: string,
+  input: { amountCents: number; reason?: string },
+) {
+  const reason = input.reason?.trim();
+  return apiRequest<CreditRequest>(
+    `/credits/requests/${encodeURIComponent(requestId)}/grant`,
+    {
+      method: "POST",
+      body: JSON.stringify(reason ? { amountCents: input.amountCents, reason } : { amountCents: input.amountCents }),
+    },
+    token,
+  );
+}
+
+/**
+ * Operator/admin: dismiss a pending credit request without granting (#1885).
+ * Throws an `ApiRequestError` with status 409 when it is no longer pending.
+ */
+export function dismissCreditRequest(token: string, requestId: string, input: { note?: string } = {}) {
+  const note = input.note?.trim();
+  return apiRequest<CreditRequest>(
+    `/credits/requests/${encodeURIComponent(requestId)}/dismiss`,
+    { method: "POST", body: JSON.stringify(note ? { note } : {}) },
+    token,
+  );
+}
+
+/**
  * A single metered-action rate quota, sourced from the backend metered-action
  * registry (#1422). Independent of the monetary credit balance — hitting a
  * limit means "wait for reset", not "top up".

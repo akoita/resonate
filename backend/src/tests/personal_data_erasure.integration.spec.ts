@@ -537,6 +537,49 @@ async function seedShared() {
       resolvedAt: new Date("2026-09-10T00:00:00.000Z"),
     },
   });
+
+  // #1885 credit requests. A asked and B resolved: A's note and the
+  // resolution note about A's request are private text and are scrubbed. B
+  // asked and A resolved: B's note stays; only the dangling operator id moves.
+  await prisma.generationCreditRequest.create({
+    data: {
+      id: id("credit_request", "a_requested"),
+      userId: USER_A,
+      note: `${TEST_PREFIX}credit_note_a`,
+      status: "granted",
+      resolvedAt: new Date("2026-09-11T00:00:00.000Z"),
+      resolvedBy: USER_B,
+      grantedCents: 500,
+      resolutionNote: `${TEST_PREFIX}credit_resolution_on_a`,
+    },
+  });
+  await prisma.generationCreditRequest.create({
+    data: {
+      id: id("credit_request", "b_requested"),
+      userId: USER_B,
+      note: `${TEST_PREFIX}credit_note_b`,
+      status: "dismissed",
+      resolvedAt: new Date("2026-09-11T00:00:00.000Z"),
+      resolvedBy: USER_A,
+      resolutionNote: `${TEST_PREFIX}credit_resolution_on_b`,
+    },
+  });
+  // A pending request from A: the erasure must dismiss it as the system.
+  await prisma.generationCreditRequest.create({
+    data: {
+      id: id("credit_request", "a_pending"),
+      userId: USER_A,
+      note: `${TEST_PREFIX}credit_note_a_pending`,
+    },
+  });
+  // B's pending request is not A's to dismiss.
+  await prisma.generationCreditRequest.create({
+    data: {
+      id: id("credit_request", "b_pending"),
+      userId: USER_B,
+      note: `${TEST_PREFIX}credit_note_b_pending`,
+    },
+  });
 }
 
 async function cleanup() {
@@ -554,6 +597,7 @@ async function cleanup() {
     ]),
   ];
 
+  await prisma.generationCreditRequest.deleteMany({ where });
   await prisma.showCampaignDispute.deleteMany({ where });
   await prisma.showCampaign.deleteMany({ where });
   await prisma.managementTransferRecoveryRequest.deleteMany({ where });
@@ -919,6 +963,59 @@ describe("PersonalDataErasureService integration", () => {
     // The dangling resolver id is still rewritten.
     expect(resolvedByA?.resolvedByUserId).toBe(newUserId);
     expect(resolvedByA?.initiatorUserId).toBe(USER_B);
+  });
+
+  it("scrubs a credit request's private text and rewrites the dangling operator id", async () => {
+    const requestedByA = await prisma.generationCreditRequest.findUnique({
+      where: { id: id("credit_request", "a_requested") },
+    });
+    expect(requestedByA).not.toBeNull();
+    expect(requestedByA?.userId).toBe(newUserId);
+    expect(requestedByA?.note).toBeNull();
+    expect(requestedByA?.resolutionNote).toBeNull();
+    // The money decision survives.
+    expect(requestedByA?.status).toBe("granted");
+    expect(requestedByA?.grantedCents).toBe(500);
+    expect(requestedByA?.resolvedBy).toBe(USER_B);
+
+    const resolvedByA = await prisma.generationCreditRequest.findUnique({
+      where: { id: id("credit_request", "b_requested") },
+    });
+    expect(resolvedByA?.userId).toBe(USER_B);
+    expect(resolvedByA?.note).toBe(`${TEST_PREFIX}credit_note_b`);
+    expect(resolvedByA?.resolutionNote).toBe(`${TEST_PREFIX}credit_resolution_on_b`);
+    expect(resolvedByA?.resolvedBy).toBe(newUserId);
+  });
+
+  it("dismisses an erased account's pending credit request as the system", async () => {
+    const pending = await prisma.generationCreditRequest.findUnique({
+      where: { id: id("credit_request", "a_pending") },
+    });
+    expect(pending).not.toBeNull();
+    expect(pending?.userId).toBe(newUserId);
+    expect(pending?.status).toBe("dismissed");
+    expect(pending?.resolvedAt).toBeInstanceOf(Date);
+    expect(pending?.resolvedBy).toBeNull();
+    expect(pending?.grantedCents).toBeNull();
+    expect(pending?.note).toBeNull();
+    expect(pending?.resolutionNote).toBeNull();
+    // Nothing grantable is left in the queue for the erased account.
+    expect(
+      await prisma.generationCreditRequest.count({
+        where: { userId: { in: [USER_A, newUserId] }, status: "pending" },
+      }),
+    ).toBe(0);
+
+    // The other person's pending request is untouched.
+    const other = await prisma.generationCreditRequest.findUnique({
+      where: { id: id("credit_request", "b_pending") },
+    });
+    expect(other).toMatchObject({
+      userId: USER_B,
+      status: "pending",
+      resolvedAt: null,
+      note: `${TEST_PREFIX}credit_note_b_pending`,
+    });
   });
 
   it("does not touch the other person", async () => {

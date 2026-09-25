@@ -21,6 +21,8 @@ const typeIcon = (type: string) => {
     case "release_rights_denied": return "\u26d4";
     case "listing_expiring_soon": return "\u23f1";
     case "listing_expired": return "\u23f3";
+    case "credits_requested": return "\ud83e\ude99";
+    case "credits_granted": return "\u2728";
     default: return "\ud83d\udd14";
   }
 };
@@ -36,6 +38,73 @@ const timeAgo = (dateStr: string) => {
 };
 
 const subscribe = () => () => {};
+
+/**
+ * Where a wallet notification leads (#1885 adds the credit-request types).
+ * Pure so the mapping is unit-testable without rendering the bell.
+ */
+export function getNotificationHref(notification: DisputeNotification, role: string | null | undefined) {
+  if (notification.type === "credits_requested") {
+    return "/admin/credit-requests";
+  }
+
+  if (notification.type === "credits_granted") {
+    return "/create";
+  }
+
+  if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
+    const query = new URLSearchParams();
+    if (notification.stemListingId) query.set("listing", notification.stemListingId);
+    if (notification.type === "listing_expired") query.set("status", "expired");
+    const queryString = query.toString();
+    return queryString ? `/marketplace/manage?${queryString}` : "/marketplace/manage";
+  }
+
+  if (notification.type.startsWith("release_rights_")) {
+    if (notification.type === "release_rights_submitted" && role === "admin") {
+      return "/disputes/admin";
+    }
+
+    if (notification.releaseId) {
+      return `/release/${notification.releaseId}`;
+    }
+  }
+
+  const query = new URLSearchParams();
+
+  if (notification.type === "dispute_filed") {
+    query.set("tab", "creator");
+  }
+
+  if (notification.disputeId) {
+    query.set("dispute", notification.disputeId);
+  }
+
+  const queryString = query.toString();
+  return queryString ? `/disputes?${queryString}` : "/disputes";
+}
+
+export function getNotificationActionHint(notification: DisputeNotification, role: string | null | undefined) {
+  if (notification.type === "credits_requested") {
+    return "Review credit requests \u2192";
+  }
+
+  if (notification.type === "credits_granted") {
+    return "Start creating \u2192";
+  }
+
+  if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
+    return "Open listing manager \u2192";
+  }
+
+  if (notification.type.startsWith("release_rights_")) {
+    return notification.type === "release_rights_submitted" && role === "admin"
+      ? "Open admin review →"
+      : "Open release →";
+  }
+
+  return "View in dispute center →";
+}
 
 export default function NotificationBell() {
   const { address, role, status, token, userId } = useAuth();
@@ -93,59 +162,12 @@ export default function NotificationBell() {
     return () => window.removeEventListener("resize", onResize);
   }, [open, isMobile]);
 
-  const getNotificationHref = (notification: DisputeNotification) => {
-    if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
-      const query = new URLSearchParams();
-      if (notification.stemListingId) query.set("listing", notification.stemListingId);
-      if (notification.type === "listing_expired") query.set("status", "expired");
-      const queryString = query.toString();
-      return queryString ? `/marketplace/manage?${queryString}` : "/marketplace/manage";
-    }
-
-    if (notification.type.startsWith("release_rights_")) {
-      if (notification.type === "release_rights_submitted" && role === "admin") {
-        return "/disputes/admin";
-      }
-
-      if (notification.releaseId) {
-        return `/release/${notification.releaseId}`;
-      }
-    }
-
-    const query = new URLSearchParams();
-
-    if (notification.type === "dispute_filed") {
-      query.set("tab", "creator");
-    }
-
-    if (notification.disputeId) {
-      query.set("dispute", notification.disputeId);
-    }
-
-    const queryString = query.toString();
-    return queryString ? `/disputes?${queryString}` : "/disputes";
-  };
-
-  const getNotificationActionHint = (notification: DisputeNotification) => {
-    if (notification.type === "listing_expiring_soon" || notification.type === "listing_expired") {
-      return "Open listing manager \u2192";
-    }
-
-    if (notification.type.startsWith("release_rights_")) {
-      return notification.type === "release_rights_submitted" && role === "admin"
-        ? "Open admin review →"
-        : "Open release →";
-    }
-
-    return "View in dispute center →";
-  };
-
   const handleNotificationClick = async (notification: DisputeNotification) => {
     if (!notification.read) {
       await markAsRead(notification.id);
     }
     setOpen(false);
-    router.push(getNotificationHref(notification));
+    router.push(getNotificationHref(notification, role));
   };
 
   // Close dropdown on outside click
@@ -251,7 +273,7 @@ export default function NotificationBell() {
                           {n.message}
                         </div>
                         <div style={notificationActionHintStyle}>
-                          {getNotificationActionHint(n)}
+                          {getNotificationActionHint(n, role)}
                         </div>
                       </div>
                     </div>
