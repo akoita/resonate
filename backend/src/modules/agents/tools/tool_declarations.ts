@@ -100,23 +100,47 @@ export function getToolDeclarations(): FunctionDeclaration[] {
 }
 
 /**
- * Maps a Gemini function call name back to the ToolRegistry name.
- * Gemini doesn't allow dots in function names, so we use underscores.
+ * Maps each declared Gemini function name to its ToolRegistry name.
+ * Gemini doesn't allow dots in function names, so declarations use underscores.
+ * Only names listed here can be dispatched; the model is never allowed to reach
+ * undeclared registry tools (e.g. generation.*) by emitting a matching name.
  */
-function toRegistryName(geminiName: string): string {
-  return geminiName.replace("_", ".");
+const DECLARED_TOOL_REGISTRY_NAMES: Readonly<Record<string, string>> = {
+  catalog_search: "catalog.search",
+  pricing_quote: "pricing.quote",
+  analytics_signal: "analytics.signal",
+  embeddings_similarity: "embeddings.similarity",
+};
+
+function toRegistryName(geminiName: string): string | undefined {
+  const declared = getToolDeclarations().some((d) => d.name === geminiName);
+  if (!declared || !Object.hasOwn(DECLARED_TOOL_REGISTRY_NAMES, geminiName)) {
+    return undefined;
+  }
+  return DECLARED_TOOL_REGISTRY_NAMES[geminiName];
 }
 
 /**
  * Executes a Gemini function call by dispatching to the matching ToolRegistry tool.
  * Returns the tool output as a JSON-serializable object.
+ *
+ * Function-call names and args are model output, which can be steered by
+ * catalog content (indirect prompt injection). Undeclared names return
+ * `{ error: "unknown_tool" }` without running anything, and identity fields are
+ * never taken from the model: `userId` is forced to the server-side session user
+ * and `artistId` is dropped.
  */
 export async function executeTool(
   registry: ToolRegistry,
-  functionCall: { name: string; args: Record<string, unknown> }
+  functionCall: { name: string; args: Record<string, unknown> },
+  context: { userId: string }
 ): Promise<Record<string, unknown>> {
   const registryName = toRegistryName(functionCall.name);
+  if (!registryName) {
+    return { error: "unknown_tool" };
+  }
+  const { userId: _userId, artistId: _artistId, ...args } = functionCall.args ?? {};
   const tool = registry.get(registryName);
-  const result = await tool.run(functionCall.args);
+  const result = await tool.run({ ...args, userId: context.userId });
   return result;
 }

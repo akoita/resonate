@@ -1,12 +1,19 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { AuthGuard } from "@nestjs/passport";
 import { ROLES_KEY } from "./roles.decorator";
 
 @Injectable()
 export class RolesGuard implements CanActivate {
+  // Nest runs global (APP_GUARD) guards before controller/route guards, so when
+  // this guard is registered globally the route's AuthGuard("jwt") has not yet
+  // populated request.user. Authenticate here instead of deferring, so a
+  // @Roles route is never reachable without a verified role (fail closed).
+  private readonly jwt = new (AuthGuard("jwt"))();
+
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const required = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -15,11 +22,11 @@ export class RolesGuard implements CanActivate {
       return true;
     }
     const request = context.switchToHttp().getRequest();
-    // If no user on the request yet (AuthGuard hasn't run), defer to AuthGuard
     if (!request.user) {
-      return true;
+      // Throws UnauthorizedException (401) when the JWT is missing or invalid.
+      await this.jwt.canActivate(context);
     }
-    const role = request.user.role ?? "listener";
+    const role = request.user?.role ?? "listener";
     return required.includes(role);
   }
 }
