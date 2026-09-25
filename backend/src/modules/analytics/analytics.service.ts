@@ -1420,10 +1420,10 @@ export class AnalyticsService {
 
       // Count any artist-attributed settlement, not just marketplace stem sales:
       // if the artist is settling commerce at all, the "improve conversion" card
-      // should not claim a total checkout-conversion gap. Production settlements are
-      // emitted as `payment.settled` (payments-service -> domain event bridge);
-      // `commerce.settled` is the alternate name handled across analytics. Gating on
-      // only one name would let the conversion card fire for artists who are settling.
+      // should not claim a total checkout-conversion gap. Settlements are counted
+      // under `payment.settled` and its alternate name `commerce.settled`. Neither has
+      // a live request-path emitter since the prototype payment routes were removed
+      // (#1890); wiring real settlement rails into them is tracked in #1894.
       if (this.isPayoutEvent(eventName)) {
         artistSettledCommerceCount += fact.count;
       }
