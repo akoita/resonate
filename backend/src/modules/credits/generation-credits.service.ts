@@ -1,11 +1,15 @@
 import {
+  ConflictException,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
   Logger,
+  NotFoundException,
   Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import type { GenerationCreditRequest, Prisma } from "@prisma/client";
 import { prisma } from "../../db/prisma";
 import { EventBus } from "../shared/event_bus";
 import type { ResonateEvent } from "../../events/event_types";
@@ -32,6 +36,33 @@ export const DEFAULT_SIGNUP_STARTER_CENTS = 0;
 
 /** Ledger reason marker for the one-time signup starter grant. */
 export const SIGNUP_STARTER_REASON = "signup_starter";
+
+/** Ledger reason for an in-app operator grant when the operator gives none (#1885). */
+export const DEFAULT_CREDIT_REQUEST_GRANT_REASON = "Credit request top-up";
+
+/** Upper bound on one page of the operator credit-request queue (#1885). */
+export const CREDIT_REQUEST_LIST_LIMIT = 100;
+
+/** Lifecycle of an operator credit request (#1885). */
+export type GenerationCreditRequestStatus = "pending" | "granted" | "dismissed";
+
+/** Queue filter for GET /credits/requests. `resolved` = granted or dismissed. */
+export type GenerationCreditRequestFilter = "pending" | "resolved" | "all";
+
+/** One operator credit request as the admin queue renders it. */
+export interface GenerationCreditRequestView {
+  id: string;
+  userId: string;
+  note: string | null;
+  status: string;
+  requestedAt: Date;
+  resolvedAt: Date | null;
+  resolvedBy: string | null;
+  grantedCents: number | null;
+  resolutionNote: string | null;
+  /** The requester's current credit balance (0 when they have no account). */
+  balanceCents: number;
+}
 
 /** kind discriminator carried on debit/insufficient analytics events. */
 export type GenerationCreditKind = "lyria" | "remix_draft";
@@ -237,30 +268,11 @@ export class GenerationCreditsService {
     amountCents: number,
     reason: string,
   ): Promise<number> {
-    if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new HttpException(
-        { statusCode: HttpStatus.BAD_REQUEST, message: "amountCents must be a positive integer" },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    assertPositiveCents(amountCents);
 
-    const balanceAfterCents = await prisma.$transaction(async (tx) => {
-      const account = await tx.generationCreditAccount.upsert({
-        where: { userId },
-        create: { userId, balanceCents: amountCents },
-        update: { balanceCents: { increment: amountCents } },
-      });
-      await tx.generationCreditTransaction.create({
-        data: {
-          userId,
-          type: "grant",
-          amountCents,
-          reason,
-          balanceAfterCents: account.balanceCents,
-        },
-      });
-      return account.balanceCents;
-    });
+    const balanceAfterCents = await prisma.$transaction((tx) =>
+      this.applyGrant(tx, userId, amountCents, reason),
+    );
 
     this.logger.log(
       `Granted ${amountCents}¢ to user ${userId} (${reason}); balance=${balanceAfterCents}¢`,
@@ -271,6 +283,36 @@ export class GenerationCreditsService {
       reason,
     });
     return balanceAfterCents;
+  }
+
+  /**
+   * The ledger half of a grant, run inside the caller's transaction so it can
+   * commit or roll back together with other writes (the #1885 request claim).
+   * Upserts the account, increments the balance, appends a `grant` txn and
+   * returns the post-grant balance. Publishes nothing: events go out after the
+   * caller's transaction commits.
+   */
+  private async applyGrant(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    amountCents: number,
+    reason: string,
+  ): Promise<number> {
+    const account = await tx.generationCreditAccount.upsert({
+      where: { userId },
+      create: { userId, balanceCents: amountCents },
+      update: { balanceCents: { increment: amountCents } },
+    });
+    await tx.generationCreditTransaction.create({
+      data: {
+        userId,
+        type: "grant",
+        amountCents,
+        reason,
+        balanceAfterCents: account.balanceCents,
+      },
+    });
+    return account.balanceCents;
   }
 
   /**
@@ -288,12 +330,7 @@ export class GenerationCreditsService {
     jobId?: string,
     kind: GenerationCreditKind = "lyria",
   ): Promise<number> {
-    if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new HttpException(
-        { statusCode: HttpStatus.BAD_REQUEST, message: "amountCents must be a positive integer" },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    assertPositiveCents(amountCents);
 
     // Self-provision the free starter before the first-ever debit so a new
     // user's first generation succeeds instead of hitting the 0-credit wall.
@@ -439,12 +476,7 @@ export class GenerationCreditsService {
     reason: string,
     jobId?: string,
   ): Promise<number> {
-    if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new HttpException(
-        { statusCode: HttpStatus.BAD_REQUEST, message: "amountCents must be a positive integer" },
-        HttpStatus.BAD_REQUEST,
-      );
-    }
+    assertPositiveCents(amountCents);
 
     const balanceAfterCents = await prisma.$transaction(async (tx) => {
       if (jobId) {
@@ -484,28 +516,226 @@ export class GenerationCreditsService {
   }
 
   /**
-   * Emit a metering analytics event through the ingest pipeline. These are
-   * `personal`-tier (they carry userId), so they declare a consentBasis, and
-   * the amounts stay off the fan→artist ledger. Failures are swallowed:
-   * analytics must never block or fail a generation.
+   * A user out of credits asks an operator to top them up (#1334, #1885).
+   *
+   * Persists the request in the operator queue — at most one `pending` row per
+   * user: a repeat refreshes `requestedAt` (and the note, when a new one is
+   * given) instead of queueing a duplicate. A transaction-scoped advisory lock
+   * on the user serializes concurrent requests so a double-click cannot create
+   * two pending rows. Then publishes `generation.credits_requested`; the
+   * NotificationService fans it out to operators (with its own dedupe window)
+   * and the analytics bridge records it. Publish failures are swallowed.
    */
-  /**
-   * A user out of credits asks an operator to top them up (#1334). Publishes a
-   * `generation.credits_requested` domain event — the NotificationService fans
-   * it out to operator in-app notifications, and the analytics bridge records
-   * it. Publish failures are swallowed: a request must never 500 on the user.
-   */
-  async requestOperatorCredits(userId: string, note?: string): Promise<void> {
-    const trimmed = note?.trim();
+  async requestOperatorCredits(
+    userId: string,
+    note?: string,
+  ): Promise<GenerationCreditRequest> {
+    const trimmed = note?.trim() || undefined;
+    const request = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`generation_credit_request:${userId}`}, 0))`;
+      const existing = await tx.generationCreditRequest.findFirst({
+        where: { userId, status: "pending" },
+        orderBy: { requestedAt: "desc" },
+      });
+      if (existing) {
+        return tx.generationCreditRequest.update({
+          where: { id: existing.id },
+          data: { requestedAt: new Date(), ...(trimmed ? { note: trimmed } : {}) },
+        });
+      }
+      return tx.generationCreditRequest.create({
+        data: { userId, note: trimmed ?? null },
+      });
+    });
+
     await this.publish("generation.credits_requested", {
       userId,
       ...(trimmed ? { note: trimmed } : {}),
     });
     this.logger.log(
-      `Credit request from user ${userId}${trimmed ? ` (note: ${trimmed})` : ""}`,
+      `Credit request ${request.id} from user ${userId}${trimmed ? ` (note: ${trimmed})` : ""}`,
     );
+    return request;
   }
 
+  /**
+   * The operator credit-request queue (#1885). `pending` lists oldest first
+   * (work the queue in order); `resolved` lists the most recently resolved
+   * first; `all` lists the most recently requested first. Each row carries the
+   * requester's current balance. Read-only: never provisions a signup starter.
+   */
+  async listCreditRequests(
+    filter: GenerationCreditRequestFilter = "pending",
+  ): Promise<GenerationCreditRequestView[]> {
+    const where: Prisma.GenerationCreditRequestWhereInput =
+      filter === "pending"
+        ? { status: "pending" }
+        : filter === "resolved"
+          ? { status: { in: ["granted", "dismissed"] } }
+          : {};
+    const orderBy: Prisma.GenerationCreditRequestOrderByWithRelationInput[] =
+      filter === "pending"
+        ? [{ requestedAt: "asc" }]
+        : filter === "resolved"
+          ? [{ resolvedAt: "desc" }, { requestedAt: "desc" }]
+          : [{ requestedAt: "desc" }];
+
+    const requests = await prisma.generationCreditRequest.findMany({
+      where,
+      orderBy,
+      take: CREDIT_REQUEST_LIST_LIMIT,
+    });
+    const userIds = Array.from(new Set(requests.map((row) => row.userId)));
+    const accounts =
+      userIds.length === 0
+        ? []
+        : await prisma.generationCreditAccount.findMany({
+            where: { userId: { in: userIds } },
+            select: { userId: true, balanceCents: true },
+          });
+    const balances = new Map(accounts.map((a) => [a.userId, a.balanceCents]));
+    return requests.map((row) => toRequestView(row, balances.get(row.userId) ?? 0));
+  }
+
+  /**
+   * Grant a pending credit request (#1885). Atomic: one transaction claims the
+   * request (`pending` → `granted`, conditional on it still being pending) and
+   * applies the ledger grant, so two operators racing on the same request
+   * cannot both mint credits — the loser's claim matches zero rows and gets a
+   * 409 with nothing written. An operator cannot grant their own request
+   * (403). `generation.credits_granted` goes out after commit, exactly as for a
+   * CLI/promo grant.
+   */
+  async grantCreditRequest(
+    requestId: string,
+    operatorUserId: string,
+    amountCents: number,
+    reason?: string,
+  ): Promise<GenerationCreditRequestView> {
+    assertPositiveCents(amountCents);
+    const ledgerReason = reason?.trim() || DEFAULT_CREDIT_REQUEST_GRANT_REASON;
+
+    const { request, balanceCents } = await prisma.$transaction(async (tx) => {
+      const claimed = await this.claimPendingRequest(tx, requestId, {
+        status: "granted",
+        resolvedBy: operatorUserId,
+        grantedCents: amountCents,
+        resolutionNote: ledgerReason,
+      });
+      const balanceAfterCents = await this.applyGrant(
+        tx,
+        claimed.userId,
+        amountCents,
+        ledgerReason,
+      );
+      return { request: claimed, balanceCents: balanceAfterCents };
+    });
+
+    this.logger.log(
+      `Credit request ${requestId} granted by ${operatorUserId}: ${amountCents}¢ to user ${request.userId}; balance=${balanceCents}¢`,
+    );
+    await this.publish("generation.credits_granted", {
+      userId: request.userId,
+      amountCents,
+      reason: ledgerReason,
+    });
+    return toRequestView(request, balanceCents);
+  }
+
+  /**
+   * Dismiss a pending credit request without granting (#1885). Same claim
+   * semantics as a grant: 404 for an unknown id, 403 for the operator's own
+   * request, 409 once it is resolved.
+   */
+  async dismissCreditRequest(
+    requestId: string,
+    operatorUserId: string,
+    note?: string,
+  ): Promise<GenerationCreditRequestView> {
+    const resolutionNote = note?.trim() || null;
+    const request = await prisma.$transaction((tx) =>
+      this.claimPendingRequest(tx, requestId, {
+        status: "dismissed",
+        resolvedBy: operatorUserId,
+        resolutionNote,
+      }),
+    );
+    const account = await prisma.generationCreditAccount.findUnique({
+      where: { userId: request.userId },
+      select: { balanceCents: true },
+    });
+    this.logger.log(
+      `Credit request ${requestId} from user ${request.userId} dismissed by ${operatorUserId}`,
+    );
+    return toRequestView(request, account?.balanceCents ?? 0);
+  }
+
+  /**
+   * Move a request out of `pending` exactly once. Throws 404 for an unknown id
+   * and 403 `self_review_forbidden` when the operator is the requester (an
+   * operator may not grant themselves credits — the direct POST /credits/grant
+   * path is unchanged), both before any write. The conditional updateMany is
+   * then the claim: a request already resolved (or claimed by a concurrent
+   * transaction, which Postgres serializes on the row lock) matches zero rows
+   * and throws 409 `request_not_pending`. Any throw rolls back the caller's
+   * transaction.
+   */
+  private async claimPendingRequest(
+    tx: Prisma.TransactionClient,
+    requestId: string,
+    resolution: {
+      status: Exclude<GenerationCreditRequestStatus, "pending">;
+      resolvedBy: string;
+      grantedCents?: number;
+      resolutionNote: string | null;
+    },
+  ): Promise<GenerationCreditRequest> {
+    const existing = await tx.generationCreditRequest.findUnique({
+      where: { id: requestId },
+      select: { userId: true },
+    });
+    if (!existing) {
+      throw new NotFoundException({
+        code: "request_not_found",
+        message: `Credit request ${requestId} was not found.`,
+      });
+    }
+    if (existing.userId.toLowerCase() === resolution.resolvedBy.toLowerCase()) {
+      throw new ForbiddenException({
+        code: "self_review_forbidden",
+        message: "You can't resolve your own credit request.",
+      });
+    }
+
+    const claimed = await tx.generationCreditRequest.updateMany({
+      where: { id: requestId, status: "pending" },
+      data: {
+        status: resolution.status,
+        resolvedAt: new Date(),
+        resolvedBy: resolution.resolvedBy,
+        grantedCents: resolution.grantedCents ?? null,
+        resolutionNote: resolution.resolutionNote,
+      },
+    });
+    const row = await tx.generationCreditRequest.findUniqueOrThrow({
+      where: { id: requestId },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException({
+        code: "request_not_pending",
+        message: `Credit request ${requestId} is already ${row.status}.`,
+        status: row.status,
+      });
+    }
+    return row;
+  }
+
+  /**
+   * Emit a metering analytics event through the ingest pipeline. These are
+   * `personal`-tier (they carry userId), so they declare a consentBasis, and
+   * the amounts stay off the fan→artist ledger. Failures are swallowed:
+   * analytics must never block or fail a generation.
+   */
   private async publish(
     eventName:
       | "generation.credits_debited"
@@ -535,4 +765,32 @@ export class GenerationCreditsService {
       );
     }
   }
+}
+
+/** Positive-integer cents guard shared by every ledger movement. */
+function assertPositiveCents(amountCents: number): void {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new HttpException(
+      { statusCode: HttpStatus.BAD_REQUEST, message: "amountCents must be a positive integer" },
+      HttpStatus.BAD_REQUEST,
+    );
+  }
+}
+
+function toRequestView(
+  row: GenerationCreditRequest,
+  balanceCents: number,
+): GenerationCreditRequestView {
+  return {
+    id: row.id,
+    userId: row.userId,
+    note: row.note,
+    status: row.status,
+    requestedAt: row.requestedAt,
+    resolvedAt: row.resolvedAt,
+    resolvedBy: row.resolvedBy,
+    grantedCents: row.grantedCents,
+    resolutionNote: row.resolutionNote,
+    balanceCents,
+  };
 }

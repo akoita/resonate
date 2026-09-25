@@ -27,6 +27,7 @@ const ROUTE_TITLES: Array<[string, string]> = [
   ["/admin/community/moderation", "Community Moderation"],
   ["/admin/community/cohorts", "Community Cohorts"],
   ["/admin/artist-claims", "Artist Claims"],
+  ["/admin/credit-requests", "Credit Requests"],
   ["/admin/management-recovery", "Management Transfer Recovery"],
   ["/artist/catalog", "Catalog"],
   ["/artist/upload", "Upload"],

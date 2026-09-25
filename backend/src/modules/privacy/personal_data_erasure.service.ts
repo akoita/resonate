@@ -782,6 +782,17 @@ export class PersonalDataErasureService {
         affected += rejected.count;
       }
 
+      if (rule.model === "GenerationCreditRequest") {
+        // An erased account must never leave a grantable request in the
+        // operator queue (#1885). Dismiss it as the system (no operator) before
+        // the user id rotates; its private text was scrubbed just above.
+        const dismissed = await tx.generationCreditRequest.updateMany({
+          where: { userId: oldUserId, status: "pending" },
+          data: { status: "dismissed", resolvedAt: erasedAt, resolvedBy: null },
+        });
+        affected = Math.max(affected, dismissed.count);
+      }
+
       anonymized[rule.model] = affected;
     }
 
