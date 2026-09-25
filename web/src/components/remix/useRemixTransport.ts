@@ -56,6 +56,12 @@ export type RemixTransport = {
   previewHandle: StemArrangementPreviewHandle | null;
   /** Waveform peaks per stem id, filled in as stems decode. */
   peaks: Record<string, number[]>;
+  /**
+   * Waveform peaks for a draft (#1879): null jobId = the current draft
+   * (loaded eagerly); archived versions fill in once first played. Null
+   * while unknown or when decoding failed.
+   */
+  draftPeaksFor: (jobId: string | null) => number[] | null;
   durationSec: number | null;
   /**
    * Current playhead in seconds; the idle cursor when stopped. Cheap: meant
@@ -150,6 +156,25 @@ export function enginePreviewStems(
   );
 }
 
+/**
+ * Drop entries keyed to a current draft that is no longer current (#1879):
+ * a new generation must not show the previous draft's waveform. Returns the
+ * same object when nothing changes, so it is safe inside setState.
+ */
+export function dropStaleCurrentDraftKeys<T>(
+  record: Record<string, T>,
+  currentDraftJobId: string | null,
+): Record<string, T> {
+  const keep = resolveDraftCacheKey(null, currentDraftJobId);
+  const stale = Object.keys(record).filter(
+    (key) => key.startsWith("current:") && key !== keep,
+  );
+  if (stale.length === 0) return record;
+  const next = { ...record };
+  for (const key of stale) delete next[key];
+  return next;
+}
+
 function sameSource(a: TransportSource, b: TransportSource): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "draft" && b.kind === "draft") return a.jobId === b.jobId;
@@ -178,6 +203,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const [draftDurations, setDraftDurations] = useState<Record<string, number>>(
     {},
   );
+  // Draft waveforms by draft cache key (#1879).
+  const [draftPeaks, setDraftPeaks] = useState<Record<string, number[]>>({});
   // Bumped when the idle cursor moves (seek/stop/end) so consumers re-render
   // and re-read getPositionSec; never bumped per frame.
   const [cursorRevision, setCursorRevision] = useState(0);
@@ -204,6 +231,12 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const retiredUrlsRef = useRef<string[]>([]);
   const draftFrameRef = useRef<number | null>(null);
   const peaksDoneRef = useRef(new Set<string>());
+  // Draft blobs behind the cached object URLs (same lifetime), so waveforms
+  // decode without a second download; in-flight downloads are shared.
+  const draftBlobsRef = useRef(new Map<string, Blob>());
+  const draftDownloadsRef = useRef(new Map<string, Promise<string | null>>());
+  const draftPeaksDoneRef = useRef(new Set<string>());
+  const unmountedRef = useRef(false);
 
   // Only one audio source at a time: studio audio pauses the site-wide
   // player, and the player starting stops studio audio. Null outside a
@@ -237,6 +270,74 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     }
     return engineRef.current;
   }, []);
+
+  /**
+   * The draft's object URL, downloading it once (concurrent callers share
+   * the request). Null when the draft stopped being the one `key` names
+   * (a new generation landed mid-download) or the hook unmounted.
+   */
+  const fetchDraftUrl = useCallback(
+    (key: string, jobId: string | null): Promise<string | null> => {
+      const cached = draftUrlsRef.current.get(key);
+      if (cached) return Promise.resolve(cached);
+      const inFlight = draftDownloadsRef.current.get(key);
+      if (inFlight) return inFlight;
+      const { token, projectId } = inputRef.current;
+      if (!token) return Promise.resolve(null);
+      const download = (async () => {
+        const blob = await getRemixDraftAudioBlob(
+          token,
+          projectId,
+          jobId ?? undefined,
+        );
+        if (unmountedRef.current) return null;
+        if (
+          resolveDraftCacheKey(jobId, inputRef.current.currentDraftJobId) !== key
+        ) {
+          return null;
+        }
+        if (!draftUrlsRef.current.has(key)) {
+          draftUrlsRef.current.set(key, URL.createObjectURL(blob));
+          draftBlobsRef.current.set(key, blob);
+        }
+        return draftUrlsRef.current.get(key) ?? null;
+      })();
+      draftDownloadsRef.current.set(key, download);
+      const settle = () => {
+        if (draftDownloadsRef.current.get(key) === download) {
+          draftDownloadsRef.current.delete(key);
+        }
+      };
+      download.then(settle, settle);
+      return download;
+    },
+    [],
+  );
+
+  /** Decode a downloaded draft once for its waveform; failures stay silent. */
+  const ensureDraftPeaks = useCallback(
+    (key: string) => {
+      const blob = draftBlobsRef.current.get(key);
+      if (!blob || draftPeaksDoneRef.current.has(key)) return;
+      draftPeaksDoneRef.current.add(key);
+      void (async () => {
+        try {
+          const data = await blob.arrayBuffer();
+          if (unmountedRef.current) return;
+          const buffer = await engine().decode(data);
+          // Unmounted, or the draft was replaced while decoding.
+          if (unmountedRef.current || draftBlobsRef.current.get(key) !== blob) {
+            return;
+          }
+          const peaks = computePeaks(buffer);
+          setDraftPeaks((known) => ({ ...known, [key]: peaks }));
+        } catch {
+          // No waveform for this draft; playback is unaffected.
+        }
+      })();
+    },
+    [engine],
+  );
 
   const currentPosition = useCallback((): number => {
     const playing = playingRef.current;
@@ -345,28 +446,21 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     try {
       let url = draftUrlsRef.current.get(key);
       if (!url) {
-        const blob = await getRemixDraftAudioBlob(
-          latest.token,
-          latest.projectId,
-          next.jobId ?? undefined,
-        );
-        const stillThisDraft =
-          resolveDraftCacheKey(next.jobId, inputRef.current.currentDraftJobId) ===
-          key;
-        // Keep a still-valid download even if the user moved on meanwhile.
-        if (stillThisDraft && !draftUrlsRef.current.has(key)) {
-          draftUrlsRef.current.set(key, URL.createObjectURL(blob));
-        }
+        // Shared with the eager current-draft download; a still-valid
+        // download is cached even if the user moved on meanwhile.
+        const fetched = await fetchDraftUrl(key, next.jobId);
         // Stopped or switched while downloading.
         if (requestId !== requestRef.current) return;
-        url = draftUrlsRef.current.get(key);
-        if (!stillThisDraft || !url) {
+        if (!fetched) {
           // A new generation replaced this draft mid-download.
           halt(offsetSec);
           settleIdle();
           return;
         }
+        url = fetched;
       }
+      // Archived versions get their waveform from this first play.
+      ensureDraftPeaks(key);
       const audio = new Audio(url);
       const loopNow = () => {
         if (playingRef.current?.mode !== "draft") return;
@@ -547,6 +641,38 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     [currentPosition, cursorRevision],
   );
 
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
+  // The current draft's waveform loads eagerly (#1879): download into the
+  // shared URL cache (play reuses it), then decode for peaks.
+  const currentDraftKey = resolveDraftCacheKey(null, input.currentDraftJobId);
+  useEffect(() => {
+    if (!currentDraftKey || !input.token) return;
+    let cancelled = false;
+    fetchDraftUrl(currentDraftKey, null).then(
+      (url) => {
+        if (!cancelled && url) ensureDraftPeaks(currentDraftKey);
+      },
+      () => undefined, // Silent: the waveform just stays absent.
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDraftKey, ensureDraftPeaks, fetchDraftUrl, input.token]);
+
+  const draftPeaksFor = useCallback(
+    (jobId: string | null): number[] | null => {
+      const key = resolveDraftCacheKey(jobId, input.currentDraftJobId);
+      return key ? draftPeaks[key] ?? null : null;
+    },
+    [draftPeaks, input.currentDraftJobId],
+  );
+
   // Preload every project stem: waveforms fill in as they decode and the
   // first play starts without a download.
   const stemIdsKey = useMemo(
@@ -615,6 +741,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       if (!key.startsWith("current:")) continue;
       if (key === resolveDraftCacheKey(null, input.currentDraftJobId)) continue;
       urls.delete(key);
+      draftBlobsRef.current.delete(key);
+      draftPeaksDoneRef.current.delete(key);
       const playing = playingRef.current;
       if (playing?.mode === "draft" && playing.key === key) {
         retiredUrlsRef.current.push(url);
@@ -622,6 +750,10 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         URL.revokeObjectURL(url);
       }
     }
+    // Its waveform goes with it.
+    setDraftPeaks((known) =>
+      dropStaleCurrentDraftKeys(known, input.currentDraftJobId),
+    );
   }, [input.currentDraftJobId]);
 
   // The site-wide player just started (false → true): stop studio audio.
@@ -639,6 +771,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     const draftUrls = draftUrlsRef.current;
     const retiredUrls = retiredUrlsRef.current;
     const peaksDone = peaksDoneRef.current;
+    const draftBlobs = draftBlobsRef.current;
+    const draftDownloads = draftDownloadsRef.current;
+    const draftPeaksDone = draftPeaksDoneRef.current;
     return () => {
       // Nothing still loading may start after unmount.
       halt(null);
@@ -649,8 +784,11 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       for (const url of draftUrls.values()) URL.revokeObjectURL(url);
       draftUrls.clear();
       for (const url of retiredUrls.splice(0)) URL.revokeObjectURL(url);
+      draftBlobs.clear();
+      draftDownloads.clear();
       // A remount (StrictMode) builds a fresh engine and re-decodes.
       peaksDone.clear();
+      draftPeaksDone.clear();
     };
   }, [halt]);
 
@@ -660,6 +798,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     loop,
     previewHandle,
     peaks,
+    draftPeaksFor,
     durationSec,
     getPositionSec,
     play,

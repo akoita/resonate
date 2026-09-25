@@ -539,3 +539,30 @@ describe("loop helpers (#1879)", () => {
     expect(sectionGainAt([{ startSec: 0, endSec: 16 }], 16)).toBe(0);
   });
 });
+
+describe("createStemPreviewEngine decode (#1879)", () => {
+  it("decodes on the shared context without resuming or touching the stem cache", async () => {
+    const { engine, fetchImpl, contexts } = setup();
+    const data = new ArrayBuffer(16);
+    const buffer = await engine.decode(data);
+
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].resume).not.toHaveBeenCalled();
+    expect(contexts[0].decodeAudioData).toHaveBeenCalledWith(data);
+    expect((buffer as unknown as { decodedFrom: ArrayBuffer }).decodedFrom).toBe(
+      data,
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(engine.bufferDuration()).toBeNull();
+
+    // Same context for later stem work.
+    await engine.preload(["vocals"]);
+    expect(contexts).toHaveLength(1);
+  });
+
+  it("rejects once disposed", async () => {
+    const { engine } = setup();
+    engine.dispose();
+    await expect(engine.decode(new ArrayBuffer(4))).rejects.toThrow(/disposed/);
+  });
+});
