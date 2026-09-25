@@ -181,6 +181,21 @@ external client that needs one. When that client exists, the new API should be
 designed as a narrow command surface that still returns the existing normalized
 router result envelope and enforces `PolicyGuardService` before rail execution.
 
+### Tool identity binding
+
+Runtime tools act on behalf of the session user, so identity never comes from
+model output. The runtime binds `userId` from the server-built
+`AgentRuntimeInput`: the ADK agent closes over it, and the Vertex adapter passes
+it to `executeTool`, which overrides any model-supplied `userId`, drops
+`artistId`, and dispatches only the tools declared to the model (undeclared
+names return `unknown_tool`). Generation tools always publish under the platform
+agent artist (`AGENT_ARTIST_ID`), never under an artist named in tool input.
+
+The `/agents/*` developer routes accept a `userId` in the body and are
+admin-only. `@Roles(...)` is enforced by the global `RolesGuard`, which
+authenticates the JWT itself before checking the role, because global guards run
+before route-level `AuthGuard("jwt")`.
+
 ## Quick Demo: discover → quote → pay → receipt
 
 A copy-paste curl walkthrough showing the full x402 purchase flow. Set a base

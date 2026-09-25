@@ -22,6 +22,8 @@ owner: "@akoita"
 | Payments | Reorgs or failed tx | Medium | Confirmation depth, retries |
 | APIs | Credential leakage | High | Short-lived JWTs, secret rotation |
 | APIs | Malformed or out-of-range request bodies reaching services (CWE-20) | Medium | Backend-wide `ValidationPipe` enforces class-validator DTO constraints with `400` (#1888, `backend/src/config/validation.ts`); interface-typed bodies validate in their services; client-supplied owner identifiers (e.g. generation `artistId`) are bound to the caller at the HTTP boundary |
+| APIs | Role-restricted routes reachable by lower roles | High | Global `RolesGuard` fails closed: on any `@Roles(...)` route it authenticates the JWT itself (global guards run before route-level `AuthGuard("jwt")`) before checking the role; the controller test app registers the same global guard, and a reflection test requires every `@Roles` route to use JWT auth |
+| Agents | Model output or injected content steering tool identity | High | Tool calls bind `userId` from the server-built runtime input, never from model arguments; only tools declared to the model are dispatched; generation tools publish only under the platform agent artist |
 
 ## Risk Register
 

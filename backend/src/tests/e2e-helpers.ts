@@ -15,10 +15,12 @@
  */
 
 import { INestApplication, Type } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from '../modules/auth/jwt.strategy';
+import { RolesGuard } from '../modules/auth/roles.guard';
 import { ConfigModule } from '@nestjs/config';
 import { sign } from 'jsonwebtoken';
 import { applyGlobalValidation } from '../config/validation';
@@ -54,6 +56,8 @@ export function authToken(userId: string, role = 'listener'): string {
  * Create a lightweight NestJS application with:
  *   - The specified controller(s)
  *   - JWT authentication (AuthGuard("jwt") works)
+ *   - The global RolesGuard (APP_GUARD), as registered in AppModule, so
+ *     @Roles routes are enforced the same way as in production
  *   - Any additional providers (mocked services)
  *
  * No database, no Redis, no Docker — fast.
@@ -78,7 +82,11 @@ export async function createControllerTestApp(
       }),
     ],
     controllers: ctrlArray,
-    providers: [JwtStrategy, ...providers],
+    providers: [
+      JwtStrategy,
+      { provide: APP_GUARD, useClass: RolesGuard },
+      ...providers,
+    ],
   }).compile();
 
   const app = moduleRef.createNestApplication();

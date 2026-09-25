@@ -73,10 +73,14 @@ export class VertexAiAdapter implements AgentRuntimeAdapter {
       const functionResponses: Part[] = [];
       for (const fc of functionCalls) {
         this.logger.debug(`Tool call: ${fc.name}(${JSON.stringify(fc.args)})`);
-        const toolResult = await executeTool(this.tools, {
-          name: fc.name,
-          args: fc.args as Record<string, unknown>,
-        });
+        const toolResult = await executeTool(
+          this.tools,
+          {
+            name: fc.name,
+            args: fc.args as Record<string, unknown>,
+          },
+          { userId: input.userId }
+        );
         functionResponses.push({
           functionResponse: {
             name: fc.name,
