@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  dropStaleCurrentDraftKeys,
   clampSeek,
   draftLoopSeekTarget,
   enginePreviewStems,
@@ -94,5 +95,28 @@ describe("useRemixTransport helpers (#1879)", () => {
       stems,
     );
     expect(enginePreviewStems(stems, { kind: "original" }, null)).toBe(stems);
+  });
+});
+
+describe("dropStaleCurrentDraftKeys (#1879)", () => {
+  const peaks = {
+    "current:job-1": [0.5],
+    "job:job-0": [0.25],
+  };
+
+  it("keeps the current draft and archived versions untouched", () => {
+    expect(dropStaleCurrentDraftKeys(peaks, "job-1")).toBe(peaks);
+  });
+
+  it("drops the previous current draft when a new generation lands", () => {
+    const next = dropStaleCurrentDraftKeys(peaks, "job-2");
+    expect(next).toEqual({ "job:job-0": [0.25] });
+    expect(peaks).toHaveProperty("current:job-1"); // input not mutated
+  });
+
+  it("drops every current-draft entry when no draft is playable", () => {
+    expect(dropStaleCurrentDraftKeys(peaks, null)).toEqual({
+      "job:job-0": [0.25],
+    });
   });
 });

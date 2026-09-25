@@ -153,20 +153,25 @@ async function mockRemixApi(page: Page) {
     },
   ];
   const patches: Array<Record<string, unknown>> = [];
+  // Top-level fields the studio autosaves (mode, prompt, title), persisted
+  // like the real PATCH so the echoed project matches the saved edits.
+  let fields: Record<string, unknown> = {};
 
   await page.route(`**/remix/projects/${PROJECT_ID}`, async (route) => {
     const request = route.request();
     if (request.method() === "PATCH") {
       const body = request.postDataJSON() as {
         stems?: Array<Partial<MockStem> & { stemId: string }>;
-      };
+      } & Record<string, unknown>;
       patches.push(body);
+      const { stems: stemChanges, ...rest } = body;
+      fields = { ...fields, ...rest };
       stems = stems.map((stem) => {
-        const change = body.stems?.find((entry) => entry.stemId === stem.stemId);
+        const change = stemChanges?.find((entry) => entry.stemId === stem.stemId);
         return change ? { ...stem, ...change } : stem;
       });
     }
-    await route.fulfill({ json: mockProject(stems) });
+    await route.fulfill({ json: { ...mockProject(stems), ...fields } });
   });
   await page.route("**/credits/balance", (route) =>
     route.fulfill({
@@ -247,5 +252,67 @@ test.describe("Remix Studio session view (#1879)", () => {
     await page.getByRole("heading", { name: "Session" }).click();
     await page.keyboard.press("Space");
     await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  });
+
+  test("create panel recipes and drafts panel (#1879 phase 2)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+
+    const create = page.getByRole("group", { name: "What to create" });
+    await expect(create.getByRole("button", { name: "Mix stems" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByRole("button", { name: "Render mix" })).toBeVisible();
+    // No draft yet: the drafts panel says so, and never shows internal ids.
+    const drafts = page.getByRole("region", { name: "Drafts" });
+    await expect(drafts).toBeVisible();
+    await expect(page.getByText(/policy/i)).toHaveCount(0);
+
+    // One-click arrangement: Instrumental mutes the vocals → autosaved.
+    await page.getByRole("button", { name: "Instrumental" }).click();
+    await expect(page.getByRole("button", { name: "Mute Vocals" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) =>
+            (patch.stems as Array<{ stemId: string; muted?: boolean }> | undefined)?.some(
+              (stem) => stem.stemId === "stem-vocals" && stem.muted === true,
+            ),
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+
+    // Add AI shows the flat intents, with "Reimagine the track" selected.
+    await create.getByRole("button", { name: "Add AI" }).click();
+    await expect(
+      page.getByRole("radiogroup", { name: "AI intent" }).getByRole("radio", {
+        name: /Reimagine the track/,
+      }),
+    ).toBeChecked();
+    await expect(page.getByText(/per 30 s of audio/)).toBeVisible();
+    // The intent survives its own autosave round-trip (mode → variation).
+    await expect
+      .poll(() => patches.some((patch) => patch.mode === "variation"), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+    await expect(create.getByRole("button", { name: "Add AI" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await page.mouse.move(5, 5);
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-create.png"),
+      fullPage: true,
+    });
   });
 });

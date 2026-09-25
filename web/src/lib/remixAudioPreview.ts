@@ -235,6 +235,12 @@ export type StemPreviewEngine = {
    * or null while nothing has decoded yet.
    */
   bufferDuration(stemIds?: string[]): number | null;
+  /**
+   * Decode arbitrary audio (e.g. a draft, for its waveform — #1879) on the
+   * engine's context, created lazily and never resumed here. Bypasses the
+   * stem cache. Rejects once disposed.
+   */
+  decode(data: ArrayBuffer): Promise<AudioBuffer>;
   dispose(): void;
 };
 
@@ -448,6 +454,13 @@ export function createStemPreviewEngine(input: {
     return longest;
   };
 
+  const decode: StemPreviewEngine["decode"] = async (data) => {
+    if (disposed) {
+      throw new Error("Audio preview engine was disposed.");
+    }
+    return ensureContext().decodeAudioData(data);
+  };
+
   const play: StemPreviewEngine["play"] = async (request) => {
     if (disposed) {
       throw new Error("Audio preview engine was disposed.");
@@ -639,5 +652,5 @@ export function createStemPreviewEngine(input: {
     void closing?.close().catch(() => undefined);
   };
 
-  return { play, preload, bufferDuration, dispose };
+  return { play, preload, bufferDuration, decode, dispose };
 }
