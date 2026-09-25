@@ -1,12 +1,12 @@
 import "dotenv/config";
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
 import { join } from "path";
 import * as express from "express";
 import { AppModule } from "./modules/app.module";
 import { RedisIoAdapter } from "./modules/shared/redis.adapter";
 import { getCorsAllowedOrigins } from "./config/cors";
+import { applyGlobalValidation } from "./config/validation";
 import { requestObservabilityMiddleware } from "./modules/shared/request_observability.middleware";
 import { assertAnalyticsActorIdSaltConfiguration } from "./modules/analytics/analytics_identity";
 
@@ -51,6 +51,7 @@ async function bootstrap() {
   }
 
   const app = await NestFactory.create(AppModule);
+  applyGlobalValidation(app);
 
   // Enable cross-instance WebSocket broadcasting via Redis pub/sub
   try {

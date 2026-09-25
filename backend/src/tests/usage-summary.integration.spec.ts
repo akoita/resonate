@@ -5,6 +5,7 @@ import { UsageService } from "../modules/usage/usage.service";
 import { GenerationCreditsService } from "../modules/credits/generation-credits.service";
 import { METERED_ACTIONS } from "../modules/credits/metered-actions";
 import { prisma } from "../db/prisma";
+import { applyGlobalValidation } from "../config/validation";
 
 /**
  * #1422 — unified GET /usage/summary aggregation.
@@ -35,6 +36,7 @@ describe("Usage summary (integration)", () => {
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
+    applyGlobalValidation(app);
     await app.init();
 
     usageService = app.get(UsageService);

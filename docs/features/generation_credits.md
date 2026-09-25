@@ -161,6 +161,12 @@ Delivery is in-app only for now; email/Slack fan-out is a future enhancement.
     `POST /credits/requests/:id/dismiss` (`{ note? }`), all JWT +
     `@Roles('admin','operator')` (#1885). Resolving a request that is no longer
     pending returns `409 request_not_pending`.
+  - Bodies are validated by the backend-wide `ValidationPipe` (#1888):
+    `amountCents` must be a JSON integer in `1..10000000` and `reason` a
+    non-empty string of at most 120 characters for a direct grant (a
+    queued-request grant takes the same `amountCents` bounds with an optional
+    `reason`); request and dismiss `note`s are optional and at most 280
+    characters. Violations return `400`.
 - UI: a **reusable `CreditBalanceMeter`**
   ([`web/src/components/credits/CreditBalanceMeter.tsx`](web/src/components/credits/CreditBalanceMeter.tsx),
   #1422) shows remaining capacity as time + 1-min tracks (e.g. "≈ 5 min · 5

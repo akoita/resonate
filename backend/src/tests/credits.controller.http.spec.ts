@@ -102,6 +102,23 @@ describe("CreditsController (http)", () => {
         .expect(201);
       expect(mockCreditsService.requestOperatorCredits).toHaveBeenCalledWith("user-9", undefined);
     });
+
+    it("accepts a request with no body at all", async () => {
+      await request(app.getHttpServer())
+        .post("/credits/request")
+        .set("Authorization", `Bearer ${authToken("user-9", "artist")}`)
+        .expect(201);
+      expect(mockCreditsService.requestOperatorCredits).toHaveBeenCalledWith("user-9", undefined);
+    });
+
+    it("rejects a note over 280 chars with 400 (#1888)", async () => {
+      await request(app.getHttpServer())
+        .post("/credits/request")
+        .set("Authorization", `Bearer ${authToken("user-9", "listener")}`)
+        .send({ note: "n".repeat(281) })
+        .expect(400);
+      expect(mockCreditsService.requestOperatorCredits).not.toHaveBeenCalled();
+    });
   });
 
   describe("POST /credits/grant", () => {
@@ -164,6 +181,23 @@ describe("CreditsController (http)", () => {
         .send(body)
         .expect(201);
       expect(mockCreditsService.grant).toHaveBeenCalledWith("user-2", 500, "promo_grant");
+    });
+
+    const invalidGrants: Array<[string, Record<string, unknown>]> = [
+      ["zero amountCents", { ...body, amountCents: 0 }],
+      ["string amountCents", { ...body, amountCents: "100" }],
+      ["amountCents above the cap", { ...body, amountCents: 10_000_001 }],
+      ["fractional amountCents", { ...body, amountCents: 1.5 }],
+      ["missing reason", { userId: "user-2", amountCents: 500 }],
+    ];
+
+    it.each(invalidGrants)("rejects %s with 400 (#1888)", async (_label, invalidBody) => {
+      await request(app.getHttpServer())
+        .post("/credits/grant")
+        .set("Authorization", `Bearer ${authToken("admin-1", "admin")}`)
+        .send(invalidBody)
+        .expect(400);
+      expect(mockCreditsService.grant).not.toHaveBeenCalled();
     });
   });
 

@@ -38,7 +38,8 @@ import { resolveCreditedArtistName } from "../shared/artist_attribution";
  * Design boundaries this service enforces:
  *   - Every mutation is owner-scoped (only the track's / drop's artist) and
  *     draft-only. Ownership failures are 403; missing resources are 404.
- *   - There is no global ValidationPipe in this app, so ALL input validation
+ *   - The global ValidationPipe only enforces class-validator DTO classes, and
+ *     Punchline bodies are plain interfaces, so ALL input validation still
  *     lives here and throws BadRequestException. Bodies arrive as plain object
  *     literals from the controller.
  *   - Moment ranges are validated against the SAME clip length bounds the #481
@@ -757,9 +758,10 @@ export class PunchlineDropService {
 
   /**
    * Public Drops browse (#1510). Query validation is deliberately performed by
-   * the controller because this application does not install a global
-   * ValidationPipe. The service owns filtering, deterministic ranking, and
-   * offset paging over the complete published candidate set.
+   * the controller because the global ValidationPipe only enforces
+   * class-validator DTO classes and these query params are plain strings. The
+   * service owns filtering, deterministic ranking, and offset paging over the
+   * complete published candidate set.
    */
   async listDrops(options: ListDropsOptions) {
     const rows = await prisma.punchlineDrop.findMany({

@@ -71,3 +71,12 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    - Any contract interaction test
 
 6. **Use Pub/Sub emulator for messaging.** Available at `process.env.PUBSUB_EMULATOR_HOST` with project ID `resonate-local`.
+
+7. **Controller HTTP apps mirror production validation.** `main.ts` registers the
+   global `ValidationPipe` from `src/config/validation.ts` (#1888), and
+   `createControllerTestApp` in `src/tests/e2e-helpers.ts` applies the same pipe.
+   Any spec that builds its own app with `createNestApplication()` must call
+   `applyGlobalValidation(app)` too. The pipe enforces class-validator decorators
+   on class DTOs only (no whitelist, no transform); interface-typed bodies are not
+   validated by it, so their services must validate input. Cover new DTO
+   constraints with `400` cases in the matching `*.controller.http.spec.ts`.

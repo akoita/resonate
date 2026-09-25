@@ -21,6 +21,7 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from '../modules/auth/jwt.strategy';
 import { ConfigModule } from '@nestjs/config';
 import { sign } from 'jsonwebtoken';
+import { applyGlobalValidation } from '../config/validation';
 
 export const TEST_JWT_SECRET = 'e2e-test-secret';
 
@@ -81,6 +82,8 @@ export async function createControllerTestApp(
   }).compile();
 
   const app = moduleRef.createNestApplication();
+  // Mirror production bootstrap (main.ts) so DTO validation is exercised.
+  applyGlobalValidation(app);
   await app.init();
   return app;
 }

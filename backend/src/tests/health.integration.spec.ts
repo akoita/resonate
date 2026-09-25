@@ -2,6 +2,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "../modules/app.module";
 import { INestApplication } from "@nestjs/common";
+import { applyGlobalValidation } from "../config/validation";
 
 describe("Health", () => {
   let app: INestApplication;
@@ -11,6 +12,7 @@ describe("Health", () => {
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
+    applyGlobalValidation(app);
     await app.init();
   });
 

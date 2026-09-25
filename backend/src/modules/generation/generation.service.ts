@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import { UPLOAD_RIGHTS_POLICY_VERSION } from '../rights/upload-rights-policy';
 import type { Prisma } from '@prisma/client';
 import { AI_DISCLOSURE_VERSION } from '../catalog/ai-disclosure.policy';
+import { hasArtistManagementAccess } from '../management/management-access';
 
 const DEFAULT_RATE_LIMIT = 50; // max generations per hour per user
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -172,6 +173,34 @@ export class GenerationService {
     // Try STRIKE_RATE_LIMIT first (parsed as number), fallback to DEFAULT_RATE_LIMIT
     const limit = this.configService.get<string | number>('STRIKE_RATE_LIMIT', DEFAULT_RATE_LIMIT);
     this.maxPerHour = typeof limit === 'string' ? parseInt(limit, 10) : limit;
+  }
+
+  /**
+   * HTTP entry point for `POST /generation/create` (#1888). A client-supplied
+   * `artistId` must be an artist profile the caller owns; otherwise any user
+   * could publish an AI release under someone else's profile. The check lives
+   * here rather than in `createGeneration` because internal agent callers pass
+   * the platform agent artist id directly, and it runs before the credit debit
+   * so a rejected request is never charged or enqueued.
+   */
+  async createGenerationForCaller(dto: CreateGenerationDto, userId: string): Promise<{ jobId: string }> {
+    if (dto.artistId && !(await this.callerMayGenerateAs(userId, dto.artistId))) {
+      throw new ForbiddenException('artistId must be your own artist profile');
+    }
+    return this.createGeneration(dto, userId);
+  }
+
+  /**
+   * The caller may generate as the artist the job processor would auto-resolve
+   * for them (`Artist.userId`), or as an artist they own via management.
+   * Accepting the legacy owner keeps an explicit `artistId` consistent with the
+   * omitted-`artistId` path after a management transfer.
+   */
+  private async callerMayGenerateAs(userId: string, artistId: string): Promise<boolean> {
+    const artist = await prisma.artist.findUnique({ where: { id: artistId }, select: { userId: true } });
+    if (!artist) return false;
+    if (artist.userId && artist.userId.toLowerCase() === userId.toLowerCase()) return true;
+    return hasArtistManagementAccess(userId, artistId, 'profile_owner');
   }
 
   /**

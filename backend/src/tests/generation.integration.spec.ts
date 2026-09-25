@@ -12,6 +12,7 @@ import { EventBus } from '../modules/shared/event_bus';
 import { GenerationService } from '../modules/generation/generation.service';
 import { LocalStorageProvider } from '../modules/storage/local_storage_provider';
 import { ConfigService } from '@nestjs/config';
+import { ForbiddenException } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import { stubGenerationCredits } from './e2e-helpers';
 
@@ -67,6 +68,12 @@ describe('GenerationService (integration)', () => {
     await prisma.artist.create({
       data: { id: `${TEST_PREFIX}artist`, userId: `${TEST_PREFIX}user`, displayName: 'Gen Artist', payoutAddress: '0x' + 'G'.repeat(40) },
     });
+    // #1888: a second user's artist profile, used to prove a caller cannot
+    // generate under someone else's artistId.
+    await prisma.user.create({ data: { id: `${TEST_PREFIX}other_user`, email: `${TEST_PREFIX}other@test.resonate` } });
+    await prisma.artist.create({
+      data: { id: `${TEST_PREFIX}other_artist`, userId: `${TEST_PREFIX}other_user`, displayName: 'Other Artist', payoutAddress: '0x' + 'H'.repeat(40) },
+    });
   });
 
   afterAll(async () => {
@@ -87,7 +94,9 @@ describe('GenerationService (integration)', () => {
       await prisma.track.deleteMany({ where: { releaseId: r.id } }).catch(() => {});
     }
     await prisma.release.deleteMany({ where: { artistId: `${TEST_PREFIX}artist` } }).catch(() => {});
+    await prisma.artist.delete({ where: { id: `${TEST_PREFIX}other_artist` } }).catch(() => {});
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}artist` } }).catch(() => {});
+    await prisma.user.delete({ where: { id: `${TEST_PREFIX}other_user` } }).catch(() => {});
     await prisma.user.delete({ where: { id: `${TEST_PREFIX}user` } }).catch(() => {});
     await cleanupQueue();
   });
@@ -167,6 +176,104 @@ describe('GenerationService (integration)', () => {
           'rate-limit-user',
         ),
       ).rejects.toThrow('Rate limit exceeded');
+    });
+  });
+
+  describe('createGenerationForCaller (#1888 artist ownership)', () => {
+    const buildService = (credits: ReturnType<typeof stubGenerationCredits>) =>
+      new GenerationService(
+        eventBus,
+        storageProvider as any,
+        {} as any,
+        mockLyriaClient as any,
+        configService as any,
+        generationQueue as any,
+        credits as any,
+      );
+
+    it("rejects another user's artistId before any debit or enqueue", async () => {
+      const credits = stubGenerationCredits();
+      const debit = jest.spyOn(credits, 'debit');
+      const callerService = buildService(credits);
+
+      await expect(
+        callerService.createGenerationForCaller(
+          { prompt: 'Not my profile', artistId: `${TEST_PREFIX}other_artist` },
+          `${TEST_PREFIX}user`,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(debit).not.toHaveBeenCalled();
+      expect(await generationQueue!.count()).toBe(0);
+    });
+
+    it("proceeds with the caller's own artistId", async () => {
+      const credits = stubGenerationCredits();
+      const debit = jest.spyOn(credits, 'debit');
+      const callerService = buildService(credits);
+
+      const result = await callerService.createGenerationForCaller(
+        { prompt: 'My own profile', artistId: `${TEST_PREFIX}artist` },
+        `${TEST_PREFIX}user`,
+      );
+
+      expect(result.jobId).toEqual(expect.any(String));
+      expect(debit).toHaveBeenCalledTimes(1);
+      const job = await generationQueue!.getJob(result.jobId);
+      expect(job?.data.artistId).toBe(`${TEST_PREFIX}artist`);
+    });
+
+    it('proceeds for the legacy owner after management moved to another user', async () => {
+      // Omitting artistId would auto-resolve this same artist via Artist.userId,
+      // so an explicit artistId must not be stricter than that path.
+      await prisma.artist.update({
+        where: { id: `${TEST_PREFIX}artist` },
+        data: { managementOwnerUserId: `${TEST_PREFIX}other_user` },
+      });
+      try {
+        const credits = stubGenerationCredits();
+        const callerService = buildService(credits);
+        const result = await callerService.createGenerationForCaller(
+          { prompt: 'Managed profile', artistId: `${TEST_PREFIX}artist` },
+          `${TEST_PREFIX}user`,
+        );
+        expect(result.jobId).toEqual(expect.any(String));
+      } finally {
+        await prisma.artist.update({
+          where: { id: `${TEST_PREFIX}artist` },
+          data: { managementOwnerUserId: null },
+        });
+      }
+    });
+
+    it('rejects an unknown artistId before any debit', async () => {
+      const credits = stubGenerationCredits();
+      const debit = jest.spyOn(credits, 'debit');
+      const callerService = buildService(credits);
+
+      await expect(
+        callerService.createGenerationForCaller(
+          { prompt: 'Ghost profile', artistId: `${TEST_PREFIX}missing_artist` },
+          `${TEST_PREFIX}user`,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(debit).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when artistId is omitted (resolved to the caller at processing time)', async () => {
+      const credits = stubGenerationCredits();
+      const debit = jest.spyOn(credits, 'debit');
+      const callerService = buildService(credits);
+
+      const result = await callerService.createGenerationForCaller(
+        { prompt: 'No artist supplied' },
+        `${TEST_PREFIX}user`,
+      );
+
+      expect(result.jobId).toEqual(expect.any(String));
+      expect(debit).toHaveBeenCalledTimes(1);
+      const job = await generationQueue!.getJob(result.jobId);
+      expect(job?.data.artistId).toBeUndefined();
     });
   });
 

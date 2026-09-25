@@ -1,4 +1,4 @@
-import { IsString, IsOptional, IsNumber, IsNotEmpty, MaxLength, Min, Max, IsIn } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsInt, IsNotEmpty, MaxLength, Min, Max, IsIn } from 'class-validator';
 
 export const SUPPORTED_GENERATION_DURATIONS = [30, 60, 120, 180] as const;
 export type SupportedGenerationDuration = typeof SUPPORTED_GENERATION_DURATIONS[number];
@@ -14,7 +14,7 @@ export class CreateGenerationDto {
   @MaxLength(500)
   negativePrompt?: string;
 
-  @IsNumber()
+  @IsInt()
   @IsOptional()
   @Min(0)
   @Max(2147483647)
@@ -25,9 +25,15 @@ export class CreateGenerationDto {
   @IsIn(SUPPORTED_GENERATION_DURATIONS)
   durationSeconds?: SupportedGenerationDuration;
 
+  /**
+   * Artist profile to publish under. Optional: when omitted the job processor
+   * resolves (or creates) the caller's own artist. When set over HTTP it must be
+   * an artist the caller owns (GenerationService.createGenerationForCaller).
+   */
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  artistId!: string;
+  artistId?: string;
 }
 
 export interface GenerationStatusResponse {

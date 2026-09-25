@@ -328,6 +328,7 @@ export default function CreatePageContent() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             disabled={isGenerating}
+            maxLength={1000}
             rows={4}
           />
 

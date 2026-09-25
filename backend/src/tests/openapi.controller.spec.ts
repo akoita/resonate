@@ -5,6 +5,7 @@ import { OpenApiController, WellKnownController } from '../modules/openapi/opena
 import { OpenApiService } from '../modules/openapi/openapi.service';
 import { MCP_PROTOCOL_VERSION } from '../modules/mcp/mcp.constants';
 import { X402Config } from '../modules/x402/x402.config';
+import { applyGlobalValidation } from '../config/validation';
 
 function createMockConfig(overrides: Partial<X402Config> = {}): X402Config {
   return {
@@ -231,6 +232,7 @@ describe('OpenApiController', () => {
     }).compile();
 
     app = moduleRef.createNestApplication();
+    applyGlobalValidation(app);
     await app.init();
   });
 
