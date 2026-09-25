@@ -1,40 +1,19 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
 import { AuthGuard } from "@nestjs/passport";
+import { FundLocalDevWalletDto } from "./payments.dto";
 import { PaymentSurface, PaymentsService } from "./payments.service";
 
+/**
+ * Payment asset discovery, quotes, funding options, and local-dev funding.
+ *
+ * The prototype `initiate` / `split-config` / `split` / `confirm` routes were
+ * removed (#1890): they had no client, and any authenticated caller could
+ * publish a `payment.settled` domain event with an arbitrary amount into payout
+ * analytics.
+ */
 @Controller("payments")
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
-
-  @UseGuards(AuthGuard("jwt"))
-  @Post("initiate")
-  initiate(@Body() body: {
-    sessionId: string;
-    amountUsd: number;
-    trackId?: string;
-    chainId?: number;
-    assetId?: string;
-  }) {
-    return this.paymentsService.initiatePayment(body);
-  }
-
-  @UseGuards(AuthGuard("jwt"))
-  @Post("split-config")
-  splitConfig(@Body() body: { trackId: string; artistPct: number; mixerPct: number }) {
-    return this.paymentsService.setSplitConfig(body);
-  }
-
-  @UseGuards(AuthGuard("jwt"))
-  @Post("split")
-  split(@Body() body: { paymentId: string; artistPct: number; mixerPct: number }) {
-    return this.paymentsService.splitPayment(body);
-  }
-
-  @UseGuards(AuthGuard("jwt"))
-  @Post("confirm")
-  confirm(@Body() body: { paymentId: string }) {
-    return this.paymentsService.confirmOnChain(body.paymentId);
-  }
 
   @Get("assets")
   assets(@Query("chainId") chainId?: string) {
@@ -95,9 +74,7 @@ export class PaymentsController {
 
   @UseGuards(AuthGuard("jwt"))
   @Post("dev/fund")
-  fundLocalDevWallet(
-    @Body() body: { wallet: string; assetId: string; amount?: string },
-  ) {
+  fundLocalDevWallet(@Body() body: FundLocalDevWalletDto) {
     return this.paymentsService.fundLocalDevWallet(body);
   }
 }
