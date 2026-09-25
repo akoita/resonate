@@ -19,6 +19,7 @@ import {
   classifyProjectLoadError,
   describeSourceRights,
   doublingReferenceStemIds,
+  effectsBpm,
   initialEdits,
   intentReturningFromMix,
   isFullMixStemType,
@@ -44,6 +45,11 @@ import {
   transportLoopLabel,
 } from "./RemixStudioEditor";
 import type { RemixEligibilityResponse } from "../../lib/api";
+import {
+  applyVibe,
+  REMIX_FX_SCHEMA_VERSION,
+  withStemFx,
+} from "../../lib/remixFx";
 import {
   dbToLinearGain,
   remixDraftOutputUri,
@@ -258,6 +264,75 @@ describe("buildProjectPatch", () => {
     const p = project();
     const edits = { ...initialEdits(p), title: "   " };
     expect(buildProjectPatch(p, edits)).toEqual({});
+  });
+  it("diffs the effects recipe (#1897)", () => {
+    const p = project();
+    expect(initialEdits(p).effects).toBeNull();
+    const slowed = {
+      ...initialEdits(p),
+      effects: applyVibe("slowed_reverb", null, p.stems),
+    };
+    expect(buildProjectPatch(p, slowed)).toEqual({
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        master: { speed: 0.85, space: 0.45, tone: -0.15 },
+      },
+    });
+
+    const saved = project({
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        master: { speed: 0.85 },
+        stems: { "stem-1": { echo: 0.3 }, "stem-gone": { echo: 0.5 } },
+      },
+    });
+    const baseline = initialEdits(saved);
+    // Unknown stems are dropped on read; an unchanged recipe is clean.
+    expect(baseline.effects?.stems).toEqual({ "stem-1": { echo: 0.3 } });
+    expect(buildProjectPatch(saved, baseline)).toEqual({});
+    // Same values in a different shape are still clean.
+    expect(
+      buildProjectPatch(saved, {
+        ...baseline,
+        effects: {
+          schemaVersion: REMIX_FX_SCHEMA_VERSION,
+          stems: { "stem-1": { echo: 0.3, tone: 0 } },
+          master: { speed: 0.851 },
+        },
+      }),
+    ).toEqual({});
+    expect(
+      buildProjectPatch(saved, {
+        ...baseline,
+        effects: withStemFx(baseline.effects, "stem-1", "tone", 0.5),
+      }).effects?.stems,
+    ).toEqual({ "stem-1": { echo: 0.3, tone: 0.5 } });
+    // Clearing sends null.
+    expect(buildProjectPatch(saved, { ...baseline, effects: null })).toEqual({
+      effects: null,
+    });
+  });
+
+  it("uses only a bars grid's bpm for echo sync (#1897)", () => {
+    expect(effectsBpm(null)).toBeNull();
+    expect(
+      effectsBpm({
+        kind: "bars",
+        sections: [],
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        bpm: 118.4,
+      }),
+    ).toBe(118.4);
+    expect(
+      effectsBpm({
+        kind: "time",
+        sections: [],
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        bpm: 120,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -1395,7 +1470,8 @@ describe("full-mix reference stems (Phase 0)", () => {
 
   it("offers no Original source without a reference", () => {
     const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
-    expect(html).not.toContain(">Original</button>");
+    // The transport's Original source (the vibe reset is "No effects").
+    expect(html).not.toContain("original full mix");
     // Arrangement alone needs no switch.
     expect(html).not.toContain('aria-label="Preview source"');
   });

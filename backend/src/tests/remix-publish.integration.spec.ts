@@ -490,6 +490,89 @@ describe("Remix publish (integration)", () => {
     });
   });
 
+  it("records the rendered effects recipe in the publish lineage (#1897)", async () => {
+    const effects = {
+      schemaVersion: "remix-fx/v1",
+      master: { speed: 0.85, space: 0.45 },
+      stems: { [LICENSED_STEM_ID]: { echo: 0.33 } },
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        sourceArrangement: [
+          { stemId: LICENSED_STEM_ID, gainDb: 0, muted: false },
+        ],
+        renderMetadata: {
+          schemaVersion: "remix-render-policy/v1",
+          inputCount: 1,
+          activeStemCount: 1,
+          effects,
+          effectsDspVersion: "remix-fx-dsp/v1",
+        },
+      }),
+    });
+    // The live project recipe changed after the render: lineage must record
+    // what the published audio was actually rendered with.
+    await prisma.remixProject.update({
+      where: { id: project.id },
+      data: {
+        effects: { schemaVersion: "remix-fx/v1", master: { speed: 1.2 } },
+      },
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    expect(track.generationMetadata).toMatchObject({
+      grounding: "stem_audio",
+      aiGenerated: false,
+      sourceArrangement: [{ stemId: LICENSED_STEM_ID, gainDb: 0, muted: false }],
+      effects,
+      effectsDspVersion: "remix-fx-dsp/v1",
+    });
+  });
+
+  it("records audio-conditioned conditioning effects in the lineage (#1897)", async () => {
+    const effects = {
+      schemaVersion: "remix-fx/v1",
+      master: { speed: 0.9, space: 0.2 },
+    };
+    const project = await createProjectRow({
+      userId: CREATOR_ID,
+      generationMetadata: completedGenerationMetadata({
+        mode: "variation",
+        grounding: "audio_conditioned",
+        conditioningEffects: { effects, effectsDspVersion: "remix-fx-dsp/v1" },
+      }),
+    });
+
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect(lineage).toMatchObject({
+      grounding: "audio_conditioned",
+      aiGenerated: true,
+      conditioningEffects: { effects, effectsDspVersion: "remix-fx-dsp/v1" },
+    });
+    // The conditioning recipe is not claimed as the artifact's render recipe.
+    expect("effects" in lineage).toBe(false);
+  });
+
+  it("omits effects from the lineage when the draft had none (#1897)", async () => {
+    const project = await createProjectRow({ userId: CREATOR_ID });
+    const result = await projectService.publishProject(CREATOR_ID, project.id);
+    const track = await prisma.track.findFirstOrThrow({
+      where: { releaseId: result.publishedReleaseId! },
+    });
+    const lineage = track.generationMetadata as Record<string, unknown>;
+    expect("effects" in lineage).toBe(false);
+    expect("effectsDspVersion" in lineage).toBe(false);
+    expect("conditioningEffects" in lineage).toBe(false);
+  });
+
   it("serves the published track through existing catalog streaming", async () => {
     const project = await createProjectRow({ userId: CREATOR_ID });
     const result = await projectService.publishProject(CREATOR_ID, project.id);
@@ -696,6 +779,20 @@ describe("Remix publish (integration)", () => {
     expect(patchError.getResponse()).toMatchObject({
       code: "project_published",
     });
+
+    // Effects edits (#1897) are locked like every other edit.
+    const effectsError = await projectService
+      .updateProject(CREATOR_ID, project.id, {
+        effects: { master: { speed: 0.85 } },
+      })
+      .then(() => null)
+      .catch((caught) => caught);
+    expect(effectsError).toBeInstanceOf(ConflictException);
+    const lockedRow = await prisma.remixProject.findUniqueOrThrow({
+      where: { id: project.id },
+      select: { effects: true },
+    });
+    expect(lockedRow.effects).toBeNull();
 
     await expect(
       projectService.generateDraft(CREATOR_ID, project.id, { retry: true }),

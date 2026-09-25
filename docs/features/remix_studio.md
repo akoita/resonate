@@ -510,6 +510,45 @@ from the JWT, never the request body.
   `web/src/components/remix/RemixDraftsPanel.test.tsx`,
   `web/src/components/remix/RemixStudioEditor.test.tsx`,
   `web/tests/remix-studio.authenticated.spec.ts`.
+- Studio effects and vibe starters (#1897, slice S1 of epic
+  [#1896](https://github.com/akoita/resonate/issues/1896) "Remix Studio for
+  everyone"). The target user is a passionate listener with no
+  sound-engineering skills, so the controls change the real stems
+  deterministically instead of generating new audio.
+  - **Recipe.** A versioned effects recipe (`remix-fx/v1`, stored as
+    `RemixProject.effects`; null = untouched) holds a master section (speed
+    0.75–1.25 varispeed, space, tone, warmth) and per-stem sections (space,
+    echo, tone).
+    - `PATCH /remix/projects/:id` validates it (bounds, project stems only),
+      rounds values to 2 decimals, omits defaults, and stores an all-default
+      recipe as null.
+    - Project reads return it.
+  - **One DSP contract, two engines.** Both the ffmpeg render and the
+    WebAudio preview run the same signal order and math.
+    - Per stem: varispeed → gain → section gate (in output time) →
+      tone filter → 4-tap tempo-synced echo → dry plus a send to one shared
+      reverb bus.
+    - Master: tone → `tanh` warmth → the loudness policy.
+    - The reverb is a deterministic, code-generated impulse response
+      (seeded noise with a 60 dB decay over 2.8 s), so it has no licensing and
+      is reproducible.
+    - A committed parity fixture
+      (`backend/src/modules/remix/remix-fx-v1.parity.json`) holds both
+      implementations to the same numbers.
+    - With no effects, the render graph is byte-identical to before.
+  - **Speed is varispeed.** Pitch follows speed, which is the authentic
+    "slowed + reverb" / "sped up" sound. Keep-pitch tempo and key shift are
+    S1b (#1898).
+  - **Controls.**
+    - Create → Mix stems gains a **Vibe** section: one-click starters
+      (Slowed + reverb, Sped up, Lo-fi, Dreamy, Club, and No effects to reset) and four
+      plain-language master sliders (Speed, Space, Tone, Warmth).
+    - Each stem row has an **FX** toggle for its own Space / Echo / Tone.
+    - A vibe sets visible values the user can tweak.
+    - Everything previews live and autosaves.
+  - **Provenance.** Effects are not AI, so renders keep `stem_audio`
+    grounding. `renderMetadata` and publish lineage record the recipe and
+    `remix-fx-dsp/v1`.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

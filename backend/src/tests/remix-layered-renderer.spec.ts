@@ -45,6 +45,41 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
     authorizedStemIds: new Set(["stem-1"]),
   };
 
+  it("forwards the effects recipe to the one final mix graph (#1897)", async () => {
+    const fx = {
+      effects: {
+        schemaVersion: "remix-fx/v1" as const,
+        master: { speed: 1.1, warmth: 0.25 },
+      },
+      bpm: 96,
+    };
+    await renderer().render({
+      remixProjectId: "project-1",
+      stems: [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      authorization,
+      fx,
+      layer: {
+        provider: "lyria-3-pro-preview",
+        jobId: "layer-job",
+        prompt: "add piano",
+        constraints: {},
+        output: {
+          outputUri: "local://layer.wav",
+          mimeType: "audio/wav",
+          synthIdPresent: true,
+          seed: 1,
+          sampleRate: 48000,
+        },
+      },
+    });
+    expect(mixer.mixUnmutedStemsWithAudioBuffers).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      [expect.objectContaining({ label: "generated-layer", gainDb: 0 })],
+      authorization,
+      fx,
+    );
+  });
+
   it("mixes arranged stems and the generated layer into one stored draft", async () => {
     const job = await renderer().render({
       remixProjectId: "project-1",

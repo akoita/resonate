@@ -14,6 +14,7 @@ import {
   stemTransformPromptLead,
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
+import { REMIX_FX_DSP_VERSION } from "./remix-fx";
 
 /**
  * Audio-conditioned remix provider (#1182 slice 4) — the first provider that
@@ -86,10 +87,15 @@ export class AudioConditionedRemixGenerationProvider
     // Condition on exactly what the user arranged. The shared mixer decrypts
     // any authorized encrypted source stems in memory (#1214) before the mix
     // is sent to the worker; ciphertext never leaves the backend.
-    const mixed = await this.mixer.mixUnmutedStems(
-      input.stemArrangement,
-      authorization,
-    );
+    // Effects (#1897) shape the conditioning mix exactly as the user hears
+    // them in the studio; omitted entirely when the project has none.
+    const mixed = input.renderFx
+      ? await this.mixer.mixUnmutedStems(
+          input.stemArrangement,
+          authorization,
+          input.renderFx,
+        )
+      : await this.mixer.mixUnmutedStems(input.stemArrangement, authorization);
 
     const generated = await this.callWorker({
       config,
@@ -138,6 +144,15 @@ export class AudioConditionedRemixGenerationProvider
         seed: generated.seed,
         sampleRate: generated.sampleRate,
       },
+      // #1897 provenance: the recipe that shaped the conditioning mix.
+      ...(input.renderFx
+        ? {
+            conditioningEffects: {
+              effects: input.renderFx.effects,
+              effectsDspVersion: REMIX_FX_DSP_VERSION,
+            },
+          }
+        : {}),
     };
   }
 

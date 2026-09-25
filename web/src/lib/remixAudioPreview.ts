@@ -1,3 +1,21 @@
+import {
+  biquadQDb,
+  echoTaps,
+  echoTapSpacing,
+  generateReverbImpulse,
+  normalizeRemixFx,
+  remixFxMaster,
+  remixFxStem,
+  REMIX_FX_ECHO_TAPS,
+  REMIX_FX_REVERB_SECONDS,
+  REMIX_FX_REVERB_SEEDS,
+  REMIX_FX_WARMTH_CURVE_POINTS,
+  reverbWet,
+  toneFilter,
+  warmthCurve,
+  type RemixFxRecipe,
+} from "./remixFx";
+
 export type RemixDraftOutputMetadata = {
   outputUri: string | null;
   mimeType?: string | null;
@@ -150,6 +168,37 @@ export function scheduleSectionEnvelopeFrom(
   }
 }
 
+/**
+ * Section spans in OUTPUT time for a varispeed factor (#1897): a source
+ * position t plays at t/speed after the source's timeline zero, so the
+ * render and the preview both gate at intervals ÷ speed (edge fades stay a
+ * fixed output-time length). null/undefined pass through unchanged.
+ */
+export function outputTimeIntervals(
+  intervals: SectionInterval[] | null | undefined,
+  speed: number,
+): SectionInterval[] | null | undefined {
+  if (!intervals || speed === 1) return intervals;
+  return intervals.map((interval) => ({
+    startSec: interval.startSec / speed,
+    endSec: interval.endSec / speed,
+  }));
+}
+
+/**
+ * Source-timeline position while playing at `speed` (#1897): the source
+ * advances `speed` seconds per context second from `offsetSec` at
+ * `startAt` (before the scheduled start it sits on the offset).
+ */
+export function sourcePositionAt(input: {
+  offsetSec: number;
+  startAt: number;
+  now: number;
+  speed: number;
+}): number {
+  return input.offsetSec + Math.max(0, input.now - input.startAt) * input.speed;
+}
+
 /** A looped span on the stem timeline, in seconds. */
 export type PreviewLoop = { startSec: number; endSec: number };
 
@@ -202,6 +251,18 @@ export type StemArrangementPreviewHandle = {
    * constant (see `play`), so this only recomputes it.
    */
   updateSections(stems: PreviewStemState[]): void;
+  /**
+   * Live effects edits (#1897): tone, echo, space and warmth update in place
+   * and return "applied". A speed (or bpm) change, or effects appearing on a
+   * preview started without any, returns "restart": the caller restarts
+   * playback at the current source position — the simplest correct option,
+   * since the source rate, echo spacing and output-time envelopes all
+   * depend on it.
+   */
+  updateEffects(
+    effects: RemixFxRecipe | null,
+    bpm?: number | null,
+  ): "applied" | "restart";
 };
 
 export type StemPreviewEngine = {
@@ -219,6 +280,13 @@ export type StemPreviewEngine = {
     onEnded?: () => void;
     offsetSec?: number;
     loop?: PreviewLoop | null;
+    /**
+     * Effects recipe `remix-fx/v1` (#1897); null/absent keeps the plain
+     * graph (source → gain → section gain → limiter), with no extra nodes.
+     */
+    effects?: RemixFxRecipe | null;
+    /** Bar-grid tempo for tempo-synced echo; null = the 0.375 s fallback. */
+    bpm?: number | null;
   }): Promise<StemArrangementPreviewHandle>;
   /**
    * Fetch and decode stems into the cache ahead of play (#1879), e.g. for
@@ -326,10 +394,108 @@ const INERT_HANDLE: StemArrangementPreviewHandle = {
   position: () => 0,
   duration: () => 0,
   updateSections: () => undefined,
+  updateEffects: () => "applied",
 };
 
 /** Shortest loop the engine will cycle; anything shorter plays unlooped. */
 const MIN_LOOP_SECONDS = 0.05;
+
+/**
+ * The preview's warmth WaveShaper sees its input pre-scaled by 1/this and a
+ * curve stretched over ±this, so summed stems louder than full scale keep
+ * the render's tanh shape instead of hitting the curve's end values.
+ */
+export const PREVIEW_WARMTH_INPUT_RANGE = 4;
+
+function positiveBpm(bpm: number | null | undefined): number | null {
+  return typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0 ? bpm : null;
+}
+
+/**
+ * Switchable tone stage: `input` feeds a dry gain and a biquad → wet gain,
+ * both summed into `output`. No filter = dry 1 / wet 0, i.e. bit-identical
+ * bypass, so a live tone edit never changes the graph's topology.
+ */
+function createToneStage(context: AudioContext, input: AudioNode, nodes: AudioNode[]) {
+  const dry = context.createGain();
+  const filter = context.createBiquadFilter();
+  const wet = context.createGain();
+  const output = context.createGain();
+  input.connect(dry).connect(output);
+  input.connect(filter).connect(wet).connect(output);
+  nodes.push(dry, filter, wet, output);
+  const set = (tone: number) => {
+    const spec = toneFilter(tone);
+    if (spec) {
+      filter.type = spec.type;
+      filter.frequency.value = spec.frequencyHz;
+      // WebAudio's lowpass/highpass Q is in dB; see biquadQDb.
+      filter.Q.value = biquadQDb(spec.q);
+      dry.gain.value = 0;
+      wet.gain.value = 1;
+    } else {
+      dry.gain.value = 1;
+      wet.gain.value = 0;
+    }
+  };
+  return { output, filter, dry, wet, set };
+}
+
+type StemFxChain = {
+  tone: ReturnType<typeof createToneStage>;
+  tapGains: GainNode[];
+  send: GainNode;
+};
+
+type FxGraph = {
+  stems: Map<string, StemFxChain>;
+  masterTone: ReturnType<typeof createToneStage>;
+  warmthDry: GainNode;
+  warmthWet: GainNode;
+  shaper: WaveShaperNode;
+  nodes: AudioNode[];
+  /**
+   * Seconds the graph keeps ringing after the sources end (#1897): the
+   * reverb IR length when any send is open, the last echo tap when any echo
+   * is on — the max of the two; 0 without either.
+   */
+  tailSeconds: number;
+  speed: number;
+  bpm: number | null;
+};
+
+/** Apply tone / echo / space / warmth values to a built graph, in place. */
+function applyFxValues(graph: FxGraph, effects: RemixFxRecipe | null): void {
+  const master = remixFxMaster(effects);
+  let tail = 0;
+  for (const [stemId, chain] of graph.stems) {
+    const stemFx = remixFxStem(effects, stemId);
+    chain.tone.set(stemFx.tone);
+    const taps = echoTaps(stemFx.echo, graph.bpm, graph.speed);
+    chain.tapGains.forEach((tapGain, index) => {
+      tapGain.gain.value = taps[index]?.gain ?? 0;
+    });
+    const wet = reverbWet(stemFx.space, master.space);
+    chain.send.gain.value = wet;
+    if (wet > 0) tail = Math.max(tail, REMIX_FX_REVERB_SECONDS);
+    const lastTap = taps[taps.length - 1];
+    if (lastTap) tail = Math.max(tail, lastTap.delaySec);
+  }
+  graph.tailSeconds = tail;
+  graph.masterTone.set(master.tone);
+  if (master.warmth > 0) {
+    graph.shaper.curve = warmthCurve(
+      master.warmth,
+      REMIX_FX_WARMTH_CURVE_POINTS,
+      PREVIEW_WARMTH_INPUT_RANGE,
+    );
+    graph.warmthDry.gain.value = 0;
+    graph.warmthWet.gain.value = 1;
+  } else {
+    graph.warmthDry.gain.value = 1;
+    graph.warmthWet.gain.value = 0;
+  }
+}
 
 /**
  * Persistent studio preview engine. One AudioContext (created lazily on the
@@ -356,6 +522,8 @@ export function createStemPreviewEngine(input: {
     analyser: AnalyserNode;
   } | null = null;
   let meterData: Float32Array<ArrayBuffer> | null = null;
+  // Reverb IR (#1897), generated once per context at its sample rate.
+  let reverbImpulse: AudioBuffer | null = null;
   let current: StemArrangementPreviewHandle | null = null;
   let playGeneration = 0;
   let disposed = false;
@@ -454,6 +622,18 @@ export function createStemPreviewEngine(input: {
     return longest;
   };
 
+  const reverbBuffer = (audioContext: AudioContext): AudioBuffer => {
+    if (reverbImpulse) return reverbImpulse;
+    const rate = audioContext.sampleRate;
+    const left = generateReverbImpulse(rate, REMIX_FX_REVERB_SEEDS.left);
+    const right = generateReverbImpulse(rate, REMIX_FX_REVERB_SEEDS.right);
+    const buffer = audioContext.createBuffer(2, left.length, rate);
+    buffer.copyToChannel(Float32Array.from(left), 0);
+    buffer.copyToChannel(Float32Array.from(right), 1);
+    reverbImpulse = buffer;
+    return buffer;
+  };
+
   const decode: StemPreviewEngine["decode"] = async (data) => {
     if (disposed) {
       throw new Error("Audio preview engine was disposed.");
@@ -505,6 +685,11 @@ export function createStemPreviewEngine(input: {
       duration,
     );
     const offset = loop ? loopEntryOffset(requestedOffset, loop) : requestedOffset;
+    const effects = normalizeRemixFx(request.effects ?? null);
+    // Varispeed (#1897): the source plays `speed` source-seconds per
+    // context second; pitch follows, like the render.
+    const speed = remixFxMaster(effects).speed;
+    const bpm = positiveBpm(request.bpm);
 
     const sources: AudioBufferSourceNode[] = [];
     const gains = new Map<string, GainNode>();
@@ -512,13 +697,21 @@ export function createStemPreviewEngine(input: {
     let stopped = false;
     let endedCount = 0;
     const startAt = audioContext.currentTime + 0.03;
-    // Context time of timeline 0: position = currentTime - timelineZero.
-    const timelineZero = startAt - offset;
+    // Context time of source timeline 0 in OUTPUT time (#1897): source time
+    // t plays at startAt + (t − offset)/speed = timelineZero + t/speed.
+    const timelineZero = startAt - offset / speed;
     let frozenPosition: number | null = null;
+    let fx: FxGraph | null = null;
+    // Effects tail hold (#1897): pending release after the sources ended.
+    let tailTimer: ReturnType<typeof setTimeout> | null = null;
 
     const livePosition = (): number => {
-      const linear =
-        offset + Math.max(0, audioContext.currentTime - startAt);
+      const linear = sourcePositionAt({
+        offsetSec: offset,
+        startAt,
+        now: audioContext.currentTime,
+        speed,
+      });
       return loop ? wrapLoopPosition(linear, loop) : Math.min(linear, duration);
     };
 
@@ -526,6 +719,7 @@ export function createStemPreviewEngine(input: {
       for (const source of sources) source.disconnect();
       for (const gain of gains.values()) gain.disconnect();
       for (const gain of sectionGains.values()) gain.disconnect();
+      for (const node of fx?.nodes ?? []) node.disconnect();
     };
 
     const scheduleSections = (stems: PreviewStemState[], now: number) => {
@@ -544,12 +738,16 @@ export function createStemPreviewEngine(input: {
             now,
           );
         } else if (offset === 0 && now === startAt) {
-          // From-zero start: the original envelope, unchanged.
-          scheduleSectionEnvelope(sectionGain.gain, stem.activeIntervals, startAt);
+          // From-zero start: the original envelope (in output time).
+          scheduleSectionEnvelope(
+            sectionGain.gain,
+            outputTimeIntervals(stem.activeIntervals, speed),
+            startAt,
+          );
         } else {
           scheduleSectionEnvelopeFrom(
             sectionGain.gain,
-            stem.activeIntervals,
+            outputTimeIntervals(stem.activeIntervals, speed),
             timelineZero,
             now - timelineZero,
             now,
@@ -569,6 +767,11 @@ export function createStemPreviewEngine(input: {
       },
       stop() {
         if (stopped) return;
+        // A stop during the effects tail releases immediately.
+        if (tailTimer !== null) {
+          clearTimeout(tailTimer);
+          tailTimer = null;
+        }
         frozenPosition = livePosition();
         stopped = true;
         for (const source of sources) {
@@ -588,7 +791,91 @@ export function createStemPreviewEngine(input: {
         if (stopped) return;
         scheduleSections(stems, Math.max(audioContext.currentTime, startAt));
       },
+      updateEffects(nextEffects, nextBpm = null) {
+        if (stopped) return "applied";
+        const normalized = normalizeRemixFx(nextEffects);
+        if (!fx) return normalized === null ? "applied" : "restart";
+        if (
+          remixFxMaster(normalized).speed !== fx.speed ||
+          positiveBpm(nextBpm) !== fx.bpm
+        ) {
+          return "restart";
+        }
+        applyFxValues(fx, normalized);
+        return "applied";
+      },
     };
+
+    // Effects graph (#1897), only when a recipe is set: per stem
+    // section gain → tone → echo (dry + 4 explicit taps) → master bus, plus
+    // a reverb send into one shared convolver → master bus; then master
+    // bus → master tone → warmth → limiter. Every stage is built with
+    // bypass gains so live edits never change the topology.
+    let stemInput: (stemId: string) => AudioNode = () => output;
+    if (effects) {
+      const nodes: AudioNode[] = [];
+      const masterBus = audioContext.createGain();
+      const convolver = audioContext.createConvolver();
+      convolver.normalize = false;
+      convolver.buffer = reverbBuffer(audioContext);
+      convolver.connect(masterBus);
+      nodes.push(masterBus, convolver);
+      const masterTone = createToneStage(audioContext, masterBus, nodes);
+      const warmthDry = audioContext.createGain();
+      const warmthPre = audioContext.createGain();
+      const shaper = audioContext.createWaveShaper();
+      const warmthWet = audioContext.createGain();
+      shaper.oversample = "none";
+      warmthPre.gain.value = 1 / PREVIEW_WARMTH_INPUT_RANGE;
+      masterTone.output.connect(warmthDry).connect(output);
+      masterTone.output
+        .connect(warmthPre)
+        .connect(shaper)
+        .connect(warmthWet)
+        .connect(output);
+      nodes.push(warmthDry, warmthPre, shaper, warmthWet);
+
+      // Tap spacing depends only on bpm and speed, fixed for this play.
+      const spacing = echoTapSpacing(bpm, speed);
+      const stemChains = new Map<string, StemFxChain>();
+      const stemInputs = new Map<string, AudioNode>();
+      for (const stem of request.stems) {
+        if (stemChains.has(stem.stemId)) continue;
+        const input = audioContext.createGain();
+        nodes.push(input);
+        const tone = createToneStage(audioContext, input, nodes);
+        const echoOut = audioContext.createGain();
+        tone.output.connect(echoOut); // dry
+        const tapGains: GainNode[] = [];
+        for (let k = 1; k <= REMIX_FX_ECHO_TAPS; k += 1) {
+          const delay = audioContext.createDelay(k * spacing + 0.01);
+          delay.delayTime.value = k * spacing;
+          const tapGain = audioContext.createGain();
+          tone.output.connect(delay).connect(tapGain).connect(echoOut);
+          tapGains.push(tapGain);
+          nodes.push(delay, tapGain);
+        }
+        const send = audioContext.createGain();
+        echoOut.connect(masterBus);
+        echoOut.connect(send).connect(convolver);
+        nodes.push(echoOut, send);
+        stemChains.set(stem.stemId, { tone, tapGains, send });
+        stemInputs.set(stem.stemId, input);
+      }
+      fx = {
+        stems: stemChains,
+        masterTone,
+        warmthDry,
+        warmthWet,
+        shaper,
+        nodes,
+        tailSeconds: 0,
+        speed,
+        bpm,
+      };
+      applyFxValues(fx, effects);
+      stemInput = (stemId) => stemInputs.get(stemId) ?? masterBus;
+    }
 
     request.stems.forEach((stem, index) => {
       const source = audioContext.createBufferSource();
@@ -604,16 +891,30 @@ export function createStemPreviewEngine(input: {
         source.loopStart = loop.startSec;
         source.loopEnd = loop.endSec;
       }
-      source.connect(gain).connect(sectionGain).connect(output);
+      if (speed !== 1) source.playbackRate.value = speed;
+      source.connect(gain).connect(sectionGain).connect(stemInput(stem.stemId));
       source.onended = () => {
         endedCount += 1;
         // A looping preview only ends through stop().
-        if (!loop && !stopped && endedCount >= sources.length) {
-          frozenPosition = livePosition();
-          stopped = true;
-          releaseNodes();
-          if (current === handle) current = null;
-          request.onEnded?.();
+        if (!loop && !stopped && tailTimer === null && endedCount >= sources.length) {
+          const finish = () => {
+            tailTimer = null;
+            if (stopped) return;
+            frozenPosition = livePosition();
+            stopped = true;
+            releaseNodes();
+            if (current === handle) current = null;
+            request.onEnded?.();
+          };
+          // Like the render (#1897), keep the graph connected until the
+          // reverb/echo tail has rung out; the playhead holds at the end
+          // (position clamps to the duration) meanwhile.
+          const tail = fx?.tailSeconds ?? 0;
+          if (tail > 0) {
+            tailTimer = setTimeout(finish, tail * 1000);
+          } else {
+            finish();
+          }
         }
       };
       sources.push(source);
@@ -647,6 +948,7 @@ export function createStemPreviewEngine(input: {
     master?.analyser.disconnect();
     master = null;
     meterData = null;
+    reverbImpulse = null;
     const closing = context;
     context = null;
     void closing?.close().catch(() => undefined);

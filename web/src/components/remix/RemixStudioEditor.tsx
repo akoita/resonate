@@ -51,6 +51,18 @@ import {
   type RemixIntent,
 } from "../../lib/remixIntent";
 import { applicableRecipes, applyRecipe } from "../../lib/remixRecipes";
+import {
+  applyVibe,
+  normalizeRemixFx,
+  remixFxStem,
+  sameRemixFx,
+  withMasterFx,
+  withStemFx,
+  type RemixFxMaster,
+  type RemixFxRecipe,
+  type RemixFxStem,
+  type RemixVibeId,
+} from "../../lib/remixFx";
 import { RemixSessionLanes, sectionColumnLabels, type LaneStem } from "./RemixSessionLanes";
 import { RemixTransportBar } from "./RemixTransportBar";
 import { RemixCreatePanel } from "./RemixCreatePanel";
@@ -90,6 +102,8 @@ export type ProjectEdits = {
   stems: Record<string, StemEdit>;
   /** Studio AI intent (#1882), saved with the project; whole = default. */
   aiTarget: AiTargetEdit;
+  /** Effects recipe `remix-fx/v1` (#1897), normalized; null = untouched. */
+  effects: RemixFxRecipe | null;
 };
 
 export type AiTargetEdit = { kind: AiTargetKind; stemId: string | null };
@@ -143,6 +157,10 @@ export function initialEdits(project: RemixProject): ProjectEdits {
     mode: project.mode,
     stems,
     aiTarget: normalizeAiTarget(project.aiTarget, project.stems),
+    effects: normalizeRemixFx(
+      project.effects,
+      project.stems.map((stem) => stem.stemId),
+    ),
   };
 }
 
@@ -178,6 +196,11 @@ export function buildProjectPatch(
       editTarget.kind === "whole"
         ? null
         : { kind: editTarget.kind, stemId: editTarget.stemId };
+  }
+  const projectStemIds = project.stems.map((stem) => stem.stemId);
+  if (!sameRemixFx(project.effects, edits.effects, projectStemIds)) {
+    // null clears the recipe server-side (#1897).
+    patch.effects = normalizeRemixFx(edits.effects, projectStemIds);
   }
   const sectionCount = project.sectionGrid?.sections.length ?? 0;
   const stemPatches: NonNullable<RemixProjectPatch["stems"]> = [];
@@ -368,6 +391,21 @@ export function stemDisplayName(stem: {
 }): string {
   if (stem.title) return stem.title;
   return stem.type.charAt(0).toUpperCase() + stem.type.slice(1);
+}
+
+/**
+ * Tempo for tempo-synced echo (#1897): the served bar grid's bpm, unrounded
+ * (the render uses the same value); null for time grids or no grid.
+ */
+export function effectsBpm(
+  grid: RemixProject["sectionGrid"] | null | undefined,
+): number | null {
+  return grid?.kind === "bars" &&
+    typeof grid.bpm === "number" &&
+    Number.isFinite(grid.bpm) &&
+    grid.bpm > 0
+    ? grid.bpm
+    : null;
 }
 
 /** Footer save-state copy; pure so the title/dirty interplay is testable. */
@@ -1161,6 +1199,8 @@ export function RemixStudioEditor({
     referenceStemId,
     currentDraftJobId: draftOutputUri ? project.generationJobId : null,
     timelineSec: project.sectionGrid?.durationSeconds ?? null,
+    effects: edits.effects,
+    bpm: effectsBpm(project.sectionGrid),
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -1263,8 +1303,30 @@ export function RemixStudioEditor({
       gainDb: edit?.gainDb ?? stem.gainDb,
       sections: edit?.sections ?? null,
       peaks: transport.peaks[stem.stemId] ?? null,
+      fx: remixFxStem(edits.effects, stem.stemId),
     };
   });
+
+  // Effects (#1897): every edit is normalized and autosaved like any other.
+  const updateEffects = (
+    change: (effects: RemixFxRecipe | null) => RemixFxRecipe | null,
+  ) => {
+    setEdits((prev) => {
+      const effects = change(prev.effects);
+      return sameRemixFx(effects, prev.effects)
+        ? prev
+        : { ...prev, effects };
+    });
+  };
+  const handleMasterFxChange = (key: keyof RemixFxMaster, value: number) =>
+    updateEffects((effects) => withMasterFx(effects, key, value));
+  const handleStemFxChange = (
+    stemId: string,
+    key: keyof RemixFxStem,
+    value: number,
+  ) => updateEffects((effects) => withStemFx(effects, stemId, key, value));
+  const handleApplyVibe = (vibeId: RemixVibeId) =>
+    updateEffects((effects) => applyVibe(vibeId, effects, project.stems));
 
   const toggleStemMute = (stemId: string) => {
     setEdits((prev) => {
@@ -2098,6 +2160,7 @@ export function RemixStudioEditor({
                   onSetSections={(stemId, sections) =>
                     updateStemEdit(stemId, { sections })
                   }
+                  onFxChange={handleStemFxChange}
                   onSeek={transport.seek}
                   onLoopSection={loopSection}
                 />
@@ -2187,6 +2250,9 @@ export function RemixStudioEditor({
               onReplaceStemChange={handleReplaceStemChange}
               recipes={recipes}
               onApplyRecipe={handleApplyRecipe}
+              effects={edits.effects}
+              onApplyVibe={handleApplyVibe}
+              onMasterFxChange={handleMasterFxChange}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,

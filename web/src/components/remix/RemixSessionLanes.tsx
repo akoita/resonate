@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
@@ -8,6 +8,12 @@ import {
   sectionStartLabel,
 } from "../../lib/remixArrangement";
 import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
+import {
+  formatFxAmount,
+  formatFxTone,
+  REMIX_FX_STEM_RANGES,
+  type RemixFxStem,
+} from "../../lib/remixFx";
 
 /**
  * Session view for the Remix Studio (#1879): one row per stem — a channel
@@ -30,6 +36,8 @@ export type LaneStem = {
   sections: boolean[] | null;
   /** 0..1 amplitude buckets across the whole stem; null = still loading. */
   peaks: number[] | null;
+  /** Per-stem effects (#1897); absent = defaults. */
+  fx?: RemixFxStem;
 };
 
 export type RemixSessionLanesProps = {
@@ -51,7 +59,42 @@ export type RemixSessionLanesProps = {
   onSetSections(stemId: string, sections: boolean[] | null): void;
   onSeek(sec: number): void;
   onLoopSection(index: number | null): void;
+  /** Per-stem effects edits (#1897); absent = no FX toggle. */
+  onFxChange?(stemId: string, key: keyof RemixFxStem, value: number): void;
 };
+
+type LaneFxControl = {
+  key: keyof RemixFxStem;
+  label: string;
+  low: string;
+  high: string;
+  format(value: number): string;
+  /** Compact label for the narrow channel strip. */
+  short(value: number): string;
+};
+
+/** Tone in one word for the strip; the full label is the valuetext. */
+function toneWord(tone: number): string {
+  const label = formatFxTone(tone);
+  return label.split(" ")[0];
+}
+
+/** Per-stem effect controls, in plain language (#1897). */
+export const LANE_FX_CONTROLS: readonly LaneFxControl[] = [
+  { key: "space", label: "Space", low: "Dry", high: "Roomy", format: formatFxAmount, short: formatFxAmount },
+  { key: "echo", label: "Echo", low: "None", high: "Lots", format: formatFxAmount, short: formatFxAmount },
+  { key: "tone", label: "Tone", low: "Darker", high: "Brighter", format: formatFxTone, short: toneWord },
+];
+
+/** Whether a stem has any non-default effect (the FX button's dot). */
+export function laneHasFx(fx: RemixFxStem | undefined): boolean {
+  if (!fx) return false;
+  return LANE_FX_CONTROLS.some(
+    (control) =>
+      (fx[control.key] ?? REMIX_FX_STEM_RANGES[control.key].default) !==
+      REMIX_FX_STEM_RANGES[control.key].default,
+  );
+}
 
 /** Minimum on-screen width of one section column, in CSS pixels. */
 export const LANE_MIN_SECTION_PX = 28;
@@ -193,7 +236,13 @@ export function RemixSessionLanes({
   onSetSections,
   onSeek,
   onLoopSection,
+  onFxChange,
 }: RemixSessionLanesProps) {
+  const fxIdPrefix = useId();
+  // Which stems show their FX row: view state only, never saved.
+  const [openFx, setOpenFx] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleFx = (stemId: string) =>
+    setOpenFx((open) => toggleInSet(open, stemId));
   const totalSec = timelineSeconds(durationSec, grid);
   const sectionCount = grid?.sections.length ?? 0;
   const labels = grid ? sectionColumnLabels(grid) : [];
@@ -358,8 +407,11 @@ export function RemixSessionLanes({
           </div>
         )}
 
-        {stems.map((stem) => {
+        {stems.map((stem, stemIndex) => {
           const dimmed = stem.muted || stem.soloedOut;
+          const fxOpen = onFxChange !== undefined && openFx.has(stem.stemId);
+          const fxActive = laneHasFx(stem.fx);
+          const fxRowId = `${fxIdPrefix}-fx-${stemIndex}`;
           const gainDb = stem.gainDb ?? 0;
           const mask = grid ? sectionMask(stem.sections, sectionCount) : [];
           const allOn = mask.every(Boolean);
@@ -389,6 +441,30 @@ export function RemixSessionLanes({
                     {stem.type}
                     {stem.soloedOut ? " · muted by solo" : ""}
                   </span>
+                  {onFxChange && (
+                    <button
+                      type="button"
+                      aria-expanded={fxOpen}
+                      aria-controls={fxOpen ? fxRowId : undefined}
+                      aria-label={`Effects for ${stem.name}${fxActive ? " (on)" : ""}`}
+                      title={fxActive ? "Effects on · show or hide" : "Show effects"}
+                      disabled={disabled}
+                      className={`relative shrink-0 rounded border px-1.5 text-[10px] disabled:opacity-40 remix-lane-fx-toggle ${
+                        fxOpen
+                          ? "bg-purple-500/20 border-purple-400/60 text-purple-100"
+                          : "bg-transparent border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100"
+                      }`}
+                      onClick={() => toggleFx(stem.stemId)}
+                    >
+                      FX
+                      {fxActive && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-purple-400 remix-lane-fx-dot"
+                        />
+                      )}
+                    </button>
+                  )}
                   {grid && (
                     <>
                       <button
@@ -471,6 +547,14 @@ export function RemixSessionLanes({
                     {formatGainDb(gainDb)}
                   </span>
                 </div>
+                {fxOpen && onFxChange && (
+                  <LaneFxRow
+                    id={fxRowId}
+                    stem={stem}
+                    disabled={disabled}
+                    onFxChange={onFxChange}
+                  />
+                )}
               </div>
 
               {/* Lane */}
@@ -573,6 +657,77 @@ export function RemixSessionLanes({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A copy of `set` with `value` toggled. */
+export function toggleInSet(
+  set: ReadonlySet<string>,
+  value: string,
+): ReadonlySet<string> {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
+}
+
+/**
+ * The compact per-stem effects row revealed by a lane's FX toggle (#1897):
+ * Space, Echo and Tone sliders with plain labels.
+ */
+export function LaneFxRow({
+  id,
+  stem,
+  disabled,
+  onFxChange,
+}: {
+  id: string;
+  stem: Pick<LaneStem, "stemId" | "name" | "fx">;
+  disabled: boolean;
+  onFxChange(stemId: string, key: keyof RemixFxStem, value: number): void;
+}) {
+  return (
+    <div
+      id={id}
+      role="group"
+      aria-label={`${stem.name} effects`}
+      className="mt-1 flex flex-col gap-1 border-t border-zinc-800 pt-1 remix-lane-fx"
+    >
+      {LANE_FX_CONTROLS.map((control) => {
+        const range = REMIX_FX_STEM_RANGES[control.key];
+        const value = stem.fx?.[control.key] ?? range.default;
+        return (
+          <div
+            key={control.key}
+            className={`flex items-center gap-1.5 remix-lane-fx-${control.key}`}
+          >
+            <span
+              className="w-9 shrink-0 text-[10px] text-zinc-400"
+              title={`${control.low} … ${control.high}`}
+            >
+              {control.label}
+            </span>
+            <input
+              type="range"
+              min={range.min}
+              max={range.max}
+              step={0.01}
+              value={value}
+              disabled={disabled}
+              aria-label={`${stem.name} ${control.label.toLowerCase()} (${control.low} to ${control.high})`}
+              aria-valuetext={control.format(value)}
+              className="h-1 min-w-0 flex-1 cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+              onChange={(event) =>
+                onFxChange(stem.stemId, control.key, parseFloat(event.target.value))
+              }
+            />
+            <span className="w-12 shrink-0 truncate text-right text-[10px] tabular-nums text-zinc-300">
+              {control.short(value)}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

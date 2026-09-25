@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { REMIX_PROMPT_PRESETS } from "../../lib/remixPromptPresets";
 import { REMIX_RECIPES } from "../../lib/remixRecipes";
 import { REMIX_AI_INTENTS } from "../../lib/remixIntent";
+import { REMIX_FX_SCHEMA_VERSION, REMIX_VIBES } from "../../lib/remixFx";
 import {
   primaryActionable,
   primaryClickHandler,
@@ -36,6 +37,9 @@ function props(overrides: Partial<RemixCreatePanelProps> = {}): RemixCreatePanel
     onReplaceStemChange: noop,
     recipes: [...REMIX_RECIPES],
     onApplyRecipe: noop,
+    effects: null,
+    onApplyVibe: noop,
+    onMasterFxChange: noop,
     primary: {
       label: "Render mix",
       enabled: true,
@@ -216,3 +220,77 @@ describe("RemixCreatePanel — locked", () => {
     for (const recipe of recipes) expect(recipe).toContain('disabled=""');
   });
 });
+
+describe("RemixCreatePanel — Vibe (#1897)", () => {
+  it("shows the vibe starters above the arrangements, No effects active by default", () => {
+    const html = render();
+    for (const vibe of REMIX_VIBES) {
+      expect(html).toContain(vibe.label);
+    }
+    expect(html.indexOf("remix-vibe")).toBeLessThan(
+      html.indexOf("One-click arrangements"),
+    );
+    expect(buttonTag(html, "remix-vibe-none")).toContain(
+      'aria-pressed="true"',
+    );
+    expect(buttonTag(html, "remix-vibe-lofi")).toContain('aria-pressed="false"');
+  });
+
+  it("shows the four plain-language master controls", () => {
+    const html = render();
+    for (const label of [
+      "Speed",
+      "Space",
+      "Tone",
+      "Warmth",
+      "Slowed",
+      "Sped up",
+      "Dry",
+      "Roomy",
+      "Darker",
+      "Brighter",
+      "Clean",
+      "Warm",
+    ]) {
+      expect(html).toContain(`>${label}<`);
+    }
+    expect(html).toMatch(/type="range" min="0.75" max="1.25" step="0.01"/);
+    expect(html).toContain('aria-valuetext="1.00×"');
+  });
+
+  it("marks the active vibe when the controls match it exactly", () => {
+    const slowed = render({
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        master: { speed: 0.85, space: 0.45, tone: -0.15 },
+      },
+    });
+    expect(buttonTag(slowed, "remix-vibe-slowed_reverb")).toContain(
+      'aria-pressed="true"',
+    );
+    expect(slowed).toContain('aria-valuetext="0.85×"');
+    expect(slowed).toContain('aria-valuetext="45%"');
+    expect(slowed).toContain('aria-valuetext="Darker 15%"');
+
+    const custom = render({
+      effects: { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { speed: 0.86 } },
+    });
+    expect(custom).not.toMatch(/aria-pressed="true"[^>]*remix-vibe-btn/);
+    expect(custom).toContain(">Custom<");
+  });
+
+  it("locks the vibe controls on a published remix", () => {
+    const html = render({ locked: true });
+    expect(buttonTag(html, "remix-vibe-dreamy")).toContain('disabled=""');
+    expect(countRanges(html, true)).toBe(4);
+  });
+
+  it("is not part of the AI side", () => {
+    expect(render({ intent: "reimagine" })).not.toContain("remix-vibe");
+  });
+});
+
+function countRanges(html: string, disabled: boolean): number {
+  const ranges = html.match(/<input[^>]*type="range"[^>]*>/g) ?? [];
+  return ranges.filter((tag) => tag.includes('disabled=""') === disabled).length;
+}

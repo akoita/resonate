@@ -402,4 +402,60 @@ test.describe("Remix Studio session view (#1879)", () => {
       path: test.info().outputPath("remix-studio-drafts-layout.png"),
     });
   });
+
+  test("vibe starters and per-stem FX autosave a remix-fx recipe (#1897)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+
+    // One click: Slowed + reverb sets visible master controls.
+    const vibes = page.getByRole("group", { name: "Vibe" });
+    await vibes.getByRole("button", { name: "Slowed + reverb" }).click();
+    await expect(vibes.getByRole("button", { name: "Slowed + reverb" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.getByText("0.85×").first()).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const effects = patch.effects as
+              | { master?: { speed?: number; space?: number } }
+              | undefined;
+            return effects?.master?.speed === 0.85 && effects.master.space === 0.45;
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // Per-stem FX: open the vocals effects row.
+    await page.getByRole("button", { name: /^Effects for Vocals/ }).click();
+    await expect(page.getByRole("group", { name: "Vocals effects" })).toBeVisible();
+
+    // The effects preview plays through the real WebAudio graph.
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-vibes.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Stop", exact: true }).click();
+
+    // "No effects" resets the recipe to null.
+    await page
+      .getByRole("group", { name: "Vibe" })
+      .getByRole("button", { name: "No effects", exact: true })
+      .click();
+    await expect
+      .poll(() => patches.some((patch) => "effects" in patch && patch.effects === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+  });
 });

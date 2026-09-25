@@ -10,6 +10,7 @@ import {
   type StemArrangementPreviewHandle,
   type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
+import type { RemixFxRecipe } from "../../lib/remixFx";
 import { computePeaks } from "../../lib/remixWaveform";
 
 /**
@@ -45,6 +46,10 @@ export type RemixTransportInput = {
   currentDraftJobId: string | null;
   /** Section-grid duration, the timeline length before buffers decode. */
   timelineSec: number | null;
+  /** Effects recipe (#1897) the arrangement preview applies live. */
+  effects?: RemixFxRecipe | null;
+  /** Bar-grid tempo (bars grids only) for tempo-synced echo. */
+  bpm?: number | null;
   onError: (kind: "preview" | "draft") => void;
 };
 
@@ -154,6 +159,17 @@ export function enginePreviewStems(
       ? { ...stem, activeIntervals: undefined }
       : stem,
   );
+}
+
+/**
+ * Effects the engine should apply for a source (#1897): "original" is the
+ * untouched A/B reference, so it plays without effects.
+ */
+export function engineEffects(
+  effects: RemixFxRecipe | null | undefined,
+  source: TransportSource,
+): RemixFxRecipe | null {
+  return source.kind === "original" ? null : effects ?? null;
 }
 
 /**
@@ -409,6 +425,8 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         loop: activeLoop
           ? { startSec: activeLoop.startSec, endSec: activeLoop.endSec }
           : null,
+        effects: engineEffects(latest.effects, next),
+        bpm: latest.bpm ?? null,
         onEnded: () => {
           if (requestId !== requestRef.current) return;
           halt(0);
@@ -732,6 +750,29 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     if (status !== "playing" || !previewHandle) return;
     previewHandle.updateSections(engineStemsRef.current);
   }, [previewHandle, sectionsKey, status]);
+
+  // Live effects edits (#1897): tone/echo/space/warmth apply in place; a
+  // speed (or bpm) change — or effects appearing on a plain preview —
+  // restarts at the current source position (the engine asks for it).
+  const effectsKey = JSON.stringify([
+    engineEffects(input.effects, source),
+    input.bpm ?? null,
+  ]);
+  useEffect(() => {
+    if (status !== "playing" || !previewHandle) return;
+    const latest = inputRef.current;
+    const outcome = previewHandle.updateEffects(
+      engineEffects(latest.effects, sourceRef.current),
+      latest.bpm ?? null,
+    );
+    if (outcome === "restart") {
+      void startRef.current(
+        sourceRef.current,
+        currentPosition(),
+        loopRef.current,
+      );
+    }
+  }, [currentPosition, effectsKey, previewHandle, status]);
 
   // A new generation replaces the current draft: drop its cached audio so
   // "Draft" plays the new one.

@@ -9,6 +9,18 @@ import {
   type RemixIntent,
 } from "../../lib/remixIntent";
 import type { RemixRecipe } from "../../lib/remixRecipes";
+import {
+  activeVibeId,
+  formatFxAmount,
+  formatFxSpeed,
+  formatFxTone,
+  REMIX_FX_MASTER_RANGES,
+  REMIX_VIBES,
+  remixFxMaster,
+  type RemixFxMaster,
+  type RemixFxRecipe,
+  type RemixVibeId,
+} from "../../lib/remixFx";
 
 export const REMIX_STUDIO_LOCKED_NOTE =
   "This remix is published — the studio is locked.";
@@ -39,6 +51,10 @@ export type RemixCreatePanelProps = {
   onReplaceStemChange(stemId: string | null): void;
   recipes: RemixRecipe[];
   onApplyRecipe(id: RemixRecipe["id"]): void;
+  /** Effects recipe (#1897); the Vibe section edits its master controls. */
+  effects: RemixFxRecipe | null;
+  onApplyVibe(id: RemixVibeId): void;
+  onMasterFxChange(key: keyof RemixFxMaster, value: number): void;
   primary: RemixCreatePrimaryAction;
   creditMeter: ReactNode;
   attribution: ReactNode;
@@ -71,6 +87,132 @@ export function primaryClickHandler(
   };
 }
 
+type MasterControl = {
+  key: keyof RemixFxMaster;
+  label: string;
+  step: number;
+  low: string;
+  high: string;
+  /** Label under the default position (speed's "Original"). */
+  center?: string;
+  format(value: number): string;
+};
+
+/** The four master controls, in plain language (#1897). */
+export const VIBE_MASTER_CONTROLS: readonly MasterControl[] = [
+  {
+    key: "speed",
+    label: "Speed",
+    step: 0.01,
+    low: "Slowed",
+    high: "Sped up",
+    center: "Original",
+    format: formatFxSpeed,
+  },
+  { key: "space", label: "Space", step: 0.01, low: "Dry", high: "Roomy", format: formatFxAmount },
+  { key: "tone", label: "Tone", step: 0.01, low: "Darker", high: "Brighter", format: formatFxTone },
+  { key: "warmth", label: "Warmth", step: 0.01, low: "Clean", high: "Warm", format: formatFxAmount },
+];
+
+/**
+ * Vibe section (#1897): one-click vibe starters plus the four master
+ * controls they set, so every vibe stays visible and tweakable.
+ */
+function VibeSection({
+  effects,
+  onApplyVibe,
+  onMasterFxChange,
+  locked,
+}: Pick<
+  RemixCreatePanelProps,
+  "effects" | "onApplyVibe" | "onMasterFxChange" | "locked"
+>) {
+  const id = useId();
+  const labelId = `${id}-vibe`;
+  const activeId = activeVibeId(effects);
+  const activeVibe = REMIX_VIBES.find((vibe) => vibe.id === activeId) ?? null;
+  const master = remixFxMaster(effects);
+  return (
+    <div className="mt-4 remix-vibe">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
+        <div className="text-xs text-zinc-500" id={labelId}>
+          Vibe
+        </div>
+        <div className="text-xs text-zinc-400 remix-vibe-active" aria-live="polite">
+          {activeVibe ? activeVibe.label : "Custom"}
+        </div>
+      </div>
+      <div
+        className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+        role="group"
+        aria-labelledby={labelId}
+      >
+        {REMIX_VIBES.map((vibe) => {
+          const active = vibe.id === activeId;
+          return (
+            <button
+              key={vibe.id}
+              type="button"
+              disabled={locked}
+              aria-pressed={active}
+              title={vibe.description}
+              className={`rounded-md border px-2 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-60 remix-vibe-btn remix-vibe-${vibe.id} ${
+                active
+                  ? "border-purple-500/60 bg-purple-500/15 text-purple-200"
+                  : "border-zinc-700 bg-zinc-950 text-zinc-200 hover:border-purple-500/60 hover:bg-purple-500/10"
+              }`}
+              onClick={() => onApplyVibe(vibe.id)}
+            >
+              {vibe.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-3 space-y-3 remix-vibe-controls">
+        {VIBE_MASTER_CONTROLS.map((control) => {
+          const range = REMIX_FX_MASTER_RANGES[control.key];
+          const value = master[control.key];
+          const inputId = `${id}-${control.key}`;
+          return (
+            <div key={control.key} className={`remix-vibe-control remix-vibe-control-${control.key}`}>
+              <div className="flex items-baseline justify-between text-xs">
+                <label htmlFor={inputId} className="text-zinc-300">
+                  {control.label}
+                </label>
+                <span className="tabular-nums text-zinc-400">
+                  {control.format(value)}
+                </span>
+              </div>
+              <input
+                id={inputId}
+                type="range"
+                min={range.min}
+                max={range.max}
+                step={control.step}
+                value={value}
+                disabled={locked}
+                aria-valuetext={control.format(value)}
+                className="mt-1 h-1 w-full cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50"
+                onChange={(event) =>
+                  onMasterFxChange(control.key, parseFloat(event.target.value))
+                }
+              />
+              <div
+                aria-hidden="true"
+                className="mt-0.5 grid grid-cols-3 text-[10px] text-zinc-500"
+              >
+                <span>{control.low}</span>
+                <span className="text-center">{control.center ?? ""}</span>
+                <span className="text-right">{control.high}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const SWITCH_BUTTON =
   "px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed";
 
@@ -87,6 +229,9 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     onReplaceStemChange,
     recipes,
     onApplyRecipe,
+    effects,
+    onApplyVibe,
+    onMasterFxChange,
     primary,
     creditMeter,
     attribution,
@@ -156,6 +301,12 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
       {!ai ? (
         <div className="mt-4 remix-create-mix">
           <p className="text-xs text-zinc-400 remix-create-free-note">{STEM_MIX_FREE_NOTE}</p>
+          <VibeSection
+            effects={effects}
+            onApplyVibe={onApplyVibe}
+            onMasterFxChange={onMasterFxChange}
+            locked={locked}
+          />
           {recipes.length > 0 && (
             <div className="mt-4">
               <div className="text-xs text-zinc-500 mb-2" id={recipesLabelId}>

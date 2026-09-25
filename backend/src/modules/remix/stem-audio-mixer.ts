@@ -21,6 +21,19 @@ import {
   buildSectionGateVolumeExpression,
   type SectionInterval,
 } from "./remix-arrangement";
+import {
+  echoTaps,
+  REMIX_FX_DSP_VERSION,
+  REMIX_FX_FILTER_Q,
+  REMIX_FX_IMPULSE,
+  reverbWet,
+  toneFilter,
+  warmthK,
+  writeImpulseWav,
+  type RemixFxRecipe,
+  type RemixFxStem,
+  type RemixRenderFx,
+} from "./remix-fx";
 
 const execFileAsync = promisify(execFile);
 
@@ -84,16 +97,54 @@ export type MixedAudioBuffers = {
  * never persisted or returned individually.
  */
 export interface StemAudioMixer {
+  /**
+   * @param fx Shared effects recipe (#1897) + grid tempo; absent = the
+   *   pre-#1897 graph, byte-identical.
+   */
   mixUnmutedStems(
     stems: StemArrangementEntry[],
     authorization: StemRenderAuthorization,
+    fx?: RemixRenderFx,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
+    fx?: RemixRenderFx,
   ): Promise<MixedAudioBuffers>;
 }
+
+export type StemMixFfmpegInput = {
+  path: string;
+  gainDb: number;
+  /** Section-grid gating (#1314); undefined/null = play the whole stem. */
+  activeIntervals?: SectionInterval[] | null;
+  /** Project stem id keying this input's per-stem fx (#1897). */
+  fxStemId?: string;
+  /**
+   * AI-generated layer input (#1209): varispeed applies, per-stem fx do not,
+   * and it sends `master.space` to the reverb bus (#1897).
+   */
+  aiLayer?: boolean;
+};
+
+/** Effects context for {@link buildStemMixFfmpegArgs} (#1897). */
+export type StemMixFfmpegFx = {
+  effects: RemixFxRecipe | null;
+  /** Grid tempo for echo timing; null/undefined = the 0.375 s fallback. */
+  bpm?: number | null;
+  /** Stereo reverb IR WAV; required when any input sends to the reverb bus. */
+  impulsePath?: string | null;
+  /**
+   * afir options that disable its IR auto-gain so the bus is a plain
+   * convolution with the energy-normalized IR. ffmpeg >= 7 needs
+   * `irnorm=-1` (default); `gtype` is a deprecated no-op there.
+   */
+  afirOptions?: string;
+};
+
+/** Default afir options: no IR normalization (ffmpeg >= 7.0). */
+export const AFIR_UNITY_GAIN_OPTIONS = "irnorm=-1";
 
 /**
  * Pure arg construction (unit-tested without ffmpeg). Inputs are passed as an
@@ -101,15 +152,15 @@ export interface StemAudioMixer {
  * shell string. Per-stem gain applies as an ffmpeg volume filter (dB), then
  * amix sums to the longest input without renormalizing each source down,
  * matching the studio's preview gain model.
+ *
+ * With a non-null effects recipe (#1897) the graph gains the remix-fx/v1
+ * chain (see {@link buildFxStemMixFilter}); without one the args are
+ * byte-identical to the pre-#1897 graph.
  */
 export function buildStemMixFfmpegArgs(
-  inputs: Array<{
-    path: string;
-    gainDb: number;
-    /** Section-grid gating (#1314); undefined/null = play the whole stem. */
-    activeIntervals?: SectionInterval[] | null;
-  }>,
+  inputs: StemMixFfmpegInput[],
   outputPath: string,
+  fx?: StemMixFfmpegFx | null,
 ): string[] {
   if (inputs.length === 0) {
     throw new RemixGenerationProviderError(
@@ -122,6 +173,16 @@ export function buildStemMixFfmpegArgs(
   const args: string[] = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"];
   for (const input of inputs) {
     args.push("-i", input.path);
+  }
+  if (fx?.effects) {
+    const { filter, needsImpulse } = buildFxStemMixFilter(inputs, fx);
+    if (needsImpulse) {
+      if (!fx.impulsePath) {
+        throw new Error("A reverb send needs the impulse response file path.");
+      }
+      args.push("-i", fx.impulsePath);
+    }
+    return pushOutputArgs(args, filter, outputPath);
   }
   const labelled = inputs.map((input, index) => {
     const gain = normalizeRemixStemGainDb(input.gainDb);
@@ -137,8 +198,21 @@ export function buildStemMixFfmpegArgs(
     return `[${index}:a]volume=${gain}dB${gate}[a${index}]`;
   });
   const mixInputs = inputs.map((_, index) => `[a${index}]`).join("");
+  const filter = `${labelled.join(";")};${mixInputs}amix=inputs=${inputs.length}:duration=longest:normalize=0[sum];[sum]${loudnormFilter()}[mix]`;
+  return pushOutputArgs(args, filter, outputPath);
+}
+
+function loudnormFilter(): string {
   const policy = REMIX_RENDER_AUDIO_POLICY;
-  const filter = `${labelled.join(";")};${mixInputs}amix=inputs=${inputs.length}:duration=longest:normalize=0[sum];[sum]loudnorm=I=${policy.targetLufs}:LRA=${policy.loudnessRangeLufs}:TP=${policy.truePeakDbtp}[mix]`;
+  return `loudnorm=I=${policy.targetLufs}:LRA=${policy.loudnessRangeLufs}:TP=${policy.truePeakDbtp}`;
+}
+
+function pushOutputArgs(
+  args: string[],
+  filter: string,
+  outputPath: string,
+): string[] {
+  const policy = REMIX_RENDER_AUDIO_POLICY;
   args.push(
     "-filter_complex",
     filter,
@@ -157,14 +231,192 @@ export function buildStemMixFfmpegArgs(
   return args;
 }
 
+/** Filter-graph number: finite, ≤ 6 decimals, never exponent notation. */
+function fxNum(value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new Error("Non-finite value in the effects filter graph.");
+  }
+  const rounded = Math.round(value * 1e6) / 1e6;
+  return String(rounded === 0 ? 0 : rounded);
+}
+
+function fxToneFilter(tone: number | undefined): string | null {
+  const filter = toneFilter(tone ?? 0);
+  if (!filter) return null;
+  return `${filter.type}=f=${fxNum(filter.frequencyHz)}:width_type=q:width=${fxNum(REMIX_FX_FILTER_Q)}`;
+}
+
+function stemFxFor(
+  effects: RemixFxRecipe,
+  input: StemMixFfmpegInput,
+): RemixFxStem {
+  if (input.aiLayer || !input.fxStemId) return {};
+  return effects.stems?.[input.fxStemId] ?? {};
+}
+
+/** Per-input reverb wet level (0 = no send). AI layers send master.space. */
+export function stemMixReverbSends(
+  inputs: StemMixFfmpegInput[],
+  effects: RemixFxRecipe | null,
+): number[] {
+  if (!effects) return inputs.map(() => 0);
+  const masterSpace = effects.master?.space ?? 0;
+  return inputs.map((input) =>
+    reverbWet(stemFxFor(effects, input).space ?? 0, masterSpace),
+  );
+}
+
+/**
+ * remix-fx/v1 render graph (#1897), in the contract order:
+ *  - per input: aresample=48000 (float) → varispeed (asetrate=48000·s,
+ *    aresample=48000) → gain dB → section gate with intervals ÷ s (output
+ *    time) → [stems only] tone → echo (aecho, feed-forward taps) → asplit into
+ *    dry + a reverb send scaled by its wet level;
+ *  - reverb bus: amix(sends) → apad by the IR length → afir with the
+ *    energy-normalized stereo IR and afir's own IR auto-gain disabled (plain
+ *    convolution). afir stops at its input's EOF, so the pad sits BEFORE it:
+ *    afir convolves the padded silence and the full IR tail rings out after
+ *    the last send ends (padding after afir would only append silence);
+ *  - master: amix(dry + AI layers + reverb) → master tone → warmth
+ *    tanh(k·x)/tanh(k) → the versioned loudness policy.
+ * Every value is numeric and derived from the validated recipe.
+ */
+export function buildFxStemMixFilter(
+  inputs: StemMixFfmpegInput[],
+  fx: StemMixFfmpegFx,
+): { filter: string; needsImpulse: boolean } {
+  const effects = fx.effects;
+  if (!effects) {
+    throw new Error("buildFxStemMixFilter requires an effects recipe.");
+  }
+  const master = effects.master ?? {};
+  // speed has 2 decimals, so 48000·s = 480·(100·s) is an exact integer rate.
+  const speedHundredths = Math.round((master.speed ?? 1) * 100);
+  const speed = speedHundredths / 100;
+  const bpm = fx.bpm ?? null;
+  const sends = stemMixReverbSends(inputs, effects);
+  const needsImpulse = sends.some((wet) => wet > 0);
+
+  const graph: string[] = [];
+  const dryLabels: string[] = [];
+  const wetLabels: string[] = [];
+  inputs.forEach((input, index) => {
+    const stemFx = stemFxFor(effects, input);
+    // aformat pins float processing so gain/echo never clip in an integer
+    // sample format before the loudness policy (the preview is float too).
+    const chain: string[] = ["aresample=48000", "aformat=sample_fmts=fltp"];
+    if (speedHundredths !== 100) {
+      chain.push(`asetrate=${480 * speedHundredths}`, "aresample=48000");
+    }
+    chain.push(`volume=${normalizeRemixStemGainDb(input.gainDb)}dB`);
+    if (input.activeIntervals && input.activeIntervals.length > 0) {
+      // The gate runs after varispeed, i.e. in output time.
+      const scaled = input.activeIntervals.map((interval) => ({
+        startSec: interval.startSec / speed,
+        endSec: interval.endSec / speed,
+      }));
+      chain.push(
+        `volume=volume=${buildSectionGateVolumeExpression(scaled)}:eval=frame`,
+      );
+    }
+    if (!input.aiLayer) {
+      const tone = fxToneFilter(stemFx.tone);
+      if (tone) chain.push(tone);
+      const taps = echoTaps(stemFx.echo ?? 0, bpm, speed);
+      if (taps.length > 0) {
+        const delays = taps.map((tap) => fxNum(tap.delaySec * 1000)).join("|");
+        const decays = taps.map((tap) => fxNum(tap.gain)).join("|");
+        chain.push(
+          `aecho=in_gain=1:out_gain=1:delays=${delays}:decays=${decays}`,
+        );
+      }
+    }
+    if (sends[index] > 0) {
+      graph.push(`[${index}:a]${chain.join(",")},asplit=2[d${index}][s${index}]`);
+      graph.push(`[s${index}]volume=${fxNum(sends[index])}[w${index}]`);
+      dryLabels.push(`[d${index}]`);
+      wetLabels.push(`[w${index}]`);
+    } else {
+      graph.push(`[${index}:a]${chain.join(",")}[a${index}]`);
+      dryLabels.push(`[a${index}]`);
+    }
+  });
+
+  if (needsImpulse) {
+    const irIndex = inputs.length;
+    const afirOptions = fx.afirOptions ?? AFIR_UNITY_GAIN_OPTIONS;
+    // Stereo bus so afir convolves L/R with the IR's own L/R channels; the
+    // pad lets the natural reverb tail ring out (master amix is "longest").
+    graph.push(
+      `${wetLabels.join("")}amix=inputs=${wetLabels.length}:duration=longest:normalize=0,aformat=sample_fmts=fltp:channel_layouts=stereo,apad=pad_dur=${fxNum(REMIX_FX_IMPULSE.lengthSeconds)}[rvin]`,
+    );
+    graph.push(`[rvin][${irIndex}:a]afir=${afirOptions}[rv]`);
+    dryLabels.push("[rv]");
+  }
+
+  const masterChain: string[] = [];
+  const masterTone = fxToneFilter(master.tone);
+  if (masterTone) masterChain.push(masterTone);
+  const warmth = master.warmth ?? 0;
+  if (warmth > 0) {
+    const k = fxNum(warmthK(warmth));
+    masterChain.push(
+      `aeval=exprs=tanh(${k}*val(ch))/tanh(${k}):channel_layout=same`,
+    );
+  }
+  masterChain.push(loudnormFilter());
+  graph.push(
+    `${dryLabels.join("")}amix=inputs=${dryLabels.length}:duration=longest:normalize=0[sum]`,
+  );
+  graph.push(`[sum]${masterChain.join(",")}[mix]`);
+  return { filter: graph.join(";"), needsImpulse };
+}
+
+let afirOptionsProbe: Promise<string> | null = null;
+
+/**
+ * Picks the afir options that make the reverb bus a plain convolution on the
+ * installed ffmpeg (#1897). ffmpeg >= 7 normalizes the IR by default and only
+ * `irnorm=-1` disables it (`gtype` became a no-op). Older builds lack
+ * `irnorm`; there `gtype=none` disables auto-gain — exact on 6.x, but 5.x
+ * applies an extra 2x inverse-FFT scale, so parity is only guaranteed on the
+ * production ffmpeg (>= 7). Memoized per process.
+ */
+export function resolveAfirUnityGainOptions(logger?: Logger): Promise<string> {
+  afirOptionsProbe ??= execFileAsync(
+    "ffmpeg",
+    ["-hide_banner", "-h", "filter=afir"],
+    { timeout: 15_000 },
+  )
+    .then(({ stdout }) => {
+      if (/\birnorm\b/.test(String(stdout))) return AFIR_UNITY_GAIN_OPTIONS;
+      logger?.warn(
+        "ffmpeg afir has no irnorm option (ffmpeg < 7); using gtype=none — reverb level parity with the preview is only guaranteed on ffmpeg >= 7.",
+      );
+      return "gtype=none";
+    })
+    .catch(() => {
+      // Probe failures are retried next render; the render itself surfaces
+      // any real ffmpeg problem.
+      afirOptionsProbe = null;
+      return AFIR_UNITY_GAIN_OPTIONS;
+    });
+  return afirOptionsProbe;
+}
+
 function renderMetadata(
   inputCount: number,
   activeStemCount: number,
+  fx?: RemixRenderFx,
 ): RemixRenderMetadata {
   return {
     ...REMIX_RENDER_AUDIO_POLICY,
     inputCount,
     activeStemCount,
+    // #1897: the exact recipe + DSP version this artifact was rendered with.
+    ...(fx
+      ? { effects: fx.effects, effectsDspVersion: REMIX_FX_DSP_VERSION }
+      : {}),
   };
 }
 
@@ -180,16 +432,18 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
   async mixUnmutedStems(
     stems: StemArrangementEntry[],
     authorization: StemRenderAuthorization,
+    fx?: RemixRenderFx,
   ): Promise<MixedStemAudio> {
-    return this.mixStemArrangement(stems, [], authorization, true);
+    return this.mixStemArrangement(stems, [], authorization, true, fx);
   }
 
   async mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
     inputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
+    fx?: RemixRenderFx,
   ): Promise<MixedAudioBuffers> {
-    return this.mixStemArrangement(stems, inputs, authorization, false);
+    return this.mixStemArrangement(stems, inputs, authorization, false, fx);
   }
 
   private async mixStemArrangement(
@@ -197,18 +451,21 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     additionalInputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
     stemOnly: true,
+    fx?: RemixRenderFx,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
     additionalInputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
     stemOnly: false,
+    fx?: RemixRenderFx,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
     additionalInputs: AudioBufferMixInput[],
     authorization: StemRenderAuthorization,
     stemOnly: boolean,
+    fx?: RemixRenderFx,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
     // A stem whose section mask disables every section ([]) is effectively
@@ -248,11 +505,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
 
     const workDir = await mkdtemp(join(tmpdir(), "remix-mix-"));
     try {
-      const ffmpegInputs: Array<{
-        path: string;
-        gainDb: number;
-        activeIntervals?: SectionInterval[] | null;
-      }> = [];
+      const ffmpegInputs: StemMixFfmpegInput[] = [];
       for (const stem of activeStems) {
         const row = rowsById.get(stem.stemId)!;
         const audio = await this.loadStemAudio(row, authorization);
@@ -269,6 +522,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           path: inputPath,
           gainDb: stem.gainDb ?? 0,
           activeIntervals: stem.activeIntervals ?? null,
+          fxStemId: stem.stemId,
         });
       }
       for (const input of additionalInputs) {
@@ -277,11 +531,35 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           `input-${ffmpegInputs.length}${extensionForMimeType(input.mimeType)}`,
         );
         await writeFile(inputPath, input.buffer);
-        ffmpegInputs.push({ path: inputPath, gainDb: input.gainDb ?? 0 });
+        ffmpegInputs.push({
+          path: inputPath,
+          gainDb: input.gainDb ?? 0,
+          aiLayer: true,
+        });
       }
 
       const outputPath = join(workDir, "mix.mp3");
-      const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath);
+      let ffmpegFx: StemMixFfmpegFx | undefined;
+      if (fx) {
+        // #1897: the reverb IR is code-generated (deterministic, unlicensed)
+        // and only written when some input actually sends to the bus.
+        const needsImpulse = stemMixReverbSends(ffmpegInputs, fx.effects).some(
+          (wet) => wet > 0,
+        );
+        const impulsePath = needsImpulse
+          ? join(workDir, "reverb-ir.wav")
+          : null;
+        if (impulsePath) await writeImpulseWav(impulsePath);
+        ffmpegFx = {
+          effects: fx.effects,
+          bpm: fx.bpm,
+          impulsePath,
+          ...(needsImpulse
+            ? { afirOptions: await resolveAfirUnityGainOptions(this.logger) }
+            : {}),
+        };
+      }
+      const args = buildStemMixFfmpegArgs(ffmpegInputs, outputPath, ffmpegFx);
       const started = Date.now();
       try {
         await execFileAsync("ffmpeg", args, { timeout: FFMPEG_TIMEOUT_MS });
@@ -299,7 +577,11 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       );
 
       const buffer = await readFile(outputPath);
-      const metadata = renderMetadata(ffmpegInputs.length, activeStems.length);
+      const metadata = renderMetadata(
+        ffmpegInputs.length,
+        activeStems.length,
+        fx,
+      );
       return stemOnly
         ? {
             buffer,

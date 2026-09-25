@@ -1205,6 +1205,9 @@ model RemixProject {
   // Variation AI target (#1882): { kind: "add_layer" | "replace_stem",
   // stemId: string | null }; null means the whole-track default.
   aiTarget           Json?
+  // Shared effects recipe (#1897): remix-fx/v1 { schemaVersion, master?,
+  // stems? }; null means untouched (no effects applied at render time).
+  effects            Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

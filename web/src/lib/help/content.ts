@@ -921,6 +921,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
               "Shortcuts: Space plays or stops, M and S mute or solo the row you're on, and Esc clears a loop.",
               "The \"Also on this track\" list shows the track's remaining stems: licensed ones join your session with one click, and the others link to their license page.",
               "In the Create panel, choose \"Mix stems\" to render your arrangement as it sounds \u2014 it's free. One-click arrangements (Acapella, Instrumental, Drums & bass, Breakdown \u2192 drop) set up a starting point you can keep editing.",
+              "Pick a vibe to transform the track in one click: Slowed + reverb, Sped up, Lo-fi, Dreamy, or Club. A vibe just sets the Speed, Space, Tone, and Warmth sliders, so you can fine-tune it, or pick No effects to start over. Everything plays back instantly, and none of it uses credits.",
+              "Open a stem's FX to give just that part its own space, echo, or tone \u2014 for example, an echo on the vocals only.",
               "Choose \"Add AI\" to reimagine the track, add a new part on top, replace a single stem with an AI-generated one, or extend the track. Write a prompt (or start from a preset) describing the direction you want. Your choice is remembered the next time you open the project.",
               "AI drafts keep your licensed stems and are clearly labelled as AI-assisted. They use generation credits; the panel shows the price per 30 seconds of audio and your balance.",
               "The first AI draft after a quiet period may take a few minutes while the generation service wakes up; later drafts are usually much faster.",
