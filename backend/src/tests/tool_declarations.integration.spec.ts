@@ -68,7 +68,7 @@ describe('tool declarations (integration)', () => {
     const result = await executeTool(registry, {
       name: 'catalog_search',
       args: { query: 'electronic', limit: 5 },
-    });
+    }, { userId: `${TEST_PREFIX}user` });
     expect(result.items).toBeDefined();
     expect(Array.isArray(result.items)).toBe(true);
   });
@@ -78,15 +78,15 @@ describe('tool declarations (integration)', () => {
     const result = await executeTool(registry, {
       name: 'pricing_quote',
       args: { licenseType: 'personal' },
-    });
+    }, { userId: `${TEST_PREFIX}user` });
     expect(typeof result.priceUsd).toBe('number');
     expect(Number(result.priceUsd)).toBeGreaterThan(0);
   });
 
-  it('executeTool throws on unknown tool', async () => {
+  it('executeTool returns unknown_tool for an undeclared tool', async () => {
     const registry = new ToolRegistry(new EmbeddingService(), new EmbeddingStore(), mockGenerationService);
     await expect(
-      executeTool(registry, { name: 'nonexistent_tool', args: {} }),
-    ).rejects.toThrow('Tool not found');
+      executeTool(registry, { name: 'nonexistent_tool', args: {} }, { userId: `${TEST_PREFIX}user` }),
+    ).resolves.toEqual({ error: 'unknown_tool' });
   });
 });

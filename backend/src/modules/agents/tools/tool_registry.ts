@@ -25,6 +25,14 @@ export interface Tool {
 
 const COST_PER_GENERATION = 0.06;
 
+/**
+ * Agent generations are always attributed to the platform agent artist; tool
+ * input cannot choose the artist a release is created under.
+ */
+function agentArtistId(): string {
+  return process.env.AGENT_ARTIST_ID ?? "agent";
+}
+
 @Injectable()
 export class ToolRegistry {
   private tools = new Map<string, Tool>();
@@ -168,10 +176,11 @@ export class ToolRegistry {
     this.register({
       name: "generation.create",
       run: async (input) => {
+        // userId must be supplied by the runtime (session user), never by model output.
         const userId = String(input.userId ?? "");
         const prompt = String(input.prompt ?? "");
         const negativePrompt = input.negativePrompt ? String(input.negativePrompt) : undefined;
-        const artistId = String(input.artistId ?? process.env.AGENT_ARTIST_ID ?? "agent");
+        const artistId = agentArtistId();
 
         if (!userId || !prompt) {
           return { error: "userId and prompt are required" };
@@ -196,11 +205,12 @@ export class ToolRegistry {
     this.register({
       name: "generation.complementary",
       run: async (input) => {
+        // userId must be supplied by the runtime (session user), never by model output.
         const userId = String(input.userId ?? "");
         const context = String(input.context ?? "");
         const stemType = String(input.stemType ?? "bass");
         const existingStems = (input.existingStems as string[]) ?? [];
-        const artistId = String(input.artistId ?? process.env.AGENT_ARTIST_ID ?? "agent");
+        const artistId = agentArtistId();
 
         // Build a contextual prompt for complementary stem generation
         const prompt = `Generate a ${stemType} stem that complements existing ${existingStems.join(", ")} stems. Context: ${context}`;

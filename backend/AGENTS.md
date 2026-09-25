@@ -80,3 +80,11 @@ All backend test files live in `backend/src/tests/`. See `backend/TESTING.md` fo
    on class DTOs only (no whitelist, no transform); interface-typed bodies are not
    validated by it, so their services must validate input. Cover new DTO
    constraints with `400` cases in the matching `*.controller.http.spec.ts`.
+
+8. **Controller HTTP apps mirror production guards.** `createControllerTestApp`
+   in `src/tests/e2e-helpers.ts` registers the global `RolesGuard` exactly as
+   `app.module.ts` does. `@Roles(...)` routes must authenticate with
+   `AuthGuard("jwt")`; the global guard verifies the JWT itself because Nest runs
+   global guards before route guards, and a reflection spec fails if a `@Roles`
+   route uses a different auth guard. Test each role-restricted route with an
+   under-privileged token and expect `403`.
