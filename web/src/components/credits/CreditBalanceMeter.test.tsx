@@ -107,7 +107,7 @@ describe("CreditBalanceMeter — inline (Remix Studio Create panel)", () => {
     expect(html).toContain("≈ 5 min · 5 tracks");
     expect(html).toContain("text-emerald-300");
     expect(html).not.toContain(CREDIT_METER_EMPTY_NOTE);
-    expect(html).not.toContain(CREDIT_METER_LOW_NOTE.replace("'", "&#x27;"));
+    expect(html).not.toContain(CREDIT_METER_LOW_NOTE.replaceAll("'", "&#x27;"));
     expect(html).not.toContain("Request credits");
     // Never the bordered panel block.
     expect(html).not.toContain("Generation credits");
