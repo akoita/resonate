@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { REMIX_PROMPT_PRESETS } from "../../lib/remixPromptPresets";
 import { REMIX_RECIPES } from "../../lib/remixRecipes";
+import { REMIX_AI_INTENTS } from "../../lib/remixIntent";
 import {
-  generationPriceLine,
   primaryActionable,
   primaryClickHandler,
   REMIX_STUDIO_LOCKED_NOTE,
@@ -36,7 +36,6 @@ function props(overrides: Partial<RemixCreatePanelProps> = {}): RemixCreatePanel
     onReplaceStemChange: noop,
     recipes: [...REMIX_RECIPES],
     onApplyRecipe: noop,
-    pricePer30sCents: 10,
     primary: {
       label: "Render mix",
       enabled: true,
@@ -126,13 +125,38 @@ describe("RemixCreatePanel — Add AI", () => {
     expect(html).toMatch(/<option value="stem-drums" selected="">Drums<\/option>/);
   });
 
-  it("shows the price line only when the price is known", () => {
-    expect(render({ intent: "extend" })).toContain(
-      "Uses generation credits · $0.10 per 30 s of audio",
-    );
-    expect(render({ intent: "extend", pricePer30sCents: null })).not.toContain(
-      "Uses generation credits",
-    );
+  it("shows exactly one intent description — the selected one — as helper text", () => {
+    for (const selected of REMIX_AI_INTENTS) {
+      const html = render({ intent: selected.intent });
+      const shown = REMIX_AI_INTENTS.filter((entry) =>
+        html.includes(entry.description.replaceAll("'", "&#x27;")),
+      );
+      expect(shown.map((entry) => entry.intent)).toEqual([selected.intent]);
+      expect(html.match(/remix-intent-description/g) ?? []).toHaveLength(1);
+      // The radiogroup points at the helper text.
+      const describedBy = html.match(
+        /role="radiogroup"[^>]*aria-describedby="([^"]+)"/,
+      )?.[1];
+      expect(describedBy).toBeTruthy();
+      expect(html).toContain(`id="${describedBy}"`);
+      expect(html).toMatch(
+        new RegExp(`id="${describedBy}"[^>]*>${selected.description.replaceAll("'", "&#x27;")}<`),
+      );
+    }
+  });
+
+  it("renders each intent as a compact label-only line", () => {
+    const html = render({ intent: "reimagine" });
+    const labels = html.match(/<label[^>]*remix-intent remix-intent-[^>]*>/g) ?? [];
+    expect(labels).toHaveLength(4);
+    for (const label of labels) expect(label).toContain("min-h-9");
+    expect(html).toMatch(/remix-intent-reimagine[^"]*border-purple-500\/60/);
+  });
+
+  it("leaves the price to the credit meter (no standalone price line)", () => {
+    const html = render({ intent: "extend" });
+    expect(html).not.toContain("Uses generation credits");
+    expect(html).not.toContain("remix-create-price");
   });
 });
 
@@ -190,18 +214,5 @@ describe("RemixCreatePanel — locked", () => {
     const recipes = html.match(/<button[^>]*remix-recipe-btn[^>]*>/g) ?? [];
     expect(recipes.length).toBeGreaterThan(0);
     for (const recipe of recipes) expect(recipe).toContain('disabled=""');
-  });
-});
-
-describe("generationPriceLine", () => {
-  it("formats cents per 30 s", () => {
-    expect(generationPriceLine(10)).toBe("Uses generation credits · $0.10 per 30 s of audio");
-    expect(generationPriceLine(125)).toBe("Uses generation credits · $1.25 per 30 s of audio");
-  });
-
-  it("returns null when unknown", () => {
-    expect(generationPriceLine(null)).toBeNull();
-    expect(generationPriceLine(Number.NaN)).toBeNull();
-    expect(generationPriceLine(-1)).toBeNull();
   });
 });

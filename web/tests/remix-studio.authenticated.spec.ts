@@ -109,7 +109,13 @@ function toneWav(frequency: number, seconds = DURATION_SECONDS): Buffer {
   return buffer;
 }
 
-async function mockRemixApi(page: Page) {
+async function mockRemixApi(
+  page: Page,
+  options: {
+    balanceCents?: number;
+    project?: Record<string, unknown>;
+  } = {},
+) {
   let stems: MockStem[] = [
     {
       stemId: "stem-original",
@@ -155,7 +161,7 @@ async function mockRemixApi(page: Page) {
   const patches: Array<Record<string, unknown>> = [];
   // Top-level fields the studio autosaves (mode, prompt, title), persisted
   // like the real PATCH so the echoed project matches the saved edits.
-  let fields: Record<string, unknown> = {};
+  let fields: Record<string, unknown> = { ...(options.project ?? {}) };
 
   await page.route(`**/remix/projects/${PROJECT_ID}`, async (route) => {
     const request = route.request();
@@ -175,7 +181,11 @@ async function mockRemixApi(page: Page) {
   });
   await page.route("**/credits/balance", (route) =>
     route.fulfill({
-      json: { balanceCents: 500, priceCentsPer30s: 10, recentTransactions: [] },
+      json: {
+        balanceCents: options.balanceCents ?? 500,
+        priceCentsPer30s: 10,
+        recentTransactions: [],
+      },
     }),
   );
   await page.route("**/analytics/product/event", (route) =>
@@ -195,6 +205,21 @@ async function mockRemixApi(page: Page) {
       body: toneWav(tones[stemId ?? ""] ?? 330),
     });
   });
+  await page.route("**/remix/eligibility**", (route) =>
+    route.fulfill({
+      json: {
+        allowed: true,
+        requiredLicense: "remix",
+        allowedActions: ["draft", "publish_resonate"],
+        reasons: [],
+        policyVersion: "2026-07-03.v6",
+        stems: [],
+      },
+    }),
+  );
+  await page.route(`**/remix/projects/${PROJECT_ID}/draft-audio**`, (route) =>
+    route.fulfill({ status: 200, contentType: "audio/wav", body: toneWav(330, 32) }),
+  );
   return { patches };
 }
 
@@ -297,7 +322,7 @@ test.describe("Remix Studio session view (#1879)", () => {
         name: /Reimagine the track/,
       }),
     ).toBeChecked();
-    await expect(page.getByText(/per 30 s of audio/)).toBeVisible();
+    await expect(page.getByText(/\$0\.10 per 30 s/)).toBeVisible();
     // The intent survives its own autosave round-trip (mode → variation).
     await expect
       .poll(() => patches.some((patch) => patch.mode === "variation"), {
@@ -313,6 +338,68 @@ test.describe("Remix Studio session view (#1879)", () => {
     await page.screenshot({
       path: test.info().outputPath("remix-studio-create.png"),
       fullPage: true,
+    });
+  });
+
+  test("drafts stay above the fold next to a tall Create panel", async ({
+    authenticatedPage: page,
+  }) => {
+    // Staging report: zero credits + a completed AI draft + variation mode
+    // pushed Drafts below the fold in the old right column.
+    await mockRemixApi(page, {
+      balanceCents: 0,
+      project: {
+        mode: "variation",
+        prompt: "An intimate acoustic rework with organic percussion.",
+        generationJobId: "job-current",
+        generationProvider: "stem-plus-ai-layered-render",
+        generationMetadata: {
+          status: "completed",
+          grounding: "stem_plus_ai",
+          estimatedCostUsd: 0.06,
+          completedAt: "2026-09-20T13:36:00.000Z",
+          output: { outputUri: "/storage/remix-drafts/job-current.mp3" },
+          previousDrafts: [
+            {
+              jobId: "job-older",
+              provider: "stem-mix-render",
+              grounding: "stem_audio",
+              estimatedCostUsd: 0,
+              completedAt: "2026-09-19T10:00:00.000Z",
+              outputUri: "/storage/remix-drafts/job-older.mp3",
+            },
+          ],
+        },
+      },
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+
+    const drafts = page.getByRole("region", { name: "Drafts" });
+    await expect(drafts).toBeVisible();
+    // Drafts sits directly under the Session (no dead column space) …
+    const session = page.locator("section", {
+      has: page.getByRole("heading", { name: "Session" }),
+    });
+    const sessionBox = await session.first().boundingBox();
+    const draftsBox = await drafts.boundingBox();
+    expect(sessionBox && draftsBox).toBeTruthy();
+    expect(draftsBox!.y - (sessionBox!.y + sessionBox!.height)).toBeLessThan(64);
+    expect(Math.abs(draftsBox!.x - sessionBox!.x)).toBeLessThan(4);
+    // … the sticky Create column never outgrows the viewport …
+    const createBox = await page
+      .locator("section", { has: page.getByRole("heading", { name: "Create" }) })
+      .first()
+      .boundingBox();
+    expect(createBox!.height).toBeLessThanOrEqual(900);
+    // … and Publish is reachable, not stranded under a sticky column.
+    const publish = page.getByRole("button", { name: "Publish on Resonate" });
+    await publish.scrollIntoViewIfNeeded();
+    await expect(publish).toBeInViewport();
+    // Out of credits: one honest message, never claiming mixes need credits.
+    await expect(page.getByText(/won't render/)).toHaveCount(0);
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-drafts-layout.png"),
     });
   });
 });
