@@ -170,6 +170,8 @@ from the JWT, never the request body.
   - `remix.studio_opened` — studio editor mount; `projectId`,
     `sourceTrackId`, `stemCount`, `mode`.
   - `remix.studio_saved` — successful project PATCH; `projectId`, `mode`.
+    Since #1879 the studio autosaves, so this fires once per debounced
+    autosave (roughly per editing pause), not per explicit Save click.
   - `remix.published` — successful in-Resonate publish; `projectId`,
     `releaseId`, `mode`.
   - `remix.studio_action_unavailable` — click on a gated publish control or a
@@ -420,6 +422,40 @@ from the JWT, never the request body.
   Tests: `backend/src/tests/remix-session-hydration.integration.spec.ts`,
   `web/src/lib/remixAudioPreview.test.ts`,
   `web/src/components/remix/RemixStudioEditor.test.tsx`.
+- Session lanes and transport (phase 1 of the studio ergonomics pass,
+  [#1879](https://github.com/akoita/resonate/issues/1879)): the separate
+  Stems list and Arrangement grid merged into one **Session** view with one
+  row per stem. Each row has a channel strip (mute, solo, gain) and a
+  time-proportional lane: a waveform drawn from the decoded preview audio,
+  with the section cells on top. Cells toggle by click or drag-to-paint, and
+  each row has all-on/all-off. Column labels are bar numbers (a short first
+  section reads "Pickup") for bar grids and `m:ss` for time grids.
+  - **Transport.** A sticky transport replaces the separate preview and
+    draft players. It has play/stop, a moving playhead and clock, click-to-seek,
+    and loop-a-section (click a column header). A source switch picks the
+    live **Arrangement**, the current **Draft** (or an archived version from
+    the draft panel), or the untouched **Original** reference. Mixer and cell
+    edits apply to the running preview immediately; section envelopes are
+    re-scheduled from the playhead.
+  - **Preload.** Stems are downloaded and decoded when the studio opens, so
+    waveforms appear and the first Play starts without a wait.
+  - **Autosave.** Edits save automatically about a second after the last
+    change, and the Save button is gone. Edits made during a save are kept and
+    saved next. A failed save shows a Retry control and pauses autosave until
+    the next edit. Leaving the page with unsaved edits asks for confirmation.
+    Generate, Publish and Export wait out the brief "Saving your latest
+    changes…" state instead of asking the user to save.
+    `remix.studio_saved` now fires per successful autosave.
+  - **Keyboard.** Space plays/stops, M/S mute/solo the focused row, Esc
+    clears the loop.
+  Tests: `web/src/lib/remixAudioPreview.test.ts`,
+  `web/src/lib/remixWaveform.test.ts`,
+  `web/src/components/remix/useRemixTransport.test.ts`,
+  `web/src/components/remix/RemixSessionLanes.test.tsx`,
+  `web/src/components/remix/RemixTransportBar.test.tsx`,
+  `web/src/components/remix/RemixStudioEditor.test.tsx`,
+  `web/tests/remix-studio.authenticated.spec.ts` (Playwright, mocked API).
+  Phase 2 (the Create panel and draft cards) remains open on #1879.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
@@ -598,9 +634,14 @@ Implemented today:
   `export_not_allowed`; export-time consent-flip re-check; incomplete draft →
   409; non-owner → 403; `remix.exported` emission.
 
+- `web/tests/remix-studio.authenticated.spec.ts` (#1879) — Playwright studio
+  flow against a mocked remix API: lanes render channel stems only, a cell
+  edit autosaves the arrangement PATCH, the transport plays through the real
+  WebAudio engine with the level meter, a section loops and clears, and Space
+  stops playback.
+
 Remaining for later slices:
 
-- Playwright test for the studio happy path with observable audio controls;
 - provider-failure tests for normalized generation errors (#896).
 
 ### Audio-conditioned generation (#1182 slices 4–5) — spike result

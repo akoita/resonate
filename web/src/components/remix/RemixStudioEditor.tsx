@@ -10,8 +10,6 @@ import {
   getCreditsBalance,
   getRemixEligibility,
   getRemixProject,
-  getRemixDraftAudioBlob,
-  getStemPreviewUrl,
   publishRemixProject,
   requestGenerationCredits,
   updateRemixProject,
@@ -24,35 +22,36 @@ import {
   type RemixProjectPatch,
   type RemixPreviousDraft,
   type RemixProjectSource,
+  type RemixSectionGrid,
   type RemixStemTransform,
 } from "../../lib/api";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CreditBalanceMeter } from "../credits/CreditBalanceMeter";
 import { canAffordGeneration } from "../../lib/credits";
 import { recordProductAnalytics } from "../../lib/productAnalytics";
-import { useOptionalPlayer } from "../../lib/playerContext";
 import {
   activePresetLabel,
   presetsForMode,
 } from "../../lib/remixPromptPresets";
 import {
-  createStemPreviewEngine,
   remixDraftOutputUri,
   type PreviewLevel,
   type PreviewStemState,
   type StemArrangementPreviewHandle,
-  type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
 import {
   activeIntervalsFromSections,
   arrangementPayload,
   parseArrangementSections,
   sectionGridSummaryLabel,
-  sectionStartLabel,
 } from "../../lib/remixArrangement";
+import { RemixSessionLanes, sectionColumnLabels, type LaneStem } from "./RemixSessionLanes";
+import { RemixTransportBar } from "./RemixTransportBar";
+import { useRemixTransport, type TransportSource } from "./useRemixTransport";
 
-export const GAIN_DB_MIN = -24;
-export const GAIN_DB_MAX = 6;
+// The gain range moved to lib (#1879) so the session lanes can share it
+// without importing the editor; re-exported for existing callers.
+export { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
 
 export const REMIX_MODES = [
   { value: "stem_mix", label: "Stem mix" },
@@ -67,11 +66,6 @@ export function classifyProjectLoadError(
   if (message.startsWith("API 403:")) return "forbidden";
   if (message.startsWith("API 404:")) return "missing";
   return "error";
-}
-
-export function clampGainDb(value: number): number {
-  if (Number.isNaN(value)) return 0;
-  return Math.min(GAIN_DB_MAX, Math.max(GAIN_DB_MIN, value));
 }
 
 export type StemEdit = {
@@ -333,11 +327,118 @@ export function saveStatusLabel(input: {
   saving: boolean;
   dirty: boolean;
   titleBlank: boolean;
+  /** The last autosave failed and nothing changed since (#1879). */
+  error?: boolean;
 }): string {
   if (input.saving) return "Saving...";
+  if (input.error) return "Couldn't save your changes.";
   if (input.titleBlank) return "Title is required";
   if (input.dirty) return "Unsaved changes";
   return "All changes saved";
+}
+
+/** Gate copy while autosave catches up with the latest edits (#1879). */
+export const SAVING_LATEST_CHANGES_REASON = "Saving your latest changes…";
+
+/** Idle time after the last edit before the studio autosaves (#1879). */
+export const AUTOSAVE_DELAY_MS = 800;
+
+/**
+ * Whether an autosave should be scheduled (#1879): only real, valid changes
+ * on an editable project, one request at a time, and not after a failure
+ * until the user edits again or retries.
+ */
+export function shouldAutosave(input: {
+  dirty: boolean;
+  titleBlank: boolean;
+  saving: boolean;
+  published: boolean;
+  blocked: boolean;
+}): boolean {
+  return (
+    input.dirty &&
+    !input.titleBlank &&
+    !input.saving &&
+    !input.published &&
+    !input.blocked
+  );
+}
+
+/**
+ * Edits after a successful save (#1879): untouched since the request
+ * started → re-baseline on the saved project; otherwise keep what the user
+ * typed meanwhile so it stays dirty and autosaves next.
+ */
+export function editsAfterSave(
+  prev: ProjectEdits,
+  snapshot: ProjectEdits,
+  updated: RemixProject,
+): ProjectEdits {
+  return prev === snapshot ? initialEdits(updated) : prev;
+}
+
+export type StudioShortcutAction =
+  | { kind: "toggle_playback" }
+  | { kind: "toggle_mute"; stemId: string }
+  | { kind: "toggle_solo"; stemId: string }
+  | { kind: "clear_loop" };
+
+const SHORTCUT_TEXT_ENTRY_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+const SHORTCUT_NATIVE_ACTIVATION_TAGS = new Set(["BUTTON", "A"]);
+
+/**
+ * Studio keyboard shortcuts (#1879): Space plays/stops, M/S mute/solo the
+ * focused lane row, Escape clears the loop. Never fires with modifiers, while
+ * typing, or (for Space) on a focused button/link that Space activates.
+ */
+export function studioShortcutAction(input: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  repeat: boolean;
+  /** Upper-case tagName of the event target. */
+  targetTag: string | null;
+  targetEditable: boolean;
+  /** `data-stem-id` of the lane row holding focus, if any. */
+  focusedStemId: string | null;
+  published: boolean;
+}): StudioShortcutAction | null {
+  if (input.ctrlKey || input.metaKey || input.altKey) return null;
+  const tag = input.targetTag?.toUpperCase() ?? null;
+  if (input.targetEditable || (tag && SHORTCUT_TEXT_ENTRY_TAGS.has(tag))) {
+    return null;
+  }
+  switch (input.key) {
+    case " ":
+    case "Spacebar":
+      if (input.repeat) return null;
+      if (tag && SHORTCUT_NATIVE_ACTIVATION_TAGS.has(tag)) return null;
+      return { kind: "toggle_playback" };
+    case "m":
+    case "M":
+      if (input.repeat || input.published || !input.focusedStemId) return null;
+      return { kind: "toggle_mute", stemId: input.focusedStemId };
+    case "s":
+    case "S":
+      if (input.repeat || !input.focusedStemId) return null;
+      return { kind: "toggle_solo", stemId: input.focusedStemId };
+    case "Escape":
+      return { kind: "clear_loop" };
+    default:
+      return null;
+  }
+}
+
+/** Transport loop chip copy, named like the lane ruler (#1879). */
+export function transportLoopLabel(
+  grid: RemixSectionGrid,
+  sectionIndex: number,
+): string | null {
+  const label = sectionColumnLabels(grid)[sectionIndex];
+  if (label === undefined) return null;
+  if (grid.kind !== "bars") return `Looping ${label}`;
+  return label === "Pickup" ? "Looping the pickup" : `Looping bar ${label}`;
 }
 
 /**
@@ -368,11 +469,9 @@ export function describeGenerateAvailability(input: {
       reason: "Write a prompt first — generation follows your direction.",
     };
   }
+  // Autosave (#1879) settles dirty edits within a second.
   if (input.dirty) {
-    return {
-      enabled: false,
-      reason: "Save your changes first so generation uses the saved draft.",
-    };
+    return { enabled: false, reason: SAVING_LATEST_CHANGES_REASON };
   }
   if (input.saving || input.generating) {
     return { enabled: false, reason: null };
@@ -651,7 +750,7 @@ export function describePublishAvailability(input: {
   if (input.dirty) {
     return {
       enabled: false,
-      reason: "Save your changes first so you publish the saved draft.",
+      reason: SAVING_LATEST_CHANGES_REASON,
       reasonCode: "publish_dirty",
     };
   }
@@ -718,7 +817,7 @@ export function describeExportAvailability(input: {
   if (input.dirty) {
     return {
       enabled: false,
-      reason: "Save your changes first so you export the saved draft.",
+      reason: SAVING_LATEST_CHANGES_REASON,
       reasonCode: "export_dirty",
     };
   }
@@ -906,38 +1005,11 @@ export function RemixStudioEditor({
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
   const [eligibility, setEligibility] =
     useState<RemixEligibilityResponse | null>(null);
-  const [stemPreviewStatus, setStemPreviewStatus] = useState<
-    "idle" | "loading" | "playing"
-  >("idle");
-  const [draftPlaybackStatus, setDraftPlaybackStatus] = useState<
-    "idle" | "loading" | "playing"
-  >("idle");
-  // Which version the draft transport is playing (#1320): null = current draft.
-  const [playingDraftJobId, setPlayingDraftJobId] = useState<string | null>(
+  // Autosave failure (#1879): the edits that failed to save. Autosave stays
+  // blocked while the edits are unchanged; the next edit or Retry clears it.
+  const [failedSaveEdits, setFailedSaveEdits] = useState<ProjectEdits | null>(
     null,
   );
-  const stemPreviewRef = useRef<StemArrangementPreviewHandle | null>(null);
-  // Mirrors stemPreviewRef for rendering (the level meter polls it).
-  const [previewHandle, setPreviewHandle] =
-    useState<StemArrangementPreviewHandle | null>(null);
-  // A/B "Compare with original": the preview plays only the full-mix
-  // reference stem at unity while this is on.
-  const [referenceActive, setReferenceActive] = useState(false);
-  // One preview engine per mounted editor: decoded stems stay cached so
-  // repeated previews don't re-download and re-decode every stem.
-  const previewEngineRef = useRef<StemPreviewEngine | null>(null);
-  // Bumped on every start/stop so a preview or draft that finishes loading
-  // after the user (or the global player) stopped it never starts playing.
-  const previewRequestRef = useRef(0);
-  const draftRequestRef = useRef(0);
-  const draftAudioRef = useRef<HTMLAudioElement | null>(null);
-  const draftObjectUrlRef = useRef<string | null>(null);
-  // Only one audio source at a time: studio audio pauses the site-wide
-  // player, and the player starting stops studio audio. Null outside a
-  // PlayerProvider (tests).
-  const player = useOptionalPlayer();
-  const playerIsPlaying = player?.isPlaying ?? false;
-  const playerWasPlayingRef = useRef(playerIsPlaying);
 
   // Funnel (#1143): one open event per mounted project. Compact payload —
   // ids, counts, and mode only.
@@ -977,7 +1049,6 @@ export function RemixStudioEditor({
   const referenceIds = referenceStemIds(project.stems);
   const referenceStemId =
     project.stems.find((stem) => referenceIds.has(stem.stemId))?.stemId ?? null;
-  const compareActive = referenceActive && referenceStemId !== null;
   // A muted full-mix stem is a reference, not a channel: hide it from the
   // mixer and grid. Unmuted (legacy) it stays visible and editable, with a
   // warning once separated stems are audible alongside it (doubled mix).
@@ -1027,75 +1098,223 @@ export function RemixStudioEditor({
     }
   };
 
-  const stopStemPreview = () => {
-    previewRequestRef.current += 1;
-    stemPreviewRef.current?.stop();
-    stemPreviewRef.current = null;
-    setPreviewHandle(null);
-    setStemPreviewStatus("idle");
-  };
+  const published = project.status === "published";
 
-  const pauseGlobalPlayer = () => {
-    if (player?.isPlaying) player.togglePlay();
-  };
+  // Studio transport (#1879): one owner for the arrangement preview, the
+  // original full mix, and drafts — play/stop, seek, loop, source switch.
+  const previousDraftIds = (project.generationMetadata?.previousDrafts ?? []).map(
+    (entry) => entry.jobId,
+  );
+  const transport = useRemixTransport({
+    token,
+    projectId: project.id,
+    stemIds: project.stems.map((stem) => stem.stemId),
+    previewStems: stemPreviewStates(project, edits),
+    soloStemId,
+    referenceStemId,
+    currentDraftJobId: draftOutputUri ? project.generationJobId : null,
+    timelineSec: project.sectionGrid?.durationSeconds ?? null,
+    onError: (kind) => {
+      addToast(
+        kind === "preview"
+          ? {
+              type: "error",
+              title: "Preview unavailable",
+              message: "The stem previews could not be loaded. Please try again.",
+            }
+          : {
+              type: "error",
+              title: "Draft playback unavailable",
+              message: "The generated draft audio could not be loaded.",
+            },
+      );
+    },
+  });
+  const {
+    stop: stopTransport,
+    setSource: setTransportSource,
+    setLoop: setTransportLoop,
+  } = transport;
+  const transportSource = transport.source;
+  const transportLoop = transport.loop;
 
-  const previewEngine = (): StemPreviewEngine => {
-    if (!previewEngineRef.current) {
-      previewEngineRef.current = createStemPreviewEngine({
-        urlForStem: getStemPreviewUrl,
-      });
-    }
-    return previewEngineRef.current;
-  };
-
-  const stopDraftPlayback = () => {
-    draftRequestRef.current += 1;
-    draftAudioRef.current?.pause();
-    draftAudioRef.current = null;
-    if (draftObjectUrlRef.current) {
-      URL.revokeObjectURL(draftObjectUrlRef.current);
-      draftObjectUrlRef.current = null;
-    }
-    setDraftPlaybackStatus("idle");
-    setPlayingDraftJobId(null);
-  };
-
+  // A source that no longer exists (a draft replaced by a new generation, a
+  // reference stem gone) falls back to the arrangement.
+  const transportSourceUnavailable =
+    transportSource.kind === "draft"
+      ? transportSource.jobId === null
+        ? !draftOutputUri
+        : !previousDraftIds.includes(transportSource.jobId)
+      : transportSource.kind === "original" && referenceStemId === null;
   useEffect(() => {
-    return () => {
-      // Dispose stops any live preview, closes the AudioContext, and drops
-      // the decoded-stem cache.
-      previewEngineRef.current?.dispose();
-      previewEngineRef.current = null;
-      stemPreviewRef.current = null;
-      // A draft still downloading must not start playing after unmount.
-      draftRequestRef.current += 1;
-      draftAudioRef.current?.pause();
-      if (draftObjectUrlRef.current) {
-        URL.revokeObjectURL(draftObjectUrlRef.current);
+    if (!transportSourceUnavailable) return;
+    stopTransport();
+    setTransportSource({ kind: "arrangement" });
+  }, [setTransportSource, stopTransport, transportSourceUnavailable]);
+
+  // A loop on a section the grid no longer has is dropped.
+  const transportLoopStale =
+    transportLoop !== null &&
+    !sectionGrid?.sections[transportLoop.sectionIndex];
+  useEffect(() => {
+    if (transportLoopStale) setTransportLoop(null);
+  }, [setTransportLoop, transportLoopStale]);
+
+  const loopSection = (index: number | null) => {
+    const interval = index === null ? null : sectionGrid?.sections[index];
+    if (index === null || !interval) {
+      transport.setLoop(null);
+      return;
+    }
+    transport.setLoop({
+      sectionIndex: index,
+      startSec: interval.startSec,
+      endSec: interval.endSec,
+    });
+  };
+
+  const draftTransportState = (
+    jobId: string | null,
+  ): "idle" | "loading" | "playing" =>
+    transportSource.kind === "draft" && transportSource.jobId === jobId
+      ? transport.status
+      : "idle";
+
+  // Read by the generation poll, which must not re-subscribe per render.
+  const currentDraftAudibleRef = useRef(false);
+  const currentDraftAudible = draftTransportState(null) !== "idle";
+  useEffect(() => {
+    currentDraftAudibleRef.current = currentDraftAudible;
+  }, [currentDraftAudible]);
+
+  // "Play AI draft" / version buttons (#1320): the same transport, on that
+  // draft; pressing the one that is playing stops it.
+  const handleDraftPlayback = (jobId: string | null) => {
+    if (draftTransportState(jobId) !== "idle") {
+      transport.stop();
+      return;
+    }
+    const next: TransportSource = { kind: "draft", jobId };
+    if (transport.status === "idle") {
+      transport.setSource(next);
+      void transport.play();
+    } else {
+      // Already playing another source: switching restarts on the draft.
+      transport.setSource(next);
+    }
+  };
+
+  const laneStems: LaneStem[] = channelStems.map((stem) => {
+    const edit = edits.stems[stem.stemId];
+    return {
+      stemId: stem.stemId,
+      name: stemDisplayName(stem),
+      type: stem.type,
+      muted: edit?.muted ?? stem.muted,
+      soloed: soloStemId === stem.stemId,
+      soloedOut: soloStemId !== null && soloStemId !== stem.stemId,
+      gainDb: edit?.gainDb ?? stem.gainDb,
+      sections: edit?.sections ?? null,
+      peaks: transport.peaks[stem.stemId] ?? null,
+    };
+  });
+
+  const toggleStemMute = (stemId: string) => {
+    setEdits((prev) => {
+      const current = prev.stems[stemId];
+      if (!current) return prev;
+      return {
+        ...prev,
+        stems: { ...prev.stems, [stemId]: { ...current, muted: !current.muted } },
+      };
+    });
+  };
+
+  const toggleStemSolo = (stemId: string) => {
+    setSoloStemId((prev) => (prev === stemId ? null : stemId));
+  };
+
+  // Unload guard (#1879): autosave needs a moment after the last edit.
+  const unsavedWork = dirty || saving;
+  useEffect(() => {
+    if (!unsavedWork) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Legacy browsers only show the prompt with a returnValue set.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [unsavedWork]);
+
+  // Keyboard shortcuts (#1879). The listener is bound once and reads the
+  // latest state through a ref.
+  const shortcutStateRef = useRef({
+    published,
+    dialogOpen: confirmPublishOpen,
+    loopActive: transportLoop !== null,
+    toggle: transport.toggle,
+    clearLoop: () => transport.setLoop(null),
+    toggleMute: toggleStemMute,
+    toggleSolo: toggleStemSolo,
+  });
+  useEffect(() => {
+    shortcutStateRef.current = {
+      published,
+      dialogOpen: confirmPublishOpen,
+      loopActive: transportLoop !== null,
+      toggle: transport.toggle,
+      clearLoop: () => transport.setLoop(null),
+      toggleMute: toggleStemMute,
+      toggleSolo: toggleStemSolo,
+    };
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const state = shortcutStateRef.current;
+      if (event.defaultPrevented || state.dialogOpen) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const focused =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      const action = studioShortcutAction({
+        key: event.key,
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        altKey: event.altKey,
+        repeat: event.repeat,
+        targetTag: target?.tagName ?? null,
+        targetEditable: target?.isContentEditable ?? false,
+        focusedStemId:
+          focused?.closest<HTMLElement>("[data-stem-id]")?.dataset.stemId ??
+          null,
+        published: state.published,
+      });
+      if (!action) return;
+      switch (action.kind) {
+        case "toggle_playback":
+          event.preventDefault();
+          state.toggle();
+          return;
+        case "toggle_mute":
+          event.preventDefault();
+          state.toggleMute(action.stemId);
+          return;
+        case "toggle_solo":
+          event.preventDefault();
+          state.toggleSolo(action.stemId);
+          return;
+        case "clear_loop":
+          if (!state.loopActive) return;
+          event.preventDefault();
+          state.clearLoop();
+          return;
       }
     };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (stemPreviewStatus !== "playing" || !stemPreviewRef.current) return;
-    stemPreviewRef.current.update(
-      stemPreviewStates(project, edits),
-      soloStemId,
-      compareActive ? referenceStemId : null,
-    );
-  }, [compareActive, edits, project, referenceStemId, soloStemId, stemPreviewStatus]);
-
-  // The site-wide player just started (false → true): stop studio audio.
-  // Studio audio started while the player was still flagged playing pauses
-  // it (true → false) and must not be stopped by this effect.
-  useEffect(() => {
-    const wasPlaying = playerWasPlayingRef.current;
-    playerWasPlayingRef.current = playerIsPlaying;
-    if (wasPlaying || !playerIsPlaying) return;
-    // Both stops are no-ops when idle; they also cancel anything mid-load.
-    stopStemPreview();
-    stopDraftPlayback();
-  }, [playerIsPlaying]);
 
   // Credit balance (#1422): fetch on mount and re-fetch whenever a generation
   // settles (the `remix_draft` debit lands in the worker), so the panel
@@ -1127,10 +1346,13 @@ export function RemixStudioEditor({
         if (!dirty) {
           setEdits(initialEdits(updated));
         }
+        // A finished generation replaces the draft being heard: stop it
+        // rather than keep playing the previous output.
         if (
-          remixGenerationStatus(updated.generationMetadata) === "completed"
+          remixGenerationStatus(updated.generationMetadata) === "completed" &&
+          currentDraftAudibleRef.current
         ) {
-          stopDraftPlayback();
+          stopTransport();
         }
       } catch {
         // Polling failures should not disrupt local editing; the next interval
@@ -1145,7 +1367,7 @@ export function RemixStudioEditor({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [dirty, generationActive, project.id, token]);
+  }, [dirty, generationActive, project.id, stopTransport, token]);
 
   // Publish + export gating (#1196/#1323): eligibility is re-checked
   // server-side at publish/export time, but the studio fetches it so the
@@ -1190,28 +1412,6 @@ export function RemixStudioEditor({
     }));
   };
 
-  const toggleStemSection = (stemId: string, index: number) => {
-    if (!sectionGrid) return;
-    setEdits((prev) => {
-      const current = prev.stems[stemId];
-      const base =
-        current?.sections ?? sectionGrid.sections.map(() => true);
-      const next = base.map((flag, i) => (i === index ? !flag : flag));
-      return {
-        ...prev,
-        stems: {
-          ...prev.stems,
-          [stemId]: {
-            ...current,
-            // All-on normalizes back to the null default so untouched
-            // arrangements never persist a no-op mask (#1314).
-            sections: next.every(Boolean) ? null : next,
-          },
-        },
-      };
-    });
-  };
-
   const handleGenerate = async () => {
     if (!token || generating || generationActive) return;
     setGenerating(true);
@@ -1234,9 +1434,9 @@ export function RemixStudioEditor({
       });
       setProject(updated);
       setEdits(initialEdits(updated));
-      // Review fix (#1165): a regenerated draft invalidates the cached
-      // playback blob — otherwise Play draft replays the previous output.
-      stopDraftPlayback();
+      // Review fix (#1165): a queued generation has no playable output, so
+      // the transport drops a draft source on its own (#1879) and the new
+      // draft gets a fresh cache key — Play never replays the old output.
       addToast({
         type: "success",
         title: retry ? "Retry queued" : edits.mode === "stem_mix" ? "Render queued" : "Generation queued",
@@ -1283,108 +1483,6 @@ export function RemixStudioEditor({
     }
   };
 
-  const startStemPreview = async (compare: boolean) => {
-    pauseGlobalPlayer();
-    const requestId = ++previewRequestRef.current;
-    setStemPreviewStatus("loading");
-    try {
-      const handle = await previewEngine().play({
-        stems: stemPreviewStates(project, edits),
-        soloStemId,
-        referenceStemId: compare ? referenceStemId : null,
-        onEnded: () => {
-          stemPreviewRef.current = null;
-          setPreviewHandle(null);
-          setStemPreviewStatus("idle");
-        },
-      });
-      if (requestId !== previewRequestRef.current) {
-        // Stopped (or restarted) while the stems were loading.
-        handle.stop();
-        return;
-      }
-      stemPreviewRef.current = handle;
-      setPreviewHandle(handle);
-      setStemPreviewStatus("playing");
-    } catch {
-      if (requestId !== previewRequestRef.current) return;
-      stemPreviewRef.current = null;
-      setPreviewHandle(null);
-      setStemPreviewStatus("idle");
-      addToast({
-        type: "error",
-        title: "Preview unavailable",
-        message: "The stem previews could not be loaded. Please try again.",
-      });
-    }
-  };
-
-  const handleStemPreview = async () => {
-    if (stemPreviewStatus !== "idle") {
-      stopStemPreview();
-      return;
-    }
-    await startStemPreview(compareActive);
-  };
-
-  const toggleCompareWithOriginal = () => {
-    const next = !referenceActive;
-    setReferenceActive(next);
-    // Turning compare on from idle starts the preview; otherwise the live
-    // update effect switches the running preview between the two.
-    if (next && stemPreviewStatus === "idle" && referenceStemId) {
-      void startStemPreview(true);
-    }
-  };
-
-  const handleDraftPlayback = async (jobId: string | null = null) => {
-    const alreadyOnThisVersion = playingDraftJobId === jobId;
-    if (draftPlaybackStatus !== "idle") {
-      stopDraftPlayback();
-      // Same version → plain stop; another version → A/B switch, keep going.
-      if (alreadyOnThisVersion) return;
-    }
-    if (!token) return;
-    if (jobId === null && !draftOutputUri) return;
-    pauseGlobalPlayer();
-    const requestId = ++draftRequestRef.current;
-    setDraftPlaybackStatus("loading");
-    setPlayingDraftJobId(jobId);
-    try {
-      const blob = await getRemixDraftAudioBlob(
-        token,
-        project.id,
-        jobId ?? undefined,
-      );
-      // Stopped (or switched version) while the draft was downloading.
-      if (requestId !== draftRequestRef.current) return;
-      const objectUrl = URL.createObjectURL(blob);
-      const audio = new Audio(objectUrl);
-      draftObjectUrlRef.current = objectUrl;
-      draftAudioRef.current = audio;
-      audio.onended = stopDraftPlayback;
-      audio.onerror = () => {
-        stopDraftPlayback();
-        addToast({
-          type: "error",
-          title: "Draft playback failed",
-          message: "The generated draft could not be played.",
-        });
-      };
-      await audio.play();
-      if (requestId !== draftRequestRef.current) return;
-      setDraftPlaybackStatus("playing");
-    } catch {
-      if (requestId !== draftRequestRef.current) return;
-      stopDraftPlayback();
-      addToast({
-        type: "error",
-        title: "Draft playback unavailable",
-        message: "The generated draft audio could not be loaded.",
-      });
-    }
-  };
-
   const handleAddStem = async (stemId: string) => {
     if (!token || addingStemId) return;
     setAddingStemId(stemId);
@@ -1412,14 +1510,21 @@ export function RemixStudioEditor({
   };
 
   const handleSave = async () => {
-    if (!token || !dirty || saving) return;
+    if (!token || saving || published) return;
+    // Snapshot: edits typed while the request runs must survive it (#1879).
+    const snapshot = edits;
+    const payload = buildProjectPatch(project, snapshot);
+    if (Object.keys(payload).length === 0 || snapshot.title.trim() === "") {
+      return;
+    }
     setSaving(true);
+    setFailedSaveEdits(null);
     try {
-      const updated = await updateRemixProject(token, project.id, patch);
+      const updated = await updateRemixProject(token, project.id, payload);
       // The PATCH response omits availableStems (a GET-only computation);
       // keep the panel's current list instead of dropping it (#1312).
       setProject((prev) => ({ ...updated, availableStems: prev.availableStems }));
-      setEdits(initialEdits(updated));
+      setEdits((prev) => editsAfterSave(prev, snapshot, updated));
       void recordProductAnalytics(token, "remix.studio_saved", {
         source: "remix_studio",
         subjectType: "remix_project",
@@ -1427,15 +1532,33 @@ export function RemixStudioEditor({
         payload: { projectId: updated.id, mode: updated.mode },
       });
     } catch {
-      addToast({
-        type: "error",
-        title: "Save failed",
-        message: "Your remix edits could not be saved. Please try again.",
-      });
+      // Blocks autosave until the next edit or Retry; the footer says so.
+      setFailedSaveEdits(snapshot);
     } finally {
       setSaving(false);
     }
   };
+
+  // Autosave (#1879): re-armed on every edit, fires after a short idle.
+  const saveBlocked = failedSaveEdits !== null && failedSaveEdits === edits;
+  const autosaveDue = shouldAutosave({
+    dirty,
+    titleBlank,
+    saving,
+    published,
+    blocked: saveBlocked,
+  });
+  const handleSaveRef = useRef(handleSave);
+  useEffect(() => {
+    handleSaveRef.current = handleSave;
+  });
+  useEffect(() => {
+    if (!autosaveDue) return;
+    const timer = window.setTimeout(() => {
+      void handleSaveRef.current();
+    }, AUTOSAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [autosaveDue, edits]);
 
   const handlePublish = async () => {
     if (!token || publishing) return;
@@ -1445,8 +1568,7 @@ export function RemixStudioEditor({
       setProject(published);
       setEdits(initialEdits(published));
       setConfirmPublishOpen(false);
-      stopStemPreview();
-      stopDraftPlayback();
+      transport.stop();
       void recordProductAnalytics(token, "remix.published", {
         source: "remix_studio",
         subjectType: "remix_project",
@@ -1540,7 +1662,6 @@ export function RemixStudioEditor({
     }
   };
 
-  const published = project.status === "published";
   const publishAvailability = describePublishAvailability({
     status: project.status,
     generationStatus,
@@ -1573,7 +1694,7 @@ export function RemixStudioEditor({
                   : "border-transparent focus:border-zinc-600"
               }`}
               value={edits.title}
-              disabled={saving || published}
+              disabled={published}
               onChange={(e) =>
                 setEdits((prev) => ({ ...prev, title: e.target.value }))
               }
@@ -1653,64 +1774,32 @@ export function RemixStudioEditor({
           </section>
         )}
 
-        {/* Stem controls */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
+        {/* Session: transport + one lane per stem (#1879) */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 remix-session">
           <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
-            <h2 className="text-lg font-semibold text-white">Stems</h2>
-            <div className="flex items-center gap-3 flex-wrap">
-              {soloStemId && (
-                <button
-                  type="button"
-                  className="text-xs text-purple-300 hover:text-purple-200"
-                  onClick={() => setSoloStemId(null)}
-                >
-                  Clear solo
-                </button>
+            <div className="flex items-baseline gap-3 flex-wrap">
+              <h2 className="text-lg font-semibold text-white">Session</h2>
+              {sectionGrid && (
+                <span className="text-xs text-zinc-500">
+                  {sectionGridSummaryLabel(sectionGrid)}
+                </span>
               )}
-              {referenceStemId && (
-                <button
-                  type="button"
-                  aria-pressed={compareActive}
-                  title="Hear the original full mix instead of your arrangement"
-                  className={`px-2 py-1 rounded text-xs font-medium border remix-compare-original-btn ${
-                    compareActive
-                      ? "bg-sky-500/20 text-sky-200 border-sky-500/40"
-                      : "bg-zinc-800 text-zinc-300 border-zinc-700"
-                  }`}
-                  onClick={toggleCompareWithOriginal}
-                >
-                  Compare with original
-                </button>
-              )}
-              {stemPreviewStatus === "playing" && (
-                <PreviewLevelMeter handle={previewHandle} />
-              )}
+            </div>
+            {soloStemId && (
               <button
                 type="button"
-                className="ui-btn ui-btn-ghost remix-stem-preview-btn"
-                onClick={() => void handleStemPreview()}
+                className="text-xs text-purple-300 hover:text-purple-200"
+                onClick={() => setSoloStemId(null)}
               >
-                {stemPreviewStatus === "loading"
-                  ? "Loading preview..."
-                  : stemPreviewStatus === "playing"
-                    ? "Stop preview"
-                    : "Play preview"}
+                Clear solo
               </button>
-            </div>
+            )}
           </div>
           <p className="text-zinc-500 text-xs mb-4">
-            Preview uses streaming-quality source stems and is unmastered; a
-            limiter keeps the summed stems from clipping. Final renders are
-            loudness-normalized, so they sound louder and more even than this
-            preview. Mute and gain are saved with your draft; solo changes
-            playback only and is not saved.
-            {referenceStemId && (
-              <>
-                {" "}
-                Compare with original plays the track&apos;s full mix on its
-                own so you can A/B it against your arrangement.
-              </>
-            )}
+            The preview is unmastered, with a limiter keeping the summed stems
+            from clipping; final renders are loudness-normalized, so they sound
+            louder and more even. Mute, gain, and sections save automatically;
+            solo changes playback only and is not saved.
             {Object.entries(edits.stems).some(
               ([stemId, edit]) => edit.muted && !referenceIds.has(stemId),
             ) && (
@@ -1719,7 +1808,11 @@ export function RemixStudioEditor({
                 Stems added from this track start muted — unmute a row to bring
                 it into your remix.
               </>
-            )}
+            )}{" "}
+            <span className="hidden text-zinc-400 md:inline remix-shortcut-hint">
+              Space play/stop · M mute · S solo on the focused row · Esc clears
+              the loop
+            </span>
           </p>
           {doublingReferenceStems.map((stem) => (
             <div
@@ -1734,7 +1827,7 @@ export function RemixStudioEditor({
               </p>
               <button
                 type="button"
-                disabled={saving}
+                disabled={published}
                 className="px-2 py-1 rounded text-xs font-medium border bg-amber-500/20 text-amber-100 border-amber-500/40 hover:bg-amber-500/30 remix-use-as-reference-btn"
                 onClick={() => updateStemEdit(stem.stemId, { muted: true })}
               >
@@ -1742,82 +1835,49 @@ export function RemixStudioEditor({
               </button>
             </div>
           ))}
-          <ul className="space-y-3">
-            {channelStems.map((stem) => {
-              const edit = edits.stems[stem.stemId];
-              const soloedOut = soloStemId !== null && soloStemId !== stem.stemId;
-              const effectivelyMuted = edit.muted || soloedOut;
-              return (
-                <li
-                  key={stem.stemId}
-                  className={`border border-zinc-800 rounded-md px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2 ${
-                    effectivelyMuted ? "opacity-50" : ""
-                  }`}
-                >
-                  <div className="min-w-[8rem] flex-1">
-                    <div className="text-sm text-zinc-200">
-                      {stemDisplayName(stem)}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {stem.type}
-                      {soloedOut ? " · muted by solo (preview)" : ""}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    aria-pressed={edit.muted}
-                    disabled={saving}
-                    className={`px-2 py-1 rounded text-xs font-medium border ${
-                      edit.muted
-                        ? "bg-red-500/20 text-red-300 border-red-500/40"
-                        : "bg-zinc-800 text-zinc-300 border-zinc-700"
-                    }`}
-                    onClick={() =>
-                      updateStemEdit(stem.stemId, { muted: !edit.muted })
-                    }
-                  >
-                    {edit.muted ? "Muted" : "Mute"}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={soloStemId === stem.stemId}
-                    className={`px-2 py-1 rounded text-xs font-medium border ${
-                      soloStemId === stem.stemId
-                        ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
-                        : "bg-zinc-800 text-zinc-300 border-zinc-700"
-                    }`}
-                    onClick={() =>
-                      setSoloStemId((prev) =>
-                        prev === stem.stemId ? null : stem.stemId,
-                      )
-                    }
-                  >
-                    Solo
-                  </button>
-                  <label className="flex items-center gap-2 text-xs text-zinc-400">
-                    Gain
-                    <input
-                      type="range"
-                      min={GAIN_DB_MIN}
-                      max={GAIN_DB_MAX}
-                      step={0.5}
-                      value={edit.gainDb ?? 0}
-                      disabled={saving}
-                      aria-label={`${stemDisplayName(stem)} gain in decibels`}
-                      onChange={(e) =>
-                        updateStemEdit(stem.stemId, {
-                          gainDb: clampGainDb(parseFloat(e.target.value)),
-                        })
-                      }
-                    />
-                    <span className="w-14 text-right text-zinc-300">
-                      {(edit.gainDb ?? 0).toFixed(1)} dB
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="rounded-md border border-zinc-800 overflow-hidden">
+            <RemixTransportBar
+              status={transport.status}
+              getPositionSec={transport.getPositionSec}
+              durationSec={transport.durationSec}
+              source={transportSource}
+              hasOriginal={referenceStemId !== null}
+              hasDraft={Boolean(draftOutputUri)}
+              loopLabel={
+                sectionGrid && transportLoop
+                  ? transportLoopLabel(sectionGrid, transportLoop.sectionIndex)
+                  : null
+              }
+              meter={
+                transport.status === "playing" &&
+                transportSource.kind !== "draft" ? (
+                  <PreviewLevelMeter handle={transport.previewHandle} />
+                ) : null
+              }
+              onToggle={transport.toggle}
+              onSourceChange={transport.setSource}
+              onClearLoop={() => transport.setLoop(null)}
+            />
+            <RemixSessionLanes
+              stems={laneStems}
+              grid={sectionGrid}
+              durationSec={transport.durationSec}
+              getPositionSec={transport.getPositionSec}
+              playing={transport.status === "playing"}
+              loopSectionIndex={transportLoop?.sectionIndex ?? null}
+              disabled={published}
+              onToggleMute={toggleStemMute}
+              onToggleSolo={toggleStemSolo}
+              onGainChange={(stemId, gainDb) =>
+                updateStemEdit(stemId, { gainDb })
+              }
+              onSetSections={(stemId, sections) =>
+                updateStemEdit(stemId, { sections })
+              }
+              onSeek={transport.seek}
+              onLoopSection={loopSection}
+            />
+          </div>
 
           {/* Sibling stems not in the session yet (#1312) */}
           {availableStems.length > 0 && (
@@ -1847,10 +1907,15 @@ export function RemixStudioEditor({
                         <button
                           type="button"
                           className="ui-btn ui-btn-ghost remix-add-stem-btn"
-                          disabled={saving || dirty || addingStemId !== null}
+                          disabled={
+                            published ||
+                            saving ||
+                            dirty ||
+                            addingStemId !== null
+                          }
                           title={
-                            dirty
-                              ? "Save your changes first"
+                            dirty || saving
+                              ? SAVING_LATEST_CHANGES_REASON
                               : `Add ${stemDisplayName(stem)} to this session`
                           }
                           onClick={() => void handleAddStem(stem.stemId)}
@@ -1882,77 +1947,6 @@ export function RemixStudioEditor({
           )}
         </section>
 
-        {/* Arrangement section grid (#1314) */}
-        {sectionGrid && (
-          <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
-            <div className="flex items-center justify-between gap-3 mb-1 flex-wrap">
-              <h2 className="text-lg font-semibold text-white">Arrangement</h2>
-              <span className="text-xs text-zinc-500">
-                {sectionGridSummaryLabel(sectionGrid)}
-              </span>
-            </div>
-            <p className="text-zinc-500 text-xs mb-4">
-              Switch stems on or off per section — this is what makes the mix
-              change over time. Renders fade at section edges; the preview picks
-              up section changes the next time you press Play preview.
-            </p>
-            <div className="overflow-x-auto">
-              <table className="remix-arrangement-grid text-xs">
-                <thead>
-                  <tr>
-                    <th className="text-left text-zinc-500 font-normal pr-3 pb-2">
-                      Stem
-                    </th>
-                    {sectionGrid.sections.map((interval, index) => (
-                      <th
-                        key={index}
-                        className="text-zinc-500 font-normal px-1 pb-2 text-center"
-                        title={`Section ${index + 1} starts at ${sectionStartLabel(interval)}`}
-                      >
-                        {sectionStartLabel(interval)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {channelStems.map((stem) => {
-                    const sections = edits.stems[stem.stemId]?.sections ?? null;
-                    return (
-                      <tr key={stem.stemId}>
-                        <td className="text-zinc-300 pr-3 py-1 whitespace-nowrap">
-                          {stemDisplayName(stem)}
-                        </td>
-                        {sectionGrid.sections.map((_, index) => {
-                          const active =
-                            sections === null ? true : sections[index];
-                          return (
-                            <td key={index} className="px-1 py-1 text-center">
-                              <button
-                                type="button"
-                                aria-pressed={active}
-                                aria-label={`${stemDisplayName(stem)}: section ${index + 1} ${active ? "on" : "off"}`}
-                                disabled={saving}
-                                className={`w-7 h-6 rounded border ${
-                                  active
-                                    ? "bg-purple-500/30 border-purple-500/50"
-                                    : "bg-zinc-800 border-zinc-700"
-                                }`}
-                                onClick={() =>
-                                  toggleStemSection(stem.stemId, index)
-                                }
-                              />
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
         {/* Mode + prompt */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-lg p-6">
           <h2 className="text-lg font-semibold text-white mb-4">Remix mode</h2>
@@ -1962,7 +1956,7 @@ export function RemixStudioEditor({
                 key={mode.value}
                 type="button"
                 aria-pressed={edits.mode === mode.value}
-                disabled={saving}
+                disabled={published}
                 className={`px-4 py-2 text-sm ${
                   edits.mode === mode.value
                     ? "bg-purple-500/25 text-purple-200"
@@ -1996,7 +1990,7 @@ export function RemixStudioEditor({
                     <button
                       key={preset.label}
                       type="button"
-                      disabled={saving}
+                      disabled={published}
                       aria-pressed={active}
                       title={preset.prompt}
                       className={`px-3 py-1 rounded-full text-xs border transition-colors remix-prompt-preset ${
@@ -2020,7 +2014,7 @@ export function RemixStudioEditor({
               rows={3}
               placeholder="Describe the variation or extension you want..."
               value={edits.prompt}
-              disabled={!promptEnabled || saving}
+              disabled={!promptEnabled || published}
               onChange={(e) =>
                 setEdits((prev) => ({ ...prev, prompt: e.target.value }))
               }
@@ -2041,7 +2035,7 @@ export function RemixStudioEditor({
                         key={option.value}
                         type="button"
                         aria-pressed={aiTargetKind === option.value}
-                        disabled={saving}
+                        disabled={published}
                         className={`px-3 py-1.5 text-xs ${
                           aiTargetKind === option.value
                             ? "bg-purple-500/20 text-purple-200"
@@ -2058,7 +2052,7 @@ export function RemixStudioEditor({
                       aria-label="Stem to replace"
                       className="bg-zinc-900 border border-zinc-700 rounded-md px-2 py-1.5 text-xs text-zinc-200"
                       value={aiTargetStemId ?? ""}
-                      disabled={saving}
+                      disabled={published}
                       onChange={(event) =>
                         setAiTargetStemId(event.target.value || null)
                       }
@@ -2252,13 +2246,11 @@ export function RemixStudioEditor({
                     <button
                       type="button"
                       className="ui-btn ui-btn-ghost remix-draft-playback-btn mt-3"
-                      onClick={() => void handleDraftPlayback(null)}
+                      onClick={() => handleDraftPlayback(null)}
                     >
-                      {playingDraftJobId === null &&
-                      draftPlaybackStatus === "loading"
+                      {draftTransportState(null) === "loading"
                         ? "Loading draft..."
-                        : playingDraftJobId === null &&
-                            draftPlaybackStatus === "playing"
+                        : draftTransportState(null) === "playing"
                           ? "Stop draft"
                           : "Play AI draft"}
                     </button>
@@ -2279,15 +2271,11 @@ export function RemixStudioEditor({
                               <button
                                 type="button"
                                 className="ui-btn ui-btn-ghost remix-draft-version-btn"
-                                onClick={() =>
-                                  void handleDraftPlayback(entry.jobId)
-                                }
+                                onClick={() => handleDraftPlayback(entry.jobId)}
                               >
-                                {playingDraftJobId === entry.jobId &&
-                                draftPlaybackStatus === "loading"
+                                {draftTransportState(entry.jobId) === "loading"
                                   ? "Loading..."
-                                  : playingDraftJobId === entry.jobId &&
-                                      draftPlaybackStatus === "playing"
+                                  : draftTransportState(entry.jobId) === "playing"
                                     ? "Stop"
                                     : "Play"}
                               </button>
@@ -2326,7 +2314,7 @@ export function RemixStudioEditor({
           </div>
         </section>
 
-        {/* Save + publish + unavailable actions */}
+        {/* Publish + export actions; save status (autosave, #1879) */}
         <section className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             {published ? (
@@ -2414,21 +2402,34 @@ export function RemixStudioEditor({
                 </button>
               ))}
           </div>
-          <div className="flex items-center gap-3">
-            <span
-              className={`text-xs ${titleBlank && !saving ? "text-red-400" : "text-zinc-500"}`}
-            >
-              {saveStatusLabel({ saving, dirty, titleBlank })}
-            </span>
-            <button
-              type="button"
-              className="ui-btn ui-btn-primary"
-              disabled={!dirty || saving || titleBlank || published}
-              onClick={() => void handleSave()}
-            >
-              {saving ? "Saving..." : "Save changes"}
-            </button>
-          </div>
+          {!published && (
+            <div className="flex items-center gap-3">
+              <span
+                role="status"
+                className={`text-xs remix-save-status ${
+                  (titleBlank || saveBlocked) && !saving
+                    ? "text-red-400"
+                    : "text-zinc-500"
+                }`}
+              >
+                {saveStatusLabel({
+                  saving,
+                  dirty,
+                  titleBlank,
+                  error: saveBlocked,
+                })}
+              </span>
+              {saveBlocked && !saving && (
+                <button
+                  type="button"
+                  className="ui-btn ui-btn-ghost remix-save-retry"
+                  onClick={() => void handleSave()}
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
         </section>
         {!published && publishAvailability.reason && (
           <p className="text-xs text-zinc-500 remix-publish-reason">
