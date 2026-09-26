@@ -502,7 +502,7 @@ describe("RemixCreatePanel — Describe it (#1900)", () => {
     const proposal = proposalFor("purple bananas");
     expect(proposal.understood).toBe(false);
     const html = view({ text: "purple bananas", proposal });
-    expect(html).toContain(DESCRIBE_NOT_UNDERSTOOD.replace("'", "&#x27;"));
+    expect(html).toContain(DESCRIBE_NOT_UNDERSTOOD.replaceAll("'", "&#x27;"));
     expect(html).not.toContain("remix-describe-apply");
     expect(html).not.toContain("Not understood:");
     expect(html).toContain("remix-describe-cancel");
