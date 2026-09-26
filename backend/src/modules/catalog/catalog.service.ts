@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, OnModuleInit, NotFoundException } from "@nestjs/common";
 import { LicenseType, Prisma, type AiDisclosureLevel, type Artist, type ShowArtistAuthorityStatus } from "@prisma/client";
 import { EventBus } from "../shared/event_bus";
 import { validateArtworkUpload } from "../shared/artwork-validation";
@@ -2680,97 +2680,166 @@ export class CatalogService implements OnModuleInit {
     // 2. Cascade delete: stems → tracks → release (no cascade in schema)
     const stemIds = release.tracks.flatMap(t => t.stems.map(s => s.id));
     const trackIds = release.tracks.map(t => t.id);
+    await this.assertReleaseDeletable(trackIds, stemIds);
     const rightsUpgradeRequests = await prisma.releaseRightsUpgradeRequest.findMany({
       where: { releaseId },
       select: { id: true },
     });
     const rightsUpgradeRequestIds = rightsUpgradeRequests.map((request) => request.id);
 
-    await prisma.$transaction(async (tx) => {
-      await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
-      if (rightsUpgradeRequestIds.length > 0) {
-        const evidenceBundles = await tx.rightsEvidenceBundle.findMany({
-          where: { rightsUpgradeRequestId: { in: rightsUpgradeRequestIds } },
-          select: { id: true },
-        });
-        const evidenceBundleIds = evidenceBundles.map((bundle) => bundle.id);
+    try {
+      await prisma.$transaction(async (tx) => {
+        await this.lockManagedRelease(tx, releaseId, userId, "catalog_owner");
+        // Rights-route review history is derived from this release (its
+        // rightsUpgradeRequestId is a plain column, not a foreign key).
+        await tx.rightsRouteReassessment.deleteMany({ where: { releaseId } });
+        if (rightsUpgradeRequestIds.length > 0) {
+          const evidenceBundles = await tx.rightsEvidenceBundle.findMany({
+            where: { rightsUpgradeRequestId: { in: rightsUpgradeRequestIds } },
+            select: { id: true },
+          });
+          const evidenceBundleIds = evidenceBundles.map((bundle) => bundle.id);
 
-        if (evidenceBundleIds.length > 0) {
-          await tx.rightsEvidence.deleteMany({ where: { bundleId: { in: evidenceBundleIds } } });
-          await tx.rightsEvidenceBundle.deleteMany({ where: { id: { in: evidenceBundleIds } } });
-        }
+          if (evidenceBundleIds.length > 0) {
+            await tx.rightsEvidence.deleteMany({ where: { bundleId: { in: evidenceBundleIds } } });
+            await tx.rightsEvidenceBundle.deleteMany({ where: { id: { in: evidenceBundleIds } } });
+          }
 
-        await tx.releaseRightsUpgradeRequest.deleteMany({
-          where: { id: { in: rightsUpgradeRequestIds } },
-        });
-      }
-
-      if (stemIds.length > 0) {
-        // Delete marketplace dependents before the stems themselves.
-        await this.deleteLegacyStemQualityRatings(tx, stemIds);
-
-        const listings = await tx.stemListing.findMany({
-          where: { stemId: { in: stemIds } },
-          select: { id: true },
-        });
-        const listingIds = listings.map((listing) => listing.id);
-
-        if (listingIds.length > 0) {
-          await tx.stemPurchase.deleteMany({ where: { listingId: { in: listingIds } } });
-        }
-
-        await tx.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
-        await tx.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
-        await tx.stemPricing.deleteMany({ where: { stemId: { in: stemIds } } });
-        await tx.stem.deleteMany({ where: { id: { in: stemIds } } });
-      }
-
-      if (trackIds.length > 0) {
-        const libraryTracks = await tx.libraryTrack.findMany({
-          where: {
-            source: "remote",
-            OR: [
-              { id: { in: trackIds } },
-              { catalogTrackId: { in: trackIds } },
-            ],
-          },
-          select: { id: true },
-        });
-        const libraryTrackIds = libraryTracks.map((track) => track.id);
-        const deletedTrackReferences = [...new Set([...trackIds, ...libraryTrackIds])];
-
-        if (libraryTrackIds.length > 0) {
-          await tx.libraryTrack.deleteMany({
-            where: { id: { in: libraryTrackIds } },
+          await tx.releaseRightsUpgradeRequest.deleteMany({
+            where: { id: { in: rightsUpgradeRequestIds } },
           });
         }
 
-        const playlists = await tx.playlist.findMany({
-          where: { trackIds: { hasSome: deletedTrackReferences } },
-          select: { id: true, trackIds: true },
-        });
-        for (const playlist of playlists) {
-          await tx.playlist.update({
-            where: { id: playlist.id },
-            data: {
-              trackIds: playlist.trackIds.filter((id) => !deletedTrackReferences.includes(id)),
+        if (stemIds.length > 0) {
+          // Delete marketplace dependents before the stems themselves.
+          await this.deleteLegacyStemQualityRatings(tx, stemIds);
+
+          const listings = await tx.stemListing.findMany({
+            where: { stemId: { in: stemIds } },
+            select: { id: true },
+          });
+          const listingIds = listings.map((listing) => listing.id);
+
+          if (listingIds.length > 0) {
+            await tx.stemPurchase.deleteMany({ where: { listingId: { in: listingIds } } });
+          }
+
+          await tx.stemListing.deleteMany({ where: { stemId: { in: stemIds } } });
+          await tx.stemNftMint.deleteMany({ where: { stemId: { in: stemIds } } });
+          await tx.stemPricing.deleteMany({ where: { stemId: { in: stemIds } } });
+          await tx.stem.deleteMany({ where: { id: { in: stemIds } } });
+        }
+
+        if (trackIds.length > 0) {
+          const libraryTracks = await tx.libraryTrack.findMany({
+            where: {
+              source: "remote",
+              OR: [
+                { id: { in: trackIds } },
+                { catalogTrackId: { in: trackIds } },
+              ],
             },
+            select: { id: true },
           });
+          const libraryTrackIds = libraryTracks.map((track) => track.id);
+          const deletedTrackReferences = [...new Set([...trackIds, ...libraryTrackIds])];
+
+          if (libraryTrackIds.length > 0) {
+            await tx.libraryTrack.deleteMany({
+              where: { id: { in: libraryTrackIds } },
+            });
+          }
+
+          const playlists = await tx.playlist.findMany({
+            where: { trackIds: { hasSome: deletedTrackReferences } },
+            select: { id: true, trackIds: true },
+          });
+          for (const playlist of playlists) {
+            await tx.playlist.update({
+              where: { id: playlist.id },
+              data: {
+                trackIds: playlist.trackIds.filter((id) => !deletedTrackReferences.includes(id)),
+              },
+            });
+          }
+
+          // AI DJ listening signals are behavioural data about these tracks.
+          await tx.agentSignal.deleteMany({ where: { trackId: { in: trackIds } } });
+          // Delete any dependent content-protection or licensing records first
+          await tx.dmcaReport.deleteMany({ where: { trackId: { in: trackIds } } });
+          await tx.audioFingerprint.deleteMany({ where: { trackId: { in: trackIds } } });
+          await tx.license.deleteMany({ where: { trackId: { in: trackIds } } });
+          await tx.track.deleteMany({ where: { id: { in: trackIds } } });
         }
 
-        // Delete any dependent content-protection or licensing records first
-        await tx.dmcaReport.deleteMany({ where: { trackId: { in: trackIds } } });
-        await tx.audioFingerprint.deleteMany({ where: { trackId: { in: trackIds } } });
-        await tx.license.deleteMany({ where: { trackId: { in: trackIds } } });
-        await tx.track.deleteMany({ where: { id: { in: trackIds } } });
+        await tx.release.delete({ where: { id: releaseId } });
+      });
+    } catch (error) {
+      // A dependent row created after assertReleaseDeletable ran (or a relation
+      // it does not know about) must surface as a conflict, not a 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+        throw new ConflictException({
+          code: "release_has_dependents",
+          message: "Something else still depends on this release, so it can't be deleted yet.",
+        });
       }
-
-      await tx.release.delete({ where: { id: releaseId } });
-    });
+      throw error;
+    }
 
     this.clearCache();
     console.log(`[Catalog] Deleted release ${releaseId} with ${trackIds.length} tracks and ${stemIds.length} stems`);
     return { success: true };
+  }
+
+  /**
+   * Refuse deletion when other people's work or sales depend on the release,
+   * instead of letting the foreign key surface as a 500 mid-transaction.
+   */
+  private async assertReleaseDeletable(trackIds: string[], stemIds: string[]) {
+    if (trackIds.length === 0) {
+      return;
+    }
+
+    const drop = await prisma.punchlineDrop.findFirst({
+      where: { trackId: { in: trackIds } },
+      select: { id: true },
+    });
+    if (drop) {
+      throw new ConflictException({
+        code: "release_has_punchline_drops",
+        message: "This release has Punchline drops. Remove them before deleting the release.",
+      });
+    }
+
+    const remix = await prisma.remixProject.findFirst({
+      where: {
+        OR: [
+          { sourceTrackId: { in: trackIds } },
+          ...(stemIds.length > 0 ? [{ stems: { some: { stemId: { in: stemIds } } } }] : []),
+        ],
+      },
+      select: { id: true },
+    });
+    if (remix) {
+      throw new ConflictException({
+        code: "release_has_remixes",
+        message: "Other remix projects are built on this release, so it can't be deleted.",
+      });
+    }
+
+    // x402 settlements are the payment ledger for sold stem downloads.
+    const settlement = stemIds.length > 0
+      ? await prisma.x402Settlement.findFirst({
+        where: { stemId: { in: stemIds } },
+        select: { id: true },
+      })
+      : null;
+    if (settlement) {
+      throw new ConflictException({
+        code: "release_has_sales",
+        message: "Stems from this release have been sold, so it can't be deleted.",
+      });
+    }
   }
 
   async updateReleaseArtwork(releaseId: string, userId: string, artwork: { buffer: Buffer, mimetype: string }) {

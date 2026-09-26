@@ -2150,7 +2150,15 @@ export default function ReleaseDetails() {
                               router.push("/");
                             } catch (e) {
                               console.error(e);
-                              addToast({ type: "error", title: "Delete failed", message: "Could not delete the release." });
+                              // A 409 explains what blocks deletion (remixes, drops, sales).
+                              const conflictMessage = e instanceof ApiRequestError && e.status === 409
+                                ? (e.details as { message?: unknown } | undefined)?.message
+                                : undefined;
+                              addToast({
+                                type: "error",
+                                title: "Delete failed",
+                                message: typeof conflictMessage === "string" ? conflictMessage : "Could not delete the release.",
+                              });
                             } finally {
                               setConfirmDialog(null);
                             }

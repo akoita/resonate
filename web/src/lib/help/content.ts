@@ -1382,7 +1382,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
             kind: "callout",
             tone: "note",
             title: "This is a pause, not a deletion",
-            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, that is a different decision — talk to us rather than leaving it withdrawn forever.",
+            text: "Withdrawing is meant to be used and undone. If you want a release gone for good, delete it from its release page instead. Deleting is refused while other people depend on the release — remixes built on it, Punchline drops, or paid downloads — and the message tells you which; withdraw it in that case.",
           },
         ],
       },
