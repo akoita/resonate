@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parsePlaylistDropPayload, playlistDropEffect, playlistDropToast } from "./playlistDrop";
+import {
+  parsePlaylistDropPayload,
+  playlistDropEffect,
+  playlistDropForTarget,
+  playlistDropToast,
+  playlistSourceType,
+} from "./playlistDrop";
 
 describe("playlistDropEffect", () => {
   it("advertises copy for library/catalog drags so the browser accepts them", () => {
@@ -60,8 +66,19 @@ describe("parsePlaylistDropPayload", () => {
     expect(parsePlaylistDropPayload(json({ type: "reorder-track", playlistId: "p1", trackId: "t1", index: 2 }))).toEqual({
       kind: "reorder",
       playlistId: "p1",
+      trackId: "t1",
       index: 2,
     });
+  });
+
+  it("reads a reorder payload that only names the track", () => {
+    expect(parsePlaylistDropPayload(json({ type: "reorder-track", trackId: "t1", index: 0 }))).toEqual({
+      kind: "reorder",
+      playlistId: null,
+      trackId: "t1",
+      index: 0,
+    });
+    expect(parsePlaylistDropPayload(json({ type: "reorder-track", index: 0 }))).toBeNull();
   });
 
   it("ignores empty, invalid and unknown payloads", () => {
@@ -101,5 +118,32 @@ describe("playlistDropToast", () => {
       type: "info",
       message: "Those tracks are already in Chill.",
     });
+  });
+});
+
+describe("cross-playlist drops", () => {
+  const reorder = { kind: "reorder" as const, playlistId: "p1", trackId: "t1", index: 3 };
+
+  it("keeps a drop onto the source playlist a reorder", () => {
+    expect(playlistDropForTarget(reorder, "p1")).toBe(reorder);
+  });
+
+  it("copies a playlist track dropped onto another playlist", () => {
+    expect(playlistDropForTarget(reorder, "p2")).toEqual({ kind: "tracks", trackIds: ["t1"] });
+    expect(playlistDropForTarget({ ...reorder, playlistId: null }, "p2")).toEqual({ kind: "tracks", trackIds: ["t1"] });
+  });
+
+  it("passes non-reorder requests through and ignores nothing-to-do drops", () => {
+    const tracks = { kind: "tracks" as const, trackIds: ["t9"] };
+    expect(playlistDropForTarget(tracks, "p2")).toBe(tracks);
+    expect(playlistDropForTarget(null, "p2")).toBeNull();
+    expect(playlistDropForTarget({ ...reorder, trackId: null }, "p2")).toBeNull();
+  });
+
+  it("advertises move over the source playlist and copy over any other", () => {
+    const types = ["application/json", "text/plain", playlistSourceType("P1")];
+    expect(playlistDropEffect("copyMove", { types, playlistId: "p1" })).toBe("move");
+    expect(playlistDropEffect("copyMove", { types, playlistId: "p2" })).toBe("copy");
+    expect(playlistDropEffect("copy", { types: ["application/json"], playlistId: "p2" })).toBe("copy");
   });
 });

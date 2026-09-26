@@ -24,7 +24,13 @@ import {
  */
 export function playlistDropEffect(
   effectAllowed: DataTransfer["effectAllowed"] | undefined | null,
+  target?: { types?: readonly string[] | null; playlistId?: string | null },
 ): "copy" | "move" {
+  // A playlist track hovering its own playlist is a reorder; hovering any
+  // other playlist it is a copy (the source playlist keeps it).
+  if (target?.playlistId && target.types) {
+    return target.types.includes(playlistSourceType(target.playlistId)) ? "move" : "copy";
+  }
   switch (effectAllowed) {
     case "move":
     case "linkMove":
@@ -34,8 +40,19 @@ export function playlistDropEffect(
   }
 }
 
+/**
+ * Drag-data type naming the playlist a dragged track row comes from. Drag data
+ * values are unreadable during `dragover`, but types are, so the source
+ * playlist is encoded in the type itself (browsers lowercase types).
+ */
+export const PLAYLIST_SOURCE_TYPE_PREFIX = "application/x-resonate-playlist-source.";
+
+export function playlistSourceType(playlistId: string): string {
+  return `${PLAYLIST_SOURCE_TYPE_PREFIX}${playlistId.toLowerCase()}`;
+}
+
 export type PlaylistDropRequest =
-  | { kind: "reorder"; playlistId: string; index: number }
+  | { kind: "reorder"; playlistId: string | null; trackId: string | null; index: number }
   | { kind: "tracks"; trackIds: string[]; title?: string }
   | { kind: "criteria"; criteria: { album?: string; artist?: string }; title: string };
 
@@ -69,10 +86,13 @@ export function parsePlaylistDropPayload(raw: string | null | undefined): Playli
   }
 
   switch (data.type) {
-    case "reorder-track":
-      return typeof data.playlistId === "string" && typeof data.index === "number"
-        ? { kind: "reorder", playlistId: data.playlistId, index: data.index }
+    case "reorder-track": {
+      const playlistId = typeof data.playlistId === "string" ? data.playlistId : null;
+      const trackId = typeof data.trackId === "string" ? data.trackId : null;
+      return typeof data.index === "number" && (playlistId || trackId)
+        ? { kind: "reorder", playlistId, trackId, index: data.index }
         : null;
+    }
     case "track":
       return typeof data.id === "string"
         ? { kind: "tracks", trackIds: [data.id], title: text(data.title) }
@@ -107,6 +127,20 @@ export function parsePlaylistDropPayload(raw: string | null | undefined): Playli
     default:
       return null;
   }
+}
+
+/**
+ * What a drop means for a given target playlist: a playlist track dropped on
+ * its own playlist is a reorder; dropped on any other playlist it is copied
+ * there (the source keeps it). Null when there is nothing to do.
+ */
+export function playlistDropForTarget(
+  request: PlaylistDropRequest | null,
+  targetPlaylistId: string,
+): PlaylistDropRequest | null {
+  if (!request || request.kind !== "reorder") return request;
+  if (request.playlistId === targetPlaylistId) return request;
+  return request.trackId ? { kind: "tracks", trackIds: [request.trackId] } : null;
 }
 
 /** Toast copy for a finished drop, given how many tracks were actually new. */

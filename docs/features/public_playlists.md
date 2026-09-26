@@ -78,7 +78,9 @@ Adding tracks: any track, release, album, or artist (including artist pages
 inside My Library) offers **Add to playlist**; in My Library, select several
 tracks and use **Add N to playlist**, or drag them onto a playlist in the side
 panel — onto a collapsed playlist, an expanded playlist's track list, or
-between its tracks. Playlist tracks do not need to be saved in the library:
+between its tracks. Dragging a track row from one playlist onto another
+playlist copies it (the source keeps it); dropping it on its own playlist
+reorders. Playlist tracks do not need to be saved in the library:
 catalog tracks resolve through the catalog with a playable stream URL, so they
 play either way. Library playlist cards show the same 2×2 cover mosaic as
 catalog playlist cards.

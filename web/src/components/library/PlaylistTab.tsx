@@ -32,6 +32,7 @@ import { COVER_TRACK_SAMPLE, PlaylistCoverThumb, playlistCoverUrls } from "../ca
 import {
     applyPlaylistDrop,
     parsePlaylistDropPayload,
+    playlistDropForTarget,
     playlistDropToast,
 } from "../layout/playlistDrop";
 
@@ -192,10 +193,14 @@ export function PlaylistTab({
         e.preventDefault();
         setDragOverId(null);
 
-        const request = parsePlaylistDropPayload(
-            e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+        // A track dragged from another playlist is copied onto this card;
+        // reordering happens inside a playlist, not onto its own card.
+        const request = playlistDropForTarget(
+            parsePlaylistDropPayload(
+                e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+            ),
+            playlist.id,
         );
-        // Reordering happens inside a playlist, not onto a card.
         if (!request || request.kind === "reorder") return;
 
         const failed = () => addToast({

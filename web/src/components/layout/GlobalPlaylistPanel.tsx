@@ -16,7 +16,14 @@ import {
     removeTrackFromPlaylist,
     syncPlaylists,
 } from "../../lib/playlistStore";
-import { applyPlaylistDrop, parsePlaylistDropPayload, playlistDropEffect, playlistDropToast } from "./playlistDrop";
+import {
+    applyPlaylistDrop,
+    parsePlaylistDropPayload,
+    playlistDropEffect,
+    playlistDropForTarget,
+    playlistDropToast,
+    playlistSourceType,
+} from "./playlistDrop";
 import { LocalTrack, getTrack } from "../../lib/localLibrary";
 import { useUIStore } from "../../lib/uiStore";
 import { useToast } from "../ui/Toast";
@@ -343,15 +350,16 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
         setDragOverId(null);
         setDragOverIndex(null);
 
-        const request = parsePlaylistDropPayload(
-            e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+        const request = playlistDropForTarget(
+            parsePlaylistDropPayload(
+                e.dataTransfer.getData("application/json") || e.dataTransfer.getData("text/plain"),
+            ),
+            playlistId,
         );
         if (!request) return;
 
         if (request.kind === "reorder") {
-            if (request.playlistId === playlistId) {
-                await handleReorder(playlistId, request.index, index ?? 0);
-            }
+            await handleReorder(playlistId, request.index, index ?? 0);
             return;
         }
 
@@ -391,7 +399,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                     onClick={() => togglePlaylist(p.id)}
                     onDragOver={(e) => {
                         e.preventDefault();
-                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
+                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed, { types: e.dataTransfer.types, playlistId: p.id });
                         setDragOverId(p.id);
                         setDragOverIndex(null);
                     }}
@@ -438,7 +446,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                         // track rows below handle positional drops themselves.
                         onDragOver={(e) => {
                             e.preventDefault();
-                            e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
+                            e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed, { types: e.dataTransfer.types, playlistId: p.id });
                             setDragOverId(p.id);
                             setDragOverIndex(null);
                         }}
@@ -460,7 +468,9 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                         const payload = JSON.stringify({ type: "reorder-track", playlistId: p.id, trackId: track.id, index: idx });
                                         e.dataTransfer.setData("application/json", payload);
                                         e.dataTransfer.setData("text/plain", payload);
-                                        e.dataTransfer.effectAllowed = "move";
+                                        e.dataTransfer.setData(playlistSourceType(p.id), track.id);
+                                        // Move within this playlist, copy onto another one.
+                                        e.dataTransfer.effectAllowed = "copyMove";
                                     }}
                                     onDragEnd={(e) => {
                                         e.stopPropagation();
@@ -473,7 +483,7 @@ export function GlobalPlaylistPanel({ isOpen, onClose }: GlobalPlaylistPanelProp
                                         e.stopPropagation();
                                         // Library/catalog drags only allow "copy"; advertising
                                         // "move" here made the browser refuse them.
-                                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed);
+                                        e.dataTransfer.dropEffect = playlistDropEffect(e.dataTransfer.effectAllowed, { types: e.dataTransfer.types, playlistId: p.id });
                                         setDragOverId(p.id);
                                         const rect = e.currentTarget.getBoundingClientRect();
                                         const midpoint = rect.top + rect.height / 2;
