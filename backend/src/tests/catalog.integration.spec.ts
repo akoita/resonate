@@ -7,7 +7,7 @@
  * Run: npm run test:integration
  */
 
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { ManagementGrantStatus, ManagementScope } from '@prisma/client';
 import { prisma } from '../db/prisma';
 import { CatalogService } from '../modules/catalog/catalog.service';
@@ -61,6 +61,12 @@ describe('CatalogService (integration)', () => {
   });
 
   afterAll(async () => {
+    await prisma.x402Settlement.deleteMany({ where: { receiptId: { startsWith: TEST_PREFIX } } });
+    await prisma.remixProject.deleteMany({ where: { creatorUserId: { startsWith: TEST_PREFIX } } });
+    await prisma.punchlineDrop.deleteMany({ where: { artistId: { startsWith: TEST_PREFIX } } });
+    await prisma.agentSignal.deleteMany({ where: { userId: { startsWith: TEST_PREFIX } } });
+    await prisma.rightsRouteReassessment.deleteMany({ where: { release: { artistId: { startsWith: TEST_PREFIX } } } });
+    await prisma.releaseRightsUpgradeRequest.deleteMany({ where: { artistId: { startsWith: TEST_PREFIX } } });
     await prisma.managementTransfer.deleteMany({
       where: {
         OR: [
@@ -1834,6 +1840,251 @@ describe('CatalogService (integration)', () => {
     expect(await prisma.release.findUnique({ where: { id: releaseId } })).toBeNull();
     await prisma.artist.delete({ where: { id: `${TEST_PREFIX}case_artist` } });
     await prisma.user.delete({ where: { id: mixedCaseUserId } });
+  });
+
+  it('deletes a release whose track has AI DJ listening signals', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Signalled Delete Target',
+      tracks: [{ title: 'Played Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const signal = await prisma.agentSignal.create({
+      data: {
+        userId: `${TEST_PREFIX}user`,
+        trackId: created.tracks[0].id,
+        action: 'play',
+        weight: 1,
+      },
+    });
+
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.agentSignal.findUnique({ where: { id: signal.id } })).toBeNull();
+    expect(await prisma.track.findUnique({ where: { id: created.tracks[0].id } })).toBeNull();
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
+  it('deletes a release with rights route reassessments', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Reassessed Delete Target',
+      tracks: [{ title: 'Reviewed Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const upgradeRequest = await prisma.releaseRightsUpgradeRequest.create({
+      data: {
+        releaseId: created.id,
+        artistId: `${TEST_PREFIX}artist`,
+        requestedByAddress: '0x' + 'A'.repeat(40),
+      },
+    });
+    const reassessments = await Promise.all([
+      prisma.rightsRouteReassessment.create({
+        data: { releaseId: created.id, trigger: 'policy_change', reason: 'Policy version bump' },
+      }),
+      prisma.rightsRouteReassessment.create({
+        data: {
+          releaseId: created.id,
+          trigger: 'rights_upgrade_request',
+          reason: 'Upgrade requested',
+          rightsUpgradeRequestId: upgradeRequest.id,
+        },
+      }),
+    ]);
+
+    const result = await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.rightsRouteReassessment.count({
+      where: { id: { in: reassessments.map((row) => row.id) } },
+    })).toBe(0);
+    expect(await prisma.releaseRightsUpgradeRequest.findUnique({ where: { id: upgradeRequest.id } })).toBeNull();
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).toBeNull();
+  });
+
+  it('refuses to delete a release with Punchline drops and leaves it intact', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Punchline Delete Target',
+      tracks: [{ title: 'Quotable Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const trackId = created.tracks[0].id;
+    const stem = await prisma.stem.create({
+      data: { trackId, type: 'vocals', uri: '/punchline.mp3' },
+    });
+    const drop = await prisma.punchlineDrop.create({
+      data: { trackId, artistId: `${TEST_PREFIX}artist` },
+    });
+
+    const attempt = catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'release_has_punchline_drops' },
+    });
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).not.toBeNull();
+    expect(await prisma.track.findUnique({ where: { id: trackId } })).not.toBeNull();
+    expect(await prisma.stem.findUnique({ where: { id: stem.id } })).not.toBeNull();
+
+    await prisma.punchlineDrop.delete({ where: { id: drop.id } });
+    await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
+  });
+
+  it('refuses to delete a release that other remix projects are built on', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Remix Source Delete Target',
+      tracks: [{ title: 'Remixed Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const trackId = created.tracks[0].id;
+    const stem = await prisma.stem.create({
+      data: { trackId, type: 'drums', uri: '/remixed.mp3' },
+    });
+    const project = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: trackId,
+        title: 'Someone Else Remix',
+        policyVersion: 'test',
+        stems: { create: { stemId: stem.id } },
+      },
+    });
+
+    const attempt = catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'release_has_remixes' },
+    });
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).not.toBeNull();
+    expect(await prisma.track.findUnique({ where: { id: trackId } })).not.toBeNull();
+    expect(await prisma.stem.findUnique({ where: { id: stem.id } })).not.toBeNull();
+
+    await prisma.remixProject.delete({ where: { id: project.id } });
+    await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).resolves.toEqual({ success: true });
+  });
+
+  it('refuses to delete a release whose stems are mixed into another remix project', async () => {
+    const source = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Other Remix Source',
+      tracks: [{ title: 'Other Source Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Borrowed Stem Delete Target',
+      tracks: [{ title: 'Borrowed Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const stem = await prisma.stem.create({
+      data: { trackId: created.tracks[0].id, type: 'bass', uri: '/borrowed.mp3' },
+    });
+    const project = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: source.tracks[0].id,
+        title: 'Borrowing Remix',
+        policyVersion: 'test',
+        stems: { create: { stemId: stem.id } },
+      },
+    });
+
+    await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).rejects.toMatchObject({
+      response: { code: 'release_has_remixes' },
+    });
+    expect(await prisma.stem.findUnique({ where: { id: stem.id } })).not.toBeNull();
+
+    await prisma.remixProject.delete({ where: { id: project.id } });
+    await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+    await catalog.deleteRelease(source.id, `${TEST_PREFIX}user`);
+  });
+
+  it('refuses to delete a release whose stems were sold over x402', async () => {
+    const created = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'x402 Sold Delete Target',
+      tracks: [{ title: 'Sold Download', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    const stem = await prisma.stem.create({
+      data: { trackId: created.tracks[0].id, type: 'vocals', uri: '/x402.mp3' },
+    });
+    const settlement = await prisma.x402Settlement.create({
+      data: {
+        stemId: stem.id,
+        receiptId: `${TEST_PREFIX}x402_receipt`,
+        receipt: {},
+        paymentToken: '0x' + '3'.repeat(40),
+        paymentAssetSymbol: 'USDC',
+        paymentAssetDecimals: 6,
+        settlementAmount: '1.00',
+        settlementAmountUnits: '1000000',
+        purchasedAt: new Date(),
+      },
+    });
+
+    await expect(catalog.deleteRelease(created.id, `${TEST_PREFIX}user`)).rejects.toMatchObject({
+      response: { code: 'release_has_sales' },
+    });
+    expect(await prisma.x402Settlement.findUnique({ where: { id: settlement.id } })).not.toBeNull();
+    expect(await prisma.release.findUnique({ where: { id: created.id } })).not.toBeNull();
+
+    await prisma.x402Settlement.delete({ where: { id: settlement.id } });
+    await catalog.deleteRelease(created.id, `${TEST_PREFIX}user`);
+  });
+
+  it('deletes a published remix release and clears the project link', async () => {
+    const source = await catalog.createRelease({
+      userId: `${TEST_PREFIX}user`,
+      title: 'Remix Studio Source',
+      tracks: [{ title: 'Studio Source Track', position: 1, aiDisclosure: NO_AI_DISCLOSURE }],
+    });
+    // Mirrors RemixProjectService.publish: release + track + master stem + pricing seed.
+    const published = await prisma.release.create({
+      data: {
+        artistId: `${TEST_PREFIX}artist`,
+        title: 'Published Remix',
+        status: 'ready',
+        type: 'remix',
+        tracks: {
+          create: {
+            title: 'Published Remix',
+            processingStatus: 'complete',
+            stems: {
+              create: { type: 'master', uri: '/remix-master.mp3', pricing: { create: {} } },
+            },
+          },
+        },
+      },
+      include: { tracks: { include: { stems: true } } },
+    });
+    const masterStem = published.tracks[0].stems[0];
+    const project = await prisma.remixProject.create({
+      data: {
+        creatorUserId: `${TEST_PREFIX}user`,
+        sourceTrackId: source.tracks[0].id,
+        title: 'Published Remix',
+        status: 'published',
+        policyVersion: 'test',
+        publishedReleaseId: published.id,
+      },
+    });
+    await prisma.agentSignal.create({
+      data: {
+        userId: `${TEST_PREFIX}user`,
+        trackId: published.tracks[0].id,
+        action: 'play',
+        weight: 1,
+      },
+    });
+
+    const result = await catalog.deleteRelease(published.id, `${TEST_PREFIX}user`);
+
+    expect(result.success).toBe(true);
+    expect(await prisma.release.findUnique({ where: { id: published.id } })).toBeNull();
+    expect(await prisma.stemPricing.findUnique({ where: { stemId: masterStem.id } })).toBeNull();
+    expect(await prisma.stem.findUnique({ where: { id: masterStem.id } })).toBeNull();
+    const updatedProject = await prisma.remixProject.findUnique({ where: { id: project.id } });
+    expect(updatedProject?.publishedReleaseId).toBeNull();
+
+    await prisma.remixProject.delete({ where: { id: project.id } });
+    await catalog.deleteRelease(source.id, `${TEST_PREFIX}user`);
   });
 
   it('rejects delete for wrong user', async () => {

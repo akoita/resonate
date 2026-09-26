@@ -49,6 +49,26 @@ starts deleting rows, restore stops being exact.
 `ready` or from `published`, and restoring to the wrong one either hides it from
 listeners or publishes something that was never published.
 
+## Deleting instead of withdrawing
+
+`DELETE /catalog/releases/:releaseId` (catalog owner only) removes the release
+permanently. `CatalogService.deleteRelease` clears the rows derived from the
+release inside one transaction: stems, pricing, listings with their mirrored
+on-chain purchases, library entries, playlist references, licences,
+fingerprints, DMCA reports, AI DJ listening signals and rights-route
+reassessments. It refuses with `409` before touching anything when other
+people's work or an off-chain sale depends on the release:
+
+| Code | Blocker |
+| --- | --- |
+| `release_has_remixes` | a remix project uses one of its tracks or stems as source |
+| `release_has_punchline_drops` | a Punchline drop exists on one of its tracks |
+| `release_has_sales` | an x402 settlement (the only record of that sale) references one of its stems |
+| `release_has_dependents` | any other foreign key raised during the delete |
+
+The release page shows the `409` message; withdrawal remains the reversible
+alternative.
+
 ## What actually had to be built
 
 The storage was nearly free. The behaviour was not, and in two places the
