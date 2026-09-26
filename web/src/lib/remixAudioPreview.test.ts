@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   beatPreviewGain,
   blockLoopSource,
+  clampOutputVolume,
   createStemPreviewEngine,
   loopEntryOffset,
   planBlockSources,
@@ -49,6 +50,11 @@ class FakeParam {
   }
   cancelScheduledValues(time: number) {
     this.events.push(["cancel", 0, time]);
+    return this;
+  }
+  setTargetAtTime(value: number, time: number) {
+    this.value = value;
+    this.events.push(["target", value, time]);
     return this;
   }
 }
@@ -180,7 +186,22 @@ class FakeAudioContext {
   compressor: FakeCompressor | null = null;
   analyser: FakeAnalyser | null = null;
   sources: FakeSource[] = [];
-  gains: FakeGain[] = [];
+  allGains: FakeGain[] = [];
+  /**
+   * Per-play gains only: the master output (listening volume, #1910) is the
+   * one gain wired straight to the destination, created with the context.
+   */
+  get gains(): FakeGain[] {
+    return this.allGains.filter(
+      (gain) => !gain.connections.includes(this.destination),
+    );
+  }
+  /** The master output gain (#1910), or undefined before the context. */
+  get outputGain(): FakeGain | undefined {
+    return this.allGains.find((gain) =>
+      gain.connections.includes(this.destination),
+    );
+  }
   /** Decoded buffer length in seconds (every stem, unless overridden). */
   bufferSeconds = 60;
   decodeAudioData = vi.fn(async (data: ArrayBuffer) => ({
@@ -203,7 +224,7 @@ class FakeAudioContext {
   }
   createGain() {
     const gain = new FakeGain();
-    this.gains.push(gain);
+    this.allGains.push(gain);
     return gain;
   }
   createBufferSource() {
@@ -1512,5 +1533,73 @@ describe("muted beat (#1902)", () => {
     });
     expect(beatGain.gain.value).toBe(1);
     expect(context.audioBuffers).toHaveLength(1);
+  });
+});
+
+describe("listening volume output stage (#1910)", () => {
+  it("wires limiter → analyser → output gain → destination", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({ stems, soloStemId: null });
+    const context = contexts[0];
+    const output = context.outputGain!;
+    expect(output).toBeDefined();
+    expect(context.compressor!.connections).toEqual([context.analyser]);
+    expect(context.analyser!.connections).toEqual([output]);
+    expect(output.connections).toEqual([context.destination]);
+    expect(output.gain.value).toBe(1);
+    engine.dispose();
+    expect(output.disconnected).toBe(true);
+  });
+
+  it("applies a volume set before the context exists", async () => {
+    const { engine, contexts } = setup();
+    engine.setOutputVolume(0.25);
+    expect(contexts).toHaveLength(0); // never creates the context itself
+    await engine.play({ stems, soloStemId: null });
+    expect(contexts[0].outputGain!.gain.value).toBe(0.25);
+  });
+
+  it("updates the running output live without restarting playback", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({ stems, soloStemId: null });
+    const context = contexts[0];
+    const sourcesBefore = context.sources.length;
+    context.currentTime = 4;
+
+    engine.setOutputVolume(0.5);
+    const output = context.outputGain!;
+    expect(output.gain.value).toBe(0.5);
+    expect(output.gain.events).toContainEqual(["cancel", 0, 4]);
+    expect(output.gain.events).toContainEqual(["target", 0.5, 4]);
+    expect(context.sources).toHaveLength(sourcesBefore);
+    for (const source of context.sources) {
+      expect(source.stop).not.toHaveBeenCalled();
+    }
+
+    engine.setOutputVolume(0);
+    expect(output.gain.value).toBe(0);
+    handle.stop();
+  });
+
+  it("clamps the volume to 0..1", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({ stems, soloStemId: null });
+    const output = contexts[0].outputGain!;
+    engine.setOutputVolume(3);
+    expect(output.gain.value).toBe(1);
+    engine.setOutputVolume(-1);
+    expect(output.gain.value).toBe(0);
+    engine.setOutputVolume(Number.NaN);
+    expect(output.gain.value).toBe(1);
+    expect(clampOutputVolume(0.3)).toBe(0.3);
+  });
+
+  it("keeps the meter reading the mix before the volume", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({ stems, soloStemId: null });
+    engine.setOutputVolume(0);
+    contexts[0].analyser!.samples = [0.4];
+    expect(handle.level().peak).toBeCloseTo(0.4, 6);
+    handle.stop();
   });
 });

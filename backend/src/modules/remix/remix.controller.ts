@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpException,
@@ -114,6 +115,21 @@ export class RemixController {
       jobId,
     );
     this.sendAudioResponse(audio, range, res);
+  }
+
+  /**
+   * Deletes an archived draft version and its stored audio (#1910).
+   * Owner-only (identity from the JWT); published projects 409; the current
+   * draft and unknown versions 404. Returns the updated project read shape.
+   */
+  @UseGuards(AuthGuard("jwt"))
+  @Delete("projects/:id/drafts/:jobId")
+  deleteDraftVersion(
+    @Req() req: any,
+    @Param("id") id: string,
+    @Param("jobId") jobId: string,
+  ) {
+    return this.projectService.deleteDraftVersion(req.user.userId, id, jobId);
   }
 
   @UseGuards(AuthGuard("jwt"))

@@ -67,6 +67,12 @@ export type RemixDraftsPanelProps = {
   versions: RemixDraftVersion[];
   onPlayCurrent(): void;
   onPlayVersion(jobId: string): void;
+  /**
+   * Asks to delete a PREVIOUS version (#1910); the editor confirms first.
+   * Absent = no delete actions. The current draft is never deletable
+   * (regenerate instead), and a published remix hides them.
+   */
+  onRequestDeleteVersion?(jobId: string): void;
   publish: RemixDraftPublishAction;
   exportAction: RemixDraftExportAction;
   /** Published remixes hide publish/export (the editor banner covers it). */
@@ -76,6 +82,52 @@ export type RemixDraftsPanelProps = {
   /** Clock for relative times; defaults to Date.now(). */
   now?: number;
 };
+
+/** Delete-version confirm copy (#1910). */
+export const DELETE_VERSION_CONFIRM_TITLE = "Delete this version?";
+export const DELETE_VERSION_CONFIRM_MESSAGE = "This can't be undone.";
+
+/**
+ * Optimistic version deletes (#1910): job ids whose delete is in flight.
+ * Pure set updates so the removal and its rollback are testable.
+ */
+export function withPendingDelete(
+  pending: ReadonlySet<string>,
+  jobId: string,
+): ReadonlySet<string> {
+  if (pending.has(jobId)) return pending;
+  return new Set([...pending, jobId]);
+}
+
+/** Settles a delete: success or rollback both stop hiding the version. */
+export function withoutPendingDelete(
+  pending: ReadonlySet<string>,
+  jobId: string,
+): ReadonlySet<string> {
+  if (!pending.has(jobId)) return pending;
+  const next = new Set(pending);
+  next.delete(jobId);
+  return next;
+}
+
+/** Versions still shown: every entry whose delete is not in flight. */
+export function visibleDraftVersions<T extends { jobId: string }>(
+  entries: readonly T[],
+  pending: ReadonlySet<string>,
+): T[] {
+  return entries.filter((entry) => !pending.has(entry.jobId));
+}
+
+/** The delete button's accessible name: when the version was made. */
+export function deleteVersionLabel(
+  version: Pick<RemixDraftVersion, "label" | "completedAt">,
+  now?: number,
+): string {
+  const when = formatCompletedAt(version.completedAt, now);
+  return when
+    ? `Delete version from ${when}`
+    : `Delete version: ${version.label}`;
+}
 
 /**
  * Completion time: relative within the last day ("just now", "5 min ago",
@@ -276,6 +328,7 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
     versions,
     onPlayCurrent,
     onPlayVersion,
+    onRequestDeleteVersion,
     publish,
     exportAction,
     published,
@@ -390,6 +443,28 @@ export function RemixDraftsPanel(props: RemixDraftsPanelProps) {
                   >
                     {playLabel(version)}
                   </button>
+                  {onRequestDeleteVersion && !published && (
+                    <button
+                      type="button"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent text-zinc-500 hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 remix-draft-version-delete"
+                      aria-label={deleteVersionLabel(version, now)}
+                      title="Delete this version"
+                      onClick={() => onRequestDeleteVersion(version.jobId)}
+                    >
+                      <svg
+                        aria-hidden="true"
+                        viewBox="0 0 16 16"
+                        className="h-3.5 w-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9M6.8 7v4.5M9.2 7v4.5" />
+                      </svg>
+                    </button>
+                  )}
                 </li>
               );
             })}

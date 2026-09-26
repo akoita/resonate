@@ -508,6 +508,14 @@ export type StemPreviewEngine = {
    * stem cache. Rejects once disposed.
    */
   decode(data: ArrayBuffer): Promise<AudioBuffer>;
+  /**
+   * Listening volume (#1910): the linear gain (clamped to 0..1) of the
+   * final output stage — after the limiter and the meter's analyser, right
+   * before the destination — so the meter still shows the mix level. Applies
+   * live to a running preview and to every later play; never restarts.
+   * Remembered before the context exists.
+   */
+  setOutputVolume(gain: number): void;
   dispose(): void;
 };
 
@@ -741,7 +749,10 @@ export function createStemPreviewEngine(input: {
   let master: {
     compressor: DynamicsCompressorNode;
     analyser: AnalyserNode;
+    /** Listening volume (#1910), the last stage before the destination. */
+    output: GainNode;
   } | null = null;
+  let outputVolume = 1;
   let meterData: Float32Array<ArrayBuffer> | null = null;
   // Reverb IR (#1897), generated once per context at its sample rate.
   let reverbImpulse: AudioBuffer | null = null;
@@ -763,9 +774,11 @@ export function createStemPreviewEngine(input: {
     compressor.release.value = PREVIEW_LIMITER_RELEASE_SECONDS;
     const analyser = created.createAnalyser();
     analyser.fftSize = PREVIEW_METER_FFT_SIZE;
-    compressor.connect(analyser).connect(created.destination);
+    const output = created.createGain();
+    output.gain.value = outputVolume;
+    compressor.connect(analyser).connect(output).connect(created.destination);
     context = created;
-    master = { compressor, analyser };
+    master = { compressor, analyser, output };
     return created;
   };
 
@@ -1333,6 +1346,7 @@ export function createStemPreviewEngine(input: {
     decodedBuffers.clear();
     master?.compressor.disconnect();
     master?.analyser.disconnect();
+    master?.output.disconnect();
     master = null;
     meterData = null;
     reverbImpulse = null;
@@ -1342,5 +1356,35 @@ export function createStemPreviewEngine(input: {
     void closing?.close().catch(() => undefined);
   };
 
-  return { play, preload, bufferDuration, decode, beatBuffer, dispose };
+  const setOutputVolume = (gain: number) => {
+    outputVolume = clampOutputVolume(gain);
+    if (!master || !context) return;
+    const param = master.output.gain;
+    // A short glide keeps a dragged slider free of zipper clicks.
+    param.cancelScheduledValues(context.currentTime);
+    param.setTargetAtTime(
+      outputVolume,
+      context.currentTime,
+      PREVIEW_OUTPUT_VOLUME_SMOOTHING_SECONDS,
+    );
+  };
+
+  return {
+    play,
+    preload,
+    bufferDuration,
+    decode,
+    beatBuffer,
+    setOutputVolume,
+    dispose,
+  };
+}
+
+/** Time constant of the listening-volume glide (#1910). */
+export const PREVIEW_OUTPUT_VOLUME_SMOOTHING_SECONDS = 0.015;
+
+/** Output volume gain on 0..1; non-finite values play at unity. */
+export function clampOutputVolume(gain: number): number {
+  if (!Number.isFinite(gain)) return 1;
+  return Math.min(1, Math.max(0, gain));
 }

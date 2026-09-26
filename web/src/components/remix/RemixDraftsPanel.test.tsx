@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  DELETE_VERSION_CONFIRM_MESSAGE,
+  DELETE_VERSION_CONFIRM_TITLE,
+  deleteVersionLabel,
+  visibleDraftVersions,
+  withoutPendingDelete,
+  withPendingDelete,
   draftProvenanceChip,
   formatCompletedAt,
   gatedClickHandler,
@@ -356,5 +362,83 @@ describe("provenance with an added beat (#1902)", () => {
       />,
     );
     expect(html).toContain("Your stems + your beat");
+  });
+});
+
+describe("RemixDraftsPanel — delete previous versions (#1910)", () => {
+  const versions = [version(), version({ jobId: JOB_V2, label: "Stem mix render" })];
+
+  it("puts a delete action on each previous version only", () => {
+    const html = render({ versions, onRequestDeleteVersion: noop });
+    const deletes = html.match(/remix-draft-version-delete/g) ?? [];
+    expect(deletes).toHaveLength(2);
+    // The current draft card never gets one (regenerate instead).
+    const currentCard = html.slice(0, html.indexOf("remix-draft-versions"));
+    expect(currentCard).not.toContain("remix-draft-version-delete");
+    expect(html).toContain('aria-label="Delete version from 2 h ago"');
+    // Explicit background: the global bare-button rule never shows through.
+    expect(buttonTag(html, "remix-draft-version-delete")).toContain("bg-transparent");
+  });
+
+  it("hides delete actions when published or without a handler", () => {
+    expect(
+      render({ versions, onRequestDeleteVersion: noop, published: true }),
+    ).not.toContain("remix-draft-version-delete");
+    expect(render({ versions })).not.toContain("remix-draft-version-delete");
+  });
+
+  it("names the version by time, falling back to its label", () => {
+    expect(deleteVersionLabel(version(), NOW)).toBe("Delete version from 2 h ago");
+    expect(deleteVersionLabel(version({ completedAt: null }), NOW)).toBe(
+      "Delete version: AI layer added",
+    );
+  });
+
+  it("asks before deleting, with honest copy", () => {
+    expect(DELETE_VERSION_CONFIRM_TITLE).toBe("Delete this version?");
+    expect(DELETE_VERSION_CONFIRM_MESSAGE).toBe("This can't be undone.");
+  });
+
+  it("removes a version optimistically and brings it back on rollback", () => {
+    const entries = [{ jobId: JOB_V1 }, { jobId: JOB_V2 }];
+    const none: ReadonlySet<string> = new Set();
+    const pending = withPendingDelete(none, JOB_V1);
+    expect(visibleDraftVersions(entries, pending)).toEqual([{ jobId: JOB_V2 }]);
+    expect(withPendingDelete(pending, JOB_V1)).toBe(pending); // idempotent
+    const rolledBack = withoutPendingDelete(pending, JOB_V1);
+    expect(visibleDraftVersions(entries, rolledBack)).toEqual(entries);
+    expect(withoutPendingDelete(rolledBack, JOB_V1)).toBe(rolledBack);
+    // The originals are never mutated.
+    expect(none.size).toBe(0);
+    expect(pending.has(JOB_V1)).toBe(true);
+  });
+
+  it("calls the handler with the version's job id", () => {
+    const onRequestDeleteVersion = vi.fn();
+    const element = RemixDraftsPanel(
+      props({ versions: [version()], onRequestDeleteVersion }),
+    );
+    // Walk the rendered tree for the delete button's onClick.
+    const find = (node: unknown): (() => void) | null => {
+      if (!node || typeof node !== "object") return null;
+      if (Array.isArray(node)) {
+        for (const child of node) {
+          const hit = find(child);
+          if (hit) return hit;
+        }
+        return null;
+      }
+      const el = node as { props?: Record<string, unknown> };
+      const className = el.props?.className;
+      if (
+        typeof className === "string" &&
+        className.includes("remix-draft-version-delete")
+      ) {
+        return el.props?.onClick as () => void;
+      }
+      return find(el.props?.children);
+    };
+    find(element)?.();
+    expect(onRequestDeleteVersion).toHaveBeenCalledWith(JOB_V1);
   });
 });

@@ -293,6 +293,18 @@ export interface RemixExportedEvent extends BaseEvent {
   policyVersion: string;
 }
 
+/**
+ * The owner deleted an archived draft version of a remix project (#1910).
+ * Compact on purpose: identifiers only — never storage URIs or audio.
+ */
+export interface RemixDraftVersionDeletedEvent extends BaseEvent {
+  eventName: "remix.draft_version_deleted";
+  remixProjectId: string;
+  creatorId: string;
+  /** The archived version's generation job id (its draft-audio key). */
+  generationJobId: string;
+}
+
 export interface ArtistRemixConsentUpdatedEvent extends BaseEvent {
   eventName: "artist.remix_consent_updated";
   artistId: string;
@@ -1482,6 +1494,7 @@ export type ResonateEvent =
   | ShowCampaignSettledEvent
   | RemixPublishedEvent
   | RemixExportedEvent
+  | RemixDraftVersionDeletedEvent
   | ArtistRemixConsentUpdatedEvent
   | PunchlineDropPublishedEvent
   | PunchlineMomentCollectedEvent

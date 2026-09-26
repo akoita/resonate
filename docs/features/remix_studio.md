@@ -663,6 +663,30 @@ from the JWT, never the request body.
     - `renderMetadata.addedParts: ["beat"]` and the recipe are recorded in
       lineage.
     - The draft chip reads "Your stems + your beat".
+- Studio polish (#1910, requested by the owner).
+  - **Listening volume.** The transport has a Volume slider and mute for
+    this device only.
+    - It sets the preview's final output gain and the draft player's
+      volume, live.
+    - It is remembered in the viewer's browser and is never part of the remix
+      or the render, which stays loudness-normalised.
+  - **Reset to original.** A confirmed action in the Session header clears
+    effects, song shape, the beat, and every separated stem's mute, level and
+    section changes. Full-mix reference stems stay reference-only, and drafts
+    are kept. It autosaves.
+  - **Delete draft versions.**
+    `DELETE /remix/projects/:id/drafts/:jobId` (owner only; 409 once
+    published, and 409 `generation_in_progress` while a generation runs)
+    removes an archived version.
+    - The current draft can't be deleted; regenerate instead.
+    - The entry is removed under a row lock, so concurrent deletes are safe.
+      Regeneration re-reads the version list under the same lock, so a
+      deleted version never reappears.
+    - The stored audio is then deleted best-effort, only when no other
+      version, the current draft or the published release uses it. The
+      published release has its own catalog copy.
+    - Archived outputs therefore persist until the owner deletes the version.
+    - The Drafts panel offers a confirmed Delete on each previous version.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.

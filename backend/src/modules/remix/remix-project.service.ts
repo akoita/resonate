@@ -1221,15 +1221,13 @@ export class RemixProjectService {
     });
     const aiGenerated = groundingAiGenerated(grounding);
     // Draft versions (#1320): a regeneration must not orphan the previous
-    // completed output. Archive it (capped) so the studio can A/B versions;
-    // stored outputs are never deleted, so archived URIs stay streamable.
-    const archiveEntry = retryRequested ? archiveEntryFromProject(project) : null;
-    const previousDrafts = [
-      ...(archiveEntry ? [archiveEntry] : []),
-      ...previousDraftsFromMetadata(project.generationMetadata),
-    ].slice(0, REMIX_PREVIOUS_DRAFTS_MAX);
-
-    const pendingMetadata = {
+    // completed output. claimGenerationJob archives it (capped) so the studio
+    // can A/B versions, computing the list from the row re-read under its
+    // lock (#1910). Archived outputs persist (and stay streamable) until the
+    // owner deletes the version (deleteDraftVersion, #1910) — regeneration
+    // never deletes stored audio, and an entry that falls off the cap is only
+    // unlisted.
+    const baseMetadata = {
       status: "pending",
       mode: generationInput.mode,
       grounding,
@@ -1253,15 +1251,16 @@ export class RemixProjectService {
         sampleRate: null,
       },
       requestedAt,
-      retryOfJobId: retryRequested ? project.generationJobId : null,
-      ...(previousDrafts.length > 0 ? { previousDrafts } : {}),
     };
 
-    await this.claimGenerationJob({
+    // The persisted pending metadata (with retryOfJobId/previousDrafts from
+    // the locked row) — the failure path below must write this, never a copy
+    // built from the pre-eligibility read.
+    const pendingMetadata = await this.claimGenerationJob({
       projectId: project.id,
       jobId,
       retryRequested,
-      metadata: pendingMetadata,
+      metadata: baseMetadata,
     });
 
     try {
@@ -1756,48 +1755,82 @@ export class RemixProjectService {
     }
   }
 
+  /**
+   * Claims the project for a new generation job and persists its pending
+   * metadata. Runs under a row lock and derives `retryOfJobId` and the
+   * archived `previousDrafts` (#1320) from the row re-read under that lock,
+   * not from the caller's earlier read: a version deleted meanwhile
+   * (deleteDraftVersion, #1910) must stay deleted. Returns the metadata
+   * actually written.
+   */
   private async claimGenerationJob(input: {
     projectId: string;
     jobId: string;
     retryRequested: boolean;
     metadata: Record<string, unknown>;
-  }) {
-    const metadataJson = JSON.stringify(input.metadata);
-    const updated = input.retryRequested
-      ? await prisma.$executeRaw`
-          UPDATE "RemixProject"
-          SET
-            "generationProvider" = 'remix-queue',
-            "generationJobId" = ${input.jobId},
-            "generationMetadata" = ${metadataJson}::jsonb,
-            "updatedAt" = NOW()
-          WHERE "id" = ${input.projectId}
-            AND (
-              "generationJobId" IS NULL
-              OR COALESCE("generationMetadata"->>'status', 'completed') IN ('completed', 'failed')
-              OR COALESCE(
-                   ("generationMetadata"->>'processingStartedAt')::timestamptz,
-                   ("generationMetadata"->>'requestedAt')::timestamptz,
-                   '-infinity'::timestamptz
-                 ) <= NOW() - make_interval(secs => ${this.generationStaleAfterMs / 1000})
-            )
-        `
-      : await prisma.$executeRaw`
-          UPDATE "RemixProject"
-          SET
-            "generationProvider" = 'remix-queue',
-            "generationJobId" = ${input.jobId},
-            "generationMetadata" = ${metadataJson}::jsonb,
-            "updatedAt" = NOW()
-          WHERE "id" = ${input.projectId}
-            AND "generationJobId" IS NULL
-        `;
+  }): Promise<Record<string, unknown>> {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" = ${input.projectId} FOR UPDATE`;
+      const fresh = await tx.remixProject.findUnique({
+        where: { id: input.projectId },
+        select: {
+          generationJobId: true,
+          generationProvider: true,
+          generationMetadata: true,
+        },
+      });
+      const archiveEntry =
+        input.retryRequested && fresh ? archiveEntryFromProject(fresh) : null;
+      const previousDrafts = [
+        ...(archiveEntry ? [archiveEntry] : []),
+        ...previousDraftsFromMetadata(fresh?.generationMetadata),
+      ].slice(0, REMIX_PREVIOUS_DRAFTS_MAX);
+      const metadata: Record<string, unknown> = {
+        ...input.metadata,
+        retryOfJobId: input.retryRequested
+          ? (fresh?.generationJobId ?? null)
+          : null,
+        ...(previousDrafts.length > 0 ? { previousDrafts } : {}),
+      };
+      const metadataJson = JSON.stringify(metadata);
 
-    if (updated === 0) {
-      throw new ConflictException(
-        "A generation job is already active or recorded for this project; reload the project.",
-      );
-    }
+      const updated = input.retryRequested
+        ? await tx.$executeRaw`
+            UPDATE "RemixProject"
+            SET
+              "generationProvider" = 'remix-queue',
+              "generationJobId" = ${input.jobId},
+              "generationMetadata" = ${metadataJson}::jsonb,
+              "updatedAt" = NOW()
+            WHERE "id" = ${input.projectId}
+              AND (
+                "generationJobId" IS NULL
+                OR COALESCE("generationMetadata"->>'status', 'completed') IN ('completed', 'failed')
+                OR COALESCE(
+                     ("generationMetadata"->>'processingStartedAt')::timestamptz,
+                     ("generationMetadata"->>'requestedAt')::timestamptz,
+                     '-infinity'::timestamptz
+                   ) <= NOW() - make_interval(secs => ${this.generationStaleAfterMs / 1000})
+              )
+          `
+        : await tx.$executeRaw`
+            UPDATE "RemixProject"
+            SET
+              "generationProvider" = 'remix-queue',
+              "generationJobId" = ${input.jobId},
+              "generationMetadata" = ${metadataJson}::jsonb,
+              "updatedAt" = NOW()
+            WHERE "id" = ${input.projectId}
+              AND "generationJobId" IS NULL
+          `;
+
+      if (updated === 0) {
+        throw new ConflictException(
+          "A generation job is already active or recorded for this project; reload the project.",
+        );
+      }
+      return metadata;
+    });
   }
 
   private async maybeRenderStemPlusAiLayer(input: {
@@ -2398,6 +2431,149 @@ export class RemixProjectService {
     }
 
     return this.readCurrentDraftAudio(project);
+  }
+
+  /**
+   * Deletes an ARCHIVED draft version (#1910): removes its `previousDrafts`
+   * entry, then best-effort deletes its stored audio. Owner-only (403/404 via
+   * loadOwnedProject); published projects stay locked (409). The CURRENT
+   * draft is not deletable here (404) — the owner regenerates instead.
+   *
+   * Order matters: the metadata removal commits first under a row lock, so
+   * concurrent deletes serialize and exactly one caller removes the entry and
+   * reaches the storage delete. A storage failure is logged and never
+   * re-adds the entry. The object is only deleted when nothing else points
+   * at it: no remaining archived entry, not the current draft output, and
+   * never the published release audio (publish copies the draft into a
+   * separate catalog-owned object; asserted defensively below).
+   */
+  async deleteDraftVersion(userId: string, projectId: string, jobId: string) {
+    // Ownership first (403 / 404), outside the lock.
+    await this.loadOwnedProject(userId, projectId);
+
+    const removal = await prisma.$transaction(async (tx) => {
+      // Row lock: serializes with concurrent deletes, PATCH autosaves,
+      // generation claims and the publish status flip.
+      await tx.$queryRaw`SELECT "id" FROM "RemixProject" WHERE "id" = ${projectId} FOR UPDATE`;
+      const fresh = await tx.remixProject.findUnique({
+        where: { id: projectId },
+      });
+      if (!fresh) {
+        throw new NotFoundException(`Remix project ${projectId} not found`);
+      }
+      if (fresh.creatorUserId !== userId) {
+        throw new ForbiddenException(
+          "You do not have access to this remix project",
+        );
+      }
+      if (fresh.status === "published") {
+        throw new ConflictException({
+          code: "project_published",
+          message:
+            "This remix project was published and its draft versions can no longer be deleted.",
+          ...(fresh.publishedReleaseId
+            ? { releaseId: fresh.publishedReleaseId }
+            : {}),
+        });
+      }
+      if (jobId === fresh.generationJobId) {
+        throw new NotFoundException({
+          code: "draft_version_not_found",
+          message:
+            "The current draft cannot be deleted; regenerate to replace it.",
+        });
+      }
+      const archived = previousDraftsFromMetadata(fresh.generationMetadata);
+      const target = archived.find((entry) => entry.jobId === jobId);
+      if (!target) {
+        throw new NotFoundException({
+          code: "draft_version_not_found",
+          message: "This draft version does not exist.",
+        });
+      }
+
+      // An in-flight generation rewrites generationMetadata from a snapshot
+      // taken before this delete, which would resurrect the entry after its
+      // audio is gone. Deleting waits until the generation settles.
+      const generationStatus = remixGenerationStatusFromMetadata(
+        fresh.generationMetadata,
+      );
+      if (generationStatus === "pending" || generationStatus === "processing") {
+        throw new ConflictException({
+          code: "generation_in_progress",
+          message:
+            "A draft is being generated. Wait for it to finish before deleting a previous version.",
+        });
+      }
+
+      const metadata = normalizeMetadataObject(fresh.generationMetadata);
+      // Drop every entry with this jobId, preserving any malformed entries
+      // the reader filters out (they are not ours to rewrite).
+      const rawList = Array.isArray(metadata.previousDrafts)
+        ? (metadata.previousDrafts as unknown[])
+        : [];
+      const nextList = rawList.filter(
+        (entry) =>
+          !(
+            entry &&
+            typeof entry === "object" &&
+            (entry as { jobId?: unknown }).jobId === jobId
+          ),
+      );
+      const nextMetadata: Record<string, unknown> = { ...metadata };
+      if (nextList.length > 0) nextMetadata.previousDrafts = nextList;
+      else delete nextMetadata.previousDrafts;
+
+      await tx.remixProject.update({
+        where: { id: projectId },
+        data: { generationMetadata: nextMetadata as Prisma.JsonObject },
+      });
+
+      const targetUri = target.output.outputUri;
+      const stillReferenced =
+        previousDraftsFromMetadata(nextMetadata).some(
+          (entry) => entry.output.outputUri === targetUri,
+        ) || draftOutputUriFromMetadata(nextMetadata) === targetUri;
+      // Defensive: publish writes a catalog copy, so a draft URI should never
+      // be the published release audio — but never delete it if it were.
+      const isPublishedAudio = fresh.publishedReleaseId
+        ? (await tx.stem.count({
+            where: {
+              uri: targetUri,
+              track: { releaseId: fresh.publishedReleaseId },
+            },
+          })) > 0
+        : false;
+
+      return {
+        uri: targetUri,
+        deleteObject: !stillReferenced && !isPublishedAudio,
+      };
+    });
+
+    if (removal.deleteObject) {
+      try {
+        await this.storageProvider.delete(removal.uri);
+      } catch (error) {
+        // Ids only: the URI and provider error body stay out of logs.
+        this.logger.warn(
+          `Draft version audio delete failed (project=${projectId}, job=${jobId}, error=${
+            error instanceof Error ? error.name : "unknown"
+          }); the version was already removed.`,
+        );
+      }
+    }
+
+    this.eventBus.publish({
+      eventName: "remix.draft_version_deleted",
+      eventVersion: 1,
+      occurredAt: new Date().toISOString(),
+      remixProjectId: projectId,
+      creatorId: userId,
+      generationJobId: jobId,
+    });
+
+    return this.getProject(userId, projectId);
   }
 
   /**

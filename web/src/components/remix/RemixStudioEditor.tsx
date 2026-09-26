@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
+  deleteRemixDraftVersion,
   exportRemixDraftBlob,
   generateRemixDraft,
   getCreditsBalance,
@@ -46,6 +47,15 @@ import {
   sectionGridSummaryLabel,
 } from "../../lib/remixArrangement";
 import { isFullMixStemType } from "../../lib/remixStems";
+import {
+  DEFAULT_LISTENING_VOLUME,
+  listeningGain,
+  listeningVolumeAfterMuteToggle,
+  listeningVolumeAfterSlider,
+  readListeningVolume,
+  writeListeningVolume,
+  type ListeningVolume,
+} from "../../lib/remixListeningVolume";
 import {
   intentFromState,
   stateForIntent,
@@ -107,7 +117,12 @@ import {
   type RemixStructureShapeId,
 } from "./RemixCreatePanel";
 import {
+  DELETE_VERSION_CONFIRM_MESSAGE,
+  DELETE_VERSION_CONFIRM_TITLE,
   RemixDraftsPanel,
+  visibleDraftVersions,
+  withoutPendingDelete,
+  withPendingDelete,
   type RemixCurrentDraft,
   type RemixDraftVersion,
 } from "./RemixDraftsPanel";
@@ -464,6 +479,66 @@ export function doublingReferenceStemIds(
       .filter((stem) => references.has(stem.stemId) && audible(stem))
       .map((stem) => stem.stemId),
   );
+}
+
+/**
+ * "Reset to original" (#1910): the edits that sound like the source track —
+ * no effects, the original song shape, no beat, and every separated stem
+ * audible at 0 dB on every block. Full-mix reference stems stay exactly as
+ * they are (muted, reference only). Title, prompt, mode and AI target are
+ * not sound and are kept.
+ */
+export function originalEdits(
+  edits: ProjectEdits,
+  referenceIds: ReadonlySet<string>,
+): ProjectEdits {
+  const stems: Record<string, StemEdit> = {};
+  for (const [stemId, edit] of Object.entries(edits.stems)) {
+    stems[stemId] = referenceIds.has(stemId)
+      ? edit
+      : { muted: false, gainDb: null, sections: null };
+  }
+  return { ...edits, effects: null, structure: null, beat: null, stems };
+}
+
+/**
+ * Whether the edits already sound like the original (#1910): what
+ * `originalEdits` produces, counting a 0 dB gain as no gain and an all-on
+ * mask as no mask (they sound the same).
+ */
+export function editsAreOriginal(
+  edits: ProjectEdits,
+  referenceIds: ReadonlySet<string>,
+): boolean {
+  if (edits.effects !== null || edits.structure !== null || edits.beat !== null) {
+    return false;
+  }
+  return Object.entries(edits.stems).every(
+    ([stemId, edit]) =>
+      referenceIds.has(stemId) ||
+      (!edit.muted &&
+        (edit.gainDb === null || edit.gainDb === 0) &&
+        (edit.sections === null || edit.sections.every(Boolean))),
+  );
+}
+
+/** Reset confirm copy (#1910). */
+export const RESET_ORIGINAL_CONFIRM_TITLE = "Reset to the original?";
+export const RESET_ORIGINAL_CONFIRM_MESSAGE =
+  "This clears your effects, song shape, beat and stem changes. Your drafts are kept.";
+
+/** "Reset to original" availability (#1910): locked, already there, or on. */
+export function describeResetAvailability(input: {
+  published: boolean;
+  original: boolean;
+}): { enabled: boolean; reason: string | null } {
+  if (input.published) {
+    return { enabled: false, reason: "Published remixes are locked" };
+  }
+  if (input.original) {
+    return { enabled: false, reason: "Already the original" };
+  }
+  return { enabled: true, reason: null };
 }
 
 const KEY_VOTE_EXCLUDED_STEM_TYPES = new Set(["drums", "percussion"]);
@@ -1356,6 +1431,33 @@ export function RemixStudioEditor({
   >("idle");
   const [exporting, setExporting] = useState(false);
   const [confirmPublishOpen, setConfirmPublishOpen] = useState(false);
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  // Delete a previous version (#1910): the one awaiting confirmation, and
+  // the ones hidden optimistically — in flight or deleted.
+  const [confirmDeleteJobId, setConfirmDeleteJobId] = useState<string | null>(
+    null,
+  );
+  const [pendingDeletes, setPendingDeletes] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // Listening volume (#1910): this device only, never saved to the remix.
+  // Read after mount so the server and first client render agree.
+  const [listeningVolume, setListeningVolume] = useState<ListeningVolume>(
+    DEFAULT_LISTENING_VOLUME,
+  );
+  useEffect(() => {
+    // Hydrate from localStorage after mount (SSR renders the default).
+    setListeningVolume(readListeningVolume());
+  }, []);
+  const updateListeningVolume = (
+    change: (volume: ListeningVolume) => ListeningVolume,
+  ) => {
+    setListeningVolume((prev) => {
+      const next = change(prev);
+      writeListeningVolume(next);
+      return next;
+    });
+  };
   const [eligibility, setEligibility] =
     useState<RemixEligibilityResponse | null>(null);
   // Autosave failure (#1879): the edits that failed to save. Autosave stays
@@ -1468,9 +1570,12 @@ export function RemixStudioEditor({
 
   // Studio transport (#1879): one owner for the arrangement preview, the
   // original full mix, and drafts — play/stop, seek, loop, source switch.
-  const previousDraftIds = (project.generationMetadata?.previousDrafts ?? []).map(
-    (entry) => entry.jobId,
+  // Versions being deleted (#1910) are already gone for the transport too.
+  const previousDrafts = visibleDraftVersions(
+    project.generationMetadata?.previousDrafts ?? [],
+    pendingDeletes,
   );
+  const previousDraftIds = previousDrafts.map((entry) => entry.jobId);
   const transport = useRemixTransport({
     token,
     projectId: project.id,
@@ -1484,6 +1589,7 @@ export function RemixStudioEditor({
     bpm: effectsBpm(project.sectionGrid),
     timeline,
     beat: previewBeat,
+    outputGain: listeningGain(listeningVolume),
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -1695,7 +1801,8 @@ export function RemixStudioEditor({
   // latest state through a ref.
   const shortcutStateRef = useRef({
     published,
-    dialogOpen: confirmPublishOpen,
+    dialogOpen:
+      confirmPublishOpen || confirmResetOpen || confirmDeleteJobId !== null,
     loopActive: transportLoop !== null,
     toggle: transport.toggle,
     clearLoop: () => transport.setLoop(null),
@@ -1705,7 +1812,8 @@ export function RemixStudioEditor({
   useEffect(() => {
     shortcutStateRef.current = {
       published,
-      dialogOpen: confirmPublishOpen,
+      dialogOpen:
+      confirmPublishOpen || confirmResetOpen || confirmDeleteJobId !== null,
       loopActive: transportLoop !== null,
       toggle: transport.toggle,
       clearLoop: () => transport.setLoop(null),
@@ -2106,6 +2214,43 @@ export function RemixStudioEditor({
     }
   };
 
+  // Reset to original (#1910): one edit, autosaved like any other.
+  const resetAvailability = describeResetAvailability({
+    published,
+    original: editsAreOriginal(edits, referenceIds),
+  });
+  const handleResetToOriginal = () => {
+    setConfirmResetOpen(false);
+    if (published) return;
+    setEdits((prev) => originalEdits(prev, referenceIds));
+  };
+
+  // Delete a previous version (#1910): hidden at once, restored with a toast
+  // if the server refuses; success adopts the returned project.
+  const handleDeleteVersion = async (jobId: string) => {
+    setConfirmDeleteJobId(null);
+    if (!token || published) return;
+    if (draftTransportState(jobId) !== "idle") transport.stop();
+    setPendingDeletes((prev) => withPendingDelete(prev, jobId));
+    try {
+      const updated = await deleteRemixDraftVersion(token, project.id, jobId);
+      setProject((prev) => ({
+        ...updated,
+        availableStems: updated.availableStems ?? prev.availableStems,
+      }));
+    } catch {
+      // Rollback: the version comes back where it was.
+      setPendingDeletes((prev) => withoutPendingDelete(prev, jobId));
+      addToast({
+        type: "error",
+        title: "Couldn't delete the version",
+        message: "It is still in your drafts. Please try again.",
+      });
+    }
+    // A deleted id stays hidden, so a response that raced the delete (an
+    // autosave, a generation poll) can't bring the card back.
+  };
+
   const publishAvailability = describePublishAvailability({
     status: project.status,
     generationStatus,
@@ -2274,9 +2419,7 @@ export function RemixStudioEditor({
         loading: draftTransportState(null) === "loading",
       }
     : null;
-  const draftVersions: RemixDraftVersion[] = (
-    generationMetadata?.previousDrafts ?? []
-  ).map((entry) => ({
+  const draftVersions: RemixDraftVersion[] = previousDrafts.map((entry) => ({
     jobId: entry.jobId,
     label: draftKindLabel(entry.grounding, entry.stemTransform, entry.mode),
     provenance: entry.grounding,
@@ -2433,15 +2576,39 @@ export function RemixStudioEditor({
                     </span>
                   )}
                 </div>
-                {soloStemId && (
+                <div className="flex items-center gap-3">
+                  {soloStemId && (
+                    <button
+                      type="button"
+                      className="bg-transparent text-xs text-purple-300 hover:text-purple-200"
+                      onClick={() => setSoloStemId(null)}
+                    >
+                      Clear solo
+                    </button>
+                  )}
+                  {/* Reset to original (#1910): honest when unavailable. */}
                   <button
                     type="button"
-                    className="text-xs text-purple-300 hover:text-purple-200"
-                    onClick={() => setSoloStemId(null)}
+                    aria-disabled={!resetAvailability.enabled || undefined}
+                    title={
+                      resetAvailability.reason ??
+                      "Clear effects, song shape, beat and stem changes"
+                    }
+                    className={`ui-btn ui-btn-ghost ui-btn-sm remix-reset-original-btn ${
+                      resetAvailability.enabled
+                        ? ""
+                        : "opacity-60 cursor-not-allowed"
+                    }`}
+                    onClick={() => {
+                      if (resetAvailability.enabled) setConfirmResetOpen(true);
+                    }}
                   >
-                    Clear solo
+                    Reset to original
+                    {resetAvailability.reason && (
+                      <span className="sr-only"> — {resetAvailability.reason}</span>
+                    )}
                   </button>
-                )}
+                </div>
               </div>
               <p className="text-zinc-500 text-xs mb-4">
                 The preview is unmastered, with a limiter keeping the summed stems
@@ -2509,6 +2676,15 @@ export function RemixStudioEditor({
                   onToggle={transport.toggle}
                   onSourceChange={transport.setSource}
                   onClearLoop={() => transport.setLoop(null)}
+                  volume={{
+                    value: listeningVolume,
+                    onLevelChange: (level) =>
+                      updateListeningVolume((volume) =>
+                        listeningVolumeAfterSlider(volume, level),
+                      ),
+                    onToggleMute: () =>
+                      updateListeningVolume(listeningVolumeAfterMuteToggle),
+                  }}
                 />
                 <RemixSessionLanes
                   stems={laneStems}
@@ -2672,6 +2848,7 @@ export function RemixStudioEditor({
               versions={draftVersions}
               onPlayCurrent={() => handleDraftPlayback(null)}
               onPlayVersion={(jobId) => handleDraftPlayback(jobId)}
+              onRequestDeleteVersion={(jobId) => setConfirmDeleteJobId(jobId)}
               publish={{
                 enabled: publishAvailability.enabled,
                 reason: publishAvailability.reason,
@@ -2714,6 +2891,28 @@ export function RemixStudioEditor({
         cancelLabel="Keep private"
         onConfirm={() => handlePublish()}
         onCancel={() => setConfirmPublishOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={confirmResetOpen}
+        title={RESET_ORIGINAL_CONFIRM_TITLE}
+        message={RESET_ORIGINAL_CONFIRM_MESSAGE}
+        confirmLabel="Reset to original"
+        cancelLabel="Keep my changes"
+        variant="warning"
+        onConfirm={handleResetToOriginal}
+        onCancel={() => setConfirmResetOpen(false)}
+      />
+      <ConfirmDialog
+        isOpen={confirmDeleteJobId !== null}
+        title={DELETE_VERSION_CONFIRM_TITLE}
+        message={DELETE_VERSION_CONFIRM_MESSAGE}
+        confirmLabel="Delete version"
+        cancelLabel="Keep it"
+        variant="danger"
+        onConfirm={() => {
+          if (confirmDeleteJobId) void handleDeleteVersion(confirmDeleteJobId);
+        }}
+        onCancel={() => setConfirmDeleteJobId(null)}
       />
     </div>
   );

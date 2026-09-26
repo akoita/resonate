@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
+import type { ListeningVolume } from "../../lib/remixListeningVolume";
 
 /**
  * Sticky transport for the Remix Studio session view (#1879): play/stop,
@@ -34,6 +35,16 @@ export type RemixTransportBarProps = {
   onToggle(): void;
   onSourceChange(source: RemixTransportSourceChange): void;
   onClearLoop(): void;
+  /**
+   * Listening volume on this device (#1910) — never saved to the remix.
+   * Absent = no volume control.
+   */
+  volume?: {
+    value: ListeningVolume;
+    /** Slider position 0..1. */
+    onLevelChange(level: number): void;
+    onToggleMute(): void;
+  };
 };
 
 /** m:ss clock text; unknown/invalid → "–:––". */
@@ -90,6 +101,7 @@ export function RemixTransportBar({
   onToggle,
   onSourceChange,
   onClearLoop,
+  volume,
 }: RemixTransportBarProps) {
   const options = SOURCE_OPTIONS.filter(
     (option) =>
@@ -183,9 +195,78 @@ export function RemixTransportBar({
         </span>
       )}
 
-      <div className="remix-transport-meter ml-auto flex min-w-0 items-center">
-        {meter}
+      <div className="ml-auto flex min-w-0 items-center gap-3">
+        {volume && <TransportVolume {...volume} />}
+        <div className="remix-transport-meter flex min-w-0 items-center">
+          {meter}
+        </div>
       </div>
+    </div>
+  );
+}
+
+/** Slider steps: whole percent. */
+const VOLUME_SLIDER_MAX = 100;
+
+/**
+ * Listening volume (#1910): a speaker mute toggle plus a slider. How loud
+ * the preview and drafts play on this device only — renders are
+ * loudness-normalized and never hear it.
+ */
+function TransportVolume({
+  value,
+  onLevelChange,
+  onToggleMute,
+}: NonNullable<RemixTransportBarProps["volume"]>) {
+  const silent = value.muted || value.level <= 0;
+  const percent = Math.round(value.level * VOLUME_SLIDER_MAX);
+  return (
+    <div
+      className="remix-transport-volume flex items-center gap-1.5"
+      title="Volume on this device — not saved to your remix"
+    >
+      <button
+        type="button"
+        aria-label={value.muted ? "Unmute" : "Mute"}
+        aria-pressed={value.muted}
+        title={value.muted ? "Unmute" : "Mute"}
+        className="remix-transport-mute flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300"
+        onClick={onToggleMute}
+      >
+        <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4">
+          <path d="M2 6h2.5L8 3v10L4.5 10H2z" fill="currentColor" />
+          {silent ? (
+            <path
+              d="M10.5 6l4 4m0-4l-4 4"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              fill="none"
+            />
+          ) : (
+            <path
+              d="M10.5 5.5a3.5 3.5 0 010 5M12.5 3.5a6 6 0 010 9"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              fill="none"
+            />
+          )}
+        </svg>
+      </button>
+      <input
+        type="range"
+        aria-label="Volume"
+        aria-valuetext={value.muted ? "Muted" : `${percent}%`}
+        min={0}
+        max={VOLUME_SLIDER_MAX}
+        step={1}
+        value={value.muted ? 0 : percent}
+        className="remix-transport-volume-slider h-1 w-20 cursor-pointer bg-transparent accent-purple-400"
+        onChange={(event) =>
+          onLevelChange(Number(event.target.value) / VOLUME_SLIDER_MAX)
+        }
+      />
     </div>
   );
 }
