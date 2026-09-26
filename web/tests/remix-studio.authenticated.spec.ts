@@ -526,4 +526,61 @@ test.describe("Remix Studio session view (#1879)", () => {
       })
       .toBe(true);
   });
+
+  test("describe it: plain words preview a diff, apply autosaves, undo restores (#1900)", async ({
+    authenticatedPage: page,
+  }) => {
+    const { patches } = await mockRemixApi(page);
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+
+    await page
+      .getByLabel("Describe the remix you want")
+      .fill("slower and dreamy, no drums");
+    await page.getByRole("button", { name: "Preview changes" }).click();
+    // A visible diff first — nothing changes until Apply.
+    await expect(page.getByText("0.85×").first()).toBeVisible();
+    await expect(page.getByText(/muted/).first()).toBeVisible();
+    const patchesBeforeApply = patches.length;
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-describe.png"),
+      fullPage: true,
+    });
+    expect(patches.length).toBe(patchesBeforeApply);
+
+    await page.getByRole("button", { name: "Apply", exact: true }).click();
+    await expect(page.getByText("Applied — adjust anything below.")).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const effects = patch.effects as { master?: { speed?: number } } | undefined;
+            const stems = patch.stems as Array<{ stemId: string; muted?: boolean }> | undefined;
+            return (
+              effects?.master?.speed === 0.85 &&
+              !!stems?.some((stem) => stem.stemId === "stem-drums" && stem.muted === true)
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+    await expect(page.getByText("All changes saved")).toBeVisible();
+
+    // Undo survives the autosave round-trip and restores the previous state.
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect
+      .poll(
+        () =>
+          patches.some((patch) => {
+            const stems = patch.stems as Array<{ stemId: string; muted?: boolean }> | undefined;
+            return (
+              "effects" in patch &&
+              patch.effects === null &&
+              !!stems?.some((stem) => stem.stemId === "stem-drums" && stem.muted === false)
+            );
+          }),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
+  });
 });

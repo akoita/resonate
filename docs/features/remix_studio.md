@@ -599,9 +599,29 @@ from the JWT, never the request body.
     - A stored over-limit structure renders in the original order.
     - Renders use one ffmpeg input per block, which keeps memory bounded
       (the single-decode split held pending blocks in memory).
-  - **Deferred.** Build-ups (a filter sweep plus a gain ramp) are a follow-up.
+  - **Deferred.** Build-ups (a filter sweep plus a gain ramp) are a follow-up
+    (#1908).
   - **Provenance.** Stays `stem_audio`. `renderMetadata` and publish lineage
     record the structure.
+- "Describe it" (#1900, slice S3 of epic #1896). At the top of Create → Mix
+  stems, the user types plain words (e.g. "slower and dreamy, no drums,
+  longer"). The studio proposes visible changes to the existing controls as a
+  diff ("Speed 1.00× → 0.85×", "Drums → muted", "Song shape → Extended mix"),
+  and only **Apply** changes anything. Applied edits autosave, and a one-step
+  **Undo** restores the previous state.
+  - **Deterministic and client-side.** v1 uses a phrase parser
+    (`web/src/lib/remixDescribe.ts`). It covers tempo, space, tone, warmth,
+    vibes, part-specific echo/mute/solo, instrumental/acapella and song
+    shape, with intensity ("a bit", "very") and negation.
+  - **Free, instant and private.** There is no model call and no credits,
+    and the text never leaves the browser. Unknown words are reported
+    honestly, with examples.
+  - **Reuses the S1/S2 building blocks.** Results go through the same
+    effects, structure and arrangement helpers, so the length cap applies,
+    missing stems are reported, and full-mix reference stems are never
+    touched.
+  - **Follow-up.** An opt-in model-backed parser for free-form phrasing is
+    #1907.
 - API: token metadata (`GET /api/metadata/:chainId/:tokenId`) now includes
   catalog `stem_id`/`track_id`/`release_id` properties so token-keyed surfaces
   can resolve eligibility.
