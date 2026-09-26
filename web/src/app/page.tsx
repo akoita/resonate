@@ -12,8 +12,6 @@ import {
   fetchTrendingTracks,
   getAgentConfig,
   getRelease,
-  getReleaseTrackStreamUrl,
-  getStemPreviewUrl,
   listMyReleases,
   listPublicPlaylists,
   listPublishedReleases,
@@ -25,7 +23,6 @@ import {
   type HomeFeedResponse,
   type PublicPlaylistSummary,
   type TopArtistItem,
-  type Track,
   type TrendingTrackItem,
 } from "../lib/api";
 import { artistProfileHref } from "../lib/artistRoutes";
@@ -35,7 +32,6 @@ import {
   formatCount,
   getArtistName,
   getCatalogSortTime,
-  getTrackArtistName,
   groupCatalogStemsByTrack,
   summarizeCreditedArtists,
   summarizeManagedArtists,
@@ -43,6 +39,7 @@ import {
   type CatalogStemSummary,
 } from "../lib/catalogDisplay";
 import { catalogArtistPlaybackTracks } from "../lib/catalogArtistPlayback";
+import { mapReleaseToLocalTracks } from "../lib/catalogReleaseTracks";
 import { CatalogArtistCard } from "../components/catalog/CatalogArtistCard";
 import { CatalogPlaylistCard } from "../components/catalog/CatalogPlaylistCard";
 import { CatalogReleaseCard } from "../components/catalog/CatalogReleaseCard";
@@ -60,7 +57,7 @@ import { type LocalTrack, saveTracksMetadata } from "../lib/localLibrary";
 import { usePlayer } from "../lib/playerContext";
 import { useWebSockets, ReleaseStatusUpdate } from "../hooks/useWebSockets";
 import { useToast } from "../components/ui/Toast";
-import { AddToPlaylistModal } from "../components/library/AddToPlaylistModal";
+import { useCatalogReleaseActions } from "../components/catalog/useCatalogReleaseActions";
 import {
   campaignDisplayTitle,
   filterActionableCampaigns,
@@ -346,8 +343,6 @@ export default function Home() {
   const [homeFeed, setHomeFeed] = useState<HomeFeedResponse | null>(null);
   const [startingSeed, setStartingSeed] = useState<string | null>(null);
   const [startingVibe, setStartingVibe] = useState<FilterId | null>(null);
-  const [tracksToAddToPlaylist, setTracksToAddToPlaylist] = useState<LocalTrack[] | null>(null);
-  const [savingReleaseId, setSavingReleaseId] = useState<string | null>(null);
   // #1869: null = not loaded yet (hero skeleton); [] = resolved, none open
   // (honest empty hero). Never seeded with sample campaigns.
   const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
@@ -357,6 +352,7 @@ export default function Home() {
   const { status, token, userId } = useAuth();
   const { addToast } = useToast();
   const { playQueue } = usePlayer();
+  const { releaseActions } = useCatalogReleaseActions();
   const activeFilterConfig = useMemo(
     () => FILTERS.find((filter) => filter.id === activeFilter) ?? FILTERS[0],
     [activeFilter],
@@ -840,55 +836,9 @@ export default function Home() {
     }
   };
 
-  const getReleaseActionTracks = (release: Release) => mapReleaseToLocalTracks(release);
-
   const handlePlayCatalogRelease = (release: Release) => {
     const tracks = catalogArtistPlaybackTracks([release]);
     if (tracks.length > 0) void playQueue(tracks, 0);
-  };
-
-  const handleAddReleaseToPlaylist = (release: Release) => {
-    const tracks = getReleaseActionTracks(release);
-    if (tracks.length === 0) {
-      addToast({
-        type: "info",
-        title: "No tracks yet",
-        message: `${release.title} does not have playable tracks in the catalog yet.`,
-      });
-      return;
-    }
-    setTracksToAddToPlaylist(tracks);
-  };
-
-  const handleSaveReleaseToLibrary = async (release: Release) => {
-    const tracks = getReleaseActionTracks(release);
-    if (tracks.length === 0) {
-      addToast({
-        type: "info",
-        title: "No tracks yet",
-        message: `${release.title} does not have playable tracks in the catalog yet.`,
-      });
-      return;
-    }
-
-    setSavingReleaseId(release.id);
-    try {
-      await saveTracksMetadata(tracks, "remote");
-      addToast({
-        type: "success",
-        title: "Saved to Library",
-        message: `Saved ${tracks.length} track${tracks.length > 1 ? "s" : ""} from ${release.title}.`,
-      });
-    } catch (error) {
-      console.error("Failed to save catalog release to library:", error);
-      addToast({
-        type: "error",
-        title: "Save failed",
-        message: "Could not save this release to your library.",
-      });
-    } finally {
-      setSavingReleaseId(null);
-    }
   };
 
   return (
@@ -1090,21 +1040,7 @@ export default function Home() {
                       release={release}
                       onSelect={() => recordCatalogSearchResultClick("release", release.id, index + 1)}
                       onPlay={handlePlayCatalogRelease}
-                      actions={[
-                        {
-                          icon: "playlist_add",
-                          label: `Add ${release.title} to playlist`,
-                          onClick: () => handleAddReleaseToPlaylist(release),
-                          disabled: !release.tracks?.length,
-                        },
-                        {
-                          icon: "library_add",
-                          label: `Save ${release.title} to library`,
-                          onClick: () => void handleSaveReleaseToLibrary(release),
-                          disabled: !release.tracks?.length,
-                          busy: savingReleaseId === release.id,
-                        },
-                      ]}
+                      actions={releaseActions(release)}
                     />
                   ))}
                 </div>
@@ -1301,10 +1237,6 @@ export default function Home() {
           </div>
         </section>
       </main>
-      <AddToPlaylistModal
-        tracks={tracksToAddToPlaylist}
-        onClose={() => setTracksToAddToPlaylist(null)}
-      />
     </div>
   );
 }
@@ -1356,44 +1288,6 @@ function getReleaseResourceCount(release: Release) {
     0,
   ) ?? 0;
   return Math.max(1, 1 + stemCount);
-}
-
-function getTrackDuration(track: Track) {
-  return track.stems?.[0]?.durationSeconds ?? null;
-}
-
-function isMixerStem(type?: string | null) {
-  const normalized = type?.trim().toLowerCase();
-  return !!normalized && normalized !== "original" && normalized !== "master";
-}
-
-function mapReleaseToLocalTracks(release: Release): LocalTrack[] {
-  return (release.tracks ?? []).map((track) => ({
-    id: track.id,
-    title: track.title,
-    artist: getTrackArtistName(track, release),
-    albumArtist: null,
-    album: release.title,
-    year: release.releaseDate ? new Date(release.releaseDate).getFullYear() : null,
-    genre: release.genre || null,
-    duration: getTrackDuration(track),
-    createdAt: track.createdAt ? new Date(track.createdAt).toISOString() : release.createdAt,
-    catalogTrackId: track.id,
-    artistId: release.artist?.id || release.artistId,
-    releaseId: release.id,
-    aiDisclosure: track.aiDisclosure,
-    remoteUrl: getReleaseTrackStreamUrl(release.id, track.id),
-    remoteArtworkUrl: release.artworkUrl || undefined,
-    source: "remote",
-    stems: track.stems?.map((stem) => ({
-      id: stem.id,
-      type: stem.type,
-      uri: isMixerStem(stem.type) ? getStemPreviewUrl(stem.id) : stem.uri,
-      durationSeconds: stem.durationSeconds,
-      isEncrypted: isMixerStem(stem.type) ? false : stem.isEncrypted,
-      encryptionMetadata: isMixerStem(stem.type) ? null : stem.encryptionMetadata,
-    })),
-  }));
 }
 
 function filterReleases(releases: Release[], query: string) {

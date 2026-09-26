@@ -23,6 +23,7 @@ import { useQueueActions } from "../../lib/useQueueActions";
 import { useIdleReveal } from "../../lib/useIdleReveal";
 
 import { SaveQueuePlaylist } from "../../components/player/SaveQueuePlaylist";
+import { launchRemixStudio } from "../../components/remix/remixStudioLauncher";
 
 function PlayerContent() {
   const searchParams = useSearchParams();
@@ -64,8 +65,12 @@ function PlayerContent() {
   const { addToast } = useToast();
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, track: LocalTrack } | null>(null);
+  // The last loaded response is kept across track changes (rendered inert
+  // while the next track's actions load) so the console does not jump.
   const [trackActions, setTrackActions] = useState<PlayerTrackActionsResponse | null>(null);
+  const [actionsFailedFor, setActionsFailedFor] = useState<string | null>(null);
   const [savingTrack, setSavingTrack] = useState(false);
+  const [launchingRemix, setLaunchingRemix] = useState(false);
   const actionImpressionKeyRef = useRef<string | null>(null);
 
   // Local state for seeking
@@ -119,24 +124,8 @@ function PlayerContent() {
 
   const actionTrackId = currentTrack?.catalogTrackId || null;
 
-  const shareTrack = useMemo<ShareableTrack>(
-    () =>
-      currentTrack
-        ? {
-            title: currentTrack.title,
-            artist: currentTrack.artist,
-            releaseId: currentTrack.releaseId,
-            catalogTrackId: currentTrack.catalogTrackId,
-            trackId: currentTrack.id,
-            hasStems: hasMixerStems(currentTrack.stems),
-          }
-        : { title: "No track selected" },
-    [currentTrack],
-  );
-
   useEffect(() => {
     let active = true;
-    setTrackActions(null);
 
     if (!actionTrackId) {
       return;
@@ -144,11 +133,15 @@ function PlayerContent() {
 
     getPlayerTrackActions(actionTrackId, { reasons: recommendationReasons }, token)
       .then((response) => {
-        if (active) setTrackActions(response);
+        if (!active) return;
+        setTrackActions(response);
+        setActionsFailedFor(null);
       })
       .catch((error) => {
         console.warn("Failed to load player actions:", error);
-        if (active) setTrackActions(null);
+        if (!active) return;
+        setTrackActions(null);
+        setActionsFailedFor(actionTrackId);
       });
 
     return () => {
@@ -156,9 +149,37 @@ function PlayerContent() {
     };
   }, [actionTrackId, recommendationReasons, token]);
 
+  // Fresh = belongs to the current track; only fresh actions may be acted on.
   const visibleTrackActions =
     actionTrackId && trackActions?.track.id === actionTrackId ? trackActions : null;
-  const actionPanelLoading = Boolean(actionTrackId) && !visibleTrackActions;
+  const actionsFailed = Boolean(actionTrackId) && actionsFailedFor === actionTrackId;
+  const actionPanelLoading = Boolean(actionTrackId) && !visibleTrackActions && !actionsFailed;
+  // Previous track's actions stay on screen, inert, until the new ones land.
+  const panelTrackActions = actionTrackId && !actionsFailed ? trackActions : null;
+  const actionPanelStale = Boolean(panelTrackActions) && !visibleTrackActions;
+
+  const shareTrack = useMemo<ShareableTrack>(() => {
+    if (!currentTrack) return { title: "No track selected" };
+    const actionFor = (key: PlayerTrackAction["key"]) =>
+      visibleTrackActions?.actions.find((action) => action.key === key && action.status === "available");
+    const campaignAction = actionFor("shows_campaign");
+    const campaignTitle =
+      typeof campaignAction?.metadata?.title === "string" ? campaignAction.metadata.title : null;
+    return {
+      title: currentTrack.title,
+      artist: currentTrack.artist || visibleTrackActions?.track.artistName,
+      // A playing catalog track can lack its release id (e.g. an older queue
+      // entry); the actions response always carries it.
+      releaseId: currentTrack.releaseId || visibleTrackActions?.track.releaseId,
+      catalogTrackId: currentTrack.catalogTrackId,
+      trackId: currentTrack.id,
+      hasStems: hasMixerStems(currentTrack.stems),
+      forSale: Boolean(actionFor("buy_license")),
+      campaign: campaignAction?.href && campaignTitle
+        ? { title: campaignTitle, url: campaignAction.href }
+        : null,
+    };
+  }, [currentTrack, visibleTrackActions]);
 
   useEffect(() => {
     if (!actionTrackId || !visibleTrackActions) return;
@@ -233,6 +254,45 @@ function PlayerContent() {
 
     if (action.key === "add_to_playlist") {
       setShowAddToPlaylist(true);
+      return;
+    }
+
+    // Remix rights come from the stem NFT metadata: the listener may remix
+    // now, so open Remix Studio directly instead of an intermediate page.
+    // Marketplace-listing remixes keep routing to the license purchase.
+    if (action.key === "remix" && action.metadata?.source === "stem_nft_metadata") {
+      if (!token) {
+        addToast({ type: "info", title: "Sign in to remix", message: "Connect your account to open Remix Studio." });
+        return;
+      }
+      if (launchingRemix) return;
+      setLaunchingRemix(true);
+      try {
+        const result = await launchRemixStudio({
+          token,
+          trackId: actionTrackId,
+          trackTitle: currentTrack.title,
+        });
+        if (result.kind === "opened") {
+          router.push(result.path);
+          return;
+        }
+        if (action.href) {
+          addToast({ type: "info", title: action.label, message: result.reason });
+          router.push(action.href);
+          return;
+        }
+        addToast({ type: "warning", title: action.label, message: result.reason });
+      } catch (error) {
+        console.warn("Failed to open Remix Studio:", error);
+        addToast({
+          type: "error",
+          title: "Could not open Remix Studio",
+          message: "Creating the remix project failed. Please try again.",
+        });
+      } finally {
+        setLaunchingRemix(false);
+      }
       return;
     }
 
@@ -541,8 +601,9 @@ function PlayerContent() {
 
         {currentTrack && (
           <PlayerActionPanel
-            actionState={visibleTrackActions}
+            actionState={panelTrackActions}
             loading={actionPanelLoading}
+            stale={actionPanelStale || launchingRemix}
             saved={Boolean(visibleTrackActions?.library?.saved)}
             saving={savingTrack}
             onAction={handlePlayerAction}

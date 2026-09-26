@@ -109,27 +109,35 @@ share and changes no fees, payouts, or monetization mechanics.
 
 - **Deep link.** Shares point to the track's public release page
   (`/release/<releaseId>`), whose server-rendered metadata provides the cover
-  art and description for the social card. Tracks without a release (device
-  files, private tracks) have no public page, so the panel shows "Sharing is
-  available for tracks published on Resonate." instead of share buttons.
+  art and description for the social card. The release id comes from the
+  playing track or, when a queued catalog track lacks it, from the player
+  actions response. Tracks without a release (device files, private tracks)
+  have no public page, so the panel shows "Sharing is available for tracks with
+  a public Resonate release." instead of share buttons.
 - **Attribution.** Every link carries
   `utm_source=<x|facebook|reddit|native|copy>`, `utm_medium=social` (or
   `share` for the system share sheet and copied links), and
   `utm_campaign=listening_share`.
 - **Copy.** X posts read `🎧 Now playing: "<title>" by <artist>`, one hook
   sentence, and `#NowPlaying #Resonate`, truncating title/artist with "…" to
-  stay within 280 characters counting the link as 23. Reddit titles read
-  `"<title>" by <artist> — listen on Resonate (artists keep at least 85% of
-  every sale)`. The system share sheet uses the X text without hashtags;
-  Facebook takes only the link and reads the release page metadata. The hook
-  is chosen deterministically per track from a small set. The only claims
-  allowed are that the artist keeps at least 85% of every sale and, only for
-  tracks with mixer stems (types other than original/master), that the track
-  can be pulled apart stem by stem in the Resonate mixer.
+  stay within 280 characters counting every link as 23. The hook is "Listen on
+  Resonate." (plus the stem-by-stem mixer line only for tracks with mixer
+  stems). The at-least-85%-of-every-sale claim appears **only when something
+  is for sale** (the `buy_license` action is available); otherwise the copy
+  makes no sale or support claim. When the artist has a live campaign (an
+  available `shows_campaign` action), the text adds
+  `Back <artist>'s show campaign "<title>": <campaign link>` with the same UTM
+  attribution; on X the hashtags, then the hook, are dropped before the title
+  and artist are shortened. Reddit titles read `"<title>" by <artist> — listen
+  on Resonate`, with the 85% parenthetical only when for sale. The system share
+  sheet uses the X text without hashtags; Facebook takes only the link and
+  reads the release page metadata.
 - **Release card.** The release page description reads
-  `Listen to "<title>" by <artist> on Resonate — <details>. ...the artist keeps
-  at least 85% of every sale.`, adding "Stream it or remix the stems" only
-  when the release has mixer stems, within a 200-character budget.
+  `Listen to "<title>" by <artist> on Resonate — <details>.`, adding "Stream it
+  or remix the stems" only when the release has mixer stems, within a
+  200-character budget. `releaseShareDescription` makes the 85% claim only
+  when its caller passes `forSale`; the release layout does not know sale
+  availability, so it makes none.
 - **Analytics.** Each completed share action records `player.track_shared` with a
   `track` subject, source `player`, and a payload of `channel`, `trackId`, and
   `releaseId`. X, Facebook, and Reddit record on click; the share sheet and copy
@@ -157,9 +165,12 @@ Initial action keys:
 
 - `save`
 - `add_to_playlist`
-- `inspect_stems`
+- `inspect_stems` — links to the release page, which lists every stem of the
+  track.
 - `buy_license`
-- `remix`
+- `remix` — when remix rights come from stem NFT metadata the player opens
+  Remix Studio directly (reusing the latest matching draft); a marketplace
+  remix listing still routes to the license purchase.
 - `artist_room`
 - `shows_campaign`
 - `collect_drop`

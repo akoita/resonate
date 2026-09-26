@@ -75,6 +75,7 @@ const decryptionPromises = new Map<string, Promise<string>>();
 
 export type RepeatMode = "none" | "one" | "all";
 import { useAuth } from "../components/auth/AuthProvider";
+import { useToast } from "../components/ui/Toast";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { isClientTelemetryRefused, recordPlaybackCompleted, recordPlaybackEvent } from "./api";
@@ -443,6 +444,7 @@ StemAudio.displayName = "StemAudio";
 
 export function PlayerProvider({ children }: { children: React.ReactNode }) {
     const { token } = useAuth();
+    const { addToast } = useToast();
     const [segmentLoop, setSegmentLoopState] = useState<SegmentLoop | null>(null);
     const segmentLoopRef = useRef<SegmentLoop | null>(null);
     const [finiteRepeat, setFiniteRepeatState] = useState<FiniteRepeat | null>(null);
@@ -762,6 +764,14 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
 
         if (!url) {
             console.warn("playTrack: No valid URL for track", track.id, "- cannot play");
+            // Never fail silently: stop the previous audio so the UI does not
+            // claim the new track is playing, and tell the listener why.
+            safePause();
+            addToast({
+                type: "error",
+                title: "This track can't be played",
+                message: `"${track.title}" has no playable audio on this device or on Resonate.`,
+            });
             return;
         }
 
@@ -837,7 +847,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         recordPlaybackLifecycleEvent("started", track);
     // NOTE: mixerMode intentionally excluded - we use mixerModeRef.current to avoid
     // cascading recreation of playQueue → nextTrack → togglePlay on mixer toggle
-    }, [recordPlaybackLifecycleEvent, volume, safePause, safePlay]);
+    }, [recordPlaybackLifecycleEvent, volume, safePause, safePlay, addToast]);
 
     const playQueue = useCallback(async (list: LocalTrack[], startIndex: number, options?: QueuePlayOptions) => {
         const requestedTrack = list[startIndex];

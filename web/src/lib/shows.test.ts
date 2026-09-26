@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   discoverShowCampaignOnChain,
   buildCatalogArtistCandidates,
+  campaignArtistHref,
+  findArtistCampaigns,
+  releaseCampaignArtistIdentity,
   campaignDisplayInitial,
   campaignDisplayTitle,
   campaignStatusBadge,
@@ -776,5 +779,104 @@ describe("discoverShowCampaignOnChain (#1390 Tier 2)", () => {
     await expect(discoverShowCampaignOnChain({ campaign, token: "tok" })).rejects.toThrow(
       "escrow not configured",
     );
+  });
+});
+
+describe("campaign <-> artist navigation", () => {
+  const NOW = Date.parse("2026-09-26T12:00:00.000Z");
+  const future = (days: number) => new Date(NOW + days * 86_400_000).toISOString();
+  const campaign = (
+    id: string,
+    overrides: Partial<Pick<Campaign, "artistId" | "artistName" | "rawStatus" | "deadline">> = {},
+  ) => ({
+    id,
+    artistName: "Tiken Jah Fakoly",
+    artistId: null as string | null,
+    rawStatus: "active",
+    deadline: future(10),
+    ...overrides,
+  });
+
+  it("links a campaign to the artist profile when linked, else the catalog credit", () => {
+    expect(campaignArtistHref({ artistName: "Tiken Jah Fakoly", artistId: "artist-1" }))
+      .toBe("/artist/artist-1");
+    expect(campaignArtistHref({ artistName: " Tiken Jah Fakoly ", artistId: null }))
+      .toBe("/catalog/artists/Tiken%20Jah%20Fakoly");
+    expect(campaignArtistHref({ artistName: "AC/DC" })).toBe("/catalog/artists/AC%2FDC");
+  });
+
+  it("matches by profile id first and never across different profiles", () => {
+    const campaigns = [
+      campaign("same-id", { artistId: "artist-1" }),
+      campaign("other-profile-same-name", { artistId: "artist-2" }),
+      campaign("unlinked-same-name", { artistId: null, deadline: future(2) }),
+      campaign("unlinked-other-name", { artistId: null, artistName: "Alpha Blondy" }),
+    ];
+
+    expect(findArtistCampaigns(campaigns, { artistId: "artist-1", artistName: "Tiken Jah Fakoly" }, NOW)
+      .map((c) => c.id)).toEqual(["same-id", "unlinked-same-name"]);
+  });
+
+  it("falls back to case- and whitespace-insensitive exact name matching", () => {
+    const campaigns = [
+      campaign("spaced", { artistName: "  tiken   JAH fakoly " }),
+      campaign("partial", { artistName: "Tiken Jah" }),
+      campaign("linked", { artistId: "artist-9" }),
+    ];
+
+    expect(findArtistCampaigns(campaigns, { artistName: "Tiken Jah Fakoly" }, NOW).map((c) => c.id))
+      .toEqual(["spaced", "linked"]);
+    expect(findArtistCampaigns(campaigns, { artistId: null, artistName: "  " }, NOW)).toEqual([]);
+  });
+
+  it("drops non-actionable campaigns and orders live pledging before funded, then by deadline", () => {
+    const campaigns = [
+      campaign("funded", { rawStatus: "funded", deadline: future(1) }),
+      campaign("active-later", { deadline: future(20) }),
+      campaign("active-sooner", { deadline: future(3) }),
+      campaign("refunds", { rawStatus: "refund_available" }),
+      campaign("expired", { deadline: future(-1) }),
+    ];
+
+    expect(findArtistCampaigns(campaigns, { artistName: "Tiken Jah Fakoly" }, NOW).map((c) => c.id))
+      .toEqual(["active-sooner", "active-later", "funded"]);
+  });
+
+  it("keys a release's campaigns on the credited artist, not an unrelated uploader", () => {
+    const base = {
+      id: "release-1",
+      artistId: "manager-profile",
+      title: "Dignified",
+      status: "ready",
+      type: "single",
+      explicit: false,
+      createdAt: "2026-05-01T00:00:00.000Z",
+    } satisfies Release;
+
+    expect(releaseCampaignArtistIdentity({
+      ...base,
+      primaryArtist: "SennaRin",
+      artist: { id: "manager-profile", displayName: "green" },
+    })).toEqual({ artistId: null, artistName: "SennaRin" });
+
+    expect(releaseCampaignArtistIdentity({
+      ...base,
+      primaryArtist: "green",
+      artist: { id: "manager-profile", displayName: "green" },
+    })).toEqual({ artistId: "manager-profile", artistName: "green" });
+
+    expect(releaseCampaignArtistIdentity({
+      ...base,
+      primaryArtist: "legacy",
+      artist: { id: "manager-profile", displayName: "green" },
+      artistCredits: [{
+        id: "credit-1",
+        releaseId: "release-1",
+        artistId: "artist-sennarin",
+        role: "main",
+        displayName: "SennaRin",
+        sortOrder: 0,
+      }],
+    })).toEqual({ artistId: "artist-sennarin", artistName: "SennaRin" });
   });
 });

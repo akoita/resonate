@@ -3997,3 +3997,260 @@
   font-size: 0.82rem;
   color: rgba(255, 255, 255, 0.66);
 }
+
+/* ─── Artist ↔ campaign navigation ───────────────────────────────────
+ * Banner linking an artist or release page to that artist's show
+ * campaign, plus the campaign page's "listen to the artist" link. The
+ * banner renders OUTSIDE `.shows-surface`, so it carries its own copy of
+ * the Shows signal violet instead of reading the scoped tokens. */
+.artist-campaign-links {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  max-width: 640px;
+}
+
+.artist-campaign-link {
+  --artist-campaign-signal: #7C5CFF;
+  --artist-campaign-signal-mid: #C4B5FD;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px 10px 10px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--artist-campaign-signal) 32%, transparent);
+  background:
+    radial-gradient(circle at 0% 50%, color-mix(in srgb, var(--artist-campaign-signal) 22%, transparent), transparent 55%),
+    rgba(255, 255, 255, 0.035);
+  backdrop-filter: blur(12px);
+  color: #fff;
+  text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+
+.artist-campaign-link:hover {
+  border-color: color-mix(in srgb, var(--artist-campaign-signal) 60%, transparent);
+  background:
+    radial-gradient(circle at 0% 50%, color-mix(in srgb, var(--artist-campaign-signal) 30%, transparent), transparent 60%),
+    rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
+.artist-campaign-link:focus-visible {
+  outline: 2px solid var(--artist-campaign-signal-mid);
+  outline-offset: 3px;
+}
+
+.artist-campaign-link__thumb {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6242E6, #C4B5FD);
+  color: #fff;
+}
+
+.artist-campaign-link__thumb--image {
+  background: var(--artist-campaign-image) center / cover no-repeat, #1D1B32;
+}
+
+.artist-campaign-link__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.artist-campaign-link__kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--artist-campaign-signal-mid);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.artist-campaign-link__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  animation: artist-campaign-pulse 2s ease-out infinite;
+}
+
+@keyframes artist-campaign-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
+.artist-campaign-link__title {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-campaign-link__where {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artist-campaign-link__progress {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+  min-width: 96px;
+}
+
+.artist-campaign-link__pct {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.artist-campaign-link__track {
+  width: 96px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.artist-campaign-link__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--artist-campaign-signal), var(--artist-campaign-signal-mid));
+}
+
+.artist-campaign-link__arrow {
+  color: var(--artist-campaign-signal-mid);
+  font-size: 18px;
+  transition: transform 0.2s ease;
+}
+
+.artist-campaign-link:hover .artist-campaign-link__arrow {
+  transform: translateX(3px);
+}
+
+@media (max-width: 560px) {
+  .artist-campaign-link {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+
+  .artist-campaign-link__thumb {
+    width: 44px;
+    height: 44px;
+  }
+
+  .artist-campaign-link__progress {
+    grid-column: 2 / 4;
+    grid-row: 2;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    justify-items: stretch;
+    min-width: 0;
+  }
+
+  .artist-campaign-link__track {
+    width: 100%;
+  }
+
+  .artist-campaign-link__arrow {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artist-campaign-link,
+  .artist-campaign-link__arrow {
+    transition: none;
+  }
+
+  .artist-campaign-link:hover,
+  .artist-campaign-link:hover .artist-campaign-link__arrow {
+    transform: none;
+  }
+
+  .artist-campaign-link__pulse {
+    animation: none;
+  }
+}
+
+/* Campaign page → artist: beside the breadcrumb, above the hero. */
+.show-detail__artist-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--color-signal-border);
+  background: var(--color-signal-soft);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.show-detail__artist-link:hover {
+  border-color: var(--color-signal-glow);
+  background: color-mix(in srgb, var(--color-signal) 16%, transparent);
+}
+
+.show-detail__artist-link:focus-visible {
+  outline: 2px solid var(--color-signal-mid);
+  outline-offset: 3px;
+}
+
+.show-detail__artist-link strong {
+  color: var(--color-signal-mid);
+}
+
+.show-detail__artist-story h2 a {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.show-detail__artist-story h2 a:hover {
+  color: var(--color-signal-mid);
+}
+
+.show-detail__artist-story h2 a:focus-visible {
+  outline: 2px solid var(--color-signal-mid);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+.show-detail__topline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  /* Pulls the hero up like the bare breadcrumb used to (see
+   * .show-detail__breadcrumb), so the extra link costs no vertical rhythm. */
+  margin-bottom: -16px;
+}
+
+.show-detail__topline .show-detail__breadcrumb {
+  min-width: 0;
+  margin-bottom: 0;
+}

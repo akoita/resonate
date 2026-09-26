@@ -9,6 +9,7 @@ import { CampaignOperatorPanel } from "../../../components/shows/CampaignOperato
 import { PledgeIntentPanel } from "../../../components/shows/PledgeIntentPanel";
 import { CampaignTrustPanel } from "../../../components/shows/CampaignTrustPanel";
 import {
+  campaignArtistHref,
   campaignDisplayTitle,
   getCampaign,
   type CampaignTier,
@@ -75,15 +76,33 @@ export default async function CampaignDetailPage({ params }: Props) {
     .filter((visual) => visual.role === "gallery")
     .slice(0, 6);
   const showExpandedPitch = displayTitle.length > 54 || campaign.tagline.length > 220;
+  const artistHref = campaignArtistHref(campaign);
 
   return (
     <main className="shows-surface shows-page">
       <div className="show-detail">
-        <nav className="show-detail__breadcrumb" aria-label="Breadcrumb">
-          <Link href="/shows">Shows</Link>
-          <span aria-hidden>/</span>
-          <span>{displayTitle}</span>
-        </nav>
+        <div className="show-detail__topline">
+          <nav className="show-detail__breadcrumb" aria-label="Breadcrumb">
+            <Link href="/shows">Shows</Link>
+            <span aria-hidden>/</span>
+            <span>{displayTitle}</span>
+          </nav>
+          <Link
+            href={artistHref}
+            className="show-detail__artist-link"
+            aria-label={`Listen to ${campaign.artistName} on Resonate`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
+            </svg>
+            <span>
+              Listen to <strong>{campaign.artistName}</strong> on Resonate
+            </span>
+            <span aria-hidden="true">→</span>
+          </Link>
+        </div>
 
         <CampaignDetailHero campaign={campaign}>
           <PledgeIntentPanel campaign={campaign} fallbackTiers={tiers} />
@@ -106,7 +125,9 @@ export default async function CampaignDetailPage({ params }: Props) {
                 ) : null}
                 <div>
                   <span className="shows-home-section__kicker">Meet the artist</span>
-                  <h2 className="shows-home-section__title">{campaign.artistName}</h2>
+                  <h2 className="shows-home-section__title">
+                    <Link href={artistHref}>{campaign.artistName}</Link>
+                  </h2>
                   <p>{campaign.artistSummary}</p>
                   {Object.keys(campaign.artistLinks).length > 0 ? (
                     <nav className="show-detail__artist-links" aria-label={`${campaign.artistName} links`}>

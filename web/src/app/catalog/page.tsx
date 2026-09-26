@@ -26,6 +26,7 @@ import { CatalogArtistCard } from "../../components/catalog/CatalogArtistCard";
 import { CatalogPlaylistCard } from "../../components/catalog/CatalogPlaylistCard";
 import { CatalogReleaseCard } from "../../components/catalog/CatalogReleaseCard";
 import { CatalogStemTrackRow } from "../../components/catalog/CatalogStemTrackRow";
+import { useCatalogReleaseActions } from "../../components/catalog/useCatalogReleaseActions";
 
 type CatalogView = "releases" | "artists" | "stems" | "playlists";
 
@@ -77,6 +78,7 @@ export default function GlobalCatalogPage() {
   }, []);
 
   const { playQueue } = usePlayer();
+  const { releaseActions } = useCatalogReleaseActions();
   const [selectedGenre, setSelectedGenre] = useState<string | null>(null);
   const artists = useMemo(() => summarizeCreditedArtists(releases), [releases]);
   const stems = useMemo(() => flattenCatalogStems(releases), [releases]);
@@ -257,6 +259,7 @@ export default function GlobalCatalogPage() {
                           key={release.id}
                           release={release}
                           onPlay={handlePlayRelease}
+                          actions={releaseActions(release)}
                         />
                       ))}
                     </div>

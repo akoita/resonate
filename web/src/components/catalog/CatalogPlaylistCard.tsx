@@ -41,12 +41,44 @@ export function CatalogPlaylistCard({
   );
 }
 
-/** Cover art for a playlist: a 2×2 mosaic when there are ≥4 covers, a single
- *  cover for 1–3, and a name monogram when the playlist has no catalog artwork.
- *  Fills its container. */
+/** Leading tracks sampled for a playlist's cover mosaic (4 distinct covers). */
+export const COVER_TRACK_SAMPLE = 8;
+
+/**
+ * Cover URLs for a playlist built from its track ids: distinct artwork of its
+ * leading tracks, in playlist order — the same cover set a public playlist
+ * shows in the catalog. `coverFor` returns a track's artwork, if known.
+ */
+export function playlistCoverUrls(
+  trackIds: readonly string[],
+  coverFor: (trackId: string) => string | null | undefined,
+): string[] {
+  const covers: string[] = [];
+  for (const trackId of trackIds.slice(0, COVER_TRACK_SAMPLE)) {
+    const url = coverFor(trackId);
+    if (url && !covers.includes(url)) covers.push(url);
+    if (covers.length >= 4) break;
+  }
+  return covers;
+}
+
+/** Cover art for a public playlist summary — see `PlaylistCoverThumb`. */
 export function CatalogPlaylistThumb({ playlist }: { playlist: PublicPlaylistSummary }) {
-  const covers = playlist.coverArtworkUrls ?? [];
-  const monogram = (playlist.name.trim()[0] ?? "?").toUpperCase();
+  return <PlaylistCoverThumb name={playlist.name} covers={playlist.coverArtworkUrls ?? []} />;
+}
+
+/** Cover art for a playlist: a 2×2 mosaic when there are ≥4 covers, a single
+ *  cover for 1–3, and a name monogram when the playlist has no artwork. Fills
+ *  its container. Shared by public playlists in the catalog and the listener's
+ *  own playlists in the library, so a playlist looks the same everywhere. */
+export function PlaylistCoverThumb({
+  name,
+  covers,
+}: {
+  name: string;
+  covers: readonly string[];
+}) {
+  const monogram = (name.trim()[0] ?? "?").toUpperCase();
 
   return (
     <span className="ng-playlist-thumb" aria-hidden>

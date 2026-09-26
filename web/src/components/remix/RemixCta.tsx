@@ -5,12 +5,13 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../ui/Toast";
 import {
-  createRemixProject,
   getRemixEligibility,
-  listRemixProjects,
   type RemixEligibilityResponse,
-  type RemixProject,
 } from "../../lib/api";
+import {
+  openRemixStudioDraft,
+  REMIX_LICENSE_REQUIRED_REASON,
+} from "./remixStudioLauncher";
 import {
   recordProductAnalytics,
   type ProductAnalyticsPayload,
@@ -53,8 +54,7 @@ export function resolveRemixCtaState(input: {
     return {
       kind: "license_required",
       label: "Get remix license",
-      reason:
-        "A remix license unlocks Remix Studio for this track's stems.",
+      reason: REMIX_LICENSE_REQUIRED_REASON,
     };
   }
   const reason =
@@ -98,38 +98,8 @@ export function remixCtaClickOutcome(
   return "login";
 }
 
-/**
- * Picks the most recent existing draft for the same source instead of
- * creating a duplicate. When the CTA is stem-scoped, the draft must contain
- * every requested stem. Containment (not exact-set) matching: full-session
- * hydration (#1312) means projects hold MORE stems than the entry selection,
- * so exact matching would mint a duplicate project on every stem-page click.
- */
-export function findReusableDraft(
-  projects: RemixProject[],
-  trackId: string,
-  stemIds?: string[],
-): RemixProject | null {
-  const requestedSet = stemIds?.length
-    ? new Set(stemIds)
-    : null;
-  const candidates = projects
-    .filter((project) => {
-      if (project.status !== "draft") return false;
-      if (project.sourceTrackId !== trackId) return false;
-      if (!requestedSet) return true;
-      const projectSet = new Set(project.stems.map((stem) => stem.stemId));
-      for (const stemId of requestedSet) {
-        if (!projectSet.has(stemId)) return false;
-      }
-      return true;
-    })
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  return candidates[0] ?? null;
-}
+// Re-exported so existing callers/tests keep importing it from the CTA.
+export { findReusableDraft } from "./remixStudioLauncher";
 
 const CHIP_BASE_STYLE: React.CSSProperties = {
   display: "inline-flex",
@@ -280,31 +250,14 @@ export function RemixCta({
     setCreating(true);
     try {
       const requestedStemIds = stemIdsKey ? stemIdsKey.split(",") : undefined;
-
-      // Reuse the most recent matching draft instead of stacking duplicates.
-      const existing = findReusableDraft(
-        await listRemixProjects(token).catch(() => []),
+      const path = await openRemixStudioDraft({
+        token,
         trackId,
-        requestedStemIds,
-      );
-      if (existing) {
-        router.push(`/remix/studio/${existing.id}`);
-        return;
-      }
-
-      // Track-default eligibility can be a partial allowance: build the
-      // project from licensed, remixable stems only.
-      const projectStemIds =
-        requestedStemIds ??
-        eligibility.stems
-          .filter((stem) => stem.licensed && stem.remixable !== false)
-          .map((stem) => stem.stemId);
-      const project = await createRemixProject(token, {
-        sourceTrackId: trackId,
-        stemIds: projectStemIds,
-        title: trackTitle ? `${trackTitle} (Remix)` : "Untitled Remix",
+        eligibility,
+        stemIds: requestedStemIds,
+        trackTitle,
       });
-      router.push(`/remix/studio/${project.id}`);
+      router.push(path);
     } catch {
       addToast({
         type: "error",
