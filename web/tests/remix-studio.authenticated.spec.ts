@@ -220,7 +220,26 @@ async function mockRemixApi(
   await page.route(`**/remix/projects/${PROJECT_ID}/draft-audio**`, (route) =>
     route.fulfill({ status: 200, contentType: "audio/wav", body: toneWav(330, 32) }),
   );
-  return { patches };
+  const deletes: string[] = [];
+  await page.route(`**/remix/projects/${PROJECT_ID}/drafts/*`, async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    const jobId = route.request().url().split("/drafts/")[1] ?? "";
+    deletes.push(jobId);
+    const metadata = fields.generationMetadata as
+      | { previousDrafts?: Array<{ jobId: string }> }
+      | undefined;
+    if (metadata?.previousDrafts) {
+      fields = {
+        ...fields,
+        generationMetadata: {
+          ...metadata,
+          previousDrafts: metadata.previousDrafts.filter((entry) => entry.jobId !== jobId),
+        },
+      };
+    }
+    await route.fulfill({ json: { ...mockProject(stems), ...fields } });
+  });
+  return { patches, deletes };
 }
 
 test.describe("Remix Studio session view (#1879)", () => {
@@ -641,5 +660,69 @@ test.describe("Remix Studio session view (#1879)", () => {
         timeout: 10_000,
       })
       .toBe(true);
+  });
+
+  test("studio polish: listening volume, reset to original, delete a draft version (#1910)", async ({
+    authenticatedPage: page,
+  }) => {
+    const completedDraft = {
+      status: "completed",
+      grounding: "stem_audio",
+      completedAt: "2026-09-20T13:36:00.000Z",
+      output: { outputUri: "/storage/remix-drafts/job-current.mp3" },
+      previousDrafts: [
+        {
+          jobId: "job-older",
+          provider: "stem-mix-render",
+          grounding: "stem_audio",
+          estimatedCostUsd: 0,
+          completedAt: "2026-09-19T10:00:00.000Z",
+          outputUri: "/storage/remix-drafts/job-older.mp3",
+        },
+      ],
+    };
+    const { patches, deletes } = await mockRemixApi(page, {
+      project: {
+        generationJobId: "job-current",
+        generationProvider: "stem-mix-render",
+        generationMetadata: completedDraft,
+      },
+    });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto(`/remix/studio/${PROJECT_ID}`);
+    await expect(page.getByRole("heading", { name: "Session" })).toBeVisible();
+
+    // 1. Listening volume lives in the transport (this device only).
+    await expect(page.getByRole("slider", { name: /Volume/ })).toBeVisible();
+
+    // 2. Reset to original: change something, then reset with confirmation.
+    await page
+      .getByRole("group", { name: "Vibe" })
+      .getByRole("button", { name: "Lo-fi" })
+      .click();
+    await expect
+      .poll(() => patches.some((patch) => (patch.effects as { master?: { warmth?: number } } | null)?.master?.warmth === 0.5), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+    await page.getByRole("button", { name: /Reset to original/ }).click();
+    await expect(page.getByText(/Your drafts are kept/)).toBeVisible();
+    await page.getByRole("button", { name: /^Reset/ }).last().click();
+    await expect
+      .poll(() => patches.some((patch) => "effects" in patch && patch.effects === null), {
+        timeout: 10_000,
+      })
+      .toBe(true);
+
+    // 3. Delete a previous draft version (confirmed).
+    await page.getByRole("button", { name: /^Delete version from/ }).click();
+    await expect(page.getByText(/can't be undone/)).toBeVisible();
+    await page.getByRole("button", { name: /^Delete/ }).last().click();
+    await expect.poll(() => deletes).toEqual(["job-older"]);
+    await expect(page.getByRole("button", { name: /^Delete version from/ })).toHaveCount(0);
+    await page.screenshot({
+      path: test.info().outputPath("remix-studio-polish.png"),
+      fullPage: true,
+    });
   });
 });

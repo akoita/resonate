@@ -51,6 +51,11 @@ const mockProjectService = {
   getDraftAudio: jest
     .fn()
     .mockResolvedValue({ data: Buffer.from('draft-audio'), mimeType: 'audio/mpeg' }),
+  deleteDraftVersion: jest.fn().mockResolvedValue({
+    id: 'proj-1',
+    generationMetadata: { previousDrafts: [] },
+    availableStems: [],
+  }),
   exportDraft: jest.fn().mockResolvedValue({
     data: Buffer.from('export-audio'),
     mimeType: 'audio/mpeg',
@@ -471,6 +476,63 @@ describe('RemixController (e2e)', () => {
       .send({})
       .expect(409);
     expect(res.body.code).toBe('draft_not_completed');
+  });
+
+  // ----- Delete draft version (#1910) -----
+
+  it('DELETE /remix/projects/:id/drafts/:jobId → 401 without JWT', async () => {
+    await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/drafts/rmxgen_old')
+      .expect(401);
+    expect(mockProjectService.deleteDraftVersion).not.toHaveBeenCalled();
+  });
+
+  it('DELETE /remix/projects/:id/drafts/:jobId → 200 routes the JWT owner, never the body', async () => {
+    const res = await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/drafts/rmxgen_old')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ userId: 'attacker' })
+      .expect(200);
+    expect(mockProjectService.deleteDraftVersion).toHaveBeenCalledWith(
+      'user-1',
+      'proj-1',
+      'rmxgen_old',
+    );
+    expect(res.body.id).toBe('proj-1');
+    expect(res.body.availableStems).toEqual([]);
+  });
+
+  it('DELETE /remix/projects/:id/drafts/:jobId → 404 for an unknown or current version', async () => {
+    mockProjectService.deleteDraftVersion.mockRejectedValueOnce(
+      new NotFoundException({
+        code: 'draft_version_not_found',
+        message: 'This draft version does not exist.',
+      }),
+    );
+    const res = await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/drafts/rmxgen_nope')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+    expect(res.body.code).toBe('draft_version_not_found');
+  });
+
+  it('DELETE /remix/projects/:id/drafts/:jobId → 403 for non-owners', async () => {
+    mockProjectService.deleteDraftVersion.mockRejectedValueOnce(new ForbiddenException());
+    await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/drafts/rmxgen_old')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('DELETE /remix/projects/:id/drafts/:jobId → 409 when the project is published', async () => {
+    mockProjectService.deleteDraftVersion.mockRejectedValueOnce(
+      new ConflictException({ code: 'project_published', message: 'locked' }),
+    );
+    const res = await request(app.getHttpServer())
+      .delete('/remix/projects/proj-1/drafts/rmxgen_old')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(409);
+    expect(res.body.code).toBe('project_published');
   });
 
   // ----- Legacy compatibility -----

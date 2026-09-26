@@ -50,6 +50,11 @@ import {
   shouldAutosave,
   studioShortcutAction,
   transportLoopLabel,
+  describeResetAvailability,
+  editsAreOriginal,
+  originalEdits,
+  RESET_ORIGINAL_CONFIRM_MESSAGE,
+  RESET_ORIGINAL_CONFIRM_TITLE,
 } from "./RemixStudioEditor";
 import type { RemixEligibilityResponse } from "../../lib/api";
 import {
@@ -2491,5 +2496,249 @@ describe("beat mute persists (#1902)", () => {
     const row = html.slice(html.indexOf('data-stem-id="remix-beat"'));
     expect(row).toMatch(/aria-pressed="true"[^>]*aria-label="Mute Beat"/);
     expect(row).toContain("remix-lane-row-dimmed");
+  });
+});
+
+describe("Reset to original (#1910)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [0, 16, 32, 48].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const mask = (sections: boolean[]) => ({
+    schemaVersion: "remix-stem-arrangement/v1",
+    sections,
+  });
+
+  /** A remixed project: effects, a shape, a beat, stem changes, a reference. */
+  function remixed(overrides: Partial<RemixProject> = {}): RemixProject {
+    const base = project({
+      sectionGrid,
+      prompt: "darker",
+      effects: {
+        schemaVersion: REMIX_FX_SCHEMA_VERSION,
+        master: { space: 0.4 },
+      },
+      structure: {
+        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+        blocks: [{ section: 0 }, { section: 0 }, { section: 1 }, { section: 2 }, { section: 3 }],
+      },
+      beat: defaultBeat("boom_bap"),
+    });
+    base.stems = [
+      {
+        stemId: "stem-original",
+        type: "original",
+        title: null,
+        role: null,
+        gainDb: -6,
+        muted: true,
+        arrangement: null,
+      },
+      { ...base.stems[0], arrangement: mask([true, false, true, true, true]) },
+      base.stems[1],
+    ];
+    return { ...base, ...overrides };
+  }
+
+  /** A project that already sounds like the source. */
+  function pristine(overrides: Partial<RemixProject> = {}): RemixProject {
+    const base = project();
+    base.stems = base.stems.map((stem) => ({ ...stem, gainDb: null, muted: false }));
+    return { ...base, ...overrides };
+  }
+
+  it("clears effects, shape, beat and every separated stem's changes", () => {
+    const p = remixed();
+    const edits = initialEdits(p);
+    expect(edits.effects).not.toBeNull();
+    expect(edits.structure).not.toBeNull();
+    expect(edits.beat).not.toBeNull();
+    const refs = referenceStemIds(p.stems);
+    const reset = originalEdits(edits, refs);
+    expect(reset.effects).toBeNull();
+    expect(reset.structure).toBeNull();
+    expect(reset.beat).toBeNull();
+    expect(reset.stems["stem-1"]).toEqual({ muted: false, gainDb: null, sections: null });
+    expect(reset.stems["stem-2"]).toEqual({ muted: false, gainDb: null, sections: null });
+    // The full-mix reference is untouched: still muted, reference only.
+    expect(reset.stems["stem-original"]).toBe(edits.stems["stem-original"]);
+    expect(reset.stems["stem-original"].muted).toBe(true);
+    expect(reset.stems["stem-original"].gainDb).toBe(-6);
+    // Not sound: title, prompt, mode and AI target are kept.
+    expect(reset.title).toBe(edits.title);
+    expect(reset.prompt).toBe("darker");
+    expect(reset.mode).toBe(edits.mode);
+    expect(reset.aiTarget).toBe(edits.aiTarget);
+    // The input is not mutated.
+    expect(edits.effects).not.toBeNull();
+  });
+
+  it("saves as one patch that leaves the reference alone", () => {
+    const p = remixed();
+    const patch = buildProjectPatch(
+      p,
+      originalEdits(initialEdits(p), referenceStemIds(p.stems)),
+    );
+    expect(patch.effects).toBeNull();
+    expect(patch.structure).toBeNull();
+    expect(patch.beat).toBeNull();
+    expect(patch.stems).toEqual([
+      { stemId: "stem-1", gainDb: null, arrangement: null },
+      { stemId: "stem-2", muted: false },
+    ]);
+    expect(patch.title).toBeUndefined();
+    expect(patch.prompt).toBeUndefined();
+  });
+
+  it("knows when the edits already sound like the original", () => {
+    const p = remixed();
+    const refs = referenceStemIds(p.stems);
+    const edits = initialEdits(p);
+    expect(editsAreOriginal(edits, refs)).toBe(false);
+    const reset = originalEdits(edits, refs);
+    expect(editsAreOriginal(reset, refs)).toBe(true);
+    // A 0 dB gain and an all-on mask sound the same as none.
+    expect(
+      editsAreOriginal(
+        {
+          ...reset,
+          stems: {
+            ...reset.stems,
+            "stem-1": { muted: false, gainDb: 0, sections: [true, true, true, true] },
+          },
+        },
+        refs,
+      ),
+    ).toBe(true);
+    // Any real change is not the original.
+    const change = (stem: Partial<{ muted: boolean; gainDb: number; sections: boolean[] }>) =>
+      editsAreOriginal(
+        { ...reset, stems: { ...reset.stems, "stem-2": { ...reset.stems["stem-2"], ...stem } } },
+        refs,
+      );
+    expect(change({ muted: true })).toBe(false);
+    expect(change({ gainDb: -2 })).toBe(false);
+    expect(change({ sections: [true, false, true, true] })).toBe(false);
+    expect(editsAreOriginal({ ...reset, beat: defaultBeat("boom_bap") }, refs)).toBe(false);
+    expect(
+      editsAreOriginal(
+        { ...reset, effects: { schemaVersion: REMIX_FX_SCHEMA_VERSION, master: { tone: 0.5 } } },
+        refs,
+      ),
+    ).toBe(false);
+    // The reference's own state never matters.
+    expect(
+      editsAreOriginal(
+        {
+          ...reset,
+          stems: { ...reset.stems, "stem-original": { muted: true, gainDb: -12, sections: null } },
+        },
+        refs,
+      ),
+    ).toBe(true);
+  });
+
+  it("is locked when published, off when already original, else available", () => {
+    expect(describeResetAvailability({ published: true, original: false })).toEqual({
+      enabled: false,
+      reason: "Published remixes are locked",
+    });
+    expect(describeResetAvailability({ published: false, original: true })).toEqual({
+      enabled: false,
+      reason: "Already the original",
+    });
+    expect(describeResetAvailability({ published: false, original: false })).toEqual({
+      enabled: true,
+      reason: null,
+    });
+  });
+
+  it("confirms with honest copy", () => {
+    expect(RESET_ORIGINAL_CONFIRM_TITLE).toBe("Reset to the original?");
+    expect(RESET_ORIGINAL_CONFIRM_MESSAGE).toBe(
+      "This clears your effects, song shape, beat and stem changes. Your drafts are kept.",
+    );
+  });
+
+  function resetButton(html: string): string {
+    return html.match(/<button[^>]*remix-reset-original-btn[^>]*>[\s\S]*?<\/button>/)?.[0] ?? "";
+  }
+
+  it("offers Reset to original in the Session header when there are changes", () => {
+    const button = resetButton(
+      renderToStaticMarkup(<RemixStudioEditor project={remixed()} />),
+    );
+    expect(button).toContain("Reset to original");
+    expect(button).not.toContain("aria-disabled");
+    expect(button).toContain("ui-btn-ghost");
+  });
+
+  it("explains why Reset is unavailable", () => {
+    const original = resetButton(
+      renderToStaticMarkup(<RemixStudioEditor project={pristine()} />),
+    );
+    expect(original).toContain('aria-disabled="true"');
+    expect(original).toContain('title="Already the original"');
+    expect(original).toContain("Already the original");
+
+    const locked = resetButton(
+      renderToStaticMarkup(
+        <RemixStudioEditor project={remixed({ status: "published" })} />,
+      ),
+    );
+    expect(locked).toContain('aria-disabled="true"');
+    expect(locked).toContain("Published remixes are locked");
+  });
+});
+
+describe("listening volume + draft deletes in the studio (#1910)", () => {
+  it("puts the listening volume in the transport", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={project()} />);
+    expect(html).toContain("remix-transport-volume");
+    expect(html).toContain('aria-label="Volume"');
+    expect(html).toContain('aria-label="Mute"');
+  });
+
+  const withVersions = (overrides: Partial<RemixProject> = {}) =>
+    project({
+      mode: "variation",
+      generationJobId: "rmxgen_new",
+      generationProvider: "stem-plus-ai-layered-render",
+      generationMetadata: {
+        status: "completed",
+        grounding: "stem_plus_ai",
+        output: { outputUri: "local://new.mp3" },
+        previousDrafts: [
+          {
+            jobId: "rmxgen_old",
+            provider: "stem-plus-ai-layered-render",
+            mode: "variation",
+            grounding: "stem_plus_ai",
+            stemTransform: null,
+            estimatedCostUsd: 0.12,
+            completedAt: "2026-07-01T10:00:00.000Z",
+            output: { outputUri: "local://old.mp3", mimeType: "audio/mpeg" },
+          },
+        ],
+      },
+      ...overrides,
+    });
+
+  it("offers delete on previous versions only", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={withVersions()} />);
+    expect(html.match(/remix-draft-version-delete/g) ?? []).toHaveLength(1);
+    expect(html).toContain('aria-label="Delete version from');
+  });
+
+  it("hides delete under the published lock", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={withVersions({ status: "published", publishedReleaseId: "rel-p" })}
+      />,
+    );
+    expect(html).not.toContain("remix-draft-version-delete");
   });
 });

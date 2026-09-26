@@ -94,4 +94,38 @@ describe("RemixTransportBar", () => {
   it("shows a placeholder duration when it is unknown", () => {
     expect(render({ durationSec: null })).toContain("0:00 / –:––");
   });
+
+  it("has no volume control unless the editor provides one", () => {
+    expect(render()).not.toContain("remix-transport-volume");
+  });
+
+  it("renders the listening volume with a speaker mute toggle (#1910)", () => {
+    const html = render({
+      volume: {
+        value: { level: 0.5, muted: false },
+        onLevelChange: noop,
+        onToggleMute: noop,
+      },
+    });
+    expect(html).toContain('aria-label="Volume"');
+    expect(html).toContain('type="range"');
+    expect(html).toContain('value="50"');
+    expect(html).toContain('aria-valuetext="50%"');
+    expect(html).toContain("not saved to your remix");
+    expect(html).toMatch(/<button[^>]*aria-label="Mute"[^>]*bg-transparent/);
+    expect(html).toContain('aria-pressed="false"');
+  });
+
+  it("shows the slider at zero and offers Unmute while muted", () => {
+    const html = render({
+      volume: {
+        value: { level: 0.8, muted: true },
+        onLevelChange: noop,
+        onToggleMute: noop,
+      },
+    });
+    expect(html).toContain('aria-label="Unmute"');
+    expect(html).toContain('value="0"');
+    expect(html).toContain('aria-valuetext="Muted"');
+  });
 });

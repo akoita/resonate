@@ -6229,6 +6229,23 @@ export async function publishRemixProject(token: string, projectId: string) {
   );
 }
 
+/**
+ * Deletes a PREVIOUS draft version (#1910) and its stored audio; returns
+ * the updated project (GET shape). The current draft is not deletable, and
+ * published projects are locked (409).
+ */
+export async function deleteRemixDraftVersion(
+  token: string,
+  projectId: string,
+  jobId: string
+) {
+  return apiRequest<RemixProject>(
+    `/remix/projects/${projectId}/drafts/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" },
+    token
+  );
+}
+
 export async function getRemixProject(token: string, projectId: string) {
   return apiRequest<RemixProject>(
     `/remix/projects/${projectId}`,

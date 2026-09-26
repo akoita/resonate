@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getRemixDraftAudioBlob, getStemPreviewUrl } from "../../lib/api";
 import { useOptionalPlayer } from "../../lib/playerContext";
 import {
+  clampOutputVolume,
   createStemPreviewEngine,
   loopEntryOffset,
   type PreviewBeat,
@@ -72,6 +73,12 @@ export type RemixTransportInput = {
    * live; a change to what it sounds like restarts at the same position.
    */
   beat?: PreviewBeat | null;
+  /**
+   * Listening volume (#1910): linear gain 0..1 for this device only — the
+   * engine's final output stage and the draft element's `volume`. Applied
+   * live, never restarting playback; absent = unity.
+   */
+  outputGain?: number;
   onError: (kind: "preview" | "draft") => void;
 };
 
@@ -332,6 +339,26 @@ type Playing =
   | { mode: "draft"; audio: HTMLAudioElement; key: string }
   | null;
 
+/**
+ * Applies the listening volume (#1910) live: to the engine's output stage
+ * (running or not, so the next play starts at it) and to a playing draft
+ * element. Non-finite gains play at unity; the result is clamped to 0..1.
+ */
+export function applyListeningGain(
+  targets: {
+    engine: Pick<StemPreviewEngine, "setOutputVolume"> | null;
+    playing:
+      | { mode: "engine" }
+      | { mode: "draft"; audio: Pick<HTMLAudioElement, "volume"> }
+      | null;
+  },
+  gain: number,
+): void {
+  const volume = clampOutputVolume(gain);
+  targets.engine?.setOutputVolume(volume);
+  if (targets.playing?.mode === "draft") targets.playing.audio.volume = volume;
+}
+
 export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const [status, setStatus] = useState<TransportStatus>("idle");
   const [source, setSourceState] = useState<TransportSource>({
@@ -366,6 +393,9 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   loopRef.current = loop;
   const statusRef = useRef(status);
   statusRef.current = status;
+  const outputGain = input.outputGain ?? 1;
+  const outputGainRef = useRef(outputGain);
+  outputGainRef.current = outputGain;
 
   const engineRef = useRef<StemPreviewEngine | null>(null);
   const playingRef = useRef<Playing>(null);
@@ -417,6 +447,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       engineRef.current = createStemPreviewEngine({
         urlForStem: getStemPreviewUrl,
       });
+      engineRef.current.setOutputVolume(outputGainRef.current);
     }
     return engineRef.current;
   }, []);
@@ -616,6 +647,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       // Archived versions get their waveform from this first play.
       ensureDraftPeaks(key);
       const audio = new Audio(url);
+      audio.volume = clampOutputVolume(outputGainRef.current);
       const loopNow = () => {
         if (playingRef.current?.mode !== "draft") return;
         if (playingRef.current.audio !== audio) return;
@@ -994,6 +1026,16 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       dropStaleCurrentDraftKeys(known, input.currentDraftJobId),
     );
   }, [input.currentDraftJobId]);
+
+  // Listening volume (#1910): live on whatever is playing, and on the
+  // engine for the next play. A not-yet-created engine picks it up on
+  // creation (and a new draft element on start).
+  useEffect(() => {
+    applyListeningGain(
+      { engine: engineRef.current, playing: playingRef.current },
+      outputGain,
+    );
+  }, [outputGain]);
 
   // The site-wide player just started (false → true): stop studio audio.
   // Studio audio started while the player was still flagged playing pauses

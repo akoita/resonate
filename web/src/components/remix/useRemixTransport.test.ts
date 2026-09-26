@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  applyListeningGain,
   dropStaleCurrentDraftKeys,
   clampSeek,
   draftLoopSeekTarget,
@@ -298,5 +299,35 @@ describe("scheduleBeatPeaks (#1902)", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("applyListeningGain (#1910)", () => {
+  it("sets the engine output and a playing draft element's volume", () => {
+    const engine = { setOutputVolume: vi.fn() };
+    const audio = { volume: 1 };
+    applyListeningGain({ engine, playing: { mode: "draft", audio } }, 0.3);
+    expect(engine.setOutputVolume).toHaveBeenCalledWith(0.3);
+    expect(audio.volume).toBe(0.3);
+  });
+
+  it("only touches the engine while it plays or nothing plays", () => {
+    const engine = { setOutputVolume: vi.fn() };
+    applyListeningGain({ engine, playing: { mode: "engine" } }, 0.5);
+    applyListeningGain({ engine, playing: null }, 0);
+    expect(engine.setOutputVolume.mock.calls).toEqual([[0.5], [0]]);
+  });
+
+  it("clamps what the draft element receives (volume throws outside 0..1)", () => {
+    const audio = { volume: 1 };
+    applyListeningGain({ engine: null, playing: { mode: "draft", audio } }, 2);
+    expect(audio.volume).toBe(1);
+    applyListeningGain({ engine: null, playing: { mode: "draft", audio } }, -1);
+    expect(audio.volume).toBe(0);
+    applyListeningGain(
+      { engine: null, playing: { mode: "draft", audio } },
+      Number.NaN,
+    );
+    expect(audio.volume).toBe(1);
   });
 });
