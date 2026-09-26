@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  blockLoopSource,
   createStemPreviewEngine,
   loopEntryOffset,
+  planBlockSources,
+  scheduleMasterFades,
   outputTimeIntervals,
   PREVIEW_WARMTH_INPUT_RANGE,
   sourcePositionAt,
@@ -18,6 +21,7 @@ import {
   warmthCurve,
   type RemixFxRecipe,
 } from "./remixFx";
+import { structureTimeline, type RemixStructureBlock } from "./remixStructure";
 
 /**
  * Minimal fake WebAudio graph: enough surface for the preview engine to wire
@@ -998,5 +1002,304 @@ describe("varispeed helpers (#1897)", () => {
     expect(
       sourcePositionAt({ offsetSec: 10, startAt: 5, now: 9, speed: 0.85 }),
     ).toBeCloseTo(13.4);
+  });
+});
+
+/** The fixture's grid (#1899): a 6 s pickup, three 16 s sections, a 4 s tail. */
+const structureGrid = {
+  sections: [
+    { startSec: 0, endSec: 6 },
+    { startSec: 6, endSec: 22 },
+    { startSec: 22, endSec: 38 },
+    { startSec: 38, endSec: 54 },
+    { startSec: 54, endSec: 58 },
+  ],
+};
+const sections = (...order: number[]): RemixStructureBlock[] =>
+  order.map((section) => ({ section }));
+/** 1, 2, 2, 1, 3 → out 0/16/32/48/64..80. */
+const reorderRepeat = structureTimeline(structureGrid, sections(1, 2, 2, 1, 3));
+
+/**
+ * The manual gain a block source feeds: through its join gain (the only
+ * gain with automation at that position) when the block has one.
+ */
+function manualGainOf(source: FakeSource): FakeGain {
+  const first = source.connections[0] as FakeGain;
+  return first.gain.events.length > 0 ? (first.connections[0] as FakeGain) : first;
+}
+
+/** Structured graph: block source → (join gain →) manual → section gain. */
+function structuredSectionGain(source: FakeSource): FakeGain {
+  return manualGainOf(source).connections[0] as FakeGain;
+}
+
+describe("createStemPreviewEngine structure (#1899)", () => {
+  it("keeps the plain graph without a structure or with the identity timeline", async () => {
+    for (const timeline of [
+      undefined,
+      null,
+      structureTimeline(structureGrid, null),
+    ]) {
+      const { engine, contexts } = setup();
+      const handle = await engine.play({ stems, soloStemId: null, timeline });
+      const context = contexts[0];
+      expect(context.sources).toHaveLength(2);
+      expect(context.gains).toHaveLength(4);
+      expect(sectionGainOf(context, 0).connections).toEqual([context.compressor]);
+      expect(context.sources[0].start).toHaveBeenCalledWith(0.03, 0);
+      expect(handle.duration()).toBe(60); // the buffer, not the grid
+    }
+  });
+
+  it("schedules one source per block per stem in timeline order", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      timeline: reorderRepeat,
+    });
+    const context = contexts[0];
+    expect(context.sources).toHaveLength(10);
+    const vocals = context.sources.slice(0, 5);
+    expect(vocals.map((source) => source.start.mock.calls[0])).toEqual([
+      [0.03, 6, 16],
+      [0.03 + 16, 22, 16],
+      [0.03 + 32, 22, 16],
+      [0.03 + 48, 6, 16],
+      [0.03 + 64, 38, 16],
+    ]);
+    // Every block of a stem feeds the same manual gain → section gain.
+    const manual = manualGainOf(vocals[0]);
+    for (const source of vocals) expect(manualGainOf(source)).toBe(manual);
+    expect(handle.duration()).toBe(80);
+    context.currentTime = 0.03 + 50;
+    expect(handle.position()).toBeCloseTo(50);
+    context.currentTime = 500;
+    expect(handle.position()).toBe(80);
+  });
+
+  it("starts mid-block at a seek and scales by speed", async () => {
+    const { engine, contexts } = setup();
+    const handle = await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      timeline: reorderRepeat,
+      offsetSec: 40,
+      effects: fxRecipe({ master: { speed: 0.8 } }),
+    });
+    const context = contexts[0];
+    // Blocks 0 and 1 are past; block 2 (out 32..48, src 22..38) starts 8 s in.
+    const calls = context.sources.map((source) => source.start.mock.calls[0]);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toEqual([0.03, 30, 8]);
+    expect(calls[1][0]).toBeCloseTo(0.03 + 8 / 0.8);
+    expect(calls[1].slice(1)).toEqual([6, 16]);
+    expect(calls[2][0]).toBeCloseTo(0.03 + 24 / 0.8);
+    for (const source of context.sources) {
+      expect(source.playbackRate.value).toBe(0.8);
+    }
+    expect(handle.position()).toBe(40);
+    context.currentTime = 0.03 + 10; // 10 context s = 8 timeline s
+    expect(handle.position()).toBeCloseTo(48);
+  });
+
+  it("adds 10 ms join-fade gains only where flagged", async () => {
+    const { engine, contexts } = setup();
+    // 1, 2, 3 (consecutive, but starts past 0 and ends before the last section)
+    const timeline = structureTimeline(structureGrid, sections(1, 2, 3));
+    await engine.play({ stems: [stems[0]], soloStemId: null, timeline });
+    const context = contexts[0];
+    const [first, middle, last] = context.sources;
+    const firstJoin = first.connections[0] as FakeGain;
+    expect(firstJoin.gain.events).toEqual([
+      ["set", 0, 0.03],
+      ["ramp", 1, 0.03 + 0.01],
+    ]);
+    // The middle block joins seamlessly: straight into the manual gain.
+    const manual = middle.connections[0] as FakeGain;
+    expect(manual.gain.events.some(([, , time]) => time > 0.03)).toBe(false);
+    expect(firstJoin.connections[0]).toBe(manual);
+    const lastJoin = last.connections[0] as FakeGain;
+    expect(lastJoin.connections[0]).toBe(manual);
+    expect(lastJoin.gain.events.map(([kind, value]) => [kind, value])).toEqual([
+      ["set", 1],
+      ["ramp", 0],
+    ]);
+    expect(lastJoin.gain.events[0][2]).toBeCloseTo(0.03 + 48 - 0.01);
+    expect(lastJoin.gain.events[1][2]).toBeCloseTo(0.03 + 48);
+    // 3 sources + 2 join gains + manual + section + master fade.
+    expect(context.gains).toHaveLength(5);
+  });
+
+  it("automates the master fade in timeline time, holding silence after the end", async () => {
+    const { engine, contexts } = setup();
+    const timeline = structureTimeline(structureGrid, [
+      { section: 0, fadeIn: true },
+      { section: 1, fadeIn: true, fadeOut: true },
+      { section: 2 },
+      { section: 3, fadeOut: true },
+    ]);
+    await engine.play({ stems: [stems[0]], soloStemId: null, timeline });
+    const context = contexts[0];
+    const section = structuredSectionGain(context.sources[0]);
+    const masterFade = section.connections[0] as FakeGain;
+    expect(masterFade.connections).toEqual([context.compressor]);
+    expect(masterFade.gain.events).toEqual([
+      ["set", 0, 0.03],
+      ["set", 0, 0.03],
+      ["ramp", 1, 0.03 + 6],
+      ["set", 0, 0.03 + 6],
+      ["ramp", 1, 0.03 + 14],
+      ["set", 1, 0.03 + 14],
+      ["ramp", 0, 0.03 + 22],
+      ["set", 1, 0.03 + 22],
+      ["set", 1, 0.03 + 38],
+      ["ramp", 0, 0.03 + 54],
+    ]);
+  });
+
+  it("places the master fade after the reverb return, before master tone", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      timeline: reorderRepeat,
+      effects: fxRecipe({ master: { space: 0.4 } }),
+    });
+    const context = contexts[0];
+    const masterBus = context.convolvers[0].connections[0] as FakeGain;
+    const masterFade = masterBus.connections[0] as FakeGain;
+    expect(masterFade).toBeInstanceOf(FakeGain);
+    // The fade feeds master tone's dry gain and biquad.
+    expect(masterFade.connections).toContain(context.biquads[0]);
+  });
+
+  it("loops one block over its source range on one source per stem", async () => {
+    const { engine, contexts } = setup();
+    const onEnded = vi.fn();
+    const handle = await engine.play({
+      stems,
+      soloStemId: null,
+      timeline: reorderRepeat,
+      loop: { startSec: 48, endSec: 64 }, // block 3 = source 6..22
+      offsetSec: 52,
+      onEnded,
+    });
+    const context = contexts[0];
+    expect(context.sources).toHaveLength(2);
+    for (const source of context.sources) {
+      expect(source.loop).toBe(true);
+      expect(source.loopStart).toBe(6);
+      expect(source.loopEnd).toBe(22);
+      expect(source.start).toHaveBeenCalledWith(0.03, 10);
+    }
+    context.currentTime = 0.03 + 20; // 52 + 20 = 72 → wraps to 56
+    expect(handle.position()).toBeCloseTo(56);
+    for (const source of context.sources) source.onended?.();
+    expect(onEnded).not.toHaveBeenCalled();
+
+    // A loop spanning blocks is clamped to the block containing its start.
+    context.currentTime = 0;
+    await engine.play({
+      stems: [stems[0]],
+      soloStemId: null,
+      timeline: reorderRepeat,
+      loop: { startSec: 20, endSec: 60 },
+    });
+    const clamped = context.sources[2];
+    expect([clamped.loopStart, clamped.loopEnd]).toEqual([26, 38]);
+    expect(clamped.start).toHaveBeenCalledWith(0.03, 26);
+  });
+
+  it("ends through onended once every block source ended, after the tail", async () => {
+    const { engine, contexts } = setup();
+    const onEnded = vi.fn();
+    vi.useFakeTimers();
+    try {
+      const handle = await engine.play({
+        stems: [stems[0]],
+        soloStemId: null,
+        timeline: reorderRepeat,
+        effects: fxRecipe({ master: { space: 0.2 } }),
+        onEnded,
+      });
+      const context = contexts[0];
+      context.sources.slice(0, 4).forEach((source) => source.onended?.());
+      expect(onEnded).not.toHaveBeenCalled();
+      context.sources[4].onended?.();
+      context.currentTime = 200;
+      expect(handle.position()).toBe(80);
+      vi.advanceTimersByTime(2800);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+      expect(context.gains.every((gain) => gain.disconnected)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gates stems with block-mask intervals in timeline time", async () => {
+    const { engine, contexts } = setup();
+    await engine.play({
+      stems: [
+        {
+          ...stems[0],
+          activeIntervals: [{ startSec: 48, endSec: 80 }],
+        },
+      ],
+      soloStemId: null,
+      timeline: reorderRepeat,
+      effects: fxRecipe({ master: { speed: 0.8 } }),
+    });
+    const section = structuredSectionGain(contexts[0].sources[0]);
+    expect(section.gain.events[0]).toEqual(["set", 0, 0.03]);
+    expect(section.gain.events[1][2]).toBeCloseTo(0.03 + 48 / 0.8);
+  });
+});
+
+describe("structure scheduling helpers (#1899)", () => {
+  const timing = { startAt: 1, offsetSec: 0, speed: 1 };
+
+  it("plans the last block even at the very end so playback ends", () => {
+    const plans = planBlockSources(reorderRepeat.segments, {
+      ...timing,
+      offsetSec: 80,
+    });
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({ offsetSec: 54, durationSec: 0 });
+    expect(plans[0].fadeIn).toBe(false);
+  });
+
+  it("clamps block loops and refuses loops outside the timeline", () => {
+    expect(
+      blockLoopSource(reorderRepeat.segments, { startSec: 16, endSec: 32 }),
+    ).toMatchObject({ srcLoopStartSec: 22, srcLoopEndSec: 38 });
+    expect(
+      blockLoopSource(reorderRepeat.segments, { startSec: 90, endSec: 99 }),
+    ).toBeNull();
+    expect(
+      blockLoopSource(reorderRepeat.segments, { startSec: 31.99, endSec: 40 }),
+    ).toBeNull();
+  });
+
+  it("pins the master level mid-ramp when starting inside a fade", () => {
+    const events: Array<[string, number, number]> = [];
+    const param = {
+      setValueAtTime: (value: number, time: number) => {
+        events.push(["set", value, time]);
+      },
+      linearRampToValueAtTime: (value: number, time: number) => {
+        events.push(["ramp", value, time]);
+      },
+    };
+    scheduleMasterFades(
+      param,
+      [{ startSec: 68, endSec: 72, from: 1, to: 0, holdAfter: true }],
+      { startAt: 10, offsetSec: 70, speed: 2 },
+    );
+    expect(events).toEqual([
+      ["set", 0.5, 10],
+      ["ramp", 0, 11],
+    ]);
   });
 });

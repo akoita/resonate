@@ -74,6 +74,19 @@ import {
   type RemixRenderFx,
 } from "./remix-fx";
 import {
+  gateIntervalsForBlocks,
+  exceedsTimelineCap,
+  normalizeRemixStructureInput,
+  readStoredRemixStructure,
+  resolveStoredRemixStructure,
+  timelineCapError,
+  REMIX_STRUCTURE_DSP_VERSION,
+  structureBlockCount,
+  structureTimeline,
+  type RemixRenderStructure,
+  type RemixStructure,
+} from "./remix-structure";
+import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
 } from "../catalog/ai-disclosure.policy";
@@ -722,6 +735,13 @@ export class RemixProjectService {
        * unchanged, null clears it, an all-default recipe normalizes to null.
        */
       effects?: unknown;
+      /**
+       * Structure blocks remix-structure/v1 (#1899): undefined leaves it
+       * unchanged, null clears it, the identity order without fades
+       * normalizes to null. Stem masks in the same PATCH are validated
+       * against the resulting block count.
+       */
+      structure?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -798,19 +818,63 @@ export class RemixProjectService {
       );
     }
 
+    const hasArrangementUpdates = stemUpdates.some(
+      (stem) => stem.arrangement !== undefined,
+    );
+    const sectionGrid =
+      hasArrangementUpdates || patch.structure !== undefined
+        ? deriveSectionGrid(
+            project.stems.map((stem) => ({
+              audioFeatures: stem.stem.audioFeatures,
+            })),
+          )
+        : null;
+
+    // Structure blocks (#1899) index the project's section grid.
+    let structure: RemixStructure | null | undefined;
+    if (patch.structure !== undefined) {
+      const normalized = normalizeRemixStructureInput(
+        patch.structure,
+        sectionGrid?.sections.length ?? 0,
+      );
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      // Safety cap: at most min(2 × source, 900 s) of timeline.
+      if (
+        normalized.value &&
+        sectionGrid &&
+        exceedsTimelineCap(
+          sectionGrid,
+          structureTimeline(sectionGrid, normalized.value.blocks),
+        )
+      ) {
+        throw new BadRequestException(timelineCapError(sectionGrid));
+      }
+      structure = normalized.value;
+    }
+
     // Section-grid arrangement masks (#1314) must match the grid the studio
     // derived for this source; a null payload restores the always-on default.
-    if (stemUpdates.some((stem) => stem.arrangement !== undefined)) {
-      const sectionGrid = deriveSectionGrid(
-        project.stems.map((stem) => ({
-          audioFeatures: stem.stem.audioFeatures,
-        })),
-      );
+    // Masks are block-indexed (#1899): submitted masks are measured against
+    // the block count AFTER this PATCH (the new structure, else the stored
+    // one). Stored masks left stale by a structure change are not rejected;
+    // they fail open to always-on at render time.
+    if (hasArrangementUpdates) {
+      const effectiveStructure =
+        structure !== undefined
+          ? structure
+          : resolveStoredRemixStructure(project.structure, sectionGrid)
+              .structure;
+      const blockCount = sectionGrid
+        ? structureBlockCount(sectionGrid, effectiveStructure)
+        : undefined;
       for (const stem of stemUpdates) {
         if (stem.arrangement === undefined) continue;
         const problem = validateStemArrangementInput(
           stem.arrangement,
           sectionGrid,
+          blockCount,
         );
         if (problem) {
           throw new BadRequestException(`Stem ${stem.stemId}: ${problem}`);
@@ -900,6 +964,14 @@ export class RemixProjectService {
                   effects === null
                     ? Prisma.DbNull
                     : (effects as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(structure !== undefined
+            ? {
+                structure:
+                  structure === null
+                    ? Prisma.DbNull
+                    : (structure as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1251,12 +1323,41 @@ export class RemixProjectService {
           audioFeatures: stem.stem.audioFeatures,
         })),
       );
+      // Structure blocks (#1899), read live and tolerantly: a malformed row, a
+      // section outside the current grid, or a timeline over the safety cap
+      // fails open to the original order — never an oversized render.
+      // With a structure, masks are block-indexed and gate timeline spans.
+      const resolvedStructure = resolveStoredRemixStructure(
+        project.structure,
+        sectionGrid,
+      );
+      if (resolvedStructure.overCap) {
+        this.logger.warn(
+          `Remix project ${project.id}: stored structure exceeds the timeline cap; rendering the original order`,
+        );
+      }
+      const projectStructure = resolvedStructure.structure;
+      const renderStructure: RemixRenderStructure | undefined =
+        sectionGrid && projectStructure
+          ? {
+              structure: projectStructure,
+              segments: structureTimeline(
+                sectionGrid,
+                projectStructure.blocks,
+              ),
+            }
+          : undefined;
       const liveStemArrangement = project.stems.map((stem) => {
         const mask = sectionGrid
-          ? activeIntervalsForArrangement(
-              sectionGrid,
-              parseStemArrangement(stem.arrangement),
-            )
+          ? renderStructure
+            ? gateIntervalsForBlocks(
+                renderStructure.segments,
+                parseStemArrangement(stem.arrangement)?.sections,
+              )
+            : activeIntervalsForArrangement(
+                sectionGrid,
+                parseStemArrangement(stem.arrangement),
+              )
           : null;
         return {
           stemId: stem.stemId,
@@ -1381,6 +1482,7 @@ export class RemixProjectService {
               stems: bedStemArrangement,
               authorization: renderAuthorization,
               ...(renderFx ? { fx: renderFx } : {}),
+              ...(renderStructure ? { structure: renderStructure } : {}),
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
@@ -1388,6 +1490,7 @@ export class RemixProjectService {
               stems: bedStemArrangement,
               authorization: renderAuthorization,
               ...(renderFx ? { fx: renderFx } : {}),
+              ...(renderStructure ? { structure: renderStructure } : {}),
             });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
@@ -1407,6 +1510,9 @@ export class RemixProjectService {
           : {}),
         ...(providerJob.conditioningEffects
           ? { conditioningEffects: providerJob.conditioningEffects }
+          : {}),
+        ...(providerJob.conditioningStructure
+          ? { conditioningStructure: providerJob.conditioningStructure }
           : {}),
         completedAt,
         failedAt: null,
@@ -1620,6 +1726,8 @@ export class RemixProjectService {
     authorization: StemRenderAuthorization;
     /** Project effects recipe + grid tempo (#1897); absent = no effects. */
     fx?: RemixRenderFx;
+    /** Structure blocks + timeline (#1899); absent = the original order. */
+    structure?: RemixRenderStructure;
   }) {
     const layerJob = await this.generationProvider.createRemixDraft(
       {
@@ -1629,6 +1737,7 @@ export class RemixProjectService {
         // current mix and #1209 layered rendering keeps source stems current.
         stemArrangement: input.stems,
         ...(input.fx ? { renderFx: input.fx } : {}),
+        ...(input.structure ? { renderStructure: input.structure } : {}),
       },
       input.authorization,
     );
@@ -1648,6 +1757,7 @@ export class RemixProjectService {
       stems: input.stems,
       authorization: input.authorization,
       ...(input.fx ? { fx: input.fx } : {}),
+      ...(input.structure ? { structure: input.structure } : {}),
       layer: {
         provider: layerJob.provider,
         jobId: layerJob.jobId,
@@ -1801,6 +1911,19 @@ export class RemixProjectService {
       metadata.conditioningEffects,
     );
     const conditioningEffects = readStoredRemixFx(conditioningRecord.effects);
+    // #1899: lineage records what the render recorded (no grid range check —
+    // the render already resolved sections against its grid).
+    const renderedStructure = readStoredRemixStructure(
+      renderMetadataRecord.structure,
+      null,
+    );
+    const conditioningStructureRecord = normalizeMetadataObject(
+      metadata.conditioningStructure,
+    );
+    const conditioningStructure = readStoredRemixStructure(
+      conditioningStructureRecord.structure,
+      null,
+    );
     const mimeType =
       draftMimeTypeFromMetadata(project.generationMetadata) ??
       draftMimeTypeFromUri(outputUri);
@@ -1870,6 +1993,28 @@ export class RemixProjectService {
                 typeof conditioningRecord.effectsDspVersion === "string"
                   ? conditioningRecord.effectsDspVersion
                   : REMIX_FX_DSP_VERSION,
+            },
+          }
+        : {}),
+      // #1899: the structure blocks the published draft was rendered with.
+      ...(renderedStructure
+        ? {
+            structure: renderedStructure,
+            structureVersion:
+              typeof renderMetadataRecord.structureVersion === "string"
+                ? renderMetadataRecord.structureVersion
+                : REMIX_STRUCTURE_DSP_VERSION,
+          }
+        : {}),
+      ...(conditioningStructure
+        ? {
+            conditioningStructure: {
+              structure: conditioningStructure,
+              structureVersion:
+                typeof conditioningStructureRecord.structureVersion ===
+                "string"
+                  ? conditioningStructureRecord.structureVersion
+                  : REMIX_STRUCTURE_DSP_VERSION,
             },
           }
         : {}),
@@ -2309,6 +2454,17 @@ export class RemixProjectService {
     project: RemixProjectWithStems,
     eligibility?: RemixEligibilityResult,
   ) {
+    const sectionGrid = deriveSectionGrid(
+      project.stems.map((stem) => ({
+        audioFeatures: stem.stem.audioFeatures,
+      })),
+    );
+    // Structure blocks (#1899), read tolerantly against the current grid
+    // (over-cap rows read as null, exactly as the render fails open).
+    const structure = resolveStoredRemixStructure(
+      project.structure,
+      sectionGrid,
+    ).structure;
     return {
       id: project.id,
       creatorUserId: project.creatorUserId,
@@ -2328,6 +2484,8 @@ export class RemixProjectService {
       aiTarget: readStoredAiTarget(project.aiTarget),
       // Shared effects recipe (#1897); null = untouched.
       effects: readStoredRemixFx(project.effects),
+      // Structure blocks (#1899); null = the original section order.
+      structure,
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,
@@ -2360,11 +2518,13 @@ export class RemixProjectService {
       // Section grid (#1314): served with the project so the studio, PATCH
       // validation, and the render worker all agree on one derivation —
       // clients never re-derive boundaries themselves.
-      sectionGrid: deriveSectionGrid(
-        project.stems.map((stem) => ({
-          audioFeatures: stem.stem.audioFeatures,
-        })),
-      ),
+      sectionGrid,
+      // Derived output timeline (#1899), served like the grid so the studio
+      // and the render share one derivation; the grid's sections in order
+      // when there is no structure, null without a grid.
+      timeline: sectionGrid
+        ? structureTimeline(sectionGrid, structure?.blocks ?? null)
+        : null,
       ...(eligibility ? { eligibility } : {}),
     };
   }

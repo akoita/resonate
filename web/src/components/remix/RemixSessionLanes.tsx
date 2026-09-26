@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import type { MouseEvent, PointerEvent } from "react";
+import type {
+  CSSProperties,
+  KeyboardEvent,
+  MouseEvent,
+  PointerEvent,
+  Ref,
+} from "react";
 import type { RemixSectionGrid } from "../../lib/api";
 import {
   sectionGridSummaryLabel,
@@ -14,6 +20,20 @@ import {
   REMIX_FX_STEM_RANGES,
   type RemixFxStem,
 } from "../../lib/remixFx";
+import {
+  isIdentityTimeline,
+  moveBlock,
+  removeBlock,
+  repeatBlock,
+  REMIX_STRUCTURE_MAX_BLOCKS,
+  structureTimeline,
+  structureTooLongReason,
+  toggleFade,
+  type RemixStructureEditResult,
+  type RemixStructureEditState,
+  type RemixStructureSegment,
+  type RemixStructureTimeline,
+} from "../../lib/remixStructure";
 
 /**
  * Session view for the Remix Studio (#1879): one row per stem — a channel
@@ -32,7 +52,10 @@ export type LaneStem = {
   soloed: boolean;
   soloedOut: boolean;
   gainDb: number | null;
-  /** Per-section on/off mask; null = every section on. */
+  /**
+   * Per-block on/off mask (#1899: indexed by timeline block; without a
+   * structure the blocks are the grid's sections); null = every block on.
+   */
   sections: boolean[] | null;
   /** 0..1 amplitude buckets across the whole stem; null = still loading. */
   peaks: number[] | null;
@@ -61,7 +84,193 @@ export type RemixSessionLanesProps = {
   onLoopSection(index: number | null): void;
   /** Per-stem effects edits (#1897); absent = no FX toggle. */
   onFxChange?(stemId: string, key: keyof RemixFxStem, value: number): void;
+  /**
+   * Structure timeline (#1899): the columns are its blocks, sized by their
+   * timeline duration. Absent/null = the grid's sections in order.
+   */
+  timeline?: RemixStructureTimeline | null;
+  /**
+   * Structure edit state (#1899) behind each block's "⋯" menu; the menu
+   * shows only with `onBlockAction`.
+   */
+  structureState?: RemixStructureEditState | null;
+  onBlockAction?(index: number, action: LaneBlockAction): void;
 };
+
+/** Section-menu actions on one timeline block (#1899). */
+export type LaneBlockAction =
+  | "repeat"
+  | "remove"
+  | "earlier"
+  | "later"
+  | "fade_in"
+  | "fade_out";
+
+export type LaneBlockMenuEntry = {
+  action: LaneBlockAction;
+  label: string;
+  /** Fade entries only: whether the fade is on (a checkable entry). */
+  checked?: boolean;
+  enabled: boolean;
+  /** Honest reason the entry is unavailable; null when enabled. */
+  reason: string | null;
+};
+
+/** Runs one section-menu action through the structure ops; null = refused. */
+export function blockActionResult(
+  state: RemixStructureEditState,
+  index: number,
+  action: LaneBlockAction,
+  grid: Pick<RemixSectionGrid, "sections" | "durationSeconds">,
+): RemixStructureEditResult | null {
+  switch (action) {
+    case "repeat":
+      return repeatBlock(state, index, grid);
+    case "remove":
+      return removeBlock(state, index);
+    case "earlier":
+      return moveBlock(state, index, -1);
+    case "later":
+      return moveBlock(state, index, 1);
+    case "fade_in":
+      return toggleFade(state, index, "in");
+    case "fade_out":
+      return toggleFade(state, index, "out");
+  }
+}
+
+function refusalReason(
+  state: RemixStructureEditState,
+  action: LaneBlockAction,
+  grid: Pick<RemixSectionGrid, "durationSeconds">,
+): string {
+  switch (action) {
+    case "repeat":
+      return state.blocks.length >= REMIX_STRUCTURE_MAX_BLOCKS
+        ? `The song can't have more than ${REMIX_STRUCTURE_MAX_BLOCKS} sections`
+        : structureTooLongReason(grid);
+    case "remove":
+      return "The song needs at least one section";
+    case "earlier":
+      return "This is already the first section";
+    case "later":
+      return "This is already the last section";
+    default:
+      return "This section can't fade";
+  }
+}
+
+const BLOCK_MENU_ITEMS: readonly { action: LaneBlockAction; label: string }[] = [
+  { action: "repeat", label: "Repeat this section" },
+  { action: "remove", label: "Remove" },
+  { action: "earlier", label: "Move earlier" },
+  { action: "later", label: "Move later" },
+  { action: "fade_in", label: "Fade in" },
+  { action: "fade_out", label: "Fade out" },
+];
+
+/**
+ * The "⋯" menu entries for block `index` (#1899): an entry whose structure
+ * op refuses is disabled with a plain reason, never a dead button.
+ */
+export function blockMenuEntries(
+  state: RemixStructureEditState,
+  index: number,
+  grid: Pick<RemixSectionGrid, "sections" | "durationSeconds">,
+): LaneBlockMenuEntry[] {
+  const block = state.blocks[index];
+  return BLOCK_MENU_ITEMS.map(({ action, label }) => {
+    const enabled = blockActionResult(state, index, action, grid) !== null;
+    return {
+      action,
+      label,
+      ...(action === "fade_in" ? { checked: block?.fadeIn === true } : {}),
+      ...(action === "fade_out" ? { checked: block?.fadeOut === true } : {}),
+      enabled,
+      reason: enabled ? null : refusalReason(state, action, grid),
+    };
+  });
+}
+
+/**
+ * Arrow-key navigation inside a menu: Down/Up wrap, Home/End jump; null for
+ * any other key. `current` −1 = nothing focused yet.
+ */
+export function nextMenuIndex(
+  key: string,
+  current: number,
+  count: number,
+): number | null {
+  if (count <= 0) return null;
+  switch (key) {
+    case "ArrowDown":
+      return current < 0 ? 0 : (current + 1) % count;
+    case "ArrowUp":
+      return current < 0 ? count - 1 : (current - 1 + count) % count;
+    case "Home":
+      return 0;
+    case "End":
+      return count - 1;
+    default:
+      return null;
+  }
+}
+
+/**
+ * The lane columns: the timeline's blocks, or the grid's sections in order
+ * when there is no (or an empty) timeline.
+ */
+export function laneColumns(
+  grid: RemixSectionGrid,
+  timeline: RemixStructureTimeline | null | undefined,
+): RemixStructureSegment[] {
+  return timeline && timeline.segments.length > 0
+    ? timeline.segments
+    : structureTimeline(grid, null).segments;
+}
+
+/** Whether block `index` plays a section an earlier block already played. */
+export function isRepeatBlock(
+  columns: readonly Pick<RemixStructureSegment, "section">[],
+  index: number,
+): boolean {
+  const section = columns[index]?.section;
+  return (
+    section !== undefined &&
+    columns.slice(0, index).some((column) => column.section === section)
+  );
+}
+
+/** A section named in plain words: "bar 9", "the pickup", "the section at 0:32". */
+export function sectionPlaceLabel(grid: RemixSectionGrid, section: number): string {
+  const label = sectionColumnLabels(grid)[section] ?? String(section + 1);
+  if (grid.kind !== "bars") return `the section at ${label}`;
+  return label === "Pickup" ? "the pickup" : `bar ${label}`;
+}
+
+/**
+ * The part of a stem's waveform one block plays (#1899): the peak buckets
+ * covering source seconds `startSec..endSec`, with the peaks spread evenly
+ * across `sourceSec`. At least one bucket for a non-empty span.
+ */
+export function slicePeaks(
+  peaks: readonly number[],
+  sourceSec: number,
+  startSec: number,
+  endSec: number,
+): number[] {
+  const count = peaks.length;
+  if (count === 0 || !(sourceSec > 0) || !(endSec > startSec)) return [];
+  const from = Math.min(
+    count - 1,
+    Math.max(0, Math.floor((startSec / sourceSec) * count)),
+  );
+  const to = Math.min(
+    count,
+    Math.max(from + 1, Math.ceil((endSec / sourceSec) * count)),
+  );
+  return peaks.slice(from, to);
+}
 
 type LaneFxControl = {
   key: keyof RemixFxStem;
@@ -96,8 +305,14 @@ export function laneHasFx(fx: RemixFxStem | undefined): boolean {
   );
 }
 
-/** Minimum on-screen width of one section column, in CSS pixels. */
-export const LANE_MIN_SECTION_PX = 28;
+/**
+ * Minimum on-screen width per column, in CSS pixels: room for the label and
+ * the "⋯" section menu (#1899).
+ */
+export const LANE_MIN_SECTION_PX = 40;
+
+/** Section-menu width, for keeping it on screen. */
+const BLOCK_MENU_WIDTH_PX = 192;
 
 /** A leading section shorter than this share of a full section is a pickup. */
 const PICKUP_THRESHOLD = 0.75;
@@ -222,6 +437,13 @@ const STRIP_OFFSET = "left-40 sm:left-60";
 
 type PaintState = { stemId: string; value: boolean; mask: boolean[] };
 
+type OpenBlockMenu = {
+  index: number;
+  top: number;
+  left: number;
+  focus: "first" | "last";
+};
+
 export function RemixSessionLanes({
   stems,
   grid,
@@ -237,23 +459,117 @@ export function RemixSessionLanes({
   onSeek,
   onLoopSection,
   onFxChange,
+  timeline,
+  structureState,
+  onBlockAction,
 }: RemixSessionLanesProps) {
   const fxIdPrefix = useId();
   // Which stems show their FX row: view state only, never saved.
   const [openFx, setOpenFx] = useState<ReadonlySet<string>>(() => new Set());
   const toggleFx = (stemId: string) =>
     setOpenFx((open) => toggleInSet(open, stemId));
-  const totalSec = timelineSeconds(durationSec, grid);
-  const sectionCount = grid?.sections.length ?? 0;
+  // Columns are timeline blocks (#1899); without a structure, the sections.
+  const columns = grid ? laneColumns(grid, timeline) : [];
+  const structured = grid !== null && !isIdentityTimeline({ segments: columns });
+  const totalSec = structured
+    ? columns[columns.length - 1].outEndSec
+    : timelineSeconds(durationSec, grid);
+  const blockCount = columns.length;
   const labels = grid ? sectionColumnLabels(grid) : [];
   const timelineStyle =
-    grid && sectionCount > 0
-      ? { minWidth: `${sectionCount * LANE_MIN_SECTION_PX}px` }
+    grid && blockCount > 0
+      ? { minWidth: `${blockCount * LANE_MIN_SECTION_PX}px` }
       : undefined;
-  const loopInterval =
-    grid && loopSectionIndex !== null
-      ? (grid.sections[loopSectionIndex] ?? null)
-      : null;
+  const loopColumn =
+    loopSectionIndex !== null ? (columns[loopSectionIndex] ?? null) : null;
+  const menuAvailable =
+    grid !== null &&
+    onBlockAction !== undefined &&
+    !!structureState &&
+    structureState.blocks.length === blockCount;
+
+  // Section "⋯" menu (#1899): one open at a time, placed under its trigger.
+  const [menu, setMenu] = useState<OpenBlockMenu | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRefs = useRef(new Map<number, HTMLButtonElement>());
+  // Block whose trigger takes focus back after the menu closes.
+  const pendingFocusRef = useRef<number | null>(null);
+  const openMenu =
+    menuAvailable && !disabled && menu && menu.index < blockCount ? menu : null;
+
+  useEffect(() => {
+    const index = pendingFocusRef.current;
+    if (index === null) return;
+    pendingFocusRef.current = null;
+    const triggers = triggerRefs.current;
+    const target =
+      triggers.get(index) ?? triggers.get(Math.min(index, triggers.size - 1));
+    target?.focus();
+  });
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const index = openMenu.index;
+    const onPointerDown = (event: globalThis.PointerEvent) => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (
+        target &&
+        (menuRef.current?.contains(target) ||
+          triggerRefs.current.get(index)?.contains(target))
+      ) {
+        return;
+      }
+      setMenu(null);
+    };
+    const close = () => setMenu(null);
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [openMenu]);
+
+  const toggleBlockMenu = (
+    index: number,
+    trigger: HTMLButtonElement,
+    focus: "first" | "last",
+    forceOpen = false,
+  ) => {
+    if (disabled || !menuAvailable) return;
+    if (!forceOpen && menu?.index === index) {
+      setMenu(null);
+      return;
+    }
+    const rect = trigger.getBoundingClientRect();
+    const maxLeft = Math.max(8, window.innerWidth - BLOCK_MENU_WIDTH_PX - 8);
+    setMenu({
+      index,
+      top: rect.bottom + 4,
+      left: Math.min(maxLeft, Math.max(8, rect.right - BLOCK_MENU_WIDTH_PX)),
+      focus,
+    });
+  };
+
+  const closeBlockMenu = (returnFocusTo: number | null) => {
+    pendingFocusRef.current = returnFocusTo;
+    setMenu(null);
+  };
+
+  const selectBlockAction = (index: number, action: LaneBlockAction) => {
+    const target =
+      action === "remove"
+        ? Math.max(0, Math.min(index, blockCount - 2))
+        : action === "earlier"
+          ? index - 1
+          : action === "later"
+            ? index + 1
+            : index;
+    closeBlockMenu(target);
+    onBlockAction?.(index, action);
+  };
 
   // Drag-to-paint state lives in refs: it only matters inside event handlers.
   const paintRef = useRef<PaintState | null>(null);
@@ -302,7 +618,7 @@ export function RemixSessionLanes({
     if (target.hasPointerCapture?.(event.pointerId)) {
       target.releasePointerCapture(event.pointerId);
     }
-    const mask = sectionMask(stem.sections, sectionCount);
+    const mask = sectionMask(stem.sections, blockCount);
     const value = !mask[index];
     mask[index] = value;
     paintRef.current = { stemId: stem.stemId, value, mask };
@@ -336,10 +652,10 @@ export function RemixSessionLanes({
     event.stopPropagation();
     if (suppressClickRef.current) return;
     if (disabled || !grid) return;
-    const current = sectionMask(stem.sections, sectionCount);
+    const current = sectionMask(stem.sections, blockCount);
     onSetSections(
       stem.stemId,
-      applyPaint(stem.sections, sectionCount, index, !current[index]),
+      applyPaint(stem.sections, blockCount, index, !current[index]),
     );
   };
 
@@ -360,31 +676,121 @@ export function RemixSessionLanes({
             </div>
             <div className="relative flex-1 bg-zinc-900" style={timelineStyle}>
               <div className="relative h-6">
-                {grid.sections.map((interval, index) => {
+                {columns.map((column, index) => {
                   const looped = loopSectionIndex === index;
                   const span = totalSec
-                    ? interval.endSec - interval.startSec
+                    ? column.outEndSec - column.outStartSec
                     : 0;
+                  const start = sectionStartLabel({
+                    startSec: column.outStartSec,
+                    endSec: column.outEndSec,
+                  });
+                  const place = sectionPlaceLabel(grid, column.section);
+                  const repeat = isRepeatBlock(columns, index);
+                  const notes = [
+                    repeat ? `repeat of ${place}` : null,
+                    column.fadeIn ? "fades in" : null,
+                    column.fadeOut ? "fades out" : null,
+                  ].filter((note): note is string => note !== null);
+                  const menuOpen = openMenu?.index === index;
+                  const menuId = `${fxIdPrefix}-block-menu-${index}`;
                   return (
-                    <button
+                    <div
                       key={index}
-                      type="button"
-                      aria-pressed={looped}
-                      aria-label={`Loop section ${index + 1} (starts ${sectionStartLabel(interval)})`}
-                      title={`Section ${index + 1} · starts ${sectionStartLabel(interval)} · click to loop`}
-                      className={`remix-lane-section-header absolute inset-y-0 overflow-hidden whitespace-nowrap text-ellipsis border-l px-1 text-left text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-300 ${
-                        looped
-                          ? "bg-purple-500/25 text-purple-100 border-purple-400/60"
-                          : "bg-transparent text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
-                      }`}
+                      className="remix-lane-block-header absolute inset-y-0 flex"
                       style={{
-                        left: totalSec ? percent(interval.startSec, totalSec) : "0%",
+                        left: totalSec ? percent(column.outStartSec, totalSec) : "0%",
                         width: totalSec ? `${fractionOf(span, totalSec) * 100}%` : "0%",
                       }}
-                      onClick={() => onLoopSection(looped ? null : index)}
                     >
-                      {labels[index]}
-                    </button>
+                      <button
+                        type="button"
+                        aria-pressed={looped}
+                        aria-label={`Loop section ${index + 1} (starts ${start}${notes.map((note) => `, ${note}`).join("")})`}
+                        title={`Section ${index + 1} · starts ${start}${notes.map((note) => ` · ${note.charAt(0).toUpperCase()}${note.slice(1)}`).join("")} · click to loop`}
+                        className={`remix-lane-section-header min-w-0 flex-1 overflow-hidden whitespace-nowrap text-ellipsis border-l px-1 text-left text-[10px] font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-300 ${
+                          looped
+                            ? "bg-purple-500/25 text-purple-100 border-purple-400/60"
+                            : "bg-transparent text-zinc-400 border-zinc-700 hover:bg-zinc-800 hover:text-zinc-100"
+                        }`}
+                        onClick={() => onLoopSection(looped ? null : index)}
+                      >
+                        {repeat && (
+                          <span
+                            aria-hidden="true"
+                            title={`Repeat of ${place}`}
+                            className="mr-0.5 text-purple-300 remix-lane-repeat-mark"
+                          >
+                            ↺
+                          </span>
+                        )}
+                        {column.fadeIn && (
+                          <span
+                            aria-hidden="true"
+                            title="Fades in"
+                            className="mr-0.5 text-sky-300 remix-lane-fade-in-mark"
+                          >
+                            ◢
+                          </span>
+                        )}
+                        {labels[column.section]}
+                        {column.fadeOut && (
+                          <span
+                            aria-hidden="true"
+                            title="Fades out"
+                            className="ml-0.5 text-sky-300 remix-lane-fade-out-mark"
+                          >
+                            ◣
+                          </span>
+                        )}
+                      </button>
+                      {menuAvailable && (
+                        <button
+                          ref={(element) => {
+                            if (!element) return;
+                            triggerRefs.current.set(index, element);
+                            return () => {
+                              if (triggerRefs.current.get(index) === element) {
+                                triggerRefs.current.delete(index);
+                              }
+                            };
+                          }}
+                          type="button"
+                          aria-haspopup="menu"
+                          aria-expanded={menuOpen}
+                          aria-controls={menuOpen ? menuId : undefined}
+                          aria-label={`Section options for ${place}${repeat ? " (repeat)" : ""}`}
+                          title={
+                            disabled
+                              ? "Section options are locked"
+                              : "Repeat, remove, move or fade this section"
+                          }
+                          disabled={disabled}
+                          className={`shrink-0 px-0.5 text-[11px] leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-purple-300 disabled:cursor-not-allowed disabled:opacity-40 remix-lane-block-menu-trigger ${
+                            menuOpen
+                              ? "bg-purple-500/25 text-purple-100"
+                              : "bg-transparent text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
+                          }`}
+                          onClick={(event) =>
+                            toggleBlockMenu(index, event.currentTarget, "first")
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+                              return;
+                            }
+                            event.preventDefault();
+                            toggleBlockMenu(
+                              index,
+                              event.currentTarget,
+                              event.key === "ArrowUp" ? "last" : "first",
+                              true,
+                            );
+                          }}
+                        >
+                          ⋯
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -395,11 +801,11 @@ export function RemixSessionLanes({
                 onClick={seekFromClick}
               >
                 {totalSec !== null &&
-                  grid.sections.map((interval, index) => (
+                  columns.map((column, index) => (
                     <span
                       key={index}
                       className="absolute inset-y-0 w-px bg-zinc-600"
-                      style={{ left: percent(interval.startSec, totalSec) }}
+                      style={{ left: percent(column.outStartSec, totalSec) }}
                     />
                   ))}
               </div>
@@ -413,7 +819,7 @@ export function RemixSessionLanes({
           const fxActive = laneHasFx(stem.fx);
           const fxRowId = `${fxIdPrefix}-fx-${stemIndex}`;
           const gainDb = stem.gainDb ?? 0;
-          const mask = grid ? sectionMask(stem.sections, sectionCount) : [];
+          const mask = grid ? sectionMask(stem.sections, blockCount) : [];
           const allOn = mask.every(Boolean);
           const allOff = mask.length > 0 && mask.every((on) => !on);
           return (
@@ -484,7 +890,7 @@ export function RemixSessionLanes({
                         onClick={() =>
                           onSetSections(
                             stem.stemId,
-                            new Array<boolean>(sectionCount).fill(false),
+                            new Array<boolean>(blockCount).fill(false),
                           )
                         }
                       >
@@ -576,6 +982,45 @@ export function RemixSessionLanes({
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-x-2 top-1/2 h-1.5 -translate-y-1/2 animate-pulse rounded-full bg-zinc-700/70 remix-lane-waveform-loading"
                   />
+                ) : structured && grid && totalSec !== null ? (
+                  // Structure (#1899): each block draws the slice of the
+                  // source waveform it plays.
+                  columns.map((column, index) => (
+                    <svg
+                      key={index}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-y-0 h-full remix-lane-waveform remix-lane-block-waveform"
+                      style={{
+                        left: percent(column.outStartSec, totalSec),
+                        width: `${fractionOf(column.outEndSec - column.outStartSec, totalSec) * 100}%`,
+                      }}
+                      viewBox="0 0 100 100"
+                      preserveAspectRatio="none"
+                    >
+                      <line
+                        x1={0}
+                        x2={100}
+                        y1={50}
+                        y2={50}
+                        className="stroke-zinc-700"
+                        strokeWidth={1}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                      <path
+                        d={peaksToSvgPath(
+                          slicePeaks(
+                            stem.peaks ?? [],
+                            grid.durationSeconds,
+                            column.srcStartSec,
+                            column.srcEndSec,
+                          ),
+                          100,
+                          100,
+                        )}
+                        className="fill-purple-200/70"
+                      />
+                    </svg>
+                  ))
                 ) : (
                   <svg
                     aria-hidden="true"
@@ -600,7 +1045,7 @@ export function RemixSessionLanes({
                 )}
                 {grid &&
                   totalSec !== null &&
-                  grid.sections.map((interval, index) => {
+                  columns.map((column, index) => {
                     const on = mask[index];
                     return (
                       <button
@@ -615,8 +1060,8 @@ export function RemixSessionLanes({
                             : "remix-lane-cell-off bg-zinc-950/85 border-zinc-700 hover:bg-zinc-900/80"
                         }`}
                         style={{
-                          left: `calc(${percent(interval.startSec, totalSec)} + 1px)`,
-                          width: `calc(${fractionOf(interval.endSec - interval.startSec, totalSec) * 100}% - 2px)`,
+                          left: `calc(${percent(column.outStartSec, totalSec)} + 1px)`,
+                          width: `calc(${fractionOf(column.outEndSec - column.outStartSec, totalSec) * 100}% - 2px)`,
                           ...(on ? {} : OFF_CELL_STYLE),
                         }}
                         onPointerDown={(event) =>
@@ -639,12 +1084,12 @@ export function RemixSessionLanes({
           aria-hidden="true"
           className={`pointer-events-none absolute inset-y-0 right-0 ${STRIP_OFFSET} z-10`}
         >
-          {loopInterval && totalSec !== null && (
+          {loopColumn && totalSec !== null && (
             <div
               className="remix-lane-loop-band absolute inset-y-0 border-x border-purple-400/60 bg-purple-400/10"
               style={{
-                left: percent(loopInterval.startSec, totalSec),
-                width: `${fractionOf(loopInterval.endSec - loopInterval.startSec, totalSec) * 100}%`,
+                left: percent(loopColumn.outStartSec, totalSec),
+                width: `${fractionOf(loopColumn.outEndSec - loopColumn.outStartSec, totalSec) * 100}%`,
               }}
             />
           )}
@@ -657,6 +1102,117 @@ export function RemixSessionLanes({
           )}
         </div>
       </div>
+      {openMenu && grid && structureState && (
+        <LaneBlockMenu
+          key={openMenu.index}
+          ref={menuRef}
+          id={`${fxIdPrefix}-block-menu-${openMenu.index}`}
+          label={`Options for ${sectionPlaceLabel(grid, columns[openMenu.index].section)}`}
+          entries={blockMenuEntries(structureState, openMenu.index, grid)}
+          initialFocus={openMenu.focus}
+          style={{ top: openMenu.top, left: openMenu.left }}
+          onSelect={(action) => selectBlockAction(openMenu.index, action)}
+          onClose={(returnFocus) =>
+            closeBlockMenu(returnFocus ? openMenu.index : null)
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * A block's section menu (#1899): `role="menu"`, arrow keys move between
+ * entries, Esc closes (focus returns to the trigger), Tab closes. Refused
+ * entries stay focusable but inert (`aria-disabled`) and say why.
+ */
+export function LaneBlockMenu({
+  ref,
+  id,
+  label,
+  entries,
+  initialFocus = "first",
+  style,
+  onSelect,
+  onClose,
+}: {
+  ref?: Ref<HTMLDivElement>;
+  id: string;
+  label: string;
+  entries: LaneBlockMenuEntry[];
+  initialFocus?: "first" | "last";
+  style?: CSSProperties;
+  onSelect(action: LaneBlockAction): void;
+  /** `returnFocus`: Esc (true) vs Tab away (false). */
+  onClose(returnFocus: boolean): void;
+}) {
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const initialFocusRef = useRef(initialFocus);
+  useEffect(() => {
+    const items = itemRefs.current;
+    const start = initialFocusRef.current === "last" ? items.length - 1 : 0;
+    items[start]?.focus({ preventScroll: true });
+  }, []);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = itemRefs.current;
+    const current = items.findIndex((item) => item === document.activeElement);
+    const next = nextMenuIndex(event.key, current, entries.length);
+    if (next !== null) {
+      event.preventDefault();
+      items[next]?.focus({ preventScroll: true });
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose(true);
+      return;
+    }
+    if (event.key === "Tab") onClose(false);
+  };
+
+  return (
+    <div
+      ref={ref}
+      id={id}
+      role="menu"
+      aria-label={label}
+      style={style}
+      className="fixed z-50 w-48 rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-lg shadow-black/50 remix-lane-block-menu"
+      onKeyDown={onKeyDown}
+    >
+      {entries.map((entry, index) => {
+        const checkable = entry.checked !== undefined;
+        return (
+          <button
+            key={entry.action}
+            ref={(element) => {
+              itemRefs.current[index] = element;
+            }}
+            type="button"
+            role={checkable ? "menuitemcheckbox" : "menuitem"}
+            aria-checked={checkable ? entry.checked : undefined}
+            aria-disabled={entry.enabled ? undefined : true}
+            tabIndex={-1}
+            title={entry.reason ?? undefined}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs focus-visible:outline-none remix-lane-block-menu-item remix-lane-block-menu-${entry.action} ${
+              entry.enabled
+                ? "bg-transparent text-zinc-200 hover:bg-purple-500/15 focus:bg-purple-500/15"
+                : "cursor-not-allowed bg-transparent text-zinc-500 focus:bg-zinc-800"
+            }`}
+            onClick={() => {
+              if (entry.enabled) onSelect(entry.action);
+            }}
+          >
+            <span aria-hidden="true" className="w-3 shrink-0 text-purple-300">
+              {checkable && entry.checked ? "✓" : ""}
+            </span>
+            <span>{entry.label}</span>
+            {entry.reason && <span className="sr-only">{` — ${entry.reason}`}</span>}
+          </button>
+        );
+      })}
     </div>
   );
 }

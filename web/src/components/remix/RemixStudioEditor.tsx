@@ -63,9 +63,33 @@ import {
   type RemixFxStem,
   type RemixVibeId,
 } from "../../lib/remixFx";
-import { RemixSessionLanes, sectionColumnLabels, type LaneStem } from "./RemixSessionLanes";
+import {
+  gateIntervalsForBlocks,
+  normalizeRemixStructure,
+  sameRemixStructure,
+  structureEditState,
+  structureTimeline,
+  type RemixBlockMasks,
+  type RemixStructure,
+  type RemixStructureBlock,
+  type RemixStructureEditResult,
+  type RemixStructureEditState,
+  type RemixStructureTimeline,
+} from "../../lib/remixStructure";
+import {
+  blockActionResult,
+  RemixSessionLanes,
+  sectionColumnLabels,
+  type LaneBlockAction,
+  type LaneStem,
+} from "./RemixSessionLanes";
 import { RemixTransportBar } from "./RemixTransportBar";
-import { RemixCreatePanel } from "./RemixCreatePanel";
+import {
+  RemixCreatePanel,
+  structureShapeOptions,
+  structureShapeResult,
+  type RemixStructureShapeId,
+} from "./RemixCreatePanel";
 import {
   RemixDraftsPanel,
   type RemixCurrentDraft,
@@ -91,7 +115,10 @@ export function classifyProjectLoadError(
 export type StemEdit = {
   gainDb: number | null;
   muted: boolean;
-  /** Section mask (#1314): null = every section on (the default). */
+  /**
+   * On/off mask (#1314), indexed by timeline BLOCK (#1899); without a
+   * structure the blocks are the grid's sections. null = every block on.
+   */
   sections: boolean[] | null;
 };
 
@@ -104,6 +131,11 @@ export type ProjectEdits = {
   aiTarget: AiTargetEdit;
   /** Effects recipe `remix-fx/v1` (#1897), normalized; null = untouched. */
   effects: RemixFxRecipe | null;
+  /**
+   * Structure recipe `remix-structure/v1` (#1899), normalized against the
+   * grid; null = the original order.
+   */
+  structure: RemixStructure | null;
 };
 
 export type AiTargetEdit = { kind: AiTargetKind; stemId: string | null };
@@ -138,16 +170,41 @@ export function normalizeAiTarget(
   return { kind: "replace_stem", stemId: validStem ? stemId : null };
 }
 
-export function initialEdits(project: RemixProject): ProjectEdits {
+/**
+ * A project's normalized structure (#1899) and its block count: the
+ * structure's blocks, else the grid's sections (0 without a grid).
+ */
+export function projectStructure(
+  project: Pick<RemixProject, "sectionGrid" | "structure">,
+): { structure: RemixStructure | null; blockCount: number } {
   const sectionCount = project.sectionGrid?.sections.length ?? 0;
+  const structure =
+    sectionCount > 0
+      ? normalizeRemixStructure(project.structure, sectionCount)
+      : null;
+  return { structure, blockCount: structure?.blocks.length ?? sectionCount };
+}
+
+/** Block count of edits on a grid: the structure's blocks, else the sections. */
+function editBlockCount(
+  sectionCount: number,
+  structure: RemixStructure | null | undefined,
+): number {
+  if (sectionCount <= 0) return 0;
+  return structure?.blocks.length ?? sectionCount;
+}
+
+export function initialEdits(project: RemixProject): ProjectEdits {
+  // Masks are indexed by block (#1899), so they parse against the block count.
+  const { structure, blockCount } = projectStructure(project);
   const stems: Record<string, StemEdit> = {};
   for (const stem of project.stems) {
     stems[stem.stemId] = {
       gainDb: stem.gainDb,
       muted: stem.muted,
       sections:
-        sectionCount > 0
-          ? parseArrangementSections(stem.arrangement, sectionCount)
+        blockCount > 0
+          ? parseArrangementSections(stem.arrangement, blockCount)
           : null,
     };
   }
@@ -161,6 +218,7 @@ export function initialEdits(project: RemixProject): ProjectEdits {
       project.effects,
       project.stems.map((stem) => stem.stemId),
     ),
+    structure,
   };
 }
 
@@ -203,6 +261,22 @@ export function buildProjectPatch(
     patch.effects = normalizeRemixFx(edits.effects, projectStemIds);
   }
   const sectionCount = project.sectionGrid?.sections.length ?? 0;
+  const editStructure = edits.structure ?? null;
+  if (
+    sectionCount > 0 &&
+    !sameRemixStructure(project.structure, editStructure, sectionCount)
+  ) {
+    // null restores the original order server-side (#1899); the remapped
+    // masks travel in the same PATCH and are validated against it.
+    patch.structure = normalizeRemixStructure(editStructure, sectionCount);
+  }
+  // Persisted masks read against the PERSISTED block count; one of another
+  // length counts as null (fail-open, like the render).
+  const persistedBlockCount = projectStructure(project).blockCount;
+  const nextBlockCount = editBlockCount(
+    sectionCount,
+    normalizeRemixStructure(editStructure, sectionCount),
+  );
   const stemPatches: NonNullable<RemixProjectPatch["stems"]> = [];
   for (const stem of project.stems) {
     const edit = edits.stems[stem.stemId];
@@ -222,11 +296,25 @@ export function buildProjectPatch(
       stemPatch.muted = edit.muted;
     }
     if (sectionCount > 0) {
-      const persisted = parseArrangementSections(stem.arrangement, sectionCount);
+      const persisted = parseArrangementSections(
+        stem.arrangement,
+        persistedBlockCount,
+      );
       if (!sameSections(edit.sections, persisted)) {
         // null clears back to the always-on default server-side (#1314).
         stemPatch.arrangement =
           edit.sections === null ? null : arrangementPayload(edit.sections);
+      } else if (
+        patch.structure !== undefined &&
+        edit.sections === null &&
+        stem.arrangement != null &&
+        (persisted === null ||
+          parseArrangementSections(stem.arrangement, nextBlockCount) === null)
+      ) {
+        // A structure change clears a stale persisted mask (#1899): one that
+        // fits neither the old nor the new block count must not come back
+        // to life when the block count happens to match its length.
+        stemPatch.arrangement = null;
       }
     }
     if (
@@ -516,12 +604,19 @@ export function studioShortcutAction(input: {
   }
 }
 
-/** Transport loop chip copy, named like the lane ruler (#1879). */
+/**
+ * Transport loop chip copy, named like the lane ruler (#1879). The loop is
+ * on a timeline block (#1899): with `blocks`, it is named after the block's
+ * source section.
+ */
 export function transportLoopLabel(
   grid: RemixSectionGrid,
-  sectionIndex: number,
+  blockIndex: number,
+  blocks?: RemixStructureBlock[] | null,
 ): string | null {
-  const label = sectionColumnLabels(grid)[sectionIndex];
+  const section = blocks ? blocks[blockIndex]?.section : blockIndex;
+  if (section === undefined) return null;
+  const label = sectionColumnLabels(grid)[section];
   if (label === undefined) return null;
   if (grid.kind !== "bars") return `Looping ${label}`;
   return label === "Pickup" ? "Looping the pickup" : `Looping bar ${label}`;
@@ -772,19 +867,73 @@ export function remixGenerationFailureMessage(
   );
 }
 
+/**
+ * The output timeline for the current edits (#1899), computed locally so
+ * unsaved structure edits play at once; null without a grid.
+ */
+export function editsTimeline(
+  project: Pick<RemixProject, "sectionGrid">,
+  edits: Pick<ProjectEdits, "structure">,
+): RemixStructureTimeline | null {
+  const grid = project.sectionGrid ?? null;
+  if (!grid || grid.sections.length === 0) return null;
+  const structure = normalizeRemixStructure(
+    edits.structure ?? null,
+    grid.sections.length,
+  );
+  return structureTimeline(grid, structure?.blocks ?? null);
+}
+
+/** Structure edit state (#1899) for the current edits: blocks + stem masks. */
+export function structureEditStateFor(
+  grid: RemixSectionGrid,
+  edits: Pick<ProjectEdits, "structure" | "stems">,
+): RemixStructureEditState {
+  const masks: RemixBlockMasks = {};
+  for (const [stemId, edit] of Object.entries(edits.stems)) {
+    masks[stemId] = edit.sections;
+  }
+  return structureEditState(grid, edits.structure ?? null, masks);
+}
+
+/**
+ * Applies a structure op's result (#1899) in one update: the new structure
+ * plus every stem's remapped block mask.
+ */
+export function editsWithStructure(
+  edits: ProjectEdits,
+  result: RemixStructureEditResult,
+): ProjectEdits {
+  const stems = { ...edits.stems };
+  for (const [stemId, mask] of Object.entries(result.masks)) {
+    const current = stems[stemId];
+    if (current) stems[stemId] = { ...current, sections: mask };
+  }
+  return { ...edits, structure: result.structure, stems };
+}
+
 export function stemPreviewStates(
   project: RemixProject,
   edits: ProjectEdits,
 ): PreviewStemState[] {
   const grid = project.sectionGrid ?? null;
   const references = referenceStemIds(project.stems);
+  const sectionCount = grid?.sections.length ?? 0;
+  const structure =
+    grid && sectionCount > 0
+      ? normalizeRemixStructure(edits.structure ?? null, sectionCount)
+      : null;
+  // With a structure (#1899) the gate spans are per block, in timeline time.
+  const segments =
+    grid && structure ? structureTimeline(grid, structure.blocks).segments : null;
+  const blockCount = editBlockCount(sectionCount, structure);
   return project.stems.map((stem) => {
     const edit = edits.stems[stem.stemId];
     const sections =
       edit?.sections !== undefined
         ? edit.sections
         : grid
-          ? parseArrangementSections(stem.arrangement, grid.sections.length)
+          ? parseArrangementSections(stem.arrangement, blockCount)
           : null;
     return {
       stemId: stem.stemId,
@@ -795,7 +944,11 @@ export function stemPreviewStates(
       // A/B compares against the untouched original. An unmuted (legacy)
       // one is a real channel and gates exactly like the render.
       ...(grid && !(references.has(stem.stemId) && (edit?.muted ?? stem.muted))
-        ? { activeIntervals: activeIntervalsFromSections(grid, sections) }
+        ? {
+            activeIntervals: segments
+              ? gateIntervalsForBlocks(segments, sections)
+              : activeIntervalsFromSections(grid, sections),
+          }
         : {}),
     };
   });
@@ -1185,6 +1338,14 @@ export function RemixStudioEditor({
 
   const published = project.status === "published";
 
+  // Structure (#1899): the local timeline plays unsaved edits immediately;
+  // loops, the lanes and the gate spans all index timeline blocks.
+  const timeline = editsTimeline(project, edits);
+  const structureState = sectionGrid
+    ? structureEditStateFor(sectionGrid, edits)
+    : null;
+  const blockCount = sectionGrid ? (structureState?.blocks.length ?? 0) : 0;
+
   // Studio transport (#1879): one owner for the arrangement preview, the
   // original full mix, and drafts — play/stop, seek, loop, source switch.
   const previousDraftIds = (project.generationMetadata?.previousDrafts ?? []).map(
@@ -1201,6 +1362,7 @@ export function RemixStudioEditor({
     timelineSec: project.sectionGrid?.durationSeconds ?? null,
     effects: edits.effects,
     bpm: effectsBpm(project.sectionGrid),
+    timeline,
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -1239,24 +1401,26 @@ export function RemixStudioEditor({
     setTransportSource({ kind: "arrangement" });
   }, [setTransportSource, stopTransport, transportSourceUnavailable]);
 
-  // A loop on a section the grid no longer has is dropped.
+  // A loop on a block the timeline no longer has is dropped.
   const transportLoopStale =
     transportLoop !== null &&
-    !sectionGrid?.sections[transportLoop.sectionIndex];
+    !(sectionGrid && timeline?.segments[transportLoop.sectionIndex]);
   useEffect(() => {
     if (transportLoopStale) setTransportLoop(null);
   }, [setTransportLoop, transportLoopStale]);
 
+  // Loops are by block (#1899), over the block's timeline span.
   const loopSection = (index: number | null) => {
-    const interval = index === null ? null : sectionGrid?.sections[index];
-    if (index === null || !interval) {
+    const segment =
+      index === null || !sectionGrid ? null : timeline?.segments[index];
+    if (index === null || !segment) {
       transport.setLoop(null);
       return;
     }
     transport.setLoop({
       sectionIndex: index,
-      startSec: interval.startSec,
-      endSec: interval.endSec,
+      startSec: segment.outStartSec,
+      endSec: segment.outEndSec,
     });
   };
 
@@ -1327,6 +1491,26 @@ export function RemixStudioEditor({
   ) => updateEffects((effects) => withStemFx(effects, stemId, key, value));
   const handleApplyVibe = (vibeId: RemixVibeId) =>
     updateEffects((effects) => applyVibe(vibeId, effects, project.stems));
+
+  // Structure edits (#1899) run through the shared ops so the masks move
+  // with their blocks; a refused op changes nothing.
+  const updateStructure = (
+    run: (state: RemixStructureEditState) => RemixStructureEditResult | null,
+  ) => {
+    if (!sectionGrid || published) return;
+    setEdits((prev) => {
+      const result = run(structureEditStateFor(sectionGrid, prev));
+      return result ? editsWithStructure(prev, result) : prev;
+    });
+  };
+  const handleBlockAction = (index: number, action: LaneBlockAction) =>
+    updateStructure((state) =>
+      sectionGrid ? blockActionResult(state, index, action, sectionGrid) : null,
+    );
+  const handleApplyStructure = (id: RemixStructureShapeId) =>
+    updateStructure((state) =>
+      sectionGrid ? structureShapeResult(sectionGrid, state, id) : null,
+    );
 
   const toggleStemMute = (stemId: string) => {
     setEdits((prev) => {
@@ -1828,14 +2012,24 @@ export function RemixStudioEditor({
         : { ...prev, aiTarget: { ...prev.aiTarget, stemId } },
     );
   };
-  const sectionCount = sectionGrid?.sections.length ?? 0;
-  const recipes = applicableRecipes(project.stems, sectionCount);
+  // Recipe masks cover the timeline's blocks (#1899).
+  const recipes = applicableRecipes(project.stems, blockCount);
   const handleApplyRecipe = (recipeId: string) => {
-    setEdits((prev) => ({
-      ...prev,
-      stems: applyRecipe(recipeId, project.stems, prev.stems, sectionCount),
-    }));
+    setEdits((prev) => {
+      const count = editBlockCount(
+        sectionGrid?.sections.length ?? 0,
+        prev.structure,
+      );
+      return {
+        ...prev,
+        stems: applyRecipe(recipeId, project.stems, prev.stems, count),
+      };
+    });
   };
+  const structureOptions =
+    sectionGrid && structureState
+      ? structureShapeOptions(sectionGrid, structureState)
+      : [];
   const replaceStemOptions = project.stems
     .filter((stem) => !referenceIds.has(stem.stemId))
     .map((stem) => ({ stemId: stem.stemId, name: stemDisplayName(stem) }));
@@ -2131,7 +2325,11 @@ export function RemixStudioEditor({
                   hasDraft={Boolean(draftOutputUri)}
                   loopLabel={
                     sectionGrid && transportLoop
-                      ? transportLoopLabel(sectionGrid, transportLoop.sectionIndex)
+                      ? transportLoopLabel(
+                          sectionGrid,
+                          transportLoop.sectionIndex,
+                          structureState?.blocks ?? null,
+                        )
                       : null
                   }
                   meter={
@@ -2163,6 +2361,9 @@ export function RemixStudioEditor({
                   onFxChange={handleStemFxChange}
                   onSeek={transport.seek}
                   onLoopSection={loopSection}
+                  timeline={sectionGrid ? timeline : null}
+                  structureState={structureState}
+                  onBlockAction={handleBlockAction}
                 />
               </div>
 
@@ -2253,6 +2454,8 @@ export function RemixStudioEditor({
               effects={edits.effects}
               onApplyVibe={handleApplyVibe}
               onMasterFxChange={handleMasterFxChange}
+              structureOptions={structureOptions}
+              onApplyStructure={handleApplyStructure}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,

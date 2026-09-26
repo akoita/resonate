@@ -15,6 +15,7 @@ import {
 } from "./remix-generation.provider";
 import { type StemAudioMixer } from "./stem-audio-mixer";
 import { REMIX_FX_DSP_VERSION } from "./remix-fx";
+import { REMIX_STRUCTURE_DSP_VERSION } from "./remix-structure";
 
 /**
  * Audio-conditioned remix provider (#1182 slice 4) — the first provider that
@@ -89,13 +90,25 @@ export class AudioConditionedRemixGenerationProvider
     // is sent to the worker; ciphertext never leaves the backend.
     // Effects (#1897) shape the conditioning mix exactly as the user hears
     // them in the studio; omitted entirely when the project has none.
-    const mixed = input.renderFx
+    // Structure blocks (#1899) likewise: the model conditions on the
+    // restructured arrangement the user hears.
+    const mixed = input.renderStructure
       ? await this.mixer.mixUnmutedStems(
           input.stemArrangement,
           authorization,
           input.renderFx,
+          input.renderStructure,
         )
-      : await this.mixer.mixUnmutedStems(input.stemArrangement, authorization);
+      : input.renderFx
+        ? await this.mixer.mixUnmutedStems(
+            input.stemArrangement,
+            authorization,
+            input.renderFx,
+          )
+        : await this.mixer.mixUnmutedStems(
+            input.stemArrangement,
+            authorization,
+          );
 
     const generated = await this.callWorker({
       config,
@@ -150,6 +163,15 @@ export class AudioConditionedRemixGenerationProvider
             conditioningEffects: {
               effects: input.renderFx.effects,
               effectsDspVersion: REMIX_FX_DSP_VERSION,
+            },
+          }
+        : {}),
+      // #1899 provenance: the structure that shaped the conditioning mix.
+      ...(input.renderStructure
+        ? {
+            conditioningStructure: {
+              structure: input.renderStructure.structure,
+              structureVersion: REMIX_STRUCTURE_DSP_VERSION,
             },
           }
         : {}),

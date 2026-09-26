@@ -182,6 +182,54 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
     expect(mixer.mixUnmutedStems).toHaveBeenCalledWith(stems, authorization, fx);
     expect(job.renderMetadata).toEqual(renderMetadata);
   });
+
+  it("forwards structure blocks (#1899) to the mixer, with or without fx", async () => {
+    const mixer = {
+      mixUnmutedStems: jest.fn().mockResolvedValue({
+        buffer: Buffer.from("mix"),
+        mimeType: "audio/mpeg",
+        stemCount: 1,
+        renderMetadata: { ...REMIX_RENDER_AUDIO_POLICY, inputCount: 1, activeStemCount: 1 },
+      }),
+    };
+    const renderer = new FfmpegStemMixRenderer(
+      mixer as unknown as StemAudioMixer,
+      {
+        upload: jest.fn().mockResolvedValue({ uri: "local://d.mp3", provider: "local" }),
+      } as unknown as StorageProvider,
+    );
+    const stems = [{ stemId: "active", gainDb: 0, muted: false }];
+    const authorization = {
+      userId: "creator",
+      remixProjectId: "project",
+      authorizedStemIds: new Set(["active"]),
+    };
+    const structure = {
+      structure: {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [{ section: 1 }, { section: 0, fadeOut: true as const }],
+      },
+      segments: [],
+    };
+    await renderer.render({ remixProjectId: "project", stems, authorization, structure });
+    expect(mixer.mixUnmutedStems).toHaveBeenLastCalledWith(
+      stems,
+      authorization,
+      undefined,
+      structure,
+    );
+    const fx = {
+      effects: { schemaVersion: "remix-fx/v1" as const, master: { speed: 0.9 } },
+      bpm: null,
+    };
+    await renderer.render({ remixProjectId: "project", stems, authorization, fx, structure });
+    expect(mixer.mixUnmutedStems).toHaveBeenLastCalledWith(
+      stems,
+      authorization,
+      fx,
+      structure,
+    );
+  });
 });
 
 /** Minimal 16-bit mono PCM WAV so the smoke test needs no audio deps. */

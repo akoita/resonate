@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { estimateGenerationCostUsd } from "../generation/generation-cost-model";
 import type { RemixFxRecipe, RemixRenderFx } from "./remix-fx";
+import type { RemixRenderStructure, RemixStructure } from "./remix-structure";
 
 /**
  * Provider boundary for AI-assisted remix draft generation (#896, backlog D1).
@@ -387,7 +388,8 @@ export type StemArrangementEntry = {
    * stem's persisted mask and the project's section grid. Semantics:
    * undefined/null = fully active (no gating, pre-#1314 behavior);
    * [] = every section off (treated as muted); otherwise the stem is gated
-   * to these spans with short edge fades.
+   * to these spans with short edge fades. With structure blocks (#1899) the
+   * masks are block-indexed and these spans are in timeline time.
    */
   activeIntervals?: Array<{ startSec: number; endSec: number }> | null;
 };
@@ -451,11 +453,22 @@ export type RemixRenderMetadata = {
    */
   effects?: RemixFxRecipe;
   effectsDspVersion?: string;
+  /**
+   * Structure blocks (#1899) the artifact was rendered with, plus the
+   * timeline rules version. Absent when the project kept the original order.
+   */
+  structure?: RemixStructure;
+  structureVersion?: string;
 };
 
 export type RemixConditioningEffects = {
   effects: RemixFxRecipe;
   effectsDspVersion: string;
+};
+
+export type RemixConditioningStructure = {
+  structure: RemixStructure;
+  structureVersion: string;
 };
 
 export type RemixGenerationInput = {
@@ -484,6 +497,12 @@ export type RemixGenerationInput = {
    * it.
    */
   renderFx?: RemixRenderFx;
+  /**
+   * The project's structure blocks (#1899) + derived timeline at process
+   * time, applied wherever the arranged stems are mixed. Absent when the
+   * project keeps the original order; prompt-only providers ignore it.
+   */
+  renderStructure?: RemixRenderStructure;
   /** Targeted per-stem operation (#1316); absent = whole-track behavior. */
   stemTransform?: RemixStemTransform;
   provenance: RemixGenerationProvenance;
@@ -502,6 +521,11 @@ export type RemixGenerationJob = {
    * output itself is provider audio, so this is not render metadata.
    */
   conditioningEffects?: RemixConditioningEffects;
+  /**
+   * Structure blocks (#1899) that shaped the conditioning audio, the sibling
+   * of {@link conditioningEffects}. Present only when a structure applied.
+   */
+  conditioningStructure?: RemixConditioningStructure;
   /** Placeholders shaped for durable provenance; D2/D3 fill them. */
   outputMetadata: RemixGenerationOutputMetadata;
 };

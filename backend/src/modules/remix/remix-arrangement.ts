@@ -168,6 +168,11 @@ export function parseStemArrangement(
 export function validateStemArrangementInput(
   value: unknown,
   grid: SectionGrid | null,
+  /**
+   * Structure blocks (#1899): masks are indexed by block (timeline
+   * position) once a structure applies. Omitted = the grid's sections.
+   */
+  blockCount?: number,
 ): string | null {
   if (value === null) return null;
   const parsed = parseStemArrangement(value);
@@ -176,6 +181,12 @@ export function validateStemArrangementInput(
   }
   if (!grid) {
     return "This source has no section grid to arrange (no measured stem duration).";
+  }
+  if (blockCount !== undefined) {
+    if (parsed.sections.length !== blockCount) {
+      return `arrangement.sections must have exactly ${blockCount} entries (one per structure block)`;
+    }
+    return null;
   }
   if (parsed.sections.length !== grid.sections.length) {
     return `arrangement.sections must have exactly ${grid.sections.length} entries for this source's grid`;

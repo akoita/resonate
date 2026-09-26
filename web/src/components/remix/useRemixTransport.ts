@@ -11,6 +11,11 @@ import {
   type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
 import type { RemixFxRecipe } from "../../lib/remixFx";
+import {
+  isIdentityTimeline,
+  type RemixStructureSegment,
+  type RemixStructureTimeline,
+} from "../../lib/remixStructure";
 import { computePeaks } from "../../lib/remixWaveform";
 
 /**
@@ -50,6 +55,15 @@ export type RemixTransportInput = {
   effects?: RemixFxRecipe | null;
   /** Bar-grid tempo (bars grids only) for tempo-synced echo. */
   bpm?: number | null;
+  /**
+   * Structure timeline (#1899). When it is not the identity, the engine
+   * sources (arrangement and original) play it: `durationSec`, seek, loop
+   * and the playhead are in TIMELINE time, and `previewStems`'
+   * `activeIntervals` must be timeline-time gate spans
+   * (`gateIntervalsForBlocks`). A loop's `sectionIndex` is then a block
+   * index. Drafts are rendered audio and ignore it.
+   */
+  timeline?: RemixStructureTimeline | null;
   onError: (kind: "preview" | "draft") => void;
 };
 
@@ -116,15 +130,70 @@ export function draftLoopSeekTarget(
   return currentSec >= loop.endSec ? loop.startSec : null;
 }
 
-/** Transport length for a source: drafts use their own audio's duration. */
+/**
+ * Transport length for a source: drafts use their own audio's duration;
+ * engine sources use the structure timeline's (#1899) when one plays.
+ */
 export function transportDurationSec(input: {
   source: TransportSource;
   bufferDurationSec: number | null;
   timelineSec: number | null;
   draftDurationSec: number | null;
+  structureSec?: number | null;
 }): number | null {
   if (input.source.kind === "draft") return input.draftDurationSec;
+  if (input.structureSec !== undefined && input.structureSec !== null) {
+    return input.structureSec;
+  }
   return input.bufferDurationSec ?? input.timelineSec;
+}
+
+/** The timeline the engine should play: null for none or the identity. */
+export function structureTimelineFor(
+  timeline: RemixStructureTimeline | null | undefined,
+): RemixStructureTimeline | null {
+  return timeline && !isIdentityTimeline(timeline) ? timeline : null;
+}
+
+/** Signature of a timeline, so a refetched but equal one restarts nothing. */
+export function structureTimelineKey(
+  timeline: RemixStructureTimeline | null,
+): string {
+  if (!timeline) return "";
+  return JSON.stringify([
+    timeline.durationSec,
+    timeline.segments.map((segment) => [
+      segment.section,
+      segment.outStartSec,
+      segment.outEndSec,
+      segment.srcStartSec,
+      segment.srcEndSec,
+      segment.joinFadeIn,
+      segment.joinFadeOut,
+      segment.fadeIn,
+      segment.fadeOut,
+    ]),
+  ]);
+}
+
+/**
+ * A block loop after the timeline changed (#1899): the same block index,
+ * re-read from the new segments (identity segments are the source spans);
+ * null when that block no longer exists or no timeline is known.
+ */
+export function loopForTimeline(
+  loop: TransportLoop | null,
+  segments: RemixStructureSegment[] | null | undefined,
+): TransportLoop | null {
+  if (!loop) return null;
+  const segment = segments?.[loop.sectionIndex];
+  return segment
+    ? {
+        sectionIndex: loop.sectionIndex,
+        startSec: segment.outStartSec,
+        endSec: segment.outEndSec,
+      }
+    : null;
 }
 
 /**
@@ -267,6 +336,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     source.kind === "draft"
       ? resolveDraftCacheKey(source.jobId, input.currentDraftJobId)
       : null;
+  const structure = structureTimelineFor(input.timeline);
   const durationSec = transportDurationSec({
     source,
     bufferDurationSec,
@@ -274,6 +344,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     draftDurationSec: sourceDraftKey
       ? draftDurations[sourceDraftKey] ?? null
       : null,
+    structureSec: structure?.durationSec ?? null,
   });
   const durationRef = useRef(durationSec);
   durationRef.current = durationSec;
@@ -427,6 +498,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
           : null,
         effects: engineEffects(latest.effects, next),
         bpm: latest.bpm ?? null,
+        timeline: structureTimelineFor(latest.timeline),
         onEnded: () => {
           if (requestId !== requestRef.current) return;
           halt(0);
@@ -773,6 +845,31 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       );
     }
   }, [currentPosition, effectsKey, previewHandle, status]);
+
+  // Structure edits (#1899): a changed timeline re-reads the looped block
+  // and, while the engine plays, restarts at the same timeline position
+  // (clamped to the new length). Equal refetched timelines change nothing.
+  const timelineKey = structureTimelineKey(structure);
+  const timelineKeyRef = useRef(timelineKey);
+  useEffect(() => {
+    if (timelineKeyRef.current === timelineKey) return;
+    timelineKeyRef.current = timelineKey;
+    const latest = inputRef.current;
+    const nextLoop = loopForTimeline(loopRef.current, latest.timeline?.segments);
+    loopRef.current = nextLoop;
+    setLoopState(nextLoop);
+    if (statusRef.current === "idle") {
+      cursorRef.current = clampSeek(cursorRef.current, durationRef.current);
+      setCursorRevision((revision) => revision + 1);
+      return;
+    }
+    if (!isEngineSource(sourceRef.current)) return;
+    void startRef.current(
+      sourceRef.current,
+      clampSeek(currentPosition(), durationRef.current),
+      nextLoop,
+    );
+  }, [currentPosition, timelineKey]);
 
   // A new generation replaces the current draft: drop its cached audio so
   // "Draft" plays the new one.

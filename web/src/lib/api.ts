@@ -7,6 +7,7 @@ import type {
 } from "./verificationSemantics";
 import { invalidateStoredAuthSession } from "./authSession";
 import type { RemixFxRecipe } from "./remixFx";
+import type { RemixStructure, RemixStructureSegment } from "./remixStructure";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -6013,6 +6014,14 @@ export type RemixProject = {
   aiTarget?: RemixAiTarget | null;
   /** Effects recipe `remix-fx/v1` (#1897); null/absent = untouched. */
   effects?: RemixFxRecipe | null;
+  /** Structure recipe `remix-structure/v1` (#1899); null/absent = original order. */
+  structure?: RemixStructure | null;
+  /**
+   * Server-derived output timeline segments (#1899): the grid's sections in
+   * order without a structure; null/absent without a section grid. See
+   * `timelineFromSegments` for duration and master fades.
+   */
+  timeline?: RemixStructureSegment[] | null;
 };
 
 /** Studio AI target (#1882): whole track, a new layer, or a stem replacement. */
@@ -6060,6 +6069,11 @@ export type RemixProjectPatch = {
   aiTarget?: { kind: RemixAiTargetKind; stemId?: string | null } | null;
   /** Effects recipe `remix-fx/v1` (#1897); null clears it. */
   effects?: RemixFxRecipe | null;
+  /**
+   * Structure recipe `remix-structure/v1` (#1899); null = original order.
+   * Send the remapped per-block stem masks in the same PATCH.
+   */
+  structure?: RemixStructure | null;
 };
 
 export async function updateRemixProject(

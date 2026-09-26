@@ -206,10 +206,37 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     });
   });
 
+  it("conditions on the structured mix and records the structure (#1899)", async () => {
+    const { provider, mix } = buildProvider();
+    const renderStructure = {
+      structure: {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [{ section: 1 }, { section: 0, fadeOut: true as const }],
+      },
+      segments: [],
+    };
+    const job = await provider.createRemixDraft(
+      generationInput({ renderStructure }),
+      AUTH,
+    );
+    expect(mix).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      AUTH,
+      undefined,
+      renderStructure,
+    );
+    expect(job.conditioningStructure).toEqual({
+      structure: renderStructure.structure,
+      structureVersion: "remix-structure-dsp/v1",
+    });
+    expect("conditioningEffects" in job).toBe(false);
+  });
+
   it("records no conditioning effects when the project has none (#1897)", async () => {
     const { provider } = buildProvider();
     const job = await provider.createRemixDraft(generationInput(), AUTH);
     expect("conditioningEffects" in job).toBe(false);
+    expect("conditioningStructure" in job).toBe(false);
   });
 
   it("mixes the arrangement, calls the worker, stores, and returns job metadata", async () => {

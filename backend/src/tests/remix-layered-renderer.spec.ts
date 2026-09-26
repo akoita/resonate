@@ -80,6 +80,42 @@ describe("FfmpegLayeredRemixRenderer (#1209)", () => {
     );
   });
 
+  it("forwards structure blocks (#1899) to the mixer", async () => {
+    const structure = {
+      structure: {
+        schemaVersion: "remix-structure/v1" as const,
+        blocks: [{ section: 1 }, { section: 0, fadeOut: true as const }],
+      },
+      segments: [],
+    };
+    await renderer().render({
+      remixProjectId: "project-1",
+      stems: [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      authorization,
+      structure,
+      layer: {
+        provider: "lyria-3-pro-preview",
+        jobId: "layer-job",
+        prompt: "add piano",
+        constraints: {},
+        output: {
+          outputUri: "local://layer.wav",
+          mimeType: "audio/wav",
+          synthIdPresent: true,
+          seed: 1,
+          sampleRate: 48000,
+        },
+      },
+    });
+    expect(mixer.mixUnmutedStemsWithAudioBuffers).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      [expect.objectContaining({ label: "generated-layer", gainDb: 0 })],
+      authorization,
+      undefined,
+      structure,
+    );
+  });
+
   it("mixes arranged stems and the generated layer into one stored draft", async () => {
     const job = await renderer().render({
       remixProjectId: "project-1",

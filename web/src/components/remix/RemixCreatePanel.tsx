@@ -21,6 +21,18 @@ import {
   type RemixFxRecipe,
   type RemixVibeId,
 } from "../../lib/remixFx";
+import type { RemixSectionGrid } from "../../lib/api";
+import {
+  extendedMix,
+  normalizeRemixStructure,
+  REMIX_STRUCTURE_SCHEMA_VERSION,
+  resetStructure,
+  shortEdit,
+  structureTimeline,
+  structureTooLongReason,
+  type RemixStructureEditResult,
+  type RemixStructureEditState,
+} from "../../lib/remixStructure";
 
 export const REMIX_STUDIO_LOCKED_NOTE =
   "This remix is published — the studio is locked.";
@@ -55,6 +67,12 @@ export type RemixCreatePanelProps = {
   effects: RemixFxRecipe | null;
   onApplyVibe(id: RemixVibeId): void;
   onMasterFxChange(key: keyof RemixFxMaster, value: number): void;
+  /**
+   * One-click song length & shape options (#1899); absent/empty = the
+   * section is hidden (no section grid).
+   */
+  structureOptions?: RemixStructureShapeOption[];
+  onApplyStructure?(id: RemixStructureShapeId): void;
   primary: RemixCreatePrimaryAction;
   creditMeter: ReactNode;
   attribution: ReactNode;
@@ -85,6 +103,188 @@ export function primaryClickHandler(
     }
     primary.onClick();
   };
+}
+
+/** One-click structure shapes (#1899). */
+export type RemixStructureShapeId = "original" | "extended" | "short";
+
+export type RemixStructureShapeOption = {
+  id: RemixStructureShapeId;
+  label: string;
+  description: string;
+  /** The current structure already is this shape. */
+  pressed: boolean;
+  enabled: boolean;
+  /** Honest reason when the shape can't be applied. */
+  reason: string | null;
+  /** Plain length change, e.g. "3:36 → 4:48"; just "4:48" when pressed. */
+  lengthLabel: string | null;
+};
+
+export const REMIX_STRUCTURE_SHAPES: readonly {
+  id: RemixStructureShapeId;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: "original",
+    label: "Original length",
+    description: "The song as released, in its original order",
+  },
+  {
+    id: "extended",
+    label: "Extended mix",
+    description: "Longer intro and outro — handy for DJs",
+  },
+  {
+    id: "short",
+    label: "Short edit",
+    description: "About a third shorter, fades out",
+  },
+];
+
+/** m:ss for a length in seconds. */
+export function formatSongLength(sec: number): string {
+  const total = Math.max(0, Math.round(Number.isFinite(sec) ? sec : 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function shapeOp(
+  grid: RemixSectionGrid,
+  state: RemixStructureEditState,
+  id: RemixStructureShapeId,
+): RemixStructureEditResult | null {
+  switch (id) {
+    case "original":
+      return resetStructure(state, grid);
+    case "extended":
+      return extendedMix(grid, state);
+    case "short":
+      return shortEdit(grid, state);
+  }
+}
+
+function currentStructureKey(
+  grid: RemixSectionGrid,
+  state: RemixStructureEditState,
+): string {
+  return JSON.stringify(
+    normalizeRemixStructure(
+      { schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION, blocks: state.blocks },
+      grid.sections.length,
+    ),
+  );
+}
+
+/**
+ * The structure edit for a shape (#1899); null when the shape is refused or
+ * already applied (so re-pressing it never reshuffles the masks).
+ */
+export function structureShapeResult(
+  grid: RemixSectionGrid,
+  state: RemixStructureEditState,
+  id: RemixStructureShapeId,
+): RemixStructureEditResult | null {
+  const result = shapeOp(grid, state, id);
+  if (!result) return null;
+  return JSON.stringify(result.structure) === currentStructureKey(grid, state)
+    ? null
+    : result;
+}
+
+/** The three shape buttons for the current structure (#1899). */
+export function structureShapeOptions(
+  grid: RemixSectionGrid,
+  state: RemixStructureEditState,
+): RemixStructureShapeOption[] {
+  const current = currentStructureKey(grid, state);
+  const currentSec = structureTimeline(grid, state.blocks).durationSec;
+  return REMIX_STRUCTURE_SHAPES.map((shape) => {
+    const result = shapeOp(grid, state, shape.id);
+    if (!result) {
+      return {
+        ...shape,
+        pressed: false,
+        enabled: false,
+        // Only the extended mix can be refused on a real grid: the cap.
+        reason:
+          shape.id === "extended" && grid.sections.length > 0
+            ? structureTooLongReason(grid)
+            : "Not available for this song",
+        lengthLabel: null,
+      };
+    }
+    const pressed = JSON.stringify(result.structure) === current;
+    const nextSec = structureTimeline(grid, result.blocks).durationSec;
+    return {
+      ...shape,
+      pressed,
+      enabled: true,
+      reason: null,
+      lengthLabel: pressed
+        ? formatSongLength(nextSec)
+        : `${formatSongLength(currentSec)} → ${formatSongLength(nextSec)}`,
+    };
+  });
+}
+
+/**
+ * Song length & shape (#1899): one-click structure options with the length
+ * change spelled out.
+ */
+function StructureShapeSection({
+  options,
+  onApply,
+  locked,
+}: {
+  options: RemixStructureShapeOption[];
+  onApply(id: RemixStructureShapeId): void;
+  locked: boolean;
+}) {
+  const labelId = `${useId()}-shape`;
+  return (
+    <div className="mt-4 remix-structure-shapes">
+      <div className="text-xs text-zinc-500 mb-2" id={labelId}>
+        Song length &amp; shape
+      </div>
+      <div className="grid gap-2" role="group" aria-labelledby={labelId}>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={option.pressed}
+            disabled={locked || !option.enabled}
+            title={option.reason ?? undefined}
+            className={`text-left rounded-md border px-3 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-60 remix-structure-shape-btn remix-structure-shape-${option.id} ${
+              option.pressed
+                ? "border-purple-500/60 bg-purple-500/15"
+                : "border-zinc-700 bg-zinc-950 hover:border-purple-500/60 hover:bg-purple-500/10"
+            }`}
+            onClick={() => onApply(option.id)}
+          >
+            <span className="flex items-baseline justify-between gap-2">
+              <span
+                className={`text-sm ${option.pressed ? "text-purple-200" : "text-zinc-200"}`}
+              >
+                {option.label}
+              </span>
+              {option.lengthLabel && (
+                <span className="shrink-0 text-xs tabular-nums text-zinc-400 remix-structure-shape-length">
+                  {option.lengthLabel}
+                </span>
+              )}
+            </span>
+            <span className="block text-xs text-zinc-500">{option.description}</span>
+            {option.reason && (
+              <span className="block text-xs text-zinc-500 remix-structure-shape-reason">
+                {option.reason}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 type MasterControl = {
@@ -232,6 +432,8 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
     effects,
     onApplyVibe,
     onMasterFxChange,
+    structureOptions,
+    onApplyStructure,
     primary,
     creditMeter,
     attribution,
@@ -307,6 +509,13 @@ export function RemixCreatePanel(props: RemixCreatePanelProps) {
             onMasterFxChange={onMasterFxChange}
             locked={locked}
           />
+          {structureOptions && structureOptions.length > 0 && onApplyStructure && (
+            <StructureShapeSection
+              options={structureOptions}
+              onApply={onApplyStructure}
+              locked={locked}
+            />
+          )}
           {recipes.length > 0 && (
             <div className="mt-4">
               <div className="text-xs text-zinc-500 mb-2" id={recipesLabelId}>

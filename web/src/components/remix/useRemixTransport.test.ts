@@ -5,10 +5,14 @@ import {
   draftLoopSeekTarget,
   engineEffects,
   enginePreviewStems,
+  loopForTimeline,
   previewSectionsKey,
   resolveDraftCacheKey,
+  structureTimelineFor,
+  structureTimelineKey,
   transportDurationSec,
 } from "./useRemixTransport";
+import { structureTimeline } from "../../lib/remixStructure";
 
 describe("useRemixTransport helpers (#1879)", () => {
   it("keys draft audio by archived job or by the current generation", () => {
@@ -131,5 +135,83 @@ describe("engineEffects (#1897)", () => {
     expect(engineEffects(effects, { kind: "arrangement" })).toBe(effects);
     expect(engineEffects(effects, { kind: "original" })).toBeNull();
     expect(engineEffects(undefined, { kind: "arrangement" })).toBeNull();
+  });
+});
+
+describe("structure timeline in the transport (#1899)", () => {
+  const grid = {
+    sections: [
+      { startSec: 0, endSec: 6 },
+      { startSec: 6, endSec: 22 },
+      { startSec: 22, endSec: 38 },
+    ],
+  };
+  const identity = structureTimeline(grid, null);
+  const reordered = structureTimeline(grid, [
+    { section: 2 },
+    { section: 1 },
+    { section: 1, fadeOut: true },
+  ]);
+
+  it("plays only non-identity timelines", () => {
+    expect(structureTimelineFor(null)).toBeNull();
+    expect(structureTimelineFor(undefined)).toBeNull();
+    expect(structureTimelineFor(identity)).toBeNull();
+    expect(structureTimelineFor(reordered)).toBe(reordered);
+  });
+
+  it("uses the timeline duration for engine sources, never for drafts", () => {
+    const base = {
+      bufferDurationSec: 38.2,
+      timelineSec: 38,
+      draftDurationSec: 48.5,
+      structureSec: reordered.durationSec,
+    };
+    expect(reordered.durationSec).toBe(48);
+    expect(transportDurationSec({ ...base, source: { kind: "arrangement" } })).toBe(48);
+    expect(transportDurationSec({ ...base, source: { kind: "original" } })).toBe(48);
+    expect(
+      transportDurationSec({ ...base, source: { kind: "draft", jobId: null } }),
+    ).toBe(48.5);
+    expect(
+      transportDurationSec({
+        ...base,
+        structureSec: null,
+        source: { kind: "arrangement" },
+      }),
+    ).toBe(38.2);
+  });
+
+  it("keys timelines by content", () => {
+    expect(structureTimelineKey(null)).toBe("");
+    expect(structureTimelineKey(reordered)).toBe(
+      structureTimelineKey(
+        structureTimeline(grid, [
+          { section: 2 },
+          { section: 1 },
+          { section: 1, fadeOut: true },
+        ]),
+      ),
+    );
+    expect(structureTimelineKey(reordered)).not.toBe(
+      structureTimelineKey(
+        structureTimeline(grid, [{ section: 2 }, { section: 1 }, { section: 1 }]),
+      ),
+    );
+  });
+
+  it("re-reads a block loop from the new timeline by block index", () => {
+    const loop = { sectionIndex: 1, startSec: 6, endSec: 22 };
+    expect(loopForTimeline(loop, reordered.segments)).toEqual({
+      sectionIndex: 1,
+      startSec: 16,
+      endSec: 32,
+    });
+    expect(loopForTimeline(loop, identity.segments)).toEqual(loop);
+    expect(
+      loopForTimeline({ ...loop, sectionIndex: 3 }, reordered.segments),
+    ).toBeNull();
+    expect(loopForTimeline(loop, null)).toBeNull();
+    expect(loopForTimeline(null, reordered.segments)).toBeNull();
   });
 });

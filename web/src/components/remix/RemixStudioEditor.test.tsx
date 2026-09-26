@@ -37,6 +37,10 @@ import {
   saveStatusLabel,
   stemPreviewStates,
   stemDisplayName,
+  editsTimeline,
+  editsWithStructure,
+  projectStructure,
+  structureEditStateFor,
   AUTOSAVE_DELAY_MS,
   editsAfterSave,
   SAVING_LATEST_CHANGES_REASON,
@@ -56,6 +60,8 @@ import {
   stemPreviewGain,
 } from "../../lib/remixAudioPreview";
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
+import { blockActionResult } from "./RemixSessionLanes";
+import { REMIX_STRUCTURE_SCHEMA_VERSION } from "../../lib/remixStructure";
 
 const mockUseAuth = vi.fn(() => ({ token: "jwt-token", login: vi.fn() }));
 
@@ -2037,5 +2043,225 @@ describe("saved AI target (#1882)", () => {
     expect(checked).toHaveLength(1);
     expect(checked[0]).toContain('value="replace_stem"');
     expect(html).toMatch(/<option[^>]*value="stem-2"[^>]*selected=""/);
+  });
+});
+
+describe("structure blocks (#1899)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [
+      { startSec: 0, endSec: 16 },
+      { startSec: 16, endSec: 32 },
+      { startSec: 32, endSec: 48 },
+      { startSec: 48, endSec: 64 },
+    ],
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const mask = (sections: boolean[]) => ({
+    schemaVersion: "remix-stem-arrangement/v1",
+    sections,
+  });
+  const repeated = {
+    schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+    blocks: [{ section: 0 }, { section: 1 }, { section: 1 }, { section: 2 }, { section: 3 }],
+  };
+
+  function structured(overrides: Partial<RemixProject> = {}): RemixProject {
+    const base = project({ sectionGrid, structure: repeated });
+    base.stems[1].arrangement = mask([true, false, true, true, true]);
+    return { ...base, ...overrides };
+  }
+
+  it("initialEdits parses masks against the block count", () => {
+    const edits = initialEdits(structured());
+    expect(edits.structure).toEqual(repeated);
+    expect(edits.stems["stem-2"].sections).toEqual([true, false, true, true, true]);
+    expect(projectStructure(structured()).blockCount).toBe(5);
+
+    // A section-length (stale) mask on a 5-block project counts as all on.
+    const stale = structured();
+    stale.stems[1].arrangement = mask([true, false, true, true]);
+    expect(initialEdits(stale).stems["stem-2"].sections).toBeNull();
+    // ...and is not rewritten by an unrelated save.
+    expect(buildProjectPatch(stale, initialEdits(stale))).toEqual({});
+
+    // No structure: blocks are the sections, exactly as before.
+    const plain = project({ sectionGrid });
+    plain.stems[1].arrangement = mask([true, true, false, true]);
+    expect(initialEdits(plain).structure).toBeNull();
+    expect(initialEdits(plain).stems["stem-2"].sections).toEqual([
+      true,
+      true,
+      false,
+      true,
+    ]);
+    // The identity order normalizes to null.
+    expect(
+      initialEdits(
+        project({
+          sectionGrid,
+          structure: {
+            schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+            blocks: [0, 1, 2, 3].map((section) => ({ section })),
+          },
+        }),
+      ).structure,
+    ).toBeNull();
+  });
+
+  it("buildProjectPatch sends the structure with the remapped masks", () => {
+    const plain = project({ sectionGrid });
+    plain.stems[1].arrangement = mask([true, true, false, true]);
+    const edits = initialEdits(plain);
+    const result = blockActionResult(
+      structureEditStateFor(sectionGrid, edits),
+      2,
+      "repeat",
+      sectionGrid,
+    )!;
+    const next = editsWithStructure(edits, result);
+    expect(buildProjectPatch(plain, next)).toEqual({
+      structure: {
+        schemaVersion: REMIX_STRUCTURE_SCHEMA_VERSION,
+        blocks: [0, 1, 2, 2, 3].map((section) => ({ section })),
+      },
+      // The off column is copied with its block; the null mask stays null.
+      stems: [{ stemId: "stem-2", arrangement: mask([true, true, false, false, true]) }],
+    });
+  });
+
+  it("buildProjectPatch clears the structure and diffs masks against the persisted block count", () => {
+    const saved = structured();
+    const edits = initialEdits(saved);
+    expect(buildProjectPatch(saved, edits)).toEqual({}); // round-trip clean
+
+    // Removing the repeat restores the original order: structure null, and
+    // stem-2's mask drops the removed column.
+    const removed = editsWithStructure(
+      edits,
+      blockActionResult(
+        structureEditStateFor(sectionGrid, edits),
+        2,
+        "remove",
+        sectionGrid,
+      )!,
+    );
+    expect(removed.structure).toBeNull();
+    expect(buildProjectPatch(saved, removed)).toEqual({
+      structure: null,
+      stems: [{ stemId: "stem-2", arrangement: mask([true, false, true, true]) }],
+    });
+
+    // A fade leaves every mask alone.
+    const faded = editsWithStructure(
+      edits,
+      blockActionResult(
+        structureEditStateFor(sectionGrid, edits),
+        4,
+        "fade_out",
+        sectionGrid,
+      )!,
+    );
+    const patch = buildProjectPatch(saved, faded);
+    expect(patch.structure?.blocks[4]).toEqual({ section: 3, fadeOut: true });
+    expect(patch.stems).toBeUndefined();
+  });
+
+  it("a structure change clears a stale persisted mask", () => {
+    // stem-2 holds a 4-long mask on a 5-block project: stale (reads all on).
+    const stale = structured();
+    stale.stems[1].arrangement = mask([true, false, false, true]);
+    const edits = initialEdits(stale);
+    expect(edits.stems["stem-2"].sections).toBeNull();
+    // Removing a block makes the count 4 — the stale mask's length — so it
+    // is cleared explicitly instead of coming back to life.
+    const removed = editsWithStructure(
+      edits,
+      blockActionResult(
+        structureEditStateFor(sectionGrid, edits),
+        2,
+        "remove",
+        sectionGrid,
+      )!,
+    );
+    expect(buildProjectPatch(stale, removed)).toEqual({
+      structure: null,
+      stems: [{ stemId: "stem-2", arrangement: null }],
+    });
+    // Also cleared by a structure change that keeps the count (a fade).
+    const faded = editsWithStructure(
+      edits,
+      blockActionResult(
+        structureEditStateFor(sectionGrid, edits),
+        0,
+        "fade_in",
+        sectionGrid,
+      )!,
+    );
+    expect(buildProjectPatch(stale, faded).stems).toEqual([
+      { stemId: "stem-2", arrangement: null },
+    ]);
+  });
+
+  it("a structure change does not re-send a valid mask the edit keeps", () => {
+    const saved = structured();
+    const edits = initialEdits(saved);
+    const faded = editsWithStructure(
+      edits,
+      blockActionResult(
+        structureEditStateFor(sectionGrid, edits),
+        0,
+        "fade_in",
+        sectionGrid,
+      )!,
+    );
+    const patch = buildProjectPatch(saved, faded);
+    expect(patch.structure).toBeDefined();
+    expect(patch.stems).toBeUndefined();
+  });
+
+  it("stemPreviewStates gates by block in timeline time", () => {
+    const proj = structured();
+    const states = stemPreviewStates(proj, initialEdits(proj));
+    // Blocks: 0–16 (s0), 16–32 (s1, off), 32–48 (s1 again, on), 48–64, 64–80.
+    expect(states.find((state) => state.stemId === "stem-2")!.activeIntervals).toEqual([
+      { startSec: 0, endSec: 16 },
+      { startSec: 32, endSec: 80 },
+    ]);
+    expect(states.find((state) => state.stemId === "stem-1")!.activeIntervals).toBeNull();
+    expect(editsTimeline(proj, initialEdits(proj))!.durationSec).toBe(80);
+    expect(editsTimeline(project(), initialEdits(project()))).toBeNull();
+  });
+
+  it("names a block loop after its source section", () => {
+    expect(transportLoopLabel(sectionGrid, 2, repeated.blocks)).toBe(
+      "Looping bar 9",
+    );
+    expect(transportLoopLabel(sectionGrid, 4, repeated.blocks)).toBe(
+      "Looping bar 25",
+    );
+    expect(transportLoopLabel(sectionGrid, 5, repeated.blocks)).toBeNull();
+  });
+
+  it("renders block columns, the repeat mark, section menus and the shape options", () => {
+    const html = renderToStaticMarkup(<RemixStudioEditor project={structured()} />);
+    expect(html).toContain('aria-label="Drums: section 5 on"');
+    expect(html).toContain('aria-label="Drums: section 2 off"');
+    expect(html).toContain('aria-label="Drums: section 3 on"');
+    expect(html).toContain('title="Repeat of bar 9"');
+    expect(html).toContain('aria-label="Section options for bar 9 (repeat)"');
+    expect(html).toContain('aria-haspopup="menu"');
+    expect(html).toContain("Song length &amp; shape");
+    expect(html).toContain("1:20 → 1:04"); // back to the original length
+  });
+
+  it("locks the section menus and shapes on a published remix", () => {
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={structured({ status: "published" })} />,
+    );
+    expect(html).toMatch(/aria-label="Section options for bar 1"[^>]*disabled=""/);
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*remix-structure-shape-original/);
   });
 });

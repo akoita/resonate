@@ -6,6 +6,7 @@ import {
   type StemRenderAuthorization,
 } from "./remix-generation.provider";
 import type { RemixRenderFx } from "./remix-fx";
+import type { RemixRenderStructure } from "./remix-structure";
 import {
   buildStemMixFfmpegArgs,
   type StemArrangementEntry,
@@ -25,6 +26,8 @@ export type StemMixRenderInput = {
   authorization: StemRenderAuthorization;
   /** Project effects recipe + grid tempo (#1897); absent = no effects. */
   fx?: RemixRenderFx;
+  /** Structure blocks + timeline (#1899); absent = the original order. */
+  structure?: RemixRenderStructure;
 };
 
 /**
@@ -49,7 +52,14 @@ export class FfmpegStemMixRenderer implements StemMixRenderer {
 
   async render(input: StemMixRenderInput): Promise<RemixGenerationJob> {
     const jobId = randomUUID();
-    const mixed = input.fx
+    const mixed = input.structure
+      ? await this.mixer.mixUnmutedStems(
+          input.stems,
+          input.authorization,
+          input.fx,
+          input.structure,
+        )
+      : input.fx
       ? await this.mixer.mixUnmutedStems(
           input.stems,
           input.authorization,
