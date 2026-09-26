@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  draftProvenanceChip,
   formatCompletedAt,
   gatedClickHandler,
   RemixDraftsPanel,
@@ -311,5 +312,49 @@ describe("formatters", () => {
     const absolute = formatCompletedAt("2026-09-20T09:30:00Z", NOW);
     expect(absolute).not.toBeNull();
     expect(absolute).not.toMatch(/ago/);
+  });
+});
+
+describe("provenance with an added beat (#1902)", () => {
+  it("reads \"Your stems + your beat\" for a stem render with a beat", () => {
+    expect(draftProvenanceChip("stem_audio", ["beat"])?.label).toBe(
+      "Your stems + your beat",
+    );
+    expect(draftProvenanceChip("stem_audio", [])?.label).toBe("Your stems only");
+    expect(draftProvenanceChip("stem_audio", null)?.label).toBe("Your stems only");
+    // AI groundings keep their own honest label.
+    expect(draftProvenanceChip("stem_plus_ai", ["beat"])?.label).toBe(
+      "Your stems + AI layer",
+    );
+  });
+
+  it("renders the beat chip on the current draft", () => {
+    const html = renderToStaticMarkup(
+      <RemixDraftsPanel
+        current={draft({ addedParts: ["beat"] })}
+        versions={[]}
+        onPlayCurrent={noop}
+        onPlayVersion={noop}
+        publish={{
+          enabled: true,
+          reason: null,
+          busy: false,
+          reasonCode: "ok",
+          onClick: noop,
+          onLockedClick: noop,
+        }}
+        exportAction={{
+          enabled: true,
+          reason: null,
+          busy: false,
+          onClick: noop,
+          onLockedClick: noop,
+        }}
+        published={false}
+        emptyHint=""
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("Your stems + your beat");
   });
 });

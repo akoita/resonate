@@ -29,6 +29,10 @@ import {
 import { AesEncryptionProvider } from "../modules/encryption/providers/aes_encryption_provider";
 import { FfmpegStemAudioMixer } from "../modules/remix/stem-audio-mixer";
 import { structureTimeline } from "../modules/remix/remix-structure";
+import {
+  REMIX_BEAT_SCHEMA_VERSION,
+  type RemixBeat,
+} from "../modules/remix/remix-beat";
 import type { StemRenderAuthorization } from "../modules/remix/remix-generation.provider";
 import type { StorageProvider } from "../modules/storage/storage_provider";
 
@@ -525,6 +529,97 @@ describe("FfmpegStemAudioMixer decrypt-for-render boundary (integration)", () =>
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
+    });
+
+    it("synthesizes the beat into the temp dir, mixes it and records it (#1902)", async () => {
+      const mixer = new FfmpegStemAudioMixer(
+        storageProvider as unknown as StorageProvider,
+        encryptionService,
+      );
+      const grid = {
+        kind: "bars" as const,
+        sectionSeconds: 2,
+        bpm: 120,
+        durationSeconds: 4,
+        sections: [
+          { startSec: 0, endSec: 2 },
+          { startSec: 2, endSec: 4 },
+        ],
+      };
+      const off = new Array<boolean>(16).fill(false);
+      const beat: RemixBeat = {
+        schemaVersion: REMIX_BEAT_SCHEMA_VERSION,
+        kit: "punchy",
+        pattern: {
+          kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+          snare: off,
+          clap: off,
+          hat: off,
+          openHat: off,
+        },
+        swing: 0,
+        gainDb: -2,
+        blocks: null,
+      };
+      const before = remixMixTempDirs();
+      const mixed = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        undefined,
+        undefined,
+        { beat, grid, segments: structureTimeline(grid, null) },
+      );
+      expect(mixed.renderMetadata).toMatchObject({
+        schemaVersion: "remix-render-policy/v1",
+        inputCount: 2,
+        activeStemCount: 1,
+        beat,
+        beatDspVersion: "remix-beat-dsp/v1",
+        addedParts: ["beat"],
+      });
+      expect("effects" in mixed.renderMetadata).toBe(false);
+      expect("structure" in mixed.renderMetadata).toBe(false);
+      // The beat WAV lives only in the per-render temp dir.
+      const after = remixMixTempDirs();
+      expect([...after].filter((dir) => !before.has(dir))).toEqual([]);
+      // The 1 s source is extended by the 4 s beat timeline (+ decay tail).
+      const dir = mkdtempSync(join(tmpdir(), "remix-beat-mixer-"));
+      try {
+        const out = join(dir, "mix.mp3");
+        writeFileSync(out, mixed.buffer);
+        const raw = execFileSync(
+          "ffmpeg",
+          ["-hide_banner", "-loglevel", "error", "-i", out, "-ac", "1", "-f", "f32le", "-c:a", "pcm_f32le", "-"],
+          { timeout: 60_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        expect(raw.length / 4 / 48_000).toBeGreaterThan(4.5);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+
+      // A muted beat is skipped entirely: no input, no beat metadata.
+      const mutedMix = await mixer.mixUnmutedStems(
+        [{ stemId: E2E_STEM, gainDb: 0, muted: false }],
+        {
+          userId: `${E2E_PREFIX}user`,
+          remixProjectId: `${E2E_PREFIX}project`,
+          authorizedStemIds: new Set([E2E_STEM]),
+        },
+        undefined,
+        undefined,
+        {
+          beat: { ...beat, muted: true },
+          grid,
+          segments: structureTimeline(grid, null),
+        },
+      );
+      expect(mutedMix.renderMetadata.inputCount).toBe(1);
+      expect("beat" in mutedMix.renderMetadata).toBe(false);
+      expect("addedParts" in mutedMix.renderMetadata).toBe(false);
     });
   },
 );

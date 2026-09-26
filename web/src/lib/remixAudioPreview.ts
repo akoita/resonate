@@ -16,6 +16,15 @@ import {
   type RemixFxRecipe,
 } from "./remixFx";
 import {
+  beatRenderKey,
+  beatTrackLength,
+  REMIX_BEAT_LANE_ID,
+  renderBeatInto,
+  type RemixBeatGrid,
+  type RemixBeatRecipe,
+  type RemixBeatSegment,
+} from "./remixBeat";
+import {
   isIdentityTimeline,
   masterFadeValueAt,
   REMIX_STRUCTURE_JOIN_FADE_SECONDS,
@@ -46,6 +55,17 @@ export type PreviewStemState = {
    * envelope over these spans, mirroring the server render's gating.
    */
   activeIntervals?: Array<{ startSec: number; endSec: number }> | null;
+};
+
+/**
+ * The beat (#1902) as the preview plays it: the recipe rendered over the
+ * timeline's blocks (timeline time, so never structure-scheduled). A muted
+ * recipe (`recipe.muted`) stays in the graph at gain 0, like a muted stem.
+ */
+export type PreviewBeat = {
+  recipe: RemixBeatRecipe;
+  grid: RemixBeatGrid;
+  segments: RemixBeatSegment[];
 };
 
 /** Matches the server render's section edge fade (SECTION_FADE_SECONDS). */
@@ -375,6 +395,11 @@ export type StemArrangementPreviewHandle = {
     stems: PreviewStemState[],
     soloStemId: string | null,
     referenceStemId?: string | null,
+    /**
+     * Live beat level/mute (#1902); absent = the last known beat. A beat
+     * that appears or changes its audio needs a restart (new play()).
+     */
+    beat?: PreviewBeat | null,
   ): void;
   stop(): void;
   level(): PreviewLevel;
@@ -444,7 +469,24 @@ export type StemPreviewEngine = {
      * fades are held at 1 while looping.
      */
     timeline?: RemixStructureTimeline | null;
+    /**
+     * Beat `remix-beat/v1` (#1902). Null/absent keeps the graph unchanged.
+     * Otherwise ONE extra buffer source plays the beat track (built by
+     * `beatBuffer`) from the timeline offset at `speed` → a beat gain
+     * (level, mute, solo via `REMIX_BEAT_LANE_ID`; silent while a
+     * reference plays) → the master (fade) chain; with effects, into the
+     * master bus plus a reverb send of 0.7 × master space. It loops with
+     * the timeline loop.
+     */
+    beat?: PreviewBeat | null;
   }): Promise<StemArrangementPreviewHandle>;
+  /**
+   * The beat track (#1902) as a mono AudioBuffer at the context's sample
+   * rate, rendered with `renderBeatInto` and memoized by
+   * `beatRenderKey` (the last one only). Creates the context without
+   * resuming it. Null once disposed or without WebAudio.
+   */
+  beatBuffer(beat: PreviewBeat): AudioBuffer | null;
   /**
    * Fetch and decode stems into the cache ahead of play (#1879), e.g. for
    * waveforms. Creates the AudioContext without resuming it (a suspended
@@ -508,6 +550,21 @@ export function stemPreviewGain(
   if (stem.muted) return 0;
   if (soloStemId && soloStemId !== stem.stemId) return 0;
   return dbToLinearGain(stem.gainDb);
+}
+
+/**
+ * Live gain for the beat (#1902): silent while a reference plays, when
+ * muted, or while a stem is soloed; its level otherwise (soloing the beat
+ * itself — `REMIX_BEAT_LANE_ID` — silences the stems in `stemPreviewGain`).
+ */
+export function beatPreviewGain(
+  beat: Pick<PreviewBeat, "recipe"> | null | undefined,
+  soloStemId: string | null,
+  referenceStemId: string | null = null,
+): number {
+  if (!beat || referenceStemId || beat.recipe.muted) return 0;
+  if (soloStemId && soloStemId !== REMIX_BEAT_LANE_ID) return 0;
+  return dbToLinearGain(beat.recipe.gainDb);
 }
 
 export function remixDraftOutputUri(metadata: unknown): string | null {
@@ -606,6 +663,8 @@ type StemFxChain = {
 
 type FxGraph = {
   stems: Map<string, StemFxChain>;
+  /** The beat's reverb send (#1902); null without a beat. */
+  beatSend: GainNode | null;
   masterTone: ReturnType<typeof createToneStage>;
   warmthDry: GainNode;
   warmthWet: GainNode;
@@ -637,6 +696,11 @@ function applyFxValues(graph: FxGraph, effects: RemixFxRecipe | null): void {
     if (wet > 0) tail = Math.max(tail, REMIX_FX_REVERB_SECONDS);
     const lastTap = taps[taps.length - 1];
     if (lastTap) tail = Math.max(tail, lastTap.delaySec);
+  }
+  if (graph.beatSend) {
+    const wet = reverbWet(0, master.space);
+    graph.beatSend.gain.value = wet;
+    if (wet > 0) tail = Math.max(tail, REMIX_FX_REVERB_SECONDS);
   }
   graph.tailSeconds = tail;
   graph.masterTone.set(master.tone);
@@ -681,6 +745,9 @@ export function createStemPreviewEngine(input: {
   let meterData: Float32Array<ArrayBuffer> | null = null;
   // Reverb IR (#1897), generated once per context at its sample rate.
   let reverbImpulse: AudioBuffer | null = null;
+  // Beat track (#1902): the last built buffer, by render key.
+  let beatCache: { key: string; buffer: AudioBuffer; audibleSec: number } | null =
+    null;
   let current: StemArrangementPreviewHandle | null = null;
   let playGeneration = 0;
   let disposed = false;
@@ -791,6 +858,37 @@ export function createStemPreviewEngine(input: {
     return buffer;
   };
 
+  const beatEntry = (
+    audioContext: AudioContext,
+    beat: PreviewBeat,
+  ): { buffer: AudioBuffer; audibleSec: number } => {
+    const rate = audioContext.sampleRate;
+    const key = `${rate}:${beatRenderKey(beat.recipe, beat.grid, beat.segments)}`;
+    if (beatCache?.key === key) return beatCache;
+    const length = Math.max(
+      1,
+      beatTrackLength(beat.recipe.kit, beat.segments, rate),
+    );
+    const buffer = audioContext.createBuffer(1, length, rate);
+    const data = buffer.getChannelData(0);
+    renderBeatInto(data, beat.recipe, beat.grid, beat.segments, rate);
+    // The source stops after the last hit has rung out, not after the
+    // track's silent padding.
+    let last = data.length - 1;
+    while (last >= 0 && data[last] === 0) last -= 1;
+    beatCache = { key, buffer, audibleSec: (last + 1) / rate };
+    return beatCache;
+  };
+
+  const beatBuffer: StemPreviewEngine["beatBuffer"] = (beat) => {
+    if (disposed) return null;
+    try {
+      return beatEntry(ensureContext(), beat).buffer;
+    } catch {
+      return null;
+    }
+  };
+
   const decode: StemPreviewEngine["decode"] = async (data) => {
     if (disposed) {
       throw new Error("Audio preview engine was disposed.");
@@ -884,6 +982,13 @@ export function createStemPreviewEngine(input: {
 
     // Structure-only nodes (#1899): per-block join gains, master fade.
     const structureNodes: AudioNode[] = [];
+    // Beat (#1902): one source + gain, only with an audible beat.
+    const beat = request.beat
+      ? beatEntry(audioContext, request.beat)
+      : null;
+    const beatPlays = beat !== null && beat.audibleSec > 0;
+    let beatState: PreviewBeat | null = request.beat ?? null;
+    const beatGain = beatPlays ? audioContext.createGain() : null;
 
     const releaseNodes = () => {
       for (const source of sources) source.disconnect();
@@ -891,6 +996,7 @@ export function createStemPreviewEngine(input: {
       for (const gain of sectionGains.values()) gain.disconnect();
       for (const node of fx?.nodes ?? []) node.disconnect();
       for (const node of structureNodes) node.disconnect();
+      beatGain?.disconnect();
     };
 
     const scheduleSections = (stems: PreviewStemState[], now: number) => {
@@ -928,12 +1034,20 @@ export function createStemPreviewEngine(input: {
     };
 
     const handle: StemArrangementPreviewHandle = {
-      update(stems, soloStemId, referenceStemId = null) {
+      update(stems, soloStemId, referenceStemId = null, nextBeat) {
         for (const stem of stems) {
           const gain = gains.get(stem.stemId);
           if (gain) {
             gain.gain.value = stemPreviewGain(stem, soloStemId, referenceStemId);
           }
+        }
+        if (nextBeat !== undefined) beatState = nextBeat;
+        if (beatGain) {
+          beatGain.gain.value = beatPreviewGain(
+            beatState,
+            soloStemId,
+            referenceStemId,
+          );
         }
       },
       stop() {
@@ -1047,8 +1161,17 @@ export function createStemPreviewEngine(input: {
         stemChains.set(stem.stemId, { tone, tapGains, send });
         stemInputs.set(stem.stemId, input);
       }
+      let beatSend: GainNode | null = null;
+      if (beatGain) {
+        // The beat joins the master bus with its own reverb send (#1902).
+        beatSend = audioContext.createGain();
+        beatGain.connect(masterBus);
+        beatGain.connect(beatSend).connect(convolver);
+        nodes.push(beatSend);
+      }
       fx = {
         stems: stemChains,
+        beatSend,
         masterTone,
         warmthDry,
         warmthWet,
@@ -1060,6 +1183,8 @@ export function createStemPreviewEngine(input: {
       };
       applyFxValues(fx, effects);
       stemInput = (stemId) => stemInputs.get(stemId) ?? masterBus;
+    } else if (beatGain) {
+      beatGain.connect(masterFade ?? output);
     }
 
     const onSourceEnded = () => {
@@ -1158,6 +1283,26 @@ export function createStemPreviewEngine(input: {
       starts.push(() => source.start(startAt, offset));
     });
 
+    if (beat && beatGain) {
+      // Already in timeline time: one source from the offset, never
+      // structure-scheduled; it loops with the timeline loop.
+      const source = audioContext.createBufferSource();
+      source.buffer = beat.buffer;
+      if (speed !== 1) source.playbackRate.value = speed;
+      source.connect(beatGain);
+      source.onended = onSourceEnded;
+      sources.push(source);
+      if (loop) {
+        source.loop = true;
+        source.loopStart = loop.startSec;
+        source.loopEnd = loop.endSec;
+        starts.push(() => source.start(startAt, offset));
+      } else {
+        const remaining = Math.max(0, beat.audibleSec - offset);
+        starts.push(() => source.start(startAt, offset, remaining));
+      }
+    }
+
     handle.update(
       request.stems,
       request.soloStemId,
@@ -1191,10 +1336,11 @@ export function createStemPreviewEngine(input: {
     master = null;
     meterData = null;
     reverbImpulse = null;
+    beatCache = null;
     const closing = context;
     context = null;
     void closing?.close().catch(() => undefined);
   };
 
-  return { play, preload, bufferDuration, decode, dispose };
+  return { play, preload, bufferDuration, decode, beatBuffer, dispose };
 }

@@ -6,17 +6,19 @@ import { useOptionalPlayer } from "../../lib/playerContext";
 import {
   createStemPreviewEngine,
   loopEntryOffset,
+  type PreviewBeat,
   type PreviewStemState,
   type StemArrangementPreviewHandle,
   type StemPreviewEngine,
 } from "../../lib/remixAudioPreview";
+import { beatRenderKey } from "../../lib/remixBeat";
 import type { RemixFxRecipe } from "../../lib/remixFx";
 import {
   isIdentityTimeline,
   type RemixStructureSegment,
   type RemixStructureTimeline,
 } from "../../lib/remixStructure";
-import { computePeaks } from "../../lib/remixWaveform";
+import { computePeaks, type PeakSourceBuffer } from "../../lib/remixWaveform";
 
 /**
  * Remix Studio transport (#1879): the single owner of studio playback — the
@@ -64,6 +66,12 @@ export type RemixTransportInput = {
    * index. Drafts are rendered audio and ignore it.
    */
   timeline?: RemixStructureTimeline | null;
+  /**
+   * Beat (#1902), rendered over the current timeline's blocks (timeline
+   * time; identity segments without a structure). Level and mute apply
+   * live; a change to what it sounds like restarts at the same position.
+   */
+  beat?: PreviewBeat | null;
   onError: (kind: "preview" | "draft") => void;
 };
 
@@ -75,6 +83,11 @@ export type RemixTransport = {
   previewHandle: StemArrangementPreviewHandle | null;
   /** Waveform peaks per stem id, filled in as stems decode. */
   peaks: Record<string, number[]>;
+  /**
+   * Beat waveform (#1902) across the timeline (the ring-out after the last
+   * block is left out); null without a beat or while building.
+   */
+  beatPeaks: number[] | null;
   /**
    * Waveform peaks for a draft (#1879): null jobId = the current draft
    * (loaded eagerly); archived versions fill in once first played. Null
@@ -197,6 +210,52 @@ export function loopForTimeline(
 }
 
 /**
+ * Signature of what the beat sounds like (#1902): "" without one. Level and
+ * mute are left out — they apply live.
+ */
+export function previewBeatKey(beat: PreviewBeat | null | undefined): string {
+  return beat ? beatRenderKey(beat.recipe, beat.grid, beat.segments) : "";
+}
+
+/** Quiet time after the last beat edit before its waveform is rebuilt. */
+export const BEAT_PEAKS_DEBOUNCE_MS = 150;
+
+/**
+ * Debounced beat waveform (#1902): after `delayMs` with no newer call (the
+ * returned cancel runs on every beat edit), build the beat buffer and hand
+ * back its peaks over the timeline (the ring-out padding after the last
+ * block is left out). A step toggle burst renders once. Returns the cancel.
+ */
+export function scheduleBeatPeaks(input: {
+  beat: PreviewBeat;
+  key: string;
+  build: (beat: PreviewBeat) => PeakSourceBuffer & { sampleRate: number } | null;
+  onPeaks: (key: string, peaks: number[]) => void;
+  delayMs?: number;
+}): () => void {
+  const timer = setTimeout(() => {
+    const buffer = input.build(input.beat);
+    if (!buffer) return;
+    const segments = input.beat.segments;
+    const timelineSec =
+      segments.length > 0 ? segments[segments.length - 1].outEndSec : 0;
+    const length = Math.min(
+      buffer.length,
+      Math.max(1, Math.ceil(timelineSec * buffer.sampleRate)),
+    );
+    input.onPeaks(
+      input.key,
+      computePeaks({
+        numberOfChannels: 1,
+        length,
+        getChannelData: () => buffer.getChannelData(0),
+      }),
+    );
+  }, input.delayMs ?? BEAT_PEAKS_DEBOUNCE_MS);
+  return () => clearTimeout(timer);
+}
+
+/**
  * Signature of the section spans only, so live envelope re-scheduling runs
  * when cells change rather than on every editor render.
  */
@@ -282,6 +341,10 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
   const [previewHandle, setPreviewHandle] =
     useState<StemArrangementPreviewHandle | null>(null);
   const [peaks, setPeaks] = useState<Record<string, number[]>>({});
+  const [beatPeaksState, setBeatPeaksState] = useState<{
+    key: string;
+    peaks: number[];
+  } | null>(null);
   const [bufferDurationSec, setBufferDurationSec] = useState<number | null>(
     null,
   );
@@ -499,6 +562,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
         effects: engineEffects(latest.effects, next),
         bpm: latest.bpm ?? null,
         timeline: structureTimelineFor(latest.timeline),
+        beat: latest.beat ?? null,
         onEnded: () => {
           if (requestId !== requestRef.current) return;
           halt(0);
@@ -810,9 +874,11 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       engineStemsRef.current,
       inputRef.current.soloStemId,
       engineReference,
+      inputRef.current.beat ?? null,
     );
   }, [
     engineReference,
+    input.beat,
     input.previewStems,
     input.soloStemId,
     previewHandle,
@@ -870,6 +936,41 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
       nextLoop,
     );
   }, [currentPosition, timelineKey]);
+
+  // Beat edits (#1902): a change to what the beat sounds like (pattern,
+  // kit, groove, blocks, timeline, or adding/removing it) restarts the
+  // engine at the same position; level and mute apply live above.
+  const beatKey = previewBeatKey(input.beat);
+  const beatKeyRef = useRef(beatKey);
+  useEffect(() => {
+    if (beatKeyRef.current === beatKey) return;
+    beatKeyRef.current = beatKey;
+    if (statusRef.current === "idle") return;
+    if (!isEngineSource(sourceRef.current)) return;
+    void startRef.current(
+      sourceRef.current,
+      clampSeek(currentPosition(), durationRef.current),
+      loopRef.current,
+    );
+  }, [beatKey, currentPosition]);
+
+  // The beat's waveform (#1902): rebuilt once per beat key, debounced so a
+  // burst of step toggles renders once (the engine keeps the last buffer by
+  // key, so a play right after reuses it).
+  useEffect(() => {
+    const beat = inputRef.current.beat;
+    if (!beat || !beatKey) return;
+    return scheduleBeatPeaks({
+      beat,
+      key: beatKey,
+      build: (next) => engine().beatBuffer(next),
+      onPeaks: (key, beatPeaks) => {
+        if (!unmountedRef.current) setBeatPeaksState({ key, peaks: beatPeaks });
+      },
+    });
+  }, [beatKey, engine]);
+  const beatPeaks =
+    beatKey && beatPeaksState?.key === beatKey ? beatPeaksState.peaks : null;
 
   // A new generation replaces the current draft: drop its cached audio so
   // "Draft" plays the new one.
@@ -936,6 +1037,7 @@ export function useRemixTransport(input: RemixTransportInput): RemixTransport {
     loop,
     previewHandle,
     peaks,
+    beatPeaks,
     draftPeaksFor,
     durationSec,
     getPositionSec,

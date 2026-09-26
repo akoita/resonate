@@ -87,6 +87,13 @@ import {
   type RemixStructure,
 } from "./remix-structure";
 import {
+  normalizeRemixBeatInput,
+  readStoredRemixBeat,
+  REMIX_BEAT_DSP_VERSION,
+  type RemixBeat,
+  type RemixRenderBeat,
+} from "./remix-beat";
+import {
   AI_DISCLOSURE_VERSION,
   deriveRemixAiDisclosure,
 } from "../catalog/ai-disclosure.policy";
@@ -742,6 +749,14 @@ export class RemixProjectService {
        * against the resulting block count.
        */
       structure?: unknown;
+      /**
+       * Beat maker remix-beat/v1 (#1902): undefined leaves it unchanged, null
+       * clears it. Needs a bar grid; `blocks` is measured against the block
+       * count after this PATCH. Structure edits never rewrite stored blocks
+       * (stale lengths fail open to on-everywhere); clients send remapped
+       * blocks alongside structure edits.
+       */
+      beat?: unknown;
     },
   ) {
     const project = await this.loadOwnedProject(userId, projectId);
@@ -822,7 +837,9 @@ export class RemixProjectService {
       (stem) => stem.arrangement !== undefined,
     );
     const sectionGrid =
-      hasArrangementUpdates || patch.structure !== undefined
+      hasArrangementUpdates ||
+      patch.structure !== undefined ||
+      patch.beat !== undefined
         ? deriveSectionGrid(
             project.stems.map((stem) => ({
               audioFeatures: stem.stem.audioFeatures,
@@ -854,6 +871,33 @@ export class RemixProjectService {
       structure = normalized.value;
     }
 
+    // Block count AFTER this PATCH (#1899): the new structure, else the
+    // stored one, else the grid's sections. Undefined without a grid.
+    const blockCountAfterPatch = (): number | undefined => {
+      if (!sectionGrid) return undefined;
+      const effectiveStructure =
+        structure !== undefined
+          ? structure
+          : resolveStoredRemixStructure(project.structure, sectionGrid)
+              .structure;
+      return structureBlockCount(sectionGrid, effectiveStructure);
+    };
+
+    // Beat maker (#1902): needs a bar grid; its per-block on/off list is
+    // measured against the block count after this PATCH.
+    let beat: RemixBeat | null | undefined;
+    if (patch.beat !== undefined) {
+      const normalized = normalizeRemixBeatInput(
+        patch.beat,
+        blockCountAfterPatch() ?? 0,
+        sectionGrid,
+      );
+      if ("error" in normalized) {
+        throw new BadRequestException(normalized.error);
+      }
+      beat = normalized.value;
+    }
+
     // Section-grid arrangement masks (#1314) must match the grid the studio
     // derived for this source; a null payload restores the always-on default.
     // Masks are block-indexed (#1899): submitted masks are measured against
@@ -861,14 +905,7 @@ export class RemixProjectService {
     // one). Stored masks left stale by a structure change are not rejected;
     // they fail open to always-on at render time.
     if (hasArrangementUpdates) {
-      const effectiveStructure =
-        structure !== undefined
-          ? structure
-          : resolveStoredRemixStructure(project.structure, sectionGrid)
-              .structure;
-      const blockCount = sectionGrid
-        ? structureBlockCount(sectionGrid, effectiveStructure)
-        : undefined;
+      const blockCount = blockCountAfterPatch();
       for (const stem of stemUpdates) {
         if (stem.arrangement === undefined) continue;
         const problem = validateStemArrangementInput(
@@ -972,6 +1009,14 @@ export class RemixProjectService {
                   structure === null
                     ? Prisma.DbNull
                     : (structure as unknown as Prisma.JsonObject),
+              }
+            : {}),
+          ...(beat !== undefined
+            ? {
+                beat:
+                  beat === null
+                    ? Prisma.DbNull
+                    : (beat as unknown as Prisma.JsonObject),
               }
             : {}),
         },
@@ -1376,6 +1421,37 @@ export class RemixProjectService {
             bpm: sectionGrid?.kind === "bars" ? sectionGrid.bpm : null,
           }
         : undefined;
+      // Beat maker (#1902), read live and tolerantly against the resolved
+      // timeline: a stale per-block list fails open to on-everywhere. A beat
+      // needs a bar grid with a tempo; without one it is skipped (logged).
+      // A synthesized beat is neither AI nor source audio: grounding is
+      // unchanged.
+      const projectBeat = sectionGrid
+        ? readStoredRemixBeat(
+            project.beat,
+            structureBlockCount(sectionGrid, projectStructure),
+          )
+        : null;
+      // A muted beat is skipped entirely: no input, no addedParts.
+      const renderBeat: RemixRenderBeat | undefined =
+        projectBeat &&
+        !projectBeat.muted &&
+        sectionGrid?.kind === "bars" &&
+        sectionGrid.bpm &&
+        sectionGrid.bpm > 0
+          ? {
+              beat: projectBeat,
+              grid: sectionGrid,
+              segments:
+                renderStructure?.segments ??
+                structureTimeline(sectionGrid, null),
+            }
+          : undefined;
+      if (projectBeat && !projectBeat.muted && !renderBeat) {
+        this.logger.warn(
+          `Remix project ${project.id}: stored beat has no bar grid to play on; rendering without it`,
+        );
+      }
       // Per-stem transform (#1316): replace_stem conditions and renders on the
       // BED — every stem except the target — so the generated layer takes the
       // target's place instead of doubling it. add_layer keeps the full bed.
@@ -1483,6 +1559,7 @@ export class RemixProjectService {
               authorization: renderAuthorization,
               ...(renderFx ? { fx: renderFx } : {}),
               ...(renderStructure ? { structure: renderStructure } : {}),
+              ...(renderBeat ? { beat: renderBeat } : {}),
             })
           : await this.maybeRenderStemPlusAiLayer({
               projectId: project.id,
@@ -1491,6 +1568,7 @@ export class RemixProjectService {
               authorization: renderAuthorization,
               ...(renderFx ? { fx: renderFx } : {}),
               ...(renderStructure ? { structure: renderStructure } : {}),
+              ...(renderBeat ? { beat: renderBeat } : {}),
             });
       const completedAt = new Date().toISOString();
       const completedMetadata = {
@@ -1513,6 +1591,9 @@ export class RemixProjectService {
           : {}),
         ...(providerJob.conditioningStructure
           ? { conditioningStructure: providerJob.conditioningStructure }
+          : {}),
+        ...(providerJob.conditioningBeat
+          ? { conditioningBeat: providerJob.conditioningBeat }
           : {}),
         completedAt,
         failedAt: null,
@@ -1728,6 +1809,8 @@ export class RemixProjectService {
     fx?: RemixRenderFx;
     /** Structure blocks + timeline (#1899); absent = the original order. */
     structure?: RemixRenderStructure;
+    /** Beat maker recipe + bar grid + timeline (#1902); absent = no beat. */
+    beat?: RemixRenderBeat;
   }) {
     const layerJob = await this.generationProvider.createRemixDraft(
       {
@@ -1738,6 +1821,7 @@ export class RemixProjectService {
         stemArrangement: input.stems,
         ...(input.fx ? { renderFx: input.fx } : {}),
         ...(input.structure ? { renderStructure: input.structure } : {}),
+        ...(input.beat ? { renderBeat: input.beat } : {}),
       },
       input.authorization,
     );
@@ -1758,6 +1842,7 @@ export class RemixProjectService {
       authorization: input.authorization,
       ...(input.fx ? { fx: input.fx } : {}),
       ...(input.structure ? { structure: input.structure } : {}),
+      ...(input.beat ? { beat: input.beat } : {}),
       layer: {
         provider: layerJob.provider,
         jobId: layerJob.jobId,
@@ -1924,6 +2009,16 @@ export class RemixProjectService {
       conditioningStructureRecord.structure,
       null,
     );
+    // #1902: the beat the render mixed in / the conditioning audio carried
+    // (no block-count check — the render already resolved it).
+    const renderedBeat = readStoredRemixBeat(renderMetadataRecord.beat, null);
+    const conditioningBeatRecord = normalizeMetadataObject(
+      metadata.conditioningBeat,
+    );
+    const conditioningBeat = readStoredRemixBeat(
+      conditioningBeatRecord.beat,
+      null,
+    );
     const mimeType =
       draftMimeTypeFromMetadata(project.generationMetadata) ??
       draftMimeTypeFromUri(outputUri);
@@ -2015,6 +2110,29 @@ export class RemixProjectService {
                 "string"
                   ? conditioningStructureRecord.structureVersion
                   : REMIX_STRUCTURE_DSP_VERSION,
+            },
+          }
+        : {}),
+      // #1902: the synthesized beat the published draft was rendered with —
+      // an added part that is neither AI nor source audio.
+      ...(renderedBeat
+        ? {
+            beat: renderedBeat,
+            beatDspVersion:
+              typeof renderMetadataRecord.beatDspVersion === "string"
+                ? renderMetadataRecord.beatDspVersion
+                : REMIX_BEAT_DSP_VERSION,
+            addedParts: ["beat"],
+          }
+        : {}),
+      ...(conditioningBeat
+        ? {
+            conditioningBeat: {
+              beat: conditioningBeat,
+              beatDspVersion:
+                typeof conditioningBeatRecord.beatDspVersion === "string"
+                  ? conditioningBeatRecord.beatDspVersion
+                  : REMIX_BEAT_DSP_VERSION,
             },
           }
         : {}),
@@ -2486,6 +2604,12 @@ export class RemixProjectService {
       effects: readStoredRemixFx(project.effects),
       // Structure blocks (#1899); null = the original section order.
       structure,
+      // Beat maker (#1902); null = no beat. A stale per-block list reads as
+      // null (on everywhere), exactly as the render fails open.
+      beat: readStoredRemixBeat(
+        project.beat,
+        sectionGrid ? structureBlockCount(sectionGrid, structure) : null,
+      ),
       policyVersion: project.policyVersion,
       publishedReleaseId: project.publishedReleaseId,
       createdAt: project.createdAt,

@@ -1211,6 +1211,9 @@ model RemixProject {
   // Structure blocks (#1899): remix-structure/v1 { schemaVersion, blocks:
   // [{ section, fadeIn?, fadeOut? }] }; null means the original order.
   structure          Json?
+  // Beat maker (#1902): remix-beat/v1 { schemaVersion, kit, pattern, swing,
+  // gainDb, blocks }; null means no beat.
+  beat               Json?
   policyVersion      String
   publishedReleaseId String?            @unique
   createdAt          DateTime           @default(now())

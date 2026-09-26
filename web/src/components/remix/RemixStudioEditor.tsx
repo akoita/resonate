@@ -34,6 +34,7 @@ import {
 } from "../../lib/remixPromptPresets";
 import {
   remixDraftOutputUri,
+  type PreviewBeat,
   type PreviewLevel,
   type PreviewStemState,
   type StemArrangementPreviewHandle,
@@ -51,6 +52,16 @@ import {
   type RemixIntent,
 } from "../../lib/remixIntent";
 import { applicableRecipes, applyRecipe } from "../../lib/remixRecipes";
+import {
+  beatBlocksAfterStructureEdit,
+  beatGridAvailable,
+  normalizeRemixBeat,
+  REMIX_BEAT_KIT_LABELS,
+  withBeatMuted,
+  REMIX_BEAT_LANE_ID,
+  sameRemixBeat,
+  type RemixBeatRecipe,
+} from "../../lib/remixBeat";
 import type {
   RemixDescribeContext,
   RemixDescribeEdits,
@@ -84,6 +95,7 @@ import {
   blockActionResult,
   RemixSessionLanes,
   sectionColumnLabels,
+  type LaneBeat,
   type LaneBlockAction,
   type LaneStem,
 } from "./RemixSessionLanes";
@@ -140,6 +152,11 @@ export type ProjectEdits = {
    * grid; null = the original order.
    */
   structure: RemixStructure | null;
+  /**
+   * Beat recipe `remix-beat/v1` (#1902), normalized against the block
+   * count (a stale `blocks` list is null = every block); null = no beat.
+   */
+  beat: RemixBeatRecipe | null;
 };
 
 export type AiTargetEdit = { kind: AiTargetKind; stemId: string | null };
@@ -223,6 +240,7 @@ export function initialEdits(project: RemixProject): ProjectEdits {
       project.stems.map((stem) => stem.stemId),
     ),
     structure,
+    beat: normalizeRemixBeat(project.beat, blockCount > 0 ? blockCount : null),
   };
 }
 
@@ -331,6 +349,25 @@ export function buildProjectPatch(
   }
   if (stemPatches.length > 0) {
     patch.stems = stemPatches;
+  }
+  // Beat (#1902): the whole normalized recipe, or null to remove it. Its
+  // blocks read against the persisted vs the edited block count.
+  const beatCount = (count: number) => (sectionCount > 0 ? count : null);
+  const persistedBeat = normalizeRemixBeat(
+    project.beat,
+    beatCount(persistedBlockCount),
+  );
+  const editBeat = normalizeRemixBeat(edits.beat ?? null, beatCount(nextBlockCount));
+  if (!sameRemixBeat(persistedBeat, editBeat)) {
+    patch.beat = editBeat;
+  } else if (
+    editBeat &&
+    patch.structure !== undefined &&
+    editBeat.blocks === null &&
+    Array.isArray(project.beat?.blocks)
+  ) {
+    // A structure change clears a stale persisted beat mask, like a stem's.
+    patch.beat = editBeat;
   }
   return patch;
 }
@@ -907,13 +944,59 @@ export function structureEditStateFor(
 export function editsWithStructure(
   edits: ProjectEdits,
   result: RemixStructureEditResult,
+  beatBlocks?: boolean[] | null,
 ): ProjectEdits {
   const stems = { ...edits.stems };
   for (const [stemId, mask] of Object.entries(result.masks)) {
     const current = stems[stemId];
     if (current) stems[stemId] = { ...current, sections: mask };
   }
-  return { ...edits, structure: result.structure, stems };
+  const beat =
+    edits.beat && beatBlocks !== undefined
+      ? { ...edits.beat, blocks: beatBlocks }
+      : edits.beat;
+  return { ...edits, structure: result.structure, stems, beat };
+}
+
+/**
+ * Runs a structure op (#1899) on the current edits in one update: stem
+ * masks and the beat's blocks (#1902) move with their blocks. The edits
+ * are returned unchanged when the op refuses.
+ */
+export function editsAfterStructureOp(
+  edits: ProjectEdits,
+  grid: RemixSectionGrid,
+  run: (state: RemixStructureEditState) => RemixStructureEditResult | null,
+): ProjectEdits {
+  const outcome = beatBlocksAfterStructureEdit(
+    structureEditStateFor(grid, edits),
+    edits.beat?.blocks ?? null,
+    run,
+  );
+  if (!outcome) return edits;
+  return editsWithStructure(
+    edits,
+    outcome.result,
+    edits.beat ? outcome.blocks : undefined,
+  );
+}
+
+/**
+ * The beat as the preview plays it (#1902): normalized against the edited
+ * timeline's blocks and rendered over them; null without a beat, a bar
+ * grid with a tempo, or a timeline.
+ */
+export function editsPreviewBeat(
+  project: Pick<RemixProject, "sectionGrid">,
+  edits: Pick<ProjectEdits, "structure" | "beat">,
+): PreviewBeat | null {
+  const grid = project.sectionGrid ?? null;
+  if (!edits.beat || !grid || !beatGridAvailable(grid)) return null;
+  const timeline = editsTimeline(project, edits);
+  if (!timeline || timeline.segments.length === 0) return null;
+  const recipe = normalizeRemixBeat(edits.beat, timeline.segments.length);
+  if (!recipe) return null;
+  return { recipe, grid, segments: timeline.segments };
 }
 
 /**
@@ -1259,7 +1342,7 @@ export function RemixStudioEditor({
   const [edits, setEdits] = useState<ProjectEdits>(() =>
     initialEdits(persistedProject),
   );
-  const [soloStemId, setSoloStemId] = useState<string | null>(null);
+  const [soloState, setSoloStemId] = useState<string | null>(null);
   const [addingStemId, setAddingStemId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -1374,6 +1457,14 @@ export function RemixStudioEditor({
     ? structureEditStateFor(sectionGrid, edits)
     : null;
   const blockCount = sectionGrid ? (structureState?.blocks.length ?? 0) : 0;
+  // Beat (#1902): rendered over the local timeline; needs a bar grid.
+  const beatAvailable = !!sectionGrid && beatGridAvailable(sectionGrid);
+  const previewBeat = beatAvailable
+    ? editsPreviewBeat(project, edits)
+    : null;
+  // A beat solo ends with the beat (removed, or no longer playable).
+  const soloStemId =
+    soloState === REMIX_BEAT_LANE_ID && !previewBeat ? null : soloState;
 
   // Studio transport (#1879): one owner for the arrangement preview, the
   // original full mix, and drafts — play/stop, seek, loop, source switch.
@@ -1392,6 +1483,7 @@ export function RemixStudioEditor({
     effects: edits.effects,
     bpm: effectsBpm(project.sectionGrid),
     timeline,
+    beat: previewBeat,
     onError: (kind) => {
       addToast(
         kind === "preview"
@@ -1527,11 +1619,41 @@ export function RemixStudioEditor({
     run: (state: RemixStructureEditState) => RemixStructureEditResult | null,
   ) => {
     if (!sectionGrid || published) return;
+    setEdits((prev) => editsAfterStructureOp(prev, sectionGrid, run));
+  };
+
+  // Beat (#1902): every edit is normalized against the block count and
+  // autosaved like any other — mute included (the render skips a muted
+  // beat); solo is preview-only, like the stems'.
+  const handleBeatChange = (next: RemixBeatRecipe | null) => {
+    if (published) return;
     setEdits((prev) => {
-      const result = run(structureEditStateFor(sectionGrid, prev));
-      return result ? editsWithStructure(prev, result) : prev;
+      const count = editBlockCount(
+        sectionGrid?.sections.length ?? 0,
+        prev.structure,
+      );
+      const beat = normalizeRemixBeat(next, count > 0 ? count : null);
+      return sameRemixBeat(beat, prev.beat) ? prev : { ...prev, beat };
     });
   };
+  const updateBeat = (change: (beat: RemixBeatRecipe) => RemixBeatRecipe) => {
+    if (published) return;
+    setEdits((prev) => (prev.beat ? { ...prev, beat: change(prev.beat) } : prev));
+  };
+  const laneBeat: LaneBeat | null = previewBeat
+    ? {
+        kitLabel: REMIX_BEAT_KIT_LABELS[previewBeat.recipe.kit],
+        muted: previewBeat.recipe.muted === true,
+        soloed: soloStemId === REMIX_BEAT_LANE_ID,
+        soloedOut: soloStemId !== null && soloStemId !== REMIX_BEAT_LANE_ID,
+        gainDb: previewBeat.recipe.gainDb,
+        blocks: previewBeat.recipe.blocks,
+        peaks: transport.beatPeaks,
+        durationSec:
+          previewBeat.segments[previewBeat.segments.length - 1]?.outEndSec ??
+          null,
+      }
+    : null;
   const handleBlockAction = (index: number, action: LaneBlockAction) =>
     updateStructure((state) =>
       sectionGrid ? blockActionResult(state, index, action, sectionGrid) : null,
@@ -2142,6 +2264,7 @@ export function RemixStudioEditor({
           generationMetadata?.mode,
         ),
         provenance: generationMetadata?.grounding ?? null,
+        addedParts: generationMetadata?.renderMetadata?.addedParts ?? null,
         groundingDetail: groundingDescription(generationMetadata),
         transformNote: describeStemTransform(generationMetadata?.stemTransform),
         costUsd: generationMetadata?.estimatedCostUsd ?? null,
@@ -2409,6 +2532,17 @@ export function RemixStudioEditor({
                   timeline={sectionGrid ? timeline : null}
                   structureState={structureState}
                   onBlockAction={handleBlockAction}
+                  beat={laneBeat}
+                  onToggleBeatMute={() =>
+                    updateBeat((beat) => withBeatMuted(beat, beat.muted !== true))
+                  }
+                  onToggleBeatSolo={() => toggleStemSolo(REMIX_BEAT_LANE_ID)}
+                  onBeatGainChange={(gainDb) =>
+                    updateBeat((beat) => ({ ...beat, gainDb }))
+                  }
+                  onSetBeatBlocks={(blocks) =>
+                    updateBeat((beat) => ({ ...beat, blocks }))
+                  }
                 />
               </div>
 
@@ -2503,6 +2637,9 @@ export function RemixStudioEditor({
               onApplyStructure={handleApplyStructure}
               describeContext={describeContext}
               onApplyEdits={handleApplyDescribedEdits}
+              beat={edits.beat}
+              beatAvailable={beatAvailable}
+              onBeatChange={handleBeatChange}
               primary={{
                 label: generateLabel,
                 enabled: generateAvailability.enabled,

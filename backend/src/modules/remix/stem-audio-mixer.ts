@@ -42,6 +42,12 @@ import {
   type RemixRenderStructure,
   type RemixStructureSegment,
 } from "./remix-structure";
+import {
+  REMIX_BEAT_DSP_VERSION,
+  REMIX_BEAT_RENDER_SAMPLE_RATE,
+  writeBeatWav,
+  type RemixRenderBeat,
+} from "./remix-beat";
 
 const execFileAsync = promisify(execFile);
 
@@ -111,12 +117,16 @@ export interface StemAudioMixer {
    * @param structure Structure blocks (#1899) + derived timeline; absent =
    *   the original section order, byte-identical. Stem `activeIntervals` are
    *   then in timeline time (block-indexed masks).
+   * @param beat Beat maker recipe (#1902) + bar grid + timeline; absent = no
+   *   beat, byte-identical. Rendered to a 48 kHz track in the temp dir and
+   *   mixed as one extra input.
    */
   mixUnmutedStems(
     stems: StemArrangementEntry[],
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedStemAudio>;
   mixUnmutedStemsWithAudioBuffers(
     stems: StemArrangementEntry[],
@@ -124,6 +134,7 @@ export interface StemAudioMixer {
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedAudioBuffers>;
 }
 
@@ -139,6 +150,13 @@ export type StemMixFfmpegInput = {
    * and it sends `master.space` to the reverb bus (#1897).
    */
   aiLayer?: boolean;
+  /**
+   * The synthesized beat track (#1902): a mono WAV already in timeline time
+   * with block on/off baked in. Varispeed and its gain apply; per-stem fx,
+   * gating and the structure front end do not; it sends `master.space` to the
+   * reverb bus like an AI layer.
+   */
+  beat?: boolean;
 };
 
 /** Effects context for {@link buildStemMixFfmpegArgs} (#1897). */
@@ -196,7 +214,9 @@ export function buildStemMixFfmpegArgs(
   // -loglevel error keeps execFile's stderr buffer tiny on long renders.
   const args: string[] = ["-y", "-nostdin", "-hide_banner", "-loglevel", "error"];
   const hasStructure = !!structure && structure.segments.length > 0;
-  if (fx?.effects || hasStructure) {
+  // A beat input (#1902) needs the fx graph; without one nothing changes.
+  const hasBeat = inputs.some((input) => input.beat);
+  if (fx?.effects || hasStructure || hasBeat) {
     const renderFx: StemMixFfmpegFx = fx ?? { effects: null };
     const segments = hasStructure ? structure!.segments : null;
     // One ffmpeg input per source run with a structure (#1899): every run of
@@ -296,11 +316,14 @@ function stemFxFor(
   effects: RemixFxRecipe,
   input: StemMixFfmpegInput,
 ): RemixFxStem {
-  if (input.aiLayer || !input.fxStemId) return {};
+  if (input.aiLayer || input.beat || !input.fxStemId) return {};
   return effects.stems?.[input.fxStemId] ?? {};
 }
 
-/** Per-input reverb wet level (0 = no send). AI layers send master.space. */
+/**
+ * Per-input reverb wet level (0 = no send). AI layers and the beat (#1902)
+ * send master.space.
+ */
 export function stemMixReverbSends(
   inputs: StemMixFfmpegInput[],
   effects: RemixFxRecipe | null,
@@ -312,7 +335,10 @@ export function stemMixReverbSends(
   );
 }
 
-/** An empty recipe: structure without effects renders the plain chain. */
+/**
+ * An empty recipe: structure or a beat without effects renders the plain
+ * chain.
+ */
 const NO_EFFECTS: RemixFxRecipe = { schemaVersion: "remix-fx/v1" };
 
 /**
@@ -430,7 +456,7 @@ function ffmpegInputPlan(
   let next = 0;
   return inputs.map((input) => {
     const sources =
-      runs && !input.aiLayer
+      runs && !input.aiLayer && !input.beat
         ? runs.map((run) => ({ path: input.path, run }))
         : [{ path: input.path, run: null }];
     const plan = { firstIndex: next, sources };
@@ -506,6 +532,11 @@ function structureFrontEnd(
  * audio, not source stems, so they are NOT restructured. The whole-mix block
  * fades run on the master sum (dry + AI layers + reverb) in output time,
  * before master tone/warmth/loudness ({@link buildMasterFadeVolumeExpression}).
+ *
+ * The beat input (#1902) is a single plain input already in timeline time:
+ * normalize → mono-to-stereo → varispeed → gain → master amix (plus a
+ * `0.7 × master.space` reverb send), with no per-stem fx, gate or structure
+ * front end; master fades, tone, warmth and loudness apply to it in the mix.
  * Every value is numeric and derived from the validated recipe.
  */
 export function buildFxStemMixFilter(
@@ -515,7 +546,8 @@ export function buildFxStemMixFilter(
 ): { filter: string; needsImpulse: boolean } {
   const segments =
     structure && structure.segments.length > 0 ? structure.segments : null;
-  const effects = fx.effects ?? (segments ? NO_EFFECTS : null);
+  const hasBeat = inputs.some((input) => input.beat);
+  const effects = fx.effects ?? (segments || hasBeat ? NO_EFFECTS : null);
   if (!effects) {
     throw new Error("buildFxStemMixFilter requires an effects recipe.");
   }
@@ -538,18 +570,26 @@ export function buildFxStemMixFilter(
     // With a structure (#1899) every run is normalized before the concat,
     // so all runs share one format.
     const plan = plans[index];
-    const restructure = segments !== null && !input.aiLayer;
+    const restructure = segments !== null && !input.aiLayer && !input.beat;
     const front = restructure ? structureFrontEnd(index, plan) : null;
     const head = front ? front.head : `[${plan.firstIndex}:a]`;
     if (front) graph.push(...front.parts);
     const chain: string[] = front
       ? []
       : ["aresample=48000", "aformat=sample_fmts=fltp"];
+    // The beat track is mono: duplicate it to both channels at unity, like
+    // the preview's mono → stereo up-mix (ffmpeg's auto up-mix is −3 dB).
+    if (input.beat) chain.push("pan=stereo|c0=c0|c1=c0");
     if (speedHundredths !== 100) {
       chain.push(`asetrate=${480 * speedHundredths}`, "aresample=48000");
     }
     chain.push(`volume=${normalizeRemixStemGainDb(input.gainDb)}dB`);
-    if (input.activeIntervals && input.activeIntervals.length > 0) {
+    // The beat's block on/off is baked into its track: never gated.
+    if (
+      !input.beat &&
+      input.activeIntervals &&
+      input.activeIntervals.length > 0
+    ) {
       // The gate runs after varispeed, i.e. in output time.
       const scaled = input.activeIntervals.map((interval) => ({
         startSec: interval.startSec / speed,
@@ -559,7 +599,7 @@ export function buildFxStemMixFilter(
         `volume=volume=${buildSectionGateVolumeExpression(scaled)}:eval=frame`,
       );
     }
-    if (!input.aiLayer) {
+    if (!input.aiLayer && !input.beat) {
       const tone = fxToneFilter(stemFx.tone);
       if (tone) chain.push(tone);
       const taps = echoTaps(stemFx.echo ?? 0, bpm, speed);
@@ -654,6 +694,7 @@ function renderMetadata(
   activeStemCount: number,
   fx?: RemixRenderFx,
   structure?: RemixRenderStructure,
+  beat?: RemixRenderBeat,
 ): RemixRenderMetadata {
   return {
     ...REMIX_RENDER_AUDIO_POLICY,
@@ -668,6 +709,15 @@ function renderMetadata(
       ? {
           structure: structure.structure,
           structureVersion: REMIX_STRUCTURE_DSP_VERSION,
+        }
+      : {}),
+    // #1902: the beat recipe + synthesis rules version; a synthesized part
+    // that is neither AI nor source audio.
+    ...(beat
+      ? {
+          beat: beat.beat,
+          beatDspVersion: REMIX_BEAT_DSP_VERSION,
+          addedParts: ["beat" as const],
         }
       : {}),
   };
@@ -687,6 +737,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedStemAudio> {
     return this.mixStemArrangement(
       stems,
@@ -695,6 +746,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       true,
       fx,
       structure,
+      beat,
     );
   }
 
@@ -704,6 +756,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     authorization: StemRenderAuthorization,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedAudioBuffers> {
     return this.mixStemArrangement(
       stems,
@@ -712,6 +765,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
       false,
       fx,
       structure,
+      beat,
     );
   }
 
@@ -722,6 +776,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stemOnly: true,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedStemAudio>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -730,6 +785,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stemOnly: false,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    beat?: RemixRenderBeat,
   ): Promise<MixedAudioBuffers>;
   private async mixStemArrangement(
     stems: StemArrangementEntry[],
@@ -738,8 +794,12 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
     stemOnly: boolean,
     fx?: RemixRenderFx,
     structure?: RemixRenderStructure,
+    renderBeat?: RemixRenderBeat,
   ): Promise<MixedStemAudio | MixedAudioBuffers> {
     const label = authorization.remixProjectId;
+    // A muted beat (#1902) is skipped entirely: the graph and metadata are
+    // identical to a render without a beat.
+    const beat = renderBeat && !renderBeat.beat.muted ? renderBeat : undefined;
     // A stem whose section mask disables every section ([]) is effectively
     // muted (#1314); undefined/null intervals mean fully active.
     const activeStems = stems.filter(
@@ -809,6 +869,26 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
           aiLayer: true,
         });
       }
+      if (beat) {
+        // #1902: the beat is synthesized over the (structured) timeline at
+        // 48 kHz and streamed to a WAV in this render's temp dir.
+        const beatPath = join(workDir, "beat.wav");
+        const beatStarted = Date.now();
+        const { frames } = await writeBeatWav(
+          beatPath,
+          beat.beat,
+          beat.grid,
+          beat.segments,
+        );
+        this.logger.log(
+          `[mix] ${label}: synthesized a ${(frames / REMIX_BEAT_RENDER_SAMPLE_RATE).toFixed(1)}s beat track in ${Date.now() - beatStarted}ms`,
+        );
+        ffmpegInputs.push({
+          path: beatPath,
+          gainDb: beat.beat.gainDb,
+          beat: true,
+        });
+      }
 
       const outputPath = join(workDir, "mix.mp3");
       let ffmpegFx: StemMixFfmpegFx | undefined;
@@ -856,6 +936,7 @@ export class FfmpegStemAudioMixer implements StemAudioMixer {
         activeStems.length,
         fx,
         structure,
+        beat,
       );
       return stemOnly
         ? {

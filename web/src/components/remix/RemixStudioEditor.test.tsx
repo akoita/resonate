@@ -39,6 +39,8 @@ import {
   stemDisplayName,
   editsTimeline,
   editsWithStructure,
+  editsAfterStructureOp,
+  editsPreviewBeat,
   applyDescribedEdits,
   projectStructure,
   structureEditStateFor,
@@ -63,6 +65,11 @@ import {
 import RemixStudioPage from "../../app/remix/studio/[projectId]/page";
 import { blockActionResult } from "./RemixSessionLanes";
 import { REMIX_STRUCTURE_SCHEMA_VERSION } from "../../lib/remixStructure";
+import {
+  defaultBeat,
+  normalizeRemixBeat,
+  withBeatMuted,
+} from "../../lib/remixBeat";
 
 const mockUseAuth = vi.fn(() => ({ token: "jwt-token", login: vi.fn() }));
 
@@ -2316,5 +2323,173 @@ describe("Describe it (#1900)", () => {
       <RemixStudioEditor project={project({ sectionGrid, status: "published" })} />,
     );
     expect(published).toMatch(/<input[^>]*disabled=""[^>]*remix-describe-input/);
+  });
+});
+
+describe("beat maker (#1902)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [0, 16, 32, 48].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 64,
+    bpm: 120,
+  };
+  const beat = defaultBeat("boom_bap");
+
+  it("initialEdits normalizes the saved beat against the block count", () => {
+    expect(initialEdits(project({ sectionGrid })).beat).toBeNull();
+    const saved = project({
+      sectionGrid,
+      beat: { ...beat, swing: 0.9, blocks: [true, false, true, true] },
+    });
+    expect(initialEdits(saved).beat).toEqual({
+      ...beat,
+      swing: 0.6,
+      blocks: [true, false, true, true],
+    });
+    // A stale mask plays in every block and is not rewritten by a save.
+    const stale = project({ sectionGrid, beat: { ...beat, blocks: [false, true] } });
+    expect(initialEdits(stale).beat?.blocks).toBeNull();
+    expect(buildProjectPatch(stale, initialEdits(stale))).toEqual({});
+  });
+
+  it("buildProjectPatch sends the whole beat, or null to remove it", () => {
+    const plain = project({ sectionGrid });
+    expect(buildProjectPatch(plain, { ...initialEdits(plain), beat })).toEqual({ beat });
+    const withBeat = project({ sectionGrid, beat });
+    const edits = initialEdits(withBeat);
+    expect(buildProjectPatch(withBeat, edits)).toEqual({});
+    expect(
+      buildProjectPatch(withBeat, { ...edits, beat: { ...beat, kit: "808" } }),
+    ).toEqual({ beat: { ...beat, kit: "808" } });
+    expect(buildProjectPatch(withBeat, { ...edits, beat: null })).toEqual({
+      beat: null,
+    });
+  });
+
+  it("structure edits remap the beat's blocks in the same update", () => {
+    const withBeat = project({
+      sectionGrid,
+      beat: { ...beat, blocks: [true, false, true, true] },
+    });
+    const edits = initialEdits(withBeat);
+    const next = editsAfterStructureOp(edits, sectionGrid, (state) =>
+      blockActionResult(state, 1, "repeat", sectionGrid),
+    );
+    expect(next.beat?.blocks).toEqual([true, false, false, true, true]);
+    expect(next.structure?.blocks.map((block) => block.section)).toEqual([
+      0, 1, 1, 2, 3,
+    ]);
+    expect(buildProjectPatch(withBeat, next)).toMatchObject({
+      structure: next.structure,
+      beat: { ...beat, blocks: [true, false, false, true, true] },
+    });
+    // A refused op changes nothing.
+    expect(
+      editsAfterStructureOp(edits, sectionGrid, (state) =>
+        blockActionResult(state, 0, "earlier", sectionGrid),
+      ),
+    ).toBe(edits);
+    // No beat: the structure op runs as before.
+    const noBeat = initialEdits(project({ sectionGrid }));
+    expect(
+      editsAfterStructureOp(noBeat, sectionGrid, (state) =>
+        blockActionResult(state, 0, "remove", sectionGrid),
+      ).beat,
+    ).toBeNull();
+  });
+
+  it("a structure change clears a stale persisted beat mask", () => {
+    const stale = project({
+      sectionGrid,
+      beat: { ...beat, blocks: [false, true, true, true, true] },
+    });
+    const edits = initialEdits(stale);
+    const next = editsAfterStructureOp(edits, sectionGrid, (state) =>
+      blockActionResult(state, 0, "repeat", sectionGrid),
+    );
+    expect(buildProjectPatch(stale, next).beat).toEqual({ ...beat, blocks: null });
+  });
+
+  it("Describe it leaves the beat alone", () => {
+    const edits = initialEdits(project({ sectionGrid, beat }));
+    const next = applyDescribedEdits(edits, {
+      stems: {},
+      effects: null,
+      structure: null,
+    });
+    expect(next.beat).toBe(edits.beat);
+  });
+
+  it("builds the preview beat over the edited timeline (bar grids only)", () => {
+    const edits = initialEdits(project({ sectionGrid, beat }));
+    const preview = editsPreviewBeat({ sectionGrid }, edits);
+    expect(preview?.recipe).toEqual(normalizeRemixBeat(beat, 4));
+    expect(preview?.segments).toHaveLength(4);
+    expect(editsPreviewBeat({ sectionGrid }, { ...edits, beat: null })).toBeNull();
+    expect(
+      editsPreviewBeat({ sectionGrid: { ...sectionGrid, kind: "time" } }, edits),
+    ).toBeNull();
+    expect(
+      editsPreviewBeat({ sectionGrid: { ...sectionGrid, bpm: null } }, edits),
+    ).toBeNull();
+  });
+
+  it("renders the Beat lane and the Add a beat section", () => {
+    const none = renderToStaticMarkup(<RemixStudioEditor project={project({ sectionGrid })} />);
+    expect(none).toContain("Add a beat");
+    expect(none).not.toContain("remix-lane-beat");
+    const html = renderToStaticMarkup(
+      <RemixStudioEditor project={project({ sectionGrid, beat })} />,
+    );
+    expect(html).toContain("remix-lane-beat");
+    expect(html).toContain("Punchy kit");
+    expect(html).toContain("Remove beat");
+    // No bar grid: an honest note, no lane.
+    const timeGrid = renderToStaticMarkup(
+      <RemixStudioEditor
+        project={project({ sectionGrid: { ...sectionGrid, kind: "time", bpm: null }, beat })}
+      />,
+    );
+    expect(timeGrid).toContain("needs a measured tempo");
+    expect(timeGrid).not.toContain("remix-lane-beat");
+  });
+});
+
+describe("beat mute persists (#1902)", () => {
+  const sectionGrid = {
+    kind: "bars" as const,
+    sections: [0, 16].map((startSec) => ({ startSec, endSec: startSec + 16 })),
+    sectionSeconds: 16,
+    durationSeconds: 32,
+    bpm: 120,
+  };
+  const beat = defaultBeat("trap");
+
+  it("autosaves the mute with the recipe, and unmute omits it", () => {
+    const withBeat = project({ sectionGrid, beat });
+    const edits = initialEdits(withBeat);
+    const muted = { ...edits, beat: withBeatMuted(edits.beat!, true) };
+    expect(buildProjectPatch(withBeat, muted)).toEqual({
+      beat: { ...beat, muted: true },
+    });
+    const saved = project({ sectionGrid, beat: { ...beat, muted: true } });
+    expect(initialEdits(saved).beat?.muted).toBe(true);
+    const unmuted = {
+      ...initialEdits(saved),
+      beat: withBeatMuted(initialEdits(saved).beat!, false),
+    };
+    const patch = buildProjectPatch(saved, unmuted);
+    expect(patch).toEqual({ beat });
+    expect("muted" in (patch.beat ?? {})).toBe(false);
+  });
+
+  it("the preview beat carries the mute and the lane shows it", () => {
+    const saved = project({ sectionGrid, beat: { ...beat, muted: true } });
+    expect(editsPreviewBeat(saved, initialEdits(saved))?.recipe.muted).toBe(true);
+    const html = renderToStaticMarkup(<RemixStudioEditor project={saved} />);
+    const row = html.slice(html.indexOf('data-stem-id="remix-beat"'));
+    expect(row).toMatch(/aria-pressed="true"[^>]*aria-label="Mute Beat"/);
+    expect(row).toContain("remix-lane-row-dimmed");
   });
 });

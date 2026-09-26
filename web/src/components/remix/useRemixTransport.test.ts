@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   dropStaleCurrentDraftKeys,
   clampSeek,
@@ -6,13 +6,17 @@ import {
   engineEffects,
   enginePreviewStems,
   loopForTimeline,
+  BEAT_PEAKS_DEBOUNCE_MS,
+  previewBeatKey,
   previewSectionsKey,
+  scheduleBeatPeaks,
   resolveDraftCacheKey,
   structureTimelineFor,
   structureTimelineKey,
   transportDurationSec,
 } from "./useRemixTransport";
 import { structureTimeline } from "../../lib/remixStructure";
+import { defaultBeat } from "../../lib/remixBeat";
 
 describe("useRemixTransport helpers (#1879)", () => {
   it("keys draft audio by archived job or by the current generation", () => {
@@ -213,5 +217,86 @@ describe("structure timeline in the transport (#1899)", () => {
     ).toBeNull();
     expect(loopForTimeline(loop, null)).toBeNull();
     expect(loopForTimeline(null, reordered.segments)).toBeNull();
+  });
+});
+
+describe("previewBeatKey (#1902)", () => {
+  const grid = {
+    bpm: 120,
+    sectionSeconds: 16,
+    sections: [{ startSec: 0, endSec: 16 }],
+  };
+  const segments = [{ section: 0, outStartSec: 0, outEndSec: 16 }];
+  const beat = (overrides = {}) => ({
+    recipe: { ...defaultBeat("trap"), ...overrides },
+    grid,
+    segments,
+  });
+
+  it("changes with the sound, not with level or mute", () => {
+    expect(previewBeatKey(null)).toBe("");
+    expect(previewBeatKey(undefined)).toBe("");
+    const key = previewBeatKey(beat());
+    expect(key).not.toBe("");
+    expect(previewBeatKey(beat({ gainDb: -9, muted: true }))).toBe(key);
+    expect(previewBeatKey(beat({ kit: "808" }))).not.toBe(key);
+    expect(previewBeatKey(beat({ swing: 0.4 }))).not.toBe(key);
+    expect(
+      previewBeatKey({ ...beat(), segments: [{ ...segments[0], outEndSec: 8 }] }),
+    ).not.toBe(key);
+  });
+});
+
+describe("scheduleBeatPeaks (#1902)", () => {
+  const beat = {
+    recipe: defaultBeat("trap"),
+    grid: { bpm: 120, sectionSeconds: 1, sections: [{ startSec: 0, endSec: 1 }] },
+    segments: [{ section: 0, outStartSec: 0, outEndSec: 1 }],
+  };
+  // 1 s of timeline at 10 Hz plus 5 samples of ring-out padding.
+  const data = Float32Array.from([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 1, 1, 1, 1, 1]);
+  const buffer = {
+    numberOfChannels: 1,
+    length: data.length,
+    sampleRate: 10,
+    getChannelData: () => data,
+  };
+
+  it("builds once after the quiet time; a newer edit cancels the pending one", () => {
+    vi.useFakeTimers();
+    try {
+      const build = vi.fn(() => buffer);
+      const onPeaks = vi.fn();
+      const cancelFirst = scheduleBeatPeaks({ beat, key: "a", build, onPeaks });
+      vi.advanceTimersByTime(BEAT_PEAKS_DEBOUNCE_MS - 1);
+      cancelFirst(); // the next step toggle
+      scheduleBeatPeaks({ beat, key: "b", build, onPeaks });
+      vi.advanceTimersByTime(BEAT_PEAKS_DEBOUNCE_MS - 1);
+      expect(build).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(build).toHaveBeenCalledTimes(1);
+      expect(onPeaks).toHaveBeenCalledTimes(1);
+      const [key, peaks] = onPeaks.mock.calls[0];
+      expect(key).toBe("b");
+      // Peaks cover the timeline only (10 samples), not the padding.
+      expect(Math.max(...peaks)).toBeCloseTo(1);
+      expect(peaks[0]).toBeCloseTo(0.1);
+      expect(peaks[peaks.length - 1]).toBeCloseTo(1);
+      expect(peaks[Math.floor(peaks.length / 2) - 1]).toBeCloseTo(0.5);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports nothing when no buffer can be built", () => {
+    vi.useFakeTimers();
+    try {
+      const onPeaks = vi.fn();
+      scheduleBeatPeaks({ beat, key: "a", build: () => null, onPeaks, delayMs: 10 });
+      vi.advanceTimersByTime(10);
+      expect(onPeaks).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

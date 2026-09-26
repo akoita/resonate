@@ -232,11 +232,59 @@ describe("AudioConditionedRemixGenerationProvider (#1182 slice 4)", () => {
     expect("conditioningEffects" in job).toBe(false);
   });
 
+  it("conditions on the mix with the beat and records it (#1902)", async () => {
+    const { provider, mix } = buildProvider();
+    const renderBeat = {
+      beat: {
+        schemaVersion: "remix-beat/v1" as const,
+        kit: "808" as const,
+        pattern: {
+          kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+          snare: new Array<boolean>(16).fill(false),
+          clap: new Array<boolean>(16).fill(false),
+          hat: new Array<boolean>(16).fill(false),
+          openHat: new Array<boolean>(16).fill(false),
+        },
+        swing: 0,
+        gainDb: -3,
+        blocks: null,
+      },
+      grid: {
+        kind: "bars" as const,
+        bpm: 120,
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        sections: [
+          { startSec: 0, endSec: 16 },
+          { startSec: 16, endSec: 32 },
+        ],
+      },
+      segments: [],
+    };
+    const job = await provider.createRemixDraft(
+      generationInput({ renderBeat }),
+      AUTH,
+    );
+    expect(mix).toHaveBeenCalledWith(
+      [{ stemId: "stem-1", gainDb: 0, muted: false }],
+      AUTH,
+      undefined,
+      undefined,
+      renderBeat,
+    );
+    expect(job.conditioningBeat).toEqual({
+      beat: renderBeat.beat,
+      beatDspVersion: "remix-beat-dsp/v1",
+    });
+    expect("conditioningStructure" in job).toBe(false);
+  });
+
   it("records no conditioning effects when the project has none (#1897)", async () => {
     const { provider } = buildProvider();
     const job = await provider.createRemixDraft(generationInput(), AUTH);
     expect("conditioningEffects" in job).toBe(false);
     expect("conditioningStructure" in job).toBe(false);
+    expect("conditioningBeat" in job).toBe(false);
   });
 
   it("mixes the arrangement, calls the worker, stores, and returns job metadata", async () => {

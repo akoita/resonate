@@ -12,6 +12,7 @@ import {
 import { type StemAudioMixer } from "./stem-audio-mixer";
 import type { RemixRenderFx } from "./remix-fx";
 import type { RemixRenderStructure } from "./remix-structure";
+import type { RemixRenderBeat } from "./remix-beat";
 
 export const REMIX_LAYERED_RENDERER = "REMIX_LAYERED_RENDERER";
 
@@ -27,6 +28,11 @@ export type LayeredRemixRenderInput = {
    * the source stems are restructured — the generated layer is not.
    */
   structure?: RemixRenderStructure;
+  /**
+   * Beat maker recipe + bar grid + timeline (#1902); absent = no beat. The
+   * beat is mixed in the same final graph as the stems and the layer.
+   */
+  beat?: RemixRenderBeat;
   layer: {
     provider: string;
     jobId: string;
@@ -84,7 +90,16 @@ export class FfmpegLayeredRemixRenderer implements LayeredRemixRenderer {
     ];
     // Effects (#1897) apply in the same final graph: the layer follows the
     // varispeed and the master chain, but gets no per-stem fx.
-    const mixed = input.structure
+    const mixed = input.beat
+      ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
+          input.stems,
+          layerInputs,
+          input.authorization,
+          input.fx,
+          input.structure,
+          input.beat,
+        )
+      : input.structure
       ? await this.mixer.mixUnmutedStemsWithAudioBuffers(
           input.stems,
           layerInputs,

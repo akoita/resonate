@@ -6,6 +6,7 @@ import type {
   KeyboardEvent,
   MouseEvent,
   PointerEvent,
+  ReactNode,
   Ref,
 } from "react";
 import type { RemixSectionGrid } from "../../lib/api";
@@ -14,6 +15,7 @@ import {
   sectionStartLabel,
 } from "../../lib/remixArrangement";
 import { clampGainDb, GAIN_DB_MAX, GAIN_DB_MIN } from "../../lib/remixGain";
+import { REMIX_BEAT_LANE_ID } from "../../lib/remixBeat";
 import {
   formatFxAmount,
   formatFxTone,
@@ -63,6 +65,23 @@ export type LaneStem = {
   fx?: RemixFxStem;
 };
 
+/** The beat lane (#1902): shown under the stems only when a beat exists. */
+export type LaneBeat = {
+  /** "Punchy", "808", "Lo-fi". */
+  kitLabel: string;
+  /** Saved mute (the render skips a muted beat). */
+  muted: boolean;
+  soloed: boolean;
+  soloedOut: boolean;
+  gainDb: number;
+  /** Per-block on/off; null = every block on. */
+  blocks: boolean[] | null;
+  /** 0..1 buckets across `durationSec` of timeline; null = building. */
+  peaks: number[] | null;
+  /** Timeline seconds the peaks cover. */
+  durationSec: number | null;
+};
+
 export type RemixSessionLanesProps = {
   stems: LaneStem[];
   /** null → lanes show the waveform only, no cells and no section ruler. */
@@ -95,6 +114,13 @@ export type RemixSessionLanesProps = {
    */
   structureState?: RemixStructureEditState | null;
   onBlockAction?(index: number, action: LaneBlockAction): void;
+  /** Beat lane (#1902); absent/null = no lane. No FX toggle. */
+  beat?: LaneBeat | null;
+  onToggleBeatMute?(): void;
+  onToggleBeatSolo?(): void;
+  onBeatGainChange?(gainDb: number): void;
+  /** Receives null when every block is on. */
+  onSetBeatBlocks?(blocks: boolean[] | null): void;
 };
 
 /** Section-menu actions on one timeline block (#1899). */
@@ -462,6 +488,11 @@ export function RemixSessionLanes({
   timeline,
   structureState,
   onBlockAction,
+  beat,
+  onToggleBeatMute,
+  onToggleBeatSolo,
+  onBeatGainChange,
+  onSetBeatBlocks,
 }: RemixSessionLanesProps) {
   const fxIdPrefix = useId();
   // Which stems show their FX row: view state only, never saved.
@@ -571,6 +602,25 @@ export function RemixSessionLanes({
     onBlockAction?.(index, action);
   };
 
+  // The beat lane's cells (#1902) paint like a stem's, into beat.blocks.
+  const setSections = (stemId: string, sections: boolean[] | null) => {
+    if (stemId === REMIX_BEAT_LANE_ID) onSetBeatBlocks?.(sections);
+    else onSetSections(stemId, sections);
+  };
+  const beatLaneStem: LaneStem | null = beat
+    ? {
+        stemId: REMIX_BEAT_LANE_ID,
+        name: "Beat",
+        type: "beat",
+        muted: beat.muted,
+        soloed: beat.soloed,
+        soloedOut: beat.soloedOut,
+        gainDb: beat.gainDb,
+        sections: beat.blocks,
+        peaks: beat.peaks,
+      }
+    : null;
+
   // Drag-to-paint state lives in refs: it only matters inside event handlers.
   const paintRef = useRef<PaintState | null>(null);
   const suppressClickRef = useRef(false);
@@ -623,7 +673,7 @@ export function RemixSessionLanes({
     mask[index] = value;
     paintRef.current = { stemId: stem.stemId, value, mask };
     suppressClickRef.current = true;
-    onSetSections(stem.stemId, normalizeSections(mask));
+    setSections(stem.stemId, normalizeSections(mask));
   };
 
   const handleCellPointerEnter = (
@@ -641,7 +691,7 @@ export function RemixSessionLanes({
     }
     if (paint.mask[index] === paint.value) return;
     paint.mask[index] = paint.value;
-    onSetSections(stemId, normalizeSections(paint.mask));
+    setSections(stemId, normalizeSections(paint.mask));
   };
 
   const handleCellClick = (
@@ -653,11 +703,43 @@ export function RemixSessionLanes({
     if (suppressClickRef.current) return;
     if (disabled || !grid) return;
     const current = sectionMask(stem.sections, blockCount);
-    onSetSections(
+    setSections(
       stem.stemId,
       applyPaint(stem.sections, blockCount, index, !current[index]),
     );
   };
+
+  /** A lane's per-block on/off cells (stems and the beat). */
+  const cellButtons = (stem: LaneStem, mask: boolean[]) =>
+    grid &&
+    totalSec !== null &&
+    columns.map((column, index) => {
+      const on = mask[index];
+      return (
+        <button
+          key={index}
+          type="button"
+          aria-pressed={on}
+          aria-label={`${stem.name}: section ${index + 1} ${on ? "on" : "off"}`}
+          disabled={disabled}
+          className={`remix-lane-cell absolute inset-y-1 rounded-sm border focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 disabled:cursor-not-allowed ${
+            on
+              ? "remix-lane-cell-on bg-purple-500/30 border-purple-400/60 hover:bg-purple-500/40"
+              : "remix-lane-cell-off bg-zinc-950/85 border-zinc-700 hover:bg-zinc-900/80"
+          }`}
+          style={{
+            left: `calc(${percent(column.outStartSec, totalSec)} + 1px)`,
+            width: `calc(${fractionOf(column.outEndSec - column.outStartSec, totalSec) * 100}% - 2px)`,
+            ...(on ? {} : OFF_CELL_STYLE),
+          }}
+          onPointerDown={(event) => handleCellPointerDown(event, stem, index)}
+          onPointerEnter={(event) =>
+            handleCellPointerEnter(event, stem.stemId, index)
+          }
+          onClick={(event) => handleCellClick(event, stem, index)}
+        />
+      );
+    });
 
   return (
     <div className="remix-session-lanes overflow-x-auto rounded-md border border-zinc-800 bg-zinc-950">
@@ -1043,41 +1125,28 @@ export function RemixSessionLanes({
                     />
                   </svg>
                 )}
-                {grid &&
-                  totalSec !== null &&
-                  columns.map((column, index) => {
-                    const on = mask[index];
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        aria-pressed={on}
-                        aria-label={`${stem.name}: section ${index + 1} ${on ? "on" : "off"}`}
-                        disabled={disabled}
-                        className={`remix-lane-cell absolute inset-y-1 rounded-sm border focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-300 disabled:cursor-not-allowed ${
-                          on
-                            ? "remix-lane-cell-on bg-purple-500/30 border-purple-400/60 hover:bg-purple-500/40"
-                            : "remix-lane-cell-off bg-zinc-950/85 border-zinc-700 hover:bg-zinc-900/80"
-                        }`}
-                        style={{
-                          left: `calc(${percent(column.outStartSec, totalSec)} + 1px)`,
-                          width: `calc(${fractionOf(column.outEndSec - column.outStartSec, totalSec) * 100}% - 2px)`,
-                          ...(on ? {} : OFF_CELL_STYLE),
-                        }}
-                        onPointerDown={(event) =>
-                          handleCellPointerDown(event, stem, index)
-                        }
-                        onPointerEnter={(event) =>
-                          handleCellPointerEnter(event, stem.stemId, index)
-                        }
-                        onClick={(event) => handleCellClick(event, stem, index)}
-                      />
-                    );
-                  })}
+                {cellButtons(stem, mask)}
               </div>
             </div>
           );
         })}
+
+        {beat && beatLaneStem && (
+          <BeatLaneRow
+            beat={beat}
+            name={beatLaneStem.name}
+            disabled={disabled}
+            timelineStyle={timelineStyle}
+            totalSec={totalSec}
+            onToggleMute={() => onToggleBeatMute?.()}
+            onToggleSolo={() => onToggleBeatSolo?.()}
+            onGainChange={(gainDb) => onBeatGainChange?.(gainDb)}
+            cells={cellButtons(
+              beatLaneStem,
+              grid ? sectionMask(beat.blocks, blockCount) : [],
+            )}
+          />
+        )}
 
         {/* Loop band + playhead overlay (spans ruler and lanes) */}
         <div
@@ -1117,6 +1186,146 @@ export function RemixSessionLanes({
           }
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The beat's lane (#1902): a channel strip (name, kit, mute, solo, level —
+ * no FX toggle) next to the beat's waveform across the timeline and its
+ * per-block cells.
+ */
+function BeatLaneRow({
+  beat,
+  name,
+  disabled,
+  timelineStyle,
+  totalSec,
+  onToggleMute,
+  onToggleSolo,
+  onGainChange,
+  cells,
+}: {
+  beat: LaneBeat;
+  name: string;
+  disabled: boolean;
+  timelineStyle: CSSProperties | undefined;
+  totalSec: number | null;
+  onToggleMute(): void;
+  onToggleSolo(): void;
+  onGainChange(gainDb: number): void;
+  cells: ReactNode;
+}) {
+  const dimmed = beat.muted || beat.soloedOut;
+  const waveformWidth =
+    totalSec !== null && beat.durationSec !== null
+      ? `${fractionOf(beat.durationSec, totalSec) * 100}%`
+      : "100%";
+  return (
+    <div
+      data-stem-id={REMIX_BEAT_LANE_ID}
+      className={`remix-lane-row remix-lane-beat flex border-t border-zinc-800 ${
+        dimmed ? "remix-lane-row-dimmed" : ""
+      }`}
+    >
+      <div
+        className={`sticky left-0 z-20 ${STRIP_WIDTH} shrink-0 bg-zinc-900 border-r border-zinc-800 px-2 py-2 flex flex-col gap-1`}
+      >
+        <div
+          className={`truncate text-xs font-medium ${
+            dimmed ? "text-zinc-500" : "text-zinc-200"
+          }`}
+        >
+          {name}
+        </div>
+        <div className="truncate text-[10px] text-zinc-500 remix-lane-beat-kit">
+          {beat.kitLabel} kit
+          {beat.soloedOut ? " · muted by solo" : ""}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-pressed={beat.muted}
+            aria-label={`Mute ${name}`}
+            title={beat.muted ? "Unmute" : "Mute"}
+            disabled={disabled}
+            className={`h-5 w-5 shrink-0 rounded border text-[10px] font-semibold disabled:opacity-50 remix-lane-mute ${
+              beat.muted
+                ? "bg-red-500/25 text-red-200 border-red-500/50"
+                : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-100"
+            }`}
+            onClick={onToggleMute}
+          >
+            M
+          </button>
+          <button
+            type="button"
+            aria-pressed={beat.soloed}
+            aria-label={`Solo ${name}`}
+            title={beat.soloed ? "Clear solo" : "Solo (preview only, not saved)"}
+            className={`h-5 w-5 shrink-0 rounded border text-[10px] font-semibold remix-lane-solo ${
+              beat.soloed
+                ? "bg-purple-500/30 text-purple-100 border-purple-400/60"
+                : "bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-100"
+            }`}
+            onClick={onToggleSolo}
+          >
+            S
+          </button>
+          <input
+            type="range"
+            min={GAIN_DB_MIN}
+            max={GAIN_DB_MAX}
+            step={0.5}
+            value={beat.gainDb}
+            disabled={disabled}
+            aria-label={`${name} level in decibels`}
+            className="h-1 min-w-0 flex-1 cursor-pointer accent-purple-400 disabled:cursor-not-allowed disabled:opacity-50 remix-lane-gain"
+            onChange={(event) =>
+              onGainChange(clampGainDb(parseFloat(event.target.value)))
+            }
+          />
+          <span className="w-12 shrink-0 text-right text-[10px] tabular-nums text-zinc-300">
+            {formatGainDb(beat.gainDb)}
+          </span>
+        </div>
+      </div>
+      <div
+        className={`remix-lane relative flex-1 min-h-[4.5rem] select-none ${
+          dimmed ? "opacity-40" : ""
+        }`}
+        style={timelineStyle}
+      >
+        {beat.peaks === null ? (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-2 top-1/2 h-1.5 -translate-y-1/2 animate-pulse rounded-full bg-zinc-700/70 remix-lane-waveform-loading"
+          />
+        ) : (
+          <svg
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 h-full remix-lane-waveform remix-lane-beat-waveform"
+            style={{ width: waveformWidth }}
+            viewBox="0 0 1000 100"
+            preserveAspectRatio="none"
+          >
+            <line
+              x1={0}
+              x2={1000}
+              y1={50}
+              y2={50}
+              className="stroke-zinc-700"
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
+            <path
+              d={peaksToSvgPath(beat.peaks, 1000, 100)}
+              className="fill-amber-200/70"
+            />
+          </svg>
+        )}
+        {cells}
+      </div>
     </div>
   );
 }

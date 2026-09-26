@@ -14,6 +14,11 @@ export type RemixCurrentDraft = {
   kindLabel: string;
   /** Raw grounding value (e.g. "stem_audio"); rendered as a short chip. */
   provenance: string | null;
+  /**
+   * Parts the render added on top of the stems (#1902,
+   * `renderMetadata.addedParts`), e.g. ["beat"]; absent/null = none.
+   */
+  addedParts?: string[] | null;
   /** Full honest grounding description (groundingDescription). */
   groundingDetail: string | null;
   transformNote: string | null;
@@ -121,8 +126,30 @@ function playLabel(state: { playing: boolean; loading: boolean }): string {
   return state.playing ? "Stop" : "Play";
 }
 
-function ProvenanceChip({ grounding }: { grounding: string | null }) {
+/**
+ * The draft's provenance chip (#1902): a stem render with the studio's
+ * synthesized beat reads "Your stems + your beat" (neither AI nor source
+ * audio); otherwise the grounding's chip.
+ */
+export function draftProvenanceChip(
+  grounding: string | null | undefined,
+  addedParts?: readonly string[] | null,
+): ReturnType<typeof provenanceChip> {
   const chip = provenanceChip(grounding);
+  if (chip && grounding === "stem_audio" && addedParts?.includes("beat")) {
+    return { ...chip, label: "Your stems + your beat" };
+  }
+  return chip;
+}
+
+function ProvenanceChip({
+  grounding,
+  addedParts,
+}: {
+  grounding: string | null;
+  addedParts?: readonly string[] | null;
+}) {
+  const chip = draftProvenanceChip(grounding, addedParts);
   if (!chip) return null;
   return (
     <span
@@ -178,7 +205,10 @@ function CurrentDraftCard({
           <div className="text-sm font-medium text-zinc-100">{draft.kindLabel}</div>
           {settled && (draft.provenance || cost || when) && (
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-              <ProvenanceChip grounding={draft.provenance} />
+              <ProvenanceChip
+                grounding={draft.provenance}
+                addedParts={draft.addedParts}
+              />
               {cost && <span className="remix-draft-cost">{cost}</span>}
               {when && <span className="remix-draft-time">{when}</span>}
             </div>

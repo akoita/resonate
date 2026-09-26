@@ -229,6 +229,52 @@ describe("FfmpegStemMixRenderer effects (#1897)", () => {
       fx,
       structure,
     );
+
+    // #1902: a beat is forwarded as the fifth argument, with or without
+    // fx/structure.
+    const beat = {
+      beat: {
+        schemaVersion: "remix-beat/v1" as const,
+        kit: "808" as const,
+        pattern: {
+          kick: Array.from({ length: 16 }, (_, step) => step % 4 === 0),
+          snare: new Array<boolean>(16).fill(false),
+          clap: new Array<boolean>(16).fill(false),
+          hat: new Array<boolean>(16).fill(false),
+          openHat: new Array<boolean>(16).fill(false),
+        },
+        swing: 0,
+        gainDb: -3,
+        blocks: null,
+      },
+      grid: {
+        kind: "bars" as const,
+        bpm: 120,
+        sectionSeconds: 16,
+        durationSeconds: 32,
+        sections: [
+          { startSec: 0, endSec: 16 },
+          { startSec: 16, endSec: 32 },
+        ],
+      },
+      segments: [],
+    };
+    await renderer.render({ remixProjectId: "project", stems, authorization, beat });
+    expect(mixer.mixUnmutedStems).toHaveBeenLastCalledWith(
+      stems,
+      authorization,
+      undefined,
+      undefined,
+      beat,
+    );
+    await renderer.render({ remixProjectId: "project", stems, authorization, fx, structure, beat });
+    expect(mixer.mixUnmutedStems).toHaveBeenLastCalledWith(
+      stems,
+      authorization,
+      fx,
+      structure,
+      beat,
+    );
   });
 });
 
